@@ -1,8 +1,8 @@
 <script setup lang="ts">
   // Standalone playground for one `apps/site/docs-demos/<slug>.vue`
   // SFC. The route loads the matching SFC source via Vite's `?raw`
-  // query and seeds it into the editor — same one source of truth as
-  // the inline <DocsDemo>, so a reader's "Open in playground" link
+  // query and seeds it into the editor, sharing one source of truth
+  // with the inline <DocsDemo>; a reader's "Open in playground" link
   // arrives in an editor preloaded with exactly what they saw on the
   // docs page.
   //
@@ -20,7 +20,7 @@
   const slug = computed(() => String(route.params['slug'] ?? ''))
 
   // Eager glob: ships every demo's raw source in the page chunk.
-  // Lazy resolution is technically possible but buys little — the
+  // Lazy resolution is technically possible but buys little. The
   // raw source is plain text (~1–2 KB) and the playground is
   // already loading the heavyweight @vue/repl + Monaco bundle.
   const sources = import.meta.glob<true, string, string>('../../docs-demos/*.vue', {
@@ -51,7 +51,7 @@
   useHead(() => ({ title: `${title.value} playground` }))
   useSeoMeta({
     description: () =>
-      `Edit the "${title.value}" Attaform demo live — the same source you saw on the docs, opened in a standalone editor.`,
+      `Edit the "${title.value}" Attaform demo live; the same source you saw on the docs, opened in a standalone editor.`,
   })
 
   // Sanitize the back-to-docs URL: accept only paths that resolve
@@ -75,9 +75,10 @@
             <p class="text-sm font-semibold tracking-wide text-accent uppercase">Playground</p>
             <h1 class="mt-3 text-display-md font-semibold text-fg">{{ title }}</h1>
             <p class="mt-4 text-sm text-fg-muted">
-              Editing
-              <UiInlineCode>apps/site/docs-demos/{{ slug }}.vue</UiInlineCode>. Changes don't
-              propagate back to the docs page — this editor is a sandbox.
+              Editing <UiInlineCode>apps/site/docs-demos/{{ slug }}.vue</UiInlineCode>. Source edits
+              stay in this editor; if the demo's <UiInlineCode>useForm</UiInlineCode> sets a
+              <UiInlineCode>key</UiInlineCode>, runtime state (values, persisted drafts, etc.) syncs
+              both ways with the docs page.
             </p>
           </div>
           <div class="flex items-center gap-3 text-sm">

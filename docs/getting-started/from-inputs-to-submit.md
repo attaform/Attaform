@@ -1,6 +1,6 @@
 ---
 title: From inputs to submit
-description: Wire a submit handler to a typed form — handleSubmit gates dispatch on validation, exposes the parsed values, and reports back through meta.submitting.
+description: Wire a submit handler to a typed form. handleSubmit gates dispatch on validation, exposes the parsed values, and reports back through meta.submitting.
 metaRows:
   - label: Read time
     value: ~4 minutes
@@ -15,18 +15,18 @@ metaRows:
 ::docs-meta-table
 ::
 
-Submit the form with valid values to watch the button switch to "Subscribing…" while the simulated API call runs — that's `meta.submitting` flipping reactive. Submit with an invalid email and focus pulls to the broken field automatically. The [submit handler](#the-submit-handler) section below walks through the gating contract.
+Submit the form with valid values to watch the button switch to "Subscribing…" while the simulated API call runs. That's `meta.submitting` flipping reactive. Submit with an invalid email and focus pulls to the broken field automatically. The [submit handler](#the-submit-handler) section below walks through the gating contract.
 
 ::docs-demo{slug="inputs-to-submit"}
 ::
 
 ## The submit handler
 
-`form.handleSubmit(onSuccess, onError?)` returns a handler bound to `<form @submit.prevent>`. The handler:
+`form.handleSubmit(onSuccess, onError?)` returns a handler you bind to `<form @submit>`. `handleSubmit` calls `preventDefault` internally, so the `.prevent` modifier is unnecessary. The handler:
 
 - Runs sync + async validation on every active path.
 - Waits for pending async refinements before dispatching.
-- Calls `onSuccess(values)` only if validation passes — `values` is the parsed Zod output, fully typed.
+- Calls `onSuccess(values)` only if validation passes. `values` is the parsed Zod output, fully typed.
 - Calls `onError(errors)` if validation fails. By default, focus moves to the first invalid field.
 
 ```ts
@@ -41,7 +41,7 @@ const onSubmit = handleSubmit(
 ```
 
 ```vue
-<form @submit.prevent="onSubmit">…</form>
+<form @submit="onSubmit">…</form>
 ```
 
 ## meta.submitting
@@ -54,9 +54,9 @@ While `onSuccess` is running, `form.meta.submitting` is `true`. Use it to disabl
 </button>
 ```
 
-`submitting` flips back to `false` when the callback resolves (or rejects — `handleSubmit` catches and surfaces the failure through its error hooks).
+`submitting` flips back to `false` when the callback resolves (or rejects; `handleSubmit` catches and surfaces the failure through its error hooks).
 
 ## Where to next
 
-- [`handleSubmit`](/docs/submitting/handle-submit) — the full submit surface, including error handlers and event semantics.
-- [The form object](/docs/reading-the-form/the-form-object) — every method and property `useForm` returns.
+- [`handleSubmit`](/docs/submitting/handle-submit): the full submit surface, including error handlers and event semantics.
+- [The form object](/docs/reading-the-form/the-form-object): every method and property `useForm` returns.

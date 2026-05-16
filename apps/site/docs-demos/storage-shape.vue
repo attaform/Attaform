@@ -30,11 +30,11 @@
       </label>
       <label>
         trimmed (string, preprocess trims at write)
-        <input v-register="form.register('trimmed')" type="text" />
+        <input v-register="form.register('trimmed')" />
       </label>
       <label>
         ratio (string in storage, number on submit)
-        <input v-register="form.register('ratio')" type="text" />
+        <input v-register="form.register('ratio')" />
       </label>
       <button type="submit">Submit → see post-transform shape</button>
     </form>

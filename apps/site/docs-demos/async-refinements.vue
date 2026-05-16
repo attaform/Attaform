@@ -36,7 +36,7 @@
   <form @submit.prevent="onSubmit">
     <label>
       <span>Username (taken: ada, champ, athlete)</span>
-      <input v-register="register('username')" type="text" />
+      <input v-register="register('username')" />
       <small v-if="fields.username.validating">Checking availability…</small>
       <em v-if="fields.username.showErrors">{{ fields.username.firstError?.message }}</em>
     </label>

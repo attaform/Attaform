@@ -57,7 +57,7 @@
     <form v-if="stepper.current.value === 'docs-demo-stepper-account'" @submit.prevent>
       <label>
         Email
-        <input v-register="account.register('email')" type="email" autocomplete="email" />
+        <input v-register="account.register('email')" autocomplete="email" />
         <em v-if="account.fields.email.showErrors">{{
           account.fields.email.firstError?.message
         }}</em>
@@ -78,12 +78,12 @@
     <form v-else-if="stepper.current.value === 'docs-demo-stepper-profile'" @submit.prevent>
       <label>
         Name
-        <input v-register="profile.register('name')" type="text" />
+        <input v-register="profile.register('name')" />
         <em v-if="profile.fields.name.showErrors">{{ profile.fields.name.firstError?.message }}</em>
       </label>
       <label>
         City
-        <input v-register="profile.register('city')" type="text" />
+        <input v-register="profile.register('city')" />
       </label>
     </form>
 

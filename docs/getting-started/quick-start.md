@@ -51,7 +51,7 @@ Bind inputs to schema paths with `v-register`:
 ```vue
 <template>
   <form @submit="onSubmit">
-    <input v-register="register('email')" type="email" />
+    <input v-register="register('email')" />
     <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
 
     <input v-register="register('password')" type="password" />

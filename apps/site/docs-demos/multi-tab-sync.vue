@@ -24,7 +24,7 @@
 
     <label>
       Title
-      <input v-register="form.register('title')" type="text" />
+      <input v-register="form.register('title')" />
     </label>
     <label>
       Body

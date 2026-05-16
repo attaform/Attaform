@@ -16,12 +16,12 @@
   <form @submit.prevent>
     <label>
       <span>Name (required)</span>
-      <input v-register="register('name')" type="text" />
+      <input v-register="register('name')" />
     </label>
 
     <label>
       <span>Middle name (optional)</span>
-      <input v-register="register('middleName')" type="text" />
+      <input v-register="register('middleName')" />
     </label>
 
     <div class="actions">

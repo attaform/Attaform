@@ -52,7 +52,6 @@
       Email address
       <input
         v-register="form.register('notify.address')"
-        type="email"
         autocomplete="email"
         placeholder="you@example.com"
       />
@@ -71,7 +70,7 @@
 
     <label v-else-if="form.values.notify.channel === 'push'">
       Device ID
-      <input v-register="form.register('notify.deviceId')" type="text" placeholder="abc12345" />
+      <input v-register="form.register('notify.deviceId')" placeholder="abc12345" />
       <em v-if="form.fields.notify.deviceId.showErrors">{{
         form.fields.notify.deviceId.firstError?.message
       }}</em>

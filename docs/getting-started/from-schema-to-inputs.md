@@ -40,7 +40,7 @@ That's the whole binding. The directive:
 The directive works on every input shape Vue exposes:
 
 ```vue
-<input v-register="register('email')" type="email" />
+<input v-register="register('email')" />
 <input v-register="register('age')" type="number" />
 <input v-register="register('agreed')" type="checkbox" />
 <select v-register="register('country')">…</select>

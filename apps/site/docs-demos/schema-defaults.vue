@@ -41,7 +41,7 @@
         </label>
         <label>
           tag
-          <input v-register="bare.register('tag')" type="text" />
+          <input v-register="bare.register('tag')" />
         </label>
       </form>
       <pre>{{ JSON.stringify(bare.values, null, 2) }}</pre>
@@ -60,7 +60,7 @@
         </label>
         <label>
           tag
-          <input v-register="overlaid.register('tag')" type="text" />
+          <input v-register="overlaid.register('tag')" />
         </label>
       </form>
       <pre>{{ JSON.stringify(overlaid.values, null, 2) }}</pre>
@@ -82,7 +82,7 @@
         </label>
         <label>
           tag
-          <input v-register="blanked.register('tag')" type="text" />
+          <input v-register="blanked.register('tag')" />
         </label>
       </form>
       <pre>{{ JSON.stringify(blanked.values, null, 2) }}</pre>

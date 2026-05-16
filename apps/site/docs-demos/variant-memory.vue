@@ -55,22 +55,22 @@
         <template v-if="memoryOn.values.payment.kind === 'card'">
           <label>
             Last 4 digits
-            <input v-register="memoryOn.register('payment.last4')" type="text" maxlength="4" />
+            <input v-register="memoryOn.register('payment.last4')" maxlength="4" />
           </label>
           <label>
             ZIP / Postal
-            <input v-register="memoryOn.register('payment.zip')" type="text" />
+            <input v-register="memoryOn.register('payment.zip')" />
           </label>
         </template>
 
         <template v-else>
           <label>
             Routing
-            <input v-register="memoryOn.register('payment.routing')" type="text" maxlength="9" />
+            <input v-register="memoryOn.register('payment.routing')" maxlength="9" />
           </label>
           <label>
             Account
-            <input v-register="memoryOn.register('payment.account')" type="text" />
+            <input v-register="memoryOn.register('payment.account')" />
           </label>
         </template>
       </form>
@@ -103,22 +103,22 @@
         <template v-if="memoryOff.values.payment.kind === 'card'">
           <label>
             Last 4 digits
-            <input v-register="memoryOff.register('payment.last4')" type="text" maxlength="4" />
+            <input v-register="memoryOff.register('payment.last4')" maxlength="4" />
           </label>
           <label>
             ZIP / Postal
-            <input v-register="memoryOff.register('payment.zip')" type="text" />
+            <input v-register="memoryOff.register('payment.zip')" />
           </label>
         </template>
 
         <template v-else>
           <label>
             Routing
-            <input v-register="memoryOff.register('payment.routing')" type="text" maxlength="9" />
+            <input v-register="memoryOff.register('payment.routing')" maxlength="9" />
           </label>
           <label>
             Account
-            <input v-register="memoryOff.register('payment.account')" type="text" />
+            <input v-register="memoryOff.register('payment.account')" />
           </label>
         </template>
       </form>

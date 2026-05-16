@@ -27,7 +27,7 @@
   <form @submit.prevent>
     <label>
       <span>Username (per-field schema chain)</span>
-      <input v-register="register('username')" type="text" />
+      <input v-register="register('username')" />
       <em v-if="fields.username.showErrors">{{ fields.username.firstError?.message }}</em>
     </label>
 

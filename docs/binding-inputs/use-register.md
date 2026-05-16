@@ -50,7 +50,7 @@ When the wrapper's root **is** the input itself, Vue's attribute fallthrough alr
 <template>
   <label class="field-row">
     <span>{{ label }}</span>
-    <input v-register="rv" type="text" />
+    <input v-register="rv" />
   </label>
 </template>
 ```

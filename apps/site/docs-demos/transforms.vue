@@ -20,14 +20,13 @@
   <form @submit.prevent>
     <label>
       <span>Title (untouched)</span>
-      <input v-register="register('title')" type="text" placeholder="My First Post" />
+      <input v-register="register('title')" placeholder="My First Post" />
     </label>
 
     <label>
       <span>Slug (lowercased, dashified — try mixed case + spaces)</span>
       <input
         v-register="register('slug', { transforms: [lowercase, dashify] })"
-        type="text"
         placeholder="my-first-post"
       />
     </label>

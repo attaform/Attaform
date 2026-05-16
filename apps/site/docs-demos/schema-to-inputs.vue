@@ -20,7 +20,7 @@
   <form @submit.prevent>
     <label>
       Full name
-      <input v-register="register('fullName')" type="text" autocomplete="name" />
+      <input v-register="register('fullName')" autocomplete="name" />
       <em v-if="fields.fullName.showErrors">{{ fields.fullName.firstError?.message }}</em>
     </label>
     <label>

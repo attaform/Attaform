@@ -38,7 +38,7 @@
   <form @submit.prevent>
     <label>
       Title
-      <input v-register="form.register('title')" type="text" placeholder="Type freely" />
+      <input v-register="form.register('title')" placeholder="Type freely" />
     </label>
     <label>
       Body

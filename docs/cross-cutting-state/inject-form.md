@@ -63,7 +63,7 @@ Any descendant grabs the same form:
 
 <template>
   <label>Email</label>
-  <input v-register="register('email')" type="email" />
+  <input v-register="register('email')" />
   <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
 </template>
 ```

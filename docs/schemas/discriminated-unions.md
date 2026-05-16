@@ -84,7 +84,7 @@ Branch on the discriminator value with `v-if` / `v-else-if`:
 ```vue
 <template>
   <label v-if="form.values.notify.channel === 'email'">
-    <input v-register="form.register('notify.address')" type="email" />
+    <input v-register="form.register('notify.address')" />
     <em v-if="form.fields.notify.address.showErrors">
       {{ form.fields.notify.address.firstError?.message }}
     </em>

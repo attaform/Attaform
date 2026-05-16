@@ -41,7 +41,7 @@
   <form @submit.prevent>
     <label>
       <span>Email</span>
-      <input v-register="register('email')" type="email" />
+      <input v-register="register('email')" />
       <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
 

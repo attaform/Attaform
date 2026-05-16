@@ -18,7 +18,7 @@
   <form @submit.prevent>
     <label>
       Email
-      <input v-register="register('email')" type="email" autocomplete="email" />
+      <input v-register="register('email')" autocomplete="email" />
       <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <table class="state">

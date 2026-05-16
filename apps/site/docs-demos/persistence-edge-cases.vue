@@ -32,7 +32,7 @@
     <fieldset>
       <legend>Tags (array — append, watch the persisted shape grow)</legend>
       <div v-for="(_, i) in form.values.tags" :key="i" class="tag-row">
-        <input v-register="form.register(`tags.${i}`, { persist: true })" type="text" />
+        <input v-register="form.register(`tags.${i}`, { persist: true })" />
         <button type="button" @click="form.remove('tags', i)">−</button>
       </div>
       <button type="button" class="add" @click="addTag">Add tag</button>

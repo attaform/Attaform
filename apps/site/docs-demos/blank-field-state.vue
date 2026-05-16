@@ -51,7 +51,7 @@
         </tr>
         <tr>
           <td><code>z.string().min(1)</code></td>
-          <td><input v-register="form.register('name')" type="text" placeholder="name" /></td>
+          <td><input v-register="form.register('name')" placeholder="name" /></td>
           <td>
             <code>{{ fmt(form.values.name) }}</code>
           </td>
@@ -65,7 +65,7 @@
         </tr>
         <tr>
           <td><code>z.string()</code></td>
-          <td><input v-register="form.register('title')" type="text" placeholder="title" /></td>
+          <td><input v-register="form.register('title')" placeholder="title" /></td>
           <td>
             <code>{{ fmt(form.values.title) }}</code>
           </td>
@@ -80,7 +80,7 @@
         <tr>
           <td><code>z.string().min(2)</code> + <code>unset</code></td>
           <td>
-            <input v-register="form.register('country')" type="text" placeholder="country" />
+            <input v-register="form.register('country')" placeholder="country" />
           </td>
           <td>
             <code>{{ fmt(form.values.country) }}</code>

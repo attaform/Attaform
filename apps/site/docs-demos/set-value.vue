@@ -19,12 +19,12 @@
   <form @submit.prevent>
     <label>
       <span>Name</span>
-      <input v-register="register('name')" type="text" />
+      <input v-register="register('name')" />
     </label>
 
     <label>
       <span>Email</span>
-      <input v-register="register('profile.email')" type="email" />
+      <input v-register="register('profile.email')" />
     </label>
 
     <label>

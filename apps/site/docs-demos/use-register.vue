@@ -37,7 +37,7 @@
 
 <template>
   <form @submit.prevent>
-    <FieldRow v-register="register('email')" label="Email" type="email" />
+    <FieldRow v-register="register('email')" label="Email" />
     <FieldRow v-register="register('handle')" label="Handle" />
     <pre>{{ JSON.stringify(values, null, 2) }}</pre>
   </form>

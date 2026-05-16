@@ -21,12 +21,12 @@
   <form @submit.prevent>
     <label>
       <span>Title <small v-if="fields.title.blank">(blank)</small></span>
-      <input v-register="register('title')" type="text" />
+      <input v-register="register('title')" />
     </label>
 
     <label>
       <span>Tags (comma-separated string representation)</span>
-      <input :value="values.tags.join(', ')" type="text" readonly />
+      <input :value="values.tags.join(', ')" readonly />
       <small v-if="values.tags.length === 0">(blank: [])</small>
     </label>
 

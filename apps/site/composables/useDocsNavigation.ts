@@ -17,7 +17,17 @@ export type DocsLink = { title: string; to: string }
 export type DocsSection = { heading: string; links: DocsLink[] }
 
 export const docsNavigation: DocsSection[] = [
-  { heading: 'Getting started', links: [] },
+  {
+    heading: 'Getting started',
+    links: [
+      { title: 'Introduction', to: '/docs/getting-started/introduction' },
+      { title: 'Quick start', to: '/docs/getting-started/quick-start' },
+    ],
+  },
+  // Phase 1 fills in the remaining categories below as each page
+  // lands. Empty `links` arrays render the heading as a disabled
+  // sidebar group — visually placeholding the IA without surfacing
+  // 404-bound URLs.
   { heading: 'Schemas', links: [] },
   { heading: 'Reading the form', links: [] },
   { heading: 'Binding inputs', links: [] },

@@ -515,6 +515,63 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    // Source-resolve the workspace `attaform` package for the docs
+    // site's Vite environments. Without these aliases, every
+    // `import { useForm } from 'attaform/zod'` (and every other
+    // `attaform/*` subpath) resolves via the package's `exports`
+    // map to `dist/zod.mjs` — which, under the monorepo's
+    // `pnpm dev:prepare` flow, is an `unbuild --stub` jiti shim:
+    //
+    //   import { createJiti } from "../node_modules/.pnpm/jiti@2.6.1/.../jiti.mjs"
+    //   const jiti = createJiti(import.meta.url, { … })
+    //   const _module = await jiti.import("/app/src/zod.ts")
+    //   export const useForm = _module.useForm
+    //   …
+    //
+    // The shim works in Node (where jiti's `node:module` /
+    // `createRequire` runtime is real) but fails in the browser
+    // at the very first import: Vite serves the relative-path
+    // `lib/jiti.mjs`, runs its CJS-to-ESM lexer over webpack-bundled
+    // `dist/jiti.cjs`, and the missing `default` export trips a
+    // `SyntaxError` that propagates up through `MDCRenderer`'s
+    // `await resolveContentComponents(...)` — visible as every
+    // docs-page nav after the homepage hard-crashing client-side.
+    //
+    // Aliasing each subpath to the corresponding `src/*.ts` file
+    // routes the docs-demos and every other `attaform/*` consumer
+    // through Vite + @vitejs/plugin-vue's normal TS compilation
+    // path. No jiti hop, no CJS-to-ESM analyzer in the loop, and
+    // live-reload works exactly the same — Vite already watches
+    // `src/` because it's inside the dev server's `fs.allow` root.
+    //
+    // SSR-runtime caveats:
+    //
+    //   - `attaform/nuxt` is consumed by Nuxt's `modules:` array,
+    //     which Nuxt evaluates with its OWN jiti process before
+    //     Vite ever boots. That path doesn't go through Vite's
+    //     resolver, so it doesn't need an alias — Nuxt loads
+    //     `dist/nuxt.mjs` directly via jiti, which works fine in
+    //     the Node-side init context.
+    //
+    //   - `attaform/devtools-panel` resolves to a `.vue` file
+    //     via the package exports' `"default"` condition. The
+    //     consumer site never imports it from a `.ts` / `.vue`
+    //     file; the Nuxt DevTools overlay loads it directly. No
+    //     alias needed.
+    //
+    //   - `attaform/types` is types-only (no `import` condition
+    //     in the export map). Aliasing it would be a no-op at
+    //     runtime, so skip it.
+    resolve: {
+      alias: [
+        { find: /^attaform$/, replacement: resolve(monorepoRoot, 'src/index.ts') },
+        { find: /^attaform\/zod$/, replacement: resolve(monorepoRoot, 'src/zod.ts') },
+        { find: /^attaform\/zod-v3$/, replacement: resolve(monorepoRoot, 'src/zod-v3.ts') },
+        { find: /^attaform\/zod-v4$/, replacement: resolve(monorepoRoot, 'src/zod-v4.ts') },
+        { find: /^attaform\/vite$/, replacement: resolve(monorepoRoot, 'src/vite.ts') },
+        { find: /^attaform\/transforms$/, replacement: resolve(monorepoRoot, 'src/transforms.ts') },
+      ],
+    },
     // Mirror Nuxt's devServer.host into Vite's server.host so
     // @vitejs/devtools (which reads viteDevServer.config.server.host
     // directly when picking its WebSocket bind) lands on 0.0.0.0
@@ -592,6 +649,25 @@ export default defineNuxtConfig({
         // that ship through the docs-demos/*.vue glob.
         'shiki',
         'zod',
+        // `zod-v3` is npm-aliased to `zod@3.x` (see root package.json's
+        // `"zod-v3": "npm:zod@^3.24"`). It surfaces in the docs-site
+        // dep graph because `apps/site` aliases `attaform/zod` to the
+        // workspace `src/zod.ts`, whose unified adapter
+        // (`src/runtime/adapters/unified/use-form.ts`) statically
+        // imports both the v3 and v4 adapters so its runtime-dispatch
+        // can pick the right shape per schema. Without `zod-v3` in
+        // this list, Vite's boot crawl misses it; the first docs-demo
+        // mount discovers the dep mid-session, the optimizer rebundles,
+        // the browser hash flips, and any in-flight prebundled-dep
+        // request (e.g. shiki.js) 504s with "Outdated Optimize Dep".
+        // Pre-declaring it keeps the boot crawl comprehensive.
+        'zod-v3',
+        // `lodash-es` is a transitive of one of the @nuxtjs/seo
+        // sub-modules (the schema-org or sitemap chain). Same
+        // motivation: pre-declaring it here means the boot crawl
+        // catches it once, so a mid-session discovery doesn't
+        // re-trigger an Outdated-Optimize-Dep rebundle.
+        'lodash-es',
       ],
       // The remark/rehype/unified cluster is excluded for a different
       // reason: @nuxtjs/mdc (transitive via @nuxt/content) pushes these
@@ -621,35 +697,7 @@ export default defineNuxtConfig({
         'unified',
         'debug',
         'extend',
-        // `jiti` leaks into the client crawl because content.config.ts
-        // imports `defineCollection` / `defineContentConfig` from
-        // `@nuxt/content`, whose package-root export
-        // (`dist/module.mjs`, the Nuxt module entry) has `import { createJiti }
-        // from 'jiti'` at the top so the module can hot-eval user content
-        // configs at build time. Vite's dep scanner follows that import
-        // chain into the client graph even though jiti only ever runs
-        // server-side. Listing jiti as `exclude` tells Vite "don't
-        // pre-bundle this; Nuxt's machinery handles it at module-load time"
-        // — same posture as the remark/rehype/unified cluster above.
-        'jiti',
       ],
-      // jiti's `lib/jiti.mjs` line 2 imports `../dist/jiti.cjs`, a
-      // webpack-style CJS bundle. Vite's default CJS-to-ESM lexer can't
-      // extract a `default` export from webpack output, so a client-side
-      // import of jiti fails with "does not provide an export named
-      // 'default'" and `<MDCRenderer>` setup throws — pages with rendered
-      // content (every docs page after the leading hero) never paint past
-      // the first navigation.
-      //
-      // `needsInterop: ['jiti']` forces Vite to apply esbuild's CJS
-      // interop wrapper at serve time, which correctly extracts a
-      // `module.exports`-style default from the webpack output. jiti
-      // still can't *run* in the browser (its Node-only `node:module` /
-      // `createRequire` would throw if called), but the import chain
-      // that pulls it in never actually invokes jiti on the client —
-      // only the module-evaluation side-effect runs, which is what the
-      // interop wrapper makes safe.
-      needsInterop: ['jiti'],
     },
     build: {
       // Production sourcemaps are pure overhead for a docs site —

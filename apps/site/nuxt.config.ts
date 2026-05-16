@@ -554,29 +554,36 @@ export default defineNuxtConfig({
     // declaring the heavy site-only deps here makes the boot crawl
     // comprehensive, so first-paint requests resolve cleanly.
     optimizeDeps: {
-      include: ['lucide-vue-next'],
-      // Both @vue/repl entries are excluded from prebundling for two
-      // reasons that interlock:
+      // `@vue/repl` + `@vue/repl/monaco-editor` are prebundled
+      // together. The monaco-editor entry is a 7.2 MB minified bundle;
+      // serving it raw through `/_nuxt/@fs/...` runs it through Vite's
+      // plugin transform pipeline, where the per-plugin recursion on a
+      // file this large overflows the JS call stack and the server
+      // responds 404 (`Internal server error: Maximum call stack size
+      // exceeded` from `EnvironmentPluginContainer.transform`).
       //
-      // 1. `@vue/repl/monaco-editor` references its bundled web
-      //    workers via `new URL("assets/<worker>.js", import.meta.url)`.
-      //    The worker chunks ship under
-      //    `node_modules/@vue/repl/dist/assets/`. Prebundling
-      //    relocates the entry to `node_modules/.cache/vite/...` but
-      //    doesn't copy the assets siblings, so the worker URL 404s.
+      // Prebundling routes both entries through esbuild instead. Esbuild
+      // is C++ and handles large bundles without recursion; the output
+      // lands at `node_modules/.vite/deps/_vue_repl_*.js`, served as
+      // pre-processed static chunks with no further plugin chain.
       //
-      // 2. If we prebundle `@vue/repl` but not `@vue/repl/monaco-editor`,
-      //    they end up resolving `vue` through different module graphs
-      //    (Vite's prebundled vue chunk vs. raw node_modules vue) — the
-      //    EditorContainer's `provide(propsKey, …)` and Monaco's
-      //    `inject(propsKey)` then use different InjectionKey symbols,
-      //    so Monaco's setup throws "injection Symbol(props) not
-      //    found" and falls back to a render-less component.
+      // Both entries are listed together for a second reason: if one
+      // prebundles and the other doesn't, they resolve `vue` through
+      // different module graphs (Vite's prebundled vue chunk vs. raw
+      // node_modules vue). The EditorContainer's `provide(propsKey, …)`
+      // and Monaco's `inject(propsKey)` then use different InjectionKey
+      // symbols and Monaco renders as a no-op. Pinning both into the
+      // same prebundle batch guarantees a single shared vue.
       //
-      // Excluding both keeps both entries served from their real
-      // node_modules paths (assets/ neighbors resolve) and through the
-      // same resolver (single vue copy across the @vue/repl tree).
-      //
+      // The previous concern about prebundling — `@vue/repl/monaco-editor`'s
+      // worker URLs (`new URL("assets/...", import.meta.url)`) not
+      // resolving against prebundled siblings — is moot. The Worker
+      // constructor monkey-patch in `components/demo/DemoReplEditor.client.vue`
+      // rewrites every `assets/(editor|vue).worker-*.js` URL to the
+      // static copies under `/lib/repl-workers/`, regardless of which
+      // path the worker URL was constructed against. Prebundling moves
+      // the entry, the worker URL changes too, the regex still matches.
+      include: ['lucide-vue-next', '@vue/repl', '@vue/repl/monaco-editor'],
       // The remark/rehype/unified cluster is excluded for a different
       // reason: @nuxtjs/mdc (transitive via @nuxt/content) pushes these
       // specifiers into Vite's `optimizeDeps.include` list via its own
@@ -595,8 +602,6 @@ export default defineNuxtConfig({
       // residual log noise; this `exclude` block prevents the actual
       // overflow on cold start.
       exclude: [
-        '@vue/repl',
-        '@vue/repl/monaco-editor',
         'remark-gfm',
         'remark-emoji',
         'remark-mdc',

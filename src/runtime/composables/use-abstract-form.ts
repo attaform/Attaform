@@ -415,7 +415,9 @@ export function useAbstractForm<
   // message lands).
   //
   // Activation requires ALL of:
-  //   1. `multiTab` cascade resolves to !== false (per-form > global > library default `true`)
+  //   1. `multiTab` cascade resolves to `true` (per-form > global > library
+  //      default `false`). Strict opt-in: a form that doesn't set
+  //      `multiTab: true` somewhere never instantiates the channel.
   //   2. Consumer-supplied `key` (anonymous forms skip — channel would be solo)
   //   3. Runtime has `BroadcastChannel`
   //   4. `window.isSecureContext === true` (HTTPS or localhost)
@@ -426,7 +428,7 @@ export function useAbstractForm<
   // silence.
   if (
     existing === undefined &&
-    merged.multiTab !== false &&
+    merged.multiTab === true &&
     configuration.key !== undefined &&
     !registry.ssr
   ) {
@@ -603,10 +605,10 @@ function mergeWithDefaults<
   // Per-form value wins; falls back to global default. Empty array
   // `[]` is the explicit opt-out and is preserved through the merge.
   const sensitiveNames = configuration.sensitiveNames ?? defaults.sensitiveNames
-  // multiTab cascade: per-form > global > library default (`true`).
-  // The library-default `true` is applied later at the wiring site
+  // multiTab cascade: per-form > global > library default (`false`).
+  // The library-default `false` is applied later at the wiring site
   // (so the merged config still distinguishes "consumer didn't say"
-  // from an explicit `true` for downstream diagnostics).
+  // from an explicit `false` for downstream diagnostics).
   const multiTab = configuration.multiTab ?? defaults.multiTab
   return {
     ...configuration,

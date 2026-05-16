@@ -275,7 +275,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handleA: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handleA.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handleA.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -315,7 +320,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handle.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -367,7 +377,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handle.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -413,6 +428,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
         handle.api = useForm({
           schema: secretSchema,
           key: formKey,
+          multiTab: true,
           defaultValues: { name: '', password: '' },
         }) as SecretApi
         return () => h('div')
@@ -459,7 +475,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handle.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -601,7 +622,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        const api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        const api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         handle.api = api
         return () =>
           h('div', [
@@ -761,6 +787,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
         handle.api = useForm({
           schema: medSchema,
           key: formKey,
+          multiTab: true,
           defaultValues: { name: '', mrn: '' },
         }) as MedApi
         return () => h('div')

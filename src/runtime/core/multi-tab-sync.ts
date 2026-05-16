@@ -1,7 +1,10 @@
+import type { AbstractSchema, SlimPrimitiveKind } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { applyPatchesForward, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
+import { isPlainRecord } from './path-walker'
 import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
+import { slimKindOf } from './slim-primitive-gate'
 
 /**
  * Cross-tab form-state synchronisation over a `BroadcastChannel`.
@@ -146,6 +149,35 @@ type SnapshotState<F> = {
   readonly blankPathsSnapshot: ReadonlyArray<PathKey>
 }
 
+/**
+ * `File` and `Blob` values are never sent or accepted over the
+ * cross-tab channel. Two reasons:
+ *
+ * 1. **Security.** File blobs are user-private content (passport scans,
+ *    tax forms, ID documents, attachment uploads). If a sibling tab is
+ *    open on the same origin (shared computer, forgotten popup, hostile
+ *    XSS-opened window), an unconditional broadcast lets it capture the
+ *    selected File before the user even submits. The default-deny stance
+ *    is the only safe one; a dev who genuinely needs cross-tab file
+ *    sharing serialises to a string (base64, blob URL) at a different
+ *    field and accepts the explicit trade-off.
+ * 2. **Performance.** `structuredClone` of a multi-megabyte File is
+ *    measurable on the originator (synchronous clone) and the receiver
+ *    (synchronous deserialise). The channel is for low-cost coordination
+ *    signals, not bulk content transfer.
+ *
+ * This predicate gates both directions: outbound traffic strips
+ * File-valued patches and File leaves on snapshot scrubbing, and
+ * inbound traffic rejects File-valued patches / File leaves on
+ * snapshot apply (defense in depth, in case a peer bundles an older
+ * version that didn't strip).
+ */
+function isFileLikeValue(value: unknown): boolean {
+  if (typeof File !== 'undefined' && value instanceof File) return true
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return true
+  return false
+}
+
 function isDangerousSegment(s: Segment): boolean {
   return s === '__proto__' || s === 'constructor' || s === 'prototype'
 }
@@ -155,6 +187,55 @@ function pathContainsDangerousSegment(path: Path): boolean {
     if (isDangerousSegment(path[i] as Segment)) return true
   }
   return false
+}
+
+/**
+ * Walk an inbound value tree and verify every leaf's primitive kind
+ * matches the schema's slim accept-set at its sub-path. Returns
+ * `false` on the first mismatch.
+ *
+ * Mirrors the local-write slim-primitive gate (`isSlimPrimitiveValid`)
+ * but without its dev-warn side effect: an inbound rejection is a
+ * sibling-tab integrity issue, not a local-write bug, so the warn
+ * message ("writing X to Y") would mislead the dev about the origin.
+ * Cross-tab rejection is a silent drop; the channel converges on
+ * the next valid message from another peer.
+ *
+ * An empty accept-set (unresolvable path or `never`-typed schema
+ * leaf) rejects every kind, so a path that doesn't exist in the
+ * schema at all also fails here.
+ */
+function isInboundShapeAcceptable(
+  schema: AbstractSchema<unknown, unknown>,
+  path: Path,
+  value: unknown
+): boolean {
+  // File / Blob values never traverse the channel. Even if a hostile
+  // or older peer sent one, we drop it before any apply runs.
+  if (isFileLikeValue(value)) return false
+  let kind: SlimPrimitiveKind
+  if (Array.isArray(value)) {
+    kind = 'array'
+  } else if (value !== null && typeof value === 'object' && isPlainRecord(value)) {
+    kind = 'object'
+  } else {
+    kind = slimKindOf(value)
+  }
+  const accepted = schema.getSlimPrimitiveTypesAtPath(path)
+  if (!accepted.has(kind)) return false
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (!isInboundShapeAcceptable(schema, [...path, i], value[i])) return false
+    }
+    return true
+  }
+  if (isPlainRecord(value)) {
+    for (const key of Object.keys(value)) {
+      if (!isInboundShapeAcceptable(schema, [...path, key], value[key])) return false
+    }
+    return true
+  }
+  return true
 }
 
 function diffBlankPaths(
@@ -194,6 +275,10 @@ function stripSensitivePathsDeep(
   pathSoFar: Path,
   isSensitivePath: (p: Path) => boolean
 ): unknown {
+  // File / Blob values are unconditionally stripped from cross-tab
+  // traffic regardless of the path's sensitive-name match. See the
+  // `isFileLikeValue` rationale above.
+  if (isFileLikeValue(value)) return undefined
   if (value === null || typeof value !== 'object') return value
   if (Array.isArray(value)) {
     return value.map((item, i) => stripSensitivePathsDeep(item, [...pathSoFar, i], isSensitivePath))
@@ -346,6 +431,9 @@ export function createMultiTabSyncModule<F extends GenericForm>(
     const safePatches: Patch[] = []
     for (const p of rawPatches) {
       if (isPathLocallySuppressed(p.path)) continue
+      // Strip File / Blob-valued patches before they reach the channel.
+      // Same default-deny rationale as the snapshot-side scrub above.
+      if ('value' in p && isFileLikeValue((p as { value: unknown }).value)) continue
       safePatches.push(p)
     }
     const { added, removed } = diffBlankPaths(prior.blankPathsSnapshot, state.blankPaths)
@@ -402,6 +490,17 @@ export function createMultiTabSyncModule<F extends GenericForm>(
     for (const p of msg.formPatches) {
       if (!Array.isArray(p.path)) continue
       if (isPathLocallySuppressed(p.path)) continue
+      // Slim-shape check on the patch's value at its path. A peer
+      // sending a number where the schema expects a string (whether
+      // via a buggy bundle or a hostile tab) is rejected before the
+      // patch ever lands on the local store. Patches without a
+      // `value` field (e.g., `remove` ops) skip the check.
+      if (
+        'value' in p &&
+        !isInboundShapeAcceptable(state.schema, p.path, (p as { value: unknown }).value)
+      ) {
+        continue
+      }
       safePatches.push(p)
     }
     // Filter blank-path deltas with the same predicate. A sensitive
@@ -453,13 +552,19 @@ export function createMultiTabSyncModule<F extends GenericForm>(
 
   function handleSnapshot(msg: SyncMessage<F> & { kind: 'snapshot' }): void {
     if (lifecycle !== 'joining') return
-    try {
-      options.validateForm(msg.form)
-    } catch {
-      // Leader sent a snapshot we can't accept; remain in 'joining'
-      // and let the retry/timeout flow elect a different leader.
-      return
-    }
+    // No deep-validate gate here. Snapshots carry the leader's live
+    // state, including mid-edit values that wouldn't parse cleanly yet
+    // (a half-typed email, a string still under its min length). Every
+    // peer in a shared channel holds the same in-progress state, so a
+    // deep-validate gate would force the joiner to drop every leader
+    // and fall back to solo mode with empty defaults, silently throwing
+    // away the live shared state the user is editing in another tab.
+    //
+    // The slim-shape check below IS still in force though: an inbound
+    // form whose primitive shape doesn't match the schema (e.g., a
+    // number where a string is expected) is structural garbage, not a
+    // mid-edit value, and would corrupt the local store.
+    if (!isInboundShapeAcceptable(state.schema, [], msg.form)) return
     if (snapshotTimeoutTimer !== null) {
       clearTimeout(snapshotTimeoutTimer)
       snapshotTimeoutTimer = null

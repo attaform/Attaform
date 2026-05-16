@@ -1307,25 +1307,32 @@ export type UseFormConfiguration<
    */
   sensitiveNames?: readonly string[]
   /**
-   * Cross-tab synchronisation via BroadcastChannel. Defaults to `true`
-   * (when the browser supports it and the page is in a secure
-   * context): a keyed `useForm` callsite auto-pairs with same-keyed
-   * siblings in other same-origin tabs and mirrors their mutations
-   * in near real-time.
+   * Cross-tab synchronisation via BroadcastChannel. **Defaults to
+   * `false` (opt-in).** Setting `true` on a keyed `useForm` callsite
+   * auto-pairs the form with same-keyed siblings in other same-origin
+   * tabs and mirrors their mutations in near real-time.
    *
    * **Resolution order (per-register override > per-form > global > library):**
    *
-   *   register(path, { multiTab })  >  useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`true`)
+   *   register(path, { multiTab })  >  useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`false`)
    *
-   * **When to set `false`:** forms holding PII / PHI, contexts where
-   * tab isolation is required by policy, or any flow where conflicting
-   * tab edits could corrupt user intent. Sensitive-named paths (via
-   * `sensitiveNames`) are always stripped from outbound broadcasts
-   * regardless of this setting.
+   * **Why opt-in.** Same-keyed forms broadcasting by default leaks
+   * surprise: a user editing in one tab sees their values appear in a
+   * sibling tab they forgot was open, including PII / PHI for forms
+   * that don't explicitly use `sensitiveNames`. Mirrors the `persist`
+   * default (also opt-in): both opt-in surfaces compose into one
+   * consistent "richer state needs explicit consent" rule.
    *
-   * **Secure-context requirement.** Multi-tab sync is silently disabled
-   * outside `window.isSecureContext === true` (HTTPS or localhost). On
-   * plain HTTP a one-shot dev warning fires and the module noops.
+   * **What's stripped even when opt-in.** `File` and `Blob` values
+   * never traverse the channel regardless of this flag (security +
+   * `structuredClone` cost). Sensitive-named paths (via
+   * `sensitiveNames`) are stripped both directions. See the
+   * multi-tab sync page for the full security model.
+   *
+   * **Secure-context requirement.** Even with `multiTab: true`, sync
+   * is silently disabled outside `window.isSecureContext === true`
+   * (HTTPS or localhost). On plain HTTP a one-shot dev warning fires
+   * and the module noops.
    *
    * **Anonymous (auto-keyed) forms skip sync entirely** — without a
    * consumer-supplied `key`, cross-tab identity is undefined and the
@@ -1501,25 +1508,28 @@ export type AttaformDefaults = {
    */
   sensitiveNames?: readonly string[]
   /**
-   * App-wide default for `useForm({ multiTab })`. Default `true` when
-   * the runtime supports `BroadcastChannel` AND `window.isSecureContext`
-   * is true (HTTPS in production, localhost in development) — same gate
-   * browsers apply to other sensitive APIs (clipboard, geolocation,
-   * push, web crypto subtle).
-   *
-   * Set to `false` once at the plugin level for a multi-tenant
-   * deployment that prefers tab-isolation by default; individual forms
-   * can still opt back in via `useForm({ multiTab: true })`.
+   * App-wide default for `useForm({ multiTab })`. Library default is
+   * `false` (opt-in) — same posture as `persist`. Set to `true` once
+   * at the plugin level to enable cross-tab sync for every form in
+   * the app by default; individual forms can still opt out via
+   * `useForm({ multiTab: false })`.
    *
    * **Resolution order (per-form wins):**
    *
-   *   useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`true`)
+   *   useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`false`)
    *
-   * **Secure-context gate.** Multi-tab sync only activates over HTTPS
-   * or localhost. On plain HTTP, the module silently noops with a
-   * one-shot dev-mode warning — production deployments MUST be served
-   * over HTTPS for sync to function. See the multi-tab-sync recipe's
-   * Security section for the threat model.
+   * **Why opt-in.** Auto-broadcasting same-keyed forms surprises users
+   * (a value typed in one tab appearing in another they forgot was
+   * open) and leaks state for forms that don't explicitly use
+   * `sensitiveNames`. Paired with `persist` (also opt-in), the two
+   * "richer state" surfaces follow one consistent rule: explicit
+   * consent.
+   *
+   * **Secure-context gate.** Even with `multiTab: true`, sync only
+   * activates over HTTPS or localhost. On plain HTTP, the module
+   * silently noops with a one-shot dev-mode warning — production
+   * deployments MUST be served over HTTPS for sync to function. See
+   * the multi-tab-sync recipe's Security section for the threat model.
    */
   multiTab?: boolean
 }

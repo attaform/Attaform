@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: Build your first Attaform form in five minutes — a typed Zod schema, validated inputs bound by directive, and a submit handler that knows when the form is ready.
+description: Build your first Attaform form in five minutes. A typed Zod schema, validated inputs bound by directive, and a submit handler that knows when the form is ready.
 metaRows:
   - label: Time
     value: ~5 minutes
@@ -12,12 +12,12 @@ metaRows:
 
 # Quick start
 
-> A typed schema, validated inputs, a submit handler — the minimum viable form in five minutes.
+> A typed schema, validated inputs, a submit handler. The minimum viable form in five minutes.
 
 ::docs-meta-table
 ::
 
-Try the form below — clear the password and submit to watch focus pull to the broken field; submit with valid values to see the alert fire. Every behavior on screen comes from the Zod schema in code, which you'll see in the [Build a form](#build-a-form) section next.
+Try the form below: clear the password and submit to watch focus pull to the broken field; submit with valid values to see the alert fire. Every behavior on screen comes from the Zod schema in code, which you'll see in the [Build a form](#build-a-form) section next.
 
 ::docs-demo{slug="quick-start"}
 ::
@@ -30,7 +30,7 @@ pnpm add attaform zod
 
 ## Build a form
 
-Hand `useForm` a Zod schema and the reactive surface comes back ready — `values`, `errors`, `meta` — plus a `register` directive that binds inputs:
+Hand `useForm` a Zod schema and the reactive surface comes back ready: `values`, `errors`, `meta`, plus a `register` helper that the `v-register` directive binds to:
 
 ```ts
 import { useForm } from 'attaform/zod'
@@ -44,7 +44,7 @@ const { register, handleSubmit, fields } = useForm({
 })
 
 const onSubmit = handleSubmit(async (values) => {
-  // values is the parsed Zod output — fully typed.
+  // values is the parsed Zod output, fully typed.
   await api.signup(values)
 })
 ```
@@ -53,6 +53,6 @@ const onSubmit = handleSubmit(async (values) => {
 
 ## What's next
 
-- [Your first schema](/docs/getting-started/your-first-schema) — what Attaform reads from a Zod definition.
-- [The form object](/docs/reading-the-form/the-form-object) — the full reactive surface returned by `useForm`.
-- [When validation runs](/docs/validation/when-validation-runs) — the moment errors appear.
+- [Your first schema](/docs/getting-started/your-first-schema): what Attaform reads from a Zod definition.
+- [The form object](/docs/reading-the-form/the-form-object): the full reactive surface returned by `useForm`.
+- [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.

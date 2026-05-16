@@ -27,6 +27,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Your first schema', to: '/docs/getting-started/your-first-schema' },
       { title: 'From schema to inputs', to: '/docs/getting-started/from-schema-to-inputs' },
       { title: 'From inputs to submit', to: '/docs/getting-started/from-inputs-to-submit' },
+      { title: 'Playgrounds', to: '/play' },
     ],
   },
   // Phase 1 fills in the remaining categories below as each page
@@ -117,7 +118,11 @@ export const docsNavigation: DocsSection[] = [
   { heading: 'Server & SSR', links: [] },
   {
     heading: 'DevTools & debugging',
-    links: [{ title: 'Troubleshooting', to: '/docs/devtools-and-debugging/troubleshooting' }],
+    links: [
+      { title: 'The Attaform DevTools panel', to: '/docs/devtools-and-debugging/devtools-panel' },
+      { title: 'Vue DevTools integration', to: '/docs/devtools-and-debugging/vue-devtools' },
+      { title: 'Troubleshooting', to: '/docs/devtools-and-debugging/troubleshooting' },
+    ],
   },
   { heading: 'Reference', links: [] },
 ]

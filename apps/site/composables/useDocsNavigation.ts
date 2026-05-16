@@ -42,7 +42,10 @@ export const docsNavigation: DocsSection[] = [
       { title: 'errors', to: '/docs/reading-the-form/errors' },
     ],
   },
-  { heading: 'Binding inputs', links: [] },
+  {
+    heading: 'Binding inputs',
+    links: [{ title: 'The v-register directive', to: '/docs/binding-inputs/v-register' }],
+  },
   { heading: 'Writing & mutating', links: [] },
   { heading: 'Validation', links: [] },
   { heading: 'Submitting', links: [] },

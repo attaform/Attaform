@@ -58,7 +58,10 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Submitting',
     links: [{ title: 'handleSubmit', to: '/docs/submitting/handle-submit' }],
   },
-  { heading: 'Persistence', links: [] },
+  {
+    heading: 'Persistence',
+    links: [{ title: 'Persistence overview', to: '/docs/persistence/overview' }],
+  },
   { heading: 'Cross-cutting state', links: [] },
   { heading: 'Server & SSR', links: [] },
   { heading: 'DevTools & debugging', links: [] },

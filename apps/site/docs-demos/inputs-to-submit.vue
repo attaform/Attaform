@@ -3,11 +3,8 @@
   // schema + register binding + handleSubmit with an awaited
   // simulated API call so the reader sees meta.submitting flip true
   // for ~1.2 seconds and the button disable + relabel itself.
-  import { ref } from 'vue'
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
-
-  const status = ref<'idle' | 'success'>('idle')
 
   const { register, handleSubmit, fields, meta } = useForm({
     schema: z.object({
@@ -18,13 +15,10 @@
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    status.value = 'idle'
     // Simulated API roundtrip — long enough that the button
     // visibly disables and relabels.
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    status.value = 'success'
-    // eslint-disable-next-line no-console
-    console.log('Subscribed', values)
+    alert(`Subscribed!\n\nemail: ${values.email}\nnewsletter: ${values.newsletter ? 'yes' : 'no'}`)
   })
 </script>
 
@@ -42,7 +36,6 @@
     <button :disabled="meta.submitting" type="submit">
       {{ meta.submitting ? 'Subscribing…' : 'Subscribe' }}
     </button>
-    <p v-if="status === 'success'" class="success">✓ Subscribed — check your inbox.</p>
   </form>
 </template>
 
@@ -99,11 +92,5 @@
   button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-  }
-  .success {
-    margin: 0;
-    color: #047857;
-    font-size: 0.8125rem;
-    font-weight: 500;
   }
 </style>

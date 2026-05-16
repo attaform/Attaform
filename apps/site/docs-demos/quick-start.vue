@@ -16,9 +16,10 @@
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    // In a real app this is an API call. For the demo, just log it.
-    // eslint-disable-next-line no-console
-    console.log('Submit', values)
+    // In a real app this is an API call. For the demo, alert so
+    // the reader sees the submission land — console.log is invisible
+    // without DevTools open.
+    alert(`Submitted!\n\nemail: ${values.email}\npassword: ${'*'.repeat(values.password.length)}`)
   })
 </script>
 

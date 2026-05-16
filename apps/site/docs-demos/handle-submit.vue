@@ -1,13 +1,10 @@
 <script setup lang="ts">
   // Phase 1 demo for `handleSubmit`. The terms checkbox uses
   // `z.literal(true)` so unchecking it makes the schema parse fail
-  // — readers see onError fire, focus pull to the invalid field,
-  // and the submit log record the rejection.
-  import { ref } from 'vue'
+  // — readers see onError fire (alert), focus pull to the invalid
+  // field, and the success path alert when the form clears.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
-
-  const submitLog = ref<string[]>([])
 
   const { register, handleSubmit, fields, meta } = useForm({
     schema: z.object({
@@ -20,13 +17,10 @@
   const onSubmit = handleSubmit(
     async (values) => {
       await new Promise((resolve) => setTimeout(resolve, 600))
-      submitLog.value = [`✓ Submitted ${values.email}`, ...submitLog.value].slice(0, 4)
+      alert(`✓ Submitted!\n\nemail: ${values.email}`)
     },
     () => {
-      submitLog.value = ['✗ Submit blocked — check the errors above', ...submitLog.value].slice(
-        0,
-        4
-      )
+      alert('✗ Submit blocked — check the errors above.')
     }
   )
 </script>
@@ -46,9 +40,6 @@
     <button :disabled="meta.submitting" type="submit">
       {{ meta.submitting ? 'Submitting…' : 'Submit' }}
     </button>
-    <ul v-if="submitLog.length > 0" class="log">
-      <li v-for="(entry, i) in submitLog" :key="i">{{ entry }}</li>
-    </ul>
   </form>
 </template>
 
@@ -106,17 +97,5 @@
   button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-  }
-  .log {
-    list-style: none;
-    margin: 0;
-    padding: 0.5rem 0.75rem;
-    background: #f9fafb;
-    border-radius: 0.375rem;
-    font-size: 0.8125rem;
-    color: #374151;
-  }
-  .log li {
-    padding: 0.125rem 0;
   }
 </style>

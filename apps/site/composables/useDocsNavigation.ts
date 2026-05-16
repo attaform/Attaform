@@ -54,7 +54,10 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Showing errors at the right time', to: '/docs/validation/showing-errors' },
     ],
   },
-  { heading: 'Submitting', links: [] },
+  {
+    heading: 'Submitting',
+    links: [{ title: 'handleSubmit', to: '/docs/submitting/handle-submit' }],
+  },
   { heading: 'Persistence', links: [] },
   { heading: 'Cross-cutting state', links: [] },
   { heading: 'Server & SSR', links: [] },

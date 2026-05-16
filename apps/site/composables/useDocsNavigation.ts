@@ -61,7 +61,16 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Schema-driven coercion', to: '/docs/binding-inputs/coercion' },
     ],
   },
-  { heading: 'Writing & mutating', links: [] },
+  {
+    heading: 'Writing & mutating',
+    links: [
+      { title: 'setValue patterns', to: '/docs/writing-and-mutating/set-value' },
+      { title: 'reset & resetField', to: '/docs/writing-and-mutating/reset' },
+      { title: 'clear & blank values', to: '/docs/writing-and-mutating/clear' },
+      { title: 'unset — the absent sentinel', to: '/docs/writing-and-mutating/unset' },
+      { title: 'Field-array mutations', to: '/docs/writing-and-mutating/field-arrays' },
+    ],
+  },
   {
     heading: 'Validation',
     links: [

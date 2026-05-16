@@ -1,9 +1,4 @@
 <script setup lang="ts">
-  // Phase 1 demo for "From schema to inputs". Five native input
-  // shapes — text, number, select, checkbox, textarea — all
-  // bound through the same `v-register` directive against fields
-  // typed accordingly in the schema. Highlights: no wrapper
-  // component, native coercion handled by the directive.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 

@@ -125,7 +125,15 @@ export const docsNavigation: DocsSection[] = [
       { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
     ],
   },
-  { heading: 'Server & SSR', links: [] },
+  {
+    heading: 'Server & SSR',
+    links: [
+      { title: 'SSR hydration — Nuxt', to: '/docs/server-and-ssr/ssr-nuxt' },
+      { title: 'SSR hydration — bare Vue', to: '/docs/server-and-ssr/ssr-bare-vue' },
+      { title: 'Parsing API errors', to: '/docs/server-and-ssr/parse-api-errors' },
+      { title: 'Performance', to: '/docs/server-and-ssr/performance' },
+    ],
+  },
   {
     heading: 'DevTools & debugging',
     links: [

@@ -615,6 +615,27 @@ export default defineNuxtConfig({
     // declaring the heavy site-only deps here makes the boot crawl
     // comprehensive, so first-paint requests resolve cleanly.
     optimizeDeps: {
+      // Hold every dev-server request until the dep crawl finishes
+      // its FULL scan — both the static pre-bundle pass and the
+      // runtime-discovery follow-up. Without this gate, Vite's
+      // default behavior is to start serving as soon as the static
+      // scan completes, then quietly re-bundle when new deps surface
+      // mid-session (e.g. a `.client.vue` file's imports that SSR
+      // skipped, a dynamic `import('shiki')` inside a deeply-nested
+      // component). Every re-bundle rotates `browserHash`, deletes
+      // the previous prebundle files, and 404s any in-flight asset
+      // fetch keyed to the old hash — visible as the "monaco-editor.js?v=<old>"
+      // 404 cascade documented in `make up`'s comment block.
+      //
+      // `holdUntilCrawlEnd: true` makes the boot deterministic at
+      // the cost of a slower cold start (the first request waits
+      // for the crawl to settle). The trade-off is exactly what we
+      // want in dev: race-free serves over fast first-paint. Vite
+      // 5.1 introduced this option; defaults vary by version and
+      // by the dev-server environment shape, so pinning it
+      // explicitly is the only way to guarantee the race window
+      // closes regardless of upstream changes.
+      holdUntilCrawlEnd: true,
       // `@vue/repl` + `@vue/repl/monaco-editor` are prebundled
       // together. The monaco-editor entry is a 7.2 MB minified bundle;
       // serving it raw through `/_nuxt/@fs/...` runs it through Vite's

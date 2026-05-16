@@ -13,6 +13,20 @@ build:  ## Build the dev image
 
 up: down  ## Stop any prior stack, regen the playground type bundle, start the dev container, and boot the docs site (http://localhost:3000)
 	docker compose up -d
+	# Nuke Vite's prebundled-dep cache before every dev boot. The cache
+	# lives in `apps/site/node_modules/.cache/vite/` inside the anonymous
+	# volume (the `node_modules` volume mount in compose.yml), which
+	# persists across `docker compose down`. Leftover cache state from a
+	# previous session is the dominant source of mid-boot 504s on
+	# `?v=<hash>` URLs and "Outdated Optimize Dep" cascades: SSR resolves
+	# asset URLs against the stale cache version while the dep optimizer
+	# is still rebuilding, and the in-flight browser fetch races with the
+	# rebuild. A clean cache + `optimizeDeps.holdUntilCrawlEnd: true` (in
+	# apps/site/nuxt.config.ts) gives the boot a deterministic, race-free
+	# starting point. Trade-off: cold start adds ~10-20s for the full
+	# prebundle every time (heavy because `@vue/repl/monaco-editor` is
+	# 7.2 MB). Hot reload + same-session navigation are unaffected.
+	docker compose exec -T attaform rm -rf /app/apps/site/node_modules/.cache/vite
 	docker compose exec attaform sh -c "cd apps/site && pnpm bundle:repl"
 	docker compose exec attaform pnpm dev
 

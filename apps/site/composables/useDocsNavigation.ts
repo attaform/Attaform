@@ -47,7 +47,13 @@ export const docsNavigation: DocsSection[] = [
     links: [{ title: 'The v-register directive', to: '/docs/binding-inputs/v-register' }],
   },
   { heading: 'Writing & mutating', links: [] },
-  { heading: 'Validation', links: [] },
+  {
+    heading: 'Validation',
+    links: [
+      { title: 'When validation runs', to: '/docs/validation/when-validation-runs' },
+      { title: 'Showing errors at the right time', to: '/docs/validation/showing-errors' },
+    ],
+  },
   { heading: 'Submitting', links: [] },
   { heading: 'Persistence', links: [] },
   { heading: 'Cross-cutting state', links: [] },

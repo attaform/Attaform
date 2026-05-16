@@ -57,6 +57,7 @@ export type {
 export type { PathInput, PathOutput } from './runtime/adapters/zod-v4'
 export { injectForm } from './runtime/composables/use-form-context'
 export { useRegister } from './runtime/composables/use-register'
+export type { UseRegisterReturn } from './runtime/composables/use-register'
 export { useStepper } from './runtime/composables/use-stepper'
 export type {
   AggregateError,
@@ -71,6 +72,7 @@ export type {
   StepperStatusesProxy,
   UseStepperReturnType,
 } from './runtime/types/types-stepper'
+export { StepperLateRegistrationError } from './runtime/core/errors'
 export { AttaformErrorCode } from './runtime/core/error-codes'
 export { unset, isUnset } from './runtime/core/unset'
 export type { Unset } from './runtime/core/unset'

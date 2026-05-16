@@ -17,7 +17,7 @@
     <NuxtLink
       v-if="pagination.prev"
       :to="pagination.prev.to"
-      class="group flex flex-col items-start gap-1 rounded-xl border bg-bg p-4 shadow-xs transition-[border-color,box-shadow,transform] duration-(--duration-base) ease-(--ease-out-quart) hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none sm:col-start-1"
+      class="group flex flex-col items-start gap-1 rounded-xl border bg-bg p-4 shadow-xs transition-[border-color,box-shadow] duration-(--duration-base) ease-(--ease-out-quart) hover:border-accent/40 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none sm:col-start-1"
     >
       <span
         class="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-fg-subtle uppercase"
@@ -41,7 +41,7 @@
     <NuxtLink
       v-if="pagination.next"
       :to="pagination.next.to"
-      class="group flex flex-col items-end gap-1 rounded-xl border bg-bg p-4 shadow-xs transition-[border-color,box-shadow,transform] duration-(--duration-base) ease-(--ease-out-quart) hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none sm:col-start-2"
+      class="group flex flex-col items-end gap-1 rounded-xl border bg-bg p-4 shadow-xs transition-[border-color,box-shadow] duration-(--duration-base) ease-(--ease-out-quart) hover:border-accent/40 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none sm:col-start-2"
     >
       <span
         class="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-fg-subtle uppercase"

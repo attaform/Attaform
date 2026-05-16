@@ -55,7 +55,7 @@
             v-for="slug in slugs"
             :key="slug"
             :to="`/play/${slug}`"
-            class="group flex flex-col gap-2 rounded-xl border bg-bg p-5 shadow-xs transition-[border-color,box-shadow,transform] duration-(--duration-base) ease-(--ease-out-quart) hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none"
+            class="group flex flex-col gap-2 rounded-xl border bg-bg p-5 shadow-xs transition-[border-color,box-shadow] duration-(--duration-base) ease-(--ease-out-quart) hover:border-accent/40 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none"
           >
             <span
               class="inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide text-fg-subtle uppercase"

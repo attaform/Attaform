@@ -649,15 +649,23 @@ export type ReactiveValidationStatus<Form> = PendingValidationStatus | SettledVa
 
 /**
  * What to do when a submit attempt fails validation. The library can
- * focus and/or scroll the first errored field into view without
- * wiring an `onError` callback yourself. Off by default.
+ * focus and/or scroll the first errored field into view without you
+ * wiring an `onError` callback yourself. Defaults to
+ * `'focus-first-error'` because moving keyboard / screen-reader focus
+ * to the broken field on submit is an accessibility baseline; opt out
+ * with `'none'` if you're managing focus elsewhere.
  *
- * - `'none'` (default): no automatic UI nudge.
- * - `'focus-first-error'`: focus the first errored field's first
- *   visible element (with `preventScroll: true` so it doesn't fight
- *   any `'scroll-to-first-error'` choice you make).
- * - `'scroll-to-first-error'`: scroll that element into view.
- * - `'both'`: scroll first, then focus.
+ * - `'focus-first-error'` (default): focus the first errored field's
+ *   first visible element. Modern browsers scroll the focused element
+ *   into view by default; pair with `'both'` if you want an explicit
+ *   scroll alongside.
+ * - `'scroll-to-first-error'`: scroll that element into view without
+ *   moving focus.
+ * - `'both'`: scroll first, then focus (with `preventScroll: true` so
+ *   the browser doesn't undo the explicit scroll).
+ * - `'none'`: no automatic UI nudge; the dev handles focus / scroll
+ *   manually via `form.focusFirstError()` or `form.scrollToFirstError()`
+ *   from an `onError` callback.
  *
  * If no errored field has a currently mounted, visible element, the
  * policy silently no-ops.
@@ -1127,12 +1135,16 @@ export type UseFormConfiguration<
   /**
    * Automatic UI nudge on submit-validation failure. Fires after
    * errors are populated and before your `onError` callback runs.
-   * Default `'none'`.
+   * Default `'focus-first-error'`, which moves keyboard / screen-reader
+   * focus to the broken field as an accessibility baseline.
    *
-   * - `'focus-first-error'`: focus the first errored field's first
-   *   visible element (without scrolling).
-   * - `'scroll-to-first-error'`: scroll it into view.
+   * - `'focus-first-error'` (default): focus the first errored field's
+   *   first visible element.
+   * - `'scroll-to-first-error'`: scroll it into view without focusing.
    * - `'both'`: scroll, then focus.
+   * - `'none'`: opt out entirely; handle focus / scroll yourself in an
+   *   `onError` callback via `form.focusFirstError()` or
+   *   `form.scrollToFirstError()`.
    *
    * If no errored field has a currently-mounted, visible element,
    * the policy silently no-ops.

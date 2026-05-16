@@ -1,6 +1,6 @@
 ---
 title: Focus & scroll on invalid submit
-description: handleSubmit pulls focus to the first invalid field by default; focusFirstError and scrollToFirstError are the imperative escape hatches when the default isn't enough.
+description: handleSubmit pulls focus to the first invalid field by default. focusFirstError and scrollToFirstError are the imperative escape hatches when the default isn't enough.
 metaRows:
   - label: Category
     value: Return methods
@@ -11,7 +11,7 @@ metaRows:
     value: focusFirstError(options?) · scrollToFirstError(options?)
     kind: code
   - label: Returns
-    value: boolean — true if a target was found
+    value: boolean; true if a target was found
     kind: code
 ---
 
@@ -22,7 +22,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-Submit the form with empty fields to watch focus pull to the first invalid one automatically — that's `handleSubmit` running its default invalid-submit policy. The two buttons below dispatch the helpers imperatively, so you can drive focus or smooth-scroll outside the submit handler. Submitting again with valid fields shows the no-op success path.
+Submit the form with empty fields to watch focus pull to the first invalid one automatically. That's `handleSubmit` running its default invalid-submit policy (`'focus-first-error'`). The two buttons below dispatch the helpers imperatively, so you can drive focus or smooth-scroll outside the submit handler. Submitting again with valid fields shows the no-op success path.
 
 ::docs-demo{slug="focus-scroll"}
 ::
@@ -44,7 +44,7 @@ When validation fails, the handler:
 3. Calls `focusFirstError()` (the same method exposed below).
 4. Calls `onError(errors)` if you passed one.
 
-The "first" invalid field is in schema-declaration order, which matches the visual reading order for most forms — top to bottom, left to right.
+The "first" invalid field is in schema-declaration order, which matches the visual reading order for most forms (top to bottom, left to right).
 
 ## `focusFirstError(options?)`
 
@@ -66,7 +66,7 @@ Reach for this when:
 form.scrollToFirstError({ behavior: 'smooth', block: 'center' })
 ```
 
-Returns `true` when a target was found and scrolled into view. Options forward to the underlying `Element.scrollIntoView` — `behavior: 'smooth'` for animated scroll, `block: 'center'` to position the field in the middle of the viewport.
+Returns `true` when a target was found and scrolled into view. Options forward to the underlying `Element.scrollIntoView`: `behavior: 'smooth'` for animated scroll, `block: 'center'` to position the field in the middle of the viewport.
 
 The default invalid-submit policy focuses but doesn't scroll on most browsers (focus triggers a minimal scroll). For tall forms where the first error might be far above the user's current scroll position, layer this on:
 
@@ -101,10 +101,10 @@ const onSubmit = form.handleSubmit(onSuccess, () => {
 })
 ```
 
-The `'none'` / `'focus'` / `'scroll'` / `'focus+scroll'` policy options live on the form config; see the [useForm options reference](/docs/reference/types) for the full set.
+The `'focus-first-error'` (default), `'scroll-to-first-error'`, `'both'`, and `'none'` policy options live on the form config and on `createAttaform({ defaults })` for an app-wide default. See the [Types reference](/docs/reference/types) for the full set.
 
 ## Where to next
 
-- [`handleSubmit`](/docs/submitting/handle-submit) — the dispatch surface that calls these by default.
-- [Server-side errors](/docs/submitting/server-side-errors) — bring API failures back into the same focus / scroll machinery.
-- [Showing errors at the right time](/docs/validation/showing-errors) — the predicate that decides when errors render.
+- [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface that calls these by default.
+- [Server-side errors](/docs/submitting/server-side-errors): bring API failures back into the same focus / scroll machinery.
+- [Showing errors at the right time](/docs/validation/showing-errors): the predicate that decides when errors render.

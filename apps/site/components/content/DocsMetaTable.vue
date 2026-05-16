@@ -39,9 +39,17 @@
 </script>
 
 <template>
+  <!-- `auto-fit` + `minmax(min(15rem, 100%), 1fr)`: columns size to
+       content with a 15rem floor, and any leftover row space is
+       redistributed across the remaining tracks. A 3-row metadata
+       strip on a wide viewport gets three roomy 1fr columns instead of
+       three narrow ones plus an empty fourth; a 6-row strip still
+       packs into 3–4 cols depending on the viewport. The `min(…, 100%)`
+       inside `minmax` protects against horizontal overflow on viewports
+       narrower than 15rem. -->
   <dl
     v-if="resolvedRows.length > 0"
-    class="not-prose my-6 grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl border border-border bg-surface/40 p-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+    class="not-prose my-6 grid grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-x-6 gap-y-3 rounded-xl border border-border bg-surface/40 p-4"
   >
     <div v-for="row in resolvedRows" :key="row.label" class="min-w-0">
       <dt class="text-xs font-semibold tracking-wide text-fg-subtle uppercase">{{ row.label }}</dt>

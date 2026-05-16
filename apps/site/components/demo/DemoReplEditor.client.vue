@@ -230,7 +230,37 @@
     dependencyVersion,
   })
 
-  store.setFiles({ 'src/App.vue': props.initialSource }, 'src/App.vue')
+  // Seed a tsconfig alongside the demo source. @vue/repl ships its
+  // own default tsconfig but doesn't include the unused-locals /
+  // parameters checks, so a `const c = 1` in the playground only
+  // surfaces a hover hint — no inline strikethrough or squiggle.
+  // The fields below match @vue/repl's defaults; we add the two
+  // unused-identifier flags on top so Volar's TS service surfaces
+  // them as real diagnostics. `:show-tsconfig="false"` on the
+  // <Repl> prop above keeps this file out of the tab strip — it's
+  // configuration, not editable surface.
+  const replTsConfig = {
+    compilerOptions: {
+      allowJs: true,
+      checkJs: true,
+      jsx: 'Preserve',
+      target: 'ESNext',
+      module: 'ESNext',
+      moduleResolution: 'Bundler',
+      allowImportingTsExtensions: true,
+      noUnusedLocals: true,
+      noUnusedParameters: true,
+    },
+    vueCompilerOptions: { target: 3.4 },
+  }
+
+  store.setFiles(
+    {
+      'src/App.vue': props.initialSource,
+      'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
+    },
+    'src/App.vue'
+  )
 </script>
 
 <template>

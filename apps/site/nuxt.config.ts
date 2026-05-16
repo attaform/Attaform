@@ -357,6 +357,41 @@ export default defineNuxtConfig({
   experimental: {
     payloadExtraction: process.env.NODE_ENV === 'production',
   },
+  // 301 redirects for the pre-rebuild URL tree. The old docs lived
+  // under `/docs/api/*` and `/docs/recipes/*`; the new IA splits them
+  // by concept (`getting-started`, `reading-the-form`, `validation`,
+  // `persistence`, `devtools-and-debugging`, etc.). Specific routes
+  // win over wildcards in Nuxt's route specificity, so the catch-all
+  // globs land any not-individually-mapped URL on the docs spine.
+  //
+  // Phase 1 maps only the destinations whose new pages exist. The
+  // recipes/* and api/* catch-alls drop readers on /docs/getting-started/introduction
+  // — a real page they can read — rather than 404. Phase 2–4 will
+  // tighten these to specific per-recipe targets as the per-concept
+  // pages land.
+  routeRules: {
+    // Specific Phase 1 targets.
+    '/docs/why': {
+      redirect: { to: '/docs/getting-started/why-attaform', statusCode: 301 },
+    },
+    '/docs/quickstart': {
+      redirect: { to: '/docs/getting-started/quick-start', statusCode: 301 },
+    },
+    '/docs/troubleshooting': {
+      redirect: { to: '/docs/devtools-and-debugging/troubleshooting', statusCode: 301 },
+    },
+    '/docs/recipes/persistence': {
+      redirect: { to: '/docs/persistence/overview', statusCode: 301 },
+    },
+    // Catch-alls for the pre-rebuild subtrees. Specific routes above
+    // win over these globs.
+    '/docs/api/**': {
+      redirect: { to: '/docs/getting-started/introduction', statusCode: 301 },
+    },
+    '/docs/recipes/**': {
+      redirect: { to: '/docs/getting-started/introduction', statusCode: 301 },
+    },
+  },
   // Bind to all interfaces so the docker-compose port mapping
   // (3000:3000) reaches the dev server. Local-only dev still works —
   // 0.0.0.0 includes localhost.

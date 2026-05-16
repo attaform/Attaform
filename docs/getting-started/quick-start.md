@@ -26,18 +26,6 @@ metaRows:
 pnpm add attaform zod
 ```
 
-Plug Attaform into your Vue app once, then call `useForm` wherever you need a form:
-
-```ts
-import { createApp } from 'vue'
-import { createAttaform } from 'attaform'
-import App from './App.vue'
-
-createApp(App).use(createAttaform()).mount('#app')
-```
-
-Nuxt users install the [Nuxt module](/docs/getting-started/installation) instead — same behavior, zero ceremony.
-
 ## Build a form
 
 Hand `useForm` a Zod schema and the reactive surface comes back ready — `values`, `errors`, `meta` — plus a `register` directive that binds inputs:

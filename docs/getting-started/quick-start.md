@@ -14,6 +14,8 @@ meta:
 
 > A typed schema, validated inputs, a submit handler — the minimum viable form in five minutes.
 
+<DocsMetaTable />
+
 <DocsDemo slug="quick-start" />
 
 ## Install

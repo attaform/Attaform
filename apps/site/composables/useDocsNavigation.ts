@@ -21,7 +21,12 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Getting started',
     links: [
       { title: 'Introduction', to: '/docs/getting-started/introduction' },
+      { title: 'Why Attaform', to: '/docs/getting-started/why-attaform' },
       { title: 'Quick start', to: '/docs/getting-started/quick-start' },
+      { title: 'Installation', to: '/docs/getting-started/installation' },
+      { title: 'Your first schema', to: '/docs/getting-started/your-first-schema' },
+      { title: 'From schema to inputs', to: '/docs/getting-started/from-schema-to-inputs' },
+      { title: 'From inputs to submit', to: '/docs/getting-started/from-inputs-to-submit' },
     ],
   },
   // Phase 1 fills in the remaining categories below as each page

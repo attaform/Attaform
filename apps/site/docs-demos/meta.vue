@@ -2,8 +2,6 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  defineOptions({ name: 'MetaDemo' })
-
   const schema = z.object({
     email: z.string().min(1, 'Required').email('Enter a valid email'),
     simulateFailure: z.boolean(),

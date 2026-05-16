@@ -2,8 +2,6 @@
   import { useForm, withMeta } from 'attaform/zod'
   import { z } from 'zod'
 
-  defineOptions({ name: 'FieldsDemo' })
-
   const schema = z.object({
     email: withMeta(
       z

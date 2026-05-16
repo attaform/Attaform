@@ -1,5 +1,46 @@
 <script setup lang="ts">
+  import { onMounted } from 'vue'
   import { Rocket, Code, BookOpen, Wrench, Zap, ArrowRight } from 'lucide-vue-next'
+
+  // Pre-warm Shiki on the docs hub so the first docs-demo click lands
+  // in the warm-path instead of paying ~200ms for Shiki's lazy theme
+  // + vue-grammar + Oniguruma WASM downloads. `<DocsDemo>`'s
+  // `useAsyncData('docs-demo-shiki-<slug>')` block calls into Shiki's
+  // `codeToHtml(..., { lang: 'vue', themes: github-light/github-dark })`
+  // chain, which triggers dynamic imports of those three sub-chunks
+  // the first time it runs. They stay in the browser's module cache
+  // afterwards — but in dev (where every nav is CSR-only) the cold-
+  // path latency lands on the first click into any docs page. Firing
+  // a no-op `codeToHtml('', { lang: 'vue', themes: …, defaultColor: false })`
+  // here uses the same lang + theme set the docs-demos do, so the
+  // exact chunks get warmed. By the time the visitor clicks through
+  // (typically after a beat of scanning the hub cards), the warm-path
+  // shaves ~200ms off the first click.
+  //
+  // In production this code path is irrelevant: static prerender
+  // bakes the Shiki HTML into each page's `_payload.json`, so the
+  // client never runs Shiki at all. The warm-up is dev-only ergonomics,
+  // not a production optimisation.
+  //
+  // The call intentionally has no `await` and the rejection branch is
+  // a no-op — if Shiki's chunks fail to load here, the docs page that
+  // actually needs them will surface the error in context. We don't
+  // want to gate the hub render on a side-effect that's purely
+  // optimistic.
+  onMounted(() => {
+    if (!import.meta.client) return
+    void import('shiki')
+      .then(({ codeToHtml }) =>
+        codeToHtml('', {
+          lang: 'vue',
+          themes: { light: 'github-light', dark: 'github-dark' },
+          defaultColor: false,
+        })
+      )
+      .catch(() => {
+        // Swallow — see comment block above for rationale.
+      })
+  })
 
   // Each section gets a lucide icon plus a tinted-chip color via the
   // brand-soft pair. Sticking to the brand palette (rather than

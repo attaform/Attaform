@@ -49,15 +49,15 @@ This page is reference material — alphabetical-ish by purpose. Most consumers 
 
 ## Validation
 
-| Type                                                  | Source                  | Purpose                                                        |
-| ----------------------------------------------------- | ----------------------- | -------------------------------------------------------------- | -------------------------------- |
-| `ValidationError`                                     | runtime/types/types-api | The error shape — `{ path, message, code, formKey }`.          |
-| `ValidationResponse<Form>`                            | runtime/types/types-api | Discriminated `{ success: true, data }                         | { success: false, errors }`.     |
-| `ValidationResponseWithoutValue<Form>`                | runtime/types/types-api | Same shape minus the `data` payload (used by `validateAsync`). |
-| `ReactiveValidationStatus<Form>`                      | runtime/types/types-api | Discriminated `{ pending: true }                               | { pending: false, success, … }`. |
-| `PendingValidationStatus` / `SettledValidationStatus` | runtime/types/types-api | The two branches of `ReactiveValidationStatus`.                |
-| `HandleSubmit` / `OnSubmit` / `OnError`               | runtime/types/types-api | The `handleSubmit` callback signatures.                        |
-| `SubmitHandler<Form>`                                 | runtime/types/types-api | Generic handler type for typed user submit functions.          |
+| Type                                                  | Source                  | Purpose                                                              |
+| ----------------------------------------------------- | ----------------------- | -------------------------------------------------------------------- |
+| `ValidationError`                                     | runtime/types/types-api | The error shape — `{ path, message, code, formKey }`.                |
+| `ValidationResponse<Form>`                            | runtime/types/types-api | Discriminated success-or-failure validation result with parsed data. |
+| `ValidationResponseWithoutValue<Form>`                | runtime/types/types-api | Same shape minus the `data` payload (used by `validateAsync`).       |
+| `ReactiveValidationStatus<Form>`                      | runtime/types/types-api | Discriminated pending-vs-settled reactive validation status.         |
+| `PendingValidationStatus` / `SettledValidationStatus` | runtime/types/types-api | The two branches of `ReactiveValidationStatus`.                      |
+| `HandleSubmit` / `OnSubmit` / `OnError`               | runtime/types/types-api | The `handleSubmit` callback signatures.                              |
+| `SubmitHandler<Form>`                                 | runtime/types/types-api | Generic handler type for typed user submit functions.                |
 
 ## Schema contract
 

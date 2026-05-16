@@ -1,7 +1,7 @@
 ---
 title: The v-register directive
 description: v-register binds a native input to a schema path. The directive handles the value sync, the coercion, the dirty-tracking, and the focus pass — your input stays native.
-meta:
+metaRows:
   - label: Category
     value: Directive
   - label: Element
@@ -14,9 +14,10 @@ meta:
 
 > One directive binds a native input to a schema path. The `<input>` stays native — Attaform sits at the directive layer.
 
-<DocsMetaTable />
-
-<DocsDemo slug="v-register" />
+::docs-meta-table
+::
+::docs-demo{slug="v-register"}
+::
 
 ## What it does
 
@@ -38,6 +39,17 @@ The directive runs four pieces of plumbing for you:
 `createAttaform()` registers the directive globally — bare Vue and Nuxt both. You don't import it.
 
 If you wrap inputs inside a component whose root is **not** the input itself, the `useRegister` composable (documented in a later category) re-binds `v-register` onto an inner native element. For compound components binding multiple paths, prefer `injectForm` over `useRegister`.
+
+## Reading errors per field
+
+The directive's binding pair is read-and-error: `register('email')` for the input, `fields.email.firstError?.message` for the message — gated by `fields.email.showErrors` so a half-typed value doesn't get yelled at on first paint.
+
+```vue
+<input v-register="register('email')" />
+<p v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</p>
+```
+
+The raw `errors.email` Proxy stays available as `ValidationError[] | undefined` when you need the full array — `fields` is the display-ergonomics layer over the same data.
 
 ## Where to next
 

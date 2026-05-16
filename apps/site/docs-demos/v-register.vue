@@ -6,7 +6,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, errors, fields, values } = useForm({
+  const { register, fields, values } = useForm({
     schema: z.object({
       email: z.string().email('Enter a valid email'),
     }),
@@ -19,7 +19,7 @@
     <label>
       Email
       <input v-register="register('email')" type="email" autocomplete="email" />
-      <em v-if="errors.email">{{ errors.email }}</em>
+      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <table class="state">
       <tbody>

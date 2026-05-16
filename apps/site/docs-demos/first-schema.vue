@@ -7,7 +7,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, errors, values } = useForm({
+  const { register, fields, values } = useForm({
     schema: z.object({
       email: z.string().email('Enter a valid email'),
       password: z.string().min(8, 'At least 8 characters'),
@@ -23,22 +23,22 @@
     <label>
       Email
       <input v-register="register('email')" type="email" autocomplete="email" />
-      <em v-if="errors.email">{{ errors.email }}</em>
+      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <label>
       Password
       <input v-register="register('password')" type="password" autocomplete="new-password" />
-      <em v-if="errors.password">{{ errors.password }}</em>
+      <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
     </label>
     <label>
       Display name <span class="hint">(optional)</span>
       <input v-register="register('displayName')" type="text" />
-      <em v-if="errors.displayName">{{ errors.displayName }}</em>
+      <em v-if="fields.displayName.showErrors">{{ fields.displayName.firstError?.message }}</em>
     </label>
     <label>
       Age
       <input v-register="register('age')" type="number" />
-      <em v-if="errors.age">{{ errors.age }}</em>
+      <em v-if="fields.age.showErrors">{{ fields.age.firstError?.message }}</em>
     </label>
     <pre class="values">{{ JSON.stringify(values, null, 2) }}</pre>
   </form>

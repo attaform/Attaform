@@ -1,7 +1,7 @@
 ---
 title: From inputs to submit
 description: Wire a submit handler to a typed form — handleSubmit gates dispatch on validation, exposes the parsed values, and reports back through meta.submitting.
-meta:
+metaRows:
   - label: Read time
     value: ~4 minutes
   - label: Builds on
@@ -12,9 +12,10 @@ meta:
 
 > `handleSubmit` waits for validation, hands you parsed values, and reports submission state through `meta.submitting`.
 
-<DocsMetaTable />
-
-<DocsDemo slug="inputs-to-submit" />
+::docs-meta-table
+::
+::docs-demo{slug="inputs-to-submit"}
+::
 
 ## The submit handler
 

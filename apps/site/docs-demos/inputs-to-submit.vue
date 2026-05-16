@@ -9,7 +9,7 @@
 
   const status = ref<'idle' | 'success'>('idle')
 
-  const { register, handleSubmit, errors, meta } = useForm({
+  const { register, handleSubmit, fields, meta } = useForm({
     schema: z.object({
       email: z.string().email('Enter a valid email'),
       newsletter: z.boolean(),
@@ -33,7 +33,7 @@
     <label>
       Email
       <input v-register="register('email')" type="email" autocomplete="email" />
-      <em v-if="errors.email">{{ errors.email }}</em>
+      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <label class="checkbox">
       <input v-register="register('newsletter')" type="checkbox" />

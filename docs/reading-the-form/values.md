@@ -1,7 +1,7 @@
 ---
 title: values
 description: form.values is a drillable reactive Proxy keyed by schema paths — read any leaf or container, anywhere, and Vue tracks the access for you.
-meta:
+metaRows:
   - label: Category
     value: Return property
   - label: Type
@@ -15,8 +15,8 @@ meta:
 
 > A reactive Proxy keyed by your schema's paths. Drill anywhere, read anything, let Vue track it.
 
-<DocsMetaTable />
-
+::docs-meta-table
+::
 `form.values` is the read surface of the form. Every key matches a schema path; every read inside a reactive scope is tracked by Vue.
 
 ## Leaf and container reads

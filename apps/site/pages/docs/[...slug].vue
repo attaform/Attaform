@@ -25,13 +25,17 @@
 
   // Provide frontmatter values that the markdown body's inline MDC
   // components consume without props: <DocsMetaTable /> reads the
-  // `meta:` rows, <SourceLink /> reads the `source:` URL. Authors
-  // declare both in frontmatter once and reference the components
-  // bare in the body; explicit `:rows` / `:href` props still win
-  // for the rare case a page computes meta dynamically.
+  // `metaRows:` rows, <SourceLink /> reads the `source:` URL.
+  // Authors declare both in frontmatter once and reference the
+  // components bare in the body; explicit `:rows` / `:href` props
+  // still win for the rare case a page computes meta dynamically.
+  //
+  // The frontmatter key is `metaRows`, not `meta` — `meta` is
+  // already claimed by @nuxtjs/seo's frontmatter shape and gets
+  // mapped onto SEO meta tags rather than reaching `page.value`.
   provide(
     'docsPageMeta',
-    computed(() => page.value?.meta)
+    computed(() => page.value?.metaRows)
   )
   provide(
     'docsPageSource',

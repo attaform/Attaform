@@ -1,7 +1,7 @@
 ---
 title: errors
-description: form.errors is a reactive Proxy keyed by schema paths — read any leaf's error message, ready to render, reactive end to end.
-meta:
+description: form.errors is a reactive Proxy keyed by schema paths — read any leaf's error list, with first().message ready to render and the full array available for richer surfaces.
+metaRows:
   - label: Category
     value: Return property
   - label: Type
@@ -13,26 +13,31 @@ meta:
 
 # `errors`
 
-> A reactive Proxy keyed by schema paths — each leaf's error message, ready to render.
+> A reactive Proxy keyed by schema paths — each leaf's error list, ready to render.
 
-<DocsMetaTable />
+::docs-meta-table
+::
 
-`form.errors.email` returns the current error message for the `email` path (or `undefined` if the field is valid). Reads are reactive — components re-render the moment a validation pass changes the result.
+`form.errors.email` returns `ValidationError[] | undefined` — the array of refinement failures for the `email` path, or `undefined` if the field is valid. Reads are reactive: components re-render the moment a validation pass changes the result.
+
+The first error's `.message` is what most templates render:
 
 ```vue
 <template>
   <input v-register="form.register('email')" />
-  <p v-if="form.errors.email">{{ form.errors.email }}</p>
+  <p v-if="form.errors.email">{{ form.errors.email[0]?.message }}</p>
 </template>
 ```
 
+For richer error display — gated by `shouldShowErrors`, or pulling the first error directly — reach for `form.fields.email.firstError.message` paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display ergonomics layered on.
+
 ## Container reads
 
-`errors` is drillable just like `values`. A container path returns the first error encountered inside it:
+`errors` is drillable. A container path returns the errors encountered inside it:
 
 ```ts
-form.errors.email // string | undefined
-form.errors.profile // string | undefined (first error in profile.*)
+form.errors.email // ValidationError[] | undefined
+form.errors.profile // ValidationError[] | undefined (collected from profile.*)
 ```
 
 For aggregated counts and validation state, see `form.meta`.

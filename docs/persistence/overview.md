@@ -1,7 +1,7 @@
 ---
 title: Persistence overview
 description: Opt in per form and per field, pick a storage backend, and Attaform saves drafts across reloads — schema-aware hydration, sensitive-name guards, zero ceremony beyond the persist option.
-meta:
+metaRows:
   - label: Category
     value: Module
   - label: Off by default?
@@ -16,9 +16,10 @@ meta:
 
 > Opt in per form, opt in per field, pick a backend — Attaform handles the hydrate-on-mount and the schema-aware drop of stale drafts.
 
-<DocsMetaTable />
-
-<DocsDemo slug="persistence-overview" />
+::docs-meta-table
+::
+::docs-demo{slug="persistence-overview"}
+::
 
 ## Two opt-in gates
 

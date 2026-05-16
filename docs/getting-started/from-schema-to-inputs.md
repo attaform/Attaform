@@ -1,7 +1,7 @@
 ---
 title: From schema to inputs
 description: The register + v-register pair turns a schema path into a typed two-way binding for any native input element — text, number, select, checkbox, textarea.
-meta:
+metaRows:
   - label: Read time
     value: ~4 minutes
   - label: Builds on
@@ -12,9 +12,10 @@ meta:
 
 > One directive binds any schema path to any native input — Attaform handles the read, the write, and the coercion.
 
-<DocsMetaTable />
-
-<DocsDemo slug="schema-to-inputs" />
+::docs-meta-table
+::
+::docs-demo{slug="schema-to-inputs"}
+::
 
 ## The register / v-register pair
 

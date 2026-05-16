@@ -9,7 +9,7 @@
 
   const submitLog = ref<string[]>([])
 
-  const { register, handleSubmit, errors, meta } = useForm({
+  const { register, handleSubmit, fields, meta } = useForm({
     schema: z.object({
       email: z.string().email('Enter a valid email'),
       terms: z.literal(true, { message: 'Accept the terms to continue' }),
@@ -36,12 +36,12 @@
     <label>
       Email
       <input v-register="register('email')" type="email" autocomplete="email" />
-      <em v-if="errors.email">{{ errors.email }}</em>
+      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <label class="checkbox">
       <input v-register="register('terms')" type="checkbox" />
       I accept the terms of service
-      <em v-if="errors.terms">{{ errors.terms }}</em>
+      <em v-if="fields.terms.showErrors">{{ fields.terms.firstError?.message }}</em>
     </label>
     <button :disabled="meta.submitting" type="submit">
       {{ meta.submitting ? 'Submitting…' : 'Submit' }}

@@ -1,7 +1,7 @@
 ---
 title: When validation runs
 description: Attaform validates per field on input, change, blur, or submit — your call, per form. Sync refinements fire immediately; async refinements await.
-meta:
+metaRows:
   - label: Category
     value: Option
   - label: Option
@@ -16,8 +16,8 @@ meta:
 
 > Per-field validation triggers on `input`, `change`, `blur`, or `submit` — your call, per form. Sync refinements fire immediately; async refinements await.
 
-<DocsMetaTable />
-
+::docs-meta-table
+::
 Validation timing is configured per form via the `validateOn` option:
 
 ```ts

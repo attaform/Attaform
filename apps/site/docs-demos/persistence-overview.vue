@@ -26,12 +26,12 @@
     <label>
       Title
       <input v-register="form.register('title', { persist: true })" type="text" />
-      <em v-if="form.errors.title">{{ form.errors.title }}</em>
+      <em v-if="form.fields.title.showErrors">{{ form.fields.title.firstError?.message }}</em>
     </label>
     <label>
       Body
       <textarea v-register="form.register('body', { persist: true })" rows="3"></textarea>
-      <em v-if="form.errors.body">{{ form.errors.body }}</em>
+      <em v-if="form.fields.body.showErrors">{{ form.fields.body.firstError?.message }}</em>
     </label>
     <p class="hint">Type a draft, refresh the page — your values come back.</p>
     <button type="button" class="clear" @click="clear">Clear persisted draft</button>

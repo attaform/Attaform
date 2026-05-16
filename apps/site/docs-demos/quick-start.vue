@@ -7,7 +7,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, handleSubmit, errors, meta } = useForm({
+  const { register, handleSubmit, fields, meta } = useForm({
     schema: z.object({
       email: z.string().email('Enter a valid email'),
       password: z.string().min(8, 'At least 8 characters'),
@@ -27,12 +27,12 @@
     <label>
       Email
       <input v-register="register('email')" type="email" autocomplete="email" />
-      <em v-if="errors.email">{{ errors.email }}</em>
+      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <label>
       Password
       <input v-register="register('password')" type="password" autocomplete="current-password" />
-      <em v-if="errors.password">{{ errors.password }}</em>
+      <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
     </label>
     <button :disabled="meta.submitting" type="submit">
       {{ meta.submitting ? 'Signing in…' : 'Sign in' }}

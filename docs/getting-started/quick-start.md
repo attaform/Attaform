@@ -1,7 +1,7 @@
 ---
 title: Quick start
 description: Build your first Attaform form in five minutes — a typed Zod schema, validated inputs bound by directive, and a submit handler that knows when the form is ready.
-meta:
+metaRows:
   - label: Time
     value: ~5 minutes
   - label: Prerequisites
@@ -14,9 +14,11 @@ meta:
 
 > A typed schema, validated inputs, a submit handler — the minimum viable form in five minutes.
 
-<DocsMetaTable />
+::docs-meta-table
+::
 
-<DocsDemo slug="quick-start" />
+::docs-demo{slug="quick-start"}
+::
 
 ## Install
 
@@ -44,15 +46,20 @@ Hand `useForm` a Zod schema and the reactive surface comes back ready — `value
 import { useForm } from 'attaform/zod'
 import { z } from 'zod'
 
-const { register, handleSubmit, errors } = useForm({
+const { register, handleSubmit, fields } = useForm({
   schema: z.object({
     email: z.string().email(),
     password: z.string().min(8),
   }),
 })
+
+const onSubmit = handleSubmit(async (values) => {
+  // values is the parsed Zod output — fully typed.
+  await api.signup(values)
+})
 ```
 
-`register('email')` returns what the `v-register` directive binds to. The directive handles the value read, the write, the coercion, and focus on invalid submit.
+`register('email')` returns what the `v-register` directive binds to. The directive handles the value read, the write, the coercion, and focus on invalid submit. For each field, render its first error via `fields.email.firstError?.message`, gated by `fields.email.showErrors` so the form doesn't yell on first paint.
 
 ## What's next
 

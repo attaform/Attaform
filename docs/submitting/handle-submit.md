@@ -1,7 +1,7 @@
 ---
 title: handleSubmit
 description: handleSubmit wraps a submit callback in Attaform's validation gate — values reach onSuccess only after every async refinement has settled, with focus pulled to the first invalid field if not.
-meta:
+metaRows:
   - label: Category
     value: Return method
   - label: Signature
@@ -16,9 +16,10 @@ meta:
 
 > A submit handler that waits for validation, hands you parsed values, and routes rejections through `onError`.
 
-<DocsMetaTable />
-
-<DocsDemo slug="handle-submit" />
+::docs-meta-table
+::
+::docs-demo{slug="handle-submit"}
+::
 
 ## Signature
 

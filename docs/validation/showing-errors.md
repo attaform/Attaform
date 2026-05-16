@@ -1,7 +1,7 @@
 ---
 title: Showing errors at the right time
 description: shouldShowErrors gates when a path's error gets surfaced — Attaform's default waits for a submit attempt or a touched-and-dirty field, so a half-typed value doesn't get yelled at.
-meta:
+metaRows:
   - label: Category
     value: Option
   - label: Option
@@ -16,8 +16,8 @@ meta:
 
 > Errors exist in the store the moment validation runs; the predicate decides when the UI surfaces them.
 
-<DocsMetaTable />
-
+::docs-meta-table
+::
 `shouldShowErrors` is the predicate that decides whether a path's error should appear in the UI. The library default holds back until the user has actually interacted with a field — so a fresh-page form doesn't open with every required field already complaining.
 
 ## The default predicate

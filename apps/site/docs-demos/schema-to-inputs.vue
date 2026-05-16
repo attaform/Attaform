@@ -9,7 +9,7 @@
 
   const COUNTRIES = ['US', 'CA', 'MX', 'GB', 'DE', 'FR', 'JP'] as const
 
-  const { register, errors, values } = useForm({
+  const { register, fields, values } = useForm({
     schema: z.object({
       fullName: z.string().min(2, 'Tell us your name'),
       age: z.number().int().min(13, '13 or older to sign up'),
@@ -26,12 +26,12 @@
     <label>
       Full name
       <input v-register="register('fullName')" type="text" autocomplete="name" />
-      <em v-if="errors.fullName">{{ errors.fullName }}</em>
+      <em v-if="fields.fullName.showErrors">{{ fields.fullName.firstError?.message }}</em>
     </label>
     <label>
       Age
       <input v-register="register('age')" type="number" />
-      <em v-if="errors.age">{{ errors.age }}</em>
+      <em v-if="fields.age.showErrors">{{ fields.age.firstError?.message }}</em>
     </label>
     <label>
       Country
@@ -39,7 +39,7 @@
         <option value="" disabled>Choose…</option>
         <option v-for="code in COUNTRIES" :key="code" :value="code">{{ code }}</option>
       </select>
-      <em v-if="errors.country">{{ errors.country }}</em>
+      <em v-if="fields.country.showErrors">{{ fields.country.firstError?.message }}</em>
     </label>
     <label class="checkbox">
       <input v-register="register('newsletter')" type="checkbox" />

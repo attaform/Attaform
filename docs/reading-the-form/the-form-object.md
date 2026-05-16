@@ -1,7 +1,7 @@
 ---
 title: The form object
 description: useForm returns one object — values, fields, errors, meta, register, handleSubmit, setValue, reset — all reactive and typed against your schema.
-meta:
+metaRows:
   - label: Category
     value: Return shape
   - label: Returned by
@@ -13,8 +13,8 @@ meta:
 
 > Every form on the page is one object — reactive reads, mutators, validation, submit handler, all typed against the schema.
 
-<DocsMetaTable />
-
+::docs-meta-table
+::
 `useForm` returns a single object with everything you need to read, write, validate, and submit. The shape is uniform across schema flavours and entry points.
 
 ```ts

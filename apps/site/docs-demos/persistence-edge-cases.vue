@@ -14,7 +14,9 @@
 
   const onSubmit = form.handleSubmit(async (values) => {
     await new Promise((r) => setTimeout(r, 300))
-    alert(`Submitted ${JSON.stringify(values)} — draft kept (clearOnSubmitSuccess: false).`)
+    alert(
+      `Submitted ${JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v))}. Draft kept (clearOnSubmitSuccess: false).`
+    )
   })
 
   function addTag() {

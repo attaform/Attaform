@@ -34,7 +34,13 @@
       </select>
     </label>
 
-    <pre>{{ JSON.stringify({ country: values.country, tags: values.tags }, null, 2) }}</pre>
+    <pre>{{
+      JSON.stringify(
+        { country: values.country, tags: values.tags },
+        (_, v) => (v === undefined ? '(undefined)' : v),
+        2
+      )
+    }}</pre>
   </form>
 </template>
 

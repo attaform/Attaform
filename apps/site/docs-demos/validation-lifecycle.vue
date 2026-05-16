@@ -32,7 +32,7 @@
     lastResult.value = 'process() → awaiting…'
     const res = await process()
     lastResult.value = res.success
-      ? `process() → ✓ parsed: ${JSON.stringify(res.data)}`
+      ? `process() → ✓ parsed: ${JSON.stringify(res.data, (_, v) => (v === undefined ? '(undefined)' : v))}`
       : `process() → ✗ invalid`
   }
 </script>

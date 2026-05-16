@@ -38,7 +38,9 @@
       <code>register(`prefs.${'{userId}'}`)</code>.
     </p>
 
-    <pre>{{ JSON.stringify(form.values.prefs, null, 2) }}</pre>
+    <pre>{{
+      JSON.stringify(form.values.prefs, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

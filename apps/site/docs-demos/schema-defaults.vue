@@ -44,7 +44,9 @@
           <input v-register="bare.register('tag')" />
         </label>
       </form>
-      <pre>{{ JSON.stringify(bare.values, null, 2) }}</pre>
+      <pre>{{
+        JSON.stringify(bare.values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+      }}</pre>
     </section>
 
     <section>
@@ -63,7 +65,9 @@
           <input v-register="overlaid.register('tag')" />
         </label>
       </form>
-      <pre>{{ JSON.stringify(overlaid.values, null, 2) }}</pre>
+      <pre>{{
+        JSON.stringify(overlaid.values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+      }}</pre>
     </section>
 
     <section>
@@ -85,7 +89,9 @@
           <input v-register="blanked.register('tag')" />
         </label>
       </form>
-      <pre>{{ JSON.stringify(blanked.values, null, 2) }}</pre>
+      <pre>{{
+        JSON.stringify(blanked.values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+      }}</pre>
     </section>
   </div>
 </template>

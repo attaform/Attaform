@@ -57,7 +57,9 @@
       Bio <span class="hint">(optional)</span>
       <textarea v-register="register('bio')" rows="3"></textarea>
     </label>
-    <pre class="values">{{ JSON.stringify(values, null, 2) }}</pre>
+    <pre class="values">{{
+      JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

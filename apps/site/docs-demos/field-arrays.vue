@@ -54,7 +54,9 @@
       </button>
     </div>
 
-    <pre>{{ JSON.stringify(values.checkpoints, null, 2) }}</pre>
+    <pre>{{
+      JSON.stringify(values.checkpoints, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

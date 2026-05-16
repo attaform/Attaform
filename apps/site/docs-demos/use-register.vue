@@ -39,7 +39,7 @@
   <form @submit.prevent>
     <FieldRow v-register="register('email')" label="Email" />
     <FieldRow v-register="register('handle')" label="Handle" />
-    <pre>{{ JSON.stringify(values, null, 2) }}</pre>
+    <pre>{{ JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 

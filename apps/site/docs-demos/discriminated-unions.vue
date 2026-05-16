@@ -26,7 +26,9 @@
   })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    alert(`Submitting: ${JSON.stringify(values, null, 2)}`)
+    alert(
+      `Submitting: ${JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)}`
+    )
   })
 </script>
 

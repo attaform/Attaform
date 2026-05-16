@@ -42,13 +42,17 @@
     <section>
       <h4>READ — <code>form.values</code></h4>
       <p>Concrete types after defaults / preprocess; transforms NOT yet run.</p>
-      <pre>{{ JSON.stringify(form.values, null, 2) }}</pre>
+      <pre>{{
+        JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+      }}</pre>
     </section>
 
     <section>
       <h4>SUBMIT — <code>handleSubmit</code> argument</h4>
       <p>Post-transform output. <code>ratio</code> is a number here.</p>
-      <pre v-if="submittedShape">{{ JSON.stringify(submittedShape, null, 2) }}</pre>
+      <pre v-if="submittedShape">{{
+        JSON.stringify(submittedShape, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+      }}</pre>
       <pre v-else class="placeholder">Submit to populate</pre>
     </section>
   </div>

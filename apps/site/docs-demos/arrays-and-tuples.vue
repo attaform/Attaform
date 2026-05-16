@@ -56,7 +56,7 @@
       </label>
     </fieldset>
 
-    <pre>{{ JSON.stringify(form.values, null, 2) }}</pre>
+    <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 

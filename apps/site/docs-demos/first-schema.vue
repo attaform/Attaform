@@ -35,7 +35,9 @@
       <input v-register="register('age')" type="number" />
       <em v-if="fields.age.showErrors">{{ fields.age.firstError?.message }}</em>
     </label>
-    <pre class="values">{{ JSON.stringify(values, null, 2) }}</pre>
+    <pre class="values">{{
+      JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

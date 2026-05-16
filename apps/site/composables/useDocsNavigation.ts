@@ -39,7 +39,10 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'The form object', to: '/docs/reading-the-form/the-form-object' },
       { title: 'values', to: '/docs/reading-the-form/values' },
+      { title: 'fields', to: '/docs/reading-the-form/fields' },
       { title: 'errors', to: '/docs/reading-the-form/errors' },
+      { title: 'meta', to: '/docs/reading-the-form/meta' },
+      { title: 'toRef', to: '/docs/reading-the-form/to-ref' },
     ],
   },
   {

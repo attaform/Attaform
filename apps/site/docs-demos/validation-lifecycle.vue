@@ -1,0 +1,121 @@
+<script setup lang="ts">
+  import { useForm } from 'attaform/zod'
+  import { z } from 'zod'
+  import { ref } from 'vue'
+
+  const { register, fields, validate, validateAsync, process } = useForm({
+    schema: z.object({
+      email: z.email('Enter a valid email'),
+      age: z.number().int().min(18, 'Must be 18 or older'),
+    }),
+    defaultValues: { age: 0 },
+    key: 'docs-demo-validation-lifecycle',
+  })
+
+  const lastResult = ref<string>('—')
+
+  function runValidate() {
+    const status = validate()
+    const s = status.value
+    lastResult.value = s.pending
+      ? 'validate() → pending'
+      : `validate() → ${s.success ? '✓ valid' : '✗ invalid'}`
+  }
+
+  async function runValidateAsync() {
+    lastResult.value = 'validateAsync() → awaiting…'
+    const res = await validateAsync()
+    lastResult.value = `validateAsync() → ${res.success ? '✓ valid' : '✗ invalid'}`
+  }
+
+  async function runProcess() {
+    lastResult.value = 'process() → awaiting…'
+    const res = await process()
+    lastResult.value = res.success
+      ? `process() → ✓ parsed: ${JSON.stringify(res.data)}`
+      : `process() → ✗ invalid`
+  }
+</script>
+
+<template>
+  <form @submit.prevent>
+    <label>
+      <span>Email</span>
+      <input v-register="register('email')" type="email" />
+      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+    </label>
+
+    <label>
+      <span>Age</span>
+      <input v-register="register('age')" type="number" />
+      <em v-if="fields.age.showErrors">{{ fields.age.firstError?.message }}</em>
+    </label>
+
+    <div class="actions">
+      <button type="button" @click="runValidate">validate() — sync</button>
+      <button type="button" @click="runValidateAsync">validateAsync() — awaited</button>
+      <button type="button" @click="runProcess">process() — parsed payload</button>
+    </div>
+
+    <p class="result">{{ lastResult }}</p>
+  </form>
+</template>
+
+<style scoped>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    max-width: 30rem;
+  }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  input {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  em {
+    color: #dc2626;
+    font-size: 0.8125rem;
+    font-style: normal;
+    font-weight: 400;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .actions button {
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    cursor: pointer;
+  }
+  .actions button:hover {
+    background: #f3f4f6;
+  }
+  .result {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    color: #111827;
+    margin: 0;
+  }
+</style>

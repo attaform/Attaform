@@ -75,12 +75,19 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Validation',
     links: [
       { title: 'When validation runs', to: '/docs/validation/when-validation-runs' },
+      { title: 'Per-field validation', to: '/docs/validation/per-field-validation' },
+      { title: 'Async refinements', to: '/docs/validation/async-refinements' },
+      { title: 'The validation lifecycle', to: '/docs/validation/lifecycle' },
       { title: 'Showing errors at the right time', to: '/docs/validation/showing-errors' },
     ],
   },
   {
     heading: 'Submitting',
-    links: [{ title: 'handleSubmit', to: '/docs/submitting/handle-submit' }],
+    links: [
+      { title: 'handleSubmit', to: '/docs/submitting/handle-submit' },
+      { title: 'Server-side errors', to: '/docs/submitting/server-side-errors' },
+      { title: 'Focus & scroll on invalid submit', to: '/docs/submitting/focus-scroll' },
+    ],
   },
   {
     heading: 'Persistence',

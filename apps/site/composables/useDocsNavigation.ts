@@ -47,7 +47,14 @@ export const docsNavigation: DocsSection[] = [
   },
   {
     heading: 'Binding inputs',
-    links: [{ title: 'The v-register directive', to: '/docs/binding-inputs/v-register' }],
+    links: [
+      { title: 'The v-register directive', to: '/docs/binding-inputs/v-register' },
+      { title: 'Text, number, textarea', to: '/docs/binding-inputs/text-number-textarea' },
+      { title: 'Checkbox', to: '/docs/binding-inputs/checkbox' },
+      { title: 'Radio groups', to: '/docs/binding-inputs/radio' },
+      { title: 'Select & multi-select', to: '/docs/binding-inputs/select' },
+      { title: 'File inputs', to: '/docs/binding-inputs/file' },
+    ],
   },
   { heading: 'Writing & mutating', links: [] },
   {

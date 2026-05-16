@@ -64,11 +64,7 @@
       </label>
       <label>
         Password
-        <input
-          v-register="account.register('password')"
-          type="password"
-          autocomplete="new-password"
-        />
+        <input v-register="account.register('password')" type="password" autocomplete="off" />
         <em v-if="account.fields.password.showErrors">{{
           account.fields.password.firstError?.message
         }}</em>

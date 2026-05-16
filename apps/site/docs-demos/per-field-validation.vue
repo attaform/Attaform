@@ -33,13 +33,13 @@
 
     <label>
       <span>Password</span>
-      <input v-register="register('password')" type="password" autocomplete="new-password" />
+      <input v-register="register('password')" type="password" autocomplete="off" />
       <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
     </label>
 
     <label>
       <span>Confirm password (cross-field refinement)</span>
-      <input v-register="register('confirmPassword')" type="password" autocomplete="new-password" />
+      <input v-register="register('confirmPassword')" type="password" autocomplete="off" />
       <em v-if="fields.confirmPassword.showErrors">{{
         fields.confirmPassword.firstError?.message
       }}</em>

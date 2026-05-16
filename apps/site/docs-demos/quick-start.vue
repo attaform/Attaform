@@ -24,7 +24,7 @@
     </label>
     <label>
       Password
-      <input v-register="register('password')" type="password" autocomplete="current-password" />
+      <input v-register="register('password')" type="password" autocomplete="off" />
       <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
     </label>
     <button type="submit">Sign in</button>

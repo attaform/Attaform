@@ -22,7 +22,7 @@
     </label>
     <label>
       Password
-      <input v-register="register('password')" type="password" autocomplete="new-password" />
+      <input v-register="register('password')" type="password" autocomplete="off" />
       <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
     </label>
     <label>

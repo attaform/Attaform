@@ -85,11 +85,22 @@ The directive parses `'1'` → `1` per option. The [Schema-driven coercion](/doc
 The dropdown's option labels are pure HTML — bind them however you'd render any other list:
 
 ```vue
-<select v-register="register('country')">
-  <option v-for="opt in countries" :key="opt.code" :value="opt.code">
-    {{ opt.flag }} {{ opt.name }}
-  </option>
-</select>
+<script setup lang="ts">
+  const countries = [
+    { code: 'us', flag: '🇺🇸', name: 'United States' },
+    { code: 'uk', flag: '🇬🇧', name: 'United Kingdom' },
+    { code: 'ca', flag: '🇨🇦', name: 'Canada' },
+    { code: 'au', flag: '🇦🇺', name: 'Australia' },
+  ]
+</script>
+
+<template>
+  <select v-register="register('country')">
+    <option v-for="opt in countries" :key="opt.code" :value="opt.code">
+      {{ opt.flag }} {{ opt.name }}
+    </option>
+  </select>
+</template>
 ```
 
 The directive only cares about each option's `value=` attribute; the visible label can be anything.

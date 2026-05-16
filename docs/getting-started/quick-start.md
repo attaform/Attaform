@@ -17,6 +17,8 @@ metaRows:
 ::docs-meta-table
 ::
 
+Try the form below — clear the password and submit to watch focus pull to the broken field; submit with valid values to see the alert fire. Every behavior on screen comes from the Zod schema in code, which you'll see in the [Build a form](#build-a-form) section next.
+
 ::docs-demo{slug="quick-start"}
 ::
 

@@ -38,7 +38,7 @@ import { z } from 'zod'
 
 const { register, handleSubmit, fields } = useForm({
   schema: z.object({
-    email: z.string().email(),
+    email: z.email(),
     password: z.string().min(8),
   }),
 })

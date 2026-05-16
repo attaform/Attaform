@@ -4,11 +4,7 @@
 
   const schema = z.object({
     email: withMeta(
-      z
-        .string()
-        .min(1, 'Required')
-        .email('Enter a valid email')
-        .describe('We only use it to send you a confirmation.'),
+      z.email('Enter a valid email').describe('We only use it to send you a confirmation.'),
       {
         label: 'Email address',
         placeholder: 'you@example.com',

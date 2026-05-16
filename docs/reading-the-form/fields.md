@@ -35,7 +35,7 @@ const form = useForm({
   schema: z.object({
     profile: z.object({
       name: z.string(),
-      email: z.string().email(),
+      email: z.email(),
     }),
     age: z.number(),
   }),
@@ -120,7 +120,7 @@ Register schema metadata with `withMeta` (works on Zod 3 and Zod 4) or the nativ
 import { withMeta, fieldMeta } from 'attaform/zod'
 
 const schema = z.object({
-  email: withMeta(z.string().email(), {
+  email: withMeta(z.email(), {
     label: 'Email address',
     placeholder: 'you@example.com',
   }),

@@ -3,7 +3,7 @@
   import { z } from 'zod'
 
   const schema = z.object({
-    email: z.string().min(1, 'Required').email('Enter a valid email'),
+    email: z.email('Enter a valid email'),
     simulateFailure: z.boolean(),
   })
 

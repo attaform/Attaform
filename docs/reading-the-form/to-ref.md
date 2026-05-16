@@ -29,7 +29,7 @@ External composables, watchers, and DevTools probes sometimes expect a `Ref` rat
 ```ts
 const form = useForm({
   schema: z.object({
-    email: z.string().email(),
+    email: z.email(),
   }),
 })
 

@@ -30,7 +30,7 @@ The schema below covers most of what a real signup form needs:
 import { z } from 'zod'
 
 const schema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(8),
   displayName: z.string().min(2).optional(),
   age: z.number().int().min(13),

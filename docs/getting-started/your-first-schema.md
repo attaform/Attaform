@@ -1,6 +1,6 @@
 ---
 title: Your first schema
-description: Attaform reads any Zod object schema — required strings, optional fields, refinements, defaults — and turns them into a typed reactive form with no extra mapping.
+description: Attaform reads any Zod object schema (required strings, optional fields, refinements, defaults) and turns it into a typed reactive form with no extra mapping.
 metaRows:
   - label: Read time
     value: ~5 minutes
@@ -15,7 +15,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-Type into the inputs and watch the JSON block update in real time — `values` is the reactive surface Attaform builds straight from your schema, paths and types intact. The [What Attaform reads](#what-attaform-reads) section below traces each Zod construct in the demo to its form behavior.
+Type into the inputs and watch the JSON block update in real time. `values` is the reactive surface Attaform builds straight from your schema, paths and types intact. The [What Attaform reads](#what-attaform-reads) section below traces each Zod construct in the demo to its form behavior.
 
 ::docs-demo{slug="first-schema"}
 ::
@@ -43,7 +43,7 @@ const schema = z.object({
 
 ## Defaults from the schema
 
-You don't redeclare defaults in `useForm`. Attaform reads them from the schema — `''` for strings, `0` for numbers, `false` for booleans, `[]` for arrays, `{}` for objects. Override per field with `defaultValues`:
+You don't redeclare defaults in `useForm`. Attaform reads them from the schema: `''` for strings, `0` for numbers, `false` for booleans, `[]` for arrays, `{}` for objects. Override per field with `defaultValues`:
 
 ```ts
 const { register, handleSubmit } = useForm({
@@ -55,9 +55,9 @@ const { register, handleSubmit } = useForm({
 })
 ```
 
-Overrides are partial — fields you don't mention pick up the schema-slim default.
+Overrides are partial. Fields you don't mention pick up the schema-slim default.
 
 ## Where to next
 
-- [From schema to inputs](/docs/getting-started/from-schema-to-inputs) — bind the schema to native inputs.
-- [The form object](/docs/reading-the-form/the-form-object) — the reactive surface returned by `useForm`.
+- [From schema to inputs](/docs/getting-started/from-schema-to-inputs): bind the schema to native inputs.
+- [The form object](/docs/reading-the-form/the-form-object): the reactive surface returned by `useForm`.

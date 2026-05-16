@@ -1,9 +1,4 @@
 <script setup lang="ts">
-  // Phase 1 demo for "Your first schema". Spread of Zod feature
-  // surfaces — required string, password with min, optional string,
-  // required int — wired against a single useForm so the reader
-  // sees Attaform's slim defaults populate from the schema and the
-  // live `values` object update under their typing.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 

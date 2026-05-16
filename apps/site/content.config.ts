@@ -35,12 +35,33 @@ export default defineContentConfig({
       // markdown H1. Override only when the H1 isn't a great <title>
       // (contains backticks rendered as <code>, em-dashes that look
       // weird in a browser tab, or is too cryptic for a SERP entry).
+      // `meta` and `source` feed the metadata strip and source-link
+      // button rendered by [...slug].vue on every doc page that
+      // declares them. The strip's rendering is uniform across the
+      // five page types (Option / Return / Module / Directive /
+      // Reference) — editorial variation lives in which rows each
+      // page declares, not in the component.
+      //
+      // Both fields stay optional so non-reference pages (the
+      // narrative spine of Getting Started, the conceptual openers
+      // of each category) can ship without a metadata strip when the
+      // page has nothing structured to expose.
       schema: z.object({
         title: z.string().optional(),
         description: z
           .string()
           .min(80, 'description must be at least 80 characters for a useful SERP snippet')
           .max(200, 'description over 200 characters will get truncated in most SERPs'),
+        meta: z
+          .array(
+            z.object({
+              label: z.string(),
+              value: z.string(),
+              kind: z.enum(['text', 'code', 'link']).optional(),
+            })
+          )
+          .optional(),
+        source: z.string().url().optional(),
       }),
     }),
   },

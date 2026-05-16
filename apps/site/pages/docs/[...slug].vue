@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  import { computed, provide } from 'vue'
   import { PencilLine, ArrowUpRight } from 'lucide-vue-next'
 
   definePageMeta({ layout: 'docs' })
@@ -21,6 +22,21 @@
   if (!page.value) {
     throw createError({ statusCode: 404, statusMessage: 'Page not found', fatal: true })
   }
+
+  // Provide frontmatter values that the markdown body's inline MDC
+  // components consume without props: <DocsMetaTable /> reads the
+  // `meta:` rows, <SourceLink /> reads the `source:` URL. Authors
+  // declare both in frontmatter once and reference the components
+  // bare in the body; explicit `:rows` / `:href` props still win
+  // for the rare case a page computes meta dynamically.
+  provide(
+    'docsPageMeta',
+    computed(() => page.value?.meta)
+  )
+  provide(
+    'docsPageSource',
+    computed(() => page.value?.source)
+  )
 
   // Title is the bare page name; the site-wide titleTemplate in
   // app.vue appends " · Attaform". Description gets handled

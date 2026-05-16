@@ -91,7 +91,14 @@ export const docsNavigation: DocsSection[] = [
   },
   {
     heading: 'Persistence',
-    links: [{ title: 'Persistence overview', to: '/docs/persistence/overview' }],
+    links: [
+      { title: 'Persistence overview', to: '/docs/persistence/overview' },
+      { title: 'Storage backends', to: '/docs/persistence/storage-backends' },
+      { title: 'Per-field opt-in', to: '/docs/persistence/per-field-opt-in' },
+      { title: 'Sensitive-name protection', to: '/docs/persistence/sensitive-names' },
+      { title: 'Imperative persistence', to: '/docs/persistence/imperative' },
+      { title: 'Edge cases & hydration', to: '/docs/persistence/edge-cases' },
+    ],
   },
   { heading: 'Cross-cutting state', links: [] },
   { heading: 'Server & SSR', links: [] },

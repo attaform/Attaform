@@ -36,7 +36,16 @@ export const docsNavigation: DocsSection[] = [
   // 404-bound URLs.
   {
     heading: 'Schemas',
-    links: [{ title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' }],
+    links: [
+      { title: 'The schema contract', to: '/docs/schemas/contract' },
+      { title: 'Defaults from the schema', to: '/docs/schemas/defaults' },
+      { title: 'How values are stored', to: '/docs/schemas/storage-shape' },
+      { title: 'Optional, nullable, defaulted', to: '/docs/schemas/optional-nullable' },
+      { title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' },
+      { title: 'Arrays & tuples', to: '/docs/schemas/arrays-and-tuples' },
+      { title: 'Records & maps', to: '/docs/schemas/records' },
+      { title: 'Nested objects', to: '/docs/schemas/nested-objects' },
+    ],
   },
   {
     heading: 'Reading the form',

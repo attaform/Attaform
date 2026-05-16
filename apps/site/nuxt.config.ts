@@ -386,6 +386,34 @@ export default defineNuxtConfig({
   // response) to the real VFS handler that runs after it. Dev-only via
   // devHandlers.
   nitro: {
+    // Mount the REPL pipeline's output (`apps/site/.repl-cache/`)
+    // at the `/lib/` URL prefix. This keeps the bundled REPL
+    // artifacts (runtime JS, worker copies, type declaration
+    // bundles, package manifests) out of `apps/site/public/` while
+    // continuing to serve them from the same URLs DemoRepl's import
+    // map and Volar callbacks expect.
+    //
+    // Why this matters: the type bundles re-emit `declare global {
+    // interface Window { [DEVTOOLS_WINDOW_KEY]?: ... } }` from
+    // attaform's runtime sources. Inside `public/`, those bundles
+    // landed in vue-tsc's project graph (`include: ["../**/*"]`)
+    // and collided with the runtime declaration in
+    // `src/runtime/core/devtools-shared.ts` (TS2717 "subsequent
+    // property declarations"). The collision only fired locally
+    // after a dev session populated the public bundle — CI builds
+    // run `typecheck` before `bundle:repl`, so the public-side file
+    // didn't exist yet. Moving the artifacts to `.repl-cache/`
+    // (outside `apps/site/**/*`) gets vue-tsc out of the picture
+    // entirely; Nitro's publicAssets pipeline doesn't apply the
+    // Nuxt project-tree ignore filters either, so `.d.ts` files
+    // ship straight through to `.output/public/lib/types/` on prod
+    // builds.
+    publicAssets: [
+      {
+        dir: resolve(monorepoRoot, 'apps/site/.repl-cache'),
+        baseURL: '/lib',
+      },
+    ],
     // Pure SSG. The `static` preset tells Nitro to emit only
     // prerendered HTML + assets — no serverless runtime, no Node
     // server. Vercel deploys the result as a CDN-only site (zero
@@ -584,22 +612,24 @@ export default defineNuxtConfig({
         delete mdc.highlight.transformers
       }
 
-      // Allow `.d.ts` / `.d.cts` / `.d.mts` files in public/ to ship
-      // in the static output. Nuxt's `@nuxt/schema` ships
+      // Allow `.d.ts` / `.d.cts` / `.d.mts` files in the REPL
+      // publicAssets directory (`.repl-cache/`, mounted at `/lib/`)
+      // to ship in the static output. Nuxt's `@nuxt/schema` ships
       // `**/*.d.{cts,mts,ts}` in the default `ignore` array on the
       // assumption that declaration files aren't meant for the
-      // browser; Nitro inherits this and applies it to the
-      // public-assets globby pass, stripping our REPL type bundles
+      // browser; Nitro inherits this and applies it to every
+      // publicAssets globby pass, stripping our REPL type bundles
       // from `.output/public/lib/types/`. Without those files, Volar
       // (via @vue/repl's `pkgFileTextUrl` callback) 404s on
-      // `attaform`/`attaform/zod`/`vue`/`zod` declaration fetches and
-      // intellisense degrades to "any" in production.
+      // `attaform`/`attaform/zod`/`vue`/`zod` declaration fetches
+      // and intellisense degrades to "any" in production.
       //
       // We strip the .d.ts ignore pattern from Nitro's options only.
       // Nuxt's own component / layout scanners read from
-      // `nuxt.options.ignore` directly (not `nitroConfig.ignore`), so
-      // their behaviour is unaffected — they keep skipping ambient
-      // `.d.ts` files outside `public/` exactly as before.
+      // `nuxt.options.ignore` directly (not `nitroConfig.ignore`),
+      // so their behaviour is unaffected — they keep skipping
+      // ambient `.d.ts` files outside the publicAssets pipeline
+      // exactly as before.
       const declRe = /\bd\.\{?(cts|mts|ts|c|m)/
       if (Array.isArray(nitroConfig.ignore)) {
         nitroConfig.ignore = nitroConfig.ignore.filter(

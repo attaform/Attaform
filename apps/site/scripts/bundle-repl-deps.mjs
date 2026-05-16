@@ -7,8 +7,21 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Self-host every dep that the in-page REPL imports, so the docs site
-// has zero third-party CDN dependencies. Outputs land under
-// apps/site/public/lib/ and are referenced by DemoRepl's import map.
+// has zero third-party CDN dependencies. Outputs land in
+// `apps/site/.repl-cache/`; Nitro's `publicAssets` config (see
+// nuxt.config.ts) mounts that directory at `/lib/`, which is what
+// DemoReplEditor.client.vue's import map and Volar callbacks resolve
+// against.
+//
+// Why `.repl-cache/` rather than `public/lib/`: bundled `.d.ts` files
+// in `public/` end up inside the Nuxt-generated tsconfig's include
+// scope (`apps/site/**/*`). The REPL's declaration bundles re-emit
+// the library's `declare global { interface Window { ... } }` block,
+// so vue-tsc reports a TS2717 collision against the runtime
+// declaration in `src/runtime/core/` the moment a developer runs
+// typecheck after a `make up` session has populated the bundle.
+// Living outside `public/` keeps the artifacts off vue-tsc's project
+// graph while Nitro keeps serving them at the same `/lib/` URLs.
 //
 // Two parallel pipelines, both watch-aware:
 //
@@ -28,7 +41,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '../../..')
-const outDir = resolve(here, '../public/lib')
+const outDir = resolve(here, '../.repl-cache')
 const typesDir = resolve(outDir, 'types')
 
 // Resolve `@vue/runtime-dom`'s real on-disk path independent of the
@@ -156,11 +169,12 @@ await copyFile(
 // target: Worker"). Monaco then falls back to running the language
 // service on the main thread, freezing the UI.
 //
-// Workaround: copy the worker chunks to `public/lib/repl-workers/`
-// where Nitro's static file server emits them as-is (no Vite touch).
-// DemoRepl overrides `self.MonacoEnvironment.getWorker` to construct
-// workers from these clean URLs, sidestepping both the @vite/client
-// injection and the path-fragility of `import.meta.url` in dev.
+// Workaround: copy the worker chunks to `<outDir>/repl-workers/`
+// (mounted at `/lib/repl-workers/` via Nitro's publicAssets), where
+// the static file server emits them as-is (no Vite touch). DemoRepl
+// overrides `self.MonacoEnvironment.getWorker` to construct workers
+// from these clean URLs, sidestepping both the @vite/client injection
+// and the path-fragility of `import.meta.url` in dev.
 //
 // Filenames are renamed to stable names — `editor.worker.js` and
 // `vue.worker.js` — so DemoRepl doesn't have to track @vue/repl's
@@ -509,5 +523,5 @@ if (watch) {
   console.log('[bundle-repl-deps] watching src/ for runtime + type changes')
 } else {
   await Promise.all(ctxs.map((c) => c.dispose()))
-  console.log('[bundle-repl-deps] bundled to public/lib/ (runtime + types)')
+  console.log('[bundle-repl-deps] bundled to .repl-cache/ (runtime + types)')
 }

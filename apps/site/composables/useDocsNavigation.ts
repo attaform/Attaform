@@ -64,7 +64,10 @@ export const docsNavigation: DocsSection[] = [
   },
   { heading: 'Cross-cutting state', links: [] },
   { heading: 'Server & SSR', links: [] },
-  { heading: 'DevTools & debugging', links: [] },
+  {
+    heading: 'DevTools & debugging',
+    links: [{ title: 'Troubleshooting', to: '/docs/devtools-and-debugging/troubleshooting' }],
+  },
   { heading: 'Reference', links: [] },
 ]
 

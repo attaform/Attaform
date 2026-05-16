@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  // Phase 1 spine demo. The reader's first encounter with Attaform —
+  // Phase 1 spine demo. The reader's first encounter with Attaform,
   // wired as plain as possible: one schema, two fields, a submit
   // handler, and `v-register` doing the binding work in the template.
   // No app-internal imports (plan §3 authoring rule), no styling
@@ -17,14 +17,14 @@
 
   const onSubmit = handleSubmit(async (values) => {
     // In a real app this is an API call. For the demo, alert so
-    // the reader sees the submission land — console.log is invisible
+    // the reader sees the submission land. console.log is invisible
     // without DevTools open.
     alert(`Submitted!\n\nemail: ${values.email}\npassword: ${'*'.repeat(values.password.length)}`)
   })
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form @submit="onSubmit">
     <label>
       Email
       <input v-register="register('email')" type="email" autocomplete="email" />

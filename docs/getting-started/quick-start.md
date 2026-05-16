@@ -4,8 +4,6 @@ description: Build your first Attaform form in five minutes. A typed Zod schema,
 metaRows:
   - label: Time
     value: ~5 minutes
-  - label: Prerequisites
-    value: Vue 3, Zod
   - label: You'll learn
     value: useForm + register + handleSubmit
 ---
@@ -24,9 +22,8 @@ Try the form below: clear the password and submit to watch focus pull to the bro
 
 ## Install
 
-```bash
-pnpm add attaform zod
-```
+::ui-install-command{:show-quick-start="false"}
+::
 
 ## Build a form
 
@@ -43,13 +40,29 @@ const { register, handleSubmit, fields } = useForm({
   }),
 })
 
-const onSubmit = handleSubmit(async (values) => {
+const onSubmit = handleSubmit((values) => {
   // values is the parsed Zod output, fully typed.
-  await api.signup(values)
+  alert(JSON.stringify(values, null, 2))
 })
 ```
 
-`register('email')` returns what the `v-register` directive binds to. The directive handles the value read, the write, the coercion, and focus on invalid submit. For each field, render its first error via `fields.email.firstError?.message`, gated by `fields.email.showErrors` so the form doesn't yell on first paint.
+Bind inputs to schema paths with `v-register`:
+
+```vue
+<template>
+  <form @submit="onSubmit">
+    <input v-register="register('email')" type="email" />
+    <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+
+    <input v-register="register('password')" type="password" />
+    <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
+
+    <button type="submit">Sign in</button>
+  </form>
+</template>
+```
+
+`register('email')` returns what the `v-register` directive binds to. The directive handles the value read, the write, the coercion, and focus on invalid submit. Errors render via `fields.<path>.firstError?.message`, gated by `fields.<path>.showErrors` so the form doesn't yell on first paint.
 
 ## What's next
 

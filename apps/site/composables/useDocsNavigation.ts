@@ -33,7 +33,10 @@ export const docsNavigation: DocsSection[] = [
   // lands. Empty `links` arrays render the heading as a disabled
   // sidebar group — visually placeholding the IA without surfacing
   // 404-bound URLs.
-  { heading: 'Schemas', links: [] },
+  {
+    heading: 'Schemas',
+    links: [{ title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' }],
+  },
   {
     heading: 'Reading the form',
     links: [
@@ -69,6 +72,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'clear & blank values', to: '/docs/writing-and-mutating/clear' },
       { title: 'unset — the absent sentinel', to: '/docs/writing-and-mutating/unset' },
       { title: 'Field-array mutations', to: '/docs/writing-and-mutating/field-arrays' },
+      { title: 'Variant memory', to: '/docs/writing-and-mutating/variant-memory' },
     ],
   },
   {

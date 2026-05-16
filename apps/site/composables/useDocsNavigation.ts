@@ -34,7 +34,14 @@ export const docsNavigation: DocsSection[] = [
   // sidebar group — visually placeholding the IA without surfacing
   // 404-bound URLs.
   { heading: 'Schemas', links: [] },
-  { heading: 'Reading the form', links: [] },
+  {
+    heading: 'Reading the form',
+    links: [
+      { title: 'The form object', to: '/docs/reading-the-form/the-form-object' },
+      { title: 'values', to: '/docs/reading-the-form/values' },
+      { title: 'errors', to: '/docs/reading-the-form/errors' },
+    ],
+  },
   { heading: 'Binding inputs', links: [] },
   { heading: 'Writing & mutating', links: [] },
   { heading: 'Validation', links: [] },

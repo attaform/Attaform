@@ -232,6 +232,12 @@
     background: var(--color-accent-soft);
     font-weight: 600;
   }
+  /* Solid accent for selection inside the soft-tinted surface; the
+     global ::selection pair would otherwise paint invisibly here. */
+  :deep(.mobile-nav-active) ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+  }
   :deep(.mobile-nav-active) .active-bar {
     position: absolute;
     inset-block: 0.5rem;

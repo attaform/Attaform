@@ -451,6 +451,15 @@
   .docs-prose blockquote :where(p)::after {
     content: '';
   }
+  /* The global `::selection` pair (accent-soft bg + accent-soft fg)
+     is exactly the colours this surface already paints, so selecting
+     text inside a blockquote produced an invisible highlight. Bump
+     to the solid accent pair locally so the selection reads as a
+     bold inversion of the soft callout. */
+  .docs-prose blockquote ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+  }
 
   /* Tables — Untitled UI compact striping pattern. Header row gets
      a subtle surface tint; row borders use our border token so they

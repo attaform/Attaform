@@ -583,7 +583,16 @@ export default defineNuxtConfig({
       // static copies under `/lib/repl-workers/`, regardless of which
       // path the worker URL was constructed against. Prebundling moves
       // the entry, the worker URL changes too, the regex still matches.
-      include: ['lucide-vue-next', '@vue/repl', '@vue/repl/monaco-editor'],
+      include: [
+        'lucide-vue-next',
+        '@vue/repl',
+        '@vue/repl/monaco-editor',
+        // Discovered at runtime via `<DocsDemo>`'s dynamic `import('shiki')`
+        // for SSR-side code highlighting, and via the Zod-typed demo SFCs
+        // that ship through the docs-demos/*.vue glob.
+        'shiki',
+        'zod',
+      ],
       // The remark/rehype/unified cluster is excluded for a different
       // reason: @nuxtjs/mdc (transitive via @nuxt/content) pushes these
       // specifiers into Vite's `optimizeDeps.include` list via its own
@@ -612,7 +621,35 @@ export default defineNuxtConfig({
         'unified',
         'debug',
         'extend',
+        // `jiti` leaks into the client crawl because content.config.ts
+        // imports `defineCollection` / `defineContentConfig` from
+        // `@nuxt/content`, whose package-root export
+        // (`dist/module.mjs`, the Nuxt module entry) has `import { createJiti }
+        // from 'jiti'` at the top so the module can hot-eval user content
+        // configs at build time. Vite's dep scanner follows that import
+        // chain into the client graph even though jiti only ever runs
+        // server-side. Listing jiti as `exclude` tells Vite "don't
+        // pre-bundle this; Nuxt's machinery handles it at module-load time"
+        // — same posture as the remark/rehype/unified cluster above.
+        'jiti',
       ],
+      // jiti's `lib/jiti.mjs` line 2 imports `../dist/jiti.cjs`, a
+      // webpack-style CJS bundle. Vite's default CJS-to-ESM lexer can't
+      // extract a `default` export from webpack output, so a client-side
+      // import of jiti fails with "does not provide an export named
+      // 'default'" and `<MDCRenderer>` setup throws — pages with rendered
+      // content (every docs page after the leading hero) never paint past
+      // the first navigation.
+      //
+      // `needsInterop: ['jiti']` forces Vite to apply esbuild's CJS
+      // interop wrapper at serve time, which correctly extracts a
+      // `module.exports`-style default from the webpack output. jiti
+      // still can't *run* in the browser (its Node-only `node:module` /
+      // `createRequire` would throw if called), but the import chain
+      // that pulls it in never actually invokes jiti on the client —
+      // only the module-evaluation side-effect runs, which is what the
+      // interop wrapper makes safe.
+      needsInterop: ['jiti'],
     },
     build: {
       // Production sourcemaps are pure overhead for a docs site —

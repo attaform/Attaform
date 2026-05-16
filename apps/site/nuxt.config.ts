@@ -469,15 +469,19 @@ export default defineNuxtConfig({
     // doc; `/play` and `/` round out the rest of the public
     // surface.
     //
-    // `failOnError: true` gates the build on prerender errors. A 500
-    // on any prerendered route (e.g. a Vue mustache leaking through
-    // a markdown code fence and binding to an undefined variable —
-    // see the post-mortem on the {{{ payload }}} ssr-hydration bug)
-    // exits the build non-zero so CI can red-flag it. The trade-off:
-    // typo'd internal links (a `[label](does-not-exist.md)` whose
-    // target the crawler can't render) ALSO fail the build — but
-    // those are real bugs too, and catching them in CI beats finding
-    // them in production from a user filing an issue.
+    // `failOnError: true` gates the build on prerender 500s — a Vue
+    // mustache leaking through a markdown code fence and binding to
+    // an undefined variable (see the post-mortem on the {{{ payload }}}
+    // ssr-hydration bug), an unhandled rejection inside an async
+    // setup, that class of bug. It does NOT fail the build on
+    // prerender 404s — `createError({ statusCode: 404 })` and
+    // `setResponseStatus(404)` both log a fatal-error line and let
+    // the prerender keep going. That's deliberate; 404 catching is
+    // nuxt-link-checker's job (see the `linkChecker:` block earlier
+    // in this file, where `failOnError: true` makes a single broken
+    // internal link exit the build non-zero). Together they cover
+    // both edge classes — 500s gated here, missing-target links
+    // gated by the checker.
     preset: 'static',
     // `static: true` is the SSG flag a few modules read to detect
     // "this build emits HTML at prerender time, no runtime server."

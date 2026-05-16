@@ -8,7 +8,20 @@
   // Vite's `?raw` query and ship that string to @vue/repl. The same
   // source is both type-checked at build time AND served to users —
   // no extraction step, no drift.
+  //
+  // The shipment demo is also the *default* seed: the homepage REPL
+  // and the freeform `/play/blank` playground render it untouched.
+  // `/play/<slug>` pages override via the `initialSource` prop with
+  // an `apps/site/docs-demos/<slug>.vue` source string, so the same
+  // editor chrome reads from a different starting point per route.
   import shipmentDemoSource from '~/repl-demos/shipment-demo.vue?raw'
+
+  const props = withDefaults(
+    defineProps<{
+      initialSource?: string
+    }>(),
+    { initialSource: () => shipmentDemoSource }
+  )
 
   // Sizing + lifecycle (SSR skeleton, deferred mount, route-leave
   // guard) live on the parent `<DemoRepl>` shell. This component is
@@ -217,7 +230,7 @@
     dependencyVersion,
   })
 
-  store.setFiles({ 'src/App.vue': shipmentDemoSource }, 'src/App.vue')
+  store.setFiles({ 'src/App.vue': props.initialSource }, 'src/App.vue')
 </script>
 
 <template>

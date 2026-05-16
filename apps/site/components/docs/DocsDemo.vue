@@ -14,12 +14,21 @@
   // missing file throws at render time, which fails Nuxt's prerender
   // for that page and surfaces in CI before reaching production. The
   // error message names the expected path so authors can react.
-  import { ref } from 'vue'
+  import { computed, ref } from 'vue'
   import { ExternalLink, Eye, Code } from 'lucide-vue-next'
 
   const props = defineProps<{
     slug: string
   }>()
+
+  // Round-trip path: the playground's "Back to docs" link returns
+  // here. Built from the current route so a reader who lands on
+  // /docs/getting-started/quick-start and opens the playground sees
+  // a back link that actually returns to that page.
+  const route = useRoute()
+  const playgroundLink = computed(
+    () => `/play/${props.slug}?from=${encodeURIComponent(route.path)}`
+  )
 
   // Eager glob: every demo SFC + its raw source is bundled into the
   // docs chunk. With Phase 1's ~7 demos (Phase 4's ~52) this is
@@ -107,7 +116,7 @@
       </div>
 
       <NuxtLink
-        :to="`/play/${props.slug}`"
+        :to="playgroundLink"
         class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg"
       >
         Open in playground

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-  useHead({ title: 'Playground' })
+  useHead({ title: 'Blank playground' })
   useSeoMeta({
     description:
-      'Edit a real Attaform form in your browser — values, errors, validation, all live.',
+      'A blank-slate Attaform playground — start from the shipment demo and edit a real form in your browser.',
   })
 </script>
 
@@ -32,11 +32,15 @@
       <div class="py-12">
         <div class="mb-8 max-w-3xl">
           <p class="text-sm font-semibold tracking-wide text-accent uppercase">Live editor</p>
-          <h1 class="mt-3 text-display-md font-semibold text-fg">Playground</h1>
+          <h1 class="mt-3 text-display-md font-semibold text-fg">Blank playground</h1>
           <p class="mt-4 text-lg text-fg-muted">
             A real Attaform form, running on the live
             <UiInlineCode>attaform</UiInlineCode> source. Edit the schema, watch the form re-render.
             Errors update synchronously by default.
+          </p>
+          <p class="mt-3 text-sm text-fg-subtle">
+            Looking for a specific demo? See the
+            <NuxtLink to="/play" class="text-accent hover:underline">playground index</NuxtLink>.
           </p>
         </div>
         <DemoRepl height="calc(100vh - 20rem)" />

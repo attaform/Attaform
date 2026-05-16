@@ -47,7 +47,8 @@
 
 <template>
   <div class="not-prose my-6 overflow-hidden rounded-xl border border-border bg-bg shadow-sm">
-    <div class="flex items-center justify-end border-b border-border bg-surface/40 px-3">
+    <div class="flex items-center justify-between border-b border-border bg-surface/40 px-3">
+      <span class="px-3 py-2 text-xs font-semibold tracking-wide text-fg uppercase">Demo</span>
       <NuxtLink
         :to="playgroundLink"
         class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg"

@@ -14,6 +14,9 @@ metaRows:
 
 ::docs-meta-table
 ::
+
+Submit the form with valid values to watch the button switch to "Subscribing…" while the simulated API call runs — that's `meta.submitting` flipping reactive. Submit with an invalid email and focus pulls to the broken field automatically. The [submit handler](#the-submit-handler) section below walks through the gating contract.
+
 ::docs-demo{slug="inputs-to-submit"}
 ::
 

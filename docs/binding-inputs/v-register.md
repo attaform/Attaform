@@ -16,6 +16,9 @@ metaRows:
 
 ::docs-meta-table
 ::
+
+Click the input, type a few characters, blur, refocus — the four `fields.email.*` bits in the table below flip with each interaction. The directive surfaces every signal the schema-aware layer needs without you wiring a single event listener; the [What it does](#what-it-does) section unpacks the four pieces of plumbing.
+
 ::docs-demo{slug="v-register"}
 ::
 

@@ -14,6 +14,9 @@ metaRows:
 
 ::docs-meta-table
 ::
+
+Type into the inputs and watch the JSON block update in real time — `values` is the reactive surface Attaform builds straight from your schema, paths and types intact. The [What Attaform reads](#what-attaform-reads) section below traces each Zod construct in the demo to its form behavior.
+
 ::docs-demo{slug="first-schema"}
 ::
 

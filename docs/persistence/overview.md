@@ -18,6 +18,9 @@ metaRows:
 
 ::docs-meta-table
 ::
+
+Type a draft into the title and body fields, then refresh this page — your values come back. The form passes `persist: 'session'`, each field's `register` call adds `persist: true`; both opt-ins are required, neither alone is enough. The [two opt-in gates](#two-opt-in-gates) section unpacks why that's the shape.
+
 ::docs-demo{slug="persistence-overview"}
 ::
 

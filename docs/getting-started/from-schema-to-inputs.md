@@ -14,6 +14,9 @@ metaRows:
 
 ::docs-meta-table
 ::
+
+Cycle through the demo's five inputs — text, number, select, checkbox, textarea — and watch the `values` JSON update with the right types: the number input lands as a `number`, the checkbox as a `boolean`, the select as its enum literal. One directive handles every shape; the [register / v-register pair](#the-register-v-register-pair) section unpacks why.
+
 ::docs-demo{slug="schema-to-inputs"}
 ::
 

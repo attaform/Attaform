@@ -18,6 +18,9 @@ metaRows:
 
 ::docs-meta-table
 ::
+
+Submit the form without checking the terms box to watch the `onError` path fire — focus pulls to the broken field and the rejection alert lands. Check the box, fill the email, submit again to see `onSuccess` receive the parsed values. The [dispatch contract](#the-dispatch-contract) section traces every step between the click and the callback.
+
 ::docs-demo{slug="handle-submit"}
 ::
 

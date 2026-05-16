@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { logger as nuxtKitLogger } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
+import attaformModule from '../../src/nuxt'
 import { rendererRich, transformerTwoslash } from '@shikijs/twoslash'
 import type { Logger, LogOptions } from 'vite'
 import attaformPkg from '../../package.json'
@@ -147,7 +148,7 @@ export default defineNuxtConfig({
   // `tailwind.css`). `nuxt-og-image` still pulls Satori fonts from
   // Google at build time, but a build-time failure there is loud
   // and fixable — not a user-facing 500.
-  modules: ['@nuxt/content', '@nuxtjs/color-mode', '@nuxtjs/seo'],
+  modules: [attaformModule, '@nuxt/content', '@nuxtjs/color-mode', '@nuxtjs/seo'],
   // @nuxtjs/seo is the umbrella that wires sitemap.xml + robots.txt +
   // per-page canonical links + nuxt-og-image (per-route social cards)
   // + nuxt-schema-org (JSON-LD) + nuxt-link-checker behind one module.

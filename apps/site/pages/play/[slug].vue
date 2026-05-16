@@ -75,10 +75,11 @@
             <p class="text-sm font-semibold tracking-wide text-accent uppercase">Playground</p>
             <h1 class="mt-3 text-display-md font-semibold text-fg">{{ title }}</h1>
             <p class="mt-4 text-sm text-fg-muted">
-              Editing <UiInlineCode>apps/site/docs-demos/{{ slug }}.vue</UiInlineCode>. Source edits
-              stay in this editor; if the demo's <UiInlineCode>useForm</UiInlineCode> sets a
-              <UiInlineCode>key</UiInlineCode>, runtime state (values, persisted drafts, etc.) syncs
-              both ways with the docs page.
+              Editing <UiInlineCode>apps/site/docs-demos/{{ slug }}.vue</UiInlineCode>. The
+              playground is a self-contained sandbox: source edits and form state stay local to this
+              tab so you can experiment freely. To see cross-tab features in action (multi-tab sync,
+              persistence across reloads), open the inline demo on the docs page in two browser
+              tabs.
             </p>
           </div>
           <div class="flex items-center gap-3 text-sm">

@@ -100,7 +100,16 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Edge cases & hydration', to: '/docs/persistence/edge-cases' },
     ],
   },
-  { heading: 'Cross-cutting state', links: [] },
+  {
+    heading: 'Cross-cutting state',
+    links: [
+      { title: 'Undo & redo', to: '/docs/cross-cutting-state/undo-redo' },
+      { title: 'Multi-tab sync', to: '/docs/cross-cutting-state/multi-tab-sync' },
+      { title: 'injectForm', to: '/docs/cross-cutting-state/inject-form' },
+      { title: 'useStepper', to: '/docs/cross-cutting-state/use-stepper' },
+      { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
+    ],
+  },
   { heading: 'Server & SSR', links: [] },
   {
     heading: 'DevTools & debugging',

@@ -64,12 +64,88 @@
   // Code tab visually matches every other code block on the page.
   // `useAsyncData` caches the result per slug; client-side hydration
   // reads the cached HTML without re-running the highlighter.
+  //
+  // The Shiki call runs through `transformerTwoslash`: a Vue-aware
+  // twoslasher (`twoslash-vue`) compiles each demo SFC with real
+  // TypeScript at SSR time and embeds the resolved hover info — type
+  // signatures, JSDoc, inferred return shapes — straight into the
+  // emitted HTML as static popovers. Readers get IDE-grade type
+  // inference in the Code tab without shipping a single byte of
+  // TypeScript or Monaco to the client. Production prerender bakes
+  // the result into `_payload.json`, so the cost lives entirely at
+  // build time.
+  //
+  // `onTwoslashError` returns the original source so a single demo's
+  // typecheck disagreement falls back to plain Shiki output instead of
+  // crashing the page — the warning still surfaces in stderr for the
+  // maintainer. Twoslash and vue-tsc occasionally diverge on edge
+  // cases; treating the difference as a soft failure beats white-paging
+  // the docs.
+  //
+  // All three packages are dynamically imported so they only resolve
+  // server-side — `useAsyncData`'s payload bake means the client never
+  // invokes this factory, and the dynamic-import chunks never ship.
   const { data: highlighted } = await useAsyncData(`docs-demo-shiki-${props.slug}`, async () => {
-    const { codeToHtml } = await import('shiki')
+    const [{ codeToHtml }, { transformerTwoslash }, { createTwoslasher }] = await Promise.all([
+      import('shiki'),
+      import('@shikijs/twoslash'),
+      import('twoslash-vue'),
+    ])
     return codeToHtml(sourceText, {
       lang: 'vue',
       themes: { light: 'github-light', dark: 'github-dark' },
       defaultColor: false,
+      transformers: [
+        transformerTwoslash({
+          // `twoslash-vue` handles SFC syntax, but the transformer's
+          // language filter defaults to `['ts', 'tsx']`. Without `vue`
+          // here, `lang: 'vue'` code blocks would be silently skipped
+          // — no error, no annotations, no clue.
+          langs: ['vue', 'ts', 'tsx'],
+          twoslasher: createTwoslasher(),
+          // Twoslash spins up its own TypeScript program with its own
+          // module-resolution view of the project. Even though the
+          // `GlobalDirectives.vRegister` augmentation lives in
+          // `attaform`'s published types (see
+          // `src/runtime/types/types-api.ts`) and propagates correctly
+          // under vue-tsc + strictTemplates, twoslash's standalone
+          // program doesn't pick it up through the import graph of a
+          // compiled `<script setup>` block. Injecting an extra virtual
+          // .d.ts puts the augmentation directly into twoslash's
+          // program so `v-register` resolves the same way it does in
+          // consumer projects.
+          twoslashOptions: {
+            extraFiles: {
+              'attaform-v-register-augmentation.d.ts': `
+                import type { RegisterDirective } from 'attaform'
+                declare module 'vue' {
+                  interface GlobalDirectives {
+                    vRegister: RegisterDirective
+                  }
+                }
+              `,
+            },
+            // Filter out the @ts-ignore'd auto-import lookup. Volar
+            // generates a `// @ts-ignore` line before its directive
+            // auto-import probe, but twoslash collects diagnostics
+            // before TS applies that suppression — so the 2551 lookup
+            // on the setup context bubbles up here even though it
+            // never fires under vue-tsc.
+            filterNode: (n) => !(n.type === 'error' && n.code === 2551 && /vRegister/.test(n.text)),
+          },
+          onTwoslashError: (error, code, lang) => {
+            // eslint-disable-next-line no-console
+            console.error(
+              `[DocsDemo] twoslash failed on slug "${props.slug}" (lang=${lang}):`,
+              error instanceof Error ? error.message : error
+            )
+            // Return the original source so Shiki falls back to a plain
+            // (non-annotated) highlight instead of leaving the Code tab
+            // empty when twoslash hits a real error.
+            return code
+          },
+        }),
+      ],
     })
   })
 

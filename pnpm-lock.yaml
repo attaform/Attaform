@@ -213,6 +213,12 @@ importers:
       shiki:
         specifier: ^4.0.2
         version: 4.0.2
+      twoslash:
+        specifier: ^0.3.8
+        version: 0.3.8(typescript@6.0.3)
+      twoslash-vue:
+        specifier: ^0.3.8
+        version: 0.3.8(typescript@6.0.3)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.2.4
@@ -7923,6 +7929,11 @@ packages:
 
   twoslash-protocol@0.3.8:
     resolution: {integrity: sha512-HmvAHoiEviK8LqvAQyc9/irkdvwTUiR1fHmNwH/0gq8EHxyBt4PWVPixjEXg6wJu1u6yBrILEWXGK9Kw58/8yQ==}
+
+  twoslash-vue@0.3.8:
+    resolution: {integrity: sha512-5HZAnkQ1R6NXqW9mqsHx4aHVWPb5gb4gfEKiaNczi3q6U7vDZeVv9eONRuPs4qdCd5OJSAIpHeXxIDZmjr0Jww==}
+    peerDependencies:
+      typescript: ^5.5.0 || ^6.0.0
 
   twoslash@0.3.8:
     resolution: {integrity: sha512-OeDz0kDl8sqPUN3nr7gqcvOs70f5lZsdhKYTX3/SgB9OvdadzzoYJI/4SBXhXV1HG8E9fLc+e17itoRYTxmoig==}
@@ -17730,6 +17741,15 @@ snapshots:
       safe-buffer: 5.2.1
 
   twoslash-protocol@0.3.8: {}
+
+  twoslash-vue@0.3.8(typescript@6.0.3):
+    dependencies:
+      '@vue/language-core': 3.2.8
+      twoslash: 0.3.8(typescript@6.0.3)
+      twoslash-protocol: 0.3.8
+      typescript: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
 
   twoslash@0.3.8(typescript@6.0.3):
     dependencies:

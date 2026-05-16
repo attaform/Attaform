@@ -2336,6 +2336,49 @@ export type RegisterDirective =
   | RegisterModelDynamicCustomDirective
 
 /**
+ * Module augmentation: register `v-register` with Vue's template
+ * type system. Lives in `types-api` because every public entry
+ * (`attaform`, `attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`)
+ * transitively reaches this file via the `useForm` return type, so
+ * the augmentation propagates to consumer SFCs regardless of which
+ * entry they import from — and regardless of whether they install
+ * `attaform/nuxt` or the Vite plugin.
+ *
+ * Augmentation targets `vue` rather than `@vue/runtime-core`:
+ * `GlobalDirectives` is originally declared in `@vue/runtime-core`,
+ * but consumers and Volar's strict-template codegen both resolve
+ * the interface through `vue`'s `export * from '@vue/runtime-dom'`
+ * → `export * from '@vue/runtime-core'` chain. TypeScript merges
+ * interfaces across re-exports, so augmenting `'vue'` reaches Volar
+ * without needing `@vue/runtime-core` to be hoisted into the
+ * library's own `node_modules` for its own typecheck.
+ */
+declare module 'vue' {
+  interface GlobalDirectives {
+    /**
+     * The `v-register` directive. Binds a form field to a native
+     * input, select, textarea, checkbox, or radio:
+     *
+     * ```vue
+     * <input v-register="form.register('email')" />
+     * ```
+     *
+     * Also works on custom components whose root is NOT a native
+     * input — call `useRegister()` in the child's setup to read the
+     * parent's binding, then re-bind `v-register` onto an inner
+     * native element. (When the wrapper's root IS the input itself,
+     * attribute fallthrough handles it; `useRegister` is unnecessary.)
+     *
+     * Modifier support varies by element:
+     *   - text / number / textarea: `.lazy`, `.trim`, `.number`
+     *   - select: `.number`
+     *   - checkbox / radio: none
+     */
+    vRegister: RegisterDirective
+  }
+}
+
+/**
  * Callback form of `setValue`'s value argument. Receives the previous
  * value at the path and returns the next value:
  *

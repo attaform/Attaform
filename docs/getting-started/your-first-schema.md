@@ -1,6 +1,6 @@
 ---
 title: Your first schema
-description: Attaform reads any Zod object schema (required strings, optional fields, refinements, defaults) and turns it into a typed reactive form with no extra mapping.
+description: Attaform reads any Zod object schema (required strings, optional fields, refinements, defaults) and turns it into a typed, reactive Attaform with no extra mapping.
 metaRows:
   - label: Read time
     value: ~5 minutes
@@ -10,7 +10,7 @@ metaRows:
 
 # Your first schema
 
-> Attaform reads any Zod object schema directly and turns it into a typed reactive form.
+> Any Zod object becomes a typed, reactive Attaform.
 
 ::docs-meta-table
 ::

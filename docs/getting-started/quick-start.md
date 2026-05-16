@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: Build your first Attaform form in five minutes. A typed Zod schema, validated inputs bound by directive, and a submit handler that knows when the form is ready.
+description: Build your first Attaform in five minutes. A typed Zod schema, validated inputs bound by directive, and a submit handler that knows when the form is ready.
 metaRows:
   - label: Time
     value: ~5 minutes

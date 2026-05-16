@@ -142,7 +142,15 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Troubleshooting', to: '/docs/devtools-and-debugging/troubleshooting' },
     ],
   },
-  { heading: 'Reference', links: [] },
+  {
+    heading: 'Reference',
+    links: [
+      { title: 'Types reference', to: '/docs/reference/types' },
+      { title: 'Errors reference', to: '/docs/reference/errors' },
+      { title: 'Custom schema adapters', to: '/docs/reference/custom-adapters' },
+      { title: 'Entry-point reference', to: '/docs/reference/entry-points' },
+    ],
+  },
 ]
 
 // All links in canonical reading order. Used by the pager (prev/next)

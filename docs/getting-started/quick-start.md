@@ -27,18 +27,18 @@ Try the form below: clear the password and submit to watch focus pull to the bro
 
 ## Build a form
 
-Hand `useForm` a Zod schema and the reactive surface comes back ready: `values`, `errors`, `meta`, plus a `register` helper that the `v-register` directive binds to:
+Hand `useForm` a Zod schema and the reactive form comes back ready. Destructure the three pieces this page uses: `register` for the input binding, `handleSubmit` for the submit gate, and `fields` for per-field error reads.
 
 ```ts
 import { useForm } from 'attaform/zod'
 import { z } from 'zod'
 
-const { register, handleSubmit, fields } = useForm({
-  schema: z.object({
-    email: z.email(),
-    password: z.string().min(8),
-  }),
+const schema = z.object({
+  email: z.email(),
+  password: z.string().min(8),
 })
+
+const { register, handleSubmit, fields } = useForm({ schema })
 
 const onSubmit = handleSubmit((values) => {
   // values is the parsed Zod output, fully typed.

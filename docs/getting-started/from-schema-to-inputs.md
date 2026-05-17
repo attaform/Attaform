@@ -43,7 +43,7 @@ const { register, fields, values } = useForm({ schema })
 - `fields` is the reactive map of per-field state (errors, focus, touched, etc).
 - `values` is the reactive parsed values, paths and types straight from the schema.
 
-The rest of this page uses these three names. The demo on the right destructures the same set.
+The rest of this page uses these three names. The demo above destructures the same set.
 
 ## The register / v-register pair
 

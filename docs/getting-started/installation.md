@@ -12,7 +12,7 @@ Install Attaform and Zod, and the library is ready to use.
 ::ui-install-command{:show-quick-start="false"}
 ::
 
-That's it for most apps. The Attaform registry installs itself the first time you call `useForm`, and the `v-register` directive registers automatically. Everything below this section is opt-in.
+That's it for most apps. `useForm` and the `v-register` directive are ready to use as soon as the package is installed. Everything below this section is opt-in.
 
 ## Optional: Nuxt module
 
@@ -57,7 +57,7 @@ export default defineConfig({
 })
 ```
 
-What this gets you: SSR-rendered `v-register` bindings that match the client-rendered output on initial HTML (without this plugin under SSR, you'll see visibly wrong initial markup), and a leaner production bundle (one Zod adapter shipped instead of both).
+What this gets you: SSR-rendered `v-register` bindings that match the client-rendered output on initial HTML (no flicker between server paint and hydration), and a leaner production bundle (one Zod adapter shipped instead of both).
 
 ## Where to next
 

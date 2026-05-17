@@ -36,12 +36,12 @@ One schema in, full reactive surface out.
 Every part of the public surface is typed against your schema:
 
 ```ts
-const form = useForm({
-  schema: z.object({
-    email: z.email(),
-    age: z.number().int().min(13),
-  }),
+const schema = z.object({
+  email: z.email(),
+  age: z.number().int().min(13),
 })
+
+const form = useForm({ schema })
 
 form.setValue('age', 21) // ok
 form.setValue('age', 'twenty-one') // type error

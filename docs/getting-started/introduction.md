@@ -7,9 +7,9 @@ description: Attaform is a type-safe, schema-driven form library for Vue 3 and N
 
 > One Zod schema, one Attaform, one source of truth.
 
-Attaform reads a Zod schema and hands back the form, ready to play: drillable `values`, per-field `errors`, a `meta` aggregate, and a `v-register` directive that binds every native input shape. **Your schema is the form.** The schema is the validator. The schema is the API contract.
+Attaform reads a Zod schema and hands back the form, ready to play: reactive `values`, per-field `errors`, a `meta` aggregate, and a `v-register` directive that binds every native input shape. **Your schema is the form.** The schema is the validator. The schema is the API contract.
 
-Type-safe end to end. Errors surface at compile time, and the runtime keeps every value matched to what you declared. Server errors flow back through the same reactive surface, persistence opts in per field, SSR hydrates without flashes, and the DevTools panel shows the full picture right inside Nuxt DevTools.
+Type-safe end to end. Errors surface at compile time, and the runtime keeps every value matched to what your schema declared. Server errors flow back through the same reactive surface, persistence opts in per field, SSR hydrates without flashes, and the panel inside Nuxt DevTools shows every form on the page.
 
 ## How these docs read
 

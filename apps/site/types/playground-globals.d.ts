@@ -34,9 +34,12 @@ declare global {
    * so passing a form's `values` straight in shows the submitted
    * shape inline.
    *
-   * Exotic types (Map, Set, Symbol, BigInt, Date instances) are
-   * deliberately excluded: their `JSON.stringify` output is lossy or
-   * empty and would surface as `{}` in the toast.
+   * The callable arm admits Attaform's `ValuesSurface` (the type of
+   * `form.values`). `form.values` is a callable readonly proxy that
+   * carries a `toJSON()` hook, so `JSON.stringify` walks straight
+   * through to the underlying form data — no special casing on the
+   * caller's side. Naked functions without `toJSON` render as
+   * `[function]` rather than poisoning the output.
    */
   type ToastBody =
     | string
@@ -46,6 +49,7 @@ declare global {
     | undefined
     | readonly ToastBody[]
     | { readonly [key: string]: ToastBody }
+    | ((...args: never[]) => unknown)
 
   interface ToastOptions {
     /**
@@ -107,10 +111,12 @@ declare global {
   /**
    * Display a toast notification in the docs viewport.
    *
-   * Playground-only convenience: `toast` is injected by the
-   * `DemoReplEditor` component and routes through `postMessage` to
-   * a `vue-sonner` `<Toaster>` mounted in the parent docs page.
-   * Outside the playground iframe it does not exist.
+   * On the docs surface, `toast` is set on `window` by the
+   * `plugins/toast.client.ts` plugin and routes straight to the
+   * `vue-sonner` `<Toaster>` mounted in `app.vue`. Inside the
+   * playground iframe, it's set by `DemoReplEditor` to a postMessage
+   * shim that relays to the same parent-page Toaster. Either way the
+   * call shape is the same.
    *
    * @example
    *   toast.success('Subscribed!', { description: values })
@@ -118,4 +124,8 @@ declare global {
    *   toast.info('Heads up: the schema accepts both shapes.')
    */
   const toast: ToastApi
+
+  interface Window {
+    toast: ToastApi
+  }
 }

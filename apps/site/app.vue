@@ -1,4 +1,18 @@
 <script setup lang="ts">
+  import { Toaster } from 'vue-sonner'
+  import 'vue-sonner/style.css'
+
+  // Track the site's color mode so the Toaster picks the matching
+  // light / dark palette. `useColorMode()` exposes a single ref whose
+  // value is 'light' | 'dark' (and during the initial preference probe
+  // briefly 'system'); we fall back to 'system' so vue-sonner's
+  // built-in `prefers-color-scheme` lookup handles the in-between
+  // state without flashing a wrong palette.
+  const colorMode = useColorMode()
+  const toasterTheme = computed<'light' | 'dark' | 'system'>(() =>
+    colorMode.value === 'dark' ? 'dark' : colorMode.value === 'light' ? 'light' : 'system'
+  )
+
   // Site-wide head defaults. `titleTemplate` runs the page-supplied
   // title (if any) through "page · Attaform"; pages that set no
   // title fall through to the homepage tagline. seoMeta fills in
@@ -72,4 +86,34 @@
          gets in the way of dense docs reading. -->
     <NuxtPage :transition="{ name: 'page', mode: 'out-in' }" />
   </NuxtLayout>
+
+  <!-- App-wide toast surface. Mounts a single vue-sonner `<Toaster>`
+       so calls to `toast(...)` land in the same place across all
+       pages: inline demos rendered via `<DocsDemo>` on docs pages,
+       postMessage-relayed calls from inside the @vue/repl preview
+       iframe on `/play/<slug>`, and any future status-feedback
+       surface. `position="bottom-right"` plus vue-sonner's
+       `position: fixed` means the Toaster isn't clipped by any
+       container's `overflow: hidden`. `<ClientOnly>` because
+       vue-sonner touches `window` / `document` at setup time and
+       would hydrate-mismatch under SSR.
+
+       Description text uses font-mono + whitespace-pre-wrap so
+       JSON / multi-line payloads stay readable straight from the
+       toast. Demos that pass `values` (or any object) as
+       `description` get auto-JSON-formatted output via the shim
+       inside `DemoReplEditor.client.vue`. -->
+  <ClientOnly>
+    <Toaster
+      position="bottom-right"
+      rich-colors
+      close-button
+      :theme="toasterTheme"
+      :toast-options="{
+        classes: {
+          description: 'font-mono whitespace-pre-wrap text-xs',
+        },
+      }"
+    />
+  </ClientOnly>
 </template>

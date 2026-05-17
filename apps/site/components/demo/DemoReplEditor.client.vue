@@ -130,23 +130,39 @@
   // forged toasts to any other window. Variants mirror vue-sonner's
   // API surface (default / success / error / info / warning) so the
   // helper name maps one-to-one to the parent-side call.
+  // Every public surface is wrapped: the whole shim install (so a
+  // broken environment can't crash the demo's app setup), `serialize`
+  // (so adversarial `toString` can't propagate), and each `post(...)`
+  // call (so a sandboxed-iframe postMessage rejection vanishes
+  // silently). Toasts are visual feedback, not a critical path; the
+  // contract is "best-effort display, never throw".
   const TOAST_SHIM_SOURCE = `
-    {
+    try {
       const targetOrigin = ${JSON.stringify(window.location.origin)};
       const serialize = (v) => {
         if (typeof v === 'string') return v;
         if (v == null) return String(v);
-        try { return JSON.stringify(v, null, 2); }
-        catch { return String(v); }
+        try {
+          const json = JSON.stringify(v, null, 2);
+          if (typeof json === 'string') return json;
+          if (typeof v === 'function') return '[function]';
+          if (typeof v === 'symbol') return v.toString();
+          return String(v);
+        } catch {
+          try { return String(v); }
+          catch { return '[unserializable]'; }
+        }
       };
       const post = (variant) => (rawMessage, options) => {
-        window.parent.postMessage({
-          source: 'attaform-demo',
-          kind: 'toast',
-          variant,
-          message: serialize(rawMessage),
-          description: options && 'description' in options ? serialize(options.description) : undefined,
-        }, targetOrigin);
+        try {
+          window.parent.postMessage({
+            source: 'attaform-demo',
+            kind: 'toast',
+            variant,
+            message: serialize(rawMessage),
+            description: options && 'description' in options ? serialize(options.description) : undefined,
+          }, targetOrigin);
+        } catch {}
       };
       const t = post('default');
       t.success = post('success');
@@ -154,7 +170,7 @@
       t.info = post('info');
       t.warning = post('warning');
       window.toast = t;
-    }
+    } catch {}
   `
   const previewOptions = {
     customCode: {
@@ -164,9 +180,12 @@
   }
 
   // Receive the iframe's toast messages and route them to vue-sonner.
-  // The Toaster lives in `<DemoRepl>` (the SSR shell), so the toasts
-  // float over the docs viewport rather than getting clipped inside
-  // the editor pane's `overflow: hidden`.
+  // The Toaster lives in `app.vue` (app-wide), so the toasts float
+  // over the docs viewport rather than getting clipped inside the
+  // editor pane's `overflow: hidden`. The same Toaster handles
+  // inline `<DocsDemo>` calls too (those go via `window.toast`
+  // assigned in `plugins/toast.client.ts`); both routes end at the
+  // same vue-sonner toast queue.
   //
   // Strict-origin check: only accept messages from the same origin as
   // the parent page. The @vue/repl preview iframe is srcdoc-based and
@@ -175,26 +194,38 @@
   // injecting a sibling frame) is silently dropped.
   const TOAST_VARIANTS = ['default', 'success', 'error', 'info', 'warning'] as const
   type ToastVariant = (typeof TOAST_VARIANTS)[number]
+  // The receiver is wrapped so a malformed message, a vue-sonner
+  // failure, or any unexpected branch can't propagate out of the
+  // postMessage handler and onto `window`'s error surface. Toasts
+  // are visual feedback, not a critical path.
   function handleDemoMessage(event: MessageEvent) {
-    if (event.origin !== window.location.origin) return
-    const data = event.data as
-      | {
-          source?: string
-          kind?: string
-          variant?: string
-          message?: string
-          description?: string | undefined
-        }
-      | undefined
-    if (!data || data.source !== 'attaform-demo' || data.kind !== 'toast') return
-    const message = typeof data.message === 'string' ? data.message : ''
-    const description = typeof data.description === 'string' ? data.description : undefined
-    const variant: ToastVariant = TOAST_VARIANTS.includes(data.variant as ToastVariant)
-      ? (data.variant as ToastVariant)
-      : 'default'
-    const options = description != null ? { description } : undefined
-    if (variant === 'default') toast(message, options)
-    else toast[variant](message, options)
+    try {
+      if (event.origin !== window.location.origin) return
+      const data = event.data as
+        | {
+            source?: string
+            kind?: string
+            variant?: string
+            message?: string
+            description?: string | undefined
+          }
+        | undefined
+      if (!data || data.source !== 'attaform-demo' || data.kind !== 'toast') return
+      const message = typeof data.message === 'string' ? data.message : ''
+      const description = typeof data.description === 'string' ? data.description : undefined
+      const variant: ToastVariant = TOAST_VARIANTS.includes(data.variant as ToastVariant)
+        ? (data.variant as ToastVariant)
+        : 'default'
+      const options = description != null ? { description } : undefined
+      if (variant === 'default') toast(message, options)
+      else toast[variant](message, options)
+    } catch (err) {
+      try {
+        console.warn('[toast] receiver suppressed:', err)
+      } catch {
+        // console.warn can throw in adversarial environments; swallow.
+      }
+    }
   }
   onMounted(() => {
     window.addEventListener('message', handleDemoMessage)
@@ -412,9 +443,12 @@
  * so passing a form's \`values\` straight in shows the submitted
  * shape inline.
  *
- * Exotic types (Map, Set, Symbol, BigInt, Date instances) are
- * deliberately excluded: their \`JSON.stringify\` output is lossy or
- * empty and would surface as \`{}\` in the toast.
+ * The callable arm admits Attaform's \`ValuesSurface\` (the type of
+ * \`form.values\`). \`form.values\` is a callable readonly proxy that
+ * carries a \`toJSON()\` hook, so \`JSON.stringify\` walks straight
+ * through to the underlying form data — no special casing on the
+ * caller's side. Naked functions without \`toJSON\` render as
+ * \`[function]\` rather than poisoning the output.
  */
 type ToastBody =
   | string
@@ -424,6 +458,7 @@ type ToastBody =
   | undefined
   | readonly ToastBody[]
   | { readonly [key: string]: ToastBody }
+  | ((...args: never[]) => unknown)
 
 interface ToastOptions {
   /**

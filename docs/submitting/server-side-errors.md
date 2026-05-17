@@ -24,7 +24,7 @@ metaRows:
 
 Submit with `taken@example.com` as the email and `admin` as the username to watch the simulated server response route through `parseApiErrors` → `setFieldErrors`. The errors land at `errors.email` and `errors.username`, the field-level `firstError` surfaces them next to the inputs, and the form-level focus pull treats them like any other invalid path. Submit with different values to see the success path fire.
 
-::docs-demo{slug="server-side-errors"}
+::docs-demo{slug="server-side-errors" label="Server Errors Demo"}
 ::
 
 ## The flow

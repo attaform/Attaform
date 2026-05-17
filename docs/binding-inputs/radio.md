@@ -23,7 +23,7 @@ metaRows:
 
 Pick any of the three plans to watch the JSON readout switch to the option's `value` attribute. Every radio bound through the same `register('plan')` call automatically belongs to one group — Attaform infers the grouping from the shared path, not from `name=`. The [Schema-driven coercion](/docs/binding-inputs/coercion) page covers how the directive maps option strings to non-string leaf types.
 
-::docs-demo{slug="radio"}
+::docs-demo{slug="radio" label="Radio Demo"}
 ::
 
 ## One register call, many options

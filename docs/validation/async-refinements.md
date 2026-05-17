@@ -22,7 +22,7 @@ metaRows:
 
 Type a username and blur the field to watch `validating` flip true for ~700ms while the simulated check runs. Try `ada`, `champ`, or `athlete` to see the "taken" error land. Try any unused name to see it accept. The submit handler awaits every in-flight refinement before dispatching — submitting mid-check holds until the check resolves.
 
-::docs-demo{slug="async-refinements"}
+::docs-demo{slug="async-refinements" label="Async Refinements Demo"}
 ::
 
 ## Declare an async predicate

@@ -17,7 +17,7 @@ metaRows:
 
 Type into any of the demo's four inputs (`email`, `password`, `displayName`, `age`) and watch the live `values` JSON below the form update in real time. `values` is the reactive view of the form data that `useForm` returns, paths and types straight from the schema you handed in. The [What Attaform reads](#what-attaform-reads) section below traces each Zod construct in the demo to its form behavior.
 
-::docs-demo{slug="first-schema"}
+::docs-demo{slug="first-schema" label="Signup Demo"}
 ::
 
 ## What Attaform reads

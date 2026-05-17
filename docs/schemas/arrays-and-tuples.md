@@ -24,7 +24,7 @@ metaRows:
 
 The demo binds an array of objects (todo items) and a fixed-length tuple (a date range with exactly two endpoints). Both flow through the same `register('path.index.subpath')` shape; the schema's array-ness is what unlocks `append` / `remove` / `swap`.
 
-::docs-demo{slug="arrays-and-tuples"}
+::docs-demo{slug="arrays-and-tuples" label="Arrays & Tuples Demo"}
 ::
 
 ## `z.array(elem)` — variable length

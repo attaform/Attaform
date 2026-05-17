@@ -22,7 +22,7 @@ metaRows:
 
 Pick a notify channel — Email, SMS, or Push — and watch the field below the radios swap to the variant's typed shape. The schema's discriminated union drives both the conditional render and the underlying storage reshape; whatever the inactive variant held gets purged from `form.values`, and the new variant's slim default seeds.
 
-::docs-demo{slug="discriminated-unions"}
+::docs-demo{slug="discriminated-unions" label="Discriminated Union Demo"}
 ::
 
 ## The schema

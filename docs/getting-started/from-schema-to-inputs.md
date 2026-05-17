@@ -17,7 +17,7 @@ metaRows:
 
 The demo binds five native inputs (a text input for `fullName`, a numeric `age`, a country `<select>`, a `newsletter` checkbox, a `bio` textarea) against a single Zod schema. Type into any of them and the live `values` JSON below the form updates with the right type: the number input lands as a `number`, the checkbox as a `boolean`, the select as its enum literal. One directive handles every shape; the [register / v-register pair](#the-register-v-register-pair) section unpacks why.
 
-::docs-demo{slug="schema-to-inputs"}
+::docs-demo{slug="schema-to-inputs" label="Inputs Demo"}
 ::
 
 ## Setting up the form

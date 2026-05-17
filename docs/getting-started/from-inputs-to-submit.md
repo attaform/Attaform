@@ -17,7 +17,7 @@ metaRows:
 
 The demo binds two inputs (an `email` and a `newsletter` checkbox) and wires a submit handler that runs a 1.2-second simulated API call. Submit with a valid email and the button label switches to "Subscribing…" while the call runs, then a toast confirms the payload. Submit with an invalid email and focus pulls to the broken field automatically. The [submit handler](#the-submit-handler) section below walks through the gating contract that produces that behavior.
 
-::docs-demo{slug="inputs-to-submit"}
+::docs-demo{slug="inputs-to-submit" label="Submit Demo"}
 ::
 
 ## Setting up the form

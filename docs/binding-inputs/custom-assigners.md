@@ -24,7 +24,7 @@ metaRows:
 
 Click the color swatches to watch the JSON readout flip. The widget isn't an `<input>` — it's a plain `<div>` with buttons that dispatches `input` events and stores its picked color on `dataset.color`. A custom assigner installed via `el[assignKey] = fn` translates that to a form write. The [Install via `assignKey`](#install-via-assignkey) section walks through the wire-up.
 
-::docs-demo{slug="custom-assigners"}
+::docs-demo{slug="custom-assigners" label="Custom Assigner Demo"}
 ::
 
 ## When v-register needs help

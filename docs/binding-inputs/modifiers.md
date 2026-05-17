@@ -23,7 +23,7 @@ metaRows:
 
 Type into the lazy field and watch the readout only update on blur. Pad spaces around a word in the trimmed field to see them stripped. Type a number into the third field — even though it's `type="text"`, the value lands in storage as a `number` thanks to `.number`. Each modifier composes with any text-family input; the `.number` modifier also applies to `<select>`.
 
-::docs-demo{slug="modifiers"}
+::docs-demo{slug="modifiers" label="Modifiers Demo"}
 ::
 
 ## `.lazy`

@@ -25,7 +25,7 @@ metaRows:
 
 Open this page in a second tab (duplicate, or a regular new tab navigating to the same URL), then type in either one. The demo's `useForm` sets `multiTab: true` so the broadcaster mirrors every keystroke. Errors and submit lifecycle stay tab-local — only values and `blankPaths` cross the wire.
 
-::docs-demo{slug="multi-tab-sync"}
+::docs-demo{slug="multi-tab-sync" label="Multi-tab Sync Demo"}
 ::
 
 ## What it closes

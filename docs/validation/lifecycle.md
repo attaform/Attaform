@@ -24,7 +24,7 @@ metaRows:
 
 Click each button to dispatch the matching method against the current form values. The result panel surfaces the return shape of each — a reactive status snapshot from `validate()`, an awaited verdict from `validateAsync()`, and the fully parsed Zod output from `process()`. The methods share the predicate pipeline; the differences are about what they hand you back.
 
-::docs-demo{slug="validation-lifecycle"}
+::docs-demo{slug="validation-lifecycle" label="Lifecycle Demo"}
 ::
 
 ## `validate(path?)` — reactive ref

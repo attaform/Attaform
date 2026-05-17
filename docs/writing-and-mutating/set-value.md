@@ -24,7 +24,7 @@ metaRows:
 
 Click the four buttons in the demo to exercise every `setValue` shape — string path, segment tuple, callback, whole-form. The reactive surface (`values`, `fields`, validation) updates the same way it does for directive-driven writes; `setValue` and `v-register` share the pipeline. The [Three call shapes](#three-call-shapes) section unpacks each form.
 
-::docs-demo{slug="set-value"}
+::docs-demo{slug="set-value" label="Set Value Demo"}
 ::
 
 ## Three call shapes

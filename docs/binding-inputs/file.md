@@ -23,7 +23,7 @@ metaRows:
 
 Pick a file in the single input to watch the avatar slot fill in with the file name + size. Pick more in the multi-input below to see them stack — the directive writes a `File[]` in the order the picker returned them. Both surfaces hand you live `File` handles you can append to `FormData` or stream into an upload.
 
-::docs-demo{slug="file"}
+::docs-demo{slug="file" label="File Input Demo"}
 ::
 
 ## Single file → File | null

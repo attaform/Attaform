@@ -23,7 +23,7 @@ metaRows:
 
 Click the per-field clear buttons to watch each path drop to its schema-slim empty value — `''` for the string title, `[]` for the tags array, `false` for the published boolean. Click `clear()` to wipe everything. The defaults declared on `useForm` are intentionally skipped — that's the distinction from `reset`. The blank flag on each field flips on to mark the cleared state.
 
-::docs-demo{slug="clear"}
+::docs-demo{slug="clear" label="Clear Demo"}
 ::
 
 ## What "blank" means

@@ -24,7 +24,7 @@ metaRows:
 
 The parent owns the form and renders the email field. `ProfileFieldset` and `StatusPill` are inline render-function components that call `injectForm('docs-demo-inject-form')` to reach the same form — no props passed, same reactive surface. Both child components are defined in this SFC and run unchanged regardless of how deep they sit in the tree.
 
-::docs-demo{slug="inject-form"}
+::docs-demo{slug="inject-form" label="Form Injection Demo"}
 ::
 
 ## The common case — ambient resolution

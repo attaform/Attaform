@@ -23,7 +23,7 @@ metaRows:
 
 Type a mixed-case title with spaces into the slug field and watch the readout: the value lands as a lowercased, dashified, alphanumeric-only string. The first input has no transforms; the second composes two — `lowercase` then `dashify` — through the `transforms` array on `register`. The [Composition order](#composition-order) section unpacks why left-to-right composition makes a personal transform library easy to assemble.
 
-::docs-demo{slug="transforms"}
+::docs-demo{slug="transforms" label="Transforms Demo"}
 ::
 
 ## A transform is a function

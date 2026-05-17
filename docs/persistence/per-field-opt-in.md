@@ -23,7 +23,7 @@ metaRows:
 
 Toggle the per-field checkboxes, type into the inputs, then refresh the page. Only the opted-in fields rehydrate — the others land empty even though the form is persisting to `sessionStorage` and the schema has defaults. That's the two-gate policy in action: adding a new field can't accidentally leak into client-side storage unless its register call site explicitly says so.
 
-::docs-demo{slug="per-field-opt-in"}
+::docs-demo{slug="per-field-opt-in" label="Per-field Persistence Demo"}
 ::
 
 ## The two gates

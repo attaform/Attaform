@@ -23,7 +23,7 @@ metaRows:
 
 The demo shows four fields with different schemas. Watch the `blank` column and the `errors` column as you type — the numeric field starts blank-marked even though `values.age === 0`; the required string field uses the schema's refinement instead; the loose string field never raises an error; and the `unset`-defaulted country starts blank-marked deliberately, clearing as soon as you type.
 
-::docs-demo{slug="blank-field-state"}
+::docs-demo{slug="blank-field-state" label="Blank State Demo"}
 ::
 
 ## Why it exists

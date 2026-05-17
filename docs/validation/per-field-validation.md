@@ -24,7 +24,7 @@ metaRows:
 
 Type into each field to watch its own refinements light up — the username's regex requirement, the password's min length, and the cross-field "passwords must match" check that fires when `confirmPassword` differs from `password`. Both single-field and cross-field validators live in the schema; the [Two patterns](#two-patterns) section traces each.
 
-::docs-demo{slug="per-field-validation"}
+::docs-demo{slug="per-field-validation" label="Per-field Validation Demo"}
 ::
 
 ## Two patterns

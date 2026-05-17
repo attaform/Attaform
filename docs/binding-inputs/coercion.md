@@ -23,7 +23,7 @@ metaRows:
 
 Type a number into the `count` field and watch it land in storage as a `number` (not a string). Type "true" or "false" into `enabled` and see it commit as a `boolean`. Both inputs are `type="text"` — coercion is what makes `z.number()` and `z.boolean()` leaves work against plain text inputs at the directive layer.
 
-::docs-demo{slug="coercion"}
+::docs-demo{slug="coercion" label="Coercion Demo"}
 ::
 
 ## The default registry

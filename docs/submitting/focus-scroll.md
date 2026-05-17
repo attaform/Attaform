@@ -24,7 +24,7 @@ metaRows:
 
 Submit the form with empty fields to watch focus pull to the first invalid one automatically. That's `handleSubmit` running its default invalid-submit policy (`'focus-first-error'`). The two buttons below dispatch the helpers imperatively, so you can drive focus or smooth-scroll outside the submit handler. Submitting again with valid fields shows the no-op success path.
 
-::docs-demo{slug="focus-scroll"}
+::docs-demo{slug="focus-scroll" label="Focus & Scroll Demo"}
 ::
 
 ## Default on invalid submit

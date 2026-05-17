@@ -216,7 +216,7 @@
       <p class="text-xs text-fg-subtle">
         Showing
         <span class="font-medium text-fg-muted">{{ rangeStart }}–{{ rangeEnd }}</span> of
-        <span class="font-medium text-fg-muted">{{ filtered.length }}</span> playgrounds
+        <span class="font-medium text-fg-muted">{{ filtered.length }}</span> demos
       </p>
       <div class="flex items-center gap-1">
         <button

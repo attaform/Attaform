@@ -315,17 +315,18 @@
   const pendingDelete = ref<string | null>(null)
   // Whether the user has opted out of the confirmation prompt by
   // checking "Don't ask again" on a previous deletion. Persisted in
-  // localStorage so the preference survives reloads. No UI to opt
-  // back in — clearing the key from devtools is the documented
-  // escape hatch. Acceptable in a playground sandbox where mistakes
-  // cost a button click and the user's intent has already been
-  // captured explicitly once.
+  // sessionStorage rather than localStorage on purpose: the
+  // playground itself is ephemeral (files live in @vue/repl's
+  // in-memory store; close the tab and they're gone), so the opt-out
+  // preference shouldn't outlive the data it gates. Closing the tab
+  // resets to "always ask" — the natural opt-back-in path. Matches
+  // the checkbox label ("for the rest of this session") literally.
   const SKIP_CONFIRM_KEY = 'attaform-playground-skip-delete-confirm'
   function hasSkipConsent(): boolean {
     try {
-      return window.localStorage.getItem(SKIP_CONFIRM_KEY) === '1'
+      return window.sessionStorage.getItem(SKIP_CONFIRM_KEY) === '1'
     } catch {
-      // Private-mode Safari throws on localStorage access. If we
+      // Private-mode Safari throws on sessionStorage access. If we
       // can't read the preference, default to asking — the safer
       // direction.
       return false
@@ -333,7 +334,7 @@
   }
   function recordSkipConsent() {
     try {
-      window.localStorage.setItem(SKIP_CONFIRM_KEY, '1')
+      window.sessionStorage.setItem(SKIP_CONFIRM_KEY, '1')
     } catch {
       // Same caveat as hasSkipConsent — silent on private-mode
       // storage failures rather than crashing the delete flow.

@@ -68,7 +68,7 @@ Any descendant grabs the same form:
 </template>
 ```
 
-You supply the `Form` generic — Vue's injection system erases it, so the library can't recover the shape on your behalf. Other than that, `injectForm<Form>()` returns an object type-identical to `useForm`'s return.
+You supply the `Form` generic — Vue's injection system erases it, so the library can't recover the shape on your behalf. Other than that, `injectForm<Form>()` returns a form type-identical to `useForm`'s return.
 
 ## Reaching a form that isn't an ancestor
 

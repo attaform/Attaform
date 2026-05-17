@@ -55,11 +55,11 @@
     )
   })
 
-  // Page-size selector. Three options; default 20 fits today's 45-demo
+  // Page-size selector. Three options; default 15 fits today's 45-demo
   // corpus into three pages without making the grid feel infinite.
-  const pageSizeOptions = [10, 20, 25] as const
+  const pageSizeOptions = [10, 15, 25] as const
   type PageSize = (typeof pageSizeOptions)[number]
-  const pageSize = ref<PageSize>(20)
+  const pageSize = ref<PageSize>(15)
 
   const currentPage = ref(1)
   const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))

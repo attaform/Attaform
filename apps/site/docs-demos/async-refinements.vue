@@ -28,7 +28,7 @@
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    toast.success(`Created account: ${values.username}`)
+    toast.success(`Created account: ${values.username}`, { description: values })
   })
 </script>
 

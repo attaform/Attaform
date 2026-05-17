@@ -18,7 +18,7 @@
   })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    toast.success('Submitted', { description: values })
+    toast.success(`Welcome ${values.profile.name}`, { description: values })
   })
 
   type FormShape = z.infer<typeof schema>

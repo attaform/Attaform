@@ -40,7 +40,7 @@
       }
     }
 
-    toast.success('Account created')
+    toast.success(`Account created: ${values.username}`, { description: values })
   })
 </script>
 

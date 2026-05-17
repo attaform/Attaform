@@ -26,7 +26,7 @@
   })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    toast.success('Submitting', { description: values })
+    toast.success(`Notify via ${values.notify.channel}`, { description: values })
   })
 </script>
 

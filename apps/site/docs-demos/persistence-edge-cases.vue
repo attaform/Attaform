@@ -14,7 +14,7 @@
 
   const onSubmit = form.handleSubmit(async (values) => {
     await new Promise((r) => setTimeout(r, 300))
-    toast.success('Submitted — draft kept (clearOnSubmitSuccess: false)', {
+    toast.success('Submitted, draft kept (clearOnSubmitSuccess: false)', {
       description: values,
     })
   })

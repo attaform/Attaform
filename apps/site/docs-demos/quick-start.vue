@@ -11,7 +11,7 @@
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    toast.success('Submitted', { description: values })
+    toast.success(`Signed in as ${values.email}`, { description: values })
   })
 </script>
 

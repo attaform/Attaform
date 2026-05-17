@@ -12,7 +12,7 @@
 
   const onSubmit = handleSubmit(async (values) => {
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    toast.success('Subscribed!', { description: values })
+    toast.success(`Subscribed: ${values.email}`, { description: values })
   })
 </script>
 

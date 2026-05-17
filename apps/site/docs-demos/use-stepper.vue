@@ -30,9 +30,13 @@
   const stepper = useStepper([account, profile, review] as const)
 
   async function onFinish() {
-    toast.success(
-      `Welcome ${profile.values.name || profile.values.city || 'aboard'} — submit fired!`
-    )
+    toast.success(`Welcome ${profile.values.name || profile.values.city || 'aboard'}`, {
+      description: {
+        account: account.values,
+        profile: profile.values,
+        review: review.values,
+      },
+    })
   }
 </script>
 

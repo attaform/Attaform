@@ -119,7 +119,7 @@
           autocorrect="off"
           autocapitalize="off"
           spellcheck="false"
-          placeholder="Filter playgrounds…"
+          placeholder="Search form demos…"
           class="w-full rounded-md border border-border bg-bg py-2 pr-9 pl-9 text-sm text-fg shadow-xs transition-colors duration-(--duration-fast) placeholder:text-fg-subtle focus:border-accent focus:ring-4 focus:ring-accent-ring focus:outline-none"
         />
         <button

@@ -20,11 +20,6 @@ Try the form below: clear the password and submit to watch focus pull to the bro
 ::docs-demo{slug="quick-start" label="Sign-in Demo"}
 ::
 
-## Install
-
-::ui-install-command{:show-quick-start="false"}
-::
-
 ## Build a form
 
 Hand `useForm` a Zod schema and the reactive form comes back ready. Destructure the three pieces this page uses: `register` for the input binding, `handleSubmit` for the submit gate, and `fields` for per-field error reads.

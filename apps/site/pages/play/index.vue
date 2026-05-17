@@ -179,7 +179,7 @@
       class="rounded-xl border border-dashed border-border bg-surface/30 p-10 text-center"
     >
       <p class="text-fg-muted">
-        No playgrounds match
+        No demos match
         <code class="rounded bg-surface px-1.5 py-0.5 font-mono text-[0.8125rem] text-fg">{{
           query
         }}</code

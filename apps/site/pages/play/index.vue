@@ -44,9 +44,10 @@
           <p class="text-sm font-semibold tracking-wide text-accent uppercase">Live editors</p>
           <h1 class="mt-3 text-display-md font-semibold text-fg">Playgrounds</h1>
           <p class="mt-4 text-lg text-fg-muted">
-            Every demo on the docs opens in its own editable playground. Pick a starting point — the
-            editor seeds with the demo's source, ships
-            <UiInlineCode>attaform</UiInlineCode> pre-bundled, and updates the preview as you type.
+            Every demo in the docs has a matching playground, yours to fork and remix. Pick one and
+            the editor opens ready to go: the demo's source loaded,
+            <UiInlineCode>attaform</UiInlineCode> pre-bundled, and a live preview that updates as
+            you type.
           </p>
         </div>
 

@@ -165,4 +165,20 @@
   .demo-repl .tab-buttons button > span {
     text-transform: capitalize;
   }
+
+  /* @vue/repl's EditorContainer.vue mounts a `<div class="editor-
+     floating">` in the bottom-right of the editor pane that hosts the
+     "Show Error" + "Auto Save" toggle buttons. `DemoReplEditor.client
+     .vue` already passes `showErrorText: false` + `autoSaveText:
+     false` to suppress the BUTTONS, but the wrapping `<div>` still
+     renders (empty, just two `<!---->` placeholders). The wrapper is
+     `position: absolute` so it stays in the layout and visually
+     occludes the bottom-right corner of the editor pane — overlapping
+     the code area and intercepting clicks meant for the editor.
+     Hiding the empty wrapper restores the corner without affecting
+     anything else (the underlying buttons are already gone via the
+     editorOptions flags). */
+  .demo-repl .editor-floating:empty {
+    display: none;
+  }
 </style>

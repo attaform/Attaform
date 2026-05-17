@@ -568,7 +568,7 @@
         service: serviceForm.values(),
         review,
       }
-      alert('Booked!\n\n' + JSON.stringify(payload, null, 2))
+      toast.success('Booked!', { description: payload })
       resetAll()
     },
     () => {

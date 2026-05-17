@@ -18,9 +18,7 @@
   })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    alert(
-      `Submitted: ${JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)}`
-    )
+    toast.success('Submitted', { description: values })
   })
 
   type FormShape = z.infer<typeof schema>

@@ -12,7 +12,7 @@
 
   const onSubmit = handleSubmit(async (values) => {
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    alert(`Subscribed!\n\nemail: ${values.email}\nnewsletter: ${values.newsletter ? 'yes' : 'no'}`)
+    toast.success('Subscribed!', { description: values })
   })
 </script>
 

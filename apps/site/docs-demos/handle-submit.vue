@@ -17,10 +17,10 @@
   const onSubmit = handleSubmit(
     async (values) => {
       await new Promise((resolve) => setTimeout(resolve, 600))
-      alert(`✓ Submitted!\n\nemail: ${values.email}`)
+      toast.success('Submitted', { description: values })
     },
     () => {
-      alert('✗ Submit blocked — check the errors above.')
+      toast.error('Submit blocked — check the errors above.')
     }
   )
 </script>

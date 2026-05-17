@@ -26,9 +26,7 @@
   })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    alert(
-      `Submitting: ${JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)}`
-    )
+    toast.success('Submitting', { description: values })
   })
 </script>
 

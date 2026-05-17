@@ -40,7 +40,7 @@
       }
     }
 
-    alert('✓ Account created')
+    toast.success('Account created')
   })
 </script>
 

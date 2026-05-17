@@ -1,4 +1,7 @@
 <script setup lang="ts">
+  import { Toaster } from 'vue-sonner'
+  import 'vue-sonner/style.css'
+
   // SSR-safe shell for the homepage + /play interactive REPL.
   //
   // Two responsibilities:
@@ -115,6 +118,31 @@
            hydration, so its Sandbox iframe installs into a settled DOM. -->
       <DemoReplEditor v-if="showEditor" :initial-source="props.initialSource" />
     </div>
+
+    <!-- Toast surface for demo output. Demos call `toast(...)` /
+         `toast.success(...)` from inside the @vue/repl preview iframe;
+         a postMessage listener inside `<DemoReplEditor>` routes those
+         calls to vue-sonner's `toast()` here. The Toaster is
+         `position: fixed` so it isn't clipped by the editor pane's
+         `overflow: hidden`; we still wrap in <ClientOnly> because
+         vue-sonner touches window/document at setup time.
+
+         Description text uses font-mono + whitespace-pre-wrap so
+         JSON / multi-line payloads readable straight from the toast.
+         Demos that pass `values` (or any object) as `description`
+         get auto-JSON-formatted output via the shim. -->
+    <ClientOnly>
+      <Toaster
+        position="bottom-right"
+        rich-colors
+        close-button
+        :toast-options="{
+          classes: {
+            description: 'font-mono whitespace-pre-wrap text-xs',
+          },
+        }"
+      />
+    </ClientOnly>
   </div>
 </template>
 

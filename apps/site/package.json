@@ -28,7 +28,8 @@
     "better-sqlite3": "^12.9.0",
     "lucide-vue-next": "^1.0.0",
     "satori": "^0.26.0",
-    "shiki": "^4.0.2"
+    "shiki": "^4.0.2",
+    "vue-sonner": "^2.0.9"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.4",

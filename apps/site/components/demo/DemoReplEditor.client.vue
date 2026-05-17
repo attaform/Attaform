@@ -2,6 +2,7 @@
   import { Repl, useStore } from '@vue/repl'
   import MonacoEditor from '@vue/repl/monaco-editor'
   import '@vue/repl/style.css'
+  import { toast } from 'vue-sonner'
 
   // The shipment demo lives in repl-demos/shipment-demo.vue so vue-tsc +
   // eslint review it as a real SFC. We import its source text via
@@ -112,12 +113,95 @@
   // `const app = createApp(AppComponent)` and before `app.mount('#app')`.
   // Without this the REPL boots a bare Vue app and `useForm()` throws
   // "Registry not found" because createAttaform()'s plugin never runs.
+  //
+  // The `useCode` body also installs a `window.toast` shim. Demos
+  // call `toast('Subscribed!')` / `toast.success('Saved', {
+  // description: values })` and the shim postMessages to the parent
+  // docs page, where a `vue-sonner` `<Toaster>` (mounted in
+  // `<DemoRepl>`) renders the toast in the docs viewport. Demos
+  // don't import anything — `toast` is exposed as a playground
+  // convenience global, matching the "framework helper" feel real
+  // Vue apps wire up via plugins.
+  //
+  // The shim auto-JSON-stringifies non-string `message` and
+  // `description` so demos can pass form `values` directly and see
+  // the submitted payload formatted. Origin is locked to the parent
+  // window's origin so a malicious in-iframe script can't post
+  // forged toasts to any other window. Variants mirror vue-sonner's
+  // API surface (default / success / error / info / warning) so the
+  // helper name maps one-to-one to the parent-side call.
+  const TOAST_SHIM_SOURCE = `
+    {
+      const targetOrigin = ${JSON.stringify(window.location.origin)};
+      const serialize = (v) => {
+        if (typeof v === 'string') return v;
+        if (v == null) return String(v);
+        try { return JSON.stringify(v, null, 2); }
+        catch { return String(v); }
+      };
+      const post = (variant) => (rawMessage, options) => {
+        window.parent.postMessage({
+          source: 'attaform-demo',
+          kind: 'toast',
+          variant,
+          message: serialize(rawMessage),
+          description: options && 'description' in options ? serialize(options.description) : undefined,
+        }, targetOrigin);
+      };
+      const t = post('default');
+      t.success = post('success');
+      t.error = post('error');
+      t.info = post('info');
+      t.warning = post('warning');
+      window.toast = t;
+    }
+  `
   const previewOptions = {
     customCode: {
       importCode: `import { createAttaform } from 'attaform'`,
-      useCode: `app.use(createAttaform())`,
+      useCode: `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())`,
     },
   }
+
+  // Receive the iframe's toast messages and route them to vue-sonner.
+  // The Toaster lives in `<DemoRepl>` (the SSR shell), so the toasts
+  // float over the docs viewport rather than getting clipped inside
+  // the editor pane's `overflow: hidden`.
+  //
+  // Strict-origin check: only accept messages from the same origin as
+  // the parent page. The @vue/repl preview iframe is srcdoc-based and
+  // inherits this origin, so legitimate demo messages pass through.
+  // Postmessage from any other origin (e.g., a malicious extension
+  // injecting a sibling frame) is silently dropped.
+  const TOAST_VARIANTS = ['default', 'success', 'error', 'info', 'warning'] as const
+  type ToastVariant = (typeof TOAST_VARIANTS)[number]
+  function handleDemoMessage(event: MessageEvent) {
+    if (event.origin !== window.location.origin) return
+    const data = event.data as
+      | {
+          source?: string
+          kind?: string
+          variant?: string
+          message?: string
+          description?: string | undefined
+        }
+      | undefined
+    if (!data || data.source !== 'attaform-demo' || data.kind !== 'toast') return
+    const message = typeof data.message === 'string' ? data.message : ''
+    const description = typeof data.description === 'string' ? data.description : undefined
+    const variant: ToastVariant = TOAST_VARIANTS.includes(data.variant as ToastVariant)
+      ? (data.variant as ToastVariant)
+      : 'default'
+    const options = description != null ? { description } : undefined
+    if (variant === 'default') toast(message, options)
+    else toast[variant](message, options)
+  }
+  onMounted(() => {
+    window.addEventListener('message', handleDemoMessage)
+  })
+  onBeforeUnmount(() => {
+    window.removeEventListener('message', handleDemoMessage)
+  })
 
   // Route the three packages we self-host through their /lib/types/ URLs.
   // Volar (via @vue/repl's Monaco bundle) needs THREE callbacks wired up
@@ -283,13 +367,149 @@
     vueCompilerOptions: { target: 3.4 },
   }
 
-  store.setFiles(
-    {
-      'src/App.vue': props.initialSource,
-      'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
-    },
-    'src/App.vue'
-  )
+  // Teach Volar (the Monaco-side TypeScript service) about the
+  // `toast` global the playground iframe injects at runtime. Without
+  // this, demos that call `toast(...)` get a red squiggle saying
+  // "Cannot find name 'toast'" even though the call works.
+  //
+  // Volar's in-Monaco service has its own type universe — it fetches
+  // package declarations through @vue/repl's `pkgFileTextUrl`
+  // callback and only loads types for packages explicitly imported
+  // in the demo. The host-side `apps/site/types/playground-globals
+  // .d.ts` only covers vue-tsc on the build server; the in-iframe TS
+  // service needs the declaration as a file in its own project.
+  //
+  // The declaration MUST go through the initial `setFiles` payload —
+  // not a follow-up `addFile`. @vue/repl's `setFiles` is async
+  // (`await compileFile` per file) and ends with `store.files = files`
+  // — a wholesale replacement of the reactive map (see
+  // `chunks/core-CFIh3kZc.js:20096-20108`). Any `addFile` interleaved
+  // with a pending `setFiles` mutates the *previous* map and gets
+  // discarded when setFiles' overwrite lands. Volar's worker reads
+  // URIs via `Object.keys(store.files)` (`monaco-editor.js:149987`),
+  // so a dropped file means a missing project member.
+  //
+  // The tab is then hidden post-resolution by flipping
+  // `file.hidden = true` on the File instance setFiles created.
+  // FileSelector's tab list is a reactive `computed` filtering on
+  // `!file.hidden` (`vue-repl.js:755`), so the mutation re-evaluates
+  // synchronously and the tab never paints. setFiles' final state
+  // assignments (`store.files = files`, `setActive(...)`) and our
+  // mutation all land before the next browser paint, so there's no
+  // visible flash.
+  //
+  // Type shape: `ToastBody` is recursive-JSON-ish so demos can pass
+  // their `values` payload directly without ceremony, but excludes
+  // exotic types like Map / Set / Symbol that wouldn't JSON.stringify
+  // meaningfully. The five variants mirror vue-sonner's surface
+  // exactly so a demo can be lifted into a real Vue app with
+  // `import { toast } from 'vue-sonner'` and every call site keeps
+  // working.
+  const TOAST_AMBIENT_DTS = `
+/**
+ * JSON-serialisable payload accepted by every toast call. Strings
+ * render verbatim; objects and arrays auto-pretty-format as JSON,
+ * so passing a form's \`values\` straight in shows the submitted
+ * shape inline.
+ *
+ * Exotic types (Map, Set, Symbol, BigInt, Date instances) are
+ * deliberately excluded: their \`JSON.stringify\` output is lossy or
+ * empty and would surface as \`{}\` in the toast.
+ */
+type ToastBody =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | readonly ToastBody[]
+  | { readonly [key: string]: ToastBody }
+
+interface ToastOptions {
+  /**
+   * Secondary text below the title. Same JSON-formatting rules as
+   * the message: strings render as-is, objects and arrays pretty-print.
+   */
+  description?: ToastBody
+}
+
+/**
+ * Toast notification API. Call shape mirrors \`vue-sonner\`'s \`toast\`
+ * one-to-one, so a demo built around it can be lifted into a real Vue
+ * app by adding \`import { toast } from 'vue-sonner'\` with zero
+ * call-site changes.
+ */
+interface ToastApi {
+  /**
+   * Display a default toast (neutral styling). Use for status updates
+   * that aren't success, error, info, or warning.
+   *
+   * @example
+   *   toast('Saving draft…')
+   */
+  (message: ToastBody, options?: ToastOptions): void
+  /**
+   * Display a success toast (green accent). Use after a submit
+   * resolves cleanly.
+   *
+   * @example
+   *   toast.success('Subscribed!', { description: values })
+   */
+  success(message: ToastBody, options?: ToastOptions): void
+  /**
+   * Display an error toast (red accent). Use when a submit rejects
+   * or the server returns an error payload.
+   *
+   * @example
+   *   toast.error('Could not save, try again.')
+   */
+  error(message: ToastBody, options?: ToastOptions): void
+  /**
+   * Display an info toast (blue accent). Use for non-blocking
+   * heads-up messages like schema hints or deprecation notes.
+   *
+   * @example
+   *   toast.info('Heads up: the schema accepts both shapes.')
+   */
+  info(message: ToastBody, options?: ToastOptions): void
+  /**
+   * Display a warning toast (amber accent). Use for non-fatal but
+   * attention-worthy states.
+   *
+   * @example
+   *   toast.warning('Some fields were truncated to fit.')
+   */
+  warning(message: ToastBody, options?: ToastOptions): void
+}
+
+/**
+ * Display a toast notification in the docs viewport.
+ *
+ * Playground-only convenience: \`toast\` is injected by the
+ * \`DemoReplEditor\` component and routes through \`postMessage\` to
+ * a \`vue-sonner\` \`<Toaster>\` mounted in the parent docs page.
+ * Outside the playground iframe it does not exist.
+ *
+ * @example
+ *   toast.success('Subscribed!', { description: values })
+ *   toast.error('Submit blocked, check the errors above.')
+ *   toast.info('Heads up: the schema accepts both shapes.')
+ */
+declare const toast: ToastApi
+`
+  void store
+    .setFiles(
+      {
+        'src/App.vue': props.initialSource,
+        'src/playground-globals.d.ts': TOAST_AMBIENT_DTS,
+        'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
+      },
+      'src/App.vue'
+    )
+    .then(() => {
+      const dts = store.files['src/playground-globals.d.ts']
+      if (dts) dts.hidden = true
+    })
 
   // Replace @vue/repl's native `confirm(...)` prompt on file deletion
   // with a styled modal. The store's `deleteFile` (defined in

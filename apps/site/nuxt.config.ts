@@ -4,7 +4,7 @@ import { logger as nuxtKitLogger } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
 import attaformModule from '../../src/nuxt'
 import { rendererRich, transformerTwoslash } from '@shikijs/twoslash'
-import type { Logger, LogOptions } from 'vite'
+import type { Logger, LogOptions, Plugin as VitePlugin } from 'vite'
 import attaformPkg from '../../package.json'
 import vuePkg from 'vue/package.json'
 import zodPkg from 'zod/package.json'
@@ -20,6 +20,57 @@ import zodV3Pkg from 'zod-v3/package.json'
 // `node_modules/.pnpm/...` tree (see the `vite.server.fs.allow`
 // block below for the full rationale).
 const monorepoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+
+// Replace Vite's `vite:asset-import-meta-url` plugin filter with a
+// linear-time substring check. The built-in filter shape (verified at
+// `vite@7.3.3/dist/node/chunks/config.js:27704`) is:
+//
+//   transform: {
+//     filter: {
+//       id: { exclude: [...] },
+//       code: /new\s+URL.+import\.meta\.url/s
+//     }
+//   }
+//
+// The `.+` between `new\s+URL` and `import\.meta\.url`, combined with
+// the `s` (dotAll) flag, catastrophic-backtracks on dense minified
+// content >5 MB. V8's regex engine blows its internal stack and
+// throws `Maximum call stack size exceeded` from `pattern.test`.
+// Concrete trip-wire: `@vue/repl/monaco-editor`'s 7.2 MB prebundle,
+// surfacing as an `Internal server error` on the first `/play/<slug>`
+// page load. Captured via filter-trace instrumentation as
+// `[filter-trace] THREW plugin=vite:asset-import-meta-url`.
+//
+// The handler does its own precise position-aware matching inside via
+// a more specific regex (`assetImportMetaUrlRE`), so the filter only
+// needs to gate the broad "could this contain such a pattern" check.
+// Replacing the regex with the literal string `'import.meta.url'`
+// triggers `String.prototype.includes` (linear-time, no backtracking)
+// in Vite's `patternToCodeFilter`. Files that have `import.meta.url`
+// but not `new URL(...)` will reach the handler, do their own regex
+// match, find nothing, and return undefined — a no-op transform that
+// costs O(file-length) per occurrence but never overflows.
+//
+// Caching note: Vite caches filters per plugin in a WeakMap keyed by
+// the plugin object identity, built lazily on first transform call.
+// Mutating `plugin.transform.filter.code` at `configResolved` time
+// happens before any transform fires, so Vite reads the patched
+// filter on first cache fill. `enforce: 'post'` ensures this runs
+// after all upstream plugins have been resolved into the config.
+//
+// An upstream fix to Vite's regex would benefit every consumer with
+// a megabyte-class dep in their graph; this local patch is the
+// version that lands today.
+const fixViteAssetImportMetaUrlFilter: VitePlugin = {
+  name: 'attaform:fix-vite-asset-import-meta-url-filter',
+  enforce: 'post',
+  configResolved(resolved) {
+    const target = resolved.plugins.find((p) => p?.name === 'vite:asset-import-meta-url')
+    if (!target?.transform || typeof target.transform === 'function') return
+    if (target.transform.filter == null) return
+    target.transform.filter.code = 'import.meta.url'
+  },
+}
 
 // Two warning families fire on every build, are not ours to fix,
 // and add nothing actionable for a maintainer reading the logs:
@@ -519,7 +570,7 @@ export default defineNuxtConfig({
     ],
   },
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss(), fixViteAssetImportMetaUrlFilter],
     // Source-resolve the workspace `attaform` package for the docs
     // site's Vite environments. Without these aliases, every
     // `import { useForm } from 'attaform/zod'` (and every other
@@ -637,35 +688,30 @@ export default defineNuxtConfig({
       // explicitly is the only way to guarantee the race window
       // closes regardless of upstream changes.
       holdUntilCrawlEnd: true,
-      // `@vue/repl` + `@vue/repl/monaco-editor` are prebundled
-      // together. The monaco-editor entry is a 7.2 MB minified bundle;
-      // serving it raw through `/_nuxt/@fs/...` runs it through Vite's
-      // plugin transform pipeline, where the per-plugin recursion on a
-      // file this large overflows the JS call stack and the server
-      // responds 404 (`Internal server error: Maximum call stack size
-      // exceeded` from `EnvironmentPluginContainer.transform`).
+      // `@vue/repl` + `@vue/repl/monaco-editor` are prebundled together
+      // so Vite's boot crawl finds them even though the editor wrapper
+      // itself only mounts inside a `.client.vue` component (which the
+      // SSR scan skips). Without pre-declaring, the first `/play/<slug>`
+      // navigation discovers the deps mid-session, the optimizer
+      // rebundles, the browser hash flips, and any in-flight
+      // prebundled-dep request 504s with "Outdated Optimize Dep".
       //
-      // Prebundling routes both entries through esbuild instead. Esbuild
-      // is C++ and handles large bundles without recursion; the output
-      // lands at `node_modules/.vite/deps/_vue_repl_*.js`, served as
-      // pre-processed static chunks with no further plugin chain.
+      // Pinning both into one prebundle batch keeps a single vue
+      // identity across the editor wrapper, the Monaco preset, and the
+      // docs site itself — `EditorContainer.provide(propsKey, …)` and
+      // `MonacoEditor.inject(propsKey)` need referentially-equal
+      // InjectionKey symbols across module boundaries.
       //
-      // Both entries are listed together for a second reason: if one
-      // prebundles and the other doesn't, they resolve `vue` through
-      // different module graphs (Vite's prebundled vue chunk vs. raw
-      // node_modules vue). The EditorContainer's `provide(propsKey, …)`
-      // and Monaco's `inject(propsKey)` then use different InjectionKey
-      // symbols and Monaco renders as a no-op. Pinning both into the
-      // same prebundle batch guarantees a single shared vue.
-      //
-      // The previous concern about prebundling — `@vue/repl/monaco-editor`'s
-      // worker URLs (`new URL("assets/...", import.meta.url)`) not
-      // resolving against prebundled siblings — is moot. The Worker
-      // constructor monkey-patch in `components/demo/DemoReplEditor.client.vue`
-      // rewrites every `assets/(editor|vue).worker-*.js` URL to the
-      // static copies under `/lib/repl-workers/`, regardless of which
-      // path the worker URL was constructed against. Prebundling moves
-      // the entry, the worker URL changes too, the regex still matches.
+      // The 7.2 MB minified Monaco preset previously blew V8's regex
+      // stack inside Vite's built-in `vite:asset-import-meta-url`
+      // plugin filter (`/new\s+URL.+import\.meta\.url/s`). The
+      // `fixViteAssetImportMetaUrlFilter` plugin declared above
+      // replaces that regex with a linear-time string check at
+      // `configResolved` time, so any megabyte-class prebundle stays
+      // safe through Vite's filter pass. The original Vite intent
+      // (gate the handler on files that could contain
+      // `new URL(..., import.meta.url)`) is preserved — the handler
+      // still does precise matching internally.
       include: [
         'lucide-vue-next',
         '@vue/repl',

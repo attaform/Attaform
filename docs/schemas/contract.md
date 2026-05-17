@@ -143,14 +143,7 @@ For projects still on Zod v3, swap the import: `attaform/zod-v3`. The consumer-f
 
 ## Schema-agnostic core
 
-The core package (`attaform`) doesn't import Zod. It consumes any object that implements `AbstractSchema`: 12 required methods plus 2 optional hooks covering identity, defaults, shape introspection, and validation.
-
-Most consumers never touch this contract directly; the Zod adapters cover the bulk of real-world schemas. Reach for [Custom schema adapters](/docs/reference/custom-adapters) when:
-
-- You're on Valibot, ArkType, Effect Schema, or another schema library the official adapters don't cover.
-- You have a hand-rolled validator whose output you want to flow through a reactive form.
-
-The contract is small and stable: `fingerprint`, `getDefaultValues`, `validateAtPath`, plus the shape-introspection helpers the proxy needs.
+The core package (`attaform`) doesn't import Zod. It consumes any object that implements `AbstractSchema`, a small contract covering identity, defaults, shape introspection, and validation. The Zod adapters cover the bulk of real-world schemas; reach for [`AbstractSchema`](/docs/schemas/abstract-schema) directly when you're wiring Valibot, ArkType, Effect Schema, or a hand-rolled validator.
 
 ## Refinements vs. transforms
 

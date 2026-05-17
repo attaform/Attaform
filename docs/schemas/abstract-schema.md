@@ -1,6 +1,6 @@
 ---
-title: Custom schema adapters
-description: Implement the AbstractSchema contract — 12 required methods plus 2 optional hooks — to wire any schema library into Attaform. Identity, defaults, shape introspection, validation.
+title: AbstractSchema
+description: The schema-agnostic contract the core consumes (12 required methods plus 2 optional hooks) covering identity, defaults, shape introspection, and validation. Implement it to wire any schema library into Attaform.
 metaRows:
   - label: Category
     value: Reference
@@ -13,14 +13,14 @@ metaRows:
     value: 2 (getFieldMetaAtPath, needsAsyncValidation)
 ---
 
-# Custom schema adapters
+# AbstractSchema
 
 > Attaform is schema-agnostic at the core. Wire any schema library (Valibot, ArkType, Effect-Schema, a hand-rolled validator) into the runtime by implementing the `AbstractSchema` contract.
 
 ::docs-meta-table
 ::
 
-This page is the contract reference. The Zod adapters under `attaform/zod` and `attaform/zod-v3` are reference implementations — read their source when you need a concrete example of any of the methods below.
+This page is the contract reference. The Zod adapters under `attaform/zod` and `attaform/zod-v3` are reference implementations; read their source when you need a concrete example of any of the methods below.
 
 ## The contract
 
@@ -54,7 +54,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
 }
 ```
 
-Twelve required methods. Two optional hooks. The runtime fills in sensible fallbacks for the optional hooks — omit them when your library doesn't model the feature.
+Twelve required methods. Two optional hooks. The runtime fills in sensible fallbacks for the optional hooks, so omit them when your library doesn't model the feature.
 
 ## Identity
 
@@ -65,7 +65,7 @@ Structural signature of the schema. Two schemas with the same shape return the s
 - Catch shared-key mismatches in dev (two `useForm({ key: 'x' })` calls with different schemas warn).
 - Key persisted drafts so schema changes auto-invalidate stale drafts.
 
-Must NOT throw. If it does, the library catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback — opaque fingerprints disable schema-change auto-invalidation for persisted drafts (the key never changes), so prefer a real structural hash if your library exposes the metadata.
+Must NOT throw. If it does, the library catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback; opaque fingerprints disable schema-change auto-invalidation for persisted drafts (the key never changes), so prefer a real structural hash if your library exposes the metadata.
 
 ## Defaults
 
@@ -85,15 +85,15 @@ Returns the schema-prescribed default at a structured path. The runtime calls th
 - Optional / nullable around a primitive → `undefined` / `null` (preserve the wrapper's semantic).
 - `.default(x)` wrapper → `x`.
 
-Return `undefined` for paths that don't exist in the schema. Must NOT throw — the runtime skips filling on `undefined`.
+Return `undefined` for paths that don't exist in the schema. Must NOT throw; the runtime skips filling on `undefined`.
 
 ## Shape introspection
 
 ### `arrayShapeAtPath(path: Path): number | null | undefined`
 
-- `number` — tuple's fixed length.
-- `null` — unbounded array.
-- `undefined` — non-array path.
+- `number`: tuple's fixed length.
+- `null`: unbounded array.
+- `undefined`: non-array path.
 
 The runtime caches the answer to skip per-write probe loops on array writes.
 
@@ -111,7 +111,7 @@ List of candidate sub-schemas at `path`. Multiple results are expected for discr
 
 ### `getSlimPrimitiveTypesAtPath(path: Path): Set<SlimPrimitiveKind>`
 
-Set of primitive `typeof`-style kinds the path's leaf accepts at write time (`'string'`, `'number'`, `'boolean'`, `'bigint'`, …). Drives the slim-primitive write gate. Return a permissive fallback (`new Set(['string', 'number', 'boolean', 'bigint', 'symbol', 'date', 'undefined', 'null'])`) for paths the schema doesn't declare — over-rejecting writes breaks dynamic / SSR rehydration.
+Set of primitive `typeof`-style kinds the path's leaf accepts at write time (`'string'`, `'number'`, `'boolean'`, `'bigint'`, …). Drives the slim-primitive write gate. Return a permissive fallback (`new Set(['string', 'number', 'boolean', 'bigint', 'symbol', 'date', 'undefined', 'null'])`) for paths the schema doesn't declare; over-rejecting writes breaks dynamic / SSR rehydration.
 
 ### `getUnionDiscriminatorAtPath(path: Path): UnionDiscriminatorContext | undefined`
 
@@ -129,7 +129,7 @@ Must NOT throw. Return `{ success: false, errors }` for validation failures.
 
 ### `getFieldMetaAtPath(path: Path): ResolvedFieldMeta` _(optional)_
 
-Resolves schema-attached metadata (label, description, placeholder, full payload). Drives `form.fields(p).label` / `.description` / `.placeholder` / `.meta`. Omit if your library doesn't model metadata yet — consumers see humanized fallbacks.
+Resolves schema-attached metadata (label, description, placeholder, full payload). Drives `form.fields(p).label` / `.description` / `.placeholder` / `.meta`. Omit if your library doesn't model metadata yet, and consumers see humanized fallbacks.
 
 ### `needsAsyncValidation(): boolean` _(optional)_
 
@@ -235,12 +235,12 @@ import { myLibAdapter } from './my-adapter'
 const form = useForm({ schema: myLibAdapter(mySchema) })
 ```
 
-## Zod-v3 vs. Zod-v4 — an introspection asymmetry
+## Zod-v3 vs. Zod-v4: an introspection asymmetry
 
-Worth knowing if you're studying the reference implementations: the v4 adapter exports `kindOf`, `ZodKind`, and `assertZodVersion` for runtime introspection of Zod nodes; the v3 adapter exports `isZodSchemaType` but not the broader set. Both adapters implement the full `AbstractSchema` contract — the difference is in the consumer-facing diagnostic helpers above the contract surface. If you're forking a Zod adapter as a starting point, the v4 source is the richer reference; the v3 source is the leaner one.
+Worth knowing if you're studying the reference implementations: the v4 adapter exports `kindOf`, `ZodKind`, and `assertZodVersion` for runtime introspection of Zod nodes; the v3 adapter exports `isZodSchemaType` but not the broader set. Both adapters implement the full `AbstractSchema` contract; the difference is in the consumer-facing diagnostic helpers above the contract surface. If you're forking a Zod adapter as a starting point, the v4 source is the richer reference; the v3 source is the leaner one.
 
 ## Where to next
 
-- [The schema contract](/docs/schemas/contract) — the high-level mental model `AbstractSchema` implements.
-- [Types reference](/docs/reference/types) — every type the contract references.
-- [Entry-point reference](/docs/reference/entry-points) — which subpath ships `AbstractSchema` (the framework-agnostic `attaform`).
+- [The schema contract](/docs/schemas/contract): the high-level mental model `AbstractSchema` implements.
+- [Types reference](/docs/reference/types): every type the contract references.
+- [Entry-point reference](/docs/reference/entry-points): which subpath ships `AbstractSchema` (the framework-agnostic `attaform`).

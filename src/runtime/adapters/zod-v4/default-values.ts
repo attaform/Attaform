@@ -14,6 +14,7 @@ import {
   getObjectShape,
   getTupleItems,
   getUnionOptions,
+  isCoercePrimitive,
   kindOf,
   unwrapInner,
   unwrapLazy,
@@ -53,6 +54,15 @@ function defaultForKind(
   maxDepth: number,
   lazyDepth: number
 ): unknown {
+  // Schema-side input normalizers (`z.coerce.X()` as a coerce-flagged
+  // primitive; `z.preprocess(fn, _)` as a pipe-with-transform-on-in
+  // handled in the 'pipe' branch below) declare a write boundary the
+  // runtime cannot honestly synthesise a default for. Leave the slot
+  // `undefined` so the consumer's `defaultValues` or a later `setValue`
+  // owns what lands in storage. Without this, the walker fell through
+  // to the primitive's slim concrete (`''`, `0`, `false`, …) and
+  // claimed a value the consumer never supplied.
+  if (isCoercePrimitive(schema)) return undefined
   switch (kind) {
     case 'object': {
       const shape = getObjectShape(schema as z.ZodObject)
@@ -81,16 +91,17 @@ function defaultForKind(
     }
     case 'pipe': {
       // `z.preprocess(fn, inner)` desugars to a pipe whose `in` is a
-      // ZodTransform (the user-supplied `fn`) and whose `out` is the
-      // inner schema. The "real" schema we want to draw a default from
-      // is the side that ISN'T a transform — `out` for preprocess,
-      // `in` for `.transform()` (where the source schema is on the
-      // in side and the transform itself is on the out side). Falling
-      // through to the transform side returns `undefined` and breaks
-      // the storage invariant (blank-path synthesis would leave the
-      // slot at `undefined` instead of the inner-schema's falsy).
-      const out = unwrapPipeOut(schema)
+      // ZodTransform (the user-supplied `fn`); the input shape is
+      // genuinely unknown until the consumer writes. Match the
+      // coerce-primitive policy above and return `undefined` so the
+      // slot waits for `defaultValues` or a `setValue` rather than
+      // synthesising a value the consumer never supplied.
       const inn = unwrapPipeIn(schema)
+      if (inn !== undefined && kindOf(inn) === 'transform') return undefined
+      // `.transform(fn)` (transform on output) and generic / codec
+      // pipes still have a real source on the input side; peel to it
+      // for the source default.
+      const out = unwrapPipeOut(schema)
       const real =
         inn !== undefined && kindOf(inn) !== 'transform'
           ? inn
@@ -356,6 +367,21 @@ export function getDefaultValuesFromZodSchema<Form>(
       | string
       | number
     )[]
+    // Schema-side input normalizers (preprocess pipes, coerce-flagged
+    // primitives) are slim-stripped, so the slim-schema sees only the
+    // post-strip leaf and complains when storage is `undefined`. Look
+    // up the ORIGINAL schema at the path; if it's such a wrapper, the
+    // `undefined` is intentional under the no-write-mutation contract
+    // and we leave it alone.
+    const originalCandidate = getNestedZodSchemasAtPath(schema, pathSegments, maxRecursionDepth)[0]
+    if (originalCandidate !== undefined) {
+      if (isCoercePrimitive(originalCandidate)) continue
+      if (kindOf(originalCandidate) === 'pipe') {
+        const pipeIn = unwrapPipeIn(originalCandidate)
+        if (pipeIn !== undefined && kindOf(pipeIn) === 'transform') continue
+      }
+    }
+
     // Pass the structured path directly — joining with '.' would merge
     // a literal-dot key (`['profile.name']`) into two segments and
     // target the wrong sub-schema during fix-up.

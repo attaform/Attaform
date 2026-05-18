@@ -444,13 +444,15 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
     expectTypeOf(formT.values.trimmed).toEqualTypeOf<unknown>()
   })
 
-  it('z.preprocess(fn, z.string()) — mount storage holds the inner-schema falsy', () => {
+  it('z.preprocess(fn, z.string()) — mount storage defaults to undefined', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: preprocessSchema, key: uniqueKey('pre-synth') })
     )
     try {
-      expect(api.values.trimmed).toBe('')
-      expect(typeof api.values.trimmed).toBe('string')
+      // The write boundary is `unknown`, so the runtime can't honestly
+      // synthesise a default. The slot waits for `defaultValues` or a
+      // `setValue` instead.
+      expect(api.values.trimmed).toBeUndefined()
     } finally {
       unmount()
     }
@@ -470,7 +472,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
       useForm({ schema: throwyPreprocess, key: uniqueKey('pre-throw') })
     )
     try {
-      expect(api.values.v).toBe('')
+      expect(api.values.v).toBeUndefined()
       // setValue runs without invoking the preprocess fn. Raw 'anything'
       // lands in storage; the throw would only surface at safeParse time.
       api.setValue('v', 'anything')

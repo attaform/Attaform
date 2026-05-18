@@ -2729,12 +2729,23 @@ export type FieldState<Value = unknown> = {
  * boundaries (array indices, record keys) re-introduce `| undefined`
  * via the structural index-signature channels.
  *
+ * Preprocess / coerce leaves (StorageShape = `unknown`) are
+ * statically known too — the IsUnknown filter keeps them on the
+ * non-optional branch instead of being swept into the dynamic
+ * `| undefined` arm by `undefined extends unknown`.
+ *
  * Implementation-detail surface — consumers reach for `FieldStateMap`
  * or `FormErrorsSurface` instead.
  */
+type IsUnknown<T> = IsAny<T> extends true ? false : unknown extends T ? true : false
+
 export interface LeafSchemeFor<T> {
   field: FieldState<T>
-  errors: undefined extends T ? readonly ValidationError[] | undefined : readonly ValidationError[]
+  errors: IsUnknown<T> extends true
+    ? readonly ValidationError[]
+    : undefined extends T
+      ? readonly ValidationError[] | undefined
+      : readonly ValidationError[]
 }
 
 /**

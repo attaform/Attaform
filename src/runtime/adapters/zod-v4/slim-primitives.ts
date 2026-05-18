@@ -20,7 +20,8 @@ import {
   kindOf,
   unwrapInner,
   unwrapLazy,
-  unwrapPipe,
+  unwrapPipeIn,
+  unwrapPipeOut,
 } from './introspect'
 
 export const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> =
@@ -169,8 +170,19 @@ function walk(
       return inner === undefined ? PERMISSIVE : walk(inner, lazyDepth, maxDepth)
     }
     case 'pipe': {
-      // Use the INPUT side: writes are pre-transform values.
-      const inner = unwrapPipe(schema)
+      // `z.preprocess(fn, inner)` and `z.coerce.X()` (pipe-with-transform-
+      // on-input) and `inner.transform(fn)` (transform-on-output) both
+      // serialize as ZodPipe, but the "storage shape" lives on opposite
+      // sides. For preprocess / coerce, the input side IS the transform
+      // (shapeless, slim-set PERMISSIVE) and the inner schema sits on
+      // the output side. For `.transform`, the input side is the source
+      // schema (the pre-transform value). Pick the non-transform side
+      // so `isLeafAtPath` and the directive-layer coerce target both
+      // resolve against a real shape.
+      const pipeIn = unwrapPipeIn(schema)
+      const pipeOut = unwrapPipeOut(schema)
+      const inner =
+        pipeIn !== undefined && kindOf(pipeIn) === 'transform' ? pipeOut : (pipeIn ?? pipeOut)
       return inner === undefined ? PERMISSIVE : walk(inner, lazyDepth, maxDepth)
     }
     case 'lazy': {

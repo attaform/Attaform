@@ -2784,11 +2784,11 @@ describe('chaos — z.coerce at the discriminator', () => {
     expect(valid).toBe(true)
   })
 
-  it('z.coerce.string() at a non-DU leaf turns numeric writes into strings', async () => {
+  it('z.coerce.string() at a non-DU leaf stores the raw write verbatim', async () => {
     const schema = z.object({ name: z.coerce.string() })
     type Api = Omit<UseFormReturnType<z.output<typeof schema>>, 'setValue'> & {
       setValue: (path: string, value: unknown) => boolean
-      values: { name: string }
+      values: { name: unknown }
     }
     const handle: { api?: Api } = {}
     const App = defineComponent({
@@ -2809,11 +2809,11 @@ describe('chaos — z.coerce at the discriminator', () => {
     api.setValue('name', 42)
     await nextTick()
 
-    // Either the gate rejected (storage stays '') or coerce kicks in
-    // (storage becomes '42'). The bug case: storage holds the number
-    // 42 and `typeof api.values.name === 'number'` despite the schema
-    // promising `string`.
-    expect(typeof api.values.name).toBe('string')
+    // Under the no-write-mutation contract, schema-side coerce runs at
+    // parse / submit, not at the write boundary. The raw number 42
+    // lands in storage; safeParse turns it into the string '42' when
+    // the consumer calls validate / handleSubmit.
+    expect(api.values.name).toBe(42)
   })
 })
 
@@ -2824,7 +2824,7 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it("preprocess that defaults `null` to a valid variant doesn't smuggle null into storage", async () => {
+  it('preprocess wrapping a DU: raw null lands in storage; coalescing fires at parse', async () => {
     const inner = z.discriminatedUnion('channel', [
       z.object({ channel: z.literal('email'), address: z.string() }),
       z.object({ channel: z.literal('sms'), number: z.string() }),
@@ -2834,7 +2834,7 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     })
     type Api = Omit<UseFormReturnType<z.output<typeof schema>>, 'setValue'> & {
       setValue: (path: string, value: unknown) => boolean
-      values: { notify: { channel: string } & Record<string, unknown> }
+      values: { notify: unknown }
     }
     const handle: { api?: Api } = {}
     const App = defineComponent({
@@ -2852,27 +2852,20 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     apps.push(app)
     const api = handle.api as Api
 
-    // Try writing null at the union path. Either rejected by slim-gate
-    // (preprocess hasn't run yet) or smuggled past (preprocess turned
-    // it into the email variant). The bug case: `null` reaches storage.
+    // Under the no-write-mutation contract, the preprocess fn runs at
+    // parse / submit only. The raw null lands in storage at the union
+    // path; the fallback variant materialises during safeParse.
     api.setValue('notify', null)
     await nextTick()
 
-    expect(api.values.notify).not.toBeNull()
-    const notify = api.values.notify as AnyNotify
-    const valid =
-      (notify.channel === 'email' && typeof notify.address === 'string') ||
-      (notify.channel === 'sms' && typeof notify.number === 'string')
-    expect(valid).toBe(true)
+    expect(api.values.notify).toBeNull()
   })
 
-  it("v3: preprocess that defaults `null` to a valid variant doesn't smuggle null into storage", async () => {
-    // Zod v3 parity for the v4 B6 fix above. v3 expresses
-    // `z.preprocess(fn, inner)` as a ZodEffects whose
-    // `_def.effect.type === 'preprocess'`; the v3 adapter's
-    // `normalizeWriteValueAtPath` detects it and applies the fn at
-    // write time, so storage holds the post-preprocess shape — not
-    // the raw input.
+  it('v3: preprocess wrapping a DU: raw null lands in storage', async () => {
+    // v3 parity. Zod v3 expresses `z.preprocess(fn, inner)` as a
+    // ZodEffects with `_def.effect.type === 'preprocess'`; the v3
+    // adapter's `isPreprocessOrCoerceLeaf` predicate fires at the
+    // wrapper and the slim-gate accepts the raw write verbatim.
     const inner = zV3.discriminatedUnion('channel', [
       zV3.object({ channel: zV3.literal('email'), address: zV3.string() }),
       zV3.object({ channel: zV3.literal('sms'), number: zV3.string() }),
@@ -2896,18 +2889,13 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     apps.push(app)
     const api = handle.api as {
       setValue: (p: string, v: unknown) => boolean
-      values: { notify: { channel: string } & Record<string, unknown> }
+      values: { notify: unknown }
     }
 
     api.setValue('notify', null)
     await nextTick()
 
-    expect(api.values.notify).not.toBeNull()
-    const notify = api.values.notify
-    const valid =
-      (notify['channel'] === 'email' && typeof notify['address'] === 'string') ||
-      (notify['channel'] === 'sms' && typeof notify['number'] === 'string')
-    expect(valid).toBe(true)
+    expect(api.values.notify).toBeNull()
   })
 })
 

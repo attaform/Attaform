@@ -269,37 +269,24 @@ export type AbstractSchema<Form, GetValueFormType> = {
    */
   getEmptyValueAtPath(path: Path): unknown
   /**
-   * Give the schema a chance to normalize the consumer's write value
-   * before it lands in storage / hits the slim-primitive gate. Each
-   * schema library exposes this concept differently — Zod calls it
-   * `z.preprocess(fn, inner)`, Yup calls it `.transform()`, Valibot
-   * spells it `pipe(transform(fn), inner)` — but the shape is the
-   * same: "this input shape gets coerced into that storage shape at
-   * the boundary."
+   * Reports whether `path` resolves to (or descends through) a
+   * schema-side normalizer that runs at parse, not at the write
+   * boundary. In Zod v4 that's `z.preprocess(fn, inner)` and
+   * `z.coerce.X()` (both desugar to `ZodPipe<ZodTransform, inner>`);
+   * in Zod v3 it's `ZodEffects` with `_def.effect.type === 'preprocess'`.
    *
-   * Runs SYNCHRONOUSLY at the write boundary so storage holds the
-   * post-normalization shape. Without this, a schema like `notify:
-   * z.preprocess(v => v == null ? defaultVar : v, innerDU)` would
-   * let the consumer write `null` and lock storage into `null` —
-   * because the gate sees the raw input (which the preprocess wrapper
-   * accepts as `unknown`) and storage holds a shape no variant
-   * matches.
+   * Consulted by the slim-primitive write gate. When true at a path,
+   * the gate accepts the consumer's raw value verbatim and stops
+   * walking children — storage holds the user's input, and the
+   * normalizer fires during `safeParse` (handleSubmit / validate /
+   * validateAsync), not at `setValue` time.
    *
-   * Adapters MUST:
-   *   - Return `value` unchanged when no normalization is declared at
-   *     the path.
-   *   - Return `value` unchanged when the user's normalization fn
-   *     returns a `Promise` (async coercion can't run at write time —
-   *     validation handles it during parse).
-   *   - Let user-thrown errors propagate (the user wrote the fn; we
-   *     just tag the path in the wrapper error for diagnostics).
-   *
-   * Normalization runs when `path` equals the wrapper's exact
-   * location. Writes deeper than the wrapper bypass it (a wrapper
-   * over the whole subtree can't be invoked from a partial leaf
-   * write).
+   * Path-prefix semantic: returns true if ANY ancestor of `path`
+   * resolves to such a wrapper, so descendants under a preprocess-
+   * wrapped container also short-circuit the gate. Adapters cache
+   * the result by canonicalized path key.
    */
-  normalizeWriteValueAtPath(value: unknown, path: Path): unknown
+  isPreprocessOrCoerceLeaf(path: Path): boolean
   /**
    * Distinguish a tuple (fixed-length, position-typed) from an
    * unbounded array at `path`. The runtime calls this on every

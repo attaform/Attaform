@@ -34,13 +34,12 @@ import {
   getSetValueType,
   getTupleItems,
   getUnionOptions,
+  isCoercePrimitive,
   kindOf,
-  readTransformFn,
   unwrapInner,
   unwrapLazy,
   unwrapPipe,
   unwrapPipeIn,
-  unwrapPipeOut,
 } from './introspect'
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
@@ -272,6 +271,10 @@ export function zodV4Adapter<
     // (one per `useForm()` call). Memoises the slim-primitive walk so the
     // leaf-aware proxy traps don't re-walk the schema on every read.
     const leafCache = new Map<PathKey, boolean>()
+    // Per-adapter cache for the preprocess/coerce predicate. The slim-
+    // primitive write gate consults it at every level of value-tree
+    // descent; the prefix walk is cheap but adds up across deep writes.
+    const preprocessOrCoerceCache = new Map<PathKey, boolean>()
     // Memoised one-shot walk; `needsAsyncValidation` is queried at
     // construction and possibly again from devtools, so a single tree
     // traversal earns its keep across the adapter's lifetime.
@@ -369,62 +372,6 @@ export function zodV4Adapter<
         // a partially-valid initial state is preferable to a mount-time
         // exception. Matches v3's lax semantics.
         return { data, errors: undefined, success: true, formKey }
-      },
-
-      normalizeWriteValueAtPath(value, path) {
-        // Zod expresses input normalization as `z.preprocess(fn,
-        // inner)`, which desugars to a pipe whose `def.in` is a bare
-        // ZodTransform (no schema constraint) and `def.out` is the
-        // inner schema. We walk to the schema at `path` and apply
-        // each preprocess wrapper found there, descending through
-        // nested stacks. Post-validation transforms (e.g.
-        // `z.string().transform(fn)`) have `def.out` as the transform
-        // and `def.in` as the real schema — those aren't input
-        // normalizations and are left untouched.
-        const candidates =
-          path.length === 0
-            ? [rootSchema]
-            : getNestedZodSchemasAtPath(rootSchema, path, maxRecursionDepth)
-        // Multi-candidate paths (union descent) — pick the first; the
-        // adapter's first-success convention matches getDefaultAtPath.
-        const [first] = candidates
-        if (first === undefined) return value
-        let current: z.ZodType = first
-        let result: unknown = value
-        // Bounded loop matches unwrapToDiscriminatedUnion's 64-step
-        // cap — a deeper preprocess stack is almost certainly a
-        // recursive z.lazy cycle, not legitimate.
-        for (let i = 0; i < 64; i++) {
-          if (kindOf(current) !== 'pipe') break
-          const pipeIn = unwrapPipeIn(current)
-          if (pipeIn === undefined || kindOf(pipeIn) !== 'transform') break
-          const fn = readTransformFn(pipeIn)
-          if (typeof fn !== 'function') break
-          let next: unknown
-          try {
-            next = fn(result)
-          } catch (cause) {
-            // User's normalization fn threw. Don't silently swallow —
-            // wrap with a path-tagged message and re-raise so the
-            // caller (setValueAtPath) sees it. The user wrote the
-            // fn, they own the bug; we just make it diagnosable.
-            throw new Error(
-              `[attaform] input normalization at path "${path.join('.')}" threw — write rejected.`,
-              { cause }
-            )
-          }
-          if (next instanceof Promise) {
-            // Async preprocess can't run at write time (setValue is
-            // sync). Leave the input as-is; validation will run the
-            // preprocess properly during parse.
-            return value
-          }
-          result = next
-          const out = unwrapPipeOut(current)
-          if (out === undefined) break
-          current = out
-        }
-        return result
       },
 
       getDefaultAtPath(path) {
@@ -546,6 +493,42 @@ export function zodV4Adapter<
           !prim.has('set')
         leafCache.set(cacheKey, isLeaf)
         return isLeaf
+      },
+
+      isPreprocessOrCoerceLeaf(path): boolean {
+        // Walks prefixes of `path` looking for either shape Zod v4 uses
+        // for schema-side input normalizers:
+        //   - `z.preprocess(fn, inner)` desugars to `ZodPipe<ZodTransform, inner>`.
+        //   - `z.coerce.X()` is a primitive schema (ZodString / ZodNumber /
+        //     etc.) with `def.coerce === true` (NOT a pipe).
+        // Returns true at such a node OR anywhere underneath it; the
+        // slim-primitive gate uses this to accept raw consumer writes
+        // verbatim throughout that subtree.
+        const cacheKey = canonicalizePath(path).key
+        const cached = preprocessOrCoerceCache.get(cacheKey)
+        if (cached !== undefined) return cached
+        let hit = false
+        for (let i = 0; i <= path.length && !hit; i++) {
+          const prefix = path.slice(0, i)
+          const candidates: z.ZodType[] =
+            prefix.length === 0
+              ? [rootSchema]
+              : getNestedZodSchemasAtPath(rootSchema, prefix, maxRecursionDepth)
+          for (const candidate of candidates) {
+            if (isCoercePrimitive(candidate)) {
+              hit = true
+              break
+            }
+            if (kindOf(candidate) !== 'pipe') continue
+            const pipeIn = unwrapPipeIn(candidate)
+            if (pipeIn !== undefined && kindOf(pipeIn) === 'transform') {
+              hit = true
+              break
+            }
+          }
+        }
+        preprocessOrCoerceCache.set(cacheKey, hit)
+        return hit
       },
 
       isRequiredAtPath(path): boolean {

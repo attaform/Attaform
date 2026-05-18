@@ -82,6 +82,10 @@ interface ZodInternalShape {
     // shape internally — `z.preprocess(fn, inner)` desugars to a pipe
     // whose `def.in` is a ZodTransform with `def.transform = fn`).
     transform?: unknown
+    // `z.coerce.X()` in Zod v4 is a primitive schema (ZodString /
+    // ZodNumber / etc.) with `def.coerce === true`. It is NOT a pipe;
+    // the flag drives Zod's internal `safeParse` to cast the input.
+    coerce?: boolean
   }
 }
 
@@ -246,23 +250,20 @@ export function unwrapPipeIn(schema: z.ZodType): z.ZodType | undefined {
   return def?.in as z.ZodType | undefined
 }
 
+/**
+ * Detect `z.coerce.X()` — a primitive schema (ZodString / ZodNumber /
+ * etc.) carrying `def.coerce === true`. Zod v4 does NOT wrap coerce in
+ * a pipe; the flag drives `safeParse` to cast the input. Returns true
+ * for any schema whose def opted into coerce, regardless of kind.
+ */
+export function isCoercePrimitive(schema: z.ZodType): boolean {
+  return readDef(schema)?.coerce === true
+}
+
 /** Output side of a pipe — the inner schema in `z.preprocess(fn, inner)`. */
 export function unwrapPipeOut(schema: z.ZodType): z.ZodType | undefined {
   const def = readDef(schema)
   return def?.out as z.ZodType | undefined
-}
-
-/**
- * Extract the user-supplied preprocess function from a ZodTransform.
- * `z.preprocess(fn, inner)` desugars to `z.pipe(z.transform(fn), inner)`;
- * the transform's `def.transform` is the original `fn`. Returns
- * `undefined` for non-transform schemas.
- */
-export function readTransformFn(schema: z.ZodType): ((input: unknown) => unknown) | undefined {
-  const def = readDef(schema) as { transform?: unknown } | undefined
-  return typeof def?.transform === 'function'
-    ? (def.transform as (input: unknown) => unknown)
-    : undefined
 }
 
 /**

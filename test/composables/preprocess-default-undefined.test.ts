@@ -106,4 +106,42 @@ describe('preprocess / coerce leaves default to undefined when no defaultValues 
 
     expect(api.values.url).toBe('example.com')
   })
+
+  it('z.preprocess wrapping z.string().default(N): storage honors the schema default', () => {
+    const schema = z.object({
+      url: z.preprocess((v) => v, z.string().default('https://attaform.dev')),
+    })
+    const { api, unmount } = mountForm(() =>
+      useForm({ schema, key: uniqueKey('pp-default-inner-default') })
+    )
+    unmounts.push(unmount)
+
+    expect(api.values.url).toBe('https://attaform.dev')
+  })
+
+  it('z.coerce.number().default(N): storage honors the schema default', () => {
+    const schema = z.object({ count: z.coerce.number().default(42) })
+    const { api, unmount } = mountForm(() =>
+      useForm({ schema, key: uniqueKey('coerce-default-value') })
+    )
+    unmounts.push(unmount)
+
+    expect(api.values.count).toBe(42)
+  })
+
+  it('z.preprocess inner default + consumer defaultValues: consumer write wins', () => {
+    const schema = z.object({
+      url: z.preprocess((v) => v, z.string().default('https://schema-default')),
+    })
+    const { api, unmount } = mountForm(() =>
+      useForm({
+        schema,
+        key: uniqueKey('pp-both-defaults'),
+        defaultValues: { url: 'https://consumer-default' },
+      })
+    )
+    unmounts.push(unmount)
+
+    expect(api.values.url).toBe('https://consumer-default')
+  })
 })

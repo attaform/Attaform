@@ -26,6 +26,33 @@ import { getNestedZodSchemasAtPath } from './path-walker'
 import { getSlimSchema } from './strip'
 
 /**
+ * Walks transparent wrappers (`.optional()` / `.nullable()` / `.readonly()`
+ * / `.catch()`) until it hits a `ZodDefault` or a non-wrapper leaf. Used
+ * by the pipe branch to decide whether a preprocess-wrapped inner
+ * carries a consumer-declared default; if so, the walker walks the
+ * inner normally and honors that default, otherwise it returns
+ * `undefined` so the slot waits for `defaultValues` / `setValue`.
+ *
+ * Bounded loop matches the `unwrapToDiscriminatedUnion` pattern — a
+ * deeper wrapper stack is almost certainly a recursive cycle, not
+ * legitimate schema construction.
+ */
+function hasDeclaredDefaultInChain(schema: z.ZodType): boolean {
+  let current: z.ZodType | undefined = schema
+  for (let i = 0; i < 32; i++) {
+    if (current === undefined) return false
+    const k = kindOf(current)
+    if (k === 'default') return true
+    if (k === 'optional' || k === 'nullable' || k === 'readonly' || k === 'catch') {
+      current = unwrapInner(current)
+      continue
+    }
+    return false
+  }
+  return false
+}
+
+/**
  * Derive a default value for any Zod v4 schema. Mirrors v3's walker but
  * routes through the introspect helpers so `def.*` access stays
  * chokepointed. When `useDefault` is false, `.default(x)` wrappers are
@@ -92,12 +119,25 @@ function defaultForKind(
     case 'pipe': {
       // `z.preprocess(fn, inner)` desugars to a pipe whose `in` is a
       // ZodTransform (the user-supplied `fn`); the input shape is
-      // genuinely unknown until the consumer writes. Match the
-      // coerce-primitive policy above and return `undefined` so the
-      // slot waits for `defaultValues` or a `setValue` rather than
-      // synthesising a value the consumer never supplied.
+      // genuinely unknown until the consumer writes. Two sub-cases:
+      //
+      //   - Inner schema carries a consumer-declared default
+      //     (`z.preprocess(fn, z.string().default('hello'))`): honor
+      //     it. The consumer wrote the default themselves, so storage
+      //     starts there.
+      //   - No declared default on the inner: leave the slot
+      //     `undefined` so `defaultValues` or a later `setValue` owns
+      //     what lands in storage. Synthesising the inner's slim
+      //     concrete (`''` / `0` / etc.) would claim a value the
+      //     consumer never supplied.
       const inn = unwrapPipeIn(schema)
-      if (inn !== undefined && kindOf(inn) === 'transform') return undefined
+      if (inn !== undefined && kindOf(inn) === 'transform') {
+        const out = unwrapPipeOut(schema)
+        if (out !== undefined && hasDeclaredDefaultInChain(out)) {
+          return defaultForKind(kindOf(out), out, useDefault, maxDepth, lazyDepth)
+        }
+        return undefined
+      }
       // `.transform(fn)` (transform on output) and generic / codec
       // pipes still have a real source on the input side; peel to it
       // for the source default.

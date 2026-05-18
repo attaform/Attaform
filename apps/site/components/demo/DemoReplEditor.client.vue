@@ -383,6 +383,16 @@
   // them as real diagnostics. `:show-tsconfig="false"` on the
   // <Repl> prop above keeps this file out of the tab strip — it's
   // configuration, not editable surface.
+  //
+  // `lib` is set explicitly because Volar's in-worker TS service
+  // doesn't reliably auto-resolve the default lib for `target:
+  // 'ESNext'`: `host.getDefaultLibFileName` returns a path, but
+  // the worker's `sys.fileExists` is a browser stub and the lib
+  // snapshots never populate. Without this, globals declared in
+  // lib files (`JSON`, `Math`, `Date`, `Array`, …) resolve to
+  // `any` with TS2304. Explicit `lib: ['ESNext', 'DOM']` causes
+  // Volar to request the libs by name; the TS bundle's embedded
+  // lib content then resolves cleanly.
   const replTsConfig = {
     compilerOptions: {
       allowJs: true,
@@ -394,6 +404,7 @@
       allowImportingTsExtensions: true,
       noUnusedLocals: true,
       noUnusedParameters: true,
+      lib: ['ESNext', 'DOM'],
     },
     vueCompilerOptions: { target: 3.4 },
   }

@@ -57,6 +57,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'errors', to: '/docs/reading-the-form/errors' },
       { title: 'meta', to: '/docs/reading-the-form/meta' },
       { title: 'toRef', to: '/docs/reading-the-form/to-ref' },
+      { title: 'Type safety', to: '/docs/reading-the-form/type-safety' },
     ],
   },
   {

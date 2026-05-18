@@ -45,7 +45,12 @@ import { enforceSensitiveCheck } from './persistence/sensitive-names'
 import { buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
 import { isUnset } from './unset'
-import { substituteUnsetSentinels, walkUnsetSentinels } from './unset-walker'
+import {
+  blankForKind,
+  expandUnsetAt,
+  substituteUnsetSentinels,
+  walkUnsetSentinels,
+} from './unset-walker'
 import { buildValuesProxy } from './values-proxy'
 
 export type BuildFormApiOptions = {
@@ -81,15 +86,6 @@ export type BuildFormApiOptions = {
  * mutating methods and rebinds method/getter access to the underlying
  * Set so internal-slot accesses (e.g. `size`, `has`) keep working.
  */
-function blankForKind(slimDefault: unknown): unknown {
-  if (typeof slimDefault === 'string') return ''
-  if (typeof slimDefault === 'number') return 0
-  if (typeof slimDefault === 'bigint') return 0n
-  if (typeof slimDefault === 'boolean') return false
-  if (slimDefault === null) return null
-  return undefined
-}
-
 function readonlySetSnapshot<T>(source: Iterable<T>): ReadonlySet<T> {
   const snapshot = new Set(source)
   return new Proxy(snapshot, {
@@ -213,51 +209,87 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
         next,
         state.schema as unknown as Parameters<typeof walkUnsetSentinels>[1]
       )
-      const ok = state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
-      if (!ok) return false
-      // Mark each blank path. `setValueAtPath` was just called
-      // with cleaned values, so the gate hook's implicit-unmark would
-      // have removed any prior blank entries for the paths
-      // we just touched — re-add them now.
+      // Pre-add descendant blank marks to `state.blankPaths` so the
+      // upcoming root write's `applyFormReplacement` captures them in
+      // a single history delta alongside the storage change. The
+      // root-level write itself never marks `[]` (no leaf at root),
+      // so `{blank: true}` is not passed. See `writeUnsetAt` for the
+      // matching mark-routing rationale.
       for (const pathKey of walked.paths) {
-        const segments = segmentsForPathKey(pathKey)
-        if (segments === null) continue
-        state.setValueAtPath(
-          segments,
-          state.schema.getDefaultAtPath(segments),
-          withInstanceMeta({ blank: true })
-        )
+        state.blankPaths.add(pathKey)
       }
-      return true
+      return state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
     }
     const segments = canonicalizePath(pathOrValue as string | Path).segments
-    // `unset` at a specific path: resolve the slim default and route
-    // through `setValueAtPath` with `blank: true`. Storage
-    // gets the well-typed default; the path is marked for the
-    // displayValue / required-empty machinery.
-    if (isUnset(maybeValue)) {
+    // `unset` at a specific path — direct or returned by the path-form
+    // callback. Routed through a shared helper so leaves, containers,
+    // and the discriminator-key special case all land the same shape.
+    const writeUnsetAt = (): boolean => {
       // Discriminator-path special case: the slim default at a disc
       // path is the first variant's literal (e.g. 'email'). Seeding
       // that here would silently activate a variant the consumer
       // didn't pick. Use a kind-appropriate primitive blank instead so
       // setValueAtPath's stub branch lands `{ [discKey]: blank }`
-      // with no variant body.
+      // with no variant body. The container `unset` at a DU's PARENT
+      // path is handled by `expandUnsetAt` itself (it stubs the DU
+      // there); this leaf check covers writes targeting the
+      // discriminator directly.
       const last = segments.length > 0 ? segments[segments.length - 1] : undefined
       if (typeof last === 'string') {
         const parent = segments.slice(0, -1)
         const parentDU = state.schema.getUnionDiscriminatorAtPath(parent)
         if (parentDU?.discriminatorKey === last) {
-          const slimDefault = state.schema.getDefaultAtPath(segments)
+          const slimDefault = state.schema.getEmptyValueAtPath(segments)
           const blank = blankForKind(slimDefault)
           return state.setValueAtPath(segments, blank, withInstanceMeta({ blank: true }))
         }
       }
-      return state.setValueAtPath(
+      // General case: `expandUnsetAt` writes the slim primitive at
+      // leaves, the falsy concrete at arrays/tuples/records, the DU
+      // stub `{ [discKey]: kind-blank }` at union containers, and
+      // recurses for bare objects — marking every primitive
+      // descendant. The schema's declared `.default(N)` is
+      // intentionally bypassed — see the matching note in
+      // unset-walker.ts.
+      const blankPaths: PathKey[] = []
+      const expanded = expandUnsetAt(
         segments,
-        state.schema.getDefaultAtPath(segments),
-        withInstanceMeta({ blank: true })
+        state.schema as unknown as Parameters<typeof expandUnsetAt>[1],
+        blankPaths
       )
+      const segmentsKey = canonicalizePath(segments).key
+      // Leaf unset (single mark == write path): combine the value-
+      // write and blank flag into ONE setValueAtPath call so
+      // `applyFormReplacement` captures both the storage change AND
+      // the new blank state in a single history delta. Splitting into
+      // value-write-without-flag + mark-via-flag identity short-
+      // circuits the second call and the blank change escapes history.
+      if (blankPaths.length === 1 && blankPaths[0] === segmentsKey) {
+        return state.setValueAtPath(segments, expanded, withInstanceMeta({ blank: true }))
+      }
+      // Container unset: marks live at descendants. Write the value
+      // first (this fires `applyFormReplacement` and goes through any
+      // DU reshape's blank-trim), then re-mark each blank path via a
+      // same-value setValueAtPath with `{blank: true}` so the gate
+      // hook re-adds them. Reading from storage rather than
+      // `getEmptyValueAtPath` keeps DU discriminator stubs intact:
+      // at a disc path the schema's empty is the FIRST variant literal
+      // (e.g. `'boat'`), which would silently overwrite the kind-blank
+      // `''` the parent write just landed.
+      const ok = state.setValueAtPath(segments, expanded, withInstanceMeta())
+      if (!ok) return false
+      for (const pathKey of blankPaths) {
+        const blankSegments = segmentsForPathKey(pathKey)
+        if (blankSegments === null) continue
+        state.setValueAtPath(
+          blankSegments,
+          state.getValueAtPath(blankSegments),
+          withInstanceMeta({ blank: true })
+        )
+      }
+      return true
     }
+    if (isUnset(maybeValue)) return writeUnsetAt()
     // Path-form callback: when the slot at `segments` is unpopulated,
     // hand the consumer the schema's default at that path instead of
     // `undefined` so `(prev) => prev.first.toUpperCase()` is safe.
@@ -271,15 +303,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       const current = state.getValueAtPath(segments)
       const prev = current === undefined ? state.schema.getDefaultAtPath(segments) : current
       resolvedValue = (maybeValue as (prev: unknown) => unknown)(prev)
-      // Callback returned `unset` — translate the same way as the
-      // direct case above.
-      if (isUnset(resolvedValue)) {
-        return state.setValueAtPath(
-          segments,
-          state.schema.getDefaultAtPath(segments),
-          withInstanceMeta({ blank: true })
-        )
-      }
+      // Callback returned bare `unset` — route through the same
+      // helper as the direct case so leaves, containers, and the
+      // discriminator-key special case all land identically.
+      if (isUnset(resolvedValue)) return writeUnsetAt()
     } else {
       resolvedValue = maybeValue
     }
@@ -301,17 +328,17 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     )
     const ok = state.setValueAtPath(segments, walked.cleanedValues, withInstanceMeta())
     if (!ok) return false
-    // Mark each substituted leaf blank. Re-write the slim default
-    // explicitly with `blank: true` so the gate hook adds the path
-    // to `blankPaths` (the variant reshape's `walkUnspecified` only
-    // auto-marks numeric leaves; this loop catches the
-    // string / boolean / bigint cases the consumer flagged blank).
+    // Re-mark each substituted leaf blank via a same-value setValueAtPath
+    // with `{blank: true}` so the gate hook re-adds them (any DU reshape
+    // that ran during the parent write trimmed blanks under the variant
+    // path). Reading from storage rather than `getEmptyValueAtPath`
+    // keeps DU discriminator stubs intact.
     for (const pathKey of walked.paths) {
       const blankSegments = segmentsForPathKey(pathKey)
       if (blankSegments === null) continue
       state.setValueAtPath(
         blankSegments,
-        state.schema.getDefaultAtPath(blankSegments),
+        state.getValueAtPath(blankSegments),
         withInstanceMeta({ blank: true })
       )
     }
@@ -667,16 +694,14 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // structurally compatible with `WriteShape<Form>`, so the cast
       // here is safe.
       state.reset(walked.cleanedValues as DeepPartial<unknown> as Parameters<typeof state.reset>[0])
+      // `state.reset` clears `blankPaths` along with the values; re-
+      // seed it now with the walker-discovered paths. Direct add is
+      // safe because we just established the new baseline via
+      // `state.reset`, so there's no history bookkeeping conflict.
+      // Mirror each into `originalBlankPaths` too, so the post-reset
+      // dirty=false reference holds these as part of the baseline.
       for (const pathKey of walked.paths) {
-        const segments = segmentsForPathKey(pathKey)
-        if (segments === null) continue
-        state.setValueAtPath(
-          segments,
-          state.schema.getDefaultAtPath(segments),
-          withInstanceMeta({ blank: true })
-        )
-        // Mirror the new baseline into originalBlankPaths so the
-        // post-reset state is the dirty=false reference.
+        state.blankPaths.add(pathKey)
         state.originalBlankPaths.add(pathKey as PathKey)
       }
     }

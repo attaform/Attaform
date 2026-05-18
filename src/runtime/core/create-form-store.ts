@@ -156,7 +156,17 @@ function walkDuStubs(
   if (du !== undefined) {
     const discValue = rec[du.discriminatorKey]
     if (discValue !== undefined && !du.isVariantSelected(discValue)) {
-      if (warned !== undefined && __DEV__) {
+      // Kind-blank stub (`''` / `0` / `0n` / `false` / `null`) is the
+      // intentional "no variant selected yet" signal from
+      // `expandUnsetAt` — don't warn. The warn is for typo-style bugs
+      // where the user wrote `kind: 'BAD'` and got a stub by accident.
+      const isKindBlank =
+        discValue === '' ||
+        discValue === 0 ||
+        discValue === 0n ||
+        discValue === false ||
+        discValue === null
+      if (!isKindBlank && warned !== undefined && __DEV__) {
         const dotted = path.map((s) => String(s)).join('.') || '(root)'
         const key = `${dotted}::${String(discValue)}`
         if (!warned.has(key)) {

@@ -61,14 +61,6 @@ export type StorageShape<S> = S extends {
   : StorageLeaf<S>
 
 /**
- * Implementation-detail per-leaf branching for `StorageShape`.
- * Exported so the bundled `.d.ts` carries a single alias body —
- * every leaf of a Zod object schema otherwise re-emits the full
- * pipe / transform / default conditional ladder, which compounds
- * badly with multiple complex schemas in the same scope. Consumers
- * should reach for `StorageShape` instead.
- */
-/**
  * Detects a schema whose `_zod.input` is `unknown` — the marker both
  * `z.preprocess(fn, _)` and `z.coerce.X()` share in Zod v4. Excludes
  * `any` via the canonical `0 extends 1 & T` test so `z.any()` leaves
@@ -82,6 +74,14 @@ type InputIsUnknown<L> = L extends { _zod: { input: infer In } }
       : false
   : false
 
+/**
+ * Implementation-detail per-leaf branching for `StorageShape`.
+ * Exported so the bundled `.d.ts` carries a single alias body —
+ * every leaf of a Zod object schema otherwise re-emits the full
+ * pipe / transform / default conditional ladder, which compounds
+ * badly with multiple complex schemas in the same scope. Consumers
+ * should reach for `StorageShape` instead.
+ */
 export type StorageLeaf<L> =
   InputIsUnknown<L> extends true
     ? unknown

@@ -1,6 +1,6 @@
 ---
 title: How values are stored
-description: form.values exposes the slim write shape: concrete types after defaults and preprocess resolve, but before transforms run. handleSubmit gets the post-transform output. One schema, three views.
+description: form.values exposes the storage shape, the consumer's raw input with defaults resolved. Schema-side normalizers (preprocess, coerce, transforms) run at parse, not at the write boundary. handleSubmit gets the post-parse output.
 metaRows:
   - label: Category
     value: Conceptual
@@ -17,12 +17,12 @@ metaRows:
 
 # How values are stored
 
-> A single mental model for what `form.values` returns. Defaults are pre-resolved; preprocess is normalized; optional / nullable keep their wrappers; transforms only run at parse time.
+> A single mental model for what `form.values` returns. Defaults are pre-resolved, optional / nullable keep their wrappers, and schema-side normalizers (preprocess, coerce, transforms) only fire at parse time. Storage holds the consumer's input verbatim.
 
 ::docs-meta-table
 ::
 
-The demo below shows the same schema across all three views: what `form.values` returns at runtime, what `setValue` accepts, and what `handleSubmit`'s callback sees. Watch the transforms only kick in on submit; reads stay in the input shape.
+The demo below shows the same schema across all three views: what `form.values` returns at runtime, what `setValue` accepts, and what `handleSubmit`'s callback sees. The phone field is the giveaway: storage keeps the raw digits the user typed, and the preprocess formatter only fires once at submit.
 
 ::docs-demo{slug="storage-shape" label="Storage Shape Demo"}
 ::
@@ -33,17 +33,25 @@ A schema produces three different views of its data, each with a distinct surfac
 
 | Surface                           | Shape      | What it answers                                          |
 | --------------------------------- | ---------- | -------------------------------------------------------- |
-| `form.values` / `form.fields`     | **read**   | What does storage hold now? (`ReadShape<Schema>`)        |
+| `form.values` / `form.fields`     | **read**   | What does storage hold now? (`StorageShape<Schema>`)     |
 | `setValue` / `defaultValues`      | **write**  | What may the consumer pass in? (`z.input<Schema>`)       |
 | `handleSubmit` / `form.process()` | **submit** | What does a successful parse yield? (`z.output<Schema>`) |
 
 The same schema produces all three; the surface determines which one you're holding.
 
 ```ts
+const formatPhone = (v: unknown): unknown => {
+  if (typeof v !== 'string') return v
+  const digits = v.replace(/\D/g, '')
+  return digits.length === 10
+    ? `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+    : v
+}
+
 const schema = z.object({
   flag: z.boolean().default(true),
-  count: z.number().default(0),
-  trimmed: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string()),
+  count: z.coerce.number(),
+  phone: z.preprocess(formatPhone, z.string()),
   ratio: z.string().transform((v) => Number(v) / 100),
 })
 
@@ -51,35 +59,52 @@ const form = useForm({ schema })
 
 // READ: storage holds the concrete, resolved type
 form.values.flag // boolean       ← .default(true) peeled
-form.values.count // number        ← .default(0) peeled
-form.values.trimmed // string        ← preprocess peeled to inner input
+form.values.count // unknown        ← z.coerce.X() input is unknown
+form.values.phone // unknown        ← preprocess input is unknown
 form.values.ratio // string        ← transform deferred to parse
 
-// WRITE: `unknown` for preprocess slots, `undefined` allowed for defaulted
+// WRITE: anything goes at preprocess / coerce leaves; defaulted leaves accept undefined
 form.setValue('flag', undefined) // OK; default fills the gap
-form.setValue('trimmed', '  hi  ') // OK; preprocess normalises at write
+form.setValue('count', '42') // OK; raw string lands in storage as-is
+form.setValue('phone', '1231231234') // OK; raw digits land in storage as-is
 
-// SUBMIT: transforms run, refinements fire
+// SUBMIT: schema-side normalizers fire here
 form.handleSubmit((data) => {
+  data.count // number ← z.coerce.number() converted at parse
+  data.phone // string ← preprocess formatted at parse
   data.ratio // number ← .transform() produced this
 })
 ```
 
+## Two layers of mutation
+
+Two distinct surfaces can change what lands in storage. They sit at different boundaries, and `form.values` reflects only one of them.
+
+| Layer                                              | Mutates storage? | When                       |
+| -------------------------------------------------- | ---------------- | -------------------------- |
+| `v-register` modifiers and register `transforms`   | yes              | at the user-input boundary |
+| `z.preprocess` / `z.coerce.X()` / `.transform(fn)` | no               | at parse / submit          |
+
+The directive layer owns write-time mutation: `v-register.trim` strips whitespace as the user blurs, `v-register.number` casts the DOM string to a number, and `register({ transforms: [...] })` runs consumer-supplied functions on every commit. Anything those produce ends up in storage.
+
+Schema-side normalizers do their work later, inside `safeParse`. The consumer's verbatim write lands in storage; `handleSubmit`, `validate`, and `validateAsync` re-parse storage through the schema and surface the typed result. There is no schema shape that mutates storage at the write boundary.
+
 ## Per-wrapper read-shape policy
 
-`ReadShape<Schema>` walks each field and applies one of these rules:
+`StorageShape<Schema>` walks each field and applies one of these rules:
 
-| Wrapper               | Field key | Field type at the key          | Rationale                                                                                         |
-| --------------------- | --------- | ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `.default(x)`         | required  | inner type (no `\| undefined`) | Storage always holds `x` or a write; never empty.                                                 |
-| `.prefault(x)`        | required  | inner type                     | Same as `.default(x)`.                                                                            |
-| `.catch(x)`           | required  | inner type                     | Catch wraps a fallback; storage holds a value.                                                    |
-| `.optional()`         | optional  | `inner \| undefined`           | Genuinely optional; `undefined` is the wrapper's marker.                                          |
-| `.nullable()`         | required  | `inner \| null`                | `null` is the wrapper's "explicit empty".                                                         |
-| `.readonly()`         | required  | inner type                     | Read-only is type-only; the read shape is its inner.                                              |
-| `z.preprocess(fn, T)` | required  | inner-T input shape            | Preprocess normalises at the write boundary; storage holds the post-preprocess inner-input value. |
-| `.transform(fn)`      | required  | source input shape             | Transforms run at parse, not read; storage holds the pre-transform value.                         |
-| (plain / fallthrough) | required  | `z.input<T>`                   | Default for anything else.                                                                        |
+| Wrapper               | Field key | Field type at the key          | Rationale                                                                                           |
+| --------------------- | --------- | ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `.default(x)`         | required  | inner type (no `\| undefined`) | Storage always holds `x` or a write; never empty.                                                   |
+| `.prefault(x)`        | required  | inner type                     | Same as `.default(x)`.                                                                              |
+| `.catch(x)`           | required  | inner type                     | Catch wraps a fallback; storage holds a value.                                                      |
+| `.optional()`         | optional  | `inner \| undefined`           | Genuinely optional; `undefined` is the wrapper's marker.                                            |
+| `.nullable()`         | required  | `inner \| null`                | `null` is the wrapper's "explicit empty".                                                           |
+| `.readonly()`         | required  | inner type                     | Read-only is type-only; the read shape is its inner.                                                |
+| `z.preprocess(fn, T)` | required  | `unknown`                      | Schema-side normalizer; runs at parse, not at the write boundary. Storage holds raw input.          |
+| `z.coerce.X()`        | required  | `unknown`                      | Same as `z.preprocess`: coerce fires inside `safeParse`. Storage holds whatever the consumer wrote. |
+| `.transform(fn)`      | required  | source input shape             | Transforms run at parse, not read; storage holds the pre-transform value.                           |
+| (plain / fallthrough) | required  | `z.input<T>`                   | Default for anything else.                                                                          |
 
 Reads at every nested level get the same treatment recursively.
 

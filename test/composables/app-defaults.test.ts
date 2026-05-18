@@ -100,8 +100,8 @@ describe('app-level defaults — strict', () => {
     // that lax mode disables.
     const { app, api } = mountWithDefaults({ strict: false }, {})
     apps.push(app)
-    expect(api.errors.email).toBeUndefined()
-    expect(api.errors.password).toBeUndefined()
+    expect(api.errors.email).toEqual([])
+    expect(api.errors.password).toEqual([])
     expect(api.meta.valid).toBe(true)
   })
 
@@ -198,7 +198,7 @@ describe('app-level defaults — anonymous + multi-form', () => {
     // channel only.
     const { app, api } = mountWithDefaults({ strict: false }, {})
     apps.push(app)
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
     // Sanity: this anonymous form's key starts with the reserved prefix.
     expect(api.key.startsWith(ANONYMOUS_FORM_KEY_PREFIX)).toBe(true)
   })
@@ -227,8 +227,8 @@ describe('app-level defaults — anonymous + multi-form', () => {
     document.body.appendChild(root)
     app.mount(root)
     apps.push(app)
-    expect(handles.a?.errors.email).toBeUndefined()
-    expect(handles.b?.errors.email).toBeUndefined()
+    expect(handles.a?.errors.email).toEqual([])
+    expect(handles.b?.errors.email).toEqual([])
   })
 })
 
@@ -266,7 +266,7 @@ describe('app-level defaults — v3 wrapper regression', () => {
     app.mount(root)
     apps.push(app)
     // Lax → no construction-time seed → fieldErrors empty.
-    expect(handle.api?.errors.email).toBeUndefined()
-    expect(handle.api?.errors.password).toBeUndefined()
+    expect(handle.api?.errors.email).toEqual([])
+    expect(handle.api?.errors.password).toEqual([])
   })
 })

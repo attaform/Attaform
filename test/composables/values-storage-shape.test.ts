@@ -746,17 +746,15 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
   // (`ErrorsProxyShape<WriteShape<ReadForm>>`). Pinning the descent
   // surfaces forces the two-pass split to keep working.
   it('errors proxy descent reaches every container path', () => {
-    expectTypeOf(formT.errors.reference).toEqualTypeOf<readonly ValidationError[] | undefined>()
-    expectTypeOf(formT.errors.pickup.city).toEqualTypeOf<readonly ValidationError[] | undefined>()
+    expectTypeOf(formT.errors.reference).toEqualTypeOf<readonly ValidationError[]>()
+    expectTypeOf(formT.errors.pickup.city).toEqualTypeOf<readonly ValidationError[]>()
     expectTypeOf(formT.errors.cargo.items).toBeObject()
     expectTypeOf(formT.errors.notes).toEqualTypeOf<readonly ValidationError[] | undefined>()
   })
 
   it('errors callable form returns a ValidationError list at a known path', () => {
-    expectTypeOf(formT.errors(['pickup', 'city'])).toEqualTypeOf<
-      readonly ValidationError[] | undefined
-    >()
-    expectTypeOf(formT.errors('reference')).toEqualTypeOf<readonly ValidationError[] | undefined>()
+    expectTypeOf(formT.errors(['pickup', 'city'])).toEqualTypeOf<readonly ValidationError[]>()
+    expectTypeOf(formT.errors('reference')).toEqualTypeOf<readonly ValidationError[]>()
   })
 
   // `setValue` types its `value` argument as `PathSetValuePayload<...>`,

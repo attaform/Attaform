@@ -211,7 +211,7 @@ describe('persistence hydration — validation runs against the rehydrated value
     await waitUntil(() => (api.values.email === 'fresh@example.com' ? true : null))
     await waitUntil(() => (api.meta.validating === false ? true : null))
     await nextTick()
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
     expect(api.meta.valid).toBe(true)
   })
 

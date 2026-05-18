@@ -65,14 +65,14 @@ describe('form.errors — leaf-aware drillable proxy', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
   })
 
   it('reflects updates after setFieldErrors / clearFieldErrors', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
 
     api.setFieldErrors([
       { path: ['email'], message: 'taken', formKey: api.key, code: 'api:validation' },
@@ -80,7 +80,7 @@ describe('form.errors — leaf-aware drillable proxy', () => {
     expect(api.errors.email?.[0]?.message).toBe('taken')
 
     api.clearFieldErrors('email')
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
   })
 
   it('container paths materialise the underlying error tree (not opaque {})', () => {
@@ -129,7 +129,7 @@ describe('form.errors — callable form', () => {
     apps.push(app)
 
     const root = (api.errors as unknown as () => unknown)()
-    expect(root).toBeUndefined()
+    expect(root).toEqual([])
   })
 
   it('callable with an array path resolves the same as dotted-string', () => {

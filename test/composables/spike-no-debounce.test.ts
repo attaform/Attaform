@@ -61,8 +61,8 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
-    await waitUntil(() => (handle.api?.errors.email === undefined ? true : null))
-    expect(handle.api?.errors.email).toBeUndefined()
+    await waitUntil(() => ((handle.api?.errors.email ?? []).length === 0 ? true : null))
+    expect(handle.api?.errors.email).toEqual([])
 
     const input = root.querySelector('[data-field="email"]') as HTMLInputElement
     input.value = 'a'
@@ -72,8 +72,8 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     // fired, so no per-keystroke re-validation has run. Errors stay
     // empty. Short timeout since waiting longer would let a real
     // failure mode (timer fired early) hide.
-    await waitUntil(() => (handle.api?.errors.email === undefined ? true : null), 50)
-    expect(handle.api?.errors.email).toBeUndefined()
+    await waitUntil(() => ((handle.api?.errors.email ?? []).length === 0 ? true : null), 50)
+    expect(handle.api?.errors.email).toEqual([])
 
     // Wait for the 125 ms timer + revalidation chain to land. Polled
     // rather than fixed-time-pumped so a contended CI doesn't flake.
@@ -105,8 +105,8 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
-    await waitUntil(() => (handle.api?.errors.email === undefined ? true : null))
-    expect(handle.api?.errors.email).toBeUndefined()
+    await waitUntil(() => ((handle.api?.errors.email ?? []).length === 0 ? true : null))
+    expect(handle.api?.errors.email).toEqual([])
 
     const input = root.querySelector('[data-field="email"]') as HTMLInputElement
     input.value = 'a'
@@ -143,8 +143,8 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
-    await waitUntil(() => (handle.api?.errors.email === undefined ? true : null))
-    expect(handle.api?.errors.email).toBeUndefined()
+    await waitUntil(() => ((handle.api?.errors.email ?? []).length === 0 ? true : null))
+    expect(handle.api?.errors.email).toEqual([])
 
     const input = root.querySelector('[data-field="email"]') as HTMLInputElement
 
@@ -164,9 +164,9 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
       input.value = step.typed
       input.dispatchEvent(new Event('input', { bubbles: true }))
       await waitUntil(() =>
-        (handle.api?.errors.email !== undefined) === !step.valid ? true : null
+        (handle.api?.errors.email?.length ?? 0) > 0 === !step.valid ? true : null
       )
-      const hasError = handle.api?.errors.email !== undefined
+      const hasError = (handle.api?.errors.email?.length ?? 0) > 0
       expect(hasError).toBe(!step.valid)
     }
   })

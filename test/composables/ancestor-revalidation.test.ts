@@ -107,7 +107,7 @@ describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
     // Append → array now satisfies .min(1) → array-level error must clear.
     form.append('items', '')
     await flushValidations(form)
-    expect(errorsAt(form)('items')).toBeUndefined()
+    expect(errorsAt(form)('items')).toEqual([])
 
     // Remove → array empty again → array-level error must come back.
     form.remove('items', 0)
@@ -136,7 +136,7 @@ describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
 
     form.append('items', '')
     await flushValidations(form)
-    expect(errorsAt(form)('items')).toBeUndefined()
+    expect(errorsAt(form)('items')).toEqual([])
 
     form.remove('items', 0)
     await flushValidations(form)
@@ -184,7 +184,7 @@ describe('Bug 2 — parent .refine does not break per-field revalidation', () =>
     // Type a value — leaf .min(1) now passes → error must clear.
     form.setValue('fromCountry', 'a')
     await flushValidations(form)
-    expect(errorsAt(form)('fromCountry')).toBeUndefined()
+    expect(errorsAt(form)('fromCountry')).toEqual([])
 
     // Clear the value — leaf .min(1) fails again → error must return.
     form.setValue('fromCountry', '')
@@ -219,7 +219,7 @@ describe('Bug 2 — parent .refine does not break per-field revalidation', () =>
 
     form.setValue('fromCountry', 'a')
     await flushValidations(form)
-    expect(errorsAt(form)('fromCountry')).toBeUndefined()
+    expect(errorsAt(form)('fromCountry')).toEqual([])
 
     form.setValue('fromCountry', '')
     await flushValidations(form)

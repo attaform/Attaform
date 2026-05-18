@@ -90,8 +90,8 @@ describe('useForm — reset()', () => {
 
     form.reset()
     expect(form.meta.valid).toBe(true)
-    expect(form.errors.email).toBeUndefined()
-    expect(form.errors.password).toBeUndefined()
+    expect(form.errors.email).toEqual([])
+    expect(form.errors.password).toEqual([])
   })
 
   it('flips dirty back to false after a mutation + reset', () => {
@@ -160,7 +160,7 @@ describe('useForm — resetField(path)', () => {
     ])
 
     form.resetField('email')
-    expect(form.errors.email).toBeUndefined()
+    expect(form.errors.email).toEqual([])
     expect(form.errors.password).toHaveLength(1)
   })
 
@@ -208,7 +208,7 @@ describe('useForm — resetField(path)', () => {
     // Named field untouched — `''` is its own path.
     expect(form.values.email).toBe('kept@example.com')
     // Form-level bucket cleared.
-    expect(form.errors('')).toBeUndefined()
+    expect(form.errors('')).toEqual([])
   })
 })
 

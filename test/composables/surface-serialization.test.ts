@@ -220,7 +220,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       await nextTick()
 
       // Field error gone.
-      expect(form.errors.email).toBeUndefined()
+      expect(form.errors.email).toEqual([])
       // Form-level survives — `clearFieldErrors` is field-scope only.
       // Use `clearFormErrors` to drop form-level.
       expect(form.errors('')?.[0]?.message).toBe('capacity exceeded')

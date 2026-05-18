@@ -48,7 +48,7 @@ Each leaf gets its own path:
 form.values.profile.name // string
 form.values.address.city // string
 form.register('profile.name') // path autocomplete narrows the union
-form.errors.address.postalCode // ValidationError[] | undefined
+form.errors.address.postalCode // readonly ValidationError[]
 ```
 
 ## The proxy descends transparently

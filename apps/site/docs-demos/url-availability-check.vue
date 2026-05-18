@@ -7,6 +7,7 @@
   const INVALID_URL = '__atta:invalid-url__'
 
   const TAKEN = new Set(['https://google.com', 'https://apple.com', 'https://github.com'])
+  const TAKEN_DISPLAY = ['google.com', 'apple.com', 'github.com']
   const availabilityCache = new Map<string, boolean>()
   const cacheLog = ref<Array<{ url: string; available: boolean; fromCache: boolean }>>([])
 
@@ -85,11 +86,14 @@
           spellcheck="false"
         />
       </label>
-      <p v-if="form.errors.url && form.fields.url.touched" class="error" role="alert">
-        {{ form.errors.url[0]?.message }}
+      <p v-if="form.fields.url.showErrors" class="error" role="alert">
+        {{ form.fields.url.firstError?.message }}
       </p>
       <p v-else class="hint">
-        Try <code>google.com</code> (taken), <code>###</code> (malformed), or any real domain.
+        Taken in this demo:
+        <code v-for="(url, i) in TAKEN_DISPLAY" :key="url"
+          >{{ url }}<span v-if="i < TAKEN_DISPLAY.length - 1">, </span></code
+        >. Anything else (or <code>###</code>) is fair game.
       </p>
 
       <div class="actions">

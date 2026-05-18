@@ -473,6 +473,35 @@ export default defineNuxtConfig({
   // response) to the real VFS handler that runs after it. Dev-only via
   // devHandlers.
   nitro: {
+    // Source-alias attaform subpath imports to `src/*.ts` on the
+    // server side too. Without this, Nitro (Vue SSR) resolves
+    // `attaform/zod` to `dist/zod.mjs` — a `jiti --stub` shim
+    // whose top-level `await jiti.import('/app/src/zod.ts')` runs
+    // ONCE per process and caches the result. Edits to `src/`
+    // after Nitro's startup never propagate to SSR output, so a
+    // page rendered server-side ships stale form state into
+    // hydration and the client inherits it (even though the
+    // client itself has fresh `src/` via the Vite alias below).
+    // Observed when `count: unset` against `z.number().default(10)`
+    // SSR'd as `10` while the playground (which uses the rebuilt
+    // browser bundle) showed `0`. See the matching comment on
+    // `vite.resolve.alias` for the browser side and the jiti
+    // staleness story.
+    //
+    // Limited to subpaths actually imported in apps/site (bare
+    // `attaform` and `attaform/zod`); the others are listed for
+    // symmetry with Vite and to harden against future demo
+    // additions that reach for them. Prefix-matching is safe:
+    // `attaform/zod` does NOT match `attaform/zod-v3` because the
+    // matcher requires `/` or end-of-string after the key.
+    alias: {
+      attaform: resolve(monorepoRoot, 'src/index.ts'),
+      'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
+      'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
+      'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),
+      'attaform/vite': resolve(monorepoRoot, 'src/vite.ts'),
+      'attaform/transforms': resolve(monorepoRoot, 'src/transforms.ts'),
+    },
     // Mount the REPL pipeline's output (`apps/site/.repl-cache/`)
     // at the `/lib/` URL prefix. This keeps the bundled REPL
     // artifacts (runtime JS, worker copies, type declaration
@@ -604,10 +633,21 @@ export default defineNuxtConfig({
     //
     //   - `attaform/nuxt` is consumed by Nuxt's `modules:` array,
     //     which Nuxt evaluates with its OWN jiti process before
-    //     Vite ever boots. That path doesn't go through Vite's
-    //     resolver, so it doesn't need an alias — Nuxt loads
-    //     `dist/nuxt.mjs` directly via jiti, which works fine in
-    //     the Node-side init context.
+    //     Vite ever boots. That path loads `dist/nuxt.mjs` directly
+    //     via jiti at module-init time, which is fine because the
+    //     module's setup work runs once and doesn't span post-edit
+    //     boundaries.
+    //
+    //   - Nitro's Vue SSR side is a different story: it resolves
+    //     `attaform/zod` for every page render, and the dist/jiti
+    //     hop caches per process. Edits to `src/` after Nitro
+    //     boots NEVER reach those imports. That's why the parallel
+    //     `nitro.alias` block above mirrors these entries on the
+    //     server side; without it, the inline `<DocsDemo>` SSR
+    //     ships stale form state while the client-only playground
+    //     (which uses the freshly bundled `/lib/attaform.js`) shows
+    //     the current behavior. The two aliases together keep
+    //     browser and server in lockstep on src/.
     //
     //   - `attaform/devtools-panel` resolves to a `.vue` file
     //     via the package exports' `"default"` condition. The
@@ -656,6 +696,39 @@ export default defineNuxtConfig({
       // drift across pnpm-workspace layouts.
       fs: {
         allow: [monorepoRoot],
+      },
+      // Force chokidar to poll for file changes inside the Docker
+      // bind mount. macOS host fsevents don't always propagate
+      // through Docker's mount layer to the Linux container, so
+      // chokidar's native watcher misses edits to monorepo-root
+      // paths (anywhere under `/app/src/**`) AFTER the dev server
+      // starts. Native works for the apps/site project root (Vite's
+      // own scan boots that watcher with the bind mount's first
+      // pass), but src/ edits silently no-op: HMR never fires, the
+      // in-memory Vite transform graph stays frozen at boot, and
+      // SSR keeps reusing whatever `src/runtime/**` looked like
+      // when Nuxt started.
+      //
+      // The symptom: edit `src/runtime/core/unset-walker.ts`, hard-
+      // reload `/docs/schemas/defaults`, see no change. The
+      // playground at `/play/schema-defaults` updates because
+      // `bundle-repl-deps.mjs --watch` uses esbuild's watcher,
+      // which IS bind-mount-reliable. Two parallel watchers, one
+      // working, one not — invisible until a src/ edit fails to
+      // land in a Vite-resolved consumer.
+      //
+      // `usePolling: true` switches chokidar to a poll loop. The
+      // poll interval below (300 ms) is the conventional Docker
+      // setting — fast enough that HMR feels instant, slow enough
+      // to keep CPU quiet on a busy laptop. `binaryInterval`
+      // governs binary-file polling separately; we set it equal to
+      // `interval` so dist/* tarball-like artifacts (jiti shims,
+      // .repl-cache bundles) invalidate at the same cadence as the
+      // .ts/.vue sources they're built from.
+      watch: {
+        usePolling: true,
+        interval: 300,
+        binaryInterval: 300,
       },
     },
     // Vite's startup crawl scans index.html + statically discoverable

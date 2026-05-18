@@ -85,12 +85,15 @@ useForm({ schema, defaultValues: { email: 'me@example.com', count: 10 } })
 //    strings and booleans take their schema default
 useForm({ schema })
 
-// 3. Mark specific leaves as `unset`: that path stays blank
-//    regardless of type
+// 3. Mark any path as `unset`: leaf, container, or the whole form.
+//    The runtime writes the schema's slim value and flags every
+//    primitive descendant in form.blankPaths.
 useForm({ schema, defaultValues: { email: unset, count: 10 } })
+useForm({ schema, defaultValues: { profile: unset } }) // whole container
+useForm({ schema, defaultValues: unset }) // every primitive leaf
 ```
 
-The third pattern uses `unset` as a sentinel: any primitive leaf can opt into the "no value supplied" state, which surfaces a `code: 'atta:no-value-supplied'` error for required schemas. See [the `blank` field-state bit](/docs/validation/blank) for the storage / display divergence story.
+The third pattern uses `unset` as a sentinel that lands at any path. Required schemas under the unset path surface a `code: 'atta:no-value-supplied'` error reactively. See [the `unset` page](/docs/writing-and-mutating/unset) for the position-by-position contract and [the `blank` field-state bit](/docs/validation/blank) for the storage / display divergence story.
 
 ## Numeric leaves auto-mark blank
 

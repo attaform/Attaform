@@ -139,7 +139,7 @@ form.fields.pickup.blank // true
 form.errors.pickup // [{ code: 'atta:no-value-supplied', … }]
 ```
 
-`unset` adds the path to `blankPaths`, which surfaces `atta:no-value-supplied` reactively. The schema stays strict; the consumer signals intent at the call site. See [the `blank` field-state bit](/docs/validation/blank) for the full lifecycle.
+`unset` joins the path to `form.blankPaths`, which surfaces `atta:no-value-supplied` reactively when the schema is required. The schema stays strict; the consumer signals intent at the call site. The same sentinel works at containers, arrays, records, discriminated unions, wrappers, and the root: `defaultValues: { profile: unset }` recursively marks every primitive descendant. See [`unset`](/docs/writing-and-mutating/unset) for the full contract and [the `blank` field-state bit](/docs/validation/blank) for the lifecycle.
 
 ## Where to next
 

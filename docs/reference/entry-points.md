@@ -39,7 +39,7 @@ Ships:
 - `fieldMeta` / `withMeta` — schema-attached field metadata (label, description, placeholder).
 - `kindOf`, `ZodKind`, `assertZodVersion` — runtime Zod-introspection helpers.
 - `FieldMetaPayload` — the metadata shape.
-- `unset`, `isUnset` — the absent-sentinel.
+- `unset`, `isUnset`: the blank-anywhere sentinel and its type guard.
 
 ## `attaform/zod-v3`
 

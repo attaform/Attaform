@@ -53,11 +53,13 @@ const onSubmit = form.handleSubmit(async (values) => {
 ## Mutations
 
 ```ts
+import { unset } from 'attaform/zod'
+
 form.setValue('email', 'new@example.com')
+form.setValue('age', unset) // flag any path blank by passing the sentinel
 form.reset()
 form.resetField('email')
 form.clear()
-form.unset('age')
 ```
 
 Every write path runs the same validation, dirty-tracking, and history pipeline.

@@ -77,14 +77,14 @@ form.setValue(`prefs.${userId}`, true) // set / overwrite one entry
 form.setValue('prefs', { ...form.values.prefs, [userId]: true }) // whole-record merge
 ```
 
-For "delete a key entirely," reach for `unset`:
+To flag a record entry blank, reach for `unset`:
 
 ```ts
 import { unset } from 'attaform/zod'
 form.setValue(`prefs.${userId}`, unset)
 ```
 
-`unset` at a record entry adds the path to `blankPaths` and surfaces a `'No value supplied'` error if the value schema requires it; the same lifecycle as numeric-leaf blanking.
+`unset` at a record entry writes the value schema's slim default at the path and adds the path to `form.blankPaths`. The bound input renders empty, and a required value schema surfaces `atta:no-value-supplied` reactively. To clear the whole record back to `{}`, pass `unset` at the record container: `form.setValue('prefs', unset)`.
 
 ## `z.map(keySchema, valueSchema)`
 
@@ -159,4 +159,4 @@ The aggregate `form.meta.errors` flattens every entry's errors into one list, in
 
 - [Arrays & tuples](/docs/schemas/arrays-and-tuples): numeric-keyed sequences; the other half of the "many-items" picture.
 - [Nested objects](/docs/schemas/nested-objects): fixed-shape composition; the alternative when keys are known.
-- [`unset`, the absent sentinel](/docs/writing-and-mutating/unset): how to delete a record entry without leaving an `undefined` value behind.
+- [`unset`, the blank-anywhere sentinel](/docs/writing-and-mutating/unset): how to flag a single record entry blank, or wipe the whole record back to `{}`.

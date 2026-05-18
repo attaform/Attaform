@@ -1,46 +1,65 @@
 <script setup lang="ts">
-  import { useForm, unset, isUnset } from 'attaform/zod'
+  import { useForm, unset } from 'attaform/zod'
   import { z } from 'zod'
 
-  const form = useForm({
-    schema: z.object({
+  const schema = z.object({
+    email: z.string(),
+    profile: z.object({
       name: z.string(),
-      middleName: z.string().optional(),
+      age: z.number(),
     }),
-    defaultValues: { name: '', middleName: '' },
+  })
+
+  const form = useForm({
+    schema,
     key: 'docs-demo-unset',
   })
+
+  const profileFields = form.fields as unknown as (p: string) => { blank: boolean }
 </script>
 
 <template>
   <form @submit.prevent>
     <label>
-      <span>Name (required)</span>
-      <input v-register="form.register('name')" />
+      <span>Email (primitive leaf)</span>
+      <input v-register="form.register('email')" />
     </label>
 
-    <label>
-      <span>Middle name (optional)</span>
-      <input v-register="form.register('middleName')" />
-    </label>
+    <fieldset>
+      <legend>Profile (container)</legend>
+      <label>
+        <span>Name</span>
+        <input v-register="form.register('profile.name')" />
+      </label>
+      <label>
+        <span>Age</span>
+        <input type="number" v-register="form.register('profile.age')" />
+      </label>
+    </fieldset>
 
     <div class="actions">
-      <button type="button" @click="form.setValue('middleName', '')"
-        >form.setValue('middleName', '')</button
-      >
-      <button type="button" @click="form.setValue('middleName', unset)">
-        form.setValue('middleName', unset)
+      <button type="button" @click="form.setValue('email', unset)">
+        setValue('email', unset)
       </button>
+      <button type="button" @click="form.setValue('profile', unset)">
+        setValue('profile', unset)
+      </button>
+      <button type="button" @click="form.reset()">reset()</button>
     </div>
 
     <div class="panel">
       <p>
-        <code>form.values.middleName</code> =
-        <em>{{
-          isUnset(form.values.middleName) ? 'unset' : JSON.stringify(form.values.middleName)
-        }}</em>
+        <code>form.values</code> =
+        <em>{{ JSON.stringify(form.values, null, 2) }}</em>
       </p>
-      <p><code>isUnset(form.values.middleName)</code> = {{ isUnset(form.values.middleName) }}</p>
+      <p>
+        <code>form.blankPaths</code> =
+        <em>{{ JSON.stringify([...form.blankPaths.value]) }}</em>
+      </p>
+      <p>
+        <code>form.fields('profile').blank</code> =
+        <em>{{ profileFields('profile').blank }}</em>
+      </p>
     </div>
   </form>
 </template>
@@ -50,7 +69,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.875rem;
-    max-width: 30rem;
+    max-width: 32rem;
   }
   label {
     display: flex;
@@ -58,6 +77,20 @@
     gap: 0.25rem;
     font-size: 0.875rem;
     font-weight: 500;
+  }
+  fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+  }
+  legend {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #374151;
+    padding: 0 0.375rem;
   }
   input {
     padding: 0.5rem 0.75rem;
@@ -96,6 +129,7 @@
   }
   .panel p {
     margin: 0.2rem 0;
+    white-space: pre-wrap;
   }
   code {
     color: #6b7280;

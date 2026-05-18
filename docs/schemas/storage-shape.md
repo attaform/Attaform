@@ -186,4 +186,5 @@ Each surface uses the shape that's correct for its purpose. The mental disciplin
 
 - [Defaults from the schema](/docs/schemas/defaults): how `.default()` flows into the read shape.
 - [Optional, nullable, defaulted](/docs/schemas/optional-nullable): the three missing-ness modifiers, side by side.
+- [URL availability check](/docs/validation/url-availability-check): a worked example threading `z.preprocess` and async `.refine` against the storage contract.
 - [The validation lifecycle](/docs/validation/lifecycle): `process()` returns the submit shape, parsed.

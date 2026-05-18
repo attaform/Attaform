@@ -2,7 +2,7 @@
   import { useForm, unset, isUnset } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, setValue, values } = useForm({
+  const form = useForm({
     schema: z.object({
       name: z.string(),
       middleName: z.string().optional(),
@@ -16,27 +16,31 @@
   <form @submit.prevent>
     <label>
       <span>Name (required)</span>
-      <input v-register="register('name')" />
+      <input v-register="form.register('name')" />
     </label>
 
     <label>
       <span>Middle name (optional)</span>
-      <input v-register="register('middleName')" />
+      <input v-register="form.register('middleName')" />
     </label>
 
     <div class="actions">
-      <button type="button" @click="setValue('middleName', '')">setValue('middleName', '')</button>
-      <button type="button" @click="setValue('middleName', unset)">
-        setValue('middleName', unset)
+      <button type="button" @click="form.setValue('middleName', '')"
+        >form.setValue('middleName', '')</button
+      >
+      <button type="button" @click="form.setValue('middleName', unset)">
+        form.setValue('middleName', unset)
       </button>
     </div>
 
     <div class="panel">
       <p>
-        <code>values.middleName</code> =
-        <em>{{ isUnset(values.middleName) ? 'unset' : JSON.stringify(values.middleName) }}</em>
+        <code>form.values.middleName</code> =
+        <em>{{
+          isUnset(form.values.middleName) ? 'unset' : JSON.stringify(form.values.middleName)
+        }}</em>
       </p>
-      <p><code>isUnset(values.middleName)</code> = {{ isUnset(values.middleName) }}</p>
+      <p><code>isUnset(form.values.middleName)</code> = {{ isUnset(form.values.middleName) }}</p>
     </div>
   </form>
 </template>

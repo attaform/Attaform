@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       acceptTerms: z.boolean(),
       languages: z.array(z.enum(['ts', 'js', 'rust', 'go'])),
@@ -17,7 +17,7 @@
     <fieldset>
       <legend>Single checkbox → boolean</legend>
       <label class="row">
-        <input v-register="register('acceptTerms')" type="checkbox" value="accepted" />
+        <input v-register="form.register('acceptTerms')" type="checkbox" value="accepted" />
         I accept the terms
       </label>
     </fieldset>
@@ -25,26 +25,26 @@
     <fieldset>
       <legend>Checkbox group → array</legend>
       <label class="row">
-        <input v-register="register('languages')" type="checkbox" value="ts" />
+        <input v-register="form.register('languages')" type="checkbox" value="ts" />
         TypeScript
       </label>
       <label class="row">
-        <input v-register="register('languages')" type="checkbox" value="js" />
+        <input v-register="form.register('languages')" type="checkbox" value="js" />
         JavaScript
       </label>
       <label class="row">
-        <input v-register="register('languages')" type="checkbox" value="rust" />
+        <input v-register="form.register('languages')" type="checkbox" value="rust" />
         Rust
       </label>
       <label class="row">
-        <input v-register="register('languages')" type="checkbox" value="go" />
+        <input v-register="form.register('languages')" type="checkbox" value="go" />
         Go
       </label>
     </fieldset>
 
     <pre>{{
       JSON.stringify(
-        { acceptTerms: values.acceptTerms, languages: values.languages },
+        { acceptTerms: form.values.acceptTerms, languages: form.values.languages },
         (_, v) => (v === undefined ? '(undefined)' : v),
         2
       )

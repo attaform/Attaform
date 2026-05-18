@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, setValue, values } = useForm({
+  const form = useForm({
     schema: z.object({
       name: z.string(),
       profile: z.object({
@@ -19,43 +19,43 @@
   <form @submit.prevent>
     <label>
       <span>Name</span>
-      <input v-register="register('name')" />
+      <input v-register="form.register('name')" />
     </label>
 
     <label>
       <span>Email</span>
-      <input v-register="register('profile.email')" />
+      <input v-register="form.register('profile.email')" />
     </label>
 
     <label>
       <span>Age</span>
-      <input v-register="register('profile.age')" type="number" />
+      <input v-register="form.register('profile.age')" type="number" />
     </label>
 
     <div class="actions">
-      <button type="button" @click="setValue('name', 'Athlete of the Year')">
-        setValue('name', '…')
+      <button type="button" @click="form.setValue('name', 'Athlete of the Year')">
+        form.setValue('name', '…')
       </button>
-      <button type="button" @click="setValue(['profile', 'email'], 'champ@attaform.dev')">
-        setValue(['profile', 'email'], …)
+      <button type="button" @click="form.setValue(['profile', 'email'], 'champ@attaform.dev')">
+        form.setValue(['profile', 'email'], …)
       </button>
-      <button type="button" @click="setValue('profile.age', (prev) => (prev ?? 0) + 1)">
-        setValue('profile.age', callback)
+      <button type="button" @click="form.setValue('profile.age', (prev) => (prev ?? 0) + 1)">
+        form.setValue('profile.age', callback)
       </button>
       <button
         type="button"
         @click="
-          setValue({
+          form.setValue({
             name: 'Pace of Champions',
             profile: { email: 'reset@attaform.dev', age: 25 },
           })
         "
       >
-        setValue(wholeForm)
+        form.setValue(wholeForm)
       </button>
     </div>
 
-    <pre>{{ JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
+    <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 

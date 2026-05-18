@@ -7,15 +7,15 @@
     simulateFailure: z.boolean(),
   })
 
-  const { register, fields, meta, handleSubmit } = useForm({
+  const form = useForm({
     schema,
     defaultValues: { simulateFailure: false },
-    key: 'docs-demo-meta',
+    key: 'docs-demo-form.meta',
   })
 
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = form.handleSubmit(async (values) => {
     await wait(600)
     if (values.simulateFailure) {
       throw new Error('Simulated API failure')
@@ -30,44 +30,44 @@
   <form @submit.prevent="onSubmit">
     <label>
       <span>Email</span>
-      <input v-register="register('email')" autocomplete="email" />
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
 
     <label class="check">
-      <input v-register="register('simulateFailure')" type="checkbox" />
+      <input v-register="form.register('simulateFailure')" type="checkbox" />
       Simulate API failure on submit
     </label>
 
-    <button type="submit" :disabled="meta.submitting">
-      {{ meta.submitting ? 'Submitting…' : 'Submit' }}
+    <button type="submit" :disabled="form.meta.submitting">
+      {{ form.meta.submitting ? 'Submitting…' : 'Submit' }}
     </button>
 
     <div class="panel">
-      <p class="panel-title">form.meta</p>
+      <p class="panel-title">form.form.meta</p>
 
       <p class="group-title">Submission state (form-only)</p>
       <table>
         <tbody>
           <tr>
             <th>submitting</th>
-            <td>{{ meta.submitting }}</td>
+            <td>{{ form.meta.submitting }}</td>
             <th>isSubmitted</th>
-            <td>{{ meta.isSubmitted }}</td>
+            <td>{{ form.meta.isSubmitted }}</td>
           </tr>
           <tr>
             <th>submitCount</th>
-            <td>{{ meta.submitCount }}</td>
+            <td>{{ form.meta.submitCount }}</td>
             <th>errorCount</th>
-            <td>{{ meta.errorCount }}</td>
+            <td>{{ form.meta.errorCount }}</td>
           </tr>
           <tr>
             <th>submitError</th>
-            <td colspan="3">{{ formatError(meta.submitError) }}</td>
+            <td colspan="3">{{ formatError(form.meta.submitError) }}</td>
           </tr>
           <tr>
             <th>instanceId</th>
-            <td colspan="3">{{ meta.instanceId }}</td>
+            <td colspan="3">{{ form.meta.instanceId }}</td>
           </tr>
         </tbody>
       </table>
@@ -77,15 +77,15 @@
         <tbody>
           <tr>
             <th>dirty</th>
-            <td>{{ meta.dirty }}</td>
+            <td>{{ form.meta.dirty }}</td>
             <th>pristine</th>
-            <td>{{ meta.pristine }}</td>
+            <td>{{ form.meta.pristine }}</td>
           </tr>
           <tr>
             <th>touched</th>
-            <td>{{ meta.touched }}</td>
+            <td>{{ form.meta.touched }}</td>
             <th>valid</th>
-            <td>{{ meta.valid }}</td>
+            <td>{{ form.meta.valid }}</td>
           </tr>
         </tbody>
       </table>

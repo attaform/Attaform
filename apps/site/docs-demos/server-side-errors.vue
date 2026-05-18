@@ -3,7 +3,7 @@
   import { parseApiErrors } from 'attaform'
   import { z } from 'zod'
 
-  const { register, fields, handleSubmit, setFieldErrors, clearFieldErrors, meta } = useForm({
+  const form = useForm({
     schema: z.object({
       email: z.email(),
       username: z.string().min(3),
@@ -26,8 +26,8 @@
     return { ok: errors.length === 0, details: errors }
   }
 
-  const onSubmit = handleSubmit(async (values) => {
-    clearFieldErrors()
+  const onSubmit = form.handleSubmit(async (values) => {
+    form.clearFieldErrors()
     await wait(500)
 
     const response = simulateServerCall(values)
@@ -35,7 +35,7 @@
     if (!response.ok) {
       const parsed = parseApiErrors(response, { formKey: 'docs-demo-server-side-errors' })
       if (parsed.ok) {
-        setFieldErrors(parsed.errors)
+        form.setFieldErrors(parsed.errors)
         return
       }
     }
@@ -53,18 +53,18 @@
 
     <label>
       <span>Email</span>
-      <input v-register="register('email')" autocomplete="email" />
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
 
     <label>
       <span>Username</span>
-      <input v-register="register('username')" />
-      <em v-if="fields.username.showErrors">{{ fields.username.firstError?.message }}</em>
+      <input v-register="form.register('username')" />
+      <em v-if="form.fields.username.showErrors">{{ form.fields.username.firstError?.message }}</em>
     </label>
 
-    <button :disabled="meta.submitting" type="submit">
-      {{ meta.submitting ? 'Checking with server…' : 'Create account' }}
+    <button :disabled="form.meta.submitting" type="submit">
+      {{ form.meta.submitting ? 'Checking with server…' : 'Create account' }}
     </button>
   </form>
 </template>

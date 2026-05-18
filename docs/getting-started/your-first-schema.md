@@ -15,14 +15,14 @@ metaRows:
 ::docs-meta-table
 ::
 
-Type into any of the demo's four inputs (`email`, `password`, `displayName`, `age`) and watch the live `values` JSON below the form update in real time. `values` is the reactive view of the form data that `useForm` returns, paths and types straight from the schema you handed in. The [What Attaform reads](#what-attaform-reads) section below traces each Zod construct in the demo to its form behavior.
+Type into any of the demo's four inputs (`email`, `password`, `displayName`, `age`) and watch the live `form.values` JSON below the form update in real time. `form.values` is the reactive view of the form data that `useForm` returns, paths and types straight from the schema you handed in. The [What Attaform reads](#what-attaform-reads) section below traces each Zod construct in the demo to its form behavior.
 
 ::docs-demo{slug="first-schema" label="Signup Demo"}
 ::
 
 ## What Attaform reads
 
-`useForm` is Attaform's entry point. Hand it a Zod schema and it returns a reactive form carrying every helper a template needs: a per-input binding factory, a per-field state map, and the live parsed values. Destructure the three pieces this section refers to:
+`useForm` is Attaform's entry point. Hand it a Zod schema and it returns a reactive form carrying every helper a template needs: a per-input binding factory, a per-field state map, and the live parsed values. Save the return value and reach for the pieces by name:
 
 ```ts
 import { useForm } from 'attaform/zod'
@@ -35,23 +35,23 @@ const schema = z.object({
   age: z.number().int().min(13),
 })
 
-const { register, fields, values } = useForm({ schema })
+const form = useForm({ schema })
 ```
 
-Object fields become reactive paths on `values`; nested objects become nested paths; refinements become per-field validators surfaced through `fields`.
+Object fields become reactive paths on `form.values`; nested objects become nested paths; refinements become per-field validators surfaced through `form.fields`.
 
 The schema above covers most of what a real signup form needs:
 
-- `email` and `password` are **required strings**. Attaform stores `''` as the default, so `values.email` starts as `''` and updates as the user types.
+- `email` and `password` are **required strings**. Attaform stores `''` as the default, so `form.values.email` starts as `''` and updates as the user types.
 - `displayName` is **optional**. Storage still starts at `''`; the `.optional()` flag lets the field's empty string pass schema parsing at submit time.
-- `age` is a **required number**. Storage starts at `0`; the `min(13)` refinement runs every time the field validates and shows up on `fields.age.errors`.
+- `age` is a **required number**. Storage starts at `0`; the `min(13)` refinement runs every time the field validates and shows up on `form.fields.age.errors`.
 
 ## Defaults from the schema
 
 You don't redeclare defaults when you call `useForm`. Attaform reads them from the schema: `''` for strings, `0` for numbers, `false` for booleans, `[]` for arrays, `{}` for objects. Override per field with `defaultValues`:
 
 ```ts
-const { register, fields, values } = useForm({
+const form = useForm({
   schema,
   defaultValues: {
     age: 18,

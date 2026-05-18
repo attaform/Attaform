@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       plan: z.enum(['starter', 'pro', 'team']),
     }),
@@ -16,21 +16,21 @@
     <fieldset>
       <legend>Plan</legend>
       <label class="row">
-        <input v-register="register('plan')" type="radio" value="starter" />
+        <input v-register="form.register('plan')" type="radio" value="starter" />
         Starter
       </label>
       <label class="row">
-        <input v-register="register('plan')" type="radio" value="pro" />
+        <input v-register="form.register('plan')" type="radio" value="pro" />
         Pro
       </label>
       <label class="row">
-        <input v-register="register('plan')" type="radio" value="team" />
+        <input v-register="form.register('plan')" type="radio" value="team" />
         Team
       </label>
     </fieldset>
 
     <pre>{{
-      JSON.stringify({ plan: values.plan }, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+      JSON.stringify({ plan: form.values.plan }, (_, v) => (v === undefined ? '(undefined)' : v), 2)
     }}</pre>
   </form>
 </template>

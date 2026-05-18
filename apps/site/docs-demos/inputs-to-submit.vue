@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, handleSubmit, fields, meta } = useForm({
+  const form = useForm({
     schema: z.object({
       email: z.email('Enter a valid email'),
       newsletter: z.boolean(),
@@ -10,7 +10,7 @@
     key: 'inputs-to-submit',
   })
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = form.handleSubmit(async (values) => {
     await new Promise((resolve) => setTimeout(resolve, 1200))
     toast.success(`Subscribed: ${values.email}`, { description: values })
   })
@@ -20,15 +20,15 @@
   <form @submit="onSubmit">
     <label>
       Email
-      <input v-register="register('email')" autocomplete="email" />
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
     <label class="checkbox">
-      <input v-register="register('newsletter')" type="checkbox" />
+      <input v-register="form.register('newsletter')" type="checkbox" />
       Send me the monthly newsletter
     </label>
-    <button :disabled="meta.submitting" type="submit">
-      {{ meta.submitting ? 'Subscribing…' : 'Subscribe' }}
+    <button :disabled="form.meta.submitting" type="submit">
+      {{ form.meta.submitting ? 'Subscribing…' : 'Subscribe' }}
     </button>
   </form>
 </template>

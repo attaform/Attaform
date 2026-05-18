@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       avatar: z.file().nullable(),
       attachments: z.array(z.file()),
@@ -19,22 +19,24 @@
   <form @submit.prevent>
     <label>
       <span>Avatar (single)</span>
-      <input v-register="register('avatar')" type="file" accept="image/*" />
+      <input v-register="form.register('avatar')" type="file" accept="image/*" />
     </label>
 
     <label>
       <span>Attachments (multiple)</span>
-      <input v-register="register('attachments')" type="file" multiple />
+      <input v-register="form.register('attachments')" type="file" multiple />
     </label>
 
     <div class="panel">
-      <p class="panel-title">values.avatar</p>
-      <p>{{ describe(values.avatar) }}</p>
+      <p class="panel-title">form.values.avatar</p>
+      <p>{{ describe(form.values.avatar) }}</p>
 
-      <p class="panel-title">values.attachments</p>
-      <p v-if="values.attachments.length === 0">[]</p>
+      <p class="panel-title">form.values.attachments</p>
+      <p v-if="form.values.attachments.length === 0">[]</p>
       <ul v-else>
-        <li v-for="f in values.attachments" :key="f.name + f.lastModified">{{ describe(f) }}</li>
+        <li v-for="f in form.values.attachments" :key="f.name + f.lastModified">{{
+          describe(f)
+        }}</li>
       </ul>
     </div>
   </form>

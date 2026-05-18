@@ -42,14 +42,14 @@ Each helper is typed against the form's `ArrayPath<Form>` set — TypeScript aut
 ## Reading the path
 
 ```ts
-const { register, append, remove } = useForm({
+const form = useForm({
   schema: z.object({
     checkpoints: z.array(z.string()),
   }),
 })
 
-append('checkpoints', 'New checkpoint')
-remove('checkpoints', 2)
+form.append('checkpoints', 'New checkpoint')
+form.remove('checkpoints', 2)
 ```
 
 The path string autocompletes to every array path in the schema. Nested arrays work the same way — `register('teams.0.players')` for an inner array, and the helpers take the same form.

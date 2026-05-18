@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, handleSubmit, fields } = useForm({
+  const form = useForm({
     schema: z.object({
       email: z.email('Enter a valid email'),
       password: z.string().min(8, 'At least 8 characters'),
@@ -10,7 +10,7 @@
     key: 'quick-start',
   })
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = form.handleSubmit(async (values) => {
     toast.success(`Signed in as ${values.email}`, { description: values })
   })
 </script>
@@ -19,13 +19,13 @@
   <form @submit="onSubmit">
     <label>
       Email
-      <input v-register="register('email')" autocomplete="email" />
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
     <label>
       Password
-      <input v-register="register('password')" type="password" autocomplete="off" />
-      <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
+      <input v-register="form.register('password')" type="password" autocomplete="off" />
+      <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
     </label>
     <button type="submit">Sign in</button>
   </form>

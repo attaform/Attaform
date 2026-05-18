@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, values, append, prepend, insert, remove, swap, move, replace } = useForm({
+  const form = useForm({
     schema: z.object({
       checkpoints: z.array(z.string()),
     }),
@@ -14,48 +14,54 @@
 <template>
   <form @submit.prevent>
     <ol class="rows">
-      <li v-for="(_, i) in values.checkpoints" :key="i" class="row">
-        <input v-register="register(`checkpoints.${i}` as const)" />
+      <li v-for="(_, i) in form.values.checkpoints" :key="i" class="row">
+        <input v-register="form.register(`checkpoints.${i}` as const)" />
         <div class="row-actions">
-          <button type="button" title="Move up" @click="i > 0 && move('checkpoints', i, i - 1)">
+          <button
+            type="button"
+            title="Move up"
+            @click="i > 0 && form.move('checkpoints', i, i - 1)"
+          >
             ↑
           </button>
           <button
             type="button"
             title="Move down"
-            @click="i < values.checkpoints.length - 1 && move('checkpoints', i, i + 1)"
+            @click="i < form.values.checkpoints.length - 1 && form.move('checkpoints', i, i + 1)"
           >
             ↓
           </button>
-          <button type="button" title="Remove" @click="remove('checkpoints', i)">×</button>
+          <button type="button" title="Remove" @click="form.remove('checkpoints', i)">×</button>
         </div>
       </li>
     </ol>
 
     <div class="actions">
-      <button type="button" @click="append('checkpoints', 'New checkpoint')"> append(…) </button>
-      <button type="button" @click="prepend('checkpoints', 'First!')">prepend(…)</button>
-      <button type="button" @click="insert('checkpoints', 1, 'Inserted at index 1')">
-        insert(1, …)
+      <button type="button" @click="form.append('checkpoints', 'New checkpoint')">
+        form.append(…)
+      </button>
+      <button type="button" @click="form.prepend('checkpoints', 'First!')">form.prepend(…)</button>
+      <button type="button" @click="form.insert('checkpoints', 1, 'Inserted at index 1')">
+        form.insert(1, …)
       </button>
       <button
         type="button"
-        :disabled="values.checkpoints.length < 2"
-        @click="swap('checkpoints', 0, values.checkpoints.length - 1)"
+        :disabled="form.values.checkpoints.length < 2"
+        @click="form.swap('checkpoints', 0, form.values.checkpoints.length - 1)"
       >
-        swap(first, last)
+        form.swap(first, last)
       </button>
       <button
         type="button"
-        :disabled="values.checkpoints.length === 0"
-        @click="replace('checkpoints', 0, 'Replaced item 0')"
+        :disabled="form.values.checkpoints.length === 0"
+        @click="form.replace('checkpoints', 0, 'Replaced item 0')"
       >
-        replace(0, …)
+        form.replace(0, …)
       </button>
     </div>
 
     <pre>{{
-      JSON.stringify(values.checkpoints, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+      JSON.stringify(form.values.checkpoints, (_, v) => (v === undefined ? '(undefined)' : v), 2)
     }}</pre>
   </form>
 </template>

@@ -5,6 +5,7 @@ import { aggregateErrorsAt } from './field-state-api'
 import { getAtPath, hasAtPath } from './path-walker'
 import {
   canonicalizePath,
+  FORM_ERRORS_PATH_KEY,
   segmentsForPathKey,
   type PathKey,
   type Path,
@@ -58,9 +59,17 @@ export function buildErrorsProxy<F extends GenericForm>(
       // (`form.fields.<path>.errors`, `state.getErrorsForPath`) and
       // the `form.meta.errors` aggregate are unaffected by this
       // filter.
+      //
+      // The form-level path (`['']`) is the canonical home for errors
+      // that don't belong to any specific field (hydration failures,
+      // `setFormErrors`, root `.refine()` issues). It's exempt from
+      // the active-path filter because the empty-string segment never
+      // resolves to a real value slot — matches what
+      // `aggregateErrorsAt` does for the same bucket.
       const { key } = canonicalizePath(path as Path)
       const userForKey = state.userErrors.get(key)
-      const isActive = hasAtPath(state.form.value, path as ReadonlyArray<Segment>)
+      const isFormLevel = key === FORM_ERRORS_PATH_KEY
+      const isActive = isFormLevel || hasAtPath(state.form.value, path as ReadonlyArray<Segment>)
       const merged: ValidationError[] = []
       if (isActive) {
         const schemaForKey = state.schemaErrors.get(key)
@@ -74,6 +83,15 @@ export function buildErrorsProxy<F extends GenericForm>(
     // No leafKeys — at a leaf, the resolved value (the merged array or
     // undefined) IS the terminal.
     materializeContainer: (segments) => materializeErrors(state, segments),
+    // The root form-level bucket (`['']`) is a meaningful terminal:
+    // reading `form.errors['']` should return the form-level
+    // `ValidationError[]` directly (hydration failures, root refines,
+    // `setFormErrors` entries). Container-level entries at non-root
+    // paths surface through the call form (`form.errors('address')`)
+    // and `form.meta.errors`; the empty-string convention is reserved
+    // for root. When a schema legitimately owns a `''` field,
+    // `isLeafAtPath` returns true and the standard leaf branch wins.
+    isTerminalAt: (segs) => segs.length === 1 && segs[0] === '',
     // Call-form aggregates: `form.errors(path)` returns a single
     // `ValidationError[]` for any depth (leaf or container) — same
     // shared `aggregateErrorsAt` helper that `form.meta.errors` and
@@ -94,8 +112,9 @@ export function buildErrorsProxy<F extends GenericForm>(
  * active-path filter `resolveLeaf` applies), excludes paths that
  * resolve to the container itself (cross-field refines and form-level
  * errors live in `form.meta.errors`, which is the unfiltered flat
- * aggregate). Sparse: containers with no error-bearing descendants
- * don't appear in the tree.
+ * aggregate, and in the call form `form.errors(path)`). Sparse:
+ * containers with no error-bearing descendants don't appear in the
+ * tree.
  *
  * Reactivity contract: every read in this function (the three error
  * stores, the form Ref) happens at call time. JSON.stringify invokes

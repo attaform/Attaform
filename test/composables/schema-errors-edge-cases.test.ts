@@ -151,24 +151,10 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
   it('container-level refine error: read-surface coverage across every API', async () => {
     // A `.refine()` at a container path is a legitimate Zod pattern: the
     // resulting error's absolute path equals the container's own path.
-    // This test pins what every read site does today so the gaps are
-    // visible side-by-side, then drives the fix.
-    //
-    // Today's behavior (current implementation):
-    //   - form.meta.errors (flat aggregate)          → INCLUDED
-    //   - form.errors(['address']) (call form)       → INCLUDED
-    //   - form.errors('address')   (dotted-call)     → INCLUDED
-    //   - form.errors.address      (property access) → sub-proxy; container-level
-    //                                                  error NOT in materialized tree
-    //   - JSON.stringify(form.errors.address)        → '{}' (descendants-only;
-    //                                                  container-level excluded)
-    //
-    // The gap is the property-access materialization — the call form
-    // already does the right thing via `aggregateErrorsAt`. Open
-    // question: should the materializer place the container's own
-    // errors at a sentinel slot (e.g. `''`), or should we leave
-    // materialization descendants-only and document the call form as
-    // the canonical container read?
+    // Three surfaces include it — flat aggregate and the two call-form
+    // entry points. Property-access materialization stays
+    // descendants-only by design; consumers read container-level errors
+    // through `form.errors(<container>)`.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
     const submit = api.handleSubmit(
@@ -193,12 +179,31 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
     const callStr = (api.errors as unknown as (p: string) => readonly ValidationError[])('address')
     expect(callStr.some(matchesRefine)).toBe(true)
 
-    // Surface 4: property-access materialization. Today the materializer
-    // is descendants-only — the container-level entry is filtered out.
+    // Surface 4: property-access materialization stays descendants-only.
+    // Container-level entries are intentionally not placed in the
+    // materialized tree — the call form is the canonical read.
     const stringified = JSON.parse(
       JSON.stringify((api.errors as unknown as Record<string, unknown>)['address'])
     ) as Record<string, unknown>
     expect(Object.keys(stringified)).toEqual([])
+  })
+
+  it('form-level errors surface at form.errors[""] (root self-slot)', async () => {
+    // The empty-string key is reserved for the root form-level bucket
+    // (hydration failures, root `.refine()` results, `setFormErrors`
+    // entries). Returns `readonly ValidationError[]` directly — no
+    // descend, no materialize. Container-level errors live elsewhere
+    // (call form `form.errors('address')`); the `''` convention is
+    // root-only.
+    const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
+    apps.push(app)
+    api.setFormErrors([{ message: 'manual form-level error', code: 'consumer:test' }])
+    await nextTick()
+
+    const formLevel = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']
+    expect(Array.isArray(formLevel)).toBe(true)
+    expect(formLevel?.some((e) => e.message === 'manual form-level error')).toBe(true)
+    expect(formLevel?.[0]?.path).toEqual([''])
   })
 })
 

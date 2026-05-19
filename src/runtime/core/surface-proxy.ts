@@ -113,6 +113,16 @@ export type SurfaceOptions<TLeaf> = {
    * over the whole form).
    */
   readonly resolveCallTarget: (path: Path) => unknown
+  /**
+   * Optional predicate: paths that should terminate via `resolveLeaf`
+   * even when `schema.isLeafAtPath` returns false. The errors surface
+   * uses this to surface the form-level error bucket (`['']`) at
+   * `form.errors['']` — the path isn't a schema leaf, but it IS a
+   * meaningful terminal that returns `readonly ValidationError[]`.
+   * Returning false (or omitting the option) preserves the default
+   * "non-leaf → container sub-proxy" routing.
+   */
+  readonly isTerminalAt?: (segs: readonly Segment[]) => boolean
 }
 
 /**
@@ -155,6 +165,11 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
       if (opts.leafKeys !== undefined) return leafViewProxyAt(segs)
       return opts.resolveLeaf(segs)
     }
+    // Non-leaf paths can still terminate when a surface declares them
+    // meaningful (e.g. the form-level errors bucket at `['']`). The
+    // schema check above takes precedence: a schema field literally
+    // named `''` still wins, keeping authored data interpretable.
+    if (opts.isTerminalAt?.(segs) === true) return opts.resolveLeaf(segs)
     return containerProxyAt(segs)
   }
 

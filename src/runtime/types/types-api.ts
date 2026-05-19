@@ -2907,24 +2907,37 @@ export type FormErrorStore = Map<FormKey, FormErrorRecord>
  * Augmented with the callable signatures so dot-access and function-
  * call coexist on the same identifier.
  */
-export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
-  (path: string): readonly ValidationError[]
-  /**
-   * Tuple-segment form. Validated against `FlatPath<Form>` so literal
-   * tuples that don't resolve to a known path fail at the call site.
-   * Dynamic `Path`-typed inputs hit the untyped fallback overload below.
-   */
-  <const S extends ReadonlyArray<string | number>>(
-    segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
-  ): readonly ValidationError[]
-  (segments: ReadonlyArray<string | number>): readonly ValidationError[]
-  /**
-   * No-arg call returns the form-level error aggregate — same as
-   * `form.errors([])` and `form.meta.errors`. Always a readonly array;
-   * empty when the form has no errors.
-   */
-  (): readonly ValidationError[]
-}
+export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> &
+  FormLevelErrorsSlot<Form> & {
+    (path: string): readonly ValidationError[]
+    /**
+     * Tuple-segment form. Validated against `FlatPath<Form>` so literal
+     * tuples that don't resolve to a known path fail at the call site.
+     * Dynamic `Path`-typed inputs hit the untyped fallback overload below.
+     */
+    <const S extends ReadonlyArray<string | number>>(
+      segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
+    ): readonly ValidationError[]
+    (segments: ReadonlyArray<string | number>): readonly ValidationError[]
+    /**
+     * No-arg call returns the form-level error aggregate — same as
+     * `form.errors([])` and `form.meta.errors`. Always a readonly array;
+     * empty when the form has no errors.
+     */
+    (): readonly ValidationError[]
+  }
+
+/**
+ * Inject `form.errors[""]: readonly ValidationError[]` for the
+ * root form-level bucket (hydration failures, root `.refine()`
+ * results, `setFormErrors` entries) — unless the schema legitimately
+ * owns a `''` key, in which case the standard walker shape wins and
+ * we don't interfere. Container-level errors at non-root paths
+ * surface via the call form (`form.errors('address')`).
+ */
+type FormLevelErrorsSlot<Form> = '' extends keyof Form
+  ? unknown
+  : { readonly ['']: readonly ValidationError[] }
 
 /**
  * Implementation-detail walker backing `form.errors` typed proxy.

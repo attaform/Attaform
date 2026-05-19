@@ -1175,16 +1175,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   //      data differs from the slim baseline are positions the schema
   //      author declared a default at, including `.default(undefined)`.
   const authoredPaths = new Set<PathKey>()
-  if (defaultValues !== undefined) {
-    walkAuthoredFromConstraints(defaultValues, [], authoredPaths)
-  }
-  {
+  /**
+   * Rebuild `authoredPaths` from a fresh constraints baseline + schema
+   * defaults. Used at construction AND at `reset()` time. Both moments
+   * replace the form's pristine reference, so the authoring set must
+   * track the new baseline. Idempotent: clears the Set first, then
+   * re-populates from (1) the constraints argument and (2) a diff of
+   * the schema's with-defaults vs slim baselines.
+   */
+  function rebuildAuthoredPaths(constraints: unknown, schemaWithDefaultsData: unknown): void {
+    authoredPaths.clear()
+    if (constraints !== undefined) {
+      walkAuthoredFromConstraints(constraints, [], authoredPaths)
+    }
     const slimResponse = schema.getDefaultValues({
       useDefaultSchemaValues: false,
       strict,
     })
-    walkAuthoredFromSchemaDiff(schemaInitialData, slimResponse.data, [], authoredPaths)
+    walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimResponse.data, [], authoredPaths)
   }
+  rebuildAuthoredPaths(defaultValues, schemaInitialData)
 
   /**
    * Filter schema-source verdicts: drop issues at preprocess / coerce
@@ -1842,6 +1852,19 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       blankPaths.delete(pathKey)
     }
 
+    // Authored bookkeeping: a setValue is the consumer authoring `path`
+    // (and every sub-path inside `value`, if it's a container). The
+    // schema-error filter consults this set to distinguish "no consumer
+    // input at this preprocess / coerce leaf" from "consumer wrote
+    // undefined here." The latter must surface verdicts; the former
+    // is the runtime no-value-yet stub the filter exists to suppress.
+    // Marking before the identity short-circuit covers the
+    // setValue('url', undefined) over an already-undefined leaf case;
+    // the mark is cheap and consistent either way.
+    const wasAuthoredBefore = authoredPaths.has(pathKey)
+    walkAuthoredFromConstraints(value, path, authoredPaths)
+    const newlyAuthored = !wasAuthoredBefore && authoredPaths.has(pathKey)
+
     // Structural-completeness invariant: every write must leave the
     // form satisfying the slim schema. Two ingress points to fill:
     //   1. The target value (consumer may have passed a partial; the
@@ -1867,6 +1890,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // appears broken.
     const currentValue = getAtPath(form.value, path)
     if (Object.is(currentValue, completedValue)) {
+      // Storage unchanged, skip the replacement to avoid spurious
+      // re-renders. Narrow exception: at a preprocess / coerce leaf,
+      // a write that newly authors the path changes the filter's
+      // verdict semantics. Prior validation passes were suppressed
+      // because the path wasn't authored yet; a fresh pass needs to
+      // fire so the verdict surfaces. The narrow scope (preprocess /
+      // coerce only) preserves the original short-circuit for plain
+      // primitives — `setValue('income', 0)` over a mount-time `0`
+      // stays a true no-op and doesn't kick off a validation cycle.
+      if (newlyAuthored && schema.isPreprocessOrCoerceLeaf(path)) {
+        const modeForAuthoringTransition = meta?.instance?.validateOn ?? fieldValidationMode
+        if (modeForAuthoringTransition === 'change') {
+          scheduleFieldValidation(path, false /* debounced */, {
+            ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
+            ...(meta?.instance?.debounceMs !== undefined
+              ? { debounceMs: meta.instance.debounceMs }
+              : {}),
+          })
+        }
+      }
       return true
     }
     const nextForm = setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F
@@ -2691,6 +2734,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     isHydrating.value = true
     try {
       const value = await factory()
+      // The factory's resolved value is the consumer's late-bound
+      // `defaultValues`. Mark every leaf inside it as authored so the
+      // schema-error filter surfaces verdicts at preprocess / coerce
+      // paths the factory named with explicit undefined (same contract
+      // as the sync `defaultValues` argument applied at construction).
+      walkAuthoredFromConstraints(value, [], authoredPaths)
       const full = mergeSparseHydration(
         toRaw(form.value) as F,
         value,
@@ -2738,8 +2787,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       strict,
     })
     const next = resetResponse.data
-    // Replace form in one shot — applyFormReplacement will emit diffAndApply
-    // patches and touch field records for every changed leaf.
+    // Rebuild authoredPaths against the post-reset baseline. Reset is
+    // "fresh start" semantics, so the prior authoring set is wiped and
+    // re-derived from (1) the reset's constraints argument (consumer
+    // authored those paths) and (2) the schema-default diff (schema-
+    // declared `.default(...)` paths, including `.default(undefined)`).
+    rebuildAuthoredPaths(resetSource, next)
+    // Replace form in one shot. `applyFormReplacement` emits diffAndApply
+    // patches and touches field records for every changed leaf.
     applyFormReplacement(next)
     // Rebuild originals from the new baseline. The set becomes the
     // post-reset pristine reference — a subsequent dirty comparison

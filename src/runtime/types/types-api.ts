@@ -3462,25 +3462,36 @@ export type UseFormReturnType<
    *
    * The form is fully usable while `isHydrating` is `true` — it holds
    * the schema's slim defaults. The flag exists so templates can show
-   * a spinner / dim the form while real data loads, e.g.
+   * a spinner / dim the form while real data loads:
    *
    * ```vue
    * <div :aria-busy="form.isHydrating">…</div>
    * ```
+   *
+   * Exposed as an auto-unwrapping `boolean` (no `.value`); reactivity
+   * is preserved via a getter that tracks the underlying ref at the
+   * access site, so `watch(() => form.isHydrating, …)` and template
+   * reads both fire on change.
    */
-  readonly isHydrating: Readonly<Ref<boolean>>
+  readonly isHydrating: boolean
 
   /**
-   * The error thrown or rejected by the most recent function-form
-   * `defaultValues` factory. `null` on construction, on successful
-   * resolution, and whenever no factory has fired. Updates with each
-   * `form.rehydrate()` call.
+   * The error from the most recent function-form `defaultValues` factory,
+   * normalized to a `ValidationError` (code `atta:hydration-failed`) so the
+   * shape matches every other surface in `form.errors` / `form.meta.errors`.
+   * `null` on construction, on successful resolution, and whenever no
+   * factory has fired. Updates with each `form.rehydrate()` call.
    *
-   * Distinct from `meta.submitError` so retry buttons and recovery
-   * UX can stay focused on the load-time failure without entangling
-   * the submit pipeline.
+   * Distinct from `meta.submitError` so retry buttons and recovery UX can
+   * stay focused on the load-time failure without entangling the submit
+   * pipeline. Read directly in templates and script (no `.value`);
+   * reactivity is preserved via a getter:
+   *
+   * ```vue
+   * <p v-if="form.hydrateError">{{ form.hydrateError.message }}</p>
+   * ```
    */
-  readonly hydrateError: Readonly<Ref<unknown | null>>
+  readonly hydrateError: ValidationError | null
 
   /**
    * Re-fire the captured `defaultValues` factory and re-apply its

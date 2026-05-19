@@ -78,12 +78,12 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b, c], {}), a, b, c }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating.value === false ? true : null))
+    await waitUntil(() => (result.a.isHydrating === false ? true : null))
     expect(aCalls).toBe(1)
     expect(bCalls).toBe(0)
     expect(cCalls).toBe(0)
-    expect(result.b.isHydrating.value).toBe(false)
-    expect(result.c.isHydrating.value).toBe(false)
+    expect(result.b.isHydrating).toBe(false)
+    expect(result.c.isHydrating).toBe(false)
   })
 
   it('fires the factory on first activation', async () => {
@@ -101,11 +101,11 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b], {}), a, b }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating.value === false ? true : null))
+    await waitUntil(() => (result.a.isHydrating === false ? true : null))
     expect(bCalls).toBe(0)
 
     result.stepper.next()
-    await waitUntil(() => (result.b.isHydrating.value === false ? true : null))
+    await waitUntil(() => (result.b.isHydrating === false ? true : null))
     expect(bCalls).toBe(1)
     expect(result.b.values.b).toBe('B')
   })
@@ -125,9 +125,9 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b], {}), a, b }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating.value === false ? true : null))
+    await waitUntil(() => (result.a.isHydrating === false ? true : null))
     result.stepper.next()
-    await waitUntil(() => (result.b.isHydrating.value === false ? true : null))
+    await waitUntil(() => (result.b.isHydrating === false ? true : null))
     expect(bCalls).toBe(1)
     result.stepper.back()
     result.stepper.next()
@@ -150,7 +150,7 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b], {}), a, b }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating.value === false ? true : null))
+    await waitUntil(() => (result.a.isHydrating === false ? true : null))
     expect(bCalls).toBe(0)
 
     await result.b.rehydrate()

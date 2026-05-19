@@ -336,9 +336,11 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly isHydrating: Ref<boolean>
   /**
    * Error from the most recent function-form `defaultValues` factory.
-   * `null` when no factory has fired or the last one succeeded.
+   * Normalized to a `ValidationError` (code `atta:hydration-failed`) so the
+   * shape matches `form.errors` / `form.meta.errors` entries. `null` when
+   * no factory has fired or the last one succeeded.
    */
-  readonly hydrateError: Ref<unknown>
+  readonly hydrateError: Ref<ValidationError | null>
   /**
    * The function-form `defaultValues` factory, captured at the first
    * `useForm({ key })` call that wired this store. `undefined` for
@@ -1437,7 +1439,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // function-form input, `isHydrating` flips true until settle
   // completes. Plain-value forms leave the refs at their zero state.
   const isHydrating = ref(false)
-  const hydrateError = ref<unknown>(null)
+  const hydrateError = ref<ValidationError | null>(null)
   const defaultValuesFactory = ref<(() => unknown | Promise<unknown>) | undefined>(undefined)
   // Flipped to `true` once `useAbstractForm`'s settle microtask body
   // starts running (CSR) or `onServerPrefetch` invokes the body
@@ -2754,15 +2756,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       hydrateError.value = null
       defaultsResolved.value = true
     } catch (error) {
-      hydrateError.value = error
-      // Mirror the raw error onto the standard ValidationError channel
-      // so the form's error pipeline carries the signal. This is what
-      // makes SSR factory rejections visible on the client after
-      // rehydration: `hydrateError` is a local ref that doesn't ride
-      // the wire payload, but `schemaErrors` does. Same write happens
-      // on CSR too for symmetry — consumers see the failure through
-      // `form.meta.errors` regardless of mount path.
-      appendHydrationFailedEntry(error)
+      // Single ValidationError entry covers both surfaces: the dedicated
+      // `hydrateError` ref AND the standard `schemaErrors` channel that
+      // feeds `form.meta.errors`. SSR factory rejections cross the wire
+      // through `schemaErrors`; the local `hydrateError` ref points to
+      // the same entry so the shape is identical at every read site.
+      hydrateError.value = appendHydrationFailedEntry(error)
     } finally {
       isHydrating.value = false
     }
@@ -2779,23 +2778,22 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }
   }
 
-  function appendHydrationFailedEntry(error: unknown): void {
+  function appendHydrationFailedEntry(error: unknown): ValidationError {
     const message =
       error instanceof Error
         ? error.message
         : typeof error === 'string'
           ? error
           : 'Hydration failed'
+    const entry: ValidationError = {
+      message,
+      path: [...FORM_ERRORS_PATH],
+      formKey,
+      code: AttaformErrorCode.HydrationFailed,
+    }
     const existing = schemaErrors.get(FORM_ERRORS_PATH_KEY) ?? []
-    schemaErrors.set(FORM_ERRORS_PATH_KEY, [
-      ...existing,
-      {
-        message,
-        path: [...FORM_ERRORS_PATH],
-        formKey,
-        code: AttaformErrorCode.HydrationFailed,
-      },
-    ])
+    schemaErrors.set(FORM_ERRORS_PATH_KEY, [...existing, entry])
+    return entry
   }
 
   // --- Reset ---

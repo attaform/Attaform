@@ -833,11 +833,18 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     process: process as UseFormReturnType<Form, GetValueFormType>['process'],
     register: register as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
-    // Read-only views over the per-store async-defaults lifecycle
-    // refs (see FormStore.isHydrating / hydrateError). Plain-value
+    // Auto-unwrapping views over the per-store async-defaults lifecycle
+    // refs (see FormStore.isHydrating / hydrateError). Getters preserve
+    // reactivity at the access site: an effect that reads `form.isHydrating`
+    // tracks `state.isHydrating.value`, so writes flow through normally.
+    // Templates can read `form.isHydrating` without `.value`; plain-value
     // forms hold these at their zero state for the form's lifetime.
-    isHydrating: readonly(state.isHydrating) as Readonly<Ref<boolean>>,
-    hydrateError: readonly(state.hydrateError) as Readonly<Ref<unknown | null>>,
+    get isHydrating(): boolean {
+      return state.isHydrating.value
+    },
+    get hydrateError(): ValidationError | null {
+      return state.hydrateError.value
+    },
     rehydrate: () => state.rehydrate(),
     errors: errorsProxy as unknown as FormErrorsSurface<Form>,
     toRef: pathToRef as UseFormReturnType<Form, GetValueFormType>['toRef'],

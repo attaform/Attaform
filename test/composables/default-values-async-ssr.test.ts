@@ -107,7 +107,7 @@ describe('async-defaults SSR + hydration', () => {
     expect(api).toBeDefined()
     if (api === undefined) return
     expect(clientCalls).toBe(0)
-    expect(api.isHydrating.value).toBe(false)
+    expect(api.isHydrating).toBe(false)
     expect(api.values.email).toBe('server@example.com')
     expect(api.values.name).toBe('Ada')
   })
@@ -119,11 +119,10 @@ describe('async-defaults SSR + hydration', () => {
  * `runFactoryAndApply` swallows the rejection into `hydrateError` so
  * `onServerPrefetch` never propagates it back to `renderToString`.
  * SSR completes successfully; the serialised payload carries the
- * schema's slim defaults plus a form-level `HydrationFailed` entry
- * in `schemaErrors`. The raw `hydrateError` ref stays local (it's not
- * serialisable), but the standard ValidationError channel rides the
- * wire, so the client surfaces the failure through `form.meta.errors`
- * after rehydration without an extra signal.
+ * schema's slim defaults plus a form-level `HydrationFailed`
+ * ValidationError in `schemaErrors`. `hydrateError` and the
+ * `meta.errors` entry share the same ValidationError shape so the
+ * client surfaces the failure identically regardless of mount path.
  *
  * Recovery: the consumer calls `form.rehydrate()` to re-fire the
  * captured factory client-side. A successful retry clears the
@@ -132,14 +131,13 @@ describe('async-defaults SSR + hydration', () => {
  */
 describe('async-defaults SSR rejection path', () => {
   it('rejected factory does not crash renderToString; surfaces error via hydrateError + schemaErrors', async () => {
-    const boom = new Error('upstream-down')
     const handle: { api?: UseFormReturnType<{ email: string; name: string }> } = {}
     const App = defineComponent({
       setup() {
         handle.api = useForm({
           schema,
           key: 'ssr-async-reject',
-          defaultValues: () => Promise.reject(boom),
+          defaultValues: () => Promise.reject(new Error('upstream-down')),
         }) as unknown as UseFormReturnType<{ email: string; name: string }>
         return () => h('div')
       },
@@ -157,19 +155,20 @@ describe('async-defaults SSR rejection path', () => {
 
     // Server-side state after the rejection settled: error captured,
     // isHydrating released, form falls back to schema slim defaults.
-    expect(api.hydrateError.value).toBe(boom)
-    expect(api.isHydrating.value).toBe(false)
+    expect(api.hydrateError?.code).toBe(AttaformErrorCode.HydrationFailed)
+    expect(api.hydrateError?.message).toBe('upstream-down')
+    expect(api.isHydrating).toBe(false)
     expect(api.values.email).toBe('')
     expect(api.values.name).toBe('')
 
-    // The raw error also surfaces through the standard ValidationError
-    // pipeline as a form-level HydrationFailed entry. This is what
-    // makes the failure cross the SSR wire to the client (`hydrateError`
-    // itself stays local; `schemaErrors` rides the payload).
+    // The same ValidationError surfaces via `meta.errors` (the standard
+    // form-error pipeline that rides the SSR wire payload). Identical
+    // shape to `hydrateError` so consumers can render from either.
     const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
     expect(hydrationErr).toBeDefined()
     expect(hydrationErr?.message).toBe('upstream-down')
     expect(hydrationErr?.path).toEqual([''])
+    expect(api.hydrateError).toEqual(hydrationErr)
 
     // Payload serialises with the form-level error included.
     const payload = renderAttaformState(ssrApp)
@@ -228,8 +227,8 @@ describe('async-defaults SSR rejection path', () => {
     // surfacing through form.meta.errors — consumers render an error
     // banner / retry button off this entry.
     expect(clientCalls).toBe(0)
-    expect(api.isHydrating.value).toBe(false)
-    expect(api.hydrateError.value).toBeNull()
+    expect(api.isHydrating).toBe(false)
+    expect(api.hydrateError).toBeNull()
     expect(api.values.email).toBe('')
     expect(api.values.name).toBe('')
     const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
@@ -287,8 +286,8 @@ describe('async-defaults SSR rejection path', () => {
     // prior HydrationFailed at entry, only re-adds on rejection).
     await api.rehydrate()
     expect(clientCalls).toBe(1)
-    expect(api.hydrateError.value).toBeNull()
-    expect(api.isHydrating.value).toBe(false)
+    expect(api.hydrateError).toBeNull()
+    expect(api.isHydrating).toBe(false)
     expect(api.values.email).toBe('recovered@example.com')
     expect(api.values.name).toBe('Hopper')
     const postErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)

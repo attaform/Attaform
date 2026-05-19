@@ -179,7 +179,7 @@ describe('useStepper — defaultStatuses', () => {
     // flips and the status follows meta. Form b is still deferred (non-current)
     // so its seed entry continues to surface.
     resolveA({ a: 'A' })
-    await waitUntil(() => (result.a.isHydrating.value === false ? true : null))
+    await waitUntil(() => (result.a.isHydrating === false ? true : null))
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       if (!result.a.meta.validating) break

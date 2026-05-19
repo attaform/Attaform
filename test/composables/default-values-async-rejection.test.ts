@@ -56,15 +56,15 @@ describe('useForm — function-form defaultValues, rejection path', () => {
   })
 
   it('surfaces a thrown sync-factory error on hydrateError', async () => {
-    const boom = new Error('fetch failed')
     const factory = (): { email: string; name: string } => {
-      throw boom
+      throw new Error('fetch failed')
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
-    expect(api.hydrateError.value).toBe(boom)
-    expect(api.isHydrating.value).toBe(false)
+    await waitUntil(() => (api.isHydrating === false ? true : null))
+    expect(api.hydrateError?.code).toBe(AttaformErrorCode.HydrationFailed)
+    expect(api.hydrateError?.message).toBe('fetch failed')
+    expect(api.isHydrating).toBe(false)
     expect(api.meta.submitError).toBeNull()
   })
 
@@ -72,48 +72,47 @@ describe('useForm — function-form defaultValues, rejection path', () => {
     // `async fn() { throw e }` wraps the throw into a rejected promise
     // at the language level; this test pins that the runtime treats
     // it identically to the explicit `() => Promise.reject(e)` case.
-    const boom = new Error('async fetch failed')
     const factory = async (): Promise<{ email: string; name: string }> => {
-      throw boom
+      throw new Error('async fetch failed')
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
-    expect(api.hydrateError.value).toBe(boom)
-    expect(api.isHydrating.value).toBe(false)
+    await waitUntil(() => (api.isHydrating === false ? true : null))
+    expect(api.hydrateError?.code).toBe(AttaformErrorCode.HydrationFailed)
+    expect(api.hydrateError?.message).toBe('async fetch failed')
+    expect(api.isHydrating).toBe(false)
     expect(api.meta.submitError).toBeNull()
   })
 
   it('surfaces a rejected async-factory promise on hydrateError', async () => {
-    const boom = new Error('network down')
-    const { app, api } = mountForm(schema, () => Promise.reject(boom))
+    const { app, api } = mountForm(schema, () => Promise.reject(new Error('network down')))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
-    expect(api.hydrateError.value).toBe(boom)
+    await waitUntil(() => (api.isHydrating === false ? true : null))
+    expect(api.hydrateError?.code).toBe(AttaformErrorCode.HydrationFailed)
+    expect(api.hydrateError?.message).toBe('network down')
     expect(api.meta.submitError).toBeNull()
   })
 
-  it('surfaces a HydrationFailed form-level ValidationError alongside hydrateError', async () => {
-    // Symmetric with the SSR contract: the raw error rides
-    // `hydrateError` while the standard ValidationError pipeline
-    // carries a form-level `HydrationFailed` entry. Consumers can
-    // render error UX off `form.meta.errors` regardless of mount path
-    // (CSR or SSR-rehydrated).
-    const boom = new Error('csr fetch failed')
-    const { app, api } = mountForm(schema, () => Promise.reject(boom))
+  it('mirrors the hydrateError entry onto form.meta.errors', async () => {
+    // The single `ValidationError` ({ code: 'atta:hydration-failed' })
+    // is shared between `form.hydrateError` and the form-level entry in
+    // `form.meta.errors` — same shape, same surface, regardless of mount
+    // path (CSR or SSR-rehydrated).
+    const { app, api } = mountForm(schema, () => Promise.reject(new Error('csr fetch failed')))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
 
     const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
     expect(hydrationErr).toBeDefined()
     expect(hydrationErr?.message).toBe('csr fetch failed')
     expect(hydrationErr?.path).toEqual([''])
+    expect(api.hydrateError).toEqual(hydrationErr)
   })
 
   it('leaves the form usable with schema slim defaults after rejection', async () => {
     const { app, api } = mountForm(schema, () => Promise.reject(new Error('boom')))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
     expect(api.values.email).toBe('')
     expect(api.values.name).toBe('')
     // Consumers can still mutate the form post-rejection.
@@ -124,7 +123,7 @@ describe('useForm — function-form defaultValues, rejection path', () => {
   it('handleSubmit fires post-rejection so consumers can recover manually', async () => {
     const { app, api } = mountForm(schema, () => Promise.reject(new Error('boom')))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
 
     // Consumer fills the form by hand and submits. The mount-time
     // factory failure should not block the submit channel; the form

@@ -95,6 +95,34 @@ useForm({ schema, defaultValues: unset }) // every primitive leaf
 
 The third pattern uses `unset` as a sentinel that lands at any path. Required schemas under the unset path surface a `code: 'atta:no-value-supplied'` error reactively. See [the `unset` page](/docs/writing-and-mutating/unset) for the position-by-position contract and [the `blank` field-state bit](/docs/validation/blank) for the storage / display divergence story.
 
+## Loading defaults asynchronously
+
+`defaultValues` accepts a function as well as a plain value. The function form defers the work: a sync function fires on a microtask after construction, an async function runs and the form waits for the resolved payload to land.
+
+```ts
+const form = useForm({
+  schema,
+  defaultValues: async () => api.fetchDraft(userId),
+})
+```
+
+The form is fully usable while the factory is in flight; it holds the schema's slim defaults and exposes the load state through `form.isHydrating`:
+
+```vue
+<form :aria-busy="form.isHydrating">
+  <input v-register="form.register('email')" :disabled="form.isHydrating" />
+</form>
+```
+
+When the promise resolves the payload overlays onto storage, the same way a plain `defaultValues` object would; `isHydrating` flips back to `false`.
+
+If the factory throws or rejects, the error lands on `form.hydrateError` (distinct from `form.meta.submitError`) and the form stays usable with the slim defaults. Call `form.rehydrate()` to refire the captured factory, e.g. wired to a retry button.
+
+::docs-demo{slug="defaults-async-factory" label="Async factory demo"}
+::
+
+Under SSR the factory fires via `onServerPrefetch`, so the resolved payload bakes into the hydration transfer state; the client never re-fetches on hydrate.
+
 ## Numeric leaves auto-mark blank
 
 Numeric primitives (`number`, `bigint`) are special: when no explicit value is supplied, the leaf auto-marks as blank because storage's slim default (`0`, `0n`) differs from what the DOM shows (an empty `<input type="number">`).

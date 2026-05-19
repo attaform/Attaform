@@ -53,7 +53,7 @@ describe('useStepper — active form with sync defaults', () => {
     })
     apps.push(app)
     expect(result.a.values.a).toBe('A-sync')
-    expect(result.a.isHydrating.value).toBe(false)
+    expect(result.a.isHydrating).toBe(false)
   })
 
   it('sync defaults on a non-current step are visible at construction', () => {
@@ -68,6 +68,6 @@ describe('useStepper — active form with sync defaults', () => {
     })
     apps.push(app)
     expect(result.b.values.b).toBe('B-sync')
-    expect(result.b.isHydrating.value).toBe(false)
+    expect(result.b.isHydrating).toBe(false)
   })
 })

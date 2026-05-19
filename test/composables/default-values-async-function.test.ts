@@ -59,8 +59,8 @@ describe('useForm — function-form defaultValues', () => {
   it('plain-value defaultValues leaves isHydrating false', () => {
     const { app, api } = mountForm(schema, { email: 'a@b.c', name: 'Ada' })
     apps.push(app)
-    expect(api.isHydrating.value).toBe(false)
-    expect(api.hydrateError.value).toBeNull()
+    expect(api.isHydrating).toBe(false)
+    expect(api.hydrateError).toBeNull()
     expect(api.values.email).toBe('a@b.c')
   })
 
@@ -74,11 +74,11 @@ describe('useForm — function-form defaultValues', () => {
     apps.push(app)
     // Microtask not yet flushed — factory has been queued but not
     // necessarily invoked. We assert behavior at the post-flush state.
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
     expect(calls).toBe(1)
     expect(api.values.email).toBe('sync@example.com')
     expect(api.values.name).toBe('Grace')
-    expect(api.hydrateError.value).toBeNull()
+    expect(api.hydrateError).toBeNull()
   })
 
   it('async function defaultValues flips isHydrating true → false', async () => {
@@ -88,12 +88,12 @@ describe('useForm — function-form defaultValues', () => {
     })
     const { app, api } = mountForm(schema, () => promise)
     apps.push(app)
-    expect(api.isHydrating.value).toBe(true)
+    expect(api.isHydrating).toBe(true)
     resolveFactory({ email: 'async@example.com', name: 'Lovelace' })
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
     expect(api.values.email).toBe('async@example.com')
     expect(api.values.name).toBe('Lovelace')
-    expect(api.hydrateError.value).toBeNull()
+    expect(api.hydrateError).toBeNull()
   })
 
   it('partial async resolution overlays onto schema slim defaults', async () => {
@@ -101,7 +101,7 @@ describe('useForm — function-form defaultValues', () => {
     // slim default (empty string for z.string()).
     const { app, api } = mountForm(schema, () => Promise.resolve({ email: 'partial@example.com' }))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
     expect(api.values.email).toBe('partial@example.com')
     expect(api.values.name).toBe('')
   })

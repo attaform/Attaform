@@ -70,7 +70,7 @@ describe('form.rehydrate', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
     expect(calls).toBe(1)
     expect(api.values.email).toBe('first@example.com')
 
@@ -92,13 +92,13 @@ describe('form.rehydrate', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.isHydrating === false ? true : null))
 
     const promise = api.rehydrate()
-    expect(api.isHydrating.value).toBe(true)
+    expect(api.isHydrating).toBe(true)
     resolveFactory({ email: 'second@example.com', name: 'Hopper' })
     await promise
-    expect(api.isHydrating.value).toBe(false)
+    expect(api.isHydrating).toBe(false)
     expect(api.values.email).toBe('second@example.com')
   })
 
@@ -117,12 +117,13 @@ describe('form.rehydrate', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
-    expect(api.hydrateError.value).toBeNull()
+    await waitUntil(() => (api.isHydrating === false ? true : null))
+    expect(api.hydrateError).toBeNull()
 
     await api.rehydrate()
-    expect(api.hydrateError.value).toBeInstanceOf(Error)
-    expect((api.hydrateError.value as Error).message).toBe('rehydrate failed')
-    expect(api.isHydrating.value).toBe(false)
+    expect(api.hydrateError).not.toBeNull()
+    expect(api.hydrateError?.code).toBe('atta:hydration-failed')
+    expect(api.hydrateError?.message).toBe('rehydrate failed')
+    expect(api.isHydrating).toBe(false)
   })
 })

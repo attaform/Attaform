@@ -7,19 +7,21 @@ import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Pins the clear-on-write contract: a `setValue` at a path invalidates
- * any prior schema-source verdict at that path. Without this, the
- * construction-time async-validation seed runs against the no-write-
- * mutation default (`undefined` at preprocess leaves), the preprocess
- * fn returns its INVALID_URL sentinel, refine rejects, and the stale
- * "doesn't look like a URL" error sits in `form.errors.url` — invisible
- * until the field is touched, then visible for the brief window
- * between "user blurred" and "new validation completed."
+ * Pins suppression of construction-time validation verdicts at
+ * unsupplied preprocess / coerce leaves.
  *
- * The fix lives at the write boundary: `setValueAtPath` clears
- * schemaErrors at the path it just wrote, so the next render shows
- * "no error" until the new validation lands. Eliminates the flicker
- * and also handles any "stale error from a prior value" pattern.
+ * The adapter's `validateAtPath` drops issues whose path resolves to
+ * a `z.preprocess` / `z.coerce.X()` wrapper AND whose data is
+ * undefined. Without the filter the construction-time async-validation
+ * seed runs against the no-write-mutation default (`undefined` at
+ * those leaves), the preprocess fn returns its INVALID-shape sentinel,
+ * refine rejects, and the verdict lands in `schemaErrors` invisible
+ * until the field is touched-and-dirty — flickering into view the
+ * moment the consumer starts typing.
+ *
+ * Suppression is targeted: as soon as the consumer supplies a value
+ * (via `defaultValues` or `setValue`), validation runs normally and
+ * legitimate verdicts surface.
  */
 
 const EMPTY_URL = '__empty__'
@@ -31,7 +33,7 @@ const schema = z.object({
       if (typeof v !== 'string') return INVALID_URL
       const trimmed = v.trim()
       if (trimmed.length === 0) return EMPTY_URL
-      return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+      return trimmed
     },
     z.string().refine(async (val) => val !== EMPTY_URL && val !== INVALID_URL, {
       error: (issue) => {
@@ -63,60 +65,45 @@ function uniqueKey(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2)}`
 }
 
-describe('setValue clears stale schemaErrors at the write path', () => {
+describe('preprocess / coerce leaves: mount-time verdicts against undefined are suppressed', () => {
   const unmounts: Array<() => void> = []
   afterEach(() => {
     while (unmounts.length > 0) unmounts.pop()?.()
   })
 
-  it('mount-time validation seeds an error against undefined; first setValue clears it', async () => {
+  it('no defaultValues + async-refine schema: schemaErrors stays empty at mount', async () => {
     const { api, unmount } = mountForm(() =>
-      useForm({ schema, key: uniqueKey('flicker-blur'), validateOn: 'blur' })
+      useForm({ schema, key: uniqueKey('mount-suppress'), validateOn: 'blur' })
     )
     unmounts.push(unmount)
 
-    // Let the construction-time async-validation seed settle. It
-    // populates schemaErrors with an INVALID_URL verdict because
-    // storage at the preprocess leaf is undefined.
+    // Wait through the queued microtask + the async refine's resolve.
     await nextTick()
-    await new Promise((r) => setTimeout(r, 5))
-    expect(api.errors.url.length).toBeGreaterThan(0)
+    await new Promise((r) => setTimeout(r, 20))
 
-    // The first write at the path drops the stale verdict. The
-    // directive renders against this state in the gap between
-    // "user blurred" and "new validation completed."
-    api.setValue('url', 'xyz')
+    expect(api.values.url).toBeUndefined()
     expect(api.errors.url).toEqual([])
   })
 
-  it('setValue at a different path leaves errors at sibling paths intact', async () => {
-    const twoFieldSchema = z.object({
-      url: z.preprocess(
-        (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : INVALID_URL),
-        z.string().refine(async (val) => val !== INVALID_URL, {
-          error: () => 'url invalid',
-        })
-      ),
-      name: z.string().refine((s) => s.length > 0, { error: 'name required' }),
-    })
+  it('suppression is targeted: defaultValues at the leaf re-enables the verdict', async () => {
     const { api, unmount } = mountForm(() =>
-      useForm({ schema: twoFieldSchema, key: uniqueKey('flicker-sibling') })
+      useForm({
+        schema,
+        key: uniqueKey('mount-supplied'),
+        defaultValues: { url: '' },
+      })
     )
     unmounts.push(unmount)
 
     await nextTick()
-    await new Promise((r) => setTimeout(r, 5))
+    await new Promise((r) => setTimeout(r, 20))
 
-    // Seed both errors.
-    await api.validateAsync()
-
-    // Verify both surfaces have errors before the write.
+    // Storage holds the consumer's empty string; preprocess returns
+    // EMPTY_URL; refine rejects with the "Please enter a URL" message.
+    // The verdict IS legitimate (against a value the consumer supplied)
+    // and must surface in schemaErrors.
+    expect(api.values.url).toBe('')
     expect(api.errors.url.length).toBeGreaterThan(0)
-    expect(api.errors.name.length).toBeGreaterThan(0)
-
-    // Writing to `name` must not touch `url`'s errors.
-    api.setValue('name', 'Alex')
-    expect(api.errors.name).toEqual([])
-    expect(api.errors.url.length).toBeGreaterThan(0)
+    expect(api.errors.url[0]?.message).toBe('Please enter a URL.')
   })
 })

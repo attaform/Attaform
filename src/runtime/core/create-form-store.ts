@@ -988,6 +988,67 @@ function cloneVariantSnapshot(value: unknown): unknown {
   return out
 }
 
+/**
+ * Walk the consumer's `defaultValues` argument and stamp every leaf path
+ * as "consumer-authored." Even an explicit `undefined` at a leaf counts:
+ * the consumer named the path, so any verdict against that undefined IS
+ * one they had a chance to provoke and should see.
+ *
+ * Plain records and arrays descend; non-record leaves (primitives, Date,
+ * Map, class instances) mark their own path and stop.
+ */
+function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<PathKey>): void {
+  if (prefix.length > 0) out.add(canonicalizePath(prefix).key)
+  if (isPlainRecord(value)) {
+    for (const k of Object.keys(value)) {
+      walkAuthoredFromConstraints((value as Record<string, unknown>)[k], [...prefix, k], out)
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      walkAuthoredFromConstraints(value[i], [...prefix, i], out)
+    }
+  }
+}
+
+/**
+ * Diff two `getDefaultValues` outputs (with vs without
+ * `useDefaultSchemaValues`) to find every path where the schema author
+ * declared a `.default(...)` chain. Paths whose value differs between
+ * the two passes are positions where a declared default takes effect,
+ * including `.default(undefined)` — which still differs from the slim
+ * baseline because the latter falls through to the inner schema's
+ * empty value (`''`, `0`, etc.) rather than the wrapper's chosen
+ * undefined.
+ */
+function walkAuthoredFromSchemaDiff(
+  withDefaults: unknown,
+  withoutDefaults: unknown,
+  prefix: Path,
+  out: Set<PathKey>
+): void {
+  if (isPlainRecord(withDefaults) && isPlainRecord(withoutDefaults)) {
+    const left = withDefaults as Record<string, unknown>
+    const right = withoutDefaults as Record<string, unknown>
+    const keys = new Set<string>([...Object.keys(left), ...Object.keys(right)])
+    for (const k of keys) {
+      walkAuthoredFromSchemaDiff(left[k], right[k], [...prefix, k], out)
+    }
+    return
+  }
+  if (Array.isArray(withDefaults) && Array.isArray(withoutDefaults)) {
+    const len = Math.max(withDefaults.length, withoutDefaults.length)
+    for (let i = 0; i < len; i++) {
+      walkAuthoredFromSchemaDiff(withDefaults[i], withoutDefaults[i], [...prefix, i], out)
+    }
+    return
+  }
+  if (!Object.is(withDefaults, withoutDefaults) && prefix.length > 0) {
+    out.add(canonicalizePath(prefix).key)
+  }
+}
+
 export function createFormStore<F extends GenericForm, G extends GenericForm = F>(
   options: CreateFormStoreOptions<F, G>
 ): FormStore<F, G> {
@@ -1098,6 +1159,53 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     strict,
   })
   const schemaInitialData = schemaResponse.data
+
+  // Paths the consumer or schema-author explicitly authored a starting
+  // value at — used by the schema-error filter to distinguish "missing
+  // user input" from "consumer chose this starting state."
+  //
+  // Two contributions:
+  //   1. Every leaf in the consumer's `defaultValues` argument. Even
+  //      `{ url: undefined }` counts — the consumer named the path,
+  //      so any validation verdict against that undefined IS
+  //      verdict-worthy from their perspective.
+  //   2. Schema-declared `.default(value)` chains, detected by diffing
+  //      two `getDefaultValues` passes (with vs without
+  //      `useDefaultSchemaValues`). Paths where the with-defaults
+  //      data differs from the slim baseline are positions the schema
+  //      author declared a default at, including `.default(undefined)`.
+  const authoredPaths = new Set<PathKey>()
+  if (defaultValues !== undefined) {
+    walkAuthoredFromConstraints(defaultValues, [], authoredPaths)
+  }
+  {
+    const slimResponse = schema.getDefaultValues({
+      useDefaultSchemaValues: false,
+      strict,
+    })
+    walkAuthoredFromSchemaDiff(schemaInitialData, slimResponse.data, [], authoredPaths)
+  }
+
+  /**
+   * Filter schema-source verdicts: drop issues at preprocess / coerce
+   * leaves whose storage is undefined AND whose path the consumer
+   * never authored. Form-level errors (`path.length === 0`) and
+   * verdicts at paths with non-undefined storage always pass through.
+   * Mount and field-validation pipelines run errors through this
+   * filter; `handleSubmit` does not (submit is the moment "you must
+   * have supplied all fields" applies, and the consumer should see
+   * every verdict).
+   */
+  function filterAuthoredErrors(errors: readonly ValidationError[]): ValidationError[] {
+    return errors.filter((err) => {
+      const pathSegments = err.path as Path
+      if (pathSegments.length === 0) return true
+      const value = getAtPath(form.value, pathSegments)
+      if (value !== undefined) return true
+      if (authoredPaths.has(canonicalizePath(pathSegments).key)) return true
+      return !schema.isPreprocessOrCoerceLeaf(pathSegments)
+    })
+  }
 
   // Clone per instance so two forms sharing a schema (or one form
   // re-mounted from the same schema cache) don't alias the same
@@ -1761,16 +1869,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (Object.is(currentValue, completedValue)) {
       return true
     }
-    // Drop any schema-source verdict held against the prior value at
-    // this exact path. The store can't promise its old error is still
-    // applicable once storage moves, and rendering the stale entry in
-    // the gap between "value changed" and "next validation completed"
-    // surfaces verdicts the consumer can't act on (preprocess sentinel
-    // leakage from construction-time validation, refine results from
-    // a value the user has since edited away from). User-supplied
-    // errors and the derived-blank channel are untouched — they're
-    // owned outside the schema layer.
-    schemaErrors.delete(canonicalizePath(path).key)
     const nextForm = setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F
     applyFormReplacement(nextForm, meta)
     // Variant-memory bookkeeping for array structural mutations. The
@@ -2070,6 +2168,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
                 ...err,
                 path: [...path, ...(err.path as Segment[])],
               }))
+          // Drop schema verdicts at preprocess / coerce paths whose
+          // storage is undefined AND the consumer didn't author a
+          // starting value there. Under the no-write-mutation contract,
+          // a refine running against the preprocess sentinel for "no
+          // value" produces a verdict against state nobody authored —
+          // suppressing it keeps the construction-time async seed
+          // from flickering when the field is first touched. Authored
+          // paths (defaultValues OR schema `.default(...)`) skip the
+          // filter; their verdicts ARE legitimate.
+          const filtered = filterAuthoredErrors(reStamped)
           // Apply at the LEAF level: when the scheduled path is a
           // container (e.g. `['notify']` after a DU reshape), the
           // adapter returns multiple issues at distinct leaf paths.
@@ -2079,7 +2187,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // because `setSchemaErrorsForPath(parent, [])` only clears
           // the parent's own key, not the descendants written by a
           // previous run.
-          applySchemaErrorsForSubtree(path, reStamped)
+          applySchemaErrorsForSubtree(path, filtered)
         })
         .catch(() => {
           // Adapter contract forbids throws — swallow here so a misbehaving

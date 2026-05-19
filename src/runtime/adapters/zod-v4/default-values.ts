@@ -290,8 +290,11 @@ function defaultForKind(
  * Merge `override` into `base` recursively, preferring override leaves.
  *
  * Leaf semantics (anything not a plain `{}` record is a leaf):
- *   - `undefined` override → no-op (don't drop the base value)
  *   - `null` override → replaces base (a deliberate "clear this field" signal)
+ *   - `undefined` override at a key the consumer NAMED (`Object.keys`
+ *     returns it) → replaces base. The consumer asked for "this slot
+ *     starts undefined," which is a distinct signal from "no entry at
+ *     this key."
  *   - primitives, arrays, `Date`, `Map`, class instances → replace wholesale
  *
  * Only plain records on BOTH sides recurse. The previous implementation
@@ -311,13 +314,14 @@ export function mergeDeep(base: unknown, override: unknown): unknown {
   for (const key of Object.keys(override)) {
     const oVal = override[key]
     const bVal = base[key]
-    // Recurse only when BOTH sides are plain records; otherwise treat the
-    // override as a leaf. Preserves the historic quirk that an explicit
-    // `undefined` does NOT evict the base key (consumers who want to
-    // clear a field use `null`).
+    // Recurse only when BOTH sides are plain records; otherwise treat
+    // the override as a leaf. `Object.keys` returns OWN enumerable
+    // keys, so a key with an explicit `undefined` value lands here too
+    // — and the consumer's choice to name the path overrides the
+    // base's value, mirroring the way an explicit `null` would.
     if (isPlainRecord(oVal) && isPlainRecord(bVal)) {
       result[key] = mergeDeep(bVal, oVal)
-    } else if (oVal !== undefined) {
+    } else {
       result[key] = oVal
     }
   }

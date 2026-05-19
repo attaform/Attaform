@@ -1,6 +1,6 @@
 ---
 title: errors
-description: form.errors is a reactive Proxy keyed by schema paths — read any leaf's error list, with first().message ready to render and the full array available for richer surfaces.
+description: form.errors is a reactive Proxy keyed by schema paths. Read any leaf's error list, with errors[0]?.message ready to render and the full array available for richer surfaces.
 metaRows:
   - label: Category
     value: Return property
@@ -13,7 +13,7 @@ metaRows:
 
 # `errors`
 
-> A reactive Proxy keyed by schema paths — each leaf's error list, ready to render.
+> A reactive Proxy keyed by schema paths, with each leaf's error list ready to render.
 
 ::docs-meta-table
 ::
@@ -29,7 +29,7 @@ The first error's `.message` is what most templates render:
 </template>
 ```
 
-For richer error display, gated by `shouldShowErrors`, or pulling the first error directly, reach for `form.fields.email.firstError.message` paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display ergonomics layered on.
+For richer error display, gated by `shouldShowErrors`, or pulling the first error directly, reach for `form.fields.email.firstError?.message` paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display ergonomics layered on.
 
 ## Container reads
 
@@ -50,10 +50,10 @@ Server-side errors come back into the same reactive store:
 form.setFieldErrors([{ path: 'email', message: 'Already taken' }])
 ```
 
-Pair with `parseApiErrors` to convert a server response payload into the right shape — the render surface is identical whether the error came from Zod or your API.
+Pair with `parseApiErrors` to convert a server response payload into the right shape. The render surface is identical whether the error came from Zod or your API.
 
 ## Where to next
 
-- [The form object](/docs/reading-the-form/the-form-object) — every other reactive read.
-- [`values`](/docs/reading-the-form/values) — the read companion to errors.
-- [When validation runs](/docs/validation/when-validation-runs) — the moment errors appear.
+- [The form](/docs/reading-the-form/the-form): every other reactive read.
+- [`values`](/docs/reading-the-form/values): the read companion to errors.
+- [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.

@@ -1,6 +1,6 @@
 ---
 title: toRef
-description: form.toRef hands you a Readonly<Ref<T>> at any schema path — for the rare consumer that needs a Vue ref instead of the values Proxy.
+description: form.toRef hands you a Readonly<Ref<T>> at any schema path, for the rare consumer that needs a Vue ref instead of the values Proxy.
 metaRows:
   - label: Category
     value: Return method
@@ -16,22 +16,22 @@ metaRows:
 
 # `toRef`
 
-> The ref-shaped escape hatch — for the rare consumer that needs `Ref<T>` instead of the Proxy.
+> The ref-shaped escape hatch, for the rare consumer that needs `Ref<T>` instead of the Proxy.
 
 ::docs-meta-table
 ::
-`form.toRef(path)` returns a `Readonly<Ref<T>>` whose `.value` tracks the storage at `path`. Reach for it only when an outside surface needs the ref shape; for normal reads, `form.values.<path>` is always the right call.
+`form.toRef(path)` returns a `Readonly<Ref<T>>` whose `.value` tracks the storage at `path`. Reach for it only when an outside surface needs the ref shape. For normal reads, `form.values.<path>` is always the right call.
 
 ## When to use it
 
 External composables, watchers, and DevTools probes sometimes expect a `Ref` rather than a Proxy property:
 
 ```ts
-const form = useForm({
-  schema: z.object({
-    email: z.email(),
-  }),
+const schema = z.object({
+  email: z.email(),
 })
+
+const form = useForm({ schema })
 
 const emailRef = form.toRef('email') // Readonly<Ref<string>>
 
@@ -44,7 +44,7 @@ watch(emailRef, (next) => {
 })
 ```
 
-For everything else — templates, computed reads, conditional rendering — prefer `form.values.email` directly. The Proxy is reactive without ceremony; `toRef` is for ref-shaped interop only.
+For everything else (templates, computed reads, conditional rendering) prefer `form.values.email` directly. The Proxy is reactive without ceremony; `toRef` is for ref-shaped interop only.
 
 ## Two call forms
 
@@ -63,17 +63,17 @@ The tuple form sidesteps the dotted-key collision (a schema key containing a lit
 
 ```ts
 form.setValue('email', 'a@b.c') // imperative write
-register('email') // bound writes via v-register
-fieldArrayHelpers.append({
+form.register('email') // bound writes via v-register
+form.append('todos', {
   /* … */
 }) // structural writes
 ```
 
-The library tracks dirty / touched / validation state through those write paths. Assigning to `.value` directly throws — `toRef` is a read handle, not a backdoor.
+The library tracks dirty, touched, and validation state through those write paths. Assigning to `.value` directly throws; `toRef` is a read handle, not a backdoor.
 
 ## Reactivity contract
 
-`toRef` returns a `ComputedRef`-equivalent shape: reads inside reactive scopes track the path, and consumers re-run when storage at `path` changes. Two refs to the same path share reactivity — they don't double-subscribe.
+`toRef` returns a `ComputedRef`-equivalent shape: reads inside reactive scopes track the path, and consumers re-run when storage at `path` changes. Two refs to the same path share reactivity; they don't double-subscribe.
 
 ```ts
 const refA = form.toRef('email')
@@ -87,6 +87,6 @@ The same path-precise reactivity Vue offers on `form.values.email`, just wrapped
 
 ## Where to next
 
-- [`values`](/docs/reading-the-form/values) — the Proxy you should reach for first, before `toRef`.
-- [`fields`](/docs/reading-the-form/fields) — the per-leaf reactive surface for state bits, not just values.
-- [The form object](/docs/reading-the-form/the-form-object) — every other reactive read on the return shape.
+- [`values`](/docs/reading-the-form/values): the Proxy you should reach for first, before `toRef`.
+- [`fields`](/docs/reading-the-form/fields): the per-leaf reactive surface for state bits, not just values.
+- [The form](/docs/reading-the-form/the-form): every other reactive read on the return shape.

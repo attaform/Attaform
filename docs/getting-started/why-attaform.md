@@ -86,7 +86,7 @@ These ship with the core, typed and orchestrated as first-class features:
 ## Where to next
 
 - [Quick start](/docs/getting-started/quick-start): your first form, end-to-end.
-- [The form object](/docs/reading-the-form/the-form-object): the full reactive surface returned by `useForm`.
+- [The form](/docs/reading-the-form/the-form): the full reactive surface returned by `useForm`.
 - [Type safety](/docs/reading-the-form/type-safety): wide while typing, tight inside `handleSubmit`, by design.
 - [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.
 - [The `v-register` directive](/docs/binding-inputs/v-register): how Attaform binds inputs.

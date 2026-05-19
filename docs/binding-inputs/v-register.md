@@ -56,6 +56,6 @@ The raw `errors.email` Proxy stays available as `ValidationError[]` when you nee
 
 ## Where to next
 
-- [The form object](/docs/reading-the-form/the-form-object) — the full reactive surface.
-- [`values`](/docs/reading-the-form/values) — what the directive writes into.
-- [`errors`](/docs/reading-the-form/errors) — the error reads paired with each registered path.
+- [The form](/docs/reading-the-form/the-form): the full reactive surface.
+- [`values`](/docs/reading-the-form/values): what the directive writes into.
+- [`errors`](/docs/reading-the-form/errors): the error reads paired with each registered path.

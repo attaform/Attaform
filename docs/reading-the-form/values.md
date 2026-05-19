@@ -1,6 +1,6 @@
 ---
 title: values
-description: form.values is a drillable reactive Proxy keyed by schema paths — read any leaf or container, anywhere, and Vue tracks the access for you.
+description: form.values is a drillable reactive Proxy keyed by schema paths. Read any leaf or container, anywhere, and Vue tracks the access for you.
 metaRows:
   - label: Category
     value: Return property
@@ -22,21 +22,21 @@ metaRows:
 ## Leaf and container reads
 
 ```ts
-const form = useForm({
-  schema: z.object({
-    profile: z.object({
-      name: z.string(),
-      email: z.email(),
-    }),
-    age: z.number(),
+const schema = z.object({
+  profile: z.object({
+    name: z.string(),
+    email: z.email(),
   }),
+  age: z.number(),
 })
+
+const form = useForm({ schema })
 
 // Leaf reads
 form.values.profile.name
 form.values.age
 
-// Container reads — returns the nested object
+// Container reads return the nested object
 form.values.profile // { name: '', email: '' }
 ```
 
@@ -50,13 +50,13 @@ form.values.profile // { name: '', email: '' }
 </template>
 ```
 
-Vue's auto-unwrap means you don't write `.value` — the Proxy presents as a plain object surface.
+Vue's auto-unwrap means you don't write `.value`; the Proxy presents as a plain object surface.
 
 ## Writes go through setValue
 
-`form.values` is a read surface. To write, call `form.setValue('email', value)` — the directive and `setValue` are the only write paths, so storage updates always flow through the same validation and dirty-tracking pipeline. Assigning to `form.values.email` directly throws in dev.
+`form.values` is a read surface. To write, call `form.setValue('email', value)`. The directive and `setValue` are the only write paths, so storage updates always flow through the same validation and dirty-tracking pipeline. Assigning to `form.values.email` directly throws in dev.
 
 ## Where to next
 
-- [`errors`](/docs/reading-the-form/errors) — paired error reads.
-- [The form object](/docs/reading-the-form/the-form-object) — every other reactive read.
+- [`errors`](/docs/reading-the-form/errors): paired error reads.
+- [The form](/docs/reading-the-form/the-form): every other reactive read.

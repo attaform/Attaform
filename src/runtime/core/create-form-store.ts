@@ -1761,6 +1761,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (Object.is(currentValue, completedValue)) {
       return true
     }
+    // Drop any schema-source verdict held against the prior value at
+    // this exact path. The store can't promise its old error is still
+    // applicable once storage moves, and rendering the stale entry in
+    // the gap between "value changed" and "next validation completed"
+    // surfaces verdicts the consumer can't act on (preprocess sentinel
+    // leakage from construction-time validation, refine results from
+    // a value the user has since edited away from). User-supplied
+    // errors and the derived-blank channel are untouched — they're
+    // owned outside the schema layer.
+    schemaErrors.delete(canonicalizePath(path).key)
     const nextForm = setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F
     applyFormReplacement(nextForm, meta)
     // Variant-memory bookkeeping for array structural mutations. The

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormConfigV4 } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { waitUntil } from '../utils/form-harness'
 
@@ -90,6 +91,23 @@ describe('useForm — function-form defaultValues, rejection path', () => {
     await waitUntil(() => (api.isHydrating.value === false ? true : null))
     expect(api.hydrateError.value).toBe(boom)
     expect(api.meta.submitError).toBeNull()
+  })
+
+  it('surfaces a HydrationFailed form-level ValidationError alongside hydrateError', async () => {
+    // Symmetric with the SSR contract: the raw error rides
+    // `hydrateError` while the standard ValidationError pipeline
+    // carries a form-level `HydrationFailed` entry. Consumers can
+    // render error UX off `form.meta.errors` regardless of mount path
+    // (CSR or SSR-rehydrated).
+    const boom = new Error('csr fetch failed')
+    const { app, api } = mountForm(schema, () => Promise.reject(boom))
+    apps.push(app)
+    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+
+    const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
+    expect(hydrationErr).toBeDefined()
+    expect(hydrationErr?.message).toBe('csr fetch failed')
+    expect(hydrationErr?.path).toEqual([''])
   })
 
   it('leaves the form usable with schema slim defaults after rejection', async () => {

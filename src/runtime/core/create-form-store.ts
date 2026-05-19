@@ -2732,6 +2732,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   async function runFactoryAndApply(factory: () => unknown | Promise<unknown>): Promise<void> {
     isHydrating.value = true
+    // Clear any prior HydrationFailed entry so a retry starts from a
+    // clean slate. The error gets re-added below if the factory
+    // rejects again.
+    clearHydrationFailedEntry()
     try {
       const value = await factory()
       // The factory's resolved value is the consumer's late-bound
@@ -2751,9 +2755,47 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       defaultsResolved.value = true
     } catch (error) {
       hydrateError.value = error
+      // Mirror the raw error onto the standard ValidationError channel
+      // so the form's error pipeline carries the signal. This is what
+      // makes SSR factory rejections visible on the client after
+      // rehydration: `hydrateError` is a local ref that doesn't ride
+      // the wire payload, but `schemaErrors` does. Same write happens
+      // on CSR too for symmetry — consumers see the failure through
+      // `form.meta.errors` regardless of mount path.
+      appendHydrationFailedEntry(error)
     } finally {
       isHydrating.value = false
     }
+  }
+
+  function clearHydrationFailedEntry(): void {
+    const existing = schemaErrors.get(FORM_ERRORS_PATH_KEY)
+    if (existing === undefined) return
+    const filtered = existing.filter((e) => e.code !== AttaformErrorCode.HydrationFailed)
+    if (filtered.length === 0) {
+      schemaErrors.delete(FORM_ERRORS_PATH_KEY)
+    } else {
+      schemaErrors.set(FORM_ERRORS_PATH_KEY, filtered)
+    }
+  }
+
+  function appendHydrationFailedEntry(error: unknown): void {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Hydration failed'
+    const existing = schemaErrors.get(FORM_ERRORS_PATH_KEY) ?? []
+    schemaErrors.set(FORM_ERRORS_PATH_KEY, [
+      ...existing,
+      {
+        message,
+        path: [...FORM_ERRORS_PATH],
+        formKey,
+        code: AttaformErrorCode.HydrationFailed,
+      },
+    ])
   }
 
   // --- Reset ---

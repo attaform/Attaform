@@ -34,6 +34,16 @@ export const AttaformErrorCode = {
    * rejection or routing through `submitError`.
    */
   ValidatorThrew: 'atta:validator-threw',
+  /**
+   * A function-form `defaultValues` factory threw or its promise
+   * rejected. The runtime captures the raw error on `form.hydrateError`
+   * and ALSO surfaces a form-level `ValidationError` (path `[]`) so
+   * the standard error pipeline carries the signal. Critical for the
+   * SSR round-trip: `hydrateError` itself does not ride the wire
+   * payload, but `schemaErrors` does, so the client sees the failure
+   * after rehydration without an extra channel.
+   */
+  HydrationFailed: 'atta:hydration-failed',
   /** The supplied path didn't resolve to any node in the schema. */
   PathNotFound: 'atta:path-not-found',
 } as const

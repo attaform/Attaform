@@ -147,6 +147,59 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
 
     expect(api.meta.errors.some((e) => /city and zip/.test(e.message))).toBe(true)
   })
+
+  it('container-level refine error: read-surface coverage across every API', async () => {
+    // A `.refine()` at a container path is a legitimate Zod pattern: the
+    // resulting error's absolute path equals the container's own path.
+    // This test pins what every read site does today so the gaps are
+    // visible side-by-side, then drives the fix.
+    //
+    // Today's behavior (current implementation):
+    //   - form.meta.errors (flat aggregate)          → INCLUDED
+    //   - form.errors(['address']) (call form)       → INCLUDED
+    //   - form.errors('address')   (dotted-call)     → INCLUDED
+    //   - form.errors.address      (property access) → sub-proxy; container-level
+    //                                                  error NOT in materialized tree
+    //   - JSON.stringify(form.errors.address)        → '{}' (descendants-only;
+    //                                                  container-level excluded)
+    //
+    // The gap is the property-access materialization — the call form
+    // already does the right thing via `aggregateErrorsAt`. Open
+    // question: should the materializer place the container's own
+    // errors at a sentinel slot (e.g. `''`), or should we leave
+    // materialization descendants-only and document the call form as
+    // the canonical container read?
+    const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
+    apps.push(app)
+    const submit = api.handleSubmit(
+      () => {},
+      () => {}
+    )
+    await submit()
+    await nextTick()
+
+    const matchesRefine = (e: ValidationError): boolean => /city and zip/.test(e.message)
+
+    // Surface 1: flat aggregate.
+    expect(api.meta.errors.some(matchesRefine)).toBe(true)
+
+    // Surface 2: call form with array path.
+    const callArr = (
+      api.errors as unknown as (p: ReadonlyArray<string | number>) => readonly ValidationError[]
+    )(['address'])
+    expect(callArr.some(matchesRefine)).toBe(true)
+
+    // Surface 3: call form with dotted string.
+    const callStr = (api.errors as unknown as (p: string) => readonly ValidationError[])('address')
+    expect(callStr.some(matchesRefine)).toBe(true)
+
+    // Surface 4: property-access materialization. Today the materializer
+    // is descendants-only — the container-level entry is filtered out.
+    const stringified = JSON.parse(
+      JSON.stringify((api.errors as unknown as Record<string, unknown>)['address'])
+    ) as Record<string, unknown>
+    expect(Object.keys(stringified)).toEqual([])
+  })
 })
 
 describe('schemaErrors edge cases — failing → passing transition', () => {

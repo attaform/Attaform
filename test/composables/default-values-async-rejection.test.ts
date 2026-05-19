@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
@@ -64,6 +64,23 @@ describe('useForm — function-form defaultValues, rejection path', () => {
     await waitUntil(() => (api.isHydrating.value === false ? true : null))
     expect(api.hydrateError.value).toBe(boom)
     expect(api.isHydrating.value).toBe(false)
+    expect(api.meta.submitError).toBeNull()
+  })
+
+  it('surfaces a thrown async-factory error on hydrateError', async () => {
+    // `async fn() { throw e }` wraps the throw into a rejected promise
+    // at the language level; this test pins that the runtime treats
+    // it identically to the explicit `() => Promise.reject(e)` case.
+    const boom = new Error('async fetch failed')
+    const factory = async (): Promise<{ email: string; name: string }> => {
+      throw boom
+    }
+    const { app, api } = mountForm(schema, factory)
+    apps.push(app)
+    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    expect(api.hydrateError.value).toBe(boom)
+    expect(api.isHydrating.value).toBe(false)
+    expect(api.meta.submitError).toBeNull()
   })
 
   it('surfaces a rejected async-factory promise on hydrateError', async () => {
@@ -72,6 +89,7 @@ describe('useForm — function-form defaultValues, rejection path', () => {
     apps.push(app)
     await waitUntil(() => (api.isHydrating.value === false ? true : null))
     expect(api.hydrateError.value).toBe(boom)
+    expect(api.meta.submitError).toBeNull()
   })
 
   it('leaves the form usable with schema slim defaults after rejection', async () => {
@@ -83,5 +101,22 @@ describe('useForm — function-form defaultValues, rejection path', () => {
     // Consumers can still mutate the form post-rejection.
     api.setValue('email', 'recover@example.com')
     expect(api.values.email).toBe('recover@example.com')
+  })
+
+  it('handleSubmit fires post-rejection so consumers can recover manually', async () => {
+    const { app, api } = mountForm(schema, () => Promise.reject(new Error('boom')))
+    apps.push(app)
+    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+
+    // Consumer fills the form by hand and submits. The mount-time
+    // factory failure should not block the submit channel; the form
+    // is "broken default load + intact submit pipeline."
+    api.setValue('email', 'recover@example.com')
+    api.setValue('name', 'Alex')
+    const onSubmit = vi.fn()
+    const onError = vi.fn()
+    await api.handleSubmit(onSubmit, onError)()
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onError).not.toHaveBeenCalled()
   })
 })

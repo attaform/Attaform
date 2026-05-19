@@ -245,4 +245,83 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     await waitUntil(() => (b.isHydrating === false ? true : null))
     expect(calls).toBe(2)
   })
+
+  // ---- RED tests (it.fails): document the HMR-flash symptom the user
+  // observes when editing a docs-demo template that calls
+  // `form.errors(...)`. The desired behavior is "no observable flash"
+  // after the form has settled; today the rapid unmount-remount path
+  // triggers eviction + refire, exposing slim defaults briefly. Marked
+  // `.fails` so the report records the divergence without breaking CI.
+
+  it.fails(
+    'RED: factory does NOT refire across rapid unmount-remount within a grace window',
+    async () => {
+      // Desired: the registry holds the FormStore for a short grace
+      // period after the last consumer disposes. A re-mount within
+      // that window resolves to the same store; isHydrating stays
+      // false; values stay stable; no flash.
+      //
+      // Today: eviction is synchronous on ref-count → 0, so the
+      // re-mount sees no existing state and refires the factory.
+      // calls === 2 and the values briefly reflect schema slim
+      // defaults before the second resolution lands.
+      let calls = 0
+      const factory = async (): Promise<{ email: string; name: string }> => {
+        calls += 1
+        return Promise.resolve({ email: `call-${calls}@example.com`, name: `User ${calls}` })
+      }
+      const harness = sharedAppHarness(schema, factory, 'red-no-refire-on-hmr')
+
+      const first = await harness.mount()
+      await waitUntil(() => (first.isHydrating === false ? true : null))
+      expect(calls).toBe(1)
+      expect(first.values.email).toBe('call-1@example.com')
+
+      await harness.unmount()
+      const second = await harness.mount()
+
+      // RED expectations — assert the no-flash contract:
+      expect(calls).toBe(1)
+      expect(second.isHydrating).toBe(false)
+      expect(second.values.email).toBe('call-1@example.com')
+    }
+  )
+
+  it.fails(
+    'RED: values do not regress to slim defaults during rapid remount (the visible flash)',
+    async () => {
+      // Desired: an observer of `api.values.email` across the
+      // unmount → remount transition sees only the resolved value
+      // ('call-1@example.com'). No intermediate '' reading.
+      //
+      // Today: between unmount eviction and the second factory's
+      // resolution, the new FormStore initialises with schema slim
+      // defaults — observers see '' before the eventual resolution.
+      let calls = 0
+      const factory = async (): Promise<{ email: string; name: string }> => {
+        calls += 1
+        await Promise.resolve() // queue a tick so the slim window is observable
+        return { email: `call-${calls}@example.com`, name: `User ${calls}` }
+      }
+      const harness = sharedAppHarness(schema, factory, 'red-no-slim-flash')
+
+      const first = await harness.mount()
+      await waitUntil(() => (first.isHydrating === false ? true : null))
+
+      const observed: string[] = []
+      observed.push(first.values.email)
+
+      await harness.unmount()
+      const second = await harness.mount()
+      observed.push(second.values.email) // ← reads the slim default today
+
+      await waitUntil(() => (second.isHydrating === false ? true : null))
+      observed.push(second.values.email)
+
+      // RED: every observation should be the stable resolved value.
+      const distinct = new Set(observed)
+      expect(distinct.size).toBe(1)
+      expect(distinct.has('call-1@example.com')).toBe(true)
+    }
+  )
 })

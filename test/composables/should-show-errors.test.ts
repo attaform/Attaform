@@ -518,6 +518,22 @@ describe('shouldShowErrors — cross-cutting', () => {
       defaultShouldShowErrors(ownErrorField, { ...baseMeta, submitCount: 1 } as typeof baseMeta)
     ).toBe(true)
 
+    // Post-submit aggression: focused + untouched + has-own-error still
+    // surfaces the error. The user signalled they're done editing by
+    // hitting submit; transient mid-edit hiding no longer applies.
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: false, focused: true }, {
+        ...baseMeta,
+        submitCount: 1,
+      } as typeof baseMeta)
+    ).toBe(true)
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: true }, {
+        ...baseMeta,
+        submitCount: 1,
+      } as typeof baseMeta)
+    ).toBe(true)
+
     // Container with ONLY descendant errors: false even after submit. The
     // own-path filter blocks the container from duplicating leaf-rendered
     // errors.

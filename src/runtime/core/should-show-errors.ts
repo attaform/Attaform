@@ -6,7 +6,9 @@ import type { ShouldShowErrors, ShouldShowErrorsConfig } from '../types/types-ap
  * has not configured an override at either the plugin or per-form
  * level.
  *
- * Three clauses, all required to return true:
+ * Four clauses: the first two are hard gates; clause 3 is an
+ * aggressive override after the first submit attempt; clause 4 is
+ * the pre-submit timing gate.
  *
  * 1. **Own-path filter.** The field must have at least one error whose
  *    path equals the field's own path. Leaves always satisfy this when
@@ -29,14 +31,24 @@ import type { ShouldShowErrors, ShouldShowErrorsConfig } from '../types/types-ap
  *    container's `showErrors` too. The error returns the moment the
  *    new verdict lands and `validating` flips back to false.
  *
- * 3. **Timing gate.** Show after the first submit attempt, OR once the
- *    user has touched the field (sticky-true after the first blur) AND
- *    is not currently focused on it. The not-focused half hides
- *    transient errors while the user is actively editing the field;
- *    they reappear when the user blurs (or focuses a sibling). This
- *    deliberately includes blur-without-typing on a required field
- *    (touched flips on blur regardless of `dirty`), so a user who
- *    visits an empty required field and moves on sees the error.
+ * 3. **Post-submit override.** Once `formMeta.submitCount > 0` the
+ *    heuristic surfaces every own-path error unconditionally (subject
+ *    only to the two gates above). The consumer asked the form to
+ *    commit; transient mid-edit hiding is no longer appropriate
+ *    because the user has signalled they're done editing. This
+ *    deliberately covers focused fields, pristine fields, and
+ *    untouched fields, so a submit attempt against a half-completed
+ *    form lights up every problem the validator found.
+ *
+ * 4. **Pre-submit timing gate.** Before the first submit attempt,
+ *    show once the user has touched the field (sticky-true after the
+ *    first blur) AND is not currently focused on it. The not-focused
+ *    half hides transient errors while the user is actively editing
+ *    the field; they reappear when the user blurs (or focuses a
+ *    sibling). This deliberately includes blur-without-typing on a
+ *    required field (touched flips on blur regardless of `dirty`), so
+ *    a user who visits an empty required field and moves on sees the
+ *    error.
  *
  * The framework already gates on `errors.length > 0` before invoking
  * the predicate, so the body only decides *when* to surface existing
@@ -63,7 +75,8 @@ export const defaultShouldShowErrors: ShouldShowErrors = (field, formMeta) => {
   )
   if (!hasOwnError) return false
   if (field.validating === true) return false
-  return formMeta.submitCount > 0 || (field.touched === true && field.focused !== true)
+  if (formMeta.submitCount > 0) return true
+  return field.touched === true && field.focused !== true
 }
 
 const SHOW_ALWAYS: ShouldShowErrors = () => true

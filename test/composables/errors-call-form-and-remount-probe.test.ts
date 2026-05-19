@@ -288,6 +288,48 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
   )
 
   it.fails(
+    'RED: schema-validation errors do not flash for fields the factory will resolve',
+    async () => {
+      // The user-observed "random email error" during a template-edit
+      // HMR cycle. Mechanism: eviction → fresh FormStore → strict
+      // construction-time validation runs against the schema slim
+      // defaults (email: '' fails z.email() before the factory resolves).
+      // The error clears once the factory's resolved payload lands.
+      //
+      // Desired: no construction-time error flash for fields the
+      // factory will resolve. Today the fresh store seeds errors
+      // against slim defaults before the async factory completes,
+      // exposing transient validation failures the consumer never
+      // authored.
+      const factory = async (): Promise<{ email: string; name: string }> => {
+        await Promise.resolve() // ensure the slim-defaults window is observable
+        return { email: 'valid@example.com', name: 'Valid' }
+      }
+      const emailSchema = z.object({
+        email: z.email(),
+        name: z.string().min(1),
+      })
+      const harness = sharedAppHarness(emailSchema, factory, 'red-no-error-flash')
+
+      const first = await harness.mount()
+      await waitUntil(() => (first.isHydrating === false ? true : null))
+      expect(first.errors.email).toEqual([])
+
+      const observed: Array<readonly ValidationError[]> = []
+      await harness.unmount()
+      const second = await harness.mount()
+      observed.push(second.errors.email) // ← reads schema-seeded error today
+
+      await waitUntil(() => (second.isHydrating === false ? true : null))
+      observed.push(second.errors.email)
+
+      // RED: every snapshot should be empty (factory delivers valid
+      // email before any consumer renders it).
+      expect(observed.every((errs) => errs.length === 0)).toBe(true)
+    }
+  )
+
+  it.fails(
     'RED: values do not regress to slim defaults during rapid remount (the visible flash)',
     async () => {
       // Desired: an observer of `api.values.email` across the

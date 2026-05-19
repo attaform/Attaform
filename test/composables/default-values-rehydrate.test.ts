@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormConfigV4 } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { UseFormReturnType } from '../../src/runtime/types/types-api'
+import type { UseFormReturnType, ValidationError } from '../../src/runtime/types/types-api'
 import { waitUntil } from '../utils/form-harness'
 
 /**
@@ -125,5 +125,46 @@ describe('form.rehydrate', () => {
     expect(api.hydrateError?.code).toBe('atta:hydration-failed')
     expect(api.hydrateError?.message).toBe('rehydrate failed')
     expect(api.isHydrating).toBe(false)
+  })
+
+  it('preserves the prior hydrateError while the retry is in flight (SWR)', async () => {
+    // Stale-while-revalidate: the previous attempt's error stays
+    // visible through `form.hydrateError` and `form.errors['']` until
+    // the new attempt settles. Mirrors the field-validation contract
+    // (`field.validating === true` keeps the error in the store; the
+    // UX gate decides whether to surface it). Without SWR, pressing
+    // Rehydrate would flicker the error UI to empty for the duration
+    // of the retry — confusing.
+    let resolveSecond!: (value: Defaults) => void
+    let calls = 0
+    const factory = (): Promise<Defaults> => {
+      calls += 1
+      if (calls === 1) return Promise.reject(new Error('first-attempt failed'))
+      return new Promise<Defaults>((resolve) => {
+        resolveSecond = resolve
+      })
+    }
+    const { app, api } = mountForm(schema, factory)
+    apps.push(app)
+    await waitUntil(() => (api.isHydrating === false ? true : null))
+    expect(api.hydrateError?.message).toBe('first-attempt failed')
+
+    // Kick off the retry but don't await — the factory hangs on
+    // `resolveSecond` so we can inspect the in-flight state.
+    const inFlight = api.rehydrate()
+    expect(api.isHydrating).toBe(true)
+    // SWR: the prior error survives the in-flight window.
+    expect(api.hydrateError?.message).toBe('first-attempt failed')
+    const formLevel = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']
+    expect(formLevel?.[0]?.message).toBe('first-attempt failed')
+
+    resolveSecond({ email: 'recovered@example.com', name: 'Recovered' })
+    await inFlight
+
+    // New verdict landed; the stale error is cleared.
+    expect(api.hydrateError).toBeNull()
+    const formLevelAfter = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']
+    expect(formLevelAfter ?? []).toEqual([])
+    expect(api.values.email).toBe('recovered@example.com')
   })
 })

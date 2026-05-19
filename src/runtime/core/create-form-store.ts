@@ -2734,10 +2734,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   async function runFactoryAndApply(factory: () => unknown | Promise<unknown>): Promise<void> {
     isHydrating.value = true
-    // Clear any prior HydrationFailed entry so a retry starts from a
-    // clean slate. The error gets re-added below if the factory
-    // rejects again.
-    clearHydrationFailedEntry()
+    // Stale-while-revalidate: keep any prior `HydrationFailed` entry
+    // visible until the new attempt settles. Same contract field
+    // errors follow under `field.validating === true` — the surface
+    // shouldn't flicker to empty during the retry. The entry is
+    // replaced on failure or cleared on success in the branches
+    // below.
     try {
       const value = await factory()
       // The factory's resolved value is the consumer's late-bound
@@ -2753,14 +2755,22 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       )
       applyFormReplacement(full, { hydration: true })
       scheduleFieldValidation([], true /* immediate */)
+      // Success: drop the previous attempt's error (if any) from both
+      // surfaces. New attempt's verdict has landed; the stale entry
+      // would now mis-narrate the state.
+      clearHydrationFailedEntry()
       hydrateError.value = null
       defaultsResolved.value = true
     } catch (error) {
-      // Single ValidationError entry covers both surfaces: the dedicated
-      // `hydrateError` ref AND the standard `schemaErrors` channel that
-      // feeds `form.meta.errors`. SSR factory rejections cross the wire
-      // through `schemaErrors`; the local `hydrateError` ref points to
-      // the same entry so the shape is identical at every read site.
+      // Failure: replace (clear-then-append) so a repeat failure
+      // produces a single fresh entry rather than accumulating dupes.
+      // Single ValidationError covers both surfaces: the dedicated
+      // `hydrateError` ref AND the standard `schemaErrors` channel
+      // that feeds `form.meta.errors`. SSR factory rejections cross
+      // the wire through `schemaErrors`; the local `hydrateError`
+      // ref points to the same entry so the shape is identical at
+      // every read site.
+      clearHydrationFailedEntry()
       hydrateError.value = appendHydrationFailedEntry(error)
     } finally {
       isHydrating.value = false

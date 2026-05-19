@@ -64,10 +64,13 @@ function formatUrl(v: unknown): string {
   const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
   try {
     const parsed = new URL(withProtocol)
-    // WHATWG URL parses `https://ersdg` cleanly (no TLD required).
-    // Require a dot in the host so the demo rejects domain-less
-    // strings the way a real signup form would.
-    if (!parsed.hostname.includes('.')) return INVALID_URL
+    // WHATWG URL accepts `https://ersdg` and `https://a.b` as
+    // structurally valid. Require a TLD of at least two characters so
+    // the demo rejects domain-less and 1-char-suffix strings the way
+    // a real signup form would.
+    const dot = parsed.hostname.lastIndexOf('.')
+    if (dot === -1) return INVALID_URL
+    if (parsed.hostname.length - dot - 1 < 2) return INVALID_URL
     return parsed.href.replace(/\/$/, '')
   } catch {
     return INVALID_URL

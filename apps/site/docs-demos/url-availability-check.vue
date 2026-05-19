@@ -31,11 +31,13 @@
     const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
     try {
       const parsed = new URL(withProtocol)
-      // `new URL('https://ersdg')` parses cleanly: WHATWG URLs don't
-      // require a TLD. For a site-availability demo we want real-
-      // world domain shapes only, so reject anything whose host has
-      // no dot.
-      if (!parsed.hostname.includes('.')) return INVALID_URL
+      // WHATWG URL accepts `https://ersdg` and `https://a.b` as
+      // structurally valid. For a site-availability demo we want
+      // real-world domain shapes only — require a TLD of at least
+      // two characters.
+      const dot = parsed.hostname.lastIndexOf('.')
+      if (dot === -1) return INVALID_URL
+      if (parsed.hostname.length - dot - 1 < 2) return INVALID_URL
       return parsed.href.replace(/\/$/, '')
     } catch {
       return INVALID_URL

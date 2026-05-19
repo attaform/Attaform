@@ -22,7 +22,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-The demo below shows the same schema across all three views: what `form.values` returns at runtime, what `setValue` accepts, and what `handleSubmit`'s callback sees. The phone field is the giveaway: storage keeps the raw digits the user typed, and the preprocess formatter only fires once at submit.
+The demo below shows the same schema across all three views: what `form.values` returns at runtime, what `setValue` accepts, and what `handleSubmit`'s callback sees. The phone field is the giveaway: storage keeps the raw digits the user typed, and the preprocess formatter's output only surfaces inside `handleSubmit`'s callback. Preprocess itself runs every time validation does (each keystroke under `validateOn: 'change'`, each blur under `'blur'`, only at submit under `'submit'`), but its output never lands in storage.
 
 ::docs-demo{slug="storage-shape" label="Storage Shape Demo"}
 ::

@@ -116,19 +116,19 @@ describe('async-defaults SSR + hydration', () => {
 /**
  * Server-side factory rejection contract.
  *
- * `runFactoryAndApply` swallows the rejection into `hydrateError`, so
- * `onServerPrefetch` never propagates it back to `renderToString`. SSR
- * completes successfully; the serialised payload carries the schema's
- * slim defaults (the factory never landed values on the form). The
- * server-side `hydrateError` is captured but does NOT ride the
- * payload — that's a known gap. Without it, the client trusts the
- * payload, observes "clean slim defaults," and the consumer has to
- * call `form.rehydrate()` to retry the load.
+ * `runFactoryAndApply` swallows the rejection into `hydrateError` so
+ * `onServerPrefetch` never propagates it back to `renderToString`.
+ * SSR completes successfully; the serialised payload carries the
+ * schema's slim defaults plus a form-level `HydrationFailed` entry
+ * in `schemaErrors`. The raw `hydrateError` ref stays local (it's not
+ * serialisable), but the standard ValidationError channel rides the
+ * wire, so the client surfaces the failure through `form.meta.errors`
+ * after rehydration without an extra signal.
  *
- * These tests pin that contract end-to-end. A future change that
- * routes server-side errors into the payload (so the client surfaces
- * a retry banner automatically) would update the assertion in the
- * last test.
+ * Recovery: the consumer calls `form.rehydrate()` to re-fire the
+ * captured factory client-side. A successful retry clears the
+ * `HydrationFailed` entry; a repeat failure replaces it with the
+ * new error.
  */
 describe('async-defaults SSR rejection path', () => {
   it('rejected factory does not crash renderToString; surfaces error via hydrateError + schemaErrors', async () => {

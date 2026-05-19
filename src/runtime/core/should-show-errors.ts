@@ -6,7 +6,7 @@ import type { ShouldShowErrors, ShouldShowErrorsConfig } from '../types/types-ap
  * has not configured an override at either the plugin or per-form
  * level.
  *
- * Two clauses, both required to return true:
+ * Three clauses, all required to return true:
  *
  * 1. **Own-path filter.** The field must have at least one error whose
  *    path equals the field's own path. Leaves always satisfy this when
@@ -18,7 +18,18 @@ import type { ShouldShowErrors, ShouldShowErrorsConfig } from '../types/types-ap
  *    `form.meta.errorCount > 0` (paired with whatever timing signal
  *    fits), not to `form.meta.showErrors`.
  *
- * 2. **Timing gate.** Show after the first submit attempt, OR once the
+ * 2. **Not currently validating.** While the field is mid-revalidation
+ *    (`field.validating === true`) the verdict in `field.errors` is
+ *    stale by definition. The error itself stays in the store under
+ *    the stale-while-revalidate contract so the surface doesn't
+ *    flicker to empty, but the UX gate hides it: the application is
+ *    actively re-checking, so the message would mis-narrate the
+ *    state of the world. Containers roll up `validating` as a
+ *    disjunction, so any descendant under revalidation hides the
+ *    container's `showErrors` too. The error returns the moment the
+ *    new verdict lands and `validating` flips back to false.
+ *
+ * 3. **Timing gate.** Show after the first submit attempt, OR once the
  *    user has touched the field (sticky-true after the first blur) AND
  *    is not currently focused on it. The not-focused half hides
  *    transient errors while the user is actively editing the field;
@@ -51,6 +62,7 @@ export const defaultShouldShowErrors: ShouldShowErrors = (field, formMeta) => {
     (e) => e.path.length === field.path.length && e.path.every((s, i) => s === field.path[i])
   )
   if (!hasOwnError) return false
+  if (field.validating === true) return false
   return formMeta.submitCount > 0 || (field.touched === true && field.focused !== true)
 }
 

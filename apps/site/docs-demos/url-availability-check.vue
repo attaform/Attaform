@@ -121,10 +121,7 @@
 
     <section>
       <h4>CACHE log</h4>
-      <p
-        >Each unique post-preprocess URL hits the simulated API once. Repeats reuse the cached
-        answer.</p
-      >
+      <p>Each unique URL hits the simulated API once. Repeats reuse the cached answer.</p>
       <ol v-if="cacheLog.length > 0" class="log">
         <li v-for="(entry, i) in cacheLog" :key="i" :class="{ cached: entry.fromCache }">
           <code>{{ entry.url }}</code>

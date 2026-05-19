@@ -26,6 +26,14 @@ export const AttaformErrorCode = {
   NoValueSupplied: 'atta:no-value-supplied',
   /** The schema adapter's `validateAtPath` threw synchronously. */
   AdapterThrew: 'atta:adapter-threw',
+  /**
+   * User code inside a `z.preprocess`, `.refine`, or `.transform`
+   * threw (sync or async). The adapter caught the throw and surfaced
+   * it as a `ValidationError` at the field path so the form's normal
+   * error pipeline handles it instead of leaking as an unhandled
+   * rejection or routing through `submitError`.
+   */
+  ValidatorThrew: 'atta:validator-threw',
   /** The supplied path didn't resolve to any node in the schema. */
   PathNotFound: 'atta:path-not-found',
 } as const

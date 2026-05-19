@@ -463,6 +463,97 @@ export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): 
   return false
 }
 
+/**
+ * True iff any `ZodTransform` in the schema tree wraps an async
+ * function. `z.preprocess(fn, inner)` desugars to a pipe whose
+ * `def.in` is a `ZodTransform` with `def.transform = fn`; an async
+ * `fn` makes the input side async-only, so a sync `safeParse` cannot
+ * run it cleanly. The function gets invoked synchronously, returns
+ * a Promise, and any throw / rejection inside it propagates as an
+ * unhandled rejection because nothing's listening.
+ *
+ * Distinct from `containsAsyncRefine`: that one walks
+ * `def.checks[].def.fn` (refinement predicates). This walks
+ * `def.transform` (the transform's payload). The two flags are OR'd
+ * by the adapter to drive `needsAsyncValidation()`, but the
+ * construction-time strict-mode pass treats them differently:
+ * async refines can be stripped and the parse retried; async
+ * transforms cannot, so the strict pass skips entirely and defers
+ * to the post-mount `safeParseAsync` pass.
+ */
+export function containsAsyncTransform(schema: z.ZodType, seen?: WeakSet<object>): boolean {
+  const visited = seen ?? new WeakSet<object>()
+  const candidate = schema as unknown
+  if (typeof candidate !== 'object' || candidate === null) return false
+  if (visited.has(candidate)) return false
+  visited.add(candidate)
+
+  const def = readDef(schema)
+  if (def === undefined) return false
+
+  if (
+    typeof def.transform === 'function' &&
+    (def.transform as { constructor: { name: string } }).constructor.name === 'AsyncFunction'
+  ) {
+    return true
+  }
+
+  if (def.innerType !== undefined && containsAsyncTransform(def.innerType as z.ZodType, visited)) {
+    return true
+  }
+  if (def.element !== undefined && containsAsyncTransform(def.element as z.ZodType, visited)) {
+    return true
+  }
+  if (def.in !== undefined && containsAsyncTransform(def.in as z.ZodType, visited)) {
+    return true
+  }
+  if (def.out !== undefined && containsAsyncTransform(def.out as z.ZodType, visited)) {
+    return true
+  }
+  if (def.left !== undefined && containsAsyncTransform(def.left as z.ZodType, visited)) {
+    return true
+  }
+  if (def.right !== undefined && containsAsyncTransform(def.right as z.ZodType, visited)) {
+    return true
+  }
+  if (def.keyType !== undefined && containsAsyncTransform(def.keyType as z.ZodType, visited)) {
+    return true
+  }
+  if (def.valueType !== undefined && containsAsyncTransform(def.valueType as z.ZodType, visited)) {
+    return true
+  }
+  if (def.shape !== undefined) {
+    for (const sub of Object.values(def.shape)) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.entries !== undefined) {
+    for (const sub of Object.values(def.entries)) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.options !== undefined) {
+    for (const sub of def.options) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.items !== undefined) {
+    for (const sub of def.items) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (typeof def.getter === 'function') {
+    try {
+      const inner = def.getter() as z.ZodType
+      if (containsAsyncTransform(inner, visited)) return true
+    } catch {
+      // Lazy schemas may throw on resolution; treat as no async transform.
+    }
+  }
+
+  return false
+}
+
 interface ZodCheckInternals {
   _def?: { fn?: unknown }
   def?: { fn?: unknown }

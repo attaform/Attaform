@@ -23,6 +23,7 @@ import { deriveDefault, getDefaultValuesFromZodSchema } from './default-values'
 import {
   assertZodVersion,
   containsAsyncRefine,
+  containsAsyncTransform,
   getArrayElement,
   getDiscriminatedOptions,
   getDiscriminator,
@@ -284,7 +285,8 @@ export function zodV4Adapter<
       fingerprint: () => fingerprintZodSchema(rootSchema),
 
       needsAsyncValidation(): boolean {
-        asyncValidationFlag ??= containsAsyncRefine(rootSchema)
+        asyncValidationFlag ??=
+          containsAsyncRefine(rootSchema) || containsAsyncTransform(rootSchema)
         return asyncValidationFlag
       },
 
@@ -299,18 +301,37 @@ export function zodV4Adapter<
         })
 
         if (config.strict !== false) {
-          // Strict mode: run the *full* schema (not the slim one) so
-          // refinement-level errors surface. If that passes, we're fine.
+          // Strict mode: run the full schema (not the slim one) so
+          // refinement-level errors surface at construction.
           //
-          // `safeParse` throws synchronously when the schema contains an
-          // async refine — `z.string().refine(async (v) => …)` produces a
-          // Promise that the sync parser can't handle. Async refines
-          // fundamentally can't seed errors at construction (the
-          // `getDefaultValues` contract is sync); degrade gracefully and
-          // let the runtime's first mutation kick off `validateAtPath`,
-          // which uses `safeParseAsync`.
+          // Two pre-flight checks before the sync `safeParse`:
+          //
+          // 1. Async transforms (`z.preprocess(async fn, T)`) cannot be
+          //    stripped — the transform's output shape is load-bearing
+          //    for the inner schema's input. A sync `safeParse` invokes
+          //    the async fn synchronously, gets a Promise back, and if
+          //    the fn rejects the rejection leaks as an Unhandled
+          //    Rejection. Skip the strict pass entirely; the post-mount
+          //    async validation seed picks up verdicts via
+          //    `safeParseAsync`.
+          //
+          // 2. Async refines can be stripped (the predicate is detachable
+          //    from the schema's shape), and stripping them BEFORE the
+          //    first `safeParse` is what keeps the parse sync. Without
+          //    the pre-strip, the sync parser invokes the async predicate
+          //    synchronously, gets a Promise back, and leaks the
+          //    rejection the same way. Stripping up front lets the
+          //    sync-refinement errors on supplied defaults still seed at
+          //    construction; async-only verdicts stay deferred to the
+          //    post-mount one-shot async pass.
+          if (containsAsyncTransform(rootSchema)) {
+            return { data, errors: undefined, success: true, formKey }
+          }
+          const parseTarget = containsAsyncRefine(rootSchema)
+            ? stripAsyncChecks(rootSchema)
+            : rootSchema
           try {
-            const strictResult = rootSchema.safeParse(
+            const strictResult = parseTarget.safeParse(
               data
             ) as z.ZodSafeParseResult<GetValueFormType>
             if (strictResult.success) {
@@ -330,41 +351,12 @@ export function zodV4Adapter<
               formKey,
             }
           } catch {
-            // Async-refine threw the sync parser. Retry against a
-            // sync-only variant of the schema so sync-refinement
-            // errors on the supplied defaults still seed at
-            // construction. Async-only errors stay deferred to the
-            // post-mount one-shot async validation that
-            // `create-form-store` schedules when
-            // `needsAsyncValidation()` is true (the contract here is
-            // sync, so async verdicts cannot land in this code path
-            // regardless).
-            try {
-              const syncOnly = stripAsyncChecks(rootSchema)
-              const syncResult = syncOnly.safeParse(data) as z.ZodSafeParseResult<GetValueFormType>
-              if (syncResult.success) {
-                // Sync portion is clean; only async refines could
-                // fail. Mount cleanly and let the post-mount async
-                // pass surface those — same observable behaviour as
-                // the pre-fix catch path for schemas with no sync
-                // refines on their defaults.
-                return { data, errors: undefined, success: true, formKey }
-              }
-              return {
-                data,
-                errors: zodIssuesToValidationErrors(syncResult.error.issues, formKey),
-                success: false,
-                formKey,
-              }
-            } catch {
-              // Defensive floor — same as the pre-fix behaviour. The
-              // strip walker covers every ZodKind, but a future zod
-              // construct or a user-defined sync refine that itself
-              // throws would land here. Mount cleanly; the post-mount
-              // async pass is still the source of truth for any
-              // verdict the construction-time parse can't surface.
-              return { data, errors: undefined, success: true, formKey }
-            }
+            // Defensive floor: the strip walker covers every ZodKind,
+            // but a future Zod construct or a user-defined sync
+            // refine that itself throws would land here. Mount
+            // cleanly; the post-mount async pass is the source of
+            // truth for any verdict this code path can't surface.
+            return { data, errors: undefined, success: true, formKey }
           }
         }
 
@@ -650,9 +642,14 @@ export function zodV4Adapter<
 
         async function runAsync(): Promise<ValidationResponse<GetValueFormType>> {
           if (path === undefined) {
-            const result = (await rootSchema.safeParseAsync(
-              data
-            )) as z.ZodSafeParseResult<GetValueFormType>
+            let result: z.ZodSafeParseResult<GetValueFormType>
+            try {
+              result = (await rootSchema.safeParseAsync(
+                data
+              )) as z.ZodSafeParseResult<GetValueFormType>
+            } catch (err) {
+              return validatorThrewResponse(err, [])
+            }
             return result.success
               ? { data: result.data, errors: undefined, success: true, formKey }
               : {
@@ -669,7 +666,12 @@ export function zodV4Adapter<
           // should see.
           const aggregated: ValidationError[] = []
           for (const candidate of resolved) {
-            const result = await candidate.safeParseAsync(data)
+            let result: z.ZodSafeParseResult<unknown>
+            try {
+              result = await candidate.safeParseAsync(data)
+            } catch (err) {
+              return validatorThrewResponse(err, path)
+            }
             if (result.success) {
               return {
                 data: result.data as GetValueFormType,
@@ -681,6 +683,37 @@ export function zodV4Adapter<
             aggregated.push(...zodIssuesToValidationErrors(result.error.issues, formKey))
           }
           return { data: undefined, errors: aggregated, success: false, formKey }
+        }
+
+        // User code inside `z.preprocess` / `.refine` / `.transform`
+        // can throw (sync) or reject (async). Zod v4 does NOT wrap
+        // these into issues; they propagate out of `safeParse` /
+        // `safeParseAsync`. Without this catch the throw would bubble
+        // through `validateAtPath` into the runtime's submit / change-
+        // mode pipelines as either a `submitError` (for handleSubmit)
+        // or an unhandled rejection (for scheduleFieldValidation), and
+        // the consumer would never see a path-scoped error message.
+        // Surface as a `ValidationError` at the field path so the
+        // form's normal error pipeline handles it.
+        function validatorThrewResponse(
+          err: unknown,
+          errPath: Path
+        ): ValidationResponse<GetValueFormType> {
+          const message =
+            err instanceof Error ? err.message : typeof err === 'string' ? err : 'Validator threw'
+          return {
+            data: undefined,
+            errors: [
+              {
+                message,
+                path: [...errPath],
+                formKey,
+                code: AttaformErrorCode.ValidatorThrew,
+              },
+            ],
+            success: false,
+            formKey,
+          }
         }
 
         function pathNotFound(p: Path): ValidationResponse<GetValueFormType> {

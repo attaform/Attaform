@@ -52,7 +52,7 @@ The directive's binding pair is read-and-error: `register('email')` for the inpu
 <p v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</p>
 ```
 
-The raw `errors.email` Proxy stays available as `ValidationError[] | undefined` when you need the full array — `fields` is the display-ergonomics layer over the same data.
+The raw `errors.email` Proxy stays available as `ValidationError[]` when you need the full array, empty when the field is valid. `fields` is the display-ergonomics layer over the same data.
 
 ## Where to next
 

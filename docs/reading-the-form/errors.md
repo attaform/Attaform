@@ -18,7 +18,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-`form.errors.email` returns `readonly ValidationError[]`: the array of refinement failures for the `email` path, empty when the field is valid. Statically-known leaves always resolve to an array; dynamic boundaries (array indices, record keys, DU variant-only fields) still resolve to `ValidationError[] | undefined`. Reads are reactive: components re-render the moment a validation pass changes the result.
+`form.errors.email` returns `readonly ValidationError[]`: the array of refinement failures for the `email` path, empty when the field is valid. Static leaves and record keys resolve to a plain `ValidationError[]`; reading a numeric index on an array (`form.errors.todos[3]?.title`) or a DU variant-only field carries `| undefined` because the sub-proxy at the index / inactive variant is itself optional. Reads are reactive: components re-render the moment a validation pass changes the result.
 
 The first error's `.message` is what most templates render:
 

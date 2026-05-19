@@ -159,9 +159,11 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
   ): {
     mount: () => Promise<ApiFor<Schema>>
     unmount: () => Promise<void>
+    remount: () => Promise<ApiFor<Schema>>
     teardown: () => void
   } {
     const visible = ref(false)
+    const childKey = ref(0)
     const handle: { api?: ApiFor<Schema> } = {}
     const Inner = defineComponent({
       setup() {
@@ -171,7 +173,10 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     })
     const Root = defineComponent({
       setup() {
-        return () => (visible.value ? h(Inner) : null)
+        // `key` bumps force Vue to unmount the old Inner and mount a
+        // fresh one inside the same render flush — atomic remount,
+        // matching the lifecycle HMR drives.
+        return () => (visible.value ? h(Inner, { key: childKey.value }) : null)
       },
     })
     const app = createApp(Root).use(createAttaform())
@@ -188,6 +193,15 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
       unmount: async () => {
         visible.value = false
         await nextTick()
+      },
+      remount: async () => {
+        // Vue unmounts the old Inner AND mounts the new one inside
+        // one render flush. `onScopeDispose` from the old runs
+        // (queuing eviction); the new `useForm` claims the key
+        // before the microtask fires (cancelling eviction).
+        childKey.value += 1
+        await nextTick()
+        return handle.api as ApiFor<Schema>
       },
       teardown: () => app.unmount(),
     }
@@ -246,124 +260,86 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     expect(calls).toBe(2)
   })
 
-  // ---- RED tests (it.fails): document the HMR-flash symptom the user
-  // observes when editing a docs-demo template that calls
-  // `form.errors(...)`. The desired behavior is "no observable flash"
-  // after the form has settled; today the rapid unmount-remount path
-  // triggers eviction + refire, exposing slim defaults briefly. Marked
-  // `.fails` so the report records the divergence without breaking CI.
+  // ---- Microtask-deferred eviction: a rapid unmount-remount within
+  // a single tick (HMR, `<KeepAlive>` swap, route navigation) reuses
+  // the live FormStore. The factory does not refire, values stay
+  // stable, and the schema-error seed against slim defaults never
+  // surfaces. Eviction proceeds normally when no new consumer claims
+  // the key before the microtask fires.
 
-  it.fails(
-    'RED: factory does NOT refire across rapid unmount-remount within a grace window',
-    async () => {
-      // Desired: the registry holds the FormStore for a short grace
-      // period after the last consumer disposes. A re-mount within
-      // that window resolves to the same store; isHydrating stays
-      // false; values stay stable; no flash.
-      //
-      // Today: eviction is synchronous on ref-count → 0, so the
-      // re-mount sees no existing state and refires the factory.
-      // calls === 2 and the values briefly reflect schema slim
-      // defaults before the second resolution lands.
-      let calls = 0
-      const factory = async (): Promise<{ email: string; name: string }> => {
-        calls += 1
-        return Promise.resolve({ email: `call-${calls}@example.com`, name: `User ${calls}` })
-      }
-      const harness = sharedAppHarness(schema, factory, 'red-no-refire-on-hmr')
-
-      const first = await harness.mount()
-      await waitUntil(() => (first.isHydrating === false ? true : null))
-      expect(calls).toBe(1)
-      expect(first.values.email).toBe('call-1@example.com')
-
-      await harness.unmount()
-      const second = await harness.mount()
-
-      // RED expectations — assert the no-flash contract:
-      expect(calls).toBe(1)
-      expect(second.isHydrating).toBe(false)
-      expect(second.values.email).toBe('call-1@example.com')
+  it('factory does NOT refire across atomic remount (microtask-grace eviction)', async () => {
+    // Atomic unmount + remount inside a single Vue render flush.
+    // Old `onScopeDispose` queues the eviction microtask; the new
+    // `useForm` claims the key before the microtask fires (cancels
+    // the schedule). FormStore stays alive, factory does not refire.
+    let calls = 0
+    const factory = async (): Promise<{ email: string; name: string }> => {
+      calls += 1
+      return Promise.resolve({ email: `call-${calls}@example.com`, name: `User ${calls}` })
     }
-  )
+    const harness = sharedAppHarness(schema, factory, 'remount-no-refire')
 
-  it.fails(
-    'RED: schema-validation errors do not flash for fields the factory will resolve',
-    async () => {
-      // The user-observed "random email error" during a template-edit
-      // HMR cycle. Mechanism: eviction → fresh FormStore → strict
-      // construction-time validation runs against the schema slim
-      // defaults (email: '' fails z.email() before the factory resolves).
-      // The error clears once the factory's resolved payload lands.
-      //
-      // Desired: no construction-time error flash for fields the
-      // factory will resolve. Today the fresh store seeds errors
-      // against slim defaults before the async factory completes,
-      // exposing transient validation failures the consumer never
-      // authored.
-      const factory = async (): Promise<{ email: string; name: string }> => {
-        await Promise.resolve() // ensure the slim-defaults window is observable
-        return { email: 'valid@example.com', name: 'Valid' }
-      }
-      const emailSchema = z.object({
-        email: z.email(),
-        name: z.string().min(1),
-      })
-      const harness = sharedAppHarness(emailSchema, factory, 'red-no-error-flash')
+    const first = await harness.mount()
+    await waitUntil(() => (first.isHydrating === false ? true : null))
+    expect(calls).toBe(1)
+    expect(first.values.email).toBe('call-1@example.com')
 
-      const first = await harness.mount()
-      await waitUntil(() => (first.isHydrating === false ? true : null))
-      expect(first.errors.email).toEqual([])
+    const second = await harness.remount()
 
-      const observed: Array<readonly ValidationError[]> = []
-      await harness.unmount()
-      const second = await harness.mount()
-      observed.push(second.errors.email) // ← reads schema-seeded error today
+    expect(calls).toBe(1)
+    expect(second.isHydrating).toBe(false)
+    expect(second.values.email).toBe('call-1@example.com')
+  })
 
-      await waitUntil(() => (second.isHydrating === false ? true : null))
-      observed.push(second.errors.email)
-
-      // RED: every snapshot should be empty (factory delivers valid
-      // email before any consumer renders it).
-      expect(observed.every((errs) => errs.length === 0)).toBe(true)
+  it('schema-validation errors do not flash across atomic remount', async () => {
+    // Mirror of the user-reported "random email error" on HMR template
+    // edits. With the microtask-grace eviction, the FormStore is
+    // reused across atomic remount, so the strict-mode validation
+    // never re-runs against slim defaults and `errors.email` stays
+    // empty for the whole transition.
+    const factory = async (): Promise<{ email: string; name: string }> => {
+      return { email: 'valid@example.com', name: 'Valid' }
     }
-  )
+    const emailSchema = z.object({
+      email: z.email(),
+      name: z.string().min(1),
+    })
+    const harness = sharedAppHarness(emailSchema, factory, 'remount-no-error-flash')
 
-  it.fails(
-    'RED: values do not regress to slim defaults during rapid remount (the visible flash)',
-    async () => {
-      // Desired: an observer of `api.values.email` across the
-      // unmount → remount transition sees only the resolved value
-      // ('call-1@example.com'). No intermediate '' reading.
-      //
-      // Today: between unmount eviction and the second factory's
-      // resolution, the new FormStore initialises with schema slim
-      // defaults — observers see '' before the eventual resolution.
-      let calls = 0
-      const factory = async (): Promise<{ email: string; name: string }> => {
-        calls += 1
-        await Promise.resolve() // queue a tick so the slim window is observable
-        return { email: `call-${calls}@example.com`, name: `User ${calls}` }
-      }
-      const harness = sharedAppHarness(schema, factory, 'red-no-slim-flash')
+    const first = await harness.mount()
+    // Wait for the initial strict-mode seed to clear (validation
+    // reruns after the factory resolves). Once empty, the FormStore
+    // has settled with valid values and no errors.
+    await waitUntil(() => (first.errors.email.length === 0 ? true : null))
 
-      const first = await harness.mount()
-      await waitUntil(() => (first.isHydrating === false ? true : null))
+    // Atomic remount with the live store: no factory refire, no
+    // re-validation cycle, no error seed against slim defaults.
+    const second = await harness.remount()
+    expect(second.errors.email).toEqual([])
+    expect(second.values.email).toBe('valid@example.com')
+  })
 
-      const observed: string[] = []
-      observed.push(first.values.email)
-
-      await harness.unmount()
-      const second = await harness.mount()
-      observed.push(second.values.email) // ← reads the slim default today
-
-      await waitUntil(() => (second.isHydrating === false ? true : null))
-      observed.push(second.values.email)
-
-      // RED: every observation should be the stable resolved value.
-      const distinct = new Set(observed)
-      expect(distinct.size).toBe(1)
-      expect(distinct.has('call-1@example.com')).toBe(true)
+  it('values stay stable across atomic remount (no slim-defaults regression)', async () => {
+    // The visible-flash case: an observer of `api.values.email`
+    // across the atomic remount sees only the resolved value, never
+    // the schema slim default.
+    let calls = 0
+    const factory = async (): Promise<{ email: string; name: string }> => {
+      calls += 1
+      return { email: `call-${calls}@example.com`, name: `User ${calls}` }
     }
-  )
+    const harness = sharedAppHarness(schema, factory, 'remount-no-slim-flash')
+
+    const first = await harness.mount()
+    await waitUntil(() => (first.isHydrating === false ? true : null))
+
+    const observed: string[] = []
+    observed.push(first.values.email)
+    const second = await harness.remount()
+    observed.push(second.values.email)
+
+    const distinct = new Set(observed)
+    expect(distinct.size).toBe(1)
+    expect(distinct.has('call-1@example.com')).toBe(true)
+  })
 })

@@ -187,40 +187,70 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
   // unmounted forms have a chance to flush.
   const evicting = new Set<FormStore<GenericForm>>()
 
+  // Eviction is deferred to the next microtask when consumer count
+  // hits zero — a new consumer that claims the same key inside the
+  // same tick cancels the schedule and reuses the live FormStore.
+  // Catches Vue's HMR re-mount, `<KeepAlive>` swaps, and any
+  // unmount-then-remount pattern that completes synchronously.
+  // Tokens are per-schedule so a churn cycle that flips zero → one
+  // → zero produces a fresh schedule and the older token's microtask
+  // no-ops on the cancellation flag.
+  type EvictionToken = { cancelled: boolean }
+  const pendingEvictions = new Map<FormKey, EvictionToken>()
+
+  function cancelPendingEviction(key: FormKey): void {
+    const pending = pendingEvictions.get(key)
+    if (pending === undefined) return
+    pending.cancelled = true
+    pendingEvictions.delete(key)
+  }
+
   function trackConsumer(key: FormKey): () => void {
+    // A new consumer claiming the key while an eviction is pending is
+    // a re-mount, not a termination. Cancel before bumping the count.
+    cancelPendingEviction(key)
     consumers.set(key, (consumers.get(key) ?? 0) + 1)
     let disposed = false
     return () => {
       if (disposed) return
       disposed = true
       const remaining = (consumers.get(key) ?? 1) - 1
-      if (remaining <= 0) {
-        // Tear down non-reactive resources the FormStore owns (field-
-        // validation timers, abort controllers) BEFORE dropping the
-        // registry reference — once the Map entry is gone we can't
-        // reach the state anymore.
-        const state = forms.get(key)
-        consumers.delete(key)
-        // Eviction from `forms` stays synchronous: any consumer that
-        // reads `registry.forms` after unmount (tests, devtools) sees
-        // the form gone immediately. Drain-then-dispose runs async in
-        // the background so the persistence layer's debounced final
-        // write can complete — the FormStore is reachable through the
-        // closure here even after `forms.delete`.
-        forms.delete(key)
-        if (state !== undefined) {
-          evicting.add(state)
-          void state
-            .awaitPendingWrites()
-            .catch(() => undefined)
-            .finally(() => {
-              evicting.delete(state)
-              state.dispose()
-            })
-        }
-      } else {
+      if (remaining > 0) {
         consumers.set(key, remaining)
+        return
       }
+      // Last consumer disposed. Schedule eviction on the next
+      // microtask; cancel if a new consumer claims the key first.
+      // `consumers` is cleared immediately so a re-mount's count
+      // starts at one (consistent with a cold mount); `forms` stays
+      // populated so the re-mount's `useForm({ key })` lookup finds
+      // the live FormStore and skips factory re-firing.
+      consumers.delete(key)
+      const token: EvictionToken = { cancelled: false }
+      pendingEvictions.set(key, token)
+      queueMicrotask(() => {
+        if (token.cancelled) return
+        // Defensive: a newer schedule may have replaced this token
+        // without cancelling it (can't happen under the current code
+        // path, but the guard makes the invariant explicit).
+        if (pendingEvictions.get(key) !== token) return
+        pendingEvictions.delete(key)
+        const state = forms.get(key)
+        forms.delete(key)
+        if (state === undefined) return
+        // Drain-then-dispose runs in the background so the
+        // persistence layer's debounced final write can complete —
+        // the FormStore is reachable through the closure here even
+        // after `forms.delete`.
+        evicting.add(state)
+        void state
+          .awaitPendingWrites()
+          .catch(() => undefined)
+          .finally(() => {
+            evicting.delete(state)
+            state.dispose()
+          })
+      })
     }
   }
 

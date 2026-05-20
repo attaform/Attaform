@@ -72,37 +72,38 @@ const fixViteAssetImportMetaUrlFilter: VitePlugin = {
   },
 }
 
-// `pages/play/[slug].vue` and `pages/play/index.vue` discover every
-// demo SFC via `import.meta.glob('../../docs-demos/*.vue', { eager: true })`.
+// `pages/play/[slug].vue`, `pages/play/index.vue`, and
+// `components/content/DocsDemo.vue` each discover every demo SFC
+// via `import.meta.glob('../../docs-demos/*.vue', { eager: true })`.
 // The glob's key set is resolved once at module-eval time. When a
-// new SFC lands inside `docs-demos/` after the route module has
+// new SFC lands inside `docs-demos/` after a consumer module has
 // already compiled, Vite's default invalidation is best-effort: the
-// file watcher fires, but the route module's transform cache does
-// not always rerun before the next SSR render. The symptom is a
-// 404 from `/play/<new-slug>` while the inline `<DocsDemo>` embed
-// on the docs page resolves the same SFC cleanly (DocsDemo uses a
-// non-eager glob whose loaders are invoked lazily, so its key set
-// re-resolves at access time).
+// file watcher fires, but the consumer's transform cache does not
+// always rerun before the next SSR render. The symptom is a 404
+// from `/play/<new-slug>` (the play routes) or an in-page
+// `[DocsDemo] no demo found for slug "..."` throw (the inline
+// embed used in docs pages).
 //
 // This plugin watches `apps/site/docs-demos/` for `add` and `unlink`
-// events. On either, it invalidates both play-route modules in the
+// events. On either, it invalidates every glob consumer in the
 // dev server's module graph and broadcasts a full reload, so the
 // next render sees the fresh glob keys. Modify events are left
 // alone — they invalidate the touched SFC via Vite's normal HMR
-// path, which the route module already proxies.
-const invalidatePlayRoutesOnDemoChange: VitePlugin = {
-  name: 'attaform:invalidate-play-routes-on-demo-add',
+// path, which the consumer module already proxies.
+const invalidateDemoGlobConsumersOnDemoChange: VitePlugin = {
+  name: 'attaform:invalidate-demo-glob-consumers-on-demo-change',
   apply: 'serve',
   configureServer(server) {
     const siteRoot = dirname(fileURLToPath(import.meta.url))
     const demosDir = resolve(siteRoot, 'docs-demos')
-    const playRoutes = [
+    const globConsumers = [
       resolve(siteRoot, 'pages/play/[slug].vue'),
       resolve(siteRoot, 'pages/play/index.vue'),
+      resolve(siteRoot, 'components/content/DocsDemo.vue'),
     ]
     function invalidate(): void {
-      for (const route of playRoutes) {
-        const mods = server.moduleGraph.getModulesByFile(route)
+      for (const consumer of globConsumers) {
+        const mods = server.moduleGraph.getModulesByFile(consumer)
         if (mods == null) continue
         for (const mod of mods) server.moduleGraph.invalidateModule(mod)
       }
@@ -645,7 +646,11 @@ export default defineNuxtConfig({
     ],
   },
   vite: {
-    plugins: [tailwindcss(), fixViteAssetImportMetaUrlFilter, invalidatePlayRoutesOnDemoChange],
+    plugins: [
+      tailwindcss(),
+      fixViteAssetImportMetaUrlFilter,
+      invalidateDemoGlobConsumersOnDemoChange,
+    ],
     // Source-resolve the workspace `attaform` package for the docs
     // site's Vite environments. Without these aliases, every
     // `import { useForm } from 'attaform/zod'` (and every other

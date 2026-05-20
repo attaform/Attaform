@@ -189,7 +189,7 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       { path: ['name'], message: 'name required', formKey: form.key, code: 'api:validation' },
     ])
     const root = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>
-    expect(root.profile).toBeUndefined()
+    expect(root['profile']).toBeUndefined()
     // The sentinel must NOT appear empty.
     expect(Object.keys(root)).not.toContain('')
   })

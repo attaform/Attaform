@@ -506,6 +506,16 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   setSchemaErrorsForPath(path: Path, errors: ValidationError[]): void
   setAllSchemaErrors(errors: readonly ValidationError[]): void
   clearSchemaErrors(path?: Path): void
+  /**
+   * Replace `schemaErrors` under `path` with `errors`, keying each
+   * error by its OWN absolute path. Used by validation pipelines
+   * (scheduleFieldValidation, validateAsync, handleSubmit, reset)
+   * to commit a parse result wholesale — entries not in the new
+   * pass get dropped from the subtree, surviving keys update in
+   * place to preserve insertion order. Pass `path === []` for the
+   * whole-form scope.
+   */
+  applySchemaErrorsForSubtree(path: Path, errors: ValidationError[]): void
 
   // User-driven writers. Used by build-form-api's setFieldErrors* surfaces.
   setAllUserErrors(errors: readonly ValidationError[]): void
@@ -1074,6 +1084,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   type FieldValidationEntry = {
     controller: AbortController
     timer: ReturnType<typeof setTimeout> | null
+    // `true` once the chain's `.finally` has decremented the counters
+    // for this entry. `cancelFieldValidation` checks this flag to avoid
+    // double-decrementing a chain that already settled but whose entry
+    // is still in the map waiting to be replaced by the next schedule.
+    settled: boolean
   }
   const fieldValidationState = new Map<PathKey, FieldValidationEntry>()
 
@@ -2166,13 +2181,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       prev.controller.abort()
     }
     const controller = new AbortController()
-    const fresh: FieldValidationEntry = { controller, timer: null }
+    const fresh: FieldValidationEntry = { controller, timer: null, settled: false }
     fieldValidationState.set(key, fresh)
 
     const run = () => {
       fresh.timer = null
       if (controller.signal.aborted) return
-      const data = getAtPath(form.value, path)
       // Defense-in-depth: the increments below trigger reactive
       // subscribers (sync watchers on `api.meta.validating` or
       // `api.fields.X.validating`). If one of those subscribers throws,
@@ -2198,21 +2212,25 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         }
         throw err
       }
+      // Whole-form revalidation on every leaf change. Sub-schema-only
+      // passes leave ancestor refines (and root refines) stale: a
+      // `.refine()` on `z.object({...})` keys its verdict at the
+      // container path, which is neither the leaf nor a descendant of
+      // it, so a leaf-scoped `applySchemaErrorsForSubtree` doesn't
+      // touch it. Running the whole-form pass and writing via
+      // `applySchemaErrorsForSubtree([], ...)` lets every refine at
+      // every depth re-evaluate against the live form value and
+      // replaces every `schemaErrors` key in one go — stale entries
+      // drop, current ones survive. Per-path debounce / abort keys
+      // (above) still coalesce rapid same-leaf typing into one run;
+      // `validateAsync` / `handleSubmit` cancel pending chains so
+      // their authoritative whole-form writes aren't clobbered by
+      // a late SFV resolution.
       void Promise.resolve()
-        .then(() => schema.validateAtPath(data, path))
+        .then(() => schema.validateAtPath(form.value, undefined))
         .then((response) => {
           if (controller.signal.aborted) return
-          // The adapter emits issue paths relative to the sub-schema it
-          // parsed (e.g. `[]` for a leaf string). Re-stamp each error
-          // with the absolute field path so the schemaErrors store and
-          // `form.errors.<dotted path>` reads agree on the canonical
-          // key.
-          const reStamped = response.success
-            ? []
-            : response.errors.map((err) => ({
-                ...err,
-                path: [...path, ...(err.path as Segment[])],
-              }))
+          const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
           // storage is undefined AND the consumer didn't author a
           // starting value there. Under the no-write-mutation contract,
@@ -2222,17 +2240,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // from flickering when the field is first touched. Authored
           // paths (defaultValues OR schema `.default(...)`) skip the
           // filter; their verdicts ARE legitimate.
-          const filtered = filterAuthoredErrors(reStamped)
-          // Apply at the LEAF level: when the scheduled path is a
-          // container (e.g. `['notify']` after a DU reshape), the
-          // adapter returns multiple issues at distinct leaf paths.
-          // Storing them all under the scheduled key would (a) hide
-          // them from the canonical-key lookup `form.errors.notify.X`
-          // and (b) survive across variant switches as ghost entries
-          // because `setSchemaErrorsForPath(parent, [])` only clears
-          // the parent's own key, not the descendants written by a
-          // previous run.
-          applySchemaErrorsForSubtree(path, filtered)
+          const filtered = filterAuthoredErrors(errors)
+          applySchemaErrorsForSubtree([], filtered)
         })
         .catch(() => {
           // Adapter contract forbids throws — swallow here so a misbehaving
@@ -2243,6 +2252,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         .finally(() => {
           activeValidations.value = Math.max(0, activeValidations.value - 1)
           decFieldValidation(key)
+          fresh.settled = true
         })
     }
 
@@ -2258,8 +2268,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   }
 
   function cancelFieldValidation(): void {
-    for (const entry of fieldValidationState.values()) {
-      if (entry.timer !== null) clearTimeout(entry.timer)
+    for (const [pkey, entry] of fieldValidationState) {
+      if (entry.timer !== null) {
+        // Debounce timer hasn't fired yet — run() never executed, so
+        // no `activeValidations` / `fieldValidationCounts` increment
+        // happened. Just clear the timer; nothing to roll back.
+        clearTimeout(entry.timer)
+      } else if (!entry.settled) {
+        // run() already fired and the chain is still in flight. Its
+        // own `.finally` will decrement when the chain settles, but
+        // the chain could outlive the caller (handleSubmit /
+        // validateAsync) that's cancelling us. Release the counters
+        // synchronously here so `meta.validating` reflects the cancel
+        // immediately; the late `.finally`'s `Math.max(0, ...)`
+        // clamps the duplicate decrement to zero.
+        activeValidations.value = Math.max(0, activeValidations.value - 1)
+        decFieldValidation(pkey)
+      }
+      // Settled entries left in the map (waiting for the next
+      // schedule to evict them) have already decremented in their
+      // own `.finally` — skip the counter touch entirely.
       entry.controller.abort()
     }
     fieldValidationState.clear()
@@ -3241,6 +3269,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     setSchemaErrorsForPath,
     setAllSchemaErrors,
     clearSchemaErrors,
+    applySchemaErrorsForSubtree,
     setAllUserErrors,
     addUserErrors,
     clearUserErrors,

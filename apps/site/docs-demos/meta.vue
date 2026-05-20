@@ -20,6 +20,7 @@
     if (values.simulateFailure) {
       throw new Error('Simulated API failure')
     }
+    toast.success(`Submitted as ${values.email}`, { description: values })
   })
 
   const formatError = (err: unknown) =>

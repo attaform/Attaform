@@ -204,8 +204,8 @@ describe('DOM clear → schema-aware empty mapping', () => {
    * the user has to type a valid value to clear the error.
    */
   describe('validation cycle after clear', () => {
-    it('z.string().email().optional() — typing invalid then clearing returns to valid', async () => {
-      const schema = z.object({ email: z.string().email().optional() })
+    it('z.email().optional() — typing invalid then clearing returns to valid', async () => {
+      const schema = z.object({ email: z.email().optional() })
       const { app, input, form } = mountInputForPath(schema, 'email')
       apps.push(app)
       typeInto(input, 'not-an-email')
@@ -217,8 +217,8 @@ describe('DOM clear → schema-aware empty mapping', () => {
       expect(form.values.email).toBeUndefined()
     })
 
-    it('z.string().email() (required) — error persists after clear (regression)', async () => {
-      const schema = z.object({ email: z.string().email() })
+    it('z.email() (required) — error persists after clear (regression)', async () => {
+      const schema = z.object({ email: z.email() })
       const { app, input, form } = mountInputForPath(schema, 'email')
       apps.push(app)
       typeInto(input, 'not-an-email')

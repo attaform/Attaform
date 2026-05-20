@@ -65,6 +65,15 @@ z.object({ bio: z.string().optional() })
 
 Use `.optional()` when _not filling the field is a valid choice_: a "tell us more about yourself" prompt that's genuinely skippable.
 
+### The empty-input cycle
+
+When a user clears an `.optional()` input via `v-register`, storage returns to `undefined` rather than `''`. The schema's "absent" path stays reachable through the DOM after any interaction, which closes a real validation hole: typing invalid text into an optional field with a strict inner check (e.g. `z.url().optional()`) and then clearing the input also clears the validation error. Without this contract, `''` would land in storage and parse would fail forever (`''` is neither `undefined` nor a valid URL), leaving the user stuck.
+
+::docs-demo{slug="optional-clear-cycle" label="Optional Clear Cycle Demo"}
+::
+
+Required string leaves keep `''` on clear, because `''` IS a valid string and the schema can decide what to do with it (accept, fail `min(1)`, etc.). The optional escape only fires when the schema admits `undefined` at that leaf.
+
 ## `.nullable()`: "`null` is an explicit signal"
 
 ```ts

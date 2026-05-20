@@ -20,6 +20,10 @@
   const props = withDefaults(
     defineProps<{
       initialSource?: string
+      // Multi-file seed: explicit `{ 'src/<path>.vue': '<source>' }` map.
+      // Wins over `initialSource` when present. The entry point must
+      // be at `src/App.vue` (matches @vue/repl's default mainFile).
+      initialFiles?: Record<string, string>
     }>(),
     { initialSource: () => shipmentDemoSource }
   )
@@ -543,19 +547,21 @@ interface ToastApi {
  */
 declare const toast: ToastApi
 `
-  void store
-    .setFiles(
-      {
-        'src/App.vue': props.initialSource,
-        'src/playground-globals.d.ts': TOAST_AMBIENT_DTS,
-        'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
-      },
-      'src/App.vue'
-    )
-    .then(() => {
-      const dts = store.files['src/playground-globals.d.ts']
-      if (dts) dts.hidden = true
-    })
+  // Seed the store. `initialFiles` (a multi-file map) wins over
+  // `initialSource` (the single-file shorthand). Both routes always
+  // augment with `src/playground-globals.d.ts` (the toast ambient
+  // declaration, hidden from the tab strip) and `tsconfig.json`
+  // (compiler options for Volar). The entry stays `src/App.vue` in
+  // both shapes, matching @vue/repl's default mainFile.
+  const seedFiles: Record<string, string> = {
+    ...(props.initialFiles ?? { 'src/App.vue': props.initialSource }),
+    'src/playground-globals.d.ts': TOAST_AMBIENT_DTS,
+    'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
+  }
+  void store.setFiles(seedFiles, 'src/App.vue').then(() => {
+    const dts = store.files['src/playground-globals.d.ts']
+    if (dts) dts.hidden = true
+  })
 
   // Replace @vue/repl's native `confirm(...)` prompt on file deletion
   // with a styled modal. The store's `deleteFile` (defined in

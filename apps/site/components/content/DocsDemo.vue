@@ -32,16 +32,30 @@
   // Eager glob: every demo SFC is bundled into the docs chunk. With
   // Phase 1's ~7 demos (Phase 4's ~52) this is acceptable — each SFC
   // shares Attaform / Vue / Zod which are already on the page.
-  const modules = import.meta.glob<true, '', { default: unknown }>('../../docs-demos/*.vue', {
+  //
+  // Two shapes supported:
+  //   - flat:   docs-demos/<slug>.vue              (single-file demo)
+  //   - folder: docs-demos/<slug>/App.vue          (multi-file demo)
+  // The folder form wins when both exist; companion files inside the
+  // folder (FieldRow.vue, etc.) resolve through normal SFC imports at
+  // build time, so the glob only needs to find the entry point.
+  const flatModules = import.meta.glob<true, '', { default: unknown }>('../../docs-demos/*.vue', {
     eager: true,
   })
+  const folderEntries = import.meta.glob<true, '', { default: unknown }>(
+    '../../docs-demos/*/App.vue',
+    { eager: true }
+  )
 
-  const componentEntry = modules[`../../docs-demos/${props.slug}.vue`]
+  const folderEntry = folderEntries[`../../docs-demos/${props.slug}/App.vue`]
+  const flatEntry = flatModules[`../../docs-demos/${props.slug}.vue`]
+  const componentEntry = folderEntry ?? flatEntry
 
   if (componentEntry === undefined) {
     throw new Error(
       `[DocsDemo] no demo found for slug "${props.slug}". ` +
-        `Expected: apps/site/docs-demos/${props.slug}.vue. ` +
+        `Expected: apps/site/docs-demos/${props.slug}.vue ` +
+        `or apps/site/docs-demos/${props.slug}/App.vue. ` +
         `Author the SFC or remove the <DocsDemo slug="${props.slug}" /> reference.`
     )
   }

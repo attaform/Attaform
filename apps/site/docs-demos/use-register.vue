@@ -4,11 +4,6 @@
   import { z } from 'zod'
   import { defineComponent, h, withDirectives } from 'vue'
 
-  // FieldRow is a wrapper component: its root is a `<label>`, not the
-  // input. The parent applies `v-register` to the FieldRow root;
-  // FieldRow uses `useRegister()` to capture the binding and re-applies
-  // it to its inner `<input>`. Defined inline so the demo stays
-  // single-file.
   const FieldRow = defineComponent({
     name: 'FieldRow',
     props: {

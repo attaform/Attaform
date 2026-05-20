@@ -74,6 +74,8 @@ Each read subscribes the surrounding render so updates flow without manual `watc
 
 `form.values` is read-only. Changes to storage flow through methods on `form` (`setValue`, `clear`, `reset`, `resetField`, and the field-array helpers `append`, `prepend`, `insert`, `remove`, `swap`, `move`, `replace`) or through inputs bound with `v-register`. Every write hits the same validation, dirty-tracking, and history pipeline; assigning to `form.values.email` directly throws in dev.
 
+Optional leaves (those whose schema admits `undefined`, e.g. `z.string().optional()`) return to the absent state when the user clears the bound input. This keeps the `.optional()` semantic reachable from the DOM: a user who types invalid text into an optional field and then clears it sees storage flip back to `undefined` and the validation error clears too. Required leaves keep `''` (or the slim default for non-strings) on clear.
+
 ## Where to next
 
 - [`fields`](/docs/reading-the-form/fields): the same reads plus per-leaf state.

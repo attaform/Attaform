@@ -2126,6 +2126,22 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   acceptsUndefined: boolean
+  /**
+   * `true` when the schema's slim primitive set at this path includes
+   * `'string'`. Cached at register-time alongside
+   * [[acceptsUndefined]].
+   *
+   * Read by the directive's text-input listener so a DOM clear on a
+   * numeric-only (or boolean-only, bigint-only) leaf takes the
+   * `markBlank` path instead of writing `''` through the assigner:
+   * the slim-primitive gate would reject the empty string anyway,
+   * and the directive's post-write force-sync would then snap the
+   * DOM back to the last accepted value, making the final character
+   * undeletable. With `markBlank`, storage holds the slim default
+   * with the blank meta and the DOM stays empty.
+   * @internal
+   */
+  acceptsString: boolean
 }>
 
 /**

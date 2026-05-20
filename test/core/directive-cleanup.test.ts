@@ -61,6 +61,7 @@ function makeRegisterValue<T>(
     isSensitivePath: () => false,
     multiTab: true,
     acceptsUndefined: false,
+    acceptsString: true,
   }
   return { value, register, deregister, setValue }
 }

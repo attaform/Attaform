@@ -207,7 +207,17 @@ export function buildRegister<F extends GenericForm>(
     // need a separate path — `slimDefault` for an optional number
     // resolves to `undefined`, so `markBlank` writes the right thing
     // already.
-    const acceptsUndefined = state.schema.getSlimPrimitiveTypesAtPath(segments).has('undefined')
+    const slimTypes = state.schema.getSlimPrimitiveTypesAtPath(segments)
+    const acceptsUndefined = slimTypes.has('undefined')
+    // `true` when the slim set admits `'string'`. The text-input
+    // listener uses the negation: when a DOM clear lands on a leaf
+    // that does NOT admit string (e.g. a required `z.number()`
+    // rendered as `<input type="text">` without the `.number`
+    // modifier), the assigner would reject the empty-string write and
+    // the post-write force-sync would snap the DOM back to the stored
+    // numeric. Routing through `markBlank` instead keeps the DOM
+    // empty and stages the blank meta for submit-time validation.
+    const acceptsString = slimTypes.has('string')
 
     const persist = options?.persist === true
     const acknowledgeSensitive = options?.acknowledgeSensitive === true
@@ -351,6 +361,7 @@ export function buildRegister<F extends GenericForm>(
       coerce,
       ...(coerceElement !== undefined ? { coerceElement } : {}),
       acceptsUndefined,
+      acceptsString,
     }
     return shallowReadonly(internalRv) as RegisterValue
   }

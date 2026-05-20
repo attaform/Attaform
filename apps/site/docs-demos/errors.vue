@@ -21,7 +21,7 @@
     defaultValues: {
       name: '',
       email: 'not-an-email',
-      profile: { bio: 'A'.repeat(60), handle: 'attaboy' },
+      profile: { bio: 'A'.repeat(60), handle: 'ozzyfromspace' },
     },
     key: 'docs-demo-errors',
   })

@@ -2795,20 +2795,43 @@ export type LeafWalker<
 > = [T] extends [string | number | boolean | bigint | symbol | null | undefined | Date | File]
   ? LeafSchemeFor<T>[Kind]
   : [T] extends [ReadonlyArray<infer U>]
-    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> }
+    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> } & ContainerSelfErrorsSlot<
+        T,
+        Kind
+      >
     : [T] extends [object]
       ? [IsUnion<T>] extends [true]
         ? StripOptional extends true
           ? {
               readonly [K in KeyofUnion<T>]-?: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            }
+            } & ContainerSelfErrorsSlot<T, Kind>
           : {
               readonly [K in KeyofUnion<T>]: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            }
+            } & ContainerSelfErrorsSlot<T, Kind>
         : StripOptional extends true
-          ? { readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional> }
-          : { readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional> }
+          ? {
+              readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional>
+            } & ContainerSelfErrorsSlot<T, Kind>
+          : {
+              readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
+            } & ContainerSelfErrorsSlot<T, Kind>
       : LeafSchemeFor<T>[Kind]
+
+/**
+ * Intersection augmenting every container in the `form.errors` walker
+ * with a `''` sentinel slot — the per-container home for cross-field
+ * refine errors, server-side container marks, and (at root) form-level
+ * errors. Gated on `Kind extends 'errors'` so `form.values` and
+ * `form.fields` surfaces stay untouched. Carve-out for schemas that
+ * legitimately declare a `''` field: the declared field type wins; at
+ * runtime the two collide harmlessly (errors at the literal leaf and
+ * any container-self errors share the slot via array concat).
+ */
+type ContainerSelfErrorsSlot<T, Kind> = Kind extends 'errors'
+  ? '' extends keyof T
+    ? unknown
+    : { readonly ['']: readonly ValidationError[] }
+  : unknown
 
 export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
 
@@ -2922,37 +2945,24 @@ export type FormErrorStore = Map<FormKey, FormErrorRecord>
  * Augmented with the callable signatures so dot-access and function-
  * call coexist on the same identifier.
  */
-export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> &
-  FormLevelErrorsSlot<Form> & {
-    (path: string): readonly ValidationError[]
-    /**
-     * Tuple-segment form. Validated against `FlatPath<Form>` so literal
-     * tuples that don't resolve to a known path fail at the call site.
-     * Dynamic `Path`-typed inputs hit the untyped fallback overload below.
-     */
-    <const S extends ReadonlyArray<string | number>>(
-      segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
-    ): readonly ValidationError[]
-    (segments: ReadonlyArray<string | number>): readonly ValidationError[]
-    /**
-     * No-arg call returns the form-level error aggregate — same as
-     * `form.errors([])` and `form.meta.errors`. Always a readonly array;
-     * empty when the form has no errors.
-     */
-    (): readonly ValidationError[]
-  }
-
-/**
- * Inject `form.errors[""]: readonly ValidationError[]` for the
- * root form-level bucket (hydration failures, root `.refine()`
- * results, `setFormErrors` entries) — unless the schema legitimately
- * owns a `''` key, in which case the standard walker shape wins and
- * we don't interfere. Container-level errors at non-root paths
- * surface via the call form (`form.errors('address')`).
- */
-type FormLevelErrorsSlot<Form> = '' extends keyof Form
-  ? unknown
-  : { readonly ['']: readonly ValidationError[] }
+export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
+  (path: string): readonly ValidationError[]
+  /**
+   * Tuple-segment form. Validated against `FlatPath<Form>` so literal
+   * tuples that don't resolve to a known path fail at the call site.
+   * Dynamic `Path`-typed inputs hit the untyped fallback overload below.
+   */
+  <const S extends ReadonlyArray<string | number>>(
+    segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
+  ): readonly ValidationError[]
+  (segments: ReadonlyArray<string | number>): readonly ValidationError[]
+  /**
+   * No-arg call returns the form-level error aggregate — same as
+   * `form.errors([])` and `form.meta.errors`. Always a readonly array;
+   * empty when the form has no errors.
+   */
+  (): readonly ValidationError[]
+}
 
 /**
  * Implementation-detail walker backing `form.errors` typed proxy.

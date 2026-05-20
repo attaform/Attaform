@@ -395,6 +395,20 @@ const getModelAssigner = (
   // vRegisterSelect's change handler) can detect rejection and gate
   // post-write side effects like the `_assigning` flag.
   const defaultAssigner: CustomDirectiveRegisterAssignerFn = (value) => {
+    // Schema-aware undefined short-circuit: when the path admits
+    // undefined and the commit IS undefined (the text-input listener
+    // mapped a DOM clear), skip transforms + coerce. Consumer-supplied
+    // transforms today never receive undefined, so passing it through
+    // would force every existing transform to add a `if (v == null)`
+    // guard. Treat undefined as the schema-side absent signal that
+    // bypasses normalization. Coerce already passes undefined cleanly
+    // for paths that admit it, so skipping is a clarity win.
+    if (value === undefined && registerValue.acceptsUndefined) {
+      return registerValue.setValueWithInternalPath(
+        undefined,
+        computePersistMeta(el, registerValue)
+      )
+    }
     const r = runTransforms(value, registerValue)
     if (!r.ok) return false
     const coerced = applyCoerce(r.value, registerValue)
@@ -713,7 +727,20 @@ const vRegisterText: RegisterTextCustomDirective = {
         // DOM matches storage exactly.
         if (isRegisterValue(value)) writeLastTypedForm(value, typedString)
       }
-      el[assignKey]?.(domValue)
+      // Schema-aware DOM clear: when the user empties an `.optional()`
+      // string field, write `undefined` to storage rather than `''`.
+      // Otherwise an `.optional()` schema's "absent" semantic would be
+      // unreachable from the DOM once the user has typed anything, and
+      // schemas like `z.string().email().optional()` would lock in a
+      // permanent validation error after a clear (storage `''` is
+      // neither undefined nor a valid email). Only the text path
+      // reaches here — the castToNumber branch above already returns
+      // for empty input, and `slimDefault` resolves to undefined for
+      // an optional number leaf, so `markBlank` writes the right thing
+      // there already.
+      const commit =
+        domValue === '' && isRegisterValue(value) && value.acceptsUndefined ? undefined : domValue
+      el[assignKey]?.(commit)
       // After the default assigner runs, force-sync the DOM when
       // storage diverges from the post-cast/post-trim `domValue`.
       // Two cases produce no Vue re-render and so leave the

@@ -46,11 +46,14 @@ function mountInputForPath<F extends AnySchema>(
   const useNumber = options?.numberModifier === true
   const Probe = defineComponent({
     setup() {
-      captured = useForm({
+      const config = {
         schema,
         key: `clear-undef-${Math.random().toString(36).slice(2)}`,
         ...(defaultValues !== undefined ? { defaultValues } : {}),
-      }) as unknown as UseFormReturnType<z.output<F> & Record<string, unknown>>
+      } as unknown as Parameters<typeof useForm>[0]
+      captured = useForm(config) as unknown as UseFormReturnType<
+        z.output<F> & Record<string, unknown>
+      >
       const rv = captured.register(path as never)
       return (): VNode =>
         withDirectives(
@@ -207,7 +210,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
       apps.push(app)
       typeInto(input, 'not-an-email')
       await form.validateAsync()
-      expect(form.errors.email.length).toBeGreaterThan(0)
+      expect((form.errors.email ?? []).length).toBeGreaterThan(0)
       typeInto(input, '')
       await form.validateAsync()
       expect(form.errors.email).toEqual([])
@@ -220,12 +223,12 @@ describe('DOM clear → schema-aware empty mapping', () => {
       apps.push(app)
       typeInto(input, 'not-an-email')
       await form.validateAsync()
-      expect(form.errors.email.length).toBeGreaterThan(0)
+      expect((form.errors.email ?? []).length).toBeGreaterThan(0)
       typeInto(input, '')
       await form.validateAsync()
       // Required string: clear writes '' to storage, which still fails
       // .email() parse. Error persists by design.
-      expect(form.errors.email.length).toBeGreaterThan(0)
+      expect((form.errors.email ?? []).length).toBeGreaterThan(0)
     })
 
     it('z.number().min(10).optional() — typing too-low then clearing returns to valid', async () => {
@@ -237,7 +240,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
       typeInto(input, '3')
       blur(input)
       await form.validateAsync()
-      expect(form.errors.count.length).toBeGreaterThan(0)
+      expect((form.errors.count ?? []).length).toBeGreaterThan(0)
       typeInto(input, '')
       blur(input)
       await form.validateAsync()
@@ -254,13 +257,13 @@ describe('DOM clear → schema-aware empty mapping', () => {
       typeInto(input, '3')
       blur(input)
       await form.validateAsync()
-      expect(form.errors.count.length).toBeGreaterThan(0)
+      expect((form.errors.count ?? []).length).toBeGreaterThan(0)
       typeInto(input, '')
       blur(input)
       await form.validateAsync()
       // Required number: markBlank stays, storage holds slim default 0,
       // which still fails .min(10) parse. Error persists by design.
-      expect(form.errors.count.length).toBeGreaterThan(0)
+      expect((form.errors.count ?? []).length).toBeGreaterThan(0)
     })
   })
 })

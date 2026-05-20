@@ -198,6 +198,17 @@ export function buildRegister<F extends GenericForm>(
     // schema tree.
     const slimDefault = state.schema.getDefaultAtPath(segments)
 
+    // `true` when the leaf's slim-primitive set includes `'undefined'`
+    // (i.e. the path was declared `.optional()`). The text-input
+    // listener consults this on DOM clear: when the user empties an
+    // optional field, the directive writes `undefined` rather than
+    // `''`, so the schema's `.optional()` semantic remains reachable
+    // from the DOM after any interaction. Number-typed leaves don't
+    // need a separate path — `slimDefault` for an optional number
+    // resolves to `undefined`, so `markBlank` writes the right thing
+    // already.
+    const acceptsUndefined = state.schema.getSlimPrimitiveTypesAtPath(segments).has('undefined')
+
     const persist = options?.persist === true
     const acknowledgeSensitive = options?.acknowledgeSensitive === true
     const multiTab = options?.multiTab !== false
@@ -339,6 +350,7 @@ export function buildRegister<F extends GenericForm>(
       transforms,
       coerce,
       ...(coerceElement !== undefined ? { coerceElement } : {}),
+      acceptsUndefined,
     }
     return shallowReadonly(internalRv) as RegisterValue
   }

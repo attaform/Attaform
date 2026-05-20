@@ -2111,6 +2111,21 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   markBlank: () => boolean
+  /**
+   * `true` when the schema's slim primitive set at this path includes
+   * `'undefined'` — i.e. the leaf was declared `.optional()` (or as
+   * part of a union admitting `undefined`). Cached at register-time.
+   *
+   * Read by the directive's text-input listener to map a DOM clear
+   * (`el.value === ''`) onto `undefined` storage instead of `''`, so
+   * the `.optional()` "absent" semantic survives user interactions.
+   * Without this, a user who typed an invalid value into an optional
+   * field and then cleared it would be stuck with a permanent
+   * validation error (storage holds `''`, which is neither
+   * `undefined` nor a valid inner value).
+   * @internal
+   */
+  acceptsUndefined: boolean
 }>
 
 /**

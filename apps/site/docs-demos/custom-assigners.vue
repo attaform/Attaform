@@ -14,11 +14,6 @@
 
   const swatches = ['#2563eb', '#16a34a', '#dc2626', '#f59e0b', '#a855f7']
 
-  // Widget element — a faux color picker that stores its currently
-  // picked color in dataset, dispatches a plain `input` event when
-  // it changes. The default v-register extractor reads `el.value`,
-  // which doesn't exist here. A custom assigner reads the value off
-  // dataset instead and writes it to form state.
   const widgetEl = useTemplateRef<HTMLDivElement>('widget')
 
   const colorAssigner: CustomDirectiveRegisterAssignerFn = (_value, rv) => {
@@ -45,7 +40,7 @@
 
 <template>
   <form @submit.prevent>
-    <span class="label">Pick a color (no &lt;input&gt; — a custom widget)</span>
+    <span class="label">Pick a color (no &lt;input&gt;, just a custom widget)</span>
     <div
       ref="widget"
       v-register="form.register('color')"

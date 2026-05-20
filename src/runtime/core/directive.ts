@@ -1698,6 +1698,17 @@ export type VXCustomDirective =
   | typeof vRegisterDynamic
 
 /**
+ * Marker installed on the v-register directive object so consumers
+ * (notably `useRegister`) can identify it in a child vnode's
+ * directive list even when the consumer's bundler hasn't installed
+ * attaform's compile-time transforms. `Symbol.for(...)` round-trips
+ * across duplicate bundle copies: `attaform` and `attaform/zod` can
+ * land on different `vRegister` references in the playground or
+ * under pnpm-hoist edge cases, but both carry the same marker.
+ */
+export const V_REGISTER_MARKER: unique symbol = Symbol.for('attaform:v-register-directive')
+
+/**
  * The `v-register` directive. Bind a form field to a native input,
  * select, textarea, checkbox, or radio:
  *
@@ -1711,8 +1722,15 @@ export type VXCustomDirective =
  *
  * The directive picks the right binding strategy automatically based
  * on the element's `tagName` and `type`. Registered globally by
- * `createAttaform()` — most consumers never import it
- * directly, but it's exposed for advanced integrations that wire
- * directives manually.
+ * `createAttaform()`. Most consumers never import it directly, but
+ * it's exposed for advanced integrations that wire directives
+ * manually.
  */
 export const vRegister = vRegisterDynamic
+
+// Stamp the marker on the directive object after definition. Reading
+// it from `vnode.dirs[].dir[V_REGISTER_MARKER]` lets `useRegister`
+// find the parent's binding even without the compile-time bridge-
+// prop injection — keeps the wrapper pattern working in bare-Vue and
+// playground setups.
+;(vRegisterDynamic as unknown as { [k: symbol]: true })[V_REGISTER_MARKER] = true

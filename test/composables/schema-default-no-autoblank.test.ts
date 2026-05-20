@@ -4,7 +4,6 @@ import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
-import { canonicalizePath } from '../../src/runtime/core/paths'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
@@ -105,8 +104,8 @@ describe('bare useForm + z.number().default(10) — no auto-mark, input renders 
   it('count is NOT in blankPaths', () => {
     const { app, form } = mountCountInput()
     apps.push(app)
-    const countKey = canonicalizePath('count').key
-    expect(form.blankPaths.value.has(countKey)).toBe(false)
+    const countKey = 'count'
+    expect(form.blankPaths.value.includes(countKey)).toBe(false)
   })
 
   it('storage = 0 (the slim) DOES auto-mark — bare z.number() with no .default()', async () => {
@@ -140,8 +139,8 @@ describe('bare useForm + z.number().default(10) — no auto-mark, input renders 
     apps.push(app)
 
     expect(captured.values['count']).toBe(0)
-    const countKey = canonicalizePath('count').key
-    expect(captured.blankPaths.value.has(countKey)).toBe(true)
+    const countKey = 'count'
+    expect(captured.blankPaths.value.includes(countKey)).toBe(true)
     await waitUntil(() => {
       const el = document.querySelector('input[data-test="count"]') as HTMLInputElement | null
       return el !== null && el.value === '' ? true : null

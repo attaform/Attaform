@@ -4,7 +4,6 @@ import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'
 import { unset, useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
-import { canonicalizePath } from '../../src/runtime/core/paths'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
@@ -173,21 +172,21 @@ describe('blank-marked number leaf — blank flag survives blur', () => {
     const app = createApp(App).use(createAttaform())
     apps.push(app)
     app.mount(root)
-    const lengthKey = canonicalizePath('lengthCm').key
-    await waitUntil(() => (captured?.blankPaths.value.has(lengthKey) === true ? true : null))
+    const lengthKey = 'lengthCm'
+    await waitUntil(() => (captured?.blankPaths.value.includes(lengthKey) === true ? true : null))
     if (captured === undefined) throw new Error('form not captured')
 
-    expect(captured.blankPaths.value.has(lengthKey)).toBe(true)
+    expect(captured.blankPaths.value.includes(lengthKey)).toBe(true)
 
     const input = document.querySelector('input[data-test="lengthCm"]') as HTMLInputElement
     input.dispatchEvent(new FocusEvent('focus', { bubbles: true }))
-    await waitUntil(() => (captured?.blankPaths.value.has(lengthKey) === true ? true : null))
+    await waitUntil(() => (captured?.blankPaths.value.includes(lengthKey) === true ? true : null))
     input.dispatchEvent(new Event('change', { bubbles: true }))
     input.dispatchEvent(new FocusEvent('blur', { bubbles: true }))
-    await waitUntil(() => (captured?.blankPaths.value.has(lengthKey) === true ? true : null))
+    await waitUntil(() => (captured?.blankPaths.value.includes(lengthKey) === true ? true : null))
 
     // The flag must still be set — a focus + blur with no typing
     // must not unmark a deliberately-blank field.
-    expect(captured.blankPaths.value.has(lengthKey)).toBe(true)
+    expect(captured.blankPaths.value.includes(lengthKey)).toBe(true)
   })
 })

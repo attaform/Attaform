@@ -828,11 +828,10 @@ export type FormStoreHydration = {
   readonly userErrors: ReadonlyArray<readonly [string, unknown]>
   readonly fields: ReadonlyArray<readonly [string, unknown]>
   /**
-   * Path keys that were in the form's `blankPaths` set at
+   * Dotted public paths that were in the form's `blankPaths` set at
    * SSR time. Replayed into the reactive Set on the client so the
    * "displayed empty" state survives the round-trip. Optional —
-   * pre-v3 envelopes don't carry it; missing means "no transient-
-   * empty paths".
+   * missing means "no blank paths".
    */
   readonly blankPaths?: ReadonlyArray<string>
 }
@@ -858,12 +857,11 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
   readonly debounceMs?: number | undefined
   readonly ssr?: boolean | undefined
   /**
-   * Path keys to seed the `blankPaths` set with at construction.
-   * Only consulted when `hydration` is undefined — hydration data is
-   * authoritative when present (its own `blankPaths` field
-   * takes precedence). Used by `useAbstractForm`'s `unset`-symbol pre-
-   * pass (commit 7 wires the producer); commit 2 plumbs the channel
-   * through with no callers yet.
+   * Dotted public paths to seed the `blankPaths` set with at
+   * construction. Only consulted when `hydration` is undefined —
+   * hydration data is authoritative when present (its own
+   * `blankPaths` field takes precedence). Used by
+   * `useAbstractForm`'s `unset`-symbol pre-pass.
    */
   readonly initialBlankPaths?: ReadonlyArray<string> | undefined
   /**
@@ -1330,9 +1328,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     hydration?.blankPaths ?? options.initialBlankPaths ?? []
   const blankPaths = reactive(new Set<PathKey>()) as Set<PathKey>
   const originalBlankPaths = new Set<PathKey>()
+  // Hydration / construction-time seeds carry dotted public paths
+  // (`'profile.bio'`) — convert each through `canonicalizePath` to
+  // the opaque `PathKey` used as the Set's actual key. The same
+  // conversion handles SSR snapshots and persistence payloads, which
+  // both land in this list via the `hydration` parameter.
   for (const raw of initialTransientList) {
-    blankPaths.add(raw as PathKey)
-    originalBlankPaths.add(raw as PathKey)
+    const key = canonicalizePath(raw).key
+    blankPaths.add(key)
+    originalBlankPaths.add(key)
   }
 
   // Per-form variant memory. On a discriminated-union switch the

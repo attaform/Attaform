@@ -204,6 +204,34 @@ export function canonicalizePath(input: string | Path): {
 }
 
 /**
+ * Render a segment array as a dotted path string, matching the form
+ * library's public-facing path notation (`'user.email'`,
+ * `'items.0.name'`). The inverse of [[parseDottedPath]] for the
+ * common case — segments that contain literal dots, leading zeros,
+ * or array-index brackets round-trip ambiguously and shouldn't reach
+ * this helper.
+ *
+ * Used at the I/O boundary where internal `PathKey` storage is
+ * surfaced to consumers (the `form.blankPaths` view, the persisted
+ * payload, the SSR snapshot).
+ */
+export function segmentsToDotted(segments: Path): string {
+  return segments.join('.')
+}
+
+/**
+ * Convenience: resolve a `PathKey` back to its dotted public form.
+ * Returns `null` for malformed keys (matches [[segmentsForPathKey]]'s
+ * contract). The common path is a cache hit on `pathKeyToSegments`
+ * plus a single `join('.')`.
+ */
+export function pathKeyToDotted(key: PathKey): string | null {
+  const segments = segmentsForPathKey(key)
+  if (segments === null) return null
+  return segmentsToDotted(segments)
+}
+
+/**
  * The root path — an empty segment tuple. Pass to APIs that accept
  * a `Path` to address the form value as a whole.
  */

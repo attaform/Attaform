@@ -143,6 +143,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'useWizard', to: '/docs/multistep/use-wizard' },
       { title: 'Statuses', to: '/docs/multistep/statuses' },
       { title: 'Browser history', to: '/docs/multistep/history' },
+      { title: 'SSR & the privacy invariant', to: '/docs/multistep/ssr' },
     ],
   },
   {

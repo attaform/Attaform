@@ -667,14 +667,20 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       ? { debounceMs: (configuration as { debounceMs?: number }).debounceMs }
       : {}),
     ssr: registry.ssr,
-    // Server-only: every `state.activate()` enqueues the key for the
-    // SSR prefetch drain. The `onServerPrefetch` hook fires the factory
-    // only when this set contains the key, so the firing point and the
-    // SSR-coordinated awaiter agree on which forms run.
+    // Server-only: bind the SSR prefetch coordination handles. `enqueue`
+    // records intent on every `state.activate()` so a wizard skip-list
+    // override or a future transform mark has a consistent set to diff
+    // against; `shouldFire` lets the activate path bail when the
+    // wizard explicitly skipped this key — even an explicit
+    // `form.activate()` defers to the wizard's privacy backstop on the
+    // server.
     ...(registry.ssr
       ? {
-          enqueueForPrefetch: (): void => {
-            registry.enqueuePrefetch(key)
+          ssrPrefetch: {
+            enqueue: (): void => {
+              registry.enqueuePrefetch(key)
+            },
+            shouldFire: (): boolean => registry.shouldPrefetch(key),
           },
         }
       : {}),

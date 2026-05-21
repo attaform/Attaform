@@ -907,18 +907,29 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    */
   readonly segmentMatchesSensitive?: ((segment: Segment) => boolean) | undefined
   /**
-   * Closure that records this form's key on the registry's SSR prefetch
-   * queue. Invoked from `state.activate()` so any path that activates a
-   * form on the server (explicit `form.activate()`, gated reads through
-   * the public surface, recursive factory reads) also enqueues it for
-   * the `onServerPrefetch` drain — keeping the firing point and the
-   * SSR-coordinated awaiter agreed on which forms need to run.
+   * SSR prefetch coordination, bound at `buildFreshState` time. Omitted
+   * on the client where the queue is never read.
    *
-   * Bound to `registry.enqueuePrefetch.bind(null, formKey)` at
-   * `buildFreshState` time. Omitted (or no-op) on the client where
-   * nothing reads from the prefetch queue.
+   * `enqueue()` records this form's key on the registry's prefetch set
+   * so any activation path (explicit `form.activate()`, gated reads
+   * through the public surface, recursive factory reads) signals
+   * intent to the SSR drain.
+   *
+   * `shouldFire()` returns whether `state.activate()` should actually
+   * fire the captured factory on the server. The wizard's negative
+   * override — `registry.skipPrefetch(key)` for non-current steps —
+   * flips this to `false` even when `enqueue()` has been called, so
+   * the privacy invariant for non-current steps survives a stray
+   * `form.activate()` or a future transform mark on a skipped step.
+   * Returns `true` for any form the wizard hasn't skipped, including
+   * plain-value forms where the factory branch is skipped anyway.
    */
-  readonly enqueueForPrefetch?: (() => void) | undefined
+  readonly ssrPrefetch?:
+    | {
+        enqueue: () => void
+        shouldFire: () => boolean
+      }
+    | undefined
 }
 
 /**
@@ -1081,7 +1092,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 ): FormStore<F, G> {
   const { formKey, schema, defaultValues, strict = true, hydration } = options
   const ssr = options.ssr === true
-  const enqueueForPrefetch = options.enqueueForPrefetch
+  const ssrPrefetch = options.ssrPrefetch
   const rememberVariants: boolean = options.rememberVariants !== false
   const fieldValidationMode: ValidateOn = options.validateOn ?? 'change'
   // Sanitise the debounce value before threading it into `setTimeout`.
@@ -2797,13 +2808,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // no-ops so reading `form.hydrateError` doesn't replay the failure.
   // `form.rehydrate()` is the explicit replay primitive.
   function activate(): Promise<void> {
-    // SSR enqueue is unconditional: even resolved / already-activated /
-    // plain-value forms record their intent so a wizard skip-list
-    // override or a transform-injected mark has a consistent set to
-    // diff against. The closure is bound to the registry at
-    // construction time and is a no-op on the client. Add(key) is
-    // idempotent — repeated activate() calls cost a single Set hit.
-    enqueueForPrefetch?.()
+    // SSR coordination — enqueue intent first so the diff against any
+    // wizard skip / transform mark is consistent across resolved /
+    // dormant / mid-activation states. Then consult `shouldFire`: when
+    // a wizard skipped this key, the backstop wins even over an
+    // explicit consumer `form.activate()` call. The closure is bound
+    // to the registry at construction time and is absent on the
+    // client where the queue is never read.
+    if (ssrPrefetch !== undefined) {
+      ssrPrefetch.enqueue()
+      if (!ssrPrefetch.shouldFire()) return Promise.resolve()
+    }
     if (defaultsResolved.value === true) return Promise.resolve()
     if (activationPromise.value !== undefined) return activationPromise.value
     if (activated.value === true) return Promise.resolve()

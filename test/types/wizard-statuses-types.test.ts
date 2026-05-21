@@ -6,7 +6,7 @@ import type {
   FormStatus,
   Statuses,
   StepperStatusesProxy,
-} from '../../src/runtime/types/types-stepper'
+} from '../../src/runtime/types/types-wizard'
 
 /**
  * Type-level checks for PR3's status surface. `FormStatus` is the

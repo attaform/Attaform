@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import type { KeysOf, FormKeyOf, AnyForm } from '../../src/runtime/types/types-stepper'
+import type { KeysOf, FormKeyOf, AnyForm } from '../../src/runtime/types/types-wizard'
 
 /**
  * Type-level checks for the stepper's key-union machinery. The motivating

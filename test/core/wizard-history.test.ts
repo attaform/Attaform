@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createStepperHistory } from '../../src/runtime/core/stepper-history'
+import { createStepperHistory } from '../../src/runtime/core/wizard-history'
 
 /**
  * `createStepperHistory(param)` encapsulates `window.history` for the

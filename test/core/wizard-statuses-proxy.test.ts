@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import { buildStepperStatusesProxy } from '../../src/runtime/core/stepper-statuses-proxy'
-import type { FormStatus } from '../../src/runtime/types/types-stepper'
+import { buildStepperStatusesProxy } from '../../src/runtime/core/wizard-statuses-proxy'
+import type { FormStatus } from '../../src/runtime/types/types-wizard'
 
 /**
  * `buildStepperStatusesProxy(statusMap)` mirrors `form.values`'

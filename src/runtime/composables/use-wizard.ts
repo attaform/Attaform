@@ -9,8 +9,8 @@ import {
 } from 'vue'
 import { useRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
-import { createStepperHistory, NOOP_STEPPER_HISTORY } from '../core/stepper-history'
-import { buildStepperStatusesProxy } from '../core/stepper-statuses-proxy'
+import { createStepperHistory, NOOP_STEPPER_HISTORY } from '../core/wizard-history'
+import { buildStepperStatusesProxy } from '../core/wizard-statuses-proxy'
 import type {
   AggregateError,
   AllValues,
@@ -22,7 +22,7 @@ import type {
   StepperNavOptions,
   StepperOptions,
   UseStepperReturnType,
-} from '../types/types-stepper'
+} from '../types/types-wizard'
 
 /** Pending sentinel returned by `stepper.statuses[key]` when the form hasn't
  *  yet wired a FormStore (defensive — useStepper guards against this, but

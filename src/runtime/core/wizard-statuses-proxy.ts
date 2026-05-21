@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { __DEV__ } from './dev'
-import type { FormStatus, StepperStatusesProxy } from '../types/types-stepper'
+import type { FormStatus, StepperStatusesProxy } from '../types/types-wizard'
 
 /**
  * Build the callable readonly Proxy that powers `stepper.statuses`.

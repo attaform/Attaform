@@ -142,6 +142,7 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'useWizard', to: '/docs/multistep/use-wizard' },
       { title: 'Statuses', to: '/docs/multistep/statuses' },
+      { title: 'Browser history', to: '/docs/multistep/history' },
     ],
   },
   {

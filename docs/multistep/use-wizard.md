@@ -87,10 +87,10 @@ Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.pr
 
 ```ts
 wizard.statuses // the whole proxy
-wizard.statuses() // → { account: FormStatus, profile: FormStatus, review: FormStatus }
-wizard.statuses('account') // → FormStatus for account
-wizard.statuses.account // → FormStatus for account (drillable read)
-wizard.statuses.account.valid // → boolean (reactive)
+wizard.statuses() // → { 'signup-account': FormStatus, 'signup-profile': FormStatus, 'signup-review': FormStatus }
+wizard.statuses('signup-account') // → FormStatus for one step
+wizard.statuses['signup-account'] // → FormStatus (drillable read)
+wizard.statuses['signup-account'].valid // → boolean (reactive)
 ```
 
 The drillable read is the template-friendly form; the callable form is convenient in script for one-off reads.

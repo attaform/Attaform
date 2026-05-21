@@ -32,7 +32,7 @@ That last sentence is the privacy backstop. Even if the transform marks every st
 
 ## Three positive triggers
 
-The three triggers reflect three different consumer intents. The library treats them as equally valid signals that "this form is part of what the server should render."
+The three triggers reflect three different consumer intents. Attaform treats them as equally valid signals that "this form is part of what the server should render."
 
 ### 1. Explicit `form.activate()`
 
@@ -102,11 +102,11 @@ Non-current steps of a `useWizard` are added to the registry's skip set on the s
 - Other steps' factories: dormant. The hydration transfer state carries the schema's slim defaults for those keys.
 - Client: navigating to a non-current step activates that step's factory on the client (lazy activation handles the rest).
 
-The skip overrides marks even when the consumer explicitly calls `form.activate()` on a non-current step from inside a wizard. The library treats the wizard's privacy contract as load-bearing.
+The skip overrides marks even when the consumer explicitly calls `form.activate()` on a non-current step from inside a wizard. Attaform treats the wizard's privacy contract as load-bearing.
 
 ## `getServerActiveStep`
 
-The library is framework-agnostic. It does not import a router or read a session. The consumer reads the request's route, query, header, cookie, or wherever the active step lives, and returns it from a getter:
+Attaform is framework-agnostic. It does not import a router or read a session. The consumer reads the request's route, query, header, cookie, or wherever the active step lives, and returns it from a getter:
 
 ```ts
 import { useRoute } from '#imports' // Nuxt
@@ -132,7 +132,7 @@ The getter runs on both server and client. The consumer's route source must be a
 
 ## Letting the framework own slow factories
 
-The library does not special-case slow factories. A request timeout, a `<Suspense>` boundary with a fallback, or a Nuxt-level cache header is the framework's job. When the consumer specifically wants client-only fetching for a slow factory:
+Attaform does not special-case slow factories. A request timeout, a `<Suspense>` boundary with a fallback, or a Nuxt-level cache header is the framework's job. When the consumer specifically wants client-only fetching for a slow factory:
 
 ```ts
 const reportForm = useForm({
@@ -150,7 +150,7 @@ Or wrap the consuming component:
 </ClientOnly>
 ```
 
-Both compose with the rest of the library without special-casing. The transform's coverage analysis sees the same template either way.
+Both compose with the rest of Attaform without special-casing. The transform's coverage analysis sees the same template either way.
 
 ## Transform-uncovered cases
 

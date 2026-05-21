@@ -81,7 +81,7 @@ type UseWizardReturnType<Forms> = {
 | `progress`               | Fraction in `[0, 1]`. Count of valid steps divided by total steps, or the consumer's `progress` override.                  |
 | `next` / `back` / `goTo` | Navigation. `goTo(key)` jumps to an arbitrary step by its form's key.                                                      |
 
-Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` stay reactive inside templates and `computed` blocks directly, matching the rest of the library (`form.values`, `form.meta`, etc.).
+Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` stay reactive inside templates and `computed` blocks directly, matching the rest of Attaform (`form.values`, `form.meta`, etc.).
 
 ## `statuses`: how to read it
 
@@ -111,7 +111,7 @@ wizard.goTo('profile') // jump to a specific step by key
 - `back()` on the first step.
 - `goTo(key)` with a key not in the `forms` array.
 
-The wizard never throws on navigation or construction. A third-party library wired into someone's checkout should bend, not crash.
+The wizard never throws on navigation or construction. Wired into someone's checkout, Attaform bends rather than crashing the surrounding app.
 
 ## Active form
 

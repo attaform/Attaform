@@ -139,7 +139,10 @@ export const docsNavigation: DocsSection[] = [
   },
   {
     heading: 'Multistep flows',
-    links: [{ title: 'useWizard', to: '/docs/multistep/use-wizard' }],
+    links: [
+      { title: 'useWizard', to: '/docs/multistep/use-wizard' },
+      { title: 'Statuses', to: '/docs/multistep/statuses' },
+    ],
   },
   {
     heading: 'Server & SSR',

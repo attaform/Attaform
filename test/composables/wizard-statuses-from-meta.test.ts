@@ -39,30 +39,30 @@ describe('useWizard — statuses derived from form.meta', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('starts with isValid:false / isDirty:false / errorCount:0 for empty forms', () => {
+  it('starts with valid:false / dirty:false / errorCount:0 for empty forms', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'st-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-review' })
       return useWizard([cargo, review], {})
     })
     apps.push(app)
-    expect(result.statuses['st-cargo'].isDirty).toBe(false)
-    expect(result.statuses['st-cargo'].isSubmitted).toBe(false)
-    expect(result.statuses['st-review'].isDirty).toBe(false)
+    expect(result.statuses['st-cargo'].dirty).toBe(false)
+    expect(result.statuses['st-cargo'].submitted).toBe(false)
+    expect(result.statuses['st-review'].dirty).toBe(false)
   })
 
-  it('flips isDirty when a form value changes', async () => {
+  it('flips dirty when a form value changes', async () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'st-dirty-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-dirty-review' })
       return { wizard: useWizard([cargo, review], {}), cargo, review }
     })
     apps.push(app)
-    expect(result.wizard.statuses['st-dirty-cargo'].isDirty).toBe(false)
+    expect(result.wizard.statuses['st-dirty-cargo'].dirty).toBe(false)
     result.cargo.setValue('description', 'box of widgets')
     await nextTick()
-    expect(result.wizard.statuses['st-dirty-cargo'].isDirty).toBe(true)
-    expect(result.wizard.statuses['st-dirty-review'].isDirty).toBe(false)
+    expect(result.wizard.statuses['st-dirty-cargo'].dirty).toBe(true)
+    expect(result.wizard.statuses['st-dirty-review'].dirty).toBe(false)
   })
 
   it('errorCount reflects form.meta.errorCount', async () => {
@@ -76,10 +76,10 @@ describe('useWizard — statuses derived from form.meta', () => {
     result.cargo.setValue('weight', 0)
     await result.cargo.validate()
     expect(result.wizard.statuses['st-err-cargo'].errorCount).toBeGreaterThan(0)
-    expect(result.wizard.statuses['st-err-cargo'].isValid).toBe(false)
+    expect(result.wizard.statuses['st-err-cargo'].valid).toBe(false)
   })
 
-  it('isValid flips true once errors clear', async () => {
+  it('valid flips true once errors clear', async () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({
         schema: cargoSchema,
@@ -97,7 +97,7 @@ describe('useWizard — statuses derived from form.meta', () => {
       if (!result.cargo.meta.validating) break
     }
     expect(result.cargo.meta.valid).toBe(true)
-    expect(result.wizard.statuses['st-clear-cargo'].isValid).toBe(true)
+    expect(result.wizard.statuses['st-clear-cargo'].valid).toBe(true)
     expect(result.wizard.statuses['st-clear-cargo'].errorCount).toBe(0)
   })
 
@@ -118,9 +118,9 @@ describe('useWizard — statuses derived from form.meta', () => {
       if (!result.cargo.meta.validating) break
     }
     const single = result.wizard.statuses('st-call-cargo')
-    expect((single as { isValid: boolean }).isValid).toBe(true)
-    const all = result.wizard.statuses() as Record<string, { isValid: boolean }>
-    const cargoStatus = all['st-call-cargo'] as { isValid: boolean }
-    expect(cargoStatus.isValid).toBe(true)
+    expect((single as { valid: boolean }).valid).toBe(true)
+    const all = result.wizard.statuses() as Record<string, { valid: boolean }>
+    const cargoStatus = all['st-call-cargo'] as { valid: boolean }
+    expect(cargoStatus.valid).toBe(true)
   })
 })

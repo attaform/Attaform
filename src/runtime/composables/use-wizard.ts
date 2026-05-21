@@ -28,9 +28,9 @@ import type {
  *  yet wired a FormStore (defensive — useWizard guards against this, but
  *  the snapshot fallback keeps templates from crashing). */
 const PENDING_STATUS: FormStatus = {
-  isValid: false,
-  isDirty: false,
-  isSubmitted: false,
+  valid: false,
+  dirty: false,
+  submitted: false,
   errorCount: 0,
 }
 
@@ -225,9 +225,9 @@ export function useWizard<Forms extends readonly AnyForm[]>(
       const meta = source.meta
       if (resolved && meta !== undefined && meta !== null) {
         return {
-          isValid: meta.valid,
-          isDirty: meta.dirty,
-          isSubmitted: meta.submitted,
+          valid: meta.valid,
+          dirty: meta.dirty,
+          submitted: meta.submitted,
           errorCount: meta.errorCount,
         }
       }
@@ -248,7 +248,7 @@ export function useWizard<Forms extends readonly AnyForm[]>(
   const statusChangeHandler = options.onStatusChange
 
   // Wire per-form material-change watches. Fires only when the
-  // 4-scalar tuple (\`isValid\`, \`isDirty\`, \`isSubmitted\`,
+  // 4-scalar tuple (\`valid\`, \`dirty\`, \`submitted\`,
   // \`errorCount\`) actually moves; identical writes don't re-fire.
   // Async returns are fire-and-forget — navigation is never gated on
   // the handler's promise. A separate \`onBeforeLeave\` (future) would
@@ -262,9 +262,9 @@ export function useWizard<Forms extends readonly AnyForm[]>(
       watch(statusComputed, (next, prev) => {
         if (
           prev !== undefined &&
-          prev.isValid === next.isValid &&
-          prev.isDirty === next.isDirty &&
-          prev.isSubmitted === next.isSubmitted &&
+          prev.valid === next.valid &&
+          prev.dirty === next.dirty &&
+          prev.submitted === next.submitted &&
           prev.errorCount === next.errorCount
         ) {
           return
@@ -319,7 +319,7 @@ export function useWizard<Forms extends readonly AnyForm[]>(
     for (let i = 0; i < forms.length; i += 1) {
       const form = forms[i] as AnyForm
       const status = statusComputeds[form.key]?.value
-      if (status?.isValid === true) valid += 1
+      if (status?.valid === true) valid += 1
     }
     return valid / forms.length
   })

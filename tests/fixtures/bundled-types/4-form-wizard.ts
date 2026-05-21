@@ -100,7 +100,7 @@ function _neverInvoked() {
   serviceForm.setValue('pickup.city', 'Lusaka')
   serviceForm.setValue('delivery.country', 'ZM')
 
-  const refValid: boolean = wizard.statuses.reference.isValid
+  const refValid: boolean = wizard.statuses.reference.valid
   const cargoErr: number = wizard.statuses.cargo.errorCount
   const current: 'reference' | 'cargo' | 'service' | 'review' = wizard.current.value
 

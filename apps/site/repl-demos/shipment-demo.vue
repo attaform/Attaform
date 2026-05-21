@@ -405,7 +405,7 @@
 
   // ─── Step metadata ───────────────────────────────────────────────
   // The wizard drives the nav — `current` is the active form's key, and
-  // `statuses[key].isValid` is what gates the Next button.
+  // `statuses[key].valid` is what gates the Next button.
   const STEP_TITLES = {
     reference: 'Origin & destination',
     cargo: 'Cargo',
@@ -553,9 +553,9 @@
   const onSubmit = reviewForm.handleSubmit(
     (review) => {
       const upstreamValid =
-        wizard.statuses.reference.isValid &&
-        wizard.statuses.cargo.isValid &&
-        wizard.statuses.service.isValid
+        wizard.statuses.reference.valid &&
+        wizard.statuses.cargo.valid &&
+        wizard.statuses.service.valid
       if (!upstreamValid) {
         submitError.value =
           'One or more earlier steps need fixes. Use the summary below to jump to the offending field.'
@@ -626,7 +626,7 @@
   // has its own history stack so an undo on cargo doesn't roll back
   // an address edit.
   const activeForm = computed(() => formByKey[wizard.current.value])
-  const canGoNext = computed(() => wizard.statuses[wizard.current.value].isValid)
+  const canGoNext = computed(() => wizard.statuses[wizard.current.value].valid)
   const isAnyValidating = computed(() => wizard.forms.some((f) => f.meta.validating))
 
   // Acknowledgement multi-checkbox helper — read / write the array via
@@ -659,7 +659,7 @@
           class="step"
           :class="{
             active: wizard.current.value === form.key,
-            done: wizard.statuses[form.key as FormKey].isValid,
+            done: wizard.statuses[form.key as FormKey].valid,
           }"
           :aria-current="wizard.current.value === form.key ? 'step' : undefined"
           @click="wizard.goTo(form.key as FormKey)"

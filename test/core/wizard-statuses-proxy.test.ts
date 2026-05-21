@@ -17,9 +17,9 @@ import type { FormStatus } from '../../src/runtime/types/types-wizard'
  */
 
 const pending: FormStatus = {
-  isValid: false,
-  isDirty: false,
-  isSubmitted: false,
+  valid: false,
+  dirty: false,
+  submitted: false,
   errorCount: 0,
 }
 
@@ -41,39 +41,39 @@ function makeProxy<K extends string>(map: Record<K, FormStatus>) {
 describe('buildWizardStatusesProxy', () => {
   it('exposes per-key entries via property access', () => {
     const { proxy } = makeProxy({
-      a: { isValid: true, isDirty: false, isSubmitted: false, errorCount: 0 },
-      b: { isValid: false, isDirty: true, isSubmitted: false, errorCount: 2 },
+      a: { valid: true, dirty: false, submitted: false, errorCount: 0 },
+      b: { valid: false, dirty: true, submitted: false, errorCount: 2 },
     })
-    expect(proxy.a.isValid).toBe(true)
+    expect(proxy.a.valid).toBe(true)
     expect(proxy.b.errorCount).toBe(2)
   })
 
   it('returns a single entry via callable form', () => {
     const { proxy } = makeProxy({
-      cargo: { isValid: true, isDirty: false, isSubmitted: false, errorCount: 0 },
+      cargo: { valid: true, dirty: false, submitted: false, errorCount: 0 },
     })
     const status = proxy('cargo') as FormStatus
-    expect(status.isValid).toBe(true)
+    expect(status.valid).toBe(true)
   })
 
   it('returns the full record via no-arg callable form', () => {
     const { proxy } = makeProxy({
       a: pending,
-      b: { isValid: true, isDirty: false, isSubmitted: false, errorCount: 0 },
+      b: { valid: true, dirty: false, submitted: false, errorCount: 0 },
     })
     const all = proxy() as Record<string, FormStatus>
     expect(all['a']).toMatchObject(pending)
     const b = all['b'] as FormStatus
-    expect(b.isValid).toBe(true)
+    expect(b.valid).toBe(true)
   })
 
   it('reflects reactive updates from the underlying computeds', () => {
     const { proxy, sources } = makeProxy({ a: pending })
-    expect(proxy.a.isValid).toBe(false)
+    expect(proxy.a.valid).toBe(false)
     const aSource = sources.a as ReturnType<typeof ref<FormStatus>>
-    aSource.value = { isValid: true, isDirty: true, isSubmitted: true, errorCount: 0 }
-    expect(proxy.a.isValid).toBe(true)
-    expect(proxy.a.isDirty).toBe(true)
+    aSource.value = { valid: true, dirty: true, submitted: true, errorCount: 0 }
+    expect(proxy.a.valid).toBe(true)
+    expect(proxy.a.dirty).toBe(true)
   })
 
   it('returns undefined for an unknown key in property access', () => {
@@ -106,9 +106,9 @@ describe('buildWizardStatusesProxy', () => {
 
   it('serializes via toJSON to the current record snapshot', () => {
     const { proxy } = makeProxy({
-      a: { isValid: true, isDirty: false, isSubmitted: false, errorCount: 0 },
+      a: { valid: true, dirty: false, submitted: false, errorCount: 0 },
     })
     const serialized = JSON.parse(JSON.stringify(proxy))
-    expect(serialized.a.isValid).toBe(true)
+    expect(serialized.a.valid).toBe(true)
   })
 })

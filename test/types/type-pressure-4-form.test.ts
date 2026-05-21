@@ -165,7 +165,7 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
       const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
 
       expectTypeOf(wizard.statuses.reference).toEqualTypeOf<FormStatus>()
-      expectTypeOf(wizard.statuses.cargo.isValid).toEqualTypeOf<boolean>()
+      expectTypeOf(wizard.statuses.cargo.valid).toEqualTypeOf<boolean>()
       expectTypeOf(wizard.statuses.service.errorCount).toEqualTypeOf<number>()
     }
     void _neverInvoked

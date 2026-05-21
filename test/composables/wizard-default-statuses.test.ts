@@ -66,16 +66,16 @@ function mountAndCaptureSetupError(setup: () => unknown): unknown {
 }
 
 const validSeed: FormStatus = {
-  isValid: true,
-  isDirty: false,
-  isSubmitted: false,
+  valid: true,
+  dirty: false,
+  submitted: false,
   errorCount: 0,
 }
 
 const dirtySeed: FormStatus = {
-  isValid: false,
-  isDirty: true,
-  isSubmitted: false,
+  valid: false,
+  dirty: true,
+  submitted: false,
   errorCount: 1,
 }
 
@@ -103,8 +103,8 @@ describe('useWizard — defaultStatuses', () => {
     })
     apps.push(app)
     // Both forms have async defaults pending → seed should be visible.
-    expect(result.statuses['ds-plain-a'].isValid).toBe(true)
-    expect(result.statuses['ds-plain-b'].isDirty).toBe(true)
+    expect(result.statuses['ds-plain-a'].valid).toBe(true)
+    expect(result.statuses['ds-plain-b'].dirty).toBe(true)
     expect(result.statuses['ds-plain-b'].errorCount).toBe(1)
   })
 
@@ -130,8 +130,8 @@ describe('useWizard — defaultStatuses', () => {
     })
     apps.push(app)
     expect(calls).toBe(1)
-    expect(result.statuses['ds-fn-a'].isValid).toBe(true)
-    expect(result.statuses['ds-fn-b'].isDirty).toBe(true)
+    expect(result.statuses['ds-fn-a'].valid).toBe(true)
+    expect(result.statuses['ds-fn-b'].dirty).toBe(true)
   })
 
   it('accepts an async function seed that lands later', async () => {
@@ -165,14 +165,14 @@ describe('useWizard — defaultStatuses', () => {
     })
     apps.push(app)
     // Both forms unresolved + seed pending → status pending sentinel.
-    expect(result.wizard.statuses['ds-async-a'].isValid).toBe(false)
+    expect(result.wizard.statuses['ds-async-a'].valid).toBe(false)
     expect(result.wizard.statuses['ds-async-a'].errorCount).toBe(0)
 
     // Seed resolves while neither form has resolved — seed takes over.
     resolveSeed({ 'ds-async-a': validSeed, 'ds-async-b': dirtySeed })
-    await waitUntil(() => (result.wizard.statuses['ds-async-a'].isValid ? true : null))
-    expect(result.wizard.statuses['ds-async-a'].isValid).toBe(true)
-    expect(result.wizard.statuses['ds-async-b'].isDirty).toBe(true)
+    await waitUntil(() => (result.wizard.statuses['ds-async-a'].valid ? true : null))
+    expect(result.wizard.statuses['ds-async-a'].valid).toBe(true)
+    expect(result.wizard.statuses['ds-async-b'].dirty).toBe(true)
     expect(result.wizard.statuses['ds-async-b'].errorCount).toBe(1)
 
     // Once form a's hydration settles, its meta takes over — `defaultsResolved`
@@ -184,11 +184,11 @@ describe('useWizard — defaultStatuses', () => {
       await Promise.resolve()
       if (!result.a.meta.validating) break
     }
-    expect(result.wizard.statuses['ds-async-b'].isDirty).toBe(true)
+    expect(result.wizard.statuses['ds-async-b'].dirty).toBe(true)
     expect(result.wizard.statuses['ds-async-a']).toEqual({
-      isValid: result.a.meta.valid,
-      isDirty: result.a.meta.dirty,
-      isSubmitted: result.a.meta.submitted,
+      valid: result.a.meta.valid,
+      dirty: result.a.meta.dirty,
+      submitted: result.a.meta.submitted,
       errorCount: result.a.meta.errorCount,
     })
   })
@@ -209,7 +209,7 @@ describe('useWizard — defaultStatuses', () => {
     })
     apps.push(app)
     // Sync-default form is not hydrating → meta wins from the start.
-    expect(result.wizard.statuses['ds-over-a'].isDirty).toBe(false)
+    expect(result.wizard.statuses['ds-over-a'].dirty).toBe(false)
     expect(result.wizard.statuses['ds-over-a'].errorCount).toBe(0)
   })
 

@@ -47,7 +47,7 @@
         v-for="(form, i) in wizard.forms"
         :key="form.key"
         :class="{
-          done: wizard.statuses[form.key].isValid && wizard.current.value !== form.key,
+          done: wizard.statuses[form.key].valid && wizard.current.value !== form.key,
           current: wizard.current.value === form.key,
         }"
       >

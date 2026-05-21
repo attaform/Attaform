@@ -20,11 +20,11 @@ import type {
 const schema = z.object({ email: z.string() })
 
 describe('wizard status types', () => {
-  it('FormStatus has isValid / isDirty / isSubmitted / errorCount fields', () => {
+  it('FormStatus has valid / dirty / submitted / errorCount fields', () => {
     expectTypeOf<FormStatus>().toEqualTypeOf<{
-      readonly isValid: boolean
-      readonly isDirty: boolean
-      readonly isSubmitted: boolean
+      readonly valid: boolean
+      readonly dirty: boolean
+      readonly submitted: boolean
       readonly errorCount: number
     }>()
   })

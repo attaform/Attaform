@@ -9,7 +9,7 @@ import type { FormStatus } from '../../src/runtime/types/types-wizard'
 
 /**
  * `onStatusChange` fires on each material change to a form's status —
- * a change to `isValid`, `isDirty`, `isSubmitted`, or `errorCount`.
+ * a change to `valid`, `dirty`, `submitted`, or `errorCount`.
  * It's immediate (no debounce). Async return is fire-and-forget (the
  * wizard does NOT await it).
  */
@@ -41,7 +41,7 @@ describe('useWizard — onStatusChange material-change firing', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('fires when isDirty flips', async () => {
+  it('fires when dirty flips', async () => {
     const calls: Array<{ formKey: string; status: FormStatus }> = []
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'osc-dirty-cargo' })
@@ -60,7 +60,7 @@ describe('useWizard — onStatusChange material-change firing', () => {
     await nextTick()
     expect(calls.length).toBeGreaterThanOrEqual(1)
     expect(calls[calls.length - 1]!.formKey).toBe('osc-dirty-cargo')
-    expect(calls[calls.length - 1]!.status.isDirty).toBe(true)
+    expect(calls[calls.length - 1]!.status.dirty).toBe(true)
   })
 
   it('fires when errorCount changes', async () => {

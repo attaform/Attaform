@@ -53,23 +53,23 @@ export type WizardNavOptions = {
  * Per-form summary surface — what `wizard.statuses[key]` exposes
  * (and what `defaultStatuses` seeds). Distinct from `form.meta`:
  * `FormStatus` is the cross-step rollup optimized for template
- * ergonomics (`{{ wizard.statuses.cargo.isValid }}`), while
+ * ergonomics (`{{ wizard.statuses.cargo.valid }}`), while
  * `form.meta` carries the full per-form lifecycle surface.
  *
  * Field semantics:
- *  - `isValid` — `form.meta.valid`. `false` while errors exist or
+ *  - `valid` — `form.meta.valid`. `false` while errors exist or
  *    while the first-validation-done gate has not flipped.
- *  - `isDirty` — `form.meta.dirty`. `true` once any value differs
+ *  - `dirty` — `form.meta.dirty`. `true` once any value differs
  *    from the original defaults.
- *  - `isSubmitted` — `form.meta.submitted`. `true` once
+ *  - `submitted` — `form.meta.submitted`. `true` once
  *    `submitCount` reaches one or more.
  *  - `errorCount` — `form.meta.errorCount`. Count of active
  *    validation errors (zero when valid).
  */
 export type FormStatus = {
-  readonly isValid: boolean
-  readonly isDirty: boolean
-  readonly isSubmitted: boolean
+  readonly valid: boolean
+  readonly dirty: boolean
+  readonly submitted: boolean
   readonly errorCount: number
 }
 
@@ -102,7 +102,7 @@ export type AggregateError = {
 
 /**
  * Mirror of `form.values`' call-or-read pattern, one level deep.
- * Drillable as `wizard.statuses.cargo.isValid` (readable), as
+ * Drillable as `wizard.statuses.cargo.valid` (readable), as
  * `wizard.statuses('cargo')` (callable single-key), or as
  * `wizard.statuses()` (callable no-arg returns the whole record).
  *
@@ -152,8 +152,8 @@ export type WizardOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]>
     | (() => Statuses<Forms>)
     | (() => Promise<Statuses<Forms>>)
   /**
-   * Fires whenever a participating form's status (`isValid`,
-   * `isDirty`, `isSubmitted`, or `errorCount`) materially changes —
+   * Fires whenever a participating form's status (`valid`,
+   * `dirty`, `submitted`, or `errorCount`) materially changes —
    * one of those four scalars actually moved. The handler receives
    * the new status and the form whose status changed.
    *
@@ -219,7 +219,7 @@ export type AllValues<Forms extends readonly AnyForm[]> = {
  * iterate); `count` is the static step count.
  *
  * `statuses` is a callable readonly proxy over `Statuses<Forms>` —
- * readable as `wizard.statuses.cargo.isValid`, callable as
+ * readable as `wizard.statuses.cargo.valid`, callable as
  * `wizard.statuses('cargo')` or `wizard.statuses()`. Each entry
  * derives from the matching form's `meta`.
  *

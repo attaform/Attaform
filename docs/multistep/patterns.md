@@ -24,6 +24,7 @@ The default shape: walk the forms array in order. `wizard.next()` advances; `wiz
 
 ```ts
 import { useForm, useWizard } from 'attaform/zod'
+import { z } from 'zod'
 
 const accountSchema = z.object({ email: z.email() })
 const profileSchema = z.object({ name: z.string().min(1) })
@@ -40,7 +41,7 @@ function onAccountNext(): void {
 }
 ```
 
-Each step gates on its own `form.handleSubmit` to advance: validation fails locally on the active step, then the wizard advances.
+Each step gates on its own `form.handleSubmit` to advance. Validation runs locally on the active step; the wizard advances only on success.
 
 ## Branching wizards
 
@@ -72,7 +73,7 @@ If a step doesn't apply for the entire flow, omit it from the array:
 
 ```ts
 const visible = computed(() =>
-  user.value.kind === 'organisation' ? [account, organisation, review] : [account, profile, review]
+  user.value.kind === 'organization' ? [account, organization, review] : [account, profile, review]
 )
 const wizard = useWizard(visible.value as const)
 ```
@@ -86,8 +87,8 @@ If applicability depends on values entered during the flow, keep the step in the
 ```ts
 function onAccountNext(): void {
   account.handleSubmit((data) => {
-    if (data.kind === 'organisation') {
-      wizard.goTo('signup-organisation')
+    if (data.kind === 'organization') {
+      wizard.goTo('signup-organization')
     } else {
       wizard.goTo('signup-profile')
     }
@@ -95,7 +96,7 @@ function onAccountNext(): void {
 }
 ```
 
-The skipped step's form still exists. The aggregator gates on `defaultsResolved`, so a skipped step contributes `PENDING_STATUS` to `wizard.statuses` and nothing to `wizard.allErrors` until something activates it.
+The skipped step's form still exists. The aggregator gates on `defaultsResolved`, so a skipped step contributes a pending `FormStatus` to `wizard.statuses` and nothing to `wizard.allErrors` until something activates it.
 
 ## Per-step persistence
 

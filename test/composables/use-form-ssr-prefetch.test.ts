@@ -117,6 +117,51 @@ describe('SSR prefetch queue', () => {
     expect(calls).toBe(1)
   })
 
+  it('useForm({ __ssrAccessed: true }) enqueues the form so its async factory fires on the server', async () => {
+    let calls = 0
+    const App = defineComponent({
+      setup() {
+        useForm({
+          schema,
+          key: 'ssr-accessed-mark',
+          __ssrAccessed: true,
+          defaultValues: () => {
+            calls += 1
+            return Promise.resolve({ email: 'server@example.com', name: 'Ada' })
+          },
+        })
+        return () => h('div')
+      },
+    })
+    const ssrApp = createSSRApp(App).use(createAttaform({ ssr: true }))
+    await renderToString(ssrApp)
+    expect(calls).toBe(1)
+    const payload = renderAttaformState(ssrApp)
+    const entry = payload.forms.find(([k]) => k === 'ssr-accessed-mark')
+    expect(entry?.[1].form).toMatchObject({ email: 'server@example.com', name: 'Ada' })
+  })
+
+  it('useForm({ __ssrAccessed: false }) leaves the form dormant on the server', async () => {
+    let calls = 0
+    const App = defineComponent({
+      setup() {
+        useForm({
+          schema,
+          key: 'ssr-accessed-false',
+          __ssrAccessed: false,
+          defaultValues: () => {
+            calls += 1
+            return Promise.resolve({ email: 'server@example.com', name: 'Ada' })
+          },
+        })
+        return () => h('div')
+      },
+    })
+    const ssrApp = createSSRApp(App).use(createAttaform({ ssr: true }))
+    await renderToString(ssrApp)
+    expect(calls).toBe(0)
+  })
+
   it('non-enqueued sibling forms render schema defaults while an enqueued form fetches', async () => {
     let activatedCalls = 0
     let dormantCalls = 0

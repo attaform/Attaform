@@ -45,12 +45,7 @@ try {
 Branch on the subclass for targeted handling:
 
 ```ts
-import {
-  AttaformError,
-  OutsideSetupError,
-  SensitivePersistFieldError,
-  StepperLateRegistrationError,
-} from 'attaform'
+import { AttaformError, OutsideSetupError, SensitivePersistFieldError } from 'attaform'
 
 try {
   // …
@@ -59,8 +54,6 @@ try {
     // Move the call into a Vue setup function
   } else if (err instanceof SensitivePersistFieldError) {
     // Drop the { persist: true }, or pass acknowledgeSensitive
-  } else if (err instanceof StepperLateRegistrationError) {
-    // Define all stepper forms synchronously before mounting the stepper
   } else if (err instanceof AttaformError) {
     // Catch-all
   } else {
@@ -98,10 +91,6 @@ A library API needs the registry attached to a Vue app, but it isn't installed. 
 ### `OutsideSetupError`
 
 `useForm` / `injectForm` / similar composable called outside Vue setup. Move the call inside a `setup()` function or `<script setup>` block.
-
-### `StepperLateRegistrationError`
-
-A form was created via `useForm({ key })` AFTER a stepper had already mounted with that key in its `forms` array. The structural fix: define every form synchronously before passing the array to `useStepper`. Carries the offending key on `err.key`.
 
 ### `ReservedFormKeyError`
 

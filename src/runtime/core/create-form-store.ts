@@ -348,15 +348,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly defaultValuesFactory: Ref<(() => unknown | Promise<unknown>) | undefined>
   /**
-   * `true` once `useAbstractForm`'s settle path has started running
-   * the captured factory (CSR microtask body or
-   * `onServerPrefetch`'s SSR body). Read by `useStepper`'s
-   * late-registration guard: if a stepper-claimed form has settled
-   * before the claim arrived, the defer-claim contract can't honor
-   * the privacy guarantee and we throw `StepperLateRegistrationError`.
-   */
-  readonly factorySettleStarted: Ref<boolean>
-  /**
    * `true` once the form's effective defaults have been applied —
    * sync `defaultValues` at construction, or async factory whose
    * settle completed. Stays `false` for dormant lazy forms until they
@@ -390,21 +381,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * activates on first use.
    */
   activate(): Promise<void>
-  /**
-   * Bridge populated by `useStepper` when this form participates in a
-   * stepper. `useAbstractForm.settle` consults `shouldDefer()` before
-   * firing the captured async-defaults factory: if `true`, settle
-   * bails and registers an activation callback that fires the factory
-   * once the step becomes current. `undefined` when the form is
-   * standalone — no defer-claim, factory fires normally.
-   */
-  readonly stepperHandle: Ref<
-    | {
-        shouldDefer: () => boolean
-        registerActivation: (callback: () => void) => void
-      }
-    | undefined
-  >
   /**
    * Re-fire the captured function-form `defaultValues` factory. Throws
    * synchronously when no factory was captured (plain-value form).
@@ -1496,10 +1472,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const hydrating = ref(false)
   const hydrateError = ref<ValidationError | null>(null)
   const defaultValuesFactory = ref<(() => unknown | Promise<unknown>) | undefined>(undefined)
-  // Flipped to `true` once `useAbstractForm`'s settle microtask body
-  // starts running (CSR) or `onServerPrefetch` invokes the body
-  // (SSR). Read by `useStepper`'s late-registration guard.
-  const factorySettleStarted = ref(false)
   // `true` once the form's effective defaults have been applied —
   // either a sync `defaultValues` at construction, or an async
   // factory whose settle completed. Stays `false` for dormant lazy
@@ -1513,13 +1485,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // factory reads) share a single fetch.
   const activated = ref(false)
   const activationPromise = ref<Promise<void> | undefined>(undefined)
-  const stepperHandle = ref<
-    | {
-        shouldDefer: () => boolean
-        registerActivation: (callback: () => void) => void
-      }
-    | undefined
-  >(undefined)
   // Initial-validity gate. See `FormStore.firstValidationDone` JSDoc.
   // Only ASYNC-validating strict schemas need the gate: sync schemas
   // either surface refinement errors at construction (slim parse
@@ -3335,11 +3300,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     hydrating,
     hydrateError,
     defaultValuesFactory,
-    factorySettleStarted,
     defaultsResolved,
     activated,
     activationPromise,
-    stepperHandle,
     rehydrate,
     activate,
     submissionGeneration,

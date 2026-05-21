@@ -51,7 +51,6 @@ export type {
   StepperStatusesProxy,
   UseStepperReturnType,
 } from './runtime/types/types-stepper'
-export { StepperLateRegistrationError } from './runtime/core/errors'
 export { AttaformErrorCode } from './runtime/core/error-codes'
 export { unset, isUnset } from './runtime/core/unset'
 export type { Unset } from './runtime/core/unset'

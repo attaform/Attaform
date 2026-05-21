@@ -7,11 +7,9 @@ import {
   watch,
   type ComputedRef,
 } from 'vue'
-import { StepperLateRegistrationError } from '../core/errors'
 import { useRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { createStepperHistory, NOOP_STEPPER_HISTORY } from '../core/stepper-history'
-import { createStepperRegistry } from '../core/stepper-registry'
 import { buildStepperStatusesProxy } from '../core/stepper-statuses-proxy'
 import type {
   AggregateError,
@@ -98,7 +96,6 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     seenKeys.add(form.key)
   }
 
-  const stepperRegistry = createStepperRegistry()
   const formKeys = forms.map((form) => form.key)
 
   // Resolve history config. `history` omitted → default on with the
@@ -133,55 +130,36 @@ export function useStepper<Forms extends readonly AnyForm[]>(
   }
   const current = ref(initialKey) as ReturnType<typeof ref<KeysOf<Forms>>>
 
-  stepperRegistry.claim(initialKey, true)
-  for (let i = 0; i < formKeys.length; i += 1) {
-    const key = formKeys[i]!
-    if (key === initialKey) continue
-    stepperRegistry.claim(key, false)
-  }
-
   // Replace the URL so it always reflects the active step on mount —
   // idempotent when the URL already named the correct key.
   stepperHistory.replace(initialKey as string)
 
   const registry = useRegistry()
 
-  // Late-registration guard. The defer-claim contract relies on
-  // `useStepper` winning the race against the microtask-deferred
-  // factory settle. If any participating form's factory has already
-  // started settling, the claim is too late to honor the privacy
-  // guarantee — throw with a clear message instead of silently
-  // degrading.
-  for (const key of formKeys) {
-    const store = registry.forms.get(key)
-    if (
-      store !== undefined &&
-      store.defaultValuesFactory.value !== undefined &&
-      store.factorySettleStarted.value
-    ) {
-      throw new StepperLateRegistrationError(key)
-    }
-  }
-
-  // Wire each form's `stepperHandle` so `useAbstractForm.settle` can
-  // consult the deferral signal before firing an async-defaults
-  // factory. Bound by `key` (not by the form return object) so
-  // future late-arriving forms that resolve to the same store inherit
-  // the claim.
-  for (const key of formKeys) {
-    const store = registry.forms.get(key)
-    if (store !== undefined) {
-      store.stepperHandle.value = {
-        shouldDefer: () => stepperRegistry.shouldDefer(key),
-        registerActivation: (callback) => stepperRegistry.registerActivation(key, callback),
+  // SSR prefetch coordination — the wizard's privacy contract for
+  // non-current steps. On the server, enqueue the initial step (so its
+  // factory runs inside the form's `onServerPrefetch` hook) and
+  // explicitly skip every other step (so a transform mark or stray
+  // `form.activate()` on a non-current step cannot leak that step's
+  // factory). The client path goes through the per-form `activate()`
+  // calls below — `skipPrefetch` is a no-op there since `shouldPrefetch`
+  // is only read by the SSR drain.
+  if (registry.ssr) {
+    for (const key of formKeys) {
+      if (key === initialKey) {
+        registry.enqueuePrefetch(key)
+      } else {
+        registry.skipPrefetch(key)
       }
     }
   }
 
-  // Activate the initial step's form synchronously. The CSR microtask
-  // defer is gone — without an explicit kick here, the current step's
-  // factory would never fire on mount. Other steps stay dormant until
-  // navigation activates them.
+  // Activate the initial step's form synchronously. On the client this
+  // fires the captured async factory immediately; on the server it
+  // routes through `state.activate()` which both records the enqueue
+  // intent and (via `onServerPrefetch`) drains the queue with the
+  // actual factory call. Other steps stay dormant until navigation
+  // activates them.
   const initialIdx = formKeys.indexOf(initialKey as string)
   if (initialIdx !== -1) {
     const initialForm = forms[initialIdx] as unknown as { activate?: () => Promise<void> }
@@ -303,11 +281,6 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     }
     onScopeDispose(() => {
       for (const release of releases) release()
-      for (const key of formKeys) {
-        const store = registry.forms.get(key)
-        if (store !== undefined) store.stepperHandle.value = undefined
-      }
-      stepperRegistry.dispose()
       stepperHistory.dispose()
     })
   }
@@ -387,13 +360,14 @@ export function useStepper<Forms extends readonly AnyForm[]>(
   ): void {
     const priorKey = current.value as KeysOf<Forms>
     if (priorKey === nextKey) return
-    stepperRegistry.markCurrent(nextKey, priorKey)
     current.value = nextKey
-    // Kick the new step's activation. The registry's late-bound
-    // `registerActivation` callback also fires the factory when its
-    // claim flips current, but explicit activation here covers the
-    // case where the form was not stepper-deferred (e.g. created
-    // before the stepper claim arrived) — `activate()` is idempotent.
+    // Kick the new step's activation. `activate()` is idempotent — if
+    // the form is already resolved (sync defaults / hydrated payload /
+    // earlier visit re-using state), this returns a resolved promise
+    // and nothing re-fires. On the server, `setCurrent` is uncommon
+    // (initial step resolution wires the SSR queue at construction);
+    // on the client this is the primary firing site for async-defaults
+    // factories on navigation.
     const nextIdx = formKeys.indexOf(nextKey as string)
     if (nextIdx !== -1) {
       const nextForm = forms[nextIdx] as unknown as { activate?: () => Promise<void> }

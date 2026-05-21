@@ -94,7 +94,6 @@ import {
   RegistryNotInstalledError,
   ReservedFormKeyError,
   SensitivePersistFieldError,
-  StepperLateRegistrationError,
   SubmitErrorHandlerError,
   // Validation-error codes
   AttaformErrorCode,

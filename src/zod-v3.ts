@@ -45,7 +45,6 @@ export type {
   StepperStatusesProxy,
   UseStepperReturnType,
 } from './runtime/types/types-stepper'
-export { StepperLateRegistrationError } from './runtime/core/errors'
 export { zodAdapter } from './runtime/adapters/zod-v3'
 export { isZodSchemaType } from './runtime/adapters/zod-v3/helpers'
 export { AttaformErrorCode } from './runtime/core/error-codes'

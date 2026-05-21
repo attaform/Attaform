@@ -131,24 +131,6 @@ Three things throw at construction (typo / wiring safety, not runtime):
 
 `defaultStatuses` with an unknown key (typo against the `forms` array) throws at construction too.
 
-## Late registration
-
-A form that calls `useForm({ key })` _after_ the stepper mounted with that key in its array is a logic error — the stepper held a pending sentinel for the missing key, and a late `useForm({ key })` with that same key tries to wire it up. Throws `StepperLateRegistrationError`:
-
-```ts
-import { StepperLateRegistrationError } from 'attaform'
-
-try {
-  useForm({ key: 'late-step' }) // already in a mounted stepper
-} catch (err) {
-  if (err instanceof StepperLateRegistrationError) {
-    console.error('Define all stepper forms before mounting the stepper.')
-  }
-}
-```
-
-The fix is structural: define every form synchronously before passing the array to `useStepper`. A v-if pattern on stepper steps is fine — the forms exist before the stepper mounts, and the templates choose which one to render at any moment.
-
 ## Where to next
 
 - [`injectForm`](/docs/cross-cutting-state/inject-form) — single-form sharing across a tree; orthogonal to multi-step.

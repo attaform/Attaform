@@ -94,11 +94,11 @@ Sort order: wizard's `forms` order, then each form's internal error order. The s
 </template>
 ```
 
-A click on any summary row jumps the wizard to the step that produced the error. The consumer wires the focus / scroll behaviour from there.
+A click on any summary row jumps the wizard to the step that produced the error. The consumer wires the focus / scroll behavior from there.
 
 ## Dormant steps contribute nothing
 
-`wizard.allErrors` deliberately skips steps whose forms have not been activated. A non-current step with an async `defaultValues` factory does NOT fire on the server just because the consumer reads the summary list:
+`wizard.allErrors` deliberately skips steps whose forms have not been activated. A non-current step with an async `defaultValues` factory does **not** fire on the server just because the consumer reads the summary list:
 
 ```ts
 const wizard = useWizard([account, profile, review] as const)
@@ -106,7 +106,7 @@ const wizard = useWizard([account, profile, review] as const)
 // wizard.allErrors only includes errors from account, not profile or review.
 ```
 
-That keeps the [SSR privacy invariant](/docs/multistep/ssr) intact. A summary panel rendered on the server reports the current step's errors without disturbing dormant steps.
+That keeps the [SSR privacy invariant](/docs/multistep/ssr#the-stated-invariant) intact. A summary panel rendered on the server reports the current step's errors without disturbing dormant steps.
 
 On the client, navigating to a step activates that step's factory and its errors join the aggregate naturally.
 

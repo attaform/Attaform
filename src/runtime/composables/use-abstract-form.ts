@@ -283,23 +283,20 @@ export function useAbstractForm<
       state.hydrating.value = false
       state.defaultsResolved.value = true
     } else if (registry.ssr) {
-      // Server side: run the factory inside `onServerPrefetch` so the
-      // framework's SSR awaiter waits for resolution before the
-      // payload is serialised. Resolved values bake into the
-      // hydration transfer state and the client never re-fetches.
-      // Stepper claims (synchronous, after this `useForm` call but
-      // before the prefetch flush) can mark this form deferred — in
-      // which case skip the server-side fetch entirely. The client
-      // will fire on activation.
-      state.hydrating.value = true
+      // Server side: factory dispatch is coordinated through the
+      // registry's SSR prefetch queue. `onServerPrefetch` is registered
+      // unconditionally; it drains the queue by calling
+      // `state.activate()` only when this form's key is enqueued (and
+      // not skipped). The positive triggers that enqueue: explicit
+      // `form.activate()` in setup, the wizard's current-step
+      // auto-mark, the Phase 3 compile-time `__ssrAccessed` injection,
+      // or any gated reactive read during setup (which routes through
+      // `state.activate()`). A form that nobody touched stays dormant
+      // — the factory does not run, and the payload serialises the
+      // schema's slim defaults.
       onServerPrefetch(() => {
-        state.factorySettleStarted.value = true
-        const handle = state.stepperHandle.value
-        if (handle !== undefined && handle.shouldDefer()) {
-          state.hydrating.value = false
-          return
-        }
-        return state.rehydrate()
+        if (!registry.shouldPrefetch(key)) return
+        return state.activate()
       })
     }
     // CSR: factory stays dormant until the first reactive interaction
@@ -670,6 +667,17 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       ? { debounceMs: (configuration as { debounceMs?: number }).debounceMs }
       : {}),
     ssr: registry.ssr,
+    // Server-only: every `state.activate()` enqueues the key for the
+    // SSR prefetch drain. The `onServerPrefetch` hook fires the factory
+    // only when this set contains the key, so the firing point and the
+    // SSR-coordinated awaiter agree on which forms run.
+    ...(registry.ssr
+      ? {
+          enqueueForPrefetch: (): void => {
+            registry.enqueuePrefetch(key)
+          },
+        }
+      : {}),
     ...(configuration.rememberVariants !== undefined
       ? { rememberVariants: configuration.rememberVariants }
       : {}),

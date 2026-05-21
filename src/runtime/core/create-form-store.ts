@@ -930,6 +930,19 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * when omitted, the library-default closure is used.
    */
   readonly segmentMatchesSensitive?: ((segment: Segment) => boolean) | undefined
+  /**
+   * Closure that records this form's key on the registry's SSR prefetch
+   * queue. Invoked from `state.activate()` so any path that activates a
+   * form on the server (explicit `form.activate()`, gated reads through
+   * the public surface, recursive factory reads) also enqueues it for
+   * the `onServerPrefetch` drain — keeping the firing point and the
+   * SSR-coordinated awaiter agreed on which forms need to run.
+   *
+   * Bound to `registry.enqueuePrefetch.bind(null, formKey)` at
+   * `buildFreshState` time. Omitted (or no-op) on the client where
+   * nothing reads from the prefetch queue.
+   */
+  readonly enqueueForPrefetch?: (() => void) | undefined
 }
 
 /**
@@ -1092,6 +1105,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 ): FormStore<F, G> {
   const { formKey, schema, defaultValues, strict = true, hydration } = options
   const ssr = options.ssr === true
+  const enqueueForPrefetch = options.enqueueForPrefetch
   const rememberVariants: boolean = options.rememberVariants !== false
   const fieldValidationMode: ValidateOn = options.validateOn ?? 'change'
   // Sanitise the debounce value before threading it into `setTimeout`.
@@ -2818,6 +2832,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // no-ops so reading `form.hydrateError` doesn't replay the failure.
   // `form.rehydrate()` is the explicit replay primitive.
   function activate(): Promise<void> {
+    // SSR enqueue is unconditional: even resolved / already-activated /
+    // plain-value forms record their intent so a wizard skip-list
+    // override or a transform-injected mark has a consistent set to
+    // diff against. The closure is bound to the registry at
+    // construction time and is a no-op on the client. Add(key) is
+    // idempotent — repeated activate() calls cost a single Set hit.
+    enqueueForPrefetch?.()
     if (defaultsResolved.value === true) return Promise.resolve()
     if (activationPromise.value !== undefined) return activationPromise.value
     if (activated.value === true) return Promise.resolve()

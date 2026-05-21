@@ -11,13 +11,14 @@ import { waitUntil } from '../utils/form-harness'
 /**
  * Function-form `defaultValues` — both sync and async factories.
  *
- * Memo (`project_use_stepper_design.md`): "Function (sync or async)
- * → defer until first needed." Both forms settle on a microtask after
- * construction, so the form starts with the schema's slim defaults
- * and `form.hydrating` is `true` until the factory's result lands.
+ * Lazy-activation contract: the factory fires the first time
+ * something reaches for the form's reactive state (`form.values`,
+ * `form.activate()`, etc.), not at construction. Once the factory
+ * runs the form starts with the schema's slim defaults and
+ * `form.hydrating` is `true` until the factory's result lands.
  *
- * SSR coverage moves to PR 1.6's `test/ssr.test.ts` extension. This
- * file covers the CSR path: microtask defer, reactive `hydrating`,
+ * SSR coverage lives in `use-form-ssr-prefetch.test.ts`. This file
+ * covers the CSR path: activation triggers, reactive `hydrating`,
  * resolved values overlay onto slim defaults.
  */
 

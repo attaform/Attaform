@@ -144,6 +144,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Statuses', to: '/docs/multistep/statuses' },
       { title: 'Browser history', to: '/docs/multistep/history' },
       { title: 'SSR & the privacy invariant', to: '/docs/multistep/ssr' },
+      { title: 'Aggregates', to: '/docs/multistep/aggregates' },
     ],
   },
   {

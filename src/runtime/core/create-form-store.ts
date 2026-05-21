@@ -333,7 +333,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * `useForm({ key })` call that resolves to this store — the second
    * caller sees the first caller's hydration state.
    */
-  readonly isHydrating: Ref<boolean>
+  readonly hydrating: Ref<boolean>
   /**
    * Error from the most recent function-form `defaultValues` factory.
    * Normalized to a `ValidationError` (code `atta:hydration-failed`) so the
@@ -408,7 +408,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * Re-fire the captured function-form `defaultValues` factory. Throws
    * synchronously when no factory was captured (plain-value form).
-   * Resolves after `isHydrating` flips back to `false`; consumers can
+   * Resolves after `hydrating` flips back to `false`; consumers can
    * `await form.rehydrate()` to gate UI on the fresh load.
    *
    * Does NOT touch dirty / touched / submit state — chain
@@ -1477,9 +1477,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const activeValidations = ref(0)
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
   // first call for this key: `defaultValuesFactory` captures the
-  // function-form input, `isHydrating` flips true until settle
+  // function-form input, `hydrating` flips true until settle
   // completes. Plain-value forms leave the refs at their zero state.
-  const isHydrating = ref(false)
+  const hydrating = ref(false)
   const hydrateError = ref<ValidationError | null>(null)
   const defaultValuesFactory = ref<(() => unknown | Promise<unknown>) | undefined>(undefined)
   // Flipped to `true` once `useAbstractForm`'s settle microtask body
@@ -2771,7 +2771,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // --- Rehydrate ---
   // Imperative re-fire of the captured function-form `defaultValues`
   // factory. Lives on the store so every consumer of the shared key
-  // sees one source of truth for `isHydrating`. Mirrors the
+  // sees one source of truth for `hydrating`. Mirrors the
   // construction-time settle path: factory result merges over the
   // current values via `mergeSparseHydration`, applies through
   // `applyFormReplacement({ hydration: true })` (history-module aware),
@@ -2827,7 +2827,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   }
 
   async function runFactoryAndApply(factory: () => unknown | Promise<unknown>): Promise<void> {
-    isHydrating.value = true
+    hydrating.value = true
     // Stale-while-revalidate: keep any prior `HydrationFailed` entry
     // visible until the new attempt settles. Same contract field
     // errors follow under `field.validating === true` — the surface
@@ -2867,7 +2867,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       clearHydrationFailedEntry()
       hydrateError.value = appendHydrationFailedEntry(error)
     } finally {
-      isHydrating.value = false
+      hydrating.value = false
     }
   }
 
@@ -3311,7 +3311,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     activeSubmissions,
     submitCount,
     submitError,
-    isHydrating,
+    hydrating,
     hydrateError,
     defaultValuesFactory,
     factorySettleStarted,

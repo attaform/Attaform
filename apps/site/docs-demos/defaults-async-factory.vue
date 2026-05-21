@@ -39,27 +39,27 @@
 
 <template>
   <div class="layout">
-    <form class="card" :aria-busy="form.isHydrating" @submit.prevent>
+    <form class="card" :aria-busy="form.hydrating" @submit.prevent>
       <header>
         <h4>Draft loader</h4>
-        <span v-if="form.isHydrating" class="badge hydrating">loading draft…</span>
+        <span v-if="form.hydrating" class="badge hydrating">loading draft…</span>
         <span v-else-if="form.hydrateError" class="badge error">load failed</span>
         <span v-else class="badge ready">ready</span>
       </header>
 
       <label>
         <span>Email</span>
-        <input v-register="form.register('email')" :disabled="form.isHydrating" />
+        <input v-register="form.register('email')" :disabled="form.hydrating" />
       </label>
 
       <label>
         <span>Display name</span>
-        <input v-register="form.register('displayName')" :disabled="form.isHydrating" />
+        <input v-register="form.register('displayName')" :disabled="form.hydrating" />
       </label>
 
       <label>
         <span>Tier</span>
-        <select v-register="form.register('tier')" :disabled="form.isHydrating">
+        <select v-register="form.register('tier')" :disabled="form.hydrating">
           <option value="free">Free</option>
           <option value="pro">Pro</option>
           <option value="team">Team</option>
@@ -71,8 +71,8 @@
       </div>
 
       <div class="actions">
-        <button type="button" :disabled="form.isHydrating" @click="onRehydrate">
-          {{ form.isHydrating ? 'Loading…' : 'Rehydrate' }}
+        <button type="button" :disabled="form.hydrating" @click="onRehydrate">
+          {{ form.hydrating ? 'Loading…' : 'Rehydrate' }}
         </button>
         <label class="toggle">
           <input v-model="failNext" type="checkbox" />
@@ -84,8 +84,8 @@
     <section>
       <h4>Reactive state</h4>
       <dl>
-        <dt><code>form.isHydrating</code></dt>
-        <dd>{{ form.isHydrating }}</dd>
+        <dt><code>form.hydrating</code></dt>
+        <dd>{{ form.hydrating }}</dd>
         <dt><code>form.hydrateError?.code</code></dt>
         <dd>{{ form.hydrateError?.code ?? 'null' }}</dd>
         <dt><code>form.hydrateError?.message</code></dt>

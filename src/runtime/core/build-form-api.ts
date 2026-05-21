@@ -854,11 +854,11 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
     // Auto-unwrapping views over the per-store async-defaults lifecycle
-    // refs (see FormStore.isHydrating / hydrateError). Reading either
+    // refs (see FormStore.hydrating / hydrateError). Reading either
     // activates the form — observing factory state implies use.
-    get isHydrating(): boolean {
+    get hydrating(): boolean {
       void state.activate()
-      return state.isHydrating.value
+      return state.hydrating.value
     },
     get hydrateError(): ValidationError | null {
       void state.activate()

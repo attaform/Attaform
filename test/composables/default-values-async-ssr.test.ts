@@ -107,7 +107,7 @@ describe('async-defaults SSR + hydration', () => {
     expect(api).toBeDefined()
     if (api === undefined) return
     expect(clientCalls).toBe(0)
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.values.email).toBe('server@example.com')
     expect(api.values.name).toBe('Ada')
   })
@@ -154,10 +154,10 @@ describe('async-defaults SSR rejection path', () => {
     if (api === undefined) return
 
     // Server-side state after the rejection settled: error captured,
-    // isHydrating released, form falls back to schema slim defaults.
+    // hydrating released, form falls back to schema slim defaults.
     expect(api.hydrateError?.code).toBe(AttaformErrorCode.HydrationFailed)
     expect(api.hydrateError?.message).toBe('upstream-down')
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.values.email).toBe('')
     expect(api.values.name).toBe('')
 
@@ -227,7 +227,7 @@ describe('async-defaults SSR rejection path', () => {
     // surfacing through form.meta.errors — consumers render an error
     // banner / retry button off this entry.
     expect(clientCalls).toBe(0)
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.hydrateError).toBeNull()
     expect(api.values.email).toBe('')
     expect(api.values.name).toBe('')
@@ -287,7 +287,7 @@ describe('async-defaults SSR rejection path', () => {
     await api.rehydrate()
     expect(clientCalls).toBe(1)
     expect(api.hydrateError).toBeNull()
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.values.email).toBe('recovered@example.com')
     expect(api.values.name).toBe('Hopper')
     const postErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)

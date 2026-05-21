@@ -14,10 +14,10 @@ import { waitUntil } from '../utils/form-harness'
  * Memo (`project_use_stepper_design.md`): "Function (sync or async)
  * → defer until first needed." Both forms settle on a microtask after
  * construction, so the form starts with the schema's slim defaults
- * and `form.isHydrating` is `true` until the factory's result lands.
+ * and `form.hydrating` is `true` until the factory's result lands.
  *
  * SSR coverage moves to PR 1.6's `test/ssr.test.ts` extension. This
- * file covers the CSR path: microtask defer, reactive `isHydrating`,
+ * file covers the CSR path: microtask defer, reactive `hydrating`,
  * resolved values overlay onto slim defaults.
  */
 
@@ -56,10 +56,10 @@ describe('useForm — function-form defaultValues', () => {
     name: z.string(),
   })
 
-  it('plain-value defaultValues leaves isHydrating false', () => {
+  it('plain-value defaultValues leaves hydrating false', () => {
     const { app, api } = mountForm(schema, { email: 'a@b.c', name: 'Ada' })
     apps.push(app)
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.hydrateError).toBeNull()
     expect(api.values.email).toBe('a@b.c')
   })
@@ -74,23 +74,23 @@ describe('useForm — function-form defaultValues', () => {
     apps.push(app)
     // Microtask not yet flushed — factory has been queued but not
     // necessarily invoked. We assert behavior at the post-flush state.
-    await waitUntil(() => (api.isHydrating === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(calls).toBe(1)
     expect(api.values.email).toBe('sync@example.com')
     expect(api.values.name).toBe('Grace')
     expect(api.hydrateError).toBeNull()
   })
 
-  it('async function defaultValues flips isHydrating true → false', async () => {
+  it('async function defaultValues flips hydrating true → false', async () => {
     let resolveFactory!: (value: { email: string; name: string }) => void
     const promise = new Promise<{ email: string; name: string }>((r) => {
       resolveFactory = r
     })
     const { app, api } = mountForm(schema, () => promise)
     apps.push(app)
-    expect(api.isHydrating).toBe(true)
+    expect(api.hydrating).toBe(true)
     resolveFactory({ email: 'async@example.com', name: 'Lovelace' })
-    await waitUntil(() => (api.isHydrating === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.values.email).toBe('async@example.com')
     expect(api.values.name).toBe('Lovelace')
     expect(api.hydrateError).toBeNull()
@@ -101,7 +101,7 @@ describe('useForm — function-form defaultValues', () => {
     // slim default (empty string for z.string()).
     const { app, api } = mountForm(schema, () => Promise.resolve({ email: 'partial@example.com' }))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.values.email).toBe('partial@example.com')
     expect(api.values.name).toBe('')
   })

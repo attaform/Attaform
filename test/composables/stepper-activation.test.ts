@@ -78,11 +78,11 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b, c], {}), a, b, c }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating === false ? true : null))
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
     expect(aCalls).toBe(1)
     expect(bCalls).toBe(0)
     expect(cCalls).toBe(0)
-    // Under lazy activation, reading `result.b.isHydrating` would
+    // Under lazy activation, reading `result.b.hydrating` would
     // itself activate B's factory ("observing factory state implies
     // use"). The call-count assertions above are the authoritative
     // dormancy check.
@@ -103,11 +103,11 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b], {}), a, b }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating === false ? true : null))
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
     expect(bCalls).toBe(0)
 
     result.stepper.next()
-    await waitUntil(() => (result.b.isHydrating === false ? true : null))
+    await waitUntil(() => (result.b.hydrating === false ? true : null))
     expect(bCalls).toBe(1)
     expect(result.b.values.b).toBe('B')
   })
@@ -127,9 +127,9 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b], {}), a, b }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating === false ? true : null))
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
     result.stepper.next()
-    await waitUntil(() => (result.b.isHydrating === false ? true : null))
+    await waitUntil(() => (result.b.hydrating === false ? true : null))
     expect(bCalls).toBe(1)
     result.stepper.back()
     result.stepper.next()
@@ -152,7 +152,7 @@ describe('useStepper — async-defaults activation lifecycle', () => {
       return { stepper: useStepper([a, b], {}), a, b }
     })
     apps.push(app)
-    await waitUntil(() => (result.a.isHydrating === false ? true : null))
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
     expect(bCalls).toBe(0)
 
     await result.b.rehydrate()

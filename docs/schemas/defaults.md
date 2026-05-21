@@ -117,7 +117,7 @@ Each call to `form.rehydrate()` re-fires the captured factory, so a "new session
 ::docs-demo{slug="defaults-sync-factory" label="Sync factory demo"}
 ::
 
-`form.isHydrating` does flip `true` for a microtask while the sync factory runs, then back to `false`. Templates that read it usually won't see the brief flicker; the flag is mostly relevant for the async form below.
+`form.hydrating` does flip `true` for a microtask while the sync factory runs, then back to `false`. Templates that read it usually won't see the brief flicker; the flag is mostly relevant for the async form below.
 
 ## Loading defaults asynchronously
 
@@ -130,15 +130,15 @@ const form = useForm({
 })
 ```
 
-The form is fully usable while the factory is in flight; it holds the schema's slim defaults and exposes the load state through `form.isHydrating`:
+The form is fully usable while the factory is in flight; it holds the schema's slim defaults and exposes the load state through `form.hydrating`:
 
 ```vue
-<form :aria-busy="form.isHydrating">
-  <input v-register="form.register('email')" :disabled="form.isHydrating" />
+<form :aria-busy="form.hydrating">
+  <input v-register="form.register('email')" :disabled="form.hydrating" />
 </form>
 ```
 
-When the promise resolves the payload overlays onto storage, the same way a plain `defaultValues` object would; `isHydrating` flips back to `false`.
+When the promise resolves the payload overlays onto storage, the same way a plain `defaultValues` object would; `hydrating` flips back to `false`.
 
 If the factory throws or rejects, the error lands on `form.hydrateError` as a `ValidationError` (`code: 'atta:hydration-failed'`). The same entry also surfaces through `form.meta.errors`, so error UI can render off either surface. The form stays usable with the slim defaults; call `form.rehydrate()` to refire the captured factory, e.g. wired to a retry button.
 

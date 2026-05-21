@@ -232,10 +232,10 @@ export function useStepper<Forms extends readonly AnyForm[]>(
   //   1. store.defaultsResolved === true → derive from form.meta
   //   2. else seed value for this key → frozen seed
   //   3. else → pending sentinel
-  // `defaultsResolved` is the right gate (not `isHydrating`) because
-  // deferred stepper forms have `isHydrating: false` BEFORE
-  // activation — the factory hasn't fired, so meta is the trivial
-  // pending shape rather than real data.
+  // `defaultsResolved` is the right gate (not `hydrating`) because
+  // dormant lazy forms have `hydrating: false` BEFORE activation —
+  // the factory hasn't fired, so meta is the trivial pending shape
+  // rather than real data.
   const statusComputeds: Record<string, ComputedRef<FormStatus>> = {}
   for (let i = 0; i < forms.length; i += 1) {
     const form = forms[i] as AnyForm

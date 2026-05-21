@@ -132,9 +132,7 @@ describe('useForm — lazy activation', () => {
     apps.push(app)
     await wait(20)
     expect(calls.count).toBe(0)
-    // Read the renamed `hydrating` getter. The old `isHydrating` alias
-    // is dropped under the rename; tests assert the new shape.
-    void (api as unknown as { hydrating: boolean }).hydrating
+    void api.hydrating
     await waitUntil(() => (calls.count >= 1 ? true : null))
     expect(calls.count).toBe(1)
   })

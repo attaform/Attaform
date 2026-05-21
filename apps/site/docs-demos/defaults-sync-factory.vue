@@ -70,8 +70,8 @@
       <dl>
         <dt>Factory invocations</dt>
         <dd>{{ sessionCounter }}</dd>
-        <dt><code>form.isHydrating</code></dt>
-        <dd>{{ form.isHydrating }}</dd>
+        <dt><code>form.hydrating</code></dt>
+        <dd>{{ form.hydrating }}</dd>
         <dt><code>form.values.sessionId</code></dt>
         <dd>{{ form.values.sessionId }}</dd>
       </dl>

@@ -22,7 +22,7 @@ import type { FormStatus } from '../../src/runtime/types/types-stepper'
  *     pending sentinel
  *
  * Status resolution priority (per form):
- *   1. form.isHydrating === false  → derive from form.meta
+ *   1. form.hydrating === false  → derive from form.meta
  *   2. defaultStatuses resolved   → frozen seed
  *   3. else                       → pending sentinel
  */
@@ -179,7 +179,7 @@ describe('useStepper — defaultStatuses', () => {
     // flips and the status follows meta. Form b is still deferred (non-current)
     // so its seed entry continues to surface.
     resolveA({ a: 'A' })
-    await waitUntil(() => (result.a.isHydrating === false ? true : null))
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       if (!result.a.meta.validating) break

@@ -1089,8 +1089,8 @@ export type UseFormConfiguration<
    * defaultValues: () => buildDraft()
    *
    * // Async function — form starts with the schema's slim defaults
-   * // and `form.isHydrating` flips true while the promise is
-   * // in flight; on resolve the values apply and `isHydrating` flips
+   * // and `form.hydrating` flips true while the promise is
+   * // in flight; on resolve the values apply and `hydrating` flips
    * // false. Under SSR the factory fires via `onServerPrefetch` so
    * // the resolved payload bakes into hydration transfer state and
    * // the client never re-fetches.
@@ -3514,20 +3514,21 @@ export type UseFormReturnType<
    * its promise settles). `false` otherwise, including when
    * `defaultValues` is a plain value.
    *
-   * The form is fully usable while `isHydrating` is `true` — it holds
+   * The form is fully usable while `hydrating` is `true` — it holds
    * the schema's slim defaults. The flag exists so templates can show
    * a spinner / dim the form while real data loads:
    *
    * ```vue
-   * <div :aria-busy="form.isHydrating">…</div>
+   * <div :aria-busy="form.hydrating">…</div>
    * ```
    *
    * Exposed as an auto-unwrapping `boolean` (no `.value`); reactivity
    * is preserved via a getter that tracks the underlying ref at the
-   * access site, so `watch(() => form.isHydrating, …)` and template
-   * reads both fire on change.
+   * access site, so `watch(() => form.hydrating, …)` and template
+   * reads both fire on change. Reading this property activates the
+   * form's factory under the lazy-by-default rule.
    */
-  readonly isHydrating: boolean
+  readonly hydrating: boolean
 
   /**
    * The error from the most recent function-form `defaultValues` factory,
@@ -3553,7 +3554,7 @@ export type UseFormReturnType<
    * source changes (the user picks a different draft, a background
    * sync indicates fresh server data, etc.).
    *
-   * Resolves after `isHydrating` flips back to `false`. Throws
+   * Resolves after `hydrating` flips back to `false`. Throws
    * synchronously when the form was constructed with a plain-value
    * `defaultValues` (nothing to re-fire). Does NOT clear dirty /
    * touched / submit state — chain `form.reset()` for that.

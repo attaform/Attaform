@@ -70,7 +70,7 @@ describe('useStepper — popstate mid-flight safety', () => {
     result.stepper.next()
     await nextTick()
     expect(factoryCalls).toBe(1)
-    expect(result.b.isHydrating).toBe(true)
+    expect(result.b.hydrating).toBe(true)
 
     // Pop back to A via popstate (silent setCurrent).
     window.history.back()
@@ -83,9 +83,9 @@ describe('useStepper — popstate mid-flight safety', () => {
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       await nextTick()
-      if (!result.b.isHydrating) break
+      if (!result.b.hydrating) break
     }
-    expect(result.b.isHydrating).toBe(false)
+    expect(result.b.hydrating).toBe(false)
 
     // Pop forward to B — factory MUST NOT re-fire.
     window.history.forward()
@@ -98,7 +98,7 @@ describe('useStepper — popstate mid-flight safety', () => {
     let factoryCalls = 0
     const factoryPromise = new Promise<{ b: string }>(() => {
       // Never resolves — we want to prove popping doesn't affect the
-      // factory's promise state. The form stays in `isHydrating: true`
+      // factory's promise state. The form stays in `hydrating: true`
       // throughout this probe.
     })
     const { app, result } = mountHarness(() => {

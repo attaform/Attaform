@@ -221,7 +221,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     const harness = sharedAppHarness(schema, factory, 'shared-remount-test')
 
     const first = await harness.mount()
-    await waitUntil(() => (first.isHydrating === false ? true : null))
+    await waitUntil(() => (first.hydrating === false ? true : null))
     expect(calls).toBe(1)
     expect(first.values.email).toBe('call-1@example.com')
 
@@ -229,7 +229,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     await harness.unmount()
 
     const second = await harness.mount()
-    await waitUntil(() => (second.isHydrating === false ? true : null))
+    await waitUntil(() => (second.hydrating === false ? true : null))
 
     // Factory refired on the re-mount; values reflect the second call.
     expect(calls).toBe(2)
@@ -248,7 +248,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     const harnessB = sharedAppHarness(schema, factory, 'shared-coexist-test-A')
 
     const a = await harnessA.mount()
-    await waitUntil(() => (a.isHydrating === false ? true : null))
+    await waitUntil(() => (a.hydrating === false ? true : null))
     expect(calls).toBe(1)
 
     const b = await harnessB.mount()
@@ -256,7 +256,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     // This intentionally documents what does NOT share state: separate
     // `createAttaform()` installs each carry their own registry, so the
     // `key` collision still produces independent FormStores.
-    await waitUntil(() => (b.isHydrating === false ? true : null))
+    await waitUntil(() => (b.hydrating === false ? true : null))
     expect(calls).toBe(2)
   })
 
@@ -280,14 +280,14 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     const harness = sharedAppHarness(schema, factory, 'remount-no-refire')
 
     const first = await harness.mount()
-    await waitUntil(() => (first.isHydrating === false ? true : null))
+    await waitUntil(() => (first.hydrating === false ? true : null))
     expect(calls).toBe(1)
     expect(first.values.email).toBe('call-1@example.com')
 
     const second = await harness.remount()
 
     expect(calls).toBe(1)
-    expect(second.isHydrating).toBe(false)
+    expect(second.hydrating).toBe(false)
     expect(second.values.email).toBe('call-1@example.com')
   })
 
@@ -331,7 +331,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     const harness = sharedAppHarness(schema, factory, 'remount-no-slim-flash')
 
     const first = await harness.mount()
-    await waitUntil(() => (first.isHydrating === false ? true : null))
+    await waitUntil(() => (first.hydrating === false ? true : null))
 
     const observed: string[] = []
     observed.push(first.values.email)

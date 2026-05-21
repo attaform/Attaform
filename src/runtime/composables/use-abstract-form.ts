@@ -258,11 +258,11 @@ export function useAbstractForm<
     existing ?? buildFreshState<Form, GetValueFormType>(key, resolvedSchema, merged, registry)
 
   // Wire function-form `defaultValues` once per FormStore. Sync inputs
-  // already applied at construction; async inputs settle the factory
-  // on a microtask so a synchronously-following `useStepper` claim has
-  // its chance to defer the firing (PR 2). Subsequent `useForm({ key })`
-  // calls that resolve to the same store observe the in-flight state
-  // via `state.isHydrating` rather than re-firing.
+  // already applied at construction; async inputs stay dormant until
+  // the first reactive interaction calls `state.activate()` through
+  // the public API surface. Subsequent `useForm({ key })` calls that
+  // resolve to the same store observe the in-flight state via
+  // `state.hydrating` rather than re-firing.
   if (existing !== undefined) {
     // Reusing a live store — its `defaultsResolved` already reflects
     // the first caller's effective state. Don't overwrite it.
@@ -280,7 +280,7 @@ export function useAbstractForm<
       // Server already resolved the factory; client just consumed the
       // payload at `buildFreshState`. Skip the re-fetch — and the
       // resolved payload IS the effective default state.
-      state.isHydrating.value = false
+      state.hydrating.value = false
       state.defaultsResolved.value = true
     } else if (registry.ssr) {
       // Server side: run the factory inside `onServerPrefetch` so the
@@ -291,12 +291,12 @@ export function useAbstractForm<
       // before the prefetch flush) can mark this form deferred — in
       // which case skip the server-side fetch entirely. The client
       // will fire on activation.
-      state.isHydrating.value = true
+      state.hydrating.value = true
       onServerPrefetch(() => {
         state.factorySettleStarted.value = true
         const handle = state.stepperHandle.value
         if (handle !== undefined && handle.shouldDefer()) {
-          state.isHydrating.value = false
+          state.hydrating.value = false
           return
         }
         return state.rehydrate()

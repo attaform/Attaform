@@ -447,7 +447,7 @@
 
   const groupedErrors = computed(() => {
     const groups = new Map<string, ErrorGroup>()
-    for (const e of wizard.allErrors.value) {
+    for (const e of wizard.allErrors) {
       const formKey = e.formKey as FormKey
       const root = String(e.path[0] ?? '(root)')
       const key = `${formKey}:${root}`
@@ -625,8 +625,12 @@
   // Undo/redo targets the form that owns the active step — each form
   // has its own history stack so an undo on cargo doesn't roll back
   // an address edit.
-  const activeForm = computed(() => formByKey[wizard.current.value])
-  const canGoNext = computed(() => wizard.statuses[wizard.current.value].valid)
+  const activeForm = computed(() => wizard.activeForm)
+  const canGoNext = computed(() => {
+    const key = wizard.current
+    if (key === undefined) return false
+    return wizard.statuses[key].valid
+  })
   const isAnyValidating = computed(() => wizard.forms.some((f) => f.meta.validating))
 
   // Acknowledgement multi-checkbox helper — read / write the array via
@@ -658,10 +662,10 @@
           type="button"
           class="step"
           :class="{
-            active: wizard.current.value === form.key,
+            active: wizard.current === form.key,
             done: wizard.statuses[form.key as FormKey].valid,
           }"
-          :aria-current="wizard.current.value === form.key ? 'step' : undefined"
+          :aria-current="wizard.current === form.key ? 'step' : undefined"
           @click="wizard.goTo(form.key as FormKey)"
         >
           <span class="step-num">{{ idx + 1 }}</span>
@@ -670,7 +674,7 @@
       </nav>
 
       <!-- ─── Step 1: addresses ─── -->
-      <section v-if="wizard.current.value === 'reference'" class="step-body">
+      <section v-if="wizard.current === 'reference'" class="step-body">
         <div class="field" :class="fieldClasses(refForm.fields.reference)">
           <label for="reference">{{ refForm.fields.reference.label }}</label>
           <small v-if="refForm.fields.reference.description" class="help">
@@ -772,7 +776,7 @@
       </section>
 
       <!-- ─── Step 2: cargo ─── -->
-      <section v-else-if="wizard.current.value === 'cargo'" class="step-body">
+      <section v-else-if="wizard.current === 'cargo'" class="step-body">
         <div class="variant-picker">
           <label>Cargo class</label>
           <div class="chip-row">
@@ -940,7 +944,7 @@
       </section>
 
       <!-- ─── Step 3: service & insurance ─── -->
-      <section v-else-if="wizard.current.value === 'service'" class="step-body">
+      <section v-else-if="wizard.current === 'service'" class="step-body">
         <div class="variant-picker">
           <label>Service mode</label>
           <div class="chip-row">
@@ -1070,7 +1074,7 @@
       </section>
 
       <!-- ─── Step 4: review ─── -->
-      <section v-else-if="wizard.current.value === 'review'" class="step-body review">
+      <section v-else-if="wizard.current === 'review'" class="step-body review">
         <h3>Review your manifest</h3>
         <p class="muted">Everything looks accurate? Sign and book below.</p>
         <pre>{{
@@ -1093,9 +1097,9 @@
             <span class="errors-summary-icon" aria-hidden="true">⚠</span>
             <div>
               <h3 class="errors-summary-title">
-                {{ wizard.allErrors.value.length }}
-                {{ wizard.allErrors.value.length === 1 ? 'item' : 'items' }} on the manifest before
-                it ships.
+                {{ wizard.allErrors.length }}
+                {{ wizard.allErrors.length === 1 ? 'item' : 'items' }} on the manifest before it
+                ships.
               </h3>
               <p class="errors-summary-hint">Tap any line to jump to the field.</p>
             </div>
@@ -1170,16 +1174,16 @@
           <button
             type="button"
             class="ghost"
-            :disabled="!activeForm.history.canUndo"
-            @click="activeForm.history.undo()"
+            :disabled="!activeForm?.history.canUndo"
+            @click="activeForm?.history.undo()"
           >
             ↶ Undo
           </button>
           <button
             type="button"
             class="ghost"
-            :disabled="!activeForm.history.canRedo"
-            @click="activeForm.history.redo()"
+            :disabled="!activeForm?.history.canRedo"
+            @click="activeForm?.history.redo()"
           >
             ↷ Redo
           </button>
@@ -1187,7 +1191,7 @@
         </div>
         <div class="nav-right">
           <button
-            v-if="wizard.current.value !== 'reference'"
+            v-if="wizard.current !== 'reference'"
             type="button"
             class="secondary"
             @click="wizard.back()"
@@ -1195,7 +1199,7 @@
             Back
           </button>
           <button
-            v-if="wizard.current.value !== 'review'"
+            v-if="wizard.current !== 'review'"
             type="button"
             class="primary"
             :disabled="!canGoNext"

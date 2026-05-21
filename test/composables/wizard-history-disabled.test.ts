@@ -64,7 +64,7 @@ describe('useWizard — history disabled', () => {
       return useWizard([a, b], { history: false })
     })
     apps.push(app)
-    expect(result.current.value).toBe('hd-seed-a')
+    expect(result.current).toBe('hd-seed-a')
   })
 
   it('history: false leaves the URL untouched on mount', () => {
@@ -79,7 +79,7 @@ describe('useWizard — history disabled', () => {
     expect(replaceSpy).not.toHaveBeenCalled()
     expect(new URL(window.location.href).searchParams.get('step')).toBeNull()
     expect(new URL(window.location.href).searchParams.get('other')).toBe('stay')
-    expect(result.current.value).toBe('hd-url-a')
+    expect(result.current).toBe('hd-url-a')
     replaceSpy.mockRestore()
   })
 
@@ -91,13 +91,13 @@ describe('useWizard — history disabled', () => {
     })
     apps.push(app)
     result.next()
-    expect(result.current.value).toBe('hd-pop-b')
+    expect(result.current).toBe('hd-pop-b')
     // Simulate a navigation event by manually replacing the URL and
     // dispatching popstate. With history: false the wizard isn't
     // listening, so `current` should stay put.
     window.history.replaceState(null, '', 'http://localhost:3000/wizard?step=hd-pop-a')
     window.dispatchEvent(new PopStateEvent('popstate'))
     await new Promise((r) => setTimeout(r, 10))
-    expect(result.current.value).toBe('hd-pop-b')
+    expect(result.current).toBe('hd-pop-b')
   })
 })

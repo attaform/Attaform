@@ -44,7 +44,7 @@ describe('useWizard — progress', () => {
       return useWizard([a, b], {})
     })
     apps.push(app)
-    expect(result.progress.value).toBe(0)
+    expect(result.progress).toBe(0)
   })
 
   it('default tracks valid_count / total_count', async () => {
@@ -64,7 +64,7 @@ describe('useWizard — progress', () => {
       await nextTick()
       if (!result.a.meta.validating) break
     }
-    expect(result.wizard.progress.value).toBeCloseTo(0.5, 5)
+    expect(result.wizard.progress).toBeCloseTo(0.5, 5)
   })
 
   it('override receives forms tuple and is the source of truth', () => {
@@ -76,7 +76,7 @@ describe('useWizard — progress', () => {
       })
     })
     apps.push(app)
-    expect(result.progress.value).toBeCloseTo(0.02, 5)
+    expect(result.progress).toBeCloseTo(0.02, 5)
   })
 
   it('override is reactive — re-evaluates when underlying statuses change', async () => {
@@ -106,7 +106,7 @@ describe('useWizard — progress', () => {
       await nextTick()
       if (!result.a.meta.validating) break
     }
-    expect(result.wizard.progress.value).toBe(1)
+    expect(result.wizard.progress).toBe(1)
     result.b.setValue('value', 'ok')
     await result.b.validate()
     for (let i = 0; i < 16; i += 1) {
@@ -114,6 +114,6 @@ describe('useWizard — progress', () => {
       await nextTick()
       if (!result.b.meta.validating) break
     }
-    expect(result.wizard.progress.value).toBe(2)
+    expect(result.wizard.progress).toBe(2)
   })
 })

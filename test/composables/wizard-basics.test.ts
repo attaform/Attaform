@@ -85,7 +85,7 @@ describe('useWizard — basic navigation', () => {
     apps.push(app)
     expect(result.count).toBe(3)
     expect(result.forms.length).toBe(3)
-    expect(result.current.value).toBe('a')
+    expect(result.current).toBe('a')
   })
 
   it('next() advances and back() retreats', () => {
@@ -97,11 +97,11 @@ describe('useWizard — basic navigation', () => {
     })
     apps.push(app)
     result.next()
-    expect(result.current.value).toBe('b')
+    expect(result.current).toBe('b')
     result.next()
-    expect(result.current.value).toBe('c')
+    expect(result.current).toBe('c')
     result.back()
-    expect(result.current.value).toBe('b')
+    expect(result.current).toBe('b')
   })
 
   it('goTo(key) jumps directly', () => {
@@ -113,9 +113,9 @@ describe('useWizard — basic navigation', () => {
     })
     apps.push(app)
     result.goTo('c')
-    expect(result.current.value).toBe('c')
+    expect(result.current).toBe('c')
     result.goTo('a')
-    expect(result.current.value).toBe('a')
+    expect(result.current).toBe('a')
   })
 
   it('next() at last step is a no-op and dev-warns', () => {
@@ -130,9 +130,9 @@ describe('useWizard — basic navigation', () => {
     })
     apps.push(app)
     result.next()
-    expect(result.current.value).toBe('b')
+    expect(result.current).toBe('b')
     result.next()
-    expect(result.current.value).toBe('b')
+    expect(result.current).toBe('b')
     warnSpy.mockRestore()
     expect(warnings.some((w) => w.includes('useWizard'))).toBe(true)
   })
@@ -149,7 +149,7 @@ describe('useWizard — basic navigation', () => {
     })
     apps.push(app)
     result.back()
-    expect(result.current.value).toBe('a')
+    expect(result.current).toBe('a')
     warnSpy.mockRestore()
     expect(warnings.some((w) => w.includes('useWizard'))).toBe(true)
   })

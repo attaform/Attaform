@@ -1,12 +1,4 @@
-import {
-  computed,
-  getCurrentScope,
-  onScopeDispose,
-  readonly,
-  ref,
-  watch,
-  type ComputedRef,
-} from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type ComputedRef } from 'vue'
 import { useRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
@@ -328,6 +320,8 @@ export function useWizard<Forms extends readonly AnyForm[]>(
     const flat: AggregateError[] = []
     for (let i = 0; i < forms.length; i += 1) {
       const form = forms[i] as AnyForm
+      const store = registry.forms.get(form.key)
+      if (store?.defaultsResolved.value !== true) continue
       const source = form as unknown as StatusSourceForm
       const errors = source.meta?.errors
       if (errors === undefined) continue
@@ -439,15 +433,33 @@ export function useWizard<Forms extends readonly AnyForm[]>(
   }
 
   return {
-    current: readonly(current) as Readonly<typeof current>,
     forms,
     count: forms.length,
     statuses,
     allValues,
-    allErrors: readonly(allErrors),
-    progress: readonly(progress),
     next,
     back,
     goTo,
+    get current(): KeysOf<Forms> | undefined {
+      return current.value as KeysOf<Forms> | undefined
+    },
+    get activeForm(): Forms[number] | undefined {
+      const key = current.value
+      if (key === undefined) return undefined
+      const idx = formKeys.indexOf(key as string)
+      if (idx === -1) return undefined
+      return forms[idx] as Forms[number]
+    },
+    get activeIndex(): number {
+      const key = current.value
+      if (key === undefined) return -1
+      return formKeys.indexOf(key as string)
+    },
+    get allErrors(): readonly AggregateError[] {
+      return allErrors.value
+    },
+    get progress(): number {
+      return progress.value
+    },
   } as UseWizardReturnType<Forms>
 }

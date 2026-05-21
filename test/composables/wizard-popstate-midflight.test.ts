@@ -75,7 +75,7 @@ describe('useWizard — popstate mid-flight safety', () => {
     // Pop back to A via popstate (silent setCurrent).
     window.history.back()
     await new Promise((r) => setTimeout(r, 20))
-    expect(result.wizard.current.value).toBe('mf-a')
+    expect(result.wizard.current).toBe('mf-a')
 
     // Resolve the factory; values apply to B even though it's not current.
     resolveFactory!({ b: 'fetched' })
@@ -90,7 +90,7 @@ describe('useWizard — popstate mid-flight safety', () => {
     // Pop forward to B — factory MUST NOT re-fire.
     window.history.forward()
     await new Promise((r) => setTimeout(r, 20))
-    expect(result.wizard.current.value).toBe('mf-b')
+    expect(result.wizard.current).toBe('mf-b')
     expect(factoryCalls).toBe(1)
   })
 

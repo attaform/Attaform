@@ -59,7 +59,7 @@ describe('useWizard — allErrors', () => {
       return useWizard([cargo, review], {})
     })
     apps.push(app)
-    expect(result.allErrors.value).toEqual([])
+    expect(result.allErrors).toEqual([])
   })
 
   it('flattens errors with formKey + path + message', async () => {
@@ -71,7 +71,7 @@ describe('useWizard — allErrors', () => {
     apps.push(app)
     await result.cargo.validate()
     await result.review.validate()
-    const errors = result.wizard.allErrors.value
+    const errors = result.wizard.allErrors
     expect(errors.length).toBeGreaterThan(0)
     const cargoErrors = errors.filter((e) => e.formKey === 'ae-fill-cargo')
     const reviewErrors = errors.filter((e) => e.formKey === 'ae-fill-review')
@@ -92,7 +92,7 @@ describe('useWizard — allErrors', () => {
     apps.push(app)
     await result.cargo.validate()
     await result.review.validate()
-    const errors = result.wizard.allErrors.value
+    const errors = result.wizard.allErrors
     if (errors.length >= 2) {
       const firstFormKey = errors[0]!.formKey
       const lastFormKey = errors[errors.length - 1]!.formKey

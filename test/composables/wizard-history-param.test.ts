@@ -58,7 +58,7 @@ describe('useWizard — history param customization', () => {
       return useWizard([a, b], { history: { param: 'wiz' } })
     })
     apps.push(app)
-    expect(result.current.value).toBe('hp-seed-b')
+    expect(result.current).toBe('hp-seed-b')
   })
 
   it('ignores the default `step` param when a custom param is set', () => {
@@ -69,6 +69,6 @@ describe('useWizard — history param customization', () => {
       return useWizard([a, b], { history: { param: 'wiz' } })
     })
     apps.push(app)
-    expect(result.current.value).toBe('hp-isol-a')
+    expect(result.current).toBe('hp-isol-a')
   })
 })

@@ -55,7 +55,7 @@ describe('useWizard — getServerActiveStep', () => {
       })
     })
     apps.push(app)
-    expect(result.current.value).toBe('gs-known-b')
+    expect(result.current).toBe('gs-known-b')
   })
 
   it('an unknown key from the getter falls through to forms[0]', () => {
@@ -73,7 +73,7 @@ describe('useWizard — getServerActiveStep', () => {
       })
     })
     apps.push(app)
-    expect(result.current.value).toBe('gs-unk-a')
+    expect(result.current).toBe('gs-unk-a')
   })
 
   it('undefined return falls through to URL/forms[0]', () => {
@@ -85,7 +85,7 @@ describe('useWizard — getServerActiveStep', () => {
       })
     })
     apps.push(app)
-    expect(result.current.value).toBe('gs-undef-a')
+    expect(result.current).toBe('gs-undef-a')
   })
 
   it('getter takes priority over `?step=` URL param when both name known keys', () => {
@@ -99,7 +99,7 @@ describe('useWizard — getServerActiveStep', () => {
       })
     })
     apps.push(app)
-    expect(result.current.value).toBe('gs-prio-c')
+    expect(result.current).toBe('gs-prio-c')
   })
 
   it('the chosen step is the current claim in the wizard registry', () => {
@@ -119,11 +119,11 @@ describe('useWizard — getServerActiveStep', () => {
       })
     })
     apps.push(app)
-    expect(result.current.value).toBe('gs-claim-b')
+    expect(result.current).toBe('gs-claim-b')
     result.next()
-    expect(result.current.value).toBe('gs-claim-c')
+    expect(result.current).toBe('gs-claim-c')
     result.back()
     result.back()
-    expect(result.current.value).toBe('gs-claim-a')
+    expect(result.current).toBe('gs-claim-a')
   })
 })

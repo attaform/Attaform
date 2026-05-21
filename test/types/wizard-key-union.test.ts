@@ -6,7 +6,7 @@ import type { KeysOf, FormKeyOf, AnyForm } from '../../src/runtime/types/types-w
 /**
  * Type-level checks for the wizard's key-union machinery. The motivating
  * use case is multistep navigation typed by the union of all participating
- * form keys — `wizard.current.value` is `'a' | 'b'`, `goTo('a')`
+ * form keys — `wizard.current` is `'a' | 'b'`, `goTo('a')`
  * autocompletes, `goTo('typo')` is a type error.
  *
  * Tests run at typecheck time. `expectTypeOf` chain methods are no-ops

@@ -47,8 +47,8 @@
         v-for="(form, i) in wizard.forms"
         :key="form.key"
         :class="{
-          done: wizard.statuses[form.key].valid && wizard.current.value !== form.key,
-          current: wizard.current.value === form.key,
+          done: wizard.statuses[form.key].valid && wizard.current !== form.key,
+          current: wizard.current === form.key,
         }"
       >
         <span class="step-num">{{ i + 1 }}</span>
@@ -57,10 +57,10 @@
     </ol>
 
     <div class="progress">
-      <div class="progress-fill" :style="{ width: `${wizard.progress.value * 100}%` }"></div>
+      <div class="progress-fill" :style="{ width: `${wizard.progress * 100}%` }"></div>
     </div>
 
-    <form v-if="wizard.current.value === 'docs-demo-wizard-account'" @submit.prevent>
+    <form v-if="wizard.current === 'docs-demo-wizard-account'" @submit.prevent>
       <label>
         Email
         <input v-register="account.register('email')" autocomplete="email" />
@@ -77,7 +77,7 @@
       </label>
     </form>
 
-    <form v-else-if="wizard.current.value === 'docs-demo-wizard-profile'" @submit.prevent>
+    <form v-else-if="wizard.current === 'docs-demo-wizard-profile'" @submit.prevent>
       <label>
         Name
         <input v-register="profile.register('name')" />
@@ -89,7 +89,7 @@
       </label>
     </form>
 
-    <form v-else-if="wizard.current.value === 'docs-demo-wizard-review'" @submit.prevent>
+    <form v-else-if="wizard.current === 'docs-demo-wizard-review'" @submit.prevent>
       <label class="checkbox">
         <input v-register="review.register('newsletter')" type="checkbox" />
         Subscribe to the newsletter
@@ -105,17 +105,17 @@
       <button
         type="button"
         class="ghost"
-        :disabled="wizard.current.value === wizard.forms[0].key"
+        :disabled="wizard.current === wizard.forms[0].key"
         @click="wizard.back()"
       >
         ← Back
       </button>
       <span class="step-of">
-        Step {{ wizard.forms.findIndex((f) => f.key === wizard.current.value) + 1 }} of
+        Step {{ wizard.forms.findIndex((f) => f.key === wizard.current) + 1 }} of
         {{ wizard.count }}
       </span>
       <button
-        v-if="wizard.current.value !== wizard.forms[wizard.forms.length - 1]!.key"
+        v-if="wizard.current !== wizard.forms[wizard.forms.length - 1]!.key"
         type="button"
         class="primary"
         @click="wizard.next()"

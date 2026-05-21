@@ -8,11 +8,10 @@
  *
  * Discriminated `current` is the load-bearing type. Threading the
  * literal `K` through `useForm` (see `UseFormReturnType<..., K>`)
- * means `wizard.current.value` resolves to the union of participating
+ * means `wizard.current` resolves to the union of participating
  * keys, and `goTo(key)` autocompletes that union.
  */
 
-import type { Ref } from 'vue'
 import type { FormKey } from './types-api'
 
 /**
@@ -29,7 +28,7 @@ export type AnyForm = { readonly key: FormKey }
 
 /**
  * Extracts the literal key from a single keyed form's return type.
- * Lets the wizard discriminate `wizard.current.value` on the form
+ * Lets the wizard discriminate `wizard.current` on the form
  * that owns the active step.
  */
 export type FormKeyOf<F extends AnyForm> = F['key']
@@ -168,7 +167,7 @@ export type WizardOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]>
   readonly onStatusChange?: (status: FormStatus, form: Forms[number]) => void | Promise<void>
   /**
    * Optional progress override. When omitted, the wizard exposes
-   * \`progress.value\` as \`valid_form_count / count\` (normalised to
+   * \`progress\` as \`valid_form_count / count\` (normalised to
    * \`[0, 1]\`). When provided, the returned number is used as-is —
    * the consumer is responsible for any normalisation (\`[0, 1]\`
    * vs raw count vs percentage).
@@ -214,27 +213,44 @@ export type AllValues<Forms extends readonly AnyForm[]> = {
 }
 
 /**
- * Return shape of `useWizard`. Reactive `current` is a readonly ref;
- * `forms` is the original tuple (so consumers can index by key or
- * iterate); `count` is the static step count.
+ * Return shape of `useWizard`. Every reactive read is a plain getter
+ * (no `.value`) — `wizard.current`, `wizard.progress`, `wizard.allErrors`
+ * track inside `computed`/template effects directly. This matches the
+ * rest of the library (form.values, form.meta, etc.) and keeps the
+ * consumer surface free of `.value` plumbing.
  *
- * `statuses` is a callable readonly proxy over `Statuses<Forms>` —
- * readable as `wizard.statuses.cargo.valid`, callable as
- * `wizard.statuses('cargo')` or `wizard.statuses()`. Each entry
- * derives from the matching form's `meta`.
- *
- * `allValues` exposes each form's `values` proxy under its key for
- * cross-step review screens. `allErrors` is the flat error list across
- * all forms, ordered by `forms` then per-form order.
+ *   - `current`     — the active step's key (or `undefined` for an
+ *                     empty / degenerate wizard).
+ *   - `activeForm`  — the active step's form handle, identity-equal
+ *                     to the matching entry in `forms`. `undefined`
+ *                     when `current` is `undefined`.
+ *   - `activeIndex` — 0-based index of the active step; `-1` when
+ *                     `current` is `undefined`.
+ *   - `forms`       — original tuple, so consumers can index by key.
+ *   - `count`       — static step count.
+ *   - `statuses`    — callable readonly proxy over `Statuses<Forms>` —
+ *                     readable as `wizard.statuses.cargo.valid`,
+ *                     callable as `wizard.statuses('cargo')` or
+ *                     `wizard.statuses()`. Each entry derives from
+ *                     the matching form's `meta`.
+ *   - `allValues`   — each form's `values` proxy under its key, for
+ *                     cross-step review screens.
+ *   - `allErrors`   — flat error list across resolved forms, ordered
+ *                     by `forms` then per-form order. Dormant
+ *                     (unactivated) forms contribute nothing.
+ *   - `progress`    — normalised `valid_form_count / count` (or the
+ *                     consumer's `progress` override).
  */
 export type UseWizardReturnType<Forms extends readonly AnyForm[]> = {
-  readonly current: Readonly<Ref<KeysOf<Forms>>>
+  readonly current: KeysOf<Forms> | undefined
+  readonly activeForm: Forms[number] | undefined
+  readonly activeIndex: number
   readonly forms: Forms
   readonly count: number
   readonly statuses: WizardStatusesProxy<Statuses<Forms>>
   readonly allValues: AllValues<Forms>
-  readonly allErrors: Readonly<Ref<readonly AggregateError[]>>
-  readonly progress: Readonly<Ref<number>>
+  readonly allErrors: readonly AggregateError[]
+  readonly progress: number
   readonly next: (options?: WizardNavOptions) => void
   readonly back: (options?: WizardNavOptions) => void
   readonly goTo: (key: KeysOf<Forms>, options?: WizardNavOptions) => void

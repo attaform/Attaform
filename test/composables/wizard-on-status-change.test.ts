@@ -137,7 +137,7 @@ describe('useWizard — onStatusChange material-change firing', () => {
     expect(pending).toBe(true)
     // Even with onStatusChange's promise still in-flight, nav is unblocked.
     result.wizard.next()
-    expect(result.wizard.current.value).toBe('osc-block-b')
+    expect(result.wizard.current).toBe('osc-block-b')
   })
 
   it('fires only once per material change (no chatter on identical writes)', async () => {

@@ -98,10 +98,10 @@ describe('useWizard — history wired', () => {
     })
     apps.push(app)
     result.next()
-    expect(result.current.value).toBe('hw-pop-b')
+    expect(result.current).toBe('hw-pop-b')
     window.history.back()
     await new Promise((r) => setTimeout(r, 20))
-    expect(result.current.value).toBe('hw-pop-a')
+    expect(result.current).toBe('hw-pop-a')
   })
 
   it('seeds initial current.value from `?step=<knownKey>` on mount', () => {
@@ -113,7 +113,7 @@ describe('useWizard — history wired', () => {
       return useWizard([a, b, c], {})
     })
     apps.push(app)
-    expect(result.current.value).toBe('hw-seed-b')
+    expect(result.current).toBe('hw-seed-b')
   })
 
   it('writes the URL step param on mount to reflect the initial step', () => {
@@ -124,7 +124,7 @@ describe('useWizard — history wired', () => {
     })
     apps.push(app)
     expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-init-a')
-    expect(result.current.value).toBe('hw-init-a')
+    expect(result.current).toBe('hw-init-a')
   })
 
   it('ignores unknown step keys from URL — falls back to forms[0]', () => {
@@ -135,6 +135,6 @@ describe('useWizard — history wired', () => {
       return useWizard([a, b], {})
     })
     apps.push(app)
-    expect(result.current.value).toBe('hw-unknown-a')
+    expect(result.current).toBe('hw-unknown-a')
   })
 })

@@ -145,6 +145,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Browser history', to: '/docs/multistep/history' },
       { title: 'SSR & the privacy invariant', to: '/docs/multistep/ssr' },
       { title: 'Aggregates', to: '/docs/multistep/aggregates' },
+      { title: 'Lazy activation', to: '/docs/multistep/lazy-activation' },
     ],
   },
   {

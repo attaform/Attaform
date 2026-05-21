@@ -1,6 +1,6 @@
 ---
 title: meta
-description: form.meta is the form-level FieldState aggregation plus six submission bits, submitting, submitCount, submitError, errorCount, isSubmitted, and instanceId.
+description: form.meta is the form-level FieldState aggregation plus six submission bits, submitting, submitCount, submitError, errorCount, submitted, and instanceId.
 metaRows:
   - label: Category
     value: Return property
@@ -20,7 +20,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-Submit the demo without changing the simulate-failure toggle to watch `submitting` flip true mid-await, `submitCount` increment, `isSubmitted` latch on. Flip the toggle and submit again to populate `submitError` with the rejected callback's message. The [Form-only properties](#form-only-properties) section below names every bit; the inherited FieldState aggregations [link forward to the fields page](/docs/reading-the-form/fields).
+Submit the demo without changing the simulate-failure toggle to watch `submitting` flip true mid-await, `submitCount` increment, `submitted` latch on. Flip the toggle and submit again to populate `submitError` with the rejected callback's message. The [Form-only properties](#form-only-properties) section below names every bit; the inherited FieldState aggregations [link forward to the fields page](/docs/reading-the-form/fields).
 
 ::docs-demo{slug="meta" label="Meta Demo"}
 ::
@@ -51,7 +51,7 @@ These six reads exist only on `meta`, not on individual FieldStates.
 | `submitCount` | `number`  | How many times the handler has been invoked (pass or fail). Useful for "show errors after first submit" UX.         |
 | `submitError` | `unknown` | The error from the most recent callback rejection. `null` on success and at the start of each new attempt.          |
 | `errorCount`  | `number`  | Scalar mirror of `errors.length`. Read it from templates and `watch()` without indexing the array.                  |
-| `isSubmitted` | `boolean` | `true` once `submitCount > 0`. Latches; survives `form.reset()`.                                                    |
+| `submitted`   | `boolean` | `true` once `submitCount > 0`. Latches; survives `form.reset()`.                                                    |
 | `instanceId`  | `string`  | Per-`useForm()`-call identity, stable for the lifetime of one call. New on every fresh mount.                       |
 
 ## Templates
@@ -67,7 +67,7 @@ The classic submit-button pattern reads two bits:
 The "show errors after first submit" pattern reads one:
 
 ```vue
-<p v-if="form.meta.isSubmitted && form.meta.errorCount > 0">
+<p v-if="form.meta.submitted && form.meta.errorCount > 0">
   {{ form.meta.errorCount }} field(s) need attention.
 </p>
 ```

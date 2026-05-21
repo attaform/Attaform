@@ -582,7 +582,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // values surfaced on `form.meta`. Available here so predicates
       // (`shouldShowErrors`) can read them too.
       errorCount: rootBase.errors.length,
-      isSubmitted: submitCount > 0,
+      submitted: submitCount > 0,
       instanceId: formInstanceId,
     }
   }
@@ -652,7 +652,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // sticky surface for both templates and the upcoming
       // `useStepper`'s `FormStatus`, so the projections live here.
       errorCount: computed(() => metaErrors.value.length),
-      isSubmitted: computed(() => submitCount.value > 0),
+      submitted: computed(() => submitCount.value > 0),
       // Per-`useForm()`-call identity. Stable for one mount; new on
       // re-mount; orthogonal to `form.key` (which is the user-supplied
       // shared identifier). Useful for devtools panels disambiguating

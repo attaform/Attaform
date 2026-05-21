@@ -3167,7 +3167,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * Monotonically non-decreasing over the form's lifetime — once
    * flipped, it stays `true` even after `form.reset()`.
    */
-  readonly isSubmitted: boolean
+  readonly submitted: boolean
 
   /**
    * Per-`useForm()`-call identity. Stable for the lifetime of one

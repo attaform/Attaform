@@ -9,7 +9,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * `form.meta.isSubmitted` is the boolean mirror of `submitCount > 0`,
+ * `form.meta.submitted` is the boolean mirror of `submitCount > 0`,
  * surfaced so templates and `useStepper`'s `FormStatus` can read a
  * single scalar instead of comparing the counter against zero.
  *
@@ -43,7 +43,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('form.meta.isSubmitted', () => {
+describe('form.meta.submitted', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -56,7 +56,7 @@ describe('form.meta.isSubmitted', () => {
   it('starts false before any submit', () => {
     const { app, api } = mountForm(schema, { email: 'user@example.com' })
     apps.push(app)
-    expect(api.meta.isSubmitted).toBe(false)
+    expect(api.meta.submitted).toBe(false)
     expect(api.meta.submitCount).toBe(0)
   })
 
@@ -65,8 +65,8 @@ describe('form.meta.isSubmitted', () => {
     apps.push(app)
     const handler = api.handleSubmit(async () => {})
     await handler(new Event('submit'))
-    await waitUntil(() => api.meta.isSubmitted)
-    expect(api.meta.isSubmitted).toBe(true)
+    await waitUntil(() => api.meta.submitted)
+    expect(api.meta.submitted).toBe(true)
     expect(api.meta.submitCount).toBe(1)
   })
 
@@ -75,8 +75,8 @@ describe('form.meta.isSubmitted', () => {
     apps.push(app)
     const handler = api.handleSubmit(async () => {})
     await handler(new Event('submit'))
-    await waitUntil(() => api.meta.isSubmitted)
-    expect(api.meta.isSubmitted).toBe(true)
+    await waitUntil(() => api.meta.submitted)
+    expect(api.meta.submitted).toBe(true)
     expect(api.meta.submitCount).toBe(1)
   })
 
@@ -88,6 +88,6 @@ describe('form.meta.isSubmitted', () => {
     await waitUntil(() => api.meta.submitCount === 1)
     await handler(new Event('submit'))
     await waitUntil(() => api.meta.submitCount === 2)
-    expect(api.meta.isSubmitted).toBe(true)
+    expect(api.meta.submitted).toBe(true)
   })
 })

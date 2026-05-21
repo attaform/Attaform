@@ -61,7 +61,7 @@ export type StepperNavOptions = {
  *    while the first-validation-done gate has not flipped.
  *  - `isDirty` — `form.meta.dirty`. `true` once any value differs
  *    from the original defaults.
- *  - `isSubmitted` — `form.meta.isSubmitted`. `true` once
+ *  - `isSubmitted` — `form.meta.submitted`. `true` once
  *    `submitCount` reaches one or more.
  *  - `errorCount` — `form.meta.errorCount`. Count of active
  *    validation errors (zero when valid).

@@ -188,7 +188,7 @@ describe('useStepper — defaultStatuses', () => {
     expect(result.stepper.statuses['ds-async-a']).toEqual({
       isValid: result.a.meta.valid,
       isDirty: result.a.meta.dirty,
-      isSubmitted: result.a.meta.isSubmitted,
+      isSubmitted: result.a.meta.submitted,
       errorCount: result.a.meta.errorCount,
     })
   })

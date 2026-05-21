@@ -43,7 +43,7 @@ type StatusSourceForm = {
   readonly meta: {
     readonly valid: boolean
     readonly dirty: boolean
-    readonly isSubmitted: boolean
+    readonly submitted: boolean
     readonly errorCount: number
     readonly errors: ReadonlyArray<{
       readonly path: ReadonlyArray<string | number>
@@ -249,7 +249,7 @@ export function useStepper<Forms extends readonly AnyForm[]>(
         return {
           isValid: meta.valid,
           isDirty: meta.dirty,
-          isSubmitted: meta.isSubmitted,
+          isSubmitted: meta.submitted,
           errorCount: meta.errorCount,
         }
       }

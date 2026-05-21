@@ -152,7 +152,7 @@ describe('useForm — lazy activation', () => {
     apps.push(app)
     await wait(20)
     expect(calls.count).toBe(0)
-    void (api as unknown as { ready: boolean }).ready
+    void api.ready
     await waitUntil(() => (calls.count >= 1 ? true : null))
     expect(calls.count).toBe(1)
   })

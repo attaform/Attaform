@@ -3549,6 +3549,29 @@ export type UseFormReturnType<
   readonly hydrateError: ValidationError | null
 
   /**
+   * `true` once the form's defaults have been applied — either a plain
+   * `defaultValues` value at construction or an async factory whose
+   * settle completed successfully. Stays `false` for dormant lazy
+   * forms (factory not yet activated) and for failed activations
+   * (`hydrateError` set). Once `true`, stays `true` through refetches
+   * so stale-while-revalidate UIs can keep rendering the prior values
+   * while a `rehydrate()` is in flight.
+   *
+   * Composes with `hydrating` and `hydrateError`:
+   *
+   * ```vue
+   * <Spinner v-if="!form.ready && form.hydrating" />
+   * <ErrorBanner v-if="!form.ready && form.hydrateError" :error="form.hydrateError" />
+   * <form v-if="form.ready">…</form>
+   * ```
+   *
+   * Exposed as a reactive `boolean` (no `.value`). Reading it activates
+   * the factory under the lazy-by-default rule — observing readiness
+   * implies use.
+   */
+  readonly ready: boolean
+
+  /**
    * Re-fire the captured `defaultValues` factory and re-apply its
    * payload over the current form values. Useful when the upstream
    * source changes (the user picks a different draft, a background

@@ -864,6 +864,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       void state.activate()
       return state.hydrateError.value
     },
+    // Orthogonal to `hydrating` and `hydrateError`: `ready` flips true
+    // once defaults are applied (sync at construction or async factory
+    // resolved successfully). One-way latch — stays true through later
+    // refetches even when those refetches fail, so stale-while-
+    // revalidate UIs keep rendering the prior values while
+    // `hydrateError` surfaces the refresh failure.
+    get ready(): boolean {
+      void state.activate()
+      return state.defaultsResolved.value
+    },
     // `rehydrate` and `activate` are themselves activation entry points
     // — they fire the factory by design. Wrapping them with `gated`
     // would double-fire (`state.activate()` plus the underlying call),

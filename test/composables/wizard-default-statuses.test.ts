@@ -45,26 +45,6 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-function mountAndCaptureSetupError(setup: () => unknown): unknown {
-  let captured: unknown
-  const App = defineComponent({
-    setup() {
-      try {
-        setup()
-      } catch (error) {
-        captured = error
-      }
-      return () => h('div')
-    },
-  })
-  const app = createApp(App).use(createAttaform())
-  app.config.warnHandler = () => {}
-  app.config.errorHandler = () => {}
-  app.mount(document.createElement('div'))
-  app.unmount()
-  return captured
-}
-
 const validSeed: FormStatus = {
   valid: true,
   dirty: false,

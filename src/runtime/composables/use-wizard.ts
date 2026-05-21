@@ -46,21 +46,25 @@ type StatusSourceForm = {
 
 /**
  * Multistep-form orchestrator. Composes existing `useForm` instances
- * into a wizard with navigation, status aggregation (PR 3), browser
- * history (PR 4), and activation-lifecycle defer (so a step's async
- * `defaultValues` factory only fires when the step becomes current).
+ * into a wizard with navigation, status aggregation, browser history,
+ * and lazy activation (so a step's async `defaultValues` factory only
+ * fires once the step becomes current).
  *
- * Construction-time invariants:
- *   - At least one form.
- *   - No duplicate keys across the forms array.
- *   - Each form's `key` is non-empty.
- *
- * Navigation behavior:
- *   - `next()` / `back()` past either end is a silent no-op + dev
- *     console warning. Crashing here would punish consumers who wire
- *     navigation buttons without also disabling them at the bounds.
- *   - `goTo(unknownKey)` throws — typo safety for an explicit jump
- *     the consumer is asking for by literal value.
+ * Degradation behavior — the wizard never throws on construction or
+ * navigation. Malformed inputs surface as dev warns + sensible
+ * fallbacks so a third-party library wired into a consumer's
+ * checkout or signup wizard can't crash the app:
+ *   - Empty forms array          → no-op wizard handle (current
+ *                                   undefined, count 0, navigation
+ *                                   methods warn + no-op).
+ *   - Form with `key: ''`        → filtered out, warn for each.
+ *   - Duplicate keys             → keep the first occurrence, drop
+ *                                   the rest, warn for each.
+ *   - `defaultStatuses` with an
+ *     unknown key                → ignore that entry, warn.
+ *   - `goTo(unknownKey)`         → silent no-op + warn (matches the
+ *                                   already-existing `next`/`back`
+ *                                   past-bounds behavior).
  *
  * Each form gets a ref-count via `registry.trackConsumer(key)`. This
  * pins the FormStore for the wizard's lifetime — so a step's state
@@ -68,27 +72,47 @@ type StatusSourceForm = {
  * (v-if pattern). The ref is released on `onScopeDispose`.
  */
 export function useWizard<Forms extends readonly AnyForm[]>(
-  forms: Forms,
+  inputForms: Forms,
   options: WizardOptions<Forms> = {}
 ): UseWizardReturnType<Forms> {
-  if (forms.length === 0) {
-    throw new Error('[attaform] useWizard requires at least one form.')
-  }
-
+  // Filter the input to the wizard's participating set. Empty-key and
+  // duplicate-key forms are dropped (with a dev warn) rather than
+  // throwing — a third-party library should not crash a consumer's
+  // app for shapes that are clearly a mistake.
   const seenKeys = new Set<string>()
-  for (const form of forms) {
+  const filteredList: AnyForm[] = []
+  let droppedEmptyKey = 0
+  const droppedDuplicate: string[] = []
+  for (const form of inputForms) {
     if (form.key === '') {
-      throw new Error('[attaform] useWizard: every form must have a non-empty key.')
+      droppedEmptyKey += 1
+      continue
     }
     if (seenKeys.has(form.key)) {
-      throw new Error(
-        `[attaform] useWizard: duplicate form key "${form.key}". Each step needs a distinct key.`
-      )
+      droppedDuplicate.push(form.key)
+      continue
     }
     seenKeys.add(form.key)
+    filteredList.push(form)
   }
+  if (droppedEmptyKey > 0) {
+    console.warn(
+      `[attaform] useWizard: ${droppedEmptyKey} form(s) had an empty key and were filtered out. Each step needs a non-empty key.`
+    )
+  }
+  if (droppedDuplicate.length > 0) {
+    console.warn(
+      `[attaform] useWizard: duplicate form keys filtered out (kept the first occurrence of each): ${droppedDuplicate.map((k) => `"${k}"`).join(', ')}.`
+    )
+  }
+  if (inputForms.length === 0) {
+    console.warn(
+      '[attaform] useWizard called with an empty forms array. Returning a no-op wizard handle.'
+    )
+  }
+  const forms = filteredList as unknown as Forms
 
-  const formKeys = forms.map((form) => form.key)
+  const formKeys = filteredList.map((form) => form.key)
 
   // Resolve history config. `history` omitted → default on with the
   // standard `step` param. `history: true` → same defaults. `false` →
@@ -109,22 +133,29 @@ export function useWizard<Forms extends readonly AnyForm[]>(
   // source of truth, returned identically on client) → URL
   // `?step=<key>` (reload preservation when no getter is wired) →
   // `forms[0]` fallback. Unknown keys at any level fall through so a
-  // stale link can't crash construction.
+  // stale link can't crash construction. When no forms participate
+  // (`useWizard([])`), `initialKey` stays `undefined` and the wizard
+  // surfaces as a no-op handle.
   const fromGetter = options.getServerActiveStep?.()
   const fromUrl = wizardHistory.read()
-  let initialKey: KeysOf<Forms>
-  if (fromGetter !== undefined && formKeys.includes(fromGetter as string)) {
+  let initialKey: KeysOf<Forms> | undefined
+  if (formKeys.length === 0) {
+    initialKey = undefined
+  } else if (fromGetter !== undefined && formKeys.includes(fromGetter as string)) {
     initialKey = fromGetter as KeysOf<Forms>
   } else if (fromUrl !== undefined && formKeys.includes(fromUrl)) {
     initialKey = fromUrl as KeysOf<Forms>
   } else {
     initialKey = formKeys[0] as KeysOf<Forms>
   }
-  const current = ref(initialKey) as ReturnType<typeof ref<KeysOf<Forms>>>
+  const current = ref<KeysOf<Forms> | undefined>(initialKey)
 
   // Replace the URL so it always reflects the active step on mount —
-  // idempotent when the URL already named the correct key.
-  wizardHistory.replace(initialKey as string)
+  // idempotent when the URL already named the correct key. Skipped
+  // for the no-op (empty forms) case so we don't write garbage.
+  if (initialKey !== undefined) {
+    wizardHistory.replace(initialKey as string)
+  }
 
   const registry = useRegistry()
 
@@ -151,12 +182,14 @@ export function useWizard<Forms extends readonly AnyForm[]>(
   // routes through `state.activate()` which both records the enqueue
   // intent and (via `onServerPrefetch`) drains the queue with the
   // actual factory call. Other steps stay dormant until navigation
-  // activates them.
-  const initialIdx = formKeys.indexOf(initialKey as string)
-  if (initialIdx !== -1) {
-    const initialForm = forms[initialIdx] as unknown as { activate?: () => Promise<void> }
-    if (typeof initialForm.activate === 'function') {
-      void initialForm.activate()
+  // activates them. No-op when the wizard has no forms.
+  if (initialKey !== undefined) {
+    const initialIdx = formKeys.indexOf(initialKey as string)
+    if (initialIdx !== -1) {
+      const initialForm = forms[initialIdx] as unknown as { activate?: () => Promise<void> }
+      if (typeof initialForm.activate === 'function') {
+        void initialForm.activate()
+      }
     }
   }
 
@@ -185,15 +218,25 @@ export function useWizard<Forms extends readonly AnyForm[]>(
       }
     }
   }
-  // Construction-time validation: any key in the seed that isn't a
-  // participating form is a typo and throws.
+  // Filter unknown seed keys with a dev warn. Likely a typo on the
+  // consumer's side; the wizard ignores the entry and keeps the rest.
   if (seedRef.value !== undefined) {
-    for (const seedKey of Object.keys(seedRef.value)) {
-      if (!seenKeys.has(seedKey)) {
-        throw new Error(
-          `[attaform] useWizard.defaultStatuses: key "${seedKey}" is not in the forms array. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
-        )
+    const unknownSeedKeys: string[] = []
+    const seedMap = seedRef.value as Record<string, FormStatus>
+    for (const seedKey of Object.keys(seedMap)) {
+      if (!seenKeys.has(seedKey)) unknownSeedKeys.push(seedKey)
+    }
+    if (unknownSeedKeys.length > 0) {
+      console.warn(
+        `[attaform] useWizard.defaultStatuses: ignoring unknown key(s) ${unknownSeedKeys
+          .map((k) => `"${k}"`)
+          .join(', ')}. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
+      )
+      const cleaned: Record<string, FormStatus> = {}
+      for (const seedKey of Object.keys(seedMap)) {
+        if (seenKeys.has(seedKey)) cleaned[seedKey] = seedMap[seedKey] as FormStatus
       }
+      seedRef.value = cleaned as Statuses<Forms>
     }
   }
 
@@ -396,6 +439,10 @@ export function useWizard<Forms extends readonly AnyForm[]>(
   })
 
   function next(navOptions?: WizardNavOptions): void {
+    if (formKeys.length === 0) {
+      console.warn('[attaform] useWizard.next(): no forms in this wizard. Ignoring.')
+      return
+    }
     const idx = indexOf(current.value as string)
     if (idx === formKeys.length - 1) {
       console.warn(
@@ -410,6 +457,10 @@ export function useWizard<Forms extends readonly AnyForm[]>(
   }
 
   function back(navOptions?: WizardNavOptions): void {
+    if (formKeys.length === 0) {
+      console.warn('[attaform] useWizard.back(): no forms in this wizard. Ignoring.')
+      return
+    }
     const idx = indexOf(current.value as string)
     if (idx === 0) {
       console.warn(
@@ -425,9 +476,10 @@ export function useWizard<Forms extends readonly AnyForm[]>(
 
   function goTo(key: KeysOf<Forms>, navOptions?: WizardNavOptions): void {
     if (!seenKeys.has(key as string)) {
-      throw new Error(
-        `[attaform] useWizard.goTo("${String(key)}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
+      console.warn(
+        `[attaform] useWizard.goTo("${String(key)}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}. Ignoring.`
       )
+      return
     }
     setCurrent(key, navOptions?.replace === true ? 'replace' : 'push')
   }

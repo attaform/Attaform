@@ -181,7 +181,7 @@ describe('useWizard — basic navigation', () => {
     let wizard: UseWizardReturnType<readonly AnyForm[]> | undefined
     expect(() => {
       mountAndCaptureSetupError(() => {
-        wizard = useWizard([] as const, {})
+        wizard = useWizard([] as readonly AnyForm[], {}) as UseWizardReturnType<readonly AnyForm[]>
       })
     }).not.toThrow()
     expect(wizard).toBeDefined()
@@ -219,11 +219,15 @@ describe('useWizard — basic navigation', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warnings.push(args.map((a) => String(a)).join(' '))
     })
+    // useForm({ key: '' }) auto-allocates an anonymous synthetic key,
+    // so we can't construct an empty-key form via the normal path.
+    // Pass a raw form-shaped object to exercise the wizard's input
+    // filter directly.
+    const emptyKeyForm: AnyForm = { key: '' }
     const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
-      const b = useForm({ schema, key: '' })
       const c = useForm({ schema, key: 'c' })
-      return useWizard([a, b, c], {})
+      return useWizard([a, emptyKeyForm, c], {})
     })
     apps.push(app)
     expect(result.count).toBe(2)

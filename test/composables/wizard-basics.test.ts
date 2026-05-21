@@ -14,12 +14,14 @@ import type { UseWizardReturnType, AnyForm } from '../../src/runtime/types/types
  *
  *   - `count`, `current`, `forms` (introspection)
  *   - `next()` / `back()` — silent no-op past ends with a dev-warn
- *   - `goTo(key)` — throws on unknown key
- *   - duplicate keys / empty forms — throws at construction
+ *   - `goTo(key)` — silent no-op + dev-warn on unknown key
+ *   - duplicate keys / empty forms / empty-key forms — dev-warn + degrade
  *
- * The "no throw past ends" stance is deliberate: this would
- * otherwise crash a consumer who wires a button to `next()` without
- * also disabling it at the end of the wizard.
+ * The wizard never throws on construction or navigation. A
+ * third-party library wired into someone's checkout or signup
+ * shouldn't crash an app for shapes that are clearly a mistake.
+ * Dev warns surface the problem; the wizard either filters the bad
+ * input or returns a no-op handle, depending on the case.
  */
 
 const schema = z.object({ email: z.string() })
@@ -154,29 +156,79 @@ describe('useWizard — basic navigation', () => {
     expect(warnings.some((w) => w.includes('useWizard'))).toBe(true)
   })
 
-  it('goTo(unknown) throws', () => {
+  it('goTo(unknown) is a silent no-op and dev-warns', () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
     const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
       return useWizard([a, b], {}) as WizardWithForms<['a', 'b']>
     })
     apps.push(app)
-    expect(() => (result.goTo as (key: string) => void)('typo')).toThrow(/typo/)
+    expect(() => (result.goTo as (key: string) => void)('typo')).not.toThrow()
+    expect(result.current).toBe('a')
+    warnSpy.mockRestore()
+    expect(warnings.some((w) => w.includes('typo'))).toBe(true)
   })
 
-  it('throws at construction on empty forms array', () => {
-    expect(() => {
-      mountAndCaptureSetupError(() => useWizard([], {}))
-    }).toThrow(/at least one form/i)
-  })
-
-  it('throws at construction on duplicate keys', () => {
+  it('useWizard([]) returns a no-op wizard and dev-warns', () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
+    let wizard: UseWizardReturnType<readonly AnyForm[]> | undefined
     expect(() => {
       mountAndCaptureSetupError(() => {
-        const a = useForm({ schema, key: 'a' })
-        const b = useForm({ schema, key: 'a' })
-        return useWizard([a, b], {})
+        wizard = useWizard([] as const, {})
       })
-    }).toThrow(/duplicate/i)
+    }).not.toThrow()
+    expect(wizard).toBeDefined()
+    expect(wizard?.count).toBe(0)
+    expect(wizard?.current).toBeUndefined()
+    expect(wizard?.activeForm).toBeUndefined()
+    expect(wizard?.activeIndex).toBe(-1)
+    expect(wizard?.allErrors).toEqual([])
+    expect(wizard?.progress).toBe(0)
+    expect(() => wizard?.next()).not.toThrow()
+    expect(() => wizard?.back()).not.toThrow()
+    warnSpy.mockRestore()
+    expect(warnings.some((w) => w.includes('useWizard'))).toBe(true)
+  })
+
+  it('duplicate keys are filtered with a dev-warn (keep first occurrence)', () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
+    const { app, result } = mountWizardHarness(() => {
+      const a = useForm({ schema, key: 'a' })
+      const b = useForm({ schema, key: 'a' })
+      return useWizard([a, b], {})
+    })
+    apps.push(app)
+    expect(result.count).toBe(1)
+    expect(result.forms.length).toBe(1)
+    warnSpy.mockRestore()
+    expect(warnings.some((w) => w.toLowerCase().includes('duplicate'))).toBe(true)
+  })
+
+  it('empty-key forms are filtered with a dev-warn', () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
+    const { app, result } = mountWizardHarness(() => {
+      const a = useForm({ schema, key: 'a' })
+      const b = useForm({ schema, key: '' })
+      const c = useForm({ schema, key: 'c' })
+      return useWizard([a, b, c], {})
+    })
+    apps.push(app)
+    expect(result.count).toBe(2)
+    expect(result.forms.map((f) => f.key)).toEqual(['a', 'c'])
+    warnSpy.mockRestore()
+    expect(warnings.some((w) => w.toLowerCase().includes('empty'))).toBe(true)
   })
 })

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
@@ -213,18 +213,35 @@ describe('useWizard — defaultStatuses', () => {
     expect(result.wizard.statuses['ds-over-a'].errorCount).toBe(0)
   })
 
-  it('throws at construction when seed contains an unknown key', () => {
-    const captured = mountAndCaptureSetupError(() => {
-      const a = useForm({ schema: schemaA, key: 'ds-unk-a' })
-      const b = useForm({ schema: schemaB, key: 'ds-unk-b' })
-      return useWizard([a, b], {
-        defaultStatuses: {
-          'ds-unk-a': validSeed,
-          'ds-unk-typo': dirtySeed,
-        } as unknown as { 'ds-unk-a': FormStatus; 'ds-unk-b': FormStatus },
-      })
+  it('unknown seed key is ignored with a dev-warn (no throw)', () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
     })
-    expect(captured).toBeInstanceOf(Error)
-    expect(String(captured)).toMatch(/ds-unk-typo/)
+    let captured: unknown
+    const { app, result } = mountHarness(() => {
+      try {
+        const a = useForm({ schema: schemaA, key: 'ds-unk-a' })
+        const b = useForm({ schema: schemaB, key: 'ds-unk-b' })
+        return {
+          wizard: useWizard([a, b], {
+            defaultStatuses: {
+              'ds-unk-a': validSeed,
+              'ds-unk-typo': dirtySeed,
+            } as unknown as { 'ds-unk-a': FormStatus; 'ds-unk-b': FormStatus },
+          }),
+        }
+      } catch (error) {
+        captured = error
+        return { wizard: undefined }
+      }
+    })
+    apps.push(app)
+    expect(captured).toBeUndefined()
+    expect(result.wizard).toBeDefined()
+    // The known seed still applied; the unknown key did not crash.
+    expect(result.wizard?.statuses['ds-unk-a'].valid).toBe(true)
+    warnSpy.mockRestore()
+    expect(warnings.some((w) => w.includes('ds-unk-typo'))).toBe(true)
   })
 })

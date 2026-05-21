@@ -1,6 +1,6 @@
 ---
 title: useWizard
-description: useWizard composes multiple useForm instances into a reactive wizard — active form, statuses per step, aggregate errors, navigation methods, and a progress fraction. Each step keeps its own schema and reactive surface.
+description: useWizard composes multiple useForm calls into a reactive wizard. Active form, statuses per step, aggregate errors, navigation methods, and a progress fraction. Each step keeps its own schema and reactive surface.
 metaRows:
   - label: Category
     value: Composable
@@ -83,7 +83,7 @@ type UseWizardReturnType<Forms> = {
 
 Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` track inside templates and `computed` blocks directly, matching the rest of the library (`form.values`, `form.meta`, etc.).
 
-## `statuses` — three call forms
+## `statuses`: three call forms
 
 ```ts
 wizard.statuses // the whole proxy
@@ -152,10 +152,10 @@ Steps that have not been activated contribute nothing to `allErrors`. That keeps
 
 Conditions that used to throw at construction now dev-warn and degrade:
 
-- **Empty `forms` array** — `wizard.count` is `0`, `current` is `undefined`, every navigation method is a no-op with a dev-warn.
-- **A form with `key: ''`** — filtered out of the participating set; dev-warn names the dropped count.
-- **Duplicate keys** — first occurrence wins; dev-warn lists the dropped keys.
-- **`defaultStatuses` with an unknown key** — the unknown entry is ignored; the known entries still apply.
+- **Empty `forms` array.** `wizard.count` is `0`, `current` is `undefined`, every navigation method is a no-op with a dev-warn.
+- **A form with `key: ''`.** Filtered out of the participating set; dev-warn names the dropped count.
+- **Duplicate keys.** First occurrence wins; dev-warn lists the dropped keys.
+- **`defaultStatuses` with an unknown key.** The unknown entry is ignored; the known entries still apply.
 
 A wizard wired into someone's signup or checkout never crashes the surrounding app for shapes that are clearly a mistake. The dev-warn surfaces the problem; the wizard either filters the bad input or returns a no-op handle, depending on the case.
 

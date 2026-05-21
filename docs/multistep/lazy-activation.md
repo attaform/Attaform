@@ -1,6 +1,6 @@
 ---
 title: Lazy activation
-description: Forms stay dormant until something reaches for them. The activation rule, form.activate() for the explicit kickoff, and the form.ready / form.hydrating / form.hydrateError state machine — composed for spinners, error banners, and stale-while-revalidate patterns.
+description: Forms stay dormant until something reaches for them. The activation rule, form.activate() for the explicit kickoff, and the form.ready / form.hydrating / form.hydrateError state machine compose for spinners, error banners, and stale-while-revalidate patterns.
 metaRows:
   - label: Trigger
     value: any reactive read or write
@@ -60,7 +60,7 @@ The method is idempotent in the strongest sense: every call against the same for
 
 A previously-rejected factory leaves `activate()` as a no-op (the consumer's [`form.rehydrate()`](/docs/schemas/defaults#loading-defaults-asynchronously) is the explicit replay). That keeps a reactive read of `form.hydrateError` from accidentally retrying a broken fetch in an effect loop.
 
-## The lifecycle — three orthogonal signals
+## The lifecycle: three orthogonal signals
 
 `hydrating`, `ready`, and `hydrateError` compose. They are not exclusive states:
 
@@ -106,13 +106,13 @@ The three signals fall into clean UI patterns:
 
 Read each guard left-to-right:
 
-- "Not yet ready, currently fetching" — initial load spinner.
-- "Not yet ready, fetch failed" — initial load error banner.
-- "Ready" — main render. Inside it, `userForm.hydrating` flags any refresh-in-flight so a small spinner can hint without disrupting the form.
+- "Not yet ready, currently fetching" produces the initial load spinner.
+- "Not yet ready, fetch failed" produces the initial load error banner.
+- "Ready" reaches the main render. Inside it, `userForm.hydrating` flags any refresh-in-flight so a small spinner can hint without disrupting the form.
 
 ## Privacy follows activation
 
-A form that no one touches never fires its factory. That is the load-bearing property behind the [SSR privacy invariant](/docs/multistep/ssr): a non-current step of a `useWizard` is not just "skipped on the server" — it is genuinely dormant. No fetch fires. No PII fields leave the browser's network tab.
+A form that no one touches never fires its factory. That is the load-bearing property behind the [SSR privacy invariant](/docs/multistep/ssr): a non-current step of a `useWizard` is not just "skipped on the server." It is genuinely dormant. No fetch fires. No PII fields leave the browser's network tab.
 
 The lazy default is what makes `attaform/vite`'s compile-time `__ssrAccessed` injection meaningful. The transform's whole job is to mark forms whose template references prove "this consumer wants this fetched on the server." Without lazy-by-default, every form would fetch and the transform would have nothing to opt-in to.
 

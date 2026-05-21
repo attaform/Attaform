@@ -1,6 +1,6 @@
 ---
 title: Browser history
-description: Wizards round-trip their active step through the URL — back, forward, refresh, and shareable links all work without extra wiring. Disable per wizard, rename the search param, or swap push for replace per navigation.
+description: Wizards round-trip their active step through the URL. Back, forward, refresh, and shareable links all work without extra wiring. Disable per wizard, rename the search param, or swap push for replace per navigation.
 metaRows:
   - label: Default
     value: '?step=<key>'
@@ -75,8 +75,8 @@ The URL carries both: `/account?checkout=shipping&onboard=profile`. Each wizard 
 `wizard.next()`, `wizard.back()`, and `wizard.goTo()` accept a per-call options bag. `replace: true` swaps `pushState` for `replaceState`, leaving the history stack unchanged:
 
 ```ts
-wizard.next() // pushState — back button retreats one step
-wizard.next({ replace: true }) // replaceState — back button skips this entry
+wizard.next() // pushState; back button retreats one step
+wizard.next({ replace: true }) // replaceState; back button skips this entry
 
 wizard.goTo('signup-review', { replace: true })
 ```

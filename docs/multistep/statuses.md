@@ -30,7 +30,7 @@ type FormStatus = {
 }
 ```
 
-Each field tracks the per-step form's `meta`. A step's status flips when its meta does. The four scalars are deliberately small — they're what step indicators, navigation gates, and submit summaries reach for.
+Each field tracks the per-step form's `meta`. A step's status flips when its meta does. The four scalars are deliberately small. They're what step indicators, navigation gates, and submit summaries reach for.
 
 ## Three call forms
 

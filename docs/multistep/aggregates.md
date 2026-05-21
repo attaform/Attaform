@@ -1,6 +1,6 @@
 ---
 title: Aggregates
-description: wizard.allValues and wizard.allErrors expose cross-step values and a flat error list for review screens, summary panels, and final-submit aggregation. Dormant steps contribute nothing — the privacy invariant survives a summary read.
+description: wizard.allValues and wizard.allErrors expose cross-step values and a flat error list for review screens, summary panels, and final-submit aggregation. Dormant steps contribute nothing, so the privacy invariant survives a summary read.
 metaRows:
   - label: Values
     value: 'wizard.allValues[key]'
@@ -19,7 +19,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-## `allValues` — review screens
+## `allValues` for review screens
 
 The final step of a wizard often shows everything the user entered, gated behind a confirm-and-submit button. `wizard.allValues` is the cross-step read surface:
 
@@ -64,7 +64,7 @@ const wizard = useWizard([account, profile, review] as const)
 
 Drilling into a step's values activates that step's `defaultValues` factory. `wizard.allValues` is the right surface for review screens because reading it expresses real consumer intent (the user is about to see this data).
 
-## `allErrors` — wizard-wide summary
+## `allErrors` for wizard-wide summaries
 
 `wizard.allErrors` is the flat list of every activated step's validation errors. Each entry carries:
 

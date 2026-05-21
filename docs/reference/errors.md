@@ -145,7 +145,7 @@ type ValidationError = {
 - `path` — the canonical segment tuple (`['profile', 'email']`).
 - `message` — the human-readable error text.
 - `code` — stable identifier (`atta:no-value-supplied`, `zod:invalid_type`, `api:duplicate-email`, etc.).
-- `formKey` — which form emitted the error. Useful for cross-form aggregation in steppers.
+- `formKey` — which form emitted the error. Useful for cross-form aggregation in wizards.
 
 The `code` is what consumers branch on; the `message` is what templates render. Avoid matching `message` strings — they're localized and may change over time without breaking the public contract.
 

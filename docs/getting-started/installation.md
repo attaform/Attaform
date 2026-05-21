@@ -25,7 +25,7 @@ export default defineNuxtConfig({
 })
 ```
 
-What this gets you: `useForm` / `useStepper` / `injectForm` / `useRegister` as auto-imports, the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
+What this gets you: `useForm` / `useWizard` / `injectForm` / `useRegister` as auto-imports, the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
 
 ## Optional: Vue 3 plugin
 

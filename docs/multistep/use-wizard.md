@@ -1,11 +1,11 @@
 ---
-title: Multi-step flows
-description: useStepper composes multiple useForm instances into a wizard — current step, statuses per form, aggregate errors, navigation methods, and a progress fraction. Each step keeps its own schema and reactive surface.
+title: useWizard
+description: useWizard composes multiple useForm instances into a reactive wizard — active form, statuses per step, aggregate errors, navigation methods, and a progress fraction. Each step keeps its own schema and reactive surface.
 metaRows:
   - label: Category
     value: Composable
   - label: Signature
-    value: 'useStepper(forms, options?)'
+    value: 'useWizard(forms, options?)'
     kind: code
   - label: Per-step
     value: each form keeps its own schema, history, persistence
@@ -14,125 +14,153 @@ metaRows:
     kind: code
 ---
 
-# Multi-step flows
+# useWizard
 
-> Compose multiple `useForm` instances into a wizard — `useStepper` orchestrates navigation and exposes aggregate status without entangling the per-step schemas.
+> Compose multiple `useForm` calls into a reactive wizard. `useWizard` orchestrates navigation and exposes aggregate status without entangling the per-step schemas.
 
 ::docs-meta-table
 ::
 
-Three small `useForm` calls — account, profile, review — feed into one `useStepper`. The progress bar reflects `stepper.progress` (the fraction of valid steps), the rail highlights `stepper.current`, and each step's form keeps its own schema and reactive surface. Tap **Next** / **Back** to walk the chain; the **Finish** button fires on the last step.
+Three small `useForm` calls (account, profile, review) feed into one `useWizard`. The progress bar reflects `wizard.progress` (the fraction of valid steps), the rail highlights `wizard.current`, and each step's form keeps its own schema and reactive surface. Tap **Next** / **Back** to walk the chain; the **Finish** button fires on the last step.
 
-::docs-demo{slug="use-stepper" label="Stepper Demo"}
+::docs-demo{slug="use-wizard" label="Wizard Demo"}
 ::
 
 ## The composition
 
 ```ts
-import { useForm, useStepper } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform/zod'
 import { z } from 'zod'
 
-const account = useForm({
-  schema: z.object({ email: z.email(), password: z.string().min(8) }),
-  key: 'signup-account',
-})
+const accountSchema = z.object({ email: z.email(), password: z.string().min(8) })
+const profileSchema = z.object({ name: z.string().min(1), city: z.string() })
+const reviewSchema = z.object({ tos: z.literal(true) })
 
-const profile = useForm({
-  schema: z.object({ name: z.string().min(1), city: z.string() }),
-  key: 'signup-profile',
-})
-
+const account = useForm({ schema: accountSchema, key: 'signup-account' })
+const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
 const review = useForm({
-  schema: z.object({ tos: z.literal(true) }),
+  schema: reviewSchema,
   defaultValues: { tos: false },
   key: 'signup-review',
 })
 
-const stepper = useStepper([account, profile, review] as const)
+const wizard = useWizard([account, profile, review] as const)
 ```
 
-Each step is its own form — schemas, default values, persistence, history, all per-step. The stepper is a thin orchestrator over them; it does not own values, errors, or validation.
+Each step is its own form. Schemas, default values, persistence, history, all per-step. The wizard is a thin orchestrator over them; it does not own values, errors, or validation.
 
 ## The return shape
 
 ```ts
-type UseStepperReturnType<Forms> = {
-  readonly current: Readonly<Ref<KeysOf<Forms>>>
+type UseWizardReturnType<Forms> = {
+  readonly current: KeysOf<Forms> | undefined
+  readonly activeForm: Forms[number] | undefined
+  readonly activeIndex: number
   readonly forms: Forms
   readonly count: number
-  readonly statuses: StepperStatusesProxy<Statuses<Forms>>
+  readonly statuses: WizardStatusesProxy<Statuses<Forms>>
   readonly allValues: AllValues<Forms>
-  readonly allErrors: Readonly<Ref<readonly AggregateError[]>>
-  readonly progress: Readonly<Ref<number>>
-  readonly next: (options?: StepperNavOptions) => void
-  readonly back: (options?: StepperNavOptions) => void
-  readonly goTo: (key: KeysOf<Forms>, options?: StepperNavOptions) => void
+  readonly allErrors: readonly AggregateError[]
+  readonly progress: number
+  readonly next: (options?: WizardNavOptions) => void
+  readonly back: (options?: WizardNavOptions) => void
+  readonly goTo: (key: KeysOf<Forms>, options?: WizardNavOptions) => void
 }
 ```
 
-| Member                   | What it is                                                                                     |
-| ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `current`                | `Ref` of the current step's key. The discriminator templates branch on.                        |
-| `forms`                  | The original `forms` array — useful for iterating in a rail / TOC.                             |
-| `count`                  | Number of steps. Handy for "Step N of M" labels.                                               |
-| `statuses`               | Drillable proxy of `FormStatus` per step (`isValid`, `isDirty`, `isSubmitted`, `errorCount`).  |
-| `allValues`              | Drillable record of every step's `values` keyed by form key.                                   |
-| `allErrors`              | Cross-step `AggregateError[]` — `{ formKey, path, message, code? }` for a wizard-wide summary. |
-| `progress`               | Fraction in `[0, 1]` — count of valid steps divided by total steps.                            |
-| `next` / `back` / `goTo` | Navigation. `goTo(key)` jumps to an arbitrary step by its form's key.                          |
+| Member                   | What it is                                                                                                                 |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `current`                | The active step's key (or `undefined` if the wizard is empty). Reactive via a getter, so templates branch on it directly.  |
+| `activeForm`             | The active step's form handle, identity-equal to the matching entry in `forms`. `undefined` when `current` is `undefined`. |
+| `activeIndex`            | Zero-based index of the active step. `-1` when the wizard is empty.                                                        |
+| `forms`                  | The original `forms` array. Iterate it for a rail or table of contents.                                                    |
+| `count`                  | Number of participating steps. Handy for "Step N of M" labels.                                                             |
+| `statuses`               | Drillable proxy of `FormStatus` per step (`valid`, `dirty`, `submitted`, `errorCount`).                                    |
+| `allValues`              | Drillable record of every step's `values` keyed by form key.                                                               |
+| `allErrors`              | Cross-step `AggregateError[]` for a wizard-wide summary. Dormant (unactivated) steps contribute nothing.                   |
+| `progress`               | Fraction in `[0, 1]`. Count of valid steps divided by total steps, or the consumer's `progress` override.                  |
+| `next` / `back` / `goTo` | Navigation. `goTo(key)` jumps to an arbitrary step by its form's key.                                                      |
+
+Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` track inside templates and `computed` blocks directly, matching the rest of the library (`form.values`, `form.meta`, etc.).
 
 ## `statuses` — three call forms
 
 ```ts
-stepper.statuses // the whole proxy
-stepper.statuses() // → { account: FormStatus, profile: FormStatus, review: FormStatus }
-stepper.statuses('account') // → FormStatus for account
-stepper.statuses.account // → FormStatus for account (drillable read)
-stepper.statuses.account.isValid // → boolean (reactive)
+wizard.statuses // the whole proxy
+wizard.statuses() // → { account: FormStatus, profile: FormStatus, review: FormStatus }
+wizard.statuses('account') // → FormStatus for account
+wizard.statuses.account // → FormStatus for account (drillable read)
+wizard.statuses.account.valid // → boolean (reactive)
 ```
 
 The drillable read is the template-friendly form; the callable form is convenient in script for one-off reads.
 
+`FormStatus` carries `valid`, `dirty`, `submitted`, and `errorCount`. The aggregator gates on each form's `defaultsResolved` so reading a status for a not-yet-activated step returns the pending sentinel without firing that step's factory. The rail can render without thrashing.
+
 ## Navigation
 
 ```ts
-stepper.next() // step forward one
-stepper.back() // step back one
-stepper.goTo('profile') // jump to a specific step by key
+wizard.next() // step forward one
+wizard.back() // step back one
+wizard.goTo('profile') // jump to a specific step by key
 ```
 
-`StepperNavOptions` is currently a placeholder — pass `{}` or omit it. Out-of-bounds calls log a dev-mode warning and are no-ops:
+`WizardNavOptions` is currently a placeholder. Pass `{}` or omit it. Out-of-bounds calls dev-warn and no-op:
 
 - `next()` on the last step.
 - `back()` on the first step.
 - `goTo(key)` with a key not in the `forms` array.
 
+The wizard never throws on navigation or construction. A third-party library wired into someone's checkout should bend, not crash.
+
+## Active form
+
+`wizard.activeForm` is the per-step form handle for the active step, identity-equal to the matching entry in `wizard.forms`. Reach for the active step's reactive surface without indexing by key:
+
+```vue
+<script setup lang="ts">
+  const wizard = useWizard([account, profile, review] as const)
+</script>
+
+<template>
+  <form v-if="wizard.activeForm" @submit.prevent="wizard.activeForm.handleSubmit(onSubmit)()">
+    <h2>Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}</h2>
+    <input v-register="wizard.activeForm.register('email')" />
+  </form>
+</template>
+```
+
+`wizard.activeIndex` pairs with the index for "Step N of M" labels, progress dots, and per-step rails.
+
 ## Aggregate errors
 
-`stepper.allErrors` flattens every step's errors into one array, in stepper order then per-form order. Each entry carries the originating form's key — link back to the source field from a wizard-wide summary:
+`wizard.allErrors` flattens every activated step's errors into one array, in wizard order then per-form order. Each entry carries the originating form's key. Link back to the source field from a wizard-wide summary:
 
 ```vue
 <template>
   <ul class="wizard-errors">
-    <li v-for="err in stepper.allErrors" :key="`${err.formKey}-${err.path.join('.')}`">
+    <li v-for="err in wizard.allErrors" :key="`${err.formKey}-${err.path.join('.')}`">
       <a :href="`#${err.formKey}`">{{ err.message }}</a>
     </li>
   </ul>
 </template>
 ```
 
-## Construction-time errors
+Steps that have not been activated contribute nothing to `allErrors`. That keeps the privacy invariant intact: a non-current step with an async `defaultValues` factory will not fire on the server just because the consumer reads the summary list.
 
-Three things throw at construction (typo / wiring safety, not runtime):
+## Degenerate inputs
 
-- **Empty `forms` array** — a stepper with zero steps is meaningless.
-- **A form with `key: ''`** — every step needs a non-empty key for status routing.
-- **Duplicate keys** — each step needs a distinct key.
+Conditions that used to throw at construction now dev-warn and degrade:
 
-`defaultStatuses` with an unknown key (typo against the `forms` array) throws at construction too.
+- **Empty `forms` array** — `wizard.count` is `0`, `current` is `undefined`, every navigation method is a no-op with a dev-warn.
+- **A form with `key: ''`** — filtered out of the participating set; dev-warn names the dropped count.
+- **Duplicate keys** — first occurrence wins; dev-warn lists the dropped keys.
+- **`defaultStatuses` with an unknown key** — the unknown entry is ignored; the known entries still apply.
+
+A wizard wired into someone's signup or checkout never crashes the surrounding app for shapes that are clearly a mistake. The dev-warn surfaces the problem; the wizard either filters the bad input or returns a no-op handle, depending on the case.
 
 ## Where to next
 
-- [`injectForm`](/docs/cross-cutting-state/inject-form) — single-form sharing across a tree; orthogonal to multi-step.
-- [Undo & redo](/docs/cross-cutting-state/undo-redo) — works per-step; each form keeps its own history chain.
-- [The validation lifecycle](/docs/validation/lifecycle) — each step's `validate` / `validateAsync` / `process` flows through the stepper's status aggregation.
+- [`injectForm`](/docs/cross-cutting-state/inject-form) for single-form sharing across a tree; orthogonal to multistep.
+- [Undo & redo](/docs/cross-cutting-state/undo-redo) works per-step; each form keeps its own history chain.
+- [The validation lifecycle](/docs/validation/lifecycle) walks each step's `validate`, `validateAsync`, and `process` paths and how they flow through the wizard's status aggregation.

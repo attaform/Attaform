@@ -34,7 +34,7 @@ import { useForm, withMeta, zodAdapter, fieldMeta } from 'attaform/zod'
 Ships:
 
 - `useForm` — the typed-Zod wrapper around the framework-agnostic `useForm`.
-- `useStepper`, `injectForm`, `useRegister` — same composables, re-exported.
+- `useWizard`, `injectForm`, `useRegister` — same composables, re-exported.
 - `zodAdapter` — explicit adapter constructor (most consumers don't need this; `useForm({ schema })` wraps automatically).
 - `fieldMeta` / `withMeta` — schema-attached field metadata (label, description, placeholder).
 - `kindOf`, `ZodKind`, `assertZodVersion` — runtime Zod-introspection helpers.
@@ -49,7 +49,7 @@ Zod v3 adapter for projects still on v3. New projects should use `attaform/zod`.
 import { useForm, withMeta } from 'attaform/zod-v3'
 ```
 
-Surface matches `attaform/zod` one-for-one: `useForm`, `injectForm`, `useRegister`, `useStepper`, `withMeta`, `fieldMeta`, `unset`. The runtime introspection is leaner (`isZodSchemaType` only); see [`AbstractSchema`](/docs/schemas/abstract-schema#zod-v3-vs-zod-v4-an-introspection-asymmetry) for the discussion.
+Surface matches `attaform/zod` one-for-one: `useForm`, `injectForm`, `useRegister`, `useWizard`, `withMeta`, `fieldMeta`, `unset`. The runtime introspection is leaner (`isZodSchemaType` only); see [`AbstractSchema`](/docs/schemas/abstract-schema#zod-v3-vs-zod-v4-an-introspection-asymmetry) for the discussion.
 
 ## `attaform/zod-v4`
 
@@ -71,7 +71,7 @@ import {
   // Schema-agnostic composables
   useForm,
   injectForm,
-  useStepper,
+  useWizard,
   useRegister,
   // Directive layer
   vRegister,
@@ -133,7 +133,7 @@ export default defineNuxtConfig({
 })
 ```
 
-After installing, `useForm`, `injectForm`, `useStepper`, and `useRegister` are global auto-imports. See [SSR hydration — Nuxt](/docs/server-and-ssr/ssr-nuxt) for the full setup.
+After installing, `useForm`, `injectForm`, `useWizard`, and `useRegister` are global auto-imports. See [SSR hydration — Nuxt](/docs/server-and-ssr/ssr-nuxt) for the full setup.
 
 ## `attaform/vite`
 

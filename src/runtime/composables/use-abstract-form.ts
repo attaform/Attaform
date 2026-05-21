@@ -294,6 +294,9 @@ export function useAbstractForm<
       // `state.activate()`). A form that nobody touched stays dormant
       // — the factory does not run, and the payload serialises the
       // schema's slim defaults.
+      if (configuration.__ssrAccessed === true) {
+        registry.enqueuePrefetch(key)
+      }
       onServerPrefetch(() => {
         if (!registry.shouldPrefetch(key)) return
         return state.activate()

@@ -1326,6 +1326,21 @@ export type UseFormConfiguration<
    * channel would be solo by construction.
    */
   multiTab?: boolean
+  /**
+   * @internal
+   * SSR prefetch mark — set by the `attaform/vite` compile-time
+   * transform on `useForm` calls whose surrounding SFC template (or a
+   * computed feeding it) reads the form's reactive state. The flag
+   * enqueues the form on the registry's SSR prefetch queue so an
+   * async `defaultValues` factory runs inside `onServerPrefetch` and
+   * the resolved payload bakes into the hydration transfer state.
+   *
+   * Consumers do not write this directly — `form.activate()` is the
+   * documented escape hatch when the transform's static analysis
+   * can't see a reference (cross-module sharing, dynamic property
+   * access, headless contexts).
+   */
+  __ssrAccessed?: boolean
 }
 
 /**

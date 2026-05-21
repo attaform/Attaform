@@ -301,28 +301,11 @@ export function useAbstractForm<
         }
         return state.rehydrate()
       })
-    } else {
-      // CSR: microtask defer leaves a synchronously-following
-      // `useStepper` claim a frame to register a deferral before the
-      // factory fires. When a stepper has marked this form deferred,
-      // bail and register an activation callback that runs the factory
-      // once the step becomes current. Otherwise `state.rehydrate`
-      // handles the settle-and-apply cycle (same path as the
-      // imperative `form.rehydrate()`).
-      state.isHydrating.value = true
-      void Promise.resolve().then(() => {
-        state.factorySettleStarted.value = true
-        const handle = state.stepperHandle.value
-        if (handle !== undefined && handle.shouldDefer()) {
-          state.isHydrating.value = false
-          handle.registerActivation(() => {
-            void state.rehydrate()
-          })
-          return
-        }
-        return state.rehydrate()
-      })
     }
+    // CSR: factory stays dormant until the first reactive interaction
+    // calls `state.activate()` through the public API surface. The
+    // microtask defer that used to fire here is gone — lazy-by-default
+    // is the new contract.
   }
 
   // Ref-count this consumer. When the component's effect scope tears down,

@@ -178,6 +178,18 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     }
   }
 
+  // Activate the initial step's form synchronously. The CSR microtask
+  // defer is gone — without an explicit kick here, the current step's
+  // factory would never fire on mount. Other steps stay dormant until
+  // navigation activates them.
+  const initialIdx = formKeys.indexOf(initialKey as string)
+  if (initialIdx !== -1) {
+    const initialForm = forms[initialIdx] as unknown as { activate?: () => Promise<void> }
+    if (typeof initialForm.activate === 'function') {
+      void initialForm.activate()
+    }
+  }
+
   // Resolve `defaultStatuses` (the trichotomy mirror). Sync values
   // apply immediately at construction; async factories register and
   // populate `seedRef` on resolution. While the async seed is
@@ -377,6 +389,18 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     if (priorKey === nextKey) return
     stepperRegistry.markCurrent(nextKey, priorKey)
     current.value = nextKey
+    // Kick the new step's activation. The registry's late-bound
+    // `registerActivation` callback also fires the factory when its
+    // claim flips current, but explicit activation here covers the
+    // case where the form was not stepper-deferred (e.g. created
+    // before the stepper claim arrived) — `activate()` is idempotent.
+    const nextIdx = formKeys.indexOf(nextKey as string)
+    if (nextIdx !== -1) {
+      const nextForm = forms[nextIdx] as unknown as { activate?: () => Promise<void> }
+      if (typeof nextForm.activate === 'function') {
+        void nextForm.activate()
+      }
+    }
     if (historyMode === 'push') stepperHistory.push(nextKey as string)
     else if (historyMode === 'replace') stepperHistory.replace(nextKey as string)
     // Synthetic nav-away invocation. `onStatusChange` fires for the

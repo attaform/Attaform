@@ -82,8 +82,10 @@ describe('useStepper — async-defaults activation lifecycle', () => {
     expect(aCalls).toBe(1)
     expect(bCalls).toBe(0)
     expect(cCalls).toBe(0)
-    expect(result.b.isHydrating).toBe(false)
-    expect(result.c.isHydrating).toBe(false)
+    // Under lazy activation, reading `result.b.isHydrating` would
+    // itself activate B's factory ("observing factory state implies
+    // use"). The call-count assertions above are the authoritative
+    // dormancy check.
   })
 
   it('fires the factory on first activation', async () => {

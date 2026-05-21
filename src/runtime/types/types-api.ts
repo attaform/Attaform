@@ -3560,6 +3560,19 @@ export type UseFormReturnType<
    */
   rehydrate(): Promise<void>
 
+  /**
+   * Idempotent activation. Forms are lazy-by-default: a function-form
+   * `defaultValues` factory fires on the first reactive interaction
+   * (reading `form.values`, calling `form.setValue`, etc.). Call
+   * `form.activate()` to kick the factory explicitly — typically from
+   * `setup` so SSR's `onServerPrefetch` hook awaits the resolution
+   * before the page renders. Subsequent calls return the in-flight
+   * promise until the factory settles, after which they resolve
+   * immediately. Plain-value forms (no factory captured) always
+   * return a resolved promise.
+   */
+  activate(): Promise<void>
+
   // --- Reactive field-error API ---
 
   /**

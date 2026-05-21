@@ -359,11 +359,37 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * `true` once the form's effective defaults have been applied —
    * sync `defaultValues` at construction, or async factory whose
-   * settle completed. Stays `false` for deferred (stepper-claimed,
-   * non-current) forms until they activate. Read by `useStepper` to
-   * decide whether seed status or live meta should surface.
+   * settle completed. Stays `false` for dormant lazy forms until they
+   * activate. Read by `useStepper` to decide whether seed status or
+   * live meta should surface.
    */
   readonly defaultsResolved: Ref<boolean>
+  /**
+   * `true` once the captured async factory has been kicked off (set
+   * synchronously by `activate()`, before the factory itself resolves).
+   * Distinct from `defaultsResolved`, which only flips after the factory
+   * settles. The pair lets the API surface tell "we've started" apart
+   * from "we're done."
+   */
+  readonly activated: Ref<boolean>
+  /**
+   * In-flight activation promise. Concurrent callers (cross-component
+   * SSR consumers, recursive factory reads, parallel `activate()`
+   * calls) receive the same promise, ensuring the factory runs once
+   * even under contention.
+   */
+  readonly activationPromise: Ref<Promise<void> | undefined>
+  /**
+   * Idempotent activation entrypoint. Fires the captured function-form
+   * `defaultValues` factory on first call and stores the in-flight
+   * promise. Subsequent calls return the same promise until the factory
+   * settles; thereafter calls return `Promise.resolve()`. Plain-value
+   * forms (no factory captured) always return a resolved promise. The
+   * public API surface routes all reactive interactions (getters and
+   * methods, except `key`) through this entrypoint so the form
+   * activates on first use.
+   */
+  activate(): Promise<void>
   /**
    * Bridge populated by `useStepper` when this form participates in a
    * stepper. `useAbstractForm.settle` consults `shouldDefer()` before
@@ -1462,11 +1488,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const factorySettleStarted = ref(false)
   // `true` once the form's effective defaults have been applied —
   // either a sync `defaultValues` at construction, or an async
-  // factory whose settle completed. Stays `false` for deferred
-  // (stepper-claimed, non-current) forms until they activate. Read by
-  // `useStepper` to decide whether to surface seed status vs. live
-  // meta.
+  // factory whose settle completed. Stays `false` for dormant lazy
+  // forms until they activate. Read by `useStepper` to decide whether
+  // to surface seed status vs. live meta.
   const defaultsResolved = ref(false)
+  // Lazy-activation state. `activated` flips `true` the moment the
+  // captured async factory has been kicked off (synchronously, before
+  // it resolves). `activationPromise` holds the in-flight settle so
+  // concurrent callers (cross-component SSR consumers, recursive
+  // factory reads) share a single fetch.
+  const activated = ref(false)
+  const activationPromise = ref<Promise<void> | undefined>(undefined)
   const stepperHandle = ref<
     | {
         shouldDefer: () => boolean
@@ -2757,7 +2789,41 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         '[attaform] form.rehydrate(): no defaultValues factory was captured. Configure useForm({ defaultValues: () => ... }) to enable rehydrate.'
       )
     }
-    return runFactoryAndApply(factory)
+    return fireFactory(factory)
+  }
+
+  // Shared kickoff path for `activate` and `rehydrate`. Both fire the
+  // captured factory, mark the form `activated`, and publish the
+  // in-flight promise so concurrent `activate()` calls join rather
+  // than double-fire. The promise self-clears on settle so a
+  // subsequent refetch can publish a fresh one.
+  function fireFactory(factory: () => unknown | Promise<unknown>): Promise<void> {
+    activated.value = true
+    const promise = runFactoryAndApply(factory)
+    activationPromise.value = promise
+    void promise.finally(() => {
+      if (activationPromise.value === promise) activationPromise.value = undefined
+    })
+    return promise
+  }
+
+  // Idempotent activation. The new lazy-by-default model fires the
+  // captured function-form `defaultValues` factory only via this
+  // entrypoint — public getters/methods on the form API surface call
+  // through to it so the first reactive interaction triggers the
+  // factory. Concurrent callers share the in-flight promise so two
+  // SSR consumers reading the same store await the same fetch. A
+  // previously-rejected attempt leaves `activated === true` and
+  // `defaultsResolved === false`; subsequent `activate()` calls are
+  // no-ops so reading `form.hydrateError` doesn't replay the failure.
+  // `form.rehydrate()` is the explicit replay primitive.
+  function activate(): Promise<void> {
+    if (defaultsResolved.value === true) return Promise.resolve()
+    if (activationPromise.value !== undefined) return activationPromise.value
+    if (activated.value === true) return Promise.resolve()
+    const factory = defaultValuesFactory.value
+    if (factory === undefined) return Promise.resolve()
+    return fireFactory(factory)
   }
 
   async function runFactoryAndApply(factory: () => unknown | Promise<unknown>): Promise<void> {
@@ -3250,8 +3316,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     defaultValuesFactory,
     factorySettleStarted,
     defaultsResolved,
+    activated,
+    activationPromise,
     stepperHandle,
     rehydrate,
+    activate,
     submissionGeneration,
     activeValidations,
     firstValidationDone,

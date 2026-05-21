@@ -78,8 +78,11 @@ describe('authored-paths updates beyond construction', () => {
     // against the runtime "no value yet").
     await nextTick()
 
-    // Let the async factory resolve and its post-resolution
-    // validation sweep complete.
+    // Lazy activation: kick the factory explicitly, then let the
+    // post-resolution validation sweep complete. Without this the
+    // form stays dormant until the first reactive read below, leaving
+    // no time for validation to land.
+    await api.activate()
     await new Promise((r) => setTimeout(r, 30))
 
     // The factory landed `{ url: undefined }`. The path is now

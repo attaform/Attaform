@@ -30,16 +30,17 @@ import { wait, waitUntil } from '../utils/form-harness'
 
 const schema = z.object({ email: z.string(), name: z.string() })
 
-type CapturedForm = UseFormReturnType<z.output<typeof schema>>
+type Shape = z.output<typeof schema>
+type CapturedForm = UseFormReturnType<Shape>
 
-function mountInert(factoryBody: () => unknown | Promise<unknown>): {
+function mountInert(factoryBody: () => Promise<Shape>): {
   app: App
   api: CapturedForm
   calls: { count: number }
 } {
   const captured: { api?: CapturedForm } = {}
   const calls = { count: 0 }
-  const counter = () => {
+  const counter = (): Promise<Shape> => {
     calls.count += 1
     return factoryBody()
   }

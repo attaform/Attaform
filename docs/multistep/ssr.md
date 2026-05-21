@@ -122,7 +122,7 @@ const wizard = useWizard([account, profile, review] as const, {
 })
 ```
 
-The wizard consults `getServerActiveStep()` BEFORE deciding which form's factory to mark for prefetch. The fallback chain:
+The wizard consults `getServerActiveStep()` **before** deciding which form's factory to mark for prefetch. The fallback chain:
 
 1. `getServerActiveStep()` returns a known key. The wizard marks that form.
 2. Returns `undefined` and the request URL carries `?step=<key>` (matched against `history.param`). The wizard marks that form.
@@ -130,7 +130,7 @@ The wizard consults `getServerActiveStep()` BEFORE deciding which form's factory
 
 The getter runs on both server and client. The consumer's route source must be available on both. Returning a key that doesn't appear in `forms` dev-warns and falls back to `forms[0]`.
 
-## Async factories the framework decides about
+## Letting the framework own slow factories
 
 The library does not special-case slow factories. A request timeout, a `<Suspense>` boundary with a fallback, or a Nuxt-level cache header is the framework's job. When the consumer specifically wants client-only fetching for a slow factory:
 

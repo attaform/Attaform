@@ -131,8 +131,7 @@
     color: #6b7280;
     font-family: ui-monospace, monospace;
   }
-  input[type='text'],
-  input[type='number'] {
+  input {
     padding: 0.375rem 0.5rem;
     border-radius: 0.375rem;
     border: 1px solid #d1d5db;

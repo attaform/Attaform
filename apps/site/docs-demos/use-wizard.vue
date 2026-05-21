@@ -207,9 +207,7 @@
     align-items: center;
     font-weight: 400;
   }
-  input[type='text'],
-  input[type='email'],
-  input[type='password'] {
+  input {
     padding: 0.5rem 0.75rem;
     border-radius: 0.375rem;
     border: 1px solid #d1d5db;

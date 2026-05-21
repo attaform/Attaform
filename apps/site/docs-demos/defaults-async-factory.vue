@@ -141,9 +141,7 @@
     font-size: 0.8125rem;
     color: #374151;
   }
-  input[type='text'],
-  input:not([type]),
-  input[type='email'],
+  input,
   select {
     padding: 0.375rem 0.5rem;
     border-radius: 0.375rem;

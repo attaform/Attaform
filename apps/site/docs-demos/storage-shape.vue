@@ -92,7 +92,7 @@
     font-size: 0.8125rem;
     color: #374151;
   }
-  input[type='text'] {
+  input {
     padding: 0.5rem 0.625rem;
     border-radius: 0.375rem;
     border: 1px solid #d1d5db;

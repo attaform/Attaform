@@ -1,5 +1,8 @@
+import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
+
+const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
 /**
  * Vitest config — kept intentionally minimal. The default test picker
@@ -25,6 +28,27 @@ export default defineConfig({
   // (e.g., the overlay-panel devtools tests). The plugin is otherwise
   // dormant — tests that don't touch `.vue` files pay no cost.
   plugins: [vue()],
+  resolve: {
+    // Source-alias `attaform/*` to `src/*.ts` for tests. Without this,
+    // any SFC or module reached by tests that bare-imports `attaform`
+    // resolves through `dist/*.mjs` — a `jiti --stub` shim with the
+    // alias `attaform: /app` baked in at build time inside Docker.
+    // Running tests on the host (where the project lives somewhere
+    // other than `/app`) makes the shim throw
+    // `Cannot find module '/app/src/index.ts'`. Aliasing to the real
+    // `src/*.ts` bypasses the shim and lets tests share whatever
+    // edits are live in the source tree. Mirrors the alias map on
+    // `apps/site/nuxt.config.ts` (vite + nitro) — see the comment
+    // there for the broader staleness story.
+    alias: {
+      attaform: `${rootDir}src/index.ts`,
+      'attaform/zod': `${rootDir}src/zod.ts`,
+      'attaform/zod-v3': `${rootDir}src/zod-v3.ts`,
+      'attaform/zod-v4': `${rootDir}src/zod-v4.ts`,
+      'attaform/vite': `${rootDir}src/vite.ts`,
+      'attaform/transforms': `${rootDir}src/transforms.ts`,
+    },
+  },
   test: {
     // Global setup file: stubs `window.isSecureContext = true` so the
     // secure-context gate doesn't disable multi-tab sync and built-in

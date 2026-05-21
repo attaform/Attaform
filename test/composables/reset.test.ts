@@ -219,7 +219,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
   })
 
   it('reset() to invalid defaults re-populates schemaErrors (not silent-clear)', async () => {
-    // Bug surfaced via the docs-site stepper demo: open the form
+    // Bug surfaced via the docs-site wizard demo: open the form
     // (gray step titles because defaults are invalid), press reset,
     // step titles flip green. Reset clears schemaErrors but never
     // re-runs validation — the form is sitting on the same INVALID
@@ -332,7 +332,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
   it('reset() re-derives errors at descendant leaves; container aggregation reflects them', async () => {
     // Demo-faithful repro: a multi-step form with container paths whose
     // descendant leaves violate the schema in their defaults. The
-    // stepper UI reads `form.fields(containerPath).valid` for each
+    // wizard UI reads `form.fields(containerPath).valid` for each
     // step's paths; if container aggregation doesn't reflect descendant
     // errors after reset, step titles flip green incorrectly.
     const { useForm } = await import('../../src/zod')
@@ -421,7 +421,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     // CRITICAL no-flash property: errors must be populated
     // SYNCHRONOUSLY by reset() — not on a deferred microtask. If
     // they only arrive async, the UI flashes "valid" between reset
-    // and the async pass settling (the docs-site stepper turns
+    // and the async pass settling (the docs-site wizard turns
     // green for ~600ms before going back to red). Pin that the
     // count is correct the instant reset() returns.
     expect(form.meta.errors.length).toBeGreaterThan(0)

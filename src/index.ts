@@ -46,14 +46,14 @@ export { injectForm } from './runtime/composables/use-form-context'
 // Multistep-form orchestrator. Composes existing `useForm` instances
 // into a wizard with navigation, status aggregation, and activation
 // lifecycle. See the composable's docblock for invariants.
-export { useStepper } from './runtime/composables/use-wizard'
+export { useWizard } from './runtime/composables/use-wizard'
 export type {
   AnyForm,
   FormKeyOf,
   KeysOf,
-  StepperNavOptions,
-  StepperOptions,
-  UseStepperReturnType,
+  WizardNavOptions,
+  WizardOptions,
+  UseWizardReturnType,
 } from './runtime/types/types-wizard'
 
 // Ambient bridge for components that wrap a single field and want to

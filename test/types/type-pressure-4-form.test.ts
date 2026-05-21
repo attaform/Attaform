@@ -1,11 +1,11 @@
 import { describe, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import { useForm } from '../../src/zod-v4'
-import { useStepper } from '../../src'
+import { useWizard } from '../../src'
 import type { FormStatus } from '../../src/zod-v4'
 
 /**
- * Type-pressure regression test for the 4-form `useStepper` pattern
+ * Type-pressure regression test for the 4-form `useWizard` pattern
  * — the synthetic version of the shipment-demo restructure. Validates
  * that the type system holds together when consumers wire 3+ forms
  * with moderately-complex schemas (nested objects, arrays, tuples,
@@ -86,7 +86,7 @@ const reviewSchema = z.object({
   acknowledgements: z.array(z.string()),
 })
 
-describe('Type-pressure — 4 useForm calls + useStepper composition', () => {
+describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
   it('compiles each form with literal key inference preserved', () => {
     function _neverInvoked() {
       const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
@@ -102,19 +102,19 @@ describe('Type-pressure — 4 useForm calls + useStepper composition', () => {
     void _neverInvoked
   })
 
-  it('composes the four forms into a stepper with discriminated current/keys', () => {
+  it('composes the four forms into a wizard with discriminated current/keys', () => {
     function _neverInvoked() {
       const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
       const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
       const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
       const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
 
-      const stepper = useStepper([refForm, cargoForm, serviceForm, reviewForm])
+      const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
 
-      expectTypeOf(stepper.current.value).toEqualTypeOf<
+      expectTypeOf(wizard.current.value).toEqualTypeOf<
         'reference' | 'cargo' | 'service' | 'review'
       >()
-      expectTypeOf(stepper.count).toEqualTypeOf<number>()
+      expectTypeOf(wizard.count).toEqualTypeOf<number>()
     }
     void _neverInvoked
   })
@@ -155,18 +155,18 @@ describe('Type-pressure — 4 useForm calls + useStepper composition', () => {
     void _neverInvoked
   })
 
-  it('exposes stepper.statuses with FormStatus typing per key', () => {
+  it('exposes wizard.statuses with FormStatus typing per key', () => {
     function _neverInvoked() {
       const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
       const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
       const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
       const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
 
-      const stepper = useStepper([refForm, cargoForm, serviceForm, reviewForm])
+      const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
 
-      expectTypeOf(stepper.statuses.reference).toEqualTypeOf<FormStatus>()
-      expectTypeOf(stepper.statuses.cargo.isValid).toEqualTypeOf<boolean>()
-      expectTypeOf(stepper.statuses.service.errorCount).toEqualTypeOf<number>()
+      expectTypeOf(wizard.statuses.reference).toEqualTypeOf<FormStatus>()
+      expectTypeOf(wizard.statuses.cargo.isValid).toEqualTypeOf<boolean>()
+      expectTypeOf(wizard.statuses.service.errorCount).toEqualTypeOf<number>()
     }
     void _neverInvoked
   })

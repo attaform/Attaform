@@ -1,6 +1,6 @@
 /**
- * Browser-history primitive for `useStepper`. Encapsulates the only
- * DOM-touching surface in the stepper module so the composable can
+ * Browser-history primitive for `useWizard`. Encapsulates the only
+ * DOM-touching surface in the wizard module so the composable can
  * stay framework-agnostic — no `useRoute()`, no vue-router, no Nuxt
  * coupling.
  *
@@ -21,7 +21,7 @@
  * primitive is the gate.
  */
 
-export type StepperHistoryHandle = {
+export type WizardHistoryHandle = {
   push(key: string): void
   replace(key: string): void
   read(): string | undefined
@@ -30,11 +30,11 @@ export type StepperHistoryHandle = {
 }
 
 /**
- * No-op handle. Returned by `createStepperHistory` on SSR (no
+ * No-op handle. Returned by `createWizardHistory` on SSR (no
  * `window`) and assigned directly when the consumer passes
  * `history: false`. Every method is a safe call-site shim.
  */
-export const NOOP_STEPPER_HISTORY: StepperHistoryHandle = {
+export const NOOP_WIZARD_HISTORY: WizardHistoryHandle = {
   push() {},
   replace() {},
   read() {
@@ -44,8 +44,8 @@ export const NOOP_STEPPER_HISTORY: StepperHistoryHandle = {
   dispose() {},
 }
 
-export function createStepperHistory(param: string): StepperHistoryHandle {
-  if (typeof window === 'undefined') return NOOP_STEPPER_HISTORY
+export function createWizardHistory(param: string): WizardHistoryHandle {
+  if (typeof window === 'undefined') return NOOP_WIZARD_HISTORY
 
   const subscribers: Array<(key: string | undefined) => void> = []
   let disposed = false
@@ -72,7 +72,7 @@ export function createStepperHistory(param: string): StepperHistoryHandle {
   // (the document inherits the parent's origin, but the synthesized
   // URL keeps the scheme), and `history.pushState` / `replaceState`
   // throw `SecurityError`. The user-visible step state still works
-  // — `current` / `goTo()` drive the form via the in-memory stepper
+  // — `current` / `goTo()` drive the form via the in-memory wizard
   // — they just won't appear in the URL bar. Silently swallowing
   // keeps the preview functional without coupling the library to
   // embed-detection logic.
@@ -83,7 +83,7 @@ export function createStepperHistory(param: string): StepperHistoryHandle {
     } catch {
       // SecurityError or similar — origin mismatch, sandboxed history,
       // or a host that's locked down the History API. No remediation
-      // possible here; the in-memory stepper state remains the source
+      // possible here; the in-memory wizard state remains the source
       // of truth.
     }
   }

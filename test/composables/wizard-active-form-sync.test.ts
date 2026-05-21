@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
@@ -11,7 +11,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * sync `defaultValues` on the active step (or any step). Sync
  * values resolve at `buildFreshState` — before any microtask
  * flush — so they are already in `form.values` by the time
- * `useStepper` claims keys. The claim is a no-op for sync forms.
+ * `useWizard` claims keys. The claim is a no-op for sync forms.
  *
  * Without this guard, refactoring the trichotomy branch later could
  * accidentally route sync paths through the deferral signal.
@@ -35,7 +35,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — active form with sync defaults', () => {
+describe('useWizard — active form with sync defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -45,11 +45,11 @@ describe('useStepper — active form with sync defaults', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({
         schema: schemaA,
-        key: 'stepper-sync-a',
+        key: 'wizard-sync-a',
         defaultValues: { a: 'A-sync' },
       })
-      const b = useForm({ schema: schemaB, key: 'stepper-sync-b' })
-      return { stepper: useStepper([a, b], {}), a, b }
+      const b = useForm({ schema: schemaB, key: 'wizard-sync-b' })
+      return { wizard: useWizard([a, b], {}), a, b }
     })
     apps.push(app)
     expect(result.a.values.a).toBe('A-sync')
@@ -58,13 +58,13 @@ describe('useStepper — active form with sync defaults', () => {
 
   it('sync defaults on a non-current step are visible at construction', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'stepper-sync-2-a' })
+      const a = useForm({ schema: schemaA, key: 'wizard-sync-2-a' })
       const b = useForm({
         schema: schemaB,
-        key: 'stepper-sync-2-b',
+        key: 'wizard-sync-2-b',
         defaultValues: { b: 'B-sync' },
       })
-      return { stepper: useStepper([a, b], {}), a, b }
+      return { wizard: useWizard([a, b], {}), a, b }
     })
     apps.push(app)
     expect(result.b.values.b).toBe('B-sync')

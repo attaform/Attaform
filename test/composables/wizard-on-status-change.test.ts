@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import type { FormStatus } from '../../src/runtime/types/types-wizard'
 
@@ -11,7 +11,7 @@ import type { FormStatus } from '../../src/runtime/types/types-wizard'
  * `onStatusChange` fires on each material change to a form's status —
  * a change to `isValid`, `isDirty`, `isSubmitted`, or `errorCount`.
  * It's immediate (no debounce). Async return is fire-and-forget (the
- * stepper does NOT await it).
+ * wizard does NOT await it).
  */
 
 const cargoSchema = z.object({
@@ -35,7 +35,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — onStatusChange material-change firing', () => {
+describe('useWizard — onStatusChange material-change firing', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -46,7 +46,7 @@ describe('useStepper — onStatusChange material-change firing', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'osc-dirty-cargo' })
       return {
-        stepper: useStepper([cargo], {
+        wizard: useWizard([cargo], {
           onStatusChange: (status, form) => {
             calls.push({ formKey: form.key, status })
           },
@@ -68,7 +68,7 @@ describe('useStepper — onStatusChange material-change firing', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'osc-err-cargo' })
       return {
-        stepper: useStepper([cargo], {
+        wizard: useWizard([cargo], {
           onStatusChange: (status) => {
             calls.push(status)
           },
@@ -93,7 +93,7 @@ describe('useStepper — onStatusChange material-change firing', () => {
         defaultValues: { weight: 5, description: 'box' },
       })
       return {
-        stepper: useStepper([cargo], {
+        wizard: useWizard([cargo], {
           onStatusChange: (status) => {
             calls.push(status)
           },
@@ -117,7 +117,7 @@ describe('useStepper — onStatusChange material-change firing', () => {
       const a = useForm({ schema: cargoSchema, key: 'osc-block-a' })
       const b = useForm({ schema: reviewSchema, key: 'osc-block-b' })
       return {
-        stepper: useStepper([a, b], {
+        wizard: useWizard([a, b], {
           onStatusChange: () =>
             new Promise<void>((resolve) => {
               pending = true
@@ -136,8 +136,8 @@ describe('useStepper — onStatusChange material-change firing', () => {
     await nextTick()
     expect(pending).toBe(true)
     // Even with onStatusChange's promise still in-flight, nav is unblocked.
-    result.stepper.next()
-    expect(result.stepper.current.value).toBe('osc-block-b')
+    result.wizard.next()
+    expect(result.wizard.current.value).toBe('osc-block-b')
   })
 
   it('fires only once per material change (no chatter on identical writes)', async () => {
@@ -149,7 +149,7 @@ describe('useStepper — onStatusChange material-change firing', () => {
         defaultValues: { weight: 5, description: 'box' },
       })
       return {
-        stepper: useStepper([cargo], {
+        wizard: useWizard([cargo], {
           onStatusChange: () => {
             calls += 1
           },

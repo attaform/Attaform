@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `stepper.progress` is a normalised [0, 1] indicator. Default
+ * `wizard.progress` is a normalised [0, 1] indicator. Default
  * implementation is `valid_form_count / count`. Consumers can pass
  * a custom \`progress(forms)\` for weighted progress, skip-aware
  * progress, etc.
@@ -31,7 +31,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — progress', () => {
+describe('useWizard — progress', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -41,7 +41,7 @@ describe('useStepper — progress', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: reqSchema, key: 'pg-default-a' })
       const b = useForm({ schema: reqSchema, key: 'pg-default-b' })
-      return useStepper([a, b], {})
+      return useWizard([a, b], {})
     })
     apps.push(app)
     expect(result.progress.value).toBe(0)
@@ -55,7 +55,7 @@ describe('useStepper — progress', () => {
         defaultValues: { value: 'ready' },
       })
       const b = useForm({ schema: reqSchema, key: 'pg-half-b' })
-      return { stepper: useStepper([a, b], {}), a, b }
+      return { wizard: useWizard([a, b], {}), a, b }
     })
     apps.push(app)
     await result.a.validate()
@@ -64,14 +64,14 @@ describe('useStepper — progress', () => {
       await nextTick()
       if (!result.a.meta.validating) break
     }
-    expect(result.stepper.progress.value).toBeCloseTo(0.5, 5)
+    expect(result.wizard.progress.value).toBeCloseTo(0.5, 5)
   })
 
   it('override receives forms tuple and is the source of truth', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: okSchema, key: 'pg-over-a' })
       const b = useForm({ schema: okSchema, key: 'pg-over-b' })
-      return useStepper([a, b], {
+      return useWizard([a, b], {
         progress: (forms) => forms.length / 100,
       })
     })
@@ -88,7 +88,7 @@ describe('useStepper — progress', () => {
       })
       const b = useForm({ schema: reqSchema, key: 'pg-reactive-b' })
       return {
-        stepper: useStepper([a, b], {
+        wizard: useWizard([a, b], {
           progress: (forms) =>
             forms.filter((f) => {
               const meta = (f as unknown as { meta: { valid: boolean } }).meta
@@ -106,7 +106,7 @@ describe('useStepper — progress', () => {
       await nextTick()
       if (!result.a.meta.validating) break
     }
-    expect(result.stepper.progress.value).toBe(1)
+    expect(result.wizard.progress.value).toBe(1)
     result.b.setValue('value', 'ok')
     await result.b.validate()
     for (let i = 0; i < 16; i += 1) {
@@ -114,6 +114,6 @@ describe('useStepper — progress', () => {
       await nextTick()
       if (!result.b.meta.validating) break
     }
-    expect(result.stepper.progress.value).toBe(2)
+    expect(result.wizard.progress.value).toBe(2)
   })
 })

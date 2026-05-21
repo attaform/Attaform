@@ -1,15 +1,15 @@
 import { computed, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import { buildStepperStatusesProxy } from '../../src/runtime/core/wizard-statuses-proxy'
+import { buildWizardStatusesProxy } from '../../src/runtime/core/wizard-statuses-proxy'
 import type { FormStatus } from '../../src/runtime/types/types-wizard'
 
 /**
- * `buildStepperStatusesProxy(statusMap)` mirrors `form.values`'
+ * `buildWizardStatusesProxy(statusMap)` mirrors `form.values`'
  * call-or-read pattern at one level of depth.
  *
- *   stepper.statuses.cargo          // FormStatus (readable)
- *   stepper.statuses('cargo')       // FormStatus (callable single-key)
- *   stepper.statuses()              // Record<key, FormStatus> (callable no-arg)
+ *   wizard.statuses.cargo          // FormStatus (readable)
+ *   wizard.statuses('cargo')       // FormStatus (callable single-key)
+ *   wizard.statuses()              // Record<key, FormStatus> (callable no-arg)
  *
  * Reactivity contract: each per-key entry is a `ComputedRef<FormStatus>`,
  * unwrapped by the proxy at read time so consumers don't deal with
@@ -34,11 +34,11 @@ function makeProxy<K extends string>(map: Record<K, FormStatus>) {
       computed(() => (source as ReturnType<typeof ref<FormStatus>>).value),
     ])
   ) as Record<K, ReturnType<typeof computed<FormStatus>>>
-  const proxy = buildStepperStatusesProxy<StatusMap>(computeds)
+  const proxy = buildWizardStatusesProxy<StatusMap>(computeds)
   return { proxy, sources }
 }
 
-describe('buildStepperStatusesProxy', () => {
+describe('buildWizardStatusesProxy', () => {
   it('exposes per-key entries via property access', () => {
     const { proxy } = makeProxy({
       a: { isValid: true, isDirty: false, isSubmitted: false, errorCount: 0 },

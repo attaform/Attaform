@@ -3,14 +3,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * `getServerActiveStep()` is the framework-agnostic SSR active-step
  * source. The consumer reads route state from their framework
  * (vue-router, Nuxt route, custom) and returns the active step key.
- * The stepper uses the return value to seed `current.value` BEFORE
+ * The wizard uses the return value to seed `current.value` BEFORE
  * any form-store settle microtask fires, so the active step's
  * `onServerPrefetch` runs and non-active steps stay deferred.
  *
@@ -39,7 +39,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — getServerActiveStep', () => {
+describe('useWizard — getServerActiveStep', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -50,7 +50,7 @@ describe('useStepper — getServerActiveStep', () => {
       const a = useForm({ schema: schemaA, key: 'gs-known-a' })
       const b = useForm({ schema: schemaB, key: 'gs-known-b' })
       const c = useForm({ schema: schemaC, key: 'gs-known-c' })
-      return useStepper([a, b, c], {
+      return useWizard([a, b, c], {
         getServerActiveStep: () => 'gs-known-b',
       })
     })
@@ -65,7 +65,7 @@ describe('useStepper — getServerActiveStep', () => {
       // Cast to bypass the literal-narrow getter type — simulates a
       // stale URL value reaching the getter. Runtime fallback should
       // catch it.
-      return useStepper([a, b], {
+      return useWizard([a, b], {
         getServerActiveStep: (() => 'gs-unk-zzz') as unknown as () =>
           | 'gs-unk-a'
           | 'gs-unk-b'
@@ -80,7 +80,7 @@ describe('useStepper — getServerActiveStep', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'gs-undef-a' })
       const b = useForm({ schema: schemaB, key: 'gs-undef-b' })
-      return useStepper([a, b], {
+      return useWizard([a, b], {
         getServerActiveStep: () => undefined,
       })
     })
@@ -94,7 +94,7 @@ describe('useStepper — getServerActiveStep', () => {
       const a = useForm({ schema: schemaA, key: 'gs-prio-a' })
       const b = useForm({ schema: schemaB, key: 'gs-prio-b' })
       const c = useForm({ schema: schemaC, key: 'gs-prio-c' })
-      return useStepper([a, b, c], {
+      return useWizard([a, b, c], {
         getServerActiveStep: () => 'gs-prio-c',
       })
     })
@@ -102,8 +102,8 @@ describe('useStepper — getServerActiveStep', () => {
     expect(result.current.value).toBe('gs-prio-c')
   })
 
-  it('the chosen step is the current claim in the stepper registry', () => {
-    // The deferral lifecycle is driven by `stepperRegistry.claim(key,
+  it('the chosen step is the current claim in the wizard registry', () => {
+    // The deferral lifecycle is driven by `wizardRegistry.claim(key,
     // isCurrent)`. If the getter's choice doesn't get the current
     // claim, its async factory would be deferred and never fire on
     // server. We assert the right step gets the current claim by
@@ -114,7 +114,7 @@ describe('useStepper — getServerActiveStep', () => {
       const a = useForm({ schema: schemaA, key: 'gs-claim-a' })
       const b = useForm({ schema: schemaB, key: 'gs-claim-b' })
       const c = useForm({ schema: schemaC, key: 'gs-claim-c' })
-      return useStepper([a, b, c], {
+      return useWizard([a, b, c], {
         getServerActiveStep: () => 'gs-claim-b',
       })
     })

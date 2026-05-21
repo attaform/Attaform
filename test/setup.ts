@@ -51,7 +51,7 @@ afterEach(() => {
 })
 
 // Reset `window.location` to the jsdom default before each test so
-// stepper history tests can't leak `?step=<key>` into the next test's
+// wizard history tests can't leak `?step=<key>` into the next test's
 // initial-seed read. The default `http://localhost:3000/` matches
 // jsdom's origin so `history.replaceState` won't trip a SecurityError.
 beforeEach(() => {
@@ -60,7 +60,7 @@ beforeEach(() => {
       window.history.replaceState(null, '', 'http://localhost:3000/')
     } catch {
       // jsdom origin policy may reject in unusual configs; the local
-      // beforeEach in stepper tests handles their cases explicitly.
+      // beforeEach in wizard tests handles their cases explicitly.
     }
   }
 })

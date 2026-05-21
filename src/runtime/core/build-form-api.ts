@@ -650,7 +650,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       submitError,
       // Scalar mirrors over the array / counter — meta is a single
       // sticky surface for both templates and the upcoming
-      // `useStepper`'s `FormStatus`, so the projections live here.
+      // `useWizard`'s `FormStatus`, so the projections live here.
       errorCount: computed(() => metaErrors.value.length),
       submitted: computed(() => submitCount.value > 0),
       // Per-`useForm()`-call identity. Stable for one mount; new on

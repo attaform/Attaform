@@ -1,14 +1,14 @@
 /**
- * Public types for `useStepper` — the multistep-form orchestrator.
+ * Public types for `useWizard` — the multistep-form orchestrator.
  *
- * The stepper composes existing `useForm` instances. Each step is a
+ * The wizard composes existing `useForm` instances. Each step is a
  * form with its own schema, key, validation, and persistence; the
- * stepper layers navigation, status aggregation, and activation
+ * wizard layers navigation, status aggregation, and activation
  * lifecycle on top.
  *
  * Discriminated `current` is the load-bearing type. Threading the
  * literal `K` through `useForm` (see `UseFormReturnType<..., K>`)
- * means `stepper.current.value` resolves to the union of participating
+ * means `wizard.current.value` resolves to the union of participating
  * keys, and `goTo(key)` autocompletes that union.
  */
 
@@ -16,10 +16,10 @@ import type { Ref } from 'vue'
 import type { FormKey } from './types-api'
 
 /**
- * Minimum structural shape the stepper requires from a participating
+ * Minimum structural shape the wizard requires from a participating
  * form. Constraining to the full `UseFormReturnType` would force
  * contravariant unification of the storage / read shapes across all
- * steps; the stepper does not care about those — it routes by `key`
+ * steps; the wizard does not care about those — it routes by `key`
  * at runtime and exposes the original form objects untouched.
  *
  * `UseFormReturnType<...>` satisfies this shape because its `key`
@@ -29,7 +29,7 @@ export type AnyForm = { readonly key: FormKey }
 
 /**
  * Extracts the literal key from a single keyed form's return type.
- * Lets the stepper discriminate `stepper.current.value` on the form
+ * Lets the wizard discriminate `wizard.current.value` on the form
  * that owns the active step.
  */
 export type FormKeyOf<F extends AnyForm> = F['key']
@@ -42,18 +42,18 @@ export type KeysOf<Forms extends readonly AnyForm[]> = Forms[number]['key']
 
 /**
  * Per-call navigation options. `replace` reserved for PR 4 (browser
- * history); included now so the call shape is stable across stepper
+ * history); included now so the call shape is stable across wizard
  * versions.
  */
-export type StepperNavOptions = {
+export type WizardNavOptions = {
   readonly replace?: boolean
 }
 
 /**
- * Per-form summary surface — what `stepper.statuses[key]` exposes
+ * Per-form summary surface — what `wizard.statuses[key]` exposes
  * (and what `defaultStatuses` seeds). Distinct from `form.meta`:
  * `FormStatus` is the cross-step rollup optimized for template
- * ergonomics (`{{ stepper.statuses.cargo.isValid }}`), while
+ * ergonomics (`{{ wizard.statuses.cargo.isValid }}`), while
  * `form.meta` carries the full per-form lifecycle surface.
  *
  * Field semantics:
@@ -74,7 +74,7 @@ export type FormStatus = {
 }
 
 /**
- * `defaultStatuses` and `stepper.statuses` both use this shape — a
+ * `defaultStatuses` and `wizard.statuses` both use this shape — a
  * record keyed by each form's key, with a `FormStatus` payload per
  * key. The mapped type preserves the literal union from
  * `KeysOf<Forms>`, so template autocomplete works without manual
@@ -85,12 +85,12 @@ export type Statuses<Forms extends readonly AnyForm[]> = {
 }
 
 /**
- * Flat error shape returned by `stepper.allErrors`. Cross-step
+ * Flat error shape returned by `wizard.allErrors`. Cross-step
  * aggregations need a stable identity per error — `formKey` + `path`
  * — so consumers can render a wizard-wide error summary that links
  * back to the offending field.
  *
- * Sort order: stepper's `forms` order, then each form's internal
+ * Sort order: wizard's `forms` order, then each form's internal
  * error order.
  */
 export type AggregateError = {
@@ -102,14 +102,14 @@ export type AggregateError = {
 
 /**
  * Mirror of `form.values`' call-or-read pattern, one level deep.
- * Drillable as `stepper.statuses.cargo.isValid` (readable), as
- * `stepper.statuses('cargo')` (callable single-key), or as
- * `stepper.statuses()` (callable no-arg returns the whole record).
+ * Drillable as `wizard.statuses.cargo.isValid` (readable), as
+ * `wizard.statuses('cargo')` (callable single-key), or as
+ * `wizard.statuses()` (callable no-arg returns the whole record).
  *
  * `Readonly<S>` provides the readable surface; the call signatures
- * shadow it for `stepper.statuses(key)` and `stepper.statuses()`.
+ * shadow it for `wizard.statuses(key)` and `wizard.statuses()`.
  */
-export type StepperStatusesProxy<S extends Record<string, FormStatus>> = ((
+export type WizardStatusesProxy<S extends Record<string, FormStatus>> = ((
   key?: keyof S
 ) => FormStatus | S) &
   Readonly<S>
@@ -122,20 +122,20 @@ export type StepperStatusesProxy<S extends Record<string, FormStatus>> = ((
  * embedded wizards where step state lives in component state.
  * `history: { param: 'wiz' }` customises the URL search param.
  */
-export type StepperHistoryConfig = {
+export type WizardHistoryConfig = {
   readonly enabled?: boolean
   readonly param?: string
 }
 
 /**
- * `useStepper(forms, options)` — options is positional-required per
+ * `useWizard(forms, options)` — options is positional-required per
  * the "required internal params" doctrine. PR 3 adds
  * `defaultStatuses`; PR 4 adds `history` + `getServerActiveStep`.
  */
-export type StepperOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]> = {
+export type WizardOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]> = {
   /**
    * Seed status payload used while a form is pre-resolved (async
-   * `defaultValues` in flight, or stepper-deferred non-current).
+   * `defaultValues` in flight, or wizard-deferred non-current).
    * Mirrors `defaultValues`' trichotomy: plain object, sync factory,
    * or async factory.
    *
@@ -167,7 +167,7 @@ export type StepperOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]
    */
   readonly onStatusChange?: (status: FormStatus, form: Forms[number]) => void | Promise<void>
   /**
-   * Optional progress override. When omitted, the stepper exposes
+   * Optional progress override. When omitted, the wizard exposes
    * \`progress.value\` as \`valid_form_count / count\` (normalised to
    * \`[0, 1]\`). When provided, the returned number is used as-is —
    * the consumer is responsible for any normalisation (\`[0, 1]\`
@@ -175,7 +175,7 @@ export type StepperOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]
    *
    * The override is invoked inside a Vue \`computed\` so it must be
    * synchronous and may only read reactive sources (form values,
-   * form.meta, stepper.statuses, etc.).
+   * form.meta, wizard.statuses, etc.).
    */
   readonly progress?: (forms: Forms) => number
   /**
@@ -188,12 +188,12 @@ export type StepperOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]
    * SSR-safe regardless of value: when `window` is undefined the
    * underlying primitive is a no-op.
    */
-  readonly history?: boolean | StepperHistoryConfig
+  readonly history?: boolean | WizardHistoryConfig
   /**
    * Framework-agnostic SSR active-step source. The library does not
    * import `useRoute()` or any router — the consumer reads route
    * state from whichever framework they use and returns the active
-   * step key. The stepper consults this BEFORE form-store settle
+   * step key. The wizard consults this BEFORE form-store settle
    * microtasks fire so the active step's `onServerPrefetch` runs
    * server-side and non-active steps stay deferred.
    *
@@ -206,7 +206,7 @@ export type StepperOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]
 
 /**
  * Cross-form value aggregate. Each form's `values` proxy is exposed
- * under its key — drillable as `stepper.allValues.cargo.weight`.
+ * under its key — drillable as `wizard.allValues.cargo.weight`.
  * Useful for review screens and final-submit aggregation.
  */
 export type AllValues<Forms extends readonly AnyForm[]> = {
@@ -214,28 +214,28 @@ export type AllValues<Forms extends readonly AnyForm[]> = {
 }
 
 /**
- * Return shape of `useStepper`. Reactive `current` is a readonly ref;
+ * Return shape of `useWizard`. Reactive `current` is a readonly ref;
  * `forms` is the original tuple (so consumers can index by key or
  * iterate); `count` is the static step count.
  *
  * `statuses` is a callable readonly proxy over `Statuses<Forms>` —
- * readable as `stepper.statuses.cargo.isValid`, callable as
- * `stepper.statuses('cargo')` or `stepper.statuses()`. Each entry
+ * readable as `wizard.statuses.cargo.isValid`, callable as
+ * `wizard.statuses('cargo')` or `wizard.statuses()`. Each entry
  * derives from the matching form's `meta`.
  *
  * `allValues` exposes each form's `values` proxy under its key for
  * cross-step review screens. `allErrors` is the flat error list across
  * all forms, ordered by `forms` then per-form order.
  */
-export type UseStepperReturnType<Forms extends readonly AnyForm[]> = {
+export type UseWizardReturnType<Forms extends readonly AnyForm[]> = {
   readonly current: Readonly<Ref<KeysOf<Forms>>>
   readonly forms: Forms
   readonly count: number
-  readonly statuses: StepperStatusesProxy<Statuses<Forms>>
+  readonly statuses: WizardStatusesProxy<Statuses<Forms>>
   readonly allValues: AllValues<Forms>
   readonly allErrors: Readonly<Ref<readonly AggregateError[]>>
   readonly progress: Readonly<Ref<number>>
-  readonly next: (options?: StepperNavOptions) => void
-  readonly back: (options?: StepperNavOptions) => void
-  readonly goTo: (key: KeysOf<Forms>, options?: StepperNavOptions) => void
+  readonly next: (options?: WizardNavOptions) => void
+  readonly back: (options?: WizardNavOptions) => void
+  readonly goTo: (key: KeysOf<Forms>, options?: WizardNavOptions) => void
 }

@@ -9,8 +9,8 @@ import {
 } from 'vue'
 import { useRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
-import { createStepperHistory, NOOP_STEPPER_HISTORY } from '../core/wizard-history'
-import { buildStepperStatusesProxy } from '../core/wizard-statuses-proxy'
+import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
+import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
 import type {
   AggregateError,
   AllValues,
@@ -18,14 +18,14 @@ import type {
   FormStatus,
   KeysOf,
   Statuses,
-  StepperHistoryConfig,
-  StepperNavOptions,
-  StepperOptions,
-  UseStepperReturnType,
+  WizardHistoryConfig,
+  WizardNavOptions,
+  WizardOptions,
+  UseWizardReturnType,
 } from '../types/types-wizard'
 
-/** Pending sentinel returned by `stepper.statuses[key]` when the form hasn't
- *  yet wired a FormStore (defensive — useStepper guards against this, but
+/** Pending sentinel returned by `wizard.statuses[key]` when the form hasn't
+ *  yet wired a FormStore (defensive — useWizard guards against this, but
  *  the snapshot fallback keeps templates from crashing). */
 const PENDING_STATUS: FormStatus = {
   isValid: false,
@@ -71,26 +71,26 @@ type StatusSourceForm = {
  *     the consumer is asking for by literal value.
  *
  * Each form gets a ref-count via `registry.trackConsumer(key)`. This
- * pins the FormStore for the stepper's lifetime — so a step's state
+ * pins the FormStore for the wizard's lifetime — so a step's state
  * survives even when its component is unmounted between visits
  * (v-if pattern). The ref is released on `onScopeDispose`.
  */
-export function useStepper<Forms extends readonly AnyForm[]>(
+export function useWizard<Forms extends readonly AnyForm[]>(
   forms: Forms,
-  options: StepperOptions<Forms> = {}
-): UseStepperReturnType<Forms> {
+  options: WizardOptions<Forms> = {}
+): UseWizardReturnType<Forms> {
   if (forms.length === 0) {
-    throw new Error('[attaform] useStepper requires at least one form.')
+    throw new Error('[attaform] useWizard requires at least one form.')
   }
 
   const seenKeys = new Set<string>()
   for (const form of forms) {
     if (form.key === '') {
-      throw new Error('[attaform] useStepper: every form must have a non-empty key.')
+      throw new Error('[attaform] useWizard: every form must have a non-empty key.')
     }
     if (seenKeys.has(form.key)) {
       throw new Error(
-        `[attaform] useStepper: duplicate form key "${form.key}". Each step needs a distinct key.`
+        `[attaform] useWizard: duplicate form key "${form.key}". Each step needs a distinct key.`
       )
     }
     seenKeys.add(form.key)
@@ -103,23 +103,23 @@ export function useStepper<Forms extends readonly AnyForm[]>(
   // primitive replaced with a no-op (no DOM access, no popstate
   // subscription).
   const historyOption = options.history
-  const historyConfig: Required<StepperHistoryConfig> = {
+  const historyConfig: Required<WizardHistoryConfig> = {
     enabled: historyOption !== false,
     param:
       typeof historyOption === 'object' && historyOption !== null
         ? (historyOption.param ?? 'step')
         : 'step',
   }
-  const stepperHistory = historyConfig.enabled
-    ? createStepperHistory(historyConfig.param)
-    : NOOP_STEPPER_HISTORY
+  const wizardHistory = historyConfig.enabled
+    ? createWizardHistory(historyConfig.param)
+    : NOOP_WIZARD_HISTORY
   // Resolve initial step. Priority: `getServerActiveStep()` (SSR
   // source of truth, returned identically on client) → URL
   // `?step=<key>` (reload preservation when no getter is wired) →
   // `forms[0]` fallback. Unknown keys at any level fall through so a
   // stale link can't crash construction.
   const fromGetter = options.getServerActiveStep?.()
-  const fromUrl = stepperHistory.read()
+  const fromUrl = wizardHistory.read()
   let initialKey: KeysOf<Forms>
   if (fromGetter !== undefined && formKeys.includes(fromGetter as string)) {
     initialKey = fromGetter as KeysOf<Forms>
@@ -132,7 +132,7 @@ export function useStepper<Forms extends readonly AnyForm[]>(
 
   // Replace the URL so it always reflects the active step on mount —
   // idempotent when the URL already named the correct key.
-  stepperHistory.replace(initialKey as string)
+  wizardHistory.replace(initialKey as string)
 
   const registry = useRegistry()
 
@@ -199,7 +199,7 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     for (const seedKey of Object.keys(seedRef.value)) {
       if (!seenKeys.has(seedKey)) {
         throw new Error(
-          `[attaform] useStepper.defaultStatuses: key "${seedKey}" is not in the forms array. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
+          `[attaform] useWizard.defaultStatuses: key "${seedKey}" is not in the forms array. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
         )
       }
     }
@@ -238,7 +238,7 @@ export function useStepper<Forms extends readonly AnyForm[]>(
       return PENDING_STATUS
     })
   }
-  const statuses = buildStepperStatusesProxy<Statuses<Forms>>(
+  const statuses = buildWizardStatusesProxy<Statuses<Forms>>(
     statusComputeds as Record<keyof Statuses<Forms>, ComputedRef<FormStatus>>
   )
 
@@ -281,7 +281,7 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     }
     onScopeDispose(() => {
       for (const release of releases) release()
-      stepperHistory.dispose()
+      wizardHistory.dispose()
     })
   }
 
@@ -375,8 +375,8 @@ export function useStepper<Forms extends readonly AnyForm[]>(
         void nextForm.activate()
       }
     }
-    if (historyMode === 'push') stepperHistory.push(nextKey as string)
-    else if (historyMode === 'replace') stepperHistory.replace(nextKey as string)
+    if (historyMode === 'push') wizardHistory.push(nextKey as string)
+    else if (historyMode === 'replace') wizardHistory.replace(nextKey as string)
     // Synthetic nav-away invocation. `onStatusChange` fires for the
     // form being left, regardless of whether anything materially
     // changed — useful for autosave-on-step-leave patterns.
@@ -395,17 +395,17 @@ export function useStepper<Forms extends readonly AnyForm[]>(
   // Browser back/forward → restore current from URL. The handler is a
   // no-op when the URL no longer names a known key (consumer linked
   // outside the wizard, or popped past the original entry).
-  stepperHistory.subscribe((key) => {
+  wizardHistory.subscribe((key) => {
     if (key === undefined) return
     if (!seenKeys.has(key)) return
     setCurrent(key as KeysOf<Forms>, 'silent')
   })
 
-  function next(navOptions?: StepperNavOptions): void {
+  function next(navOptions?: WizardNavOptions): void {
     const idx = indexOf(current.value as string)
     if (idx === formKeys.length - 1) {
       console.warn(
-        `[attaform] useStepper.next(): already on the last step ("${current.value as string}"). Disable the button at the end of the wizard.`
+        `[attaform] useWizard.next(): already on the last step ("${current.value as string}"). Disable the button at the end of the wizard.`
       )
       return
     }
@@ -415,11 +415,11 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     )
   }
 
-  function back(navOptions?: StepperNavOptions): void {
+  function back(navOptions?: WizardNavOptions): void {
     const idx = indexOf(current.value as string)
     if (idx === 0) {
       console.warn(
-        `[attaform] useStepper.back(): already on the first step ("${current.value as string}"). Disable the button at the start of the wizard.`
+        `[attaform] useWizard.back(): already on the first step ("${current.value as string}"). Disable the button at the start of the wizard.`
       )
       return
     }
@@ -429,10 +429,10 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     )
   }
 
-  function goTo(key: KeysOf<Forms>, navOptions?: StepperNavOptions): void {
+  function goTo(key: KeysOf<Forms>, navOptions?: WizardNavOptions): void {
     if (!seenKeys.has(key as string)) {
       throw new Error(
-        `[attaform] useStepper.goTo("${String(key)}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
+        `[attaform] useWizard.goTo("${String(key)}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
       )
     }
     setCurrent(key, navOptions?.replace === true ? 'replace' : 'push')
@@ -449,5 +449,5 @@ export function useStepper<Forms extends readonly AnyForm[]>(
     next,
     back,
     goTo,
-  } as UseStepperReturnType<Forms>
+  } as UseWizardReturnType<Forms>
 }

@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Browser-history integration. By default, `useStepper` records each
+ * Browser-history integration. By default, `useWizard` records each
  * navigation in `window.history` so the browser back/forward buttons
  * walk through wizard steps and reload preserves the current step.
  *
@@ -38,7 +38,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — history wired', () => {
+describe('useWizard — history wired', () => {
   const apps: App[] = []
 
   beforeEach(() => {
@@ -55,7 +55,7 @@ describe('useStepper — history wired', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hw-next-a' })
       const b = useForm({ schema: schemaB, key: 'hw-next-b' })
-      return useStepper([a, b], {})
+      return useWizard([a, b], {})
     })
     apps.push(app)
     pushSpy.mockClear()
@@ -72,7 +72,7 @@ describe('useStepper — history wired', () => {
       const a = useForm({ schema: schemaA, key: 'hw-go-a' })
       const b = useForm({ schema: schemaB, key: 'hw-go-b' })
       const c = useForm({ schema: schemaC, key: 'hw-go-c' })
-      return useStepper([a, b, c], {})
+      return useWizard([a, b, c], {})
     })
     apps.push(app)
     pushSpy.mockClear()
@@ -94,7 +94,7 @@ describe('useStepper — history wired', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hw-pop-a' })
       const b = useForm({ schema: schemaB, key: 'hw-pop-b' })
-      return useStepper([a, b], {})
+      return useWizard([a, b], {})
     })
     apps.push(app)
     result.next()
@@ -110,7 +110,7 @@ describe('useStepper — history wired', () => {
       const a = useForm({ schema: schemaA, key: 'hw-seed-a' })
       const b = useForm({ schema: schemaB, key: 'hw-seed-b' })
       const c = useForm({ schema: schemaC, key: 'hw-seed-c' })
-      return useStepper([a, b, c], {})
+      return useWizard([a, b, c], {})
     })
     apps.push(app)
     expect(result.current.value).toBe('hw-seed-b')
@@ -120,7 +120,7 @@ describe('useStepper — history wired', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hw-init-a' })
       const b = useForm({ schema: schemaB, key: 'hw-init-b' })
-      return useStepper([a, b], {})
+      return useWizard([a, b], {})
     })
     apps.push(app)
     expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-init-a')
@@ -132,7 +132,7 @@ describe('useStepper — history wired', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hw-unknown-a' })
       const b = useForm({ schema: schemaB, key: 'hw-unknown-b' })
-      return useStepper([a, b], {})
+      return useWizard([a, b], {})
     })
     apps.push(app)
     expect(result.current.value).toBe('hw-unknown-a')

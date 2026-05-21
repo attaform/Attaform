@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `stepper.statuses` derives each `FormStatus` from the matching
+ * `wizard.statuses` derives each `FormStatus` from the matching
  * form's `meta`. Reactivity flows: form values mutate → meta updates →
  * status updates → template re-renders.
  */
@@ -33,7 +33,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — statuses derived from form.meta', () => {
+describe('useWizard — statuses derived from form.meta', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -43,7 +43,7 @@ describe('useStepper — statuses derived from form.meta', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'st-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-review' })
-      return useStepper([cargo, review], {})
+      return useWizard([cargo, review], {})
     })
     apps.push(app)
     expect(result.statuses['st-cargo'].isDirty).toBe(false)
@@ -55,28 +55,28 @@ describe('useStepper — statuses derived from form.meta', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'st-dirty-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-dirty-review' })
-      return { stepper: useStepper([cargo, review], {}), cargo, review }
+      return { wizard: useWizard([cargo, review], {}), cargo, review }
     })
     apps.push(app)
-    expect(result.stepper.statuses['st-dirty-cargo'].isDirty).toBe(false)
+    expect(result.wizard.statuses['st-dirty-cargo'].isDirty).toBe(false)
     result.cargo.setValue('description', 'box of widgets')
     await nextTick()
-    expect(result.stepper.statuses['st-dirty-cargo'].isDirty).toBe(true)
-    expect(result.stepper.statuses['st-dirty-review'].isDirty).toBe(false)
+    expect(result.wizard.statuses['st-dirty-cargo'].isDirty).toBe(true)
+    expect(result.wizard.statuses['st-dirty-review'].isDirty).toBe(false)
   })
 
   it('errorCount reflects form.meta.errorCount', async () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'st-err-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-err-review' })
-      return { stepper: useStepper([cargo, review], {}), cargo, review }
+      return { wizard: useWizard([cargo, review], {}), cargo, review }
     })
     apps.push(app)
     result.cargo.setValue('description', '')
     result.cargo.setValue('weight', 0)
     await result.cargo.validate()
-    expect(result.stepper.statuses['st-err-cargo'].errorCount).toBeGreaterThan(0)
-    expect(result.stepper.statuses['st-err-cargo'].isValid).toBe(false)
+    expect(result.wizard.statuses['st-err-cargo'].errorCount).toBeGreaterThan(0)
+    expect(result.wizard.statuses['st-err-cargo'].isValid).toBe(false)
   })
 
   it('isValid flips true once errors clear', async () => {
@@ -87,7 +87,7 @@ describe('useStepper — statuses derived from form.meta', () => {
         defaultValues: { weight: 5, description: 'box' },
       })
       const review = useForm({ schema: reviewSchema, key: 'st-clear-review' })
-      return { stepper: useStepper([cargo, review], {}), cargo, review }
+      return { wizard: useWizard([cargo, review], {}), cargo, review }
     })
     apps.push(app)
     await result.cargo.validate()
@@ -97,8 +97,8 @@ describe('useStepper — statuses derived from form.meta', () => {
       if (!result.cargo.meta.validating) break
     }
     expect(result.cargo.meta.valid).toBe(true)
-    expect(result.stepper.statuses['st-clear-cargo'].isValid).toBe(true)
-    expect(result.stepper.statuses['st-clear-cargo'].errorCount).toBe(0)
+    expect(result.wizard.statuses['st-clear-cargo'].isValid).toBe(true)
+    expect(result.wizard.statuses['st-clear-cargo'].errorCount).toBe(0)
   })
 
   it('callable form returns the live FormStatus snapshot', async () => {
@@ -108,7 +108,7 @@ describe('useStepper — statuses derived from form.meta', () => {
         key: 'st-call-cargo',
         defaultValues: { weight: 5, description: 'box' },
       })
-      return { stepper: useStepper([cargo], {}), cargo }
+      return { wizard: useWizard([cargo], {}), cargo }
     })
     apps.push(app)
     await result.cargo.validate()
@@ -117,9 +117,9 @@ describe('useStepper — statuses derived from form.meta', () => {
       await nextTick()
       if (!result.cargo.meta.validating) break
     }
-    const single = result.stepper.statuses('st-call-cargo')
+    const single = result.wizard.statuses('st-call-cargo')
     expect((single as { isValid: boolean }).isValid).toBe(true)
-    const all = result.stepper.statuses() as Record<string, { isValid: boolean }>
+    const all = result.wizard.statuses() as Record<string, { isValid: boolean }>
     const cargoStatus = all['st-call-cargo'] as { isValid: boolean }
     expect(cargoStatus.isValid).toBe(true)
   })

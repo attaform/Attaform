@@ -5,21 +5,21 @@ import type {
   AggregateError,
   FormStatus,
   Statuses,
-  StepperStatusesProxy,
+  WizardStatusesProxy,
 } from '../../src/runtime/types/types-wizard'
 
 /**
  * Type-level checks for PR3's status surface. `FormStatus` is the
  * per-form summary derived from `form.meta`. `Statuses<Forms>` is the
- * keyed record used by `stepper.statuses` and by the
+ * keyed record used by `wizard.statuses` and by the
  * `defaultStatuses` seed option. `AggregateError` is the flattened
- * shape returned by `stepper.allErrors`. `StepperStatusesProxy` mirrors
+ * shape returned by `wizard.allErrors`. `WizardStatusesProxy` mirrors
  * the call-or-read pattern from `form.values` but at a single depth.
  */
 
 const schema = z.object({ email: z.string() })
 
-describe('stepper status types', () => {
+describe('wizard status types', () => {
   it('FormStatus has isValid / isDirty / isSubmitted / errorCount fields', () => {
     expectTypeOf<FormStatus>().toEqualTypeOf<{
       readonly isValid: boolean
@@ -51,9 +51,9 @@ describe('stepper status types', () => {
     }>()
   })
 
-  it('StepperStatusesProxy carries both call and read surfaces', () => {
+  it('WizardStatusesProxy carries both call and read surfaces', () => {
     type StatusMap = { readonly a: FormStatus; readonly b: FormStatus }
-    type Proxy = StepperStatusesProxy<StatusMap>
+    type Proxy = WizardStatusesProxy<StatusMap>
     function _neverInvoked() {
       const proxy = ((..._args: unknown[]) => ({})) as Proxy
       const status = proxy.a

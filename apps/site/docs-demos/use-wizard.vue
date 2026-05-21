@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { useForm, useStepper } from 'attaform/zod'
+  import { useForm, useWizard } from 'attaform/zod'
   import { z } from 'zod'
 
   const account = useForm({
@@ -7,7 +7,7 @@
       email: z.email('Enter a valid email'),
       password: z.string().min(8, 'At least 8 characters'),
     }),
-    key: 'docs-demo-stepper-account',
+    key: 'docs-demo-wizard-account',
   })
 
   const profile = useForm({
@@ -15,7 +15,7 @@
       name: z.string().min(1, 'Name is required'),
       city: z.string(),
     }),
-    key: 'docs-demo-stepper-profile',
+    key: 'docs-demo-wizard-profile',
   })
 
   const review = useForm({
@@ -24,10 +24,10 @@
       tos: z.literal(true, 'Accept the terms to continue'),
     }),
     defaultValues: { newsletter: false, tos: false },
-    key: 'docs-demo-stepper-review',
+    key: 'docs-demo-wizard-review',
   })
 
-  const stepper = useStepper([account, profile, review] as const)
+  const wizard = useWizard([account, profile, review] as const)
 
   async function onFinish() {
     toast.success(`Welcome ${profile.values.name || profile.values.city || 'aboard'}`, {
@@ -44,23 +44,23 @@
   <div class="wizard">
     <ol class="rail">
       <li
-        v-for="(form, i) in stepper.forms"
+        v-for="(form, i) in wizard.forms"
         :key="form.key"
         :class="{
-          done: stepper.statuses[form.key].isValid && stepper.current.value !== form.key,
-          current: stepper.current.value === form.key,
+          done: wizard.statuses[form.key].isValid && wizard.current.value !== form.key,
+          current: wizard.current.value === form.key,
         }"
       >
         <span class="step-num">{{ i + 1 }}</span>
-        <span class="step-label">{{ form.key.replace('docs-demo-stepper-', '') }}</span>
+        <span class="step-label">{{ form.key.replace('docs-demo-wizard-', '') }}</span>
       </li>
     </ol>
 
     <div class="progress">
-      <div class="progress-fill" :style="{ width: `${stepper.progress.value * 100}%` }"></div>
+      <div class="progress-fill" :style="{ width: `${wizard.progress.value * 100}%` }"></div>
     </div>
 
-    <form v-if="stepper.current.value === 'docs-demo-stepper-account'" @submit.prevent>
+    <form v-if="wizard.current.value === 'docs-demo-wizard-account'" @submit.prevent>
       <label>
         Email
         <input v-register="account.register('email')" autocomplete="email" />
@@ -77,7 +77,7 @@
       </label>
     </form>
 
-    <form v-else-if="stepper.current.value === 'docs-demo-stepper-profile'" @submit.prevent>
+    <form v-else-if="wizard.current.value === 'docs-demo-wizard-profile'" @submit.prevent>
       <label>
         Name
         <input v-register="profile.register('name')" />
@@ -89,7 +89,7 @@
       </label>
     </form>
 
-    <form v-else-if="stepper.current.value === 'docs-demo-stepper-review'" @submit.prevent>
+    <form v-else-if="wizard.current.value === 'docs-demo-wizard-review'" @submit.prevent>
       <label class="checkbox">
         <input v-register="review.register('newsletter')" type="checkbox" />
         Subscribe to the newsletter
@@ -105,20 +105,20 @@
       <button
         type="button"
         class="ghost"
-        :disabled="stepper.current.value === stepper.forms[0].key"
-        @click="stepper.back()"
+        :disabled="wizard.current.value === wizard.forms[0].key"
+        @click="wizard.back()"
       >
         ← Back
       </button>
       <span class="step-of">
-        Step {{ stepper.forms.findIndex((f) => f.key === stepper.current.value) + 1 }} of
-        {{ stepper.count }}
+        Step {{ wizard.forms.findIndex((f) => f.key === wizard.current.value) + 1 }} of
+        {{ wizard.count }}
       </span>
       <button
-        v-if="stepper.current.value !== stepper.forms[stepper.forms.length - 1]!.key"
+        v-if="wizard.current.value !== wizard.forms[wizard.forms.length - 1]!.key"
         type="button"
         class="primary"
-        @click="stepper.next()"
+        @click="wizard.next()"
       >
         Next →
       </button>
@@ -127,7 +127,7 @@
 
     <p class="hint">
       Each step is its own <code>useForm</code> with its own schema.
-      <code>useStepper</code> orchestrates navigation, aggregates statuses, and exposes
+      <code>useWizard</code> orchestrates navigation, aggregates statuses, and exposes
       <code>progress</code> as the fraction of valid steps.
     </p>
   </div>

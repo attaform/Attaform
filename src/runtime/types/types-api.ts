@@ -1063,7 +1063,7 @@ export type UseFormConfiguration<
    * throw `ReservedFormKeyError` if passed.
    *
    * When passed as a string literal, the literal is preserved on
-   * `form.key` so `useStepper` and other consumers can discriminate
+   * `form.key` so `useWizard` and other consumers can discriminate
    * against the union of known keys at compile time.
    */
   key?: K

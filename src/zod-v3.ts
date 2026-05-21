@@ -31,7 +31,7 @@ export { useForm } from './runtime/composables/use-form'
 export { injectForm } from './runtime/composables/use-form-context'
 export { useRegister } from './runtime/composables/use-register'
 export type { UseRegisterReturn } from './runtime/composables/use-register'
-export { useStepper } from './runtime/composables/use-wizard'
+export { useWizard } from './runtime/composables/use-wizard'
 export type {
   AggregateError,
   AnyForm,
@@ -39,11 +39,11 @@ export type {
   FormStatus,
   KeysOf,
   Statuses,
-  StepperHistoryConfig,
-  StepperNavOptions,
-  StepperOptions,
-  StepperStatusesProxy,
-  UseStepperReturnType,
+  WizardHistoryConfig,
+  WizardNavOptions,
+  WizardOptions,
+  WizardStatusesProxy,
+  UseWizardReturnType,
 } from './runtime/types/types-wizard'
 export { zodAdapter } from './runtime/adapters/zod-v3'
 export { isZodSchemaType } from './runtime/adapters/zod-v3/helpers'

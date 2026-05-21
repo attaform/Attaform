@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import type { FormStatus } from '../../src/runtime/types/types-wizard'
 
@@ -35,7 +35,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — onStatusChange nav-away firing', () => {
+describe('useWizard — onStatusChange nav-away firing', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -47,7 +47,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
       const a = useForm({ schema: schemaA, key: 'navup-a' })
       const b = useForm({ schema: schemaB, key: 'navup-b' })
       return {
-        stepper: useStepper([a, b], {
+        wizard: useWizard([a, b], {
           onStatusChange: (_status, form) => {
             events.push({ formKey: form.key, reason: 'leave' })
           },
@@ -58,7 +58,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
     })
     apps.push(app)
     const baseline = events.length
-    result.stepper.next()
+    result.wizard.next()
     expect(events.length).toBeGreaterThan(baseline)
     expect(events[events.length - 1]!.formKey).toBe('navup-a')
   })
@@ -69,7 +69,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
       const a = useForm({ schema: schemaA, key: 'navback-a' })
       const b = useForm({ schema: schemaB, key: 'navback-b' })
       return {
-        stepper: useStepper([a, b], {
+        wizard: useWizard([a, b], {
           onStatusChange: (_s, f) => {
             events.push(f.key)
           },
@@ -79,9 +79,9 @@ describe('useStepper — onStatusChange nav-away firing', () => {
       }
     })
     apps.push(app)
-    result.stepper.next()
+    result.wizard.next()
     events.length = 0
-    result.stepper.back()
+    result.wizard.back()
     expect(events.some((k) => k === 'navback-b')).toBe(true)
   })
 
@@ -92,7 +92,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
       const b = useForm({ schema: schemaB, key: 'navgoto-b' })
       const c = useForm({ schema: schemaC, key: 'navgoto-c' })
       return {
-        stepper: useStepper([a, b, c], {
+        wizard: useWizard([a, b, c], {
           onStatusChange: (_s, f) => {
             events.push(f.key)
           },
@@ -103,7 +103,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
       }
     })
     apps.push(app)
-    result.stepper.goTo('navgoto-c')
+    result.wizard.goTo('navgoto-c')
     expect(events).toContain('navgoto-a')
   })
 
@@ -113,7 +113,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
       const a = useForm({ schema: schemaA, key: 'navnoop-a' })
       const b = useForm({ schema: schemaB, key: 'navnoop-b' })
       return {
-        stepper: useStepper([a, b], {
+        wizard: useWizard([a, b], {
           onStatusChange: (_s, f) => {
             events.push(f.key)
           },
@@ -127,10 +127,10 @@ describe('useStepper — onStatusChange nav-away firing', () => {
     const originalWarn = console.warn
     console.warn = () => {}
     try {
-      result.stepper.back()
-      result.stepper.next()
+      result.wizard.back()
+      result.wizard.next()
       const baseline = events.length
-      result.stepper.next()
+      result.wizard.next()
       expect(events.length).toBe(baseline)
     } finally {
       console.warn = originalWarn
@@ -147,7 +147,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
       })
       const b = useForm({ schema: schemaB, key: 'navpayload-b' })
       return {
-        stepper: useStepper([a, b], {
+        wizard: useWizard([a, b], {
           onStatusChange: (status, form) => {
             events.push({ formKey: form.key, status })
           },
@@ -158,7 +158,7 @@ describe('useStepper — onStatusChange nav-away firing', () => {
     })
     apps.push(app)
     const baseline = events.length
-    result.stepper.next()
+    result.wizard.next()
     const leaveEvents = events.slice(baseline).filter((e) => e.formKey === 'navpayload-a')
     expect(leaveEvents.length).toBeGreaterThan(0)
   })

@@ -351,7 +351,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * `true` once the form's effective defaults have been applied —
    * sync `defaultValues` at construction, or async factory whose
    * settle completed. Stays `false` for dormant lazy forms until they
-   * activate. Read by `useStepper` to decide whether seed status or
+   * activate. Read by `useWizard` to decide whether seed status or
    * live meta should surface.
    */
   readonly defaultsResolved: Ref<boolean>
@@ -1486,7 +1486,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // `true` once the form's effective defaults have been applied —
   // either a sync `defaultValues` at construction, or an async
   // factory whose settle completed. Stays `false` for dormant lazy
-  // forms until they activate. Read by `useStepper` to decide whether
+  // forms until they activate. Read by `useWizard` to decide whether
   // to surface seed status vs. live meta.
   const defaultsResolved = ref(false)
   // Lazy-activation state. `activated` flips `true` the moment the
@@ -3020,7 +3020,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // `validateAtPath` throws on schemas with always-running async
     // refines and falls through to async-only). The window between
     // `reset()` returning and the re-queued async pass landing reads
-    // `valid: true` for every container — the docs-site stepper
+    // `valid: true` for every container — the docs-site wizard
     // demo's step titles turn green for ~600ms-1.5s. Restoring the
     // gate keeps containers `valid: false` throughout that window.
     firstValidationDone.value = !strict || schema.needsAsyncValidation?.() !== true

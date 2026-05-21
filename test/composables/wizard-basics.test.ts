@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { UseStepperReturnType, AnyForm } from '../../src/runtime/types/types-wizard'
+import type { UseWizardReturnType, AnyForm } from '../../src/runtime/types/types-wizard'
 
 /**
- * `useStepper` — basic navigation. Three forms keyed `a / b / c`,
- * mounted in setup order. The stepper records its forms and
+ * `useWizard` — basic navigation. Three forms keyed `a / b / c`,
+ * mounted in setup order. The wizard records its forms and
  * exposes:
  *
  *   - `count`, `current`, `forms` (introspection)
@@ -24,7 +24,7 @@ import type { UseStepperReturnType, AnyForm } from '../../src/runtime/types/type
 
 const schema = z.object({ email: z.string() })
 
-function mountStepperHarness<R>(setup: () => R): { app: App; result: R } {
+function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
   const handle: { result?: R } = {}
   const App = defineComponent({
     setup() {
@@ -40,7 +40,7 @@ function mountStepperHarness<R>(setup: () => R): { app: App; result: R } {
 }
 
 /**
- * Like `mountStepperHarness`, but captures any error thrown inside
+ * Like `mountWizardHarness`, but captures any error thrown inside
  * `setup` and re-throws it on the test thread. The app's
  * `errorHandler` otherwise swallows setup-time throws — we want
  * `expect(() => ...).toThrow()` to actually see them.
@@ -65,22 +65,22 @@ function mountAndCaptureSetupError(setup: () => unknown): void {
   if (captured !== undefined) throw captured
 }
 
-type StepperWithForms<Keys extends readonly string[]> = UseStepperReturnType<
+type WizardWithForms<Keys extends readonly string[]> = UseWizardReturnType<
   ReadonlyArray<AnyForm & { readonly key: Keys[number] }>
 >
 
-describe('useStepper — basic navigation', () => {
+describe('useWizard — basic navigation', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
   it('exposes count, forms, and initial current', () => {
-    const { app, result } = mountStepperHarness(() => {
+    const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
       const c = useForm({ schema, key: 'c' })
-      return useStepper([a, b, c], {}) as StepperWithForms<['a', 'b', 'c']>
+      return useWizard([a, b, c], {}) as WizardWithForms<['a', 'b', 'c']>
     })
     apps.push(app)
     expect(result.count).toBe(3)
@@ -89,11 +89,11 @@ describe('useStepper — basic navigation', () => {
   })
 
   it('next() advances and back() retreats', () => {
-    const { app, result } = mountStepperHarness(() => {
+    const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
       const c = useForm({ schema, key: 'c' })
-      return useStepper([a, b, c], {}) as StepperWithForms<['a', 'b', 'c']>
+      return useWizard([a, b, c], {}) as WizardWithForms<['a', 'b', 'c']>
     })
     apps.push(app)
     result.next()
@@ -105,11 +105,11 @@ describe('useStepper — basic navigation', () => {
   })
 
   it('goTo(key) jumps directly', () => {
-    const { app, result } = mountStepperHarness(() => {
+    const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
       const c = useForm({ schema, key: 'c' })
-      return useStepper([a, b, c], {}) as StepperWithForms<['a', 'b', 'c']>
+      return useWizard([a, b, c], {}) as WizardWithForms<['a', 'b', 'c']>
     })
     apps.push(app)
     result.goTo('c')
@@ -123,10 +123,10 @@ describe('useStepper — basic navigation', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warnings.push(args.map((a) => String(a)).join(' '))
     })
-    const { app, result } = mountStepperHarness(() => {
+    const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
-      return useStepper([a, b], {}) as StepperWithForms<['a', 'b']>
+      return useWizard([a, b], {}) as WizardWithForms<['a', 'b']>
     })
     apps.push(app)
     result.next()
@@ -134,7 +134,7 @@ describe('useStepper — basic navigation', () => {
     result.next()
     expect(result.current.value).toBe('b')
     warnSpy.mockRestore()
-    expect(warnings.some((w) => w.includes('useStepper'))).toBe(true)
+    expect(warnings.some((w) => w.includes('useWizard'))).toBe(true)
   })
 
   it('back() at first step is a no-op and dev-warns', () => {
@@ -142,23 +142,23 @@ describe('useStepper — basic navigation', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warnings.push(args.map((a) => String(a)).join(' '))
     })
-    const { app, result } = mountStepperHarness(() => {
+    const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
-      return useStepper([a, b], {}) as StepperWithForms<['a', 'b']>
+      return useWizard([a, b], {}) as WizardWithForms<['a', 'b']>
     })
     apps.push(app)
     result.back()
     expect(result.current.value).toBe('a')
     warnSpy.mockRestore()
-    expect(warnings.some((w) => w.includes('useStepper'))).toBe(true)
+    expect(warnings.some((w) => w.includes('useWizard'))).toBe(true)
   })
 
   it('goTo(unknown) throws', () => {
-    const { app, result } = mountStepperHarness(() => {
+    const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
-      return useStepper([a, b], {}) as StepperWithForms<['a', 'b']>
+      return useWizard([a, b], {}) as WizardWithForms<['a', 'b']>
     })
     apps.push(app)
     expect(() => (result.goTo as (key: string) => void)('typo')).toThrow(/typo/)
@@ -166,7 +166,7 @@ describe('useStepper — basic navigation', () => {
 
   it('throws at construction on empty forms array', () => {
     expect(() => {
-      mountAndCaptureSetupError(() => useStepper([], {}))
+      mountAndCaptureSetupError(() => useWizard([], {}))
     }).toThrow(/at least one form/i)
   })
 
@@ -175,7 +175,7 @@ describe('useStepper — basic navigation', () => {
       mountAndCaptureSetupError(() => {
         const a = useForm({ schema, key: 'a' })
         const b = useForm({ schema, key: 'a' })
-        return useStepper([a, b], {})
+        return useWizard([a, b], {})
       })
     }).toThrow(/duplicate/i)
   })

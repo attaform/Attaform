@@ -3,18 +3,18 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `stepper.allErrors` flattens each form's errors into one ordered
+ * `wizard.allErrors` flattens each form's errors into one ordered
  * list — useful for a wizard-wide error summary screen.
  *
  * Each entry carries `{ formKey, path, message, code? }` so the
  * consumer can render "Step Cargo > weight: weight required" and
  * link back to the offending field.
  *
- * Order: stepper.forms order, then form's internal error order.
+ * Order: wizard.forms order, then form's internal error order.
  */
 
 const cargoSchema = z.object({
@@ -38,7 +38,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — allErrors', () => {
+describe('useWizard — allErrors', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -56,7 +56,7 @@ describe('useStepper — allErrors', () => {
         key: 'ae-empty-review',
         defaultValues: { note: 'send it' },
       })
-      return useStepper([cargo, review], {})
+      return useWizard([cargo, review], {})
     })
     apps.push(app)
     expect(result.allErrors.value).toEqual([])
@@ -66,12 +66,12 @@ describe('useStepper — allErrors', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'ae-fill-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'ae-fill-review' })
-      return { stepper: useStepper([cargo, review], {}), cargo, review }
+      return { wizard: useWizard([cargo, review], {}), cargo, review }
     })
     apps.push(app)
     await result.cargo.validate()
     await result.review.validate()
-    const errors = result.stepper.allErrors.value
+    const errors = result.wizard.allErrors.value
     expect(errors.length).toBeGreaterThan(0)
     const cargoErrors = errors.filter((e) => e.formKey === 'ae-fill-cargo')
     const reviewErrors = errors.filter((e) => e.formKey === 'ae-fill-review')
@@ -87,12 +87,12 @@ describe('useStepper — allErrors', () => {
       const cargo = useForm({ schema: cargoSchema, key: 'ae-order-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'ae-order-review' })
       // Order: [review, cargo] so review errors come first.
-      return { stepper: useStepper([review, cargo], {}), cargo, review }
+      return { wizard: useWizard([review, cargo], {}), cargo, review }
     })
     apps.push(app)
     await result.cargo.validate()
     await result.review.validate()
-    const errors = result.stepper.allErrors.value
+    const errors = result.wizard.allErrors.value
     if (errors.length >= 2) {
       const firstFormKey = errors[0]!.formKey
       const lastFormKey = errors[errors.length - 1]!.formKey

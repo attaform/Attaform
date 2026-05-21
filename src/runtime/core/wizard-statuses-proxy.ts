@@ -1,9 +1,9 @@
 import { computed, type ComputedRef } from 'vue'
 import { __DEV__ } from './dev'
-import type { FormStatus, StepperStatusesProxy } from '../types/types-wizard'
+import type { FormStatus, WizardStatusesProxy } from '../types/types-wizard'
 
 /**
- * Build the callable readonly Proxy that powers `stepper.statuses`.
+ * Build the callable readonly Proxy that powers `wizard.statuses`.
  *
  * Reactivity contract:
  *
@@ -17,22 +17,22 @@ import type { FormStatus, StepperStatusesProxy } from '../types/types-wizard'
  *     them would corrupt the model. The proxy warns in dev and
  *     silently no-ops, matching `form.values`' contract.
  *
- *   - **Callable single-key + no-arg.** `stepper.statuses('cargo')`
- *     returns the same `FormStatus` as `stepper.statuses.cargo`.
- *     `stepper.statuses()` returns the full record. Both call
+ *   - **Callable single-key + no-arg.** `wizard.statuses('cargo')`
+ *     returns the same `FormStatus` as `wizard.statuses.cargo`.
+ *     `wizard.statuses()` returns the full record. Both call
  *     surfaces unwrap the computeds for a snapshot read.
  *
  *   - **JSON.stringify works.** `toJSON` returns the snapshot
- *     record so `JSON.stringify(stepper.statuses)` serializes the
+ *     record so `JSON.stringify(wizard.statuses)` serializes the
  *     active status set.
  *
  * Topology note: one level deep (no nested chaining), so this is
  * roughly half the LOC of `form.values`' proxy — no path-walking,
  * no canonicalisation, no recursive descent.
  */
-export function buildStepperStatusesProxy<S extends Record<string, FormStatus>>(
+export function buildWizardStatusesProxy<S extends Record<string, FormStatus>>(
   statuses: Record<keyof S, ComputedRef<FormStatus>>
-): StepperStatusesProxy<S> {
+): WizardStatusesProxy<S> {
   const snapshot = computed(() => {
     const result: Record<string, FormStatus> = {}
     for (const key of Object.keys(statuses)) {
@@ -41,7 +41,7 @@ export function buildStepperStatusesProxy<S extends Record<string, FormStatus>>(
     return result as S
   })
 
-  const target = (() => {}) as unknown as StepperStatusesProxy<S>
+  const target = (() => {}) as unknown as WizardStatusesProxy<S>
 
   const proxyToString = (): string => JSON.stringify(snapshot.value)
   const proxyToPrimitive = (hint: string): string | number =>
@@ -91,7 +91,7 @@ export function buildStepperStatusesProxy<S extends Record<string, FormStatus>>(
     set(_, key) {
       if (__DEV__) {
         console.warn(
-          `[attaform] stepper.statuses is read-only — write to "${String(key)}" was ignored. Statuses derive from each form's meta; mutate the underlying form instead.`
+          `[attaform] wizard.statuses is read-only — write to "${String(key)}" was ignored. Statuses derive from each form's meta; mutate the underlying form instead.`
         )
       }
       return true
@@ -99,7 +99,7 @@ export function buildStepperStatusesProxy<S extends Record<string, FormStatus>>(
     deleteProperty(_, key) {
       if (__DEV__) {
         console.warn(
-          `[attaform] stepper.statuses is read-only — delete of "${String(key)}" was ignored.`
+          `[attaform] wizard.statuses is read-only — delete of "${String(key)}" was ignored.`
         )
       }
       return true

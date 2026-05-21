@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * `history: { param: '<name>' }` lets the consumer rename the URL
  * search-param key. Useful when `?step=...` collides with an
- * existing host-app query param, or when the stepper renders inside
+ * existing host-app query param, or when the wizard renders inside
  * a nested wizard that wants its own namespaced param.
  */
 
@@ -31,7 +31,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — history param customization', () => {
+describe('useWizard — history param customization', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -41,7 +41,7 @@ describe('useStepper — history param customization', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hp-write-a' })
       const b = useForm({ schema: schemaB, key: 'hp-write-b' })
-      return useStepper([a, b], { history: { param: 'wiz' } })
+      return useWizard([a, b], { history: { param: 'wiz' } })
     })
     apps.push(app)
     result.next()
@@ -55,7 +55,7 @@ describe('useStepper — history param customization', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hp-seed-a' })
       const b = useForm({ schema: schemaB, key: 'hp-seed-b' })
-      return useStepper([a, b], { history: { param: 'wiz' } })
+      return useWizard([a, b], { history: { param: 'wiz' } })
     })
     apps.push(app)
     expect(result.current.value).toBe('hp-seed-b')
@@ -66,7 +66,7 @@ describe('useStepper — history param customization', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hp-isol-a' })
       const b = useForm({ schema: schemaB, key: 'hp-isol-b' })
-      return useStepper([a, b], { history: { param: 'wiz' } })
+      return useWizard([a, b], { history: { param: 'wiz' } })
     })
     apps.push(app)
     expect(result.current.value).toBe('hp-isol-a')

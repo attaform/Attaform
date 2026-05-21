@@ -10,7 +10,7 @@
  * Scenario: a 4-form multistep wizard with the same compounding
  * pressure profile as the shipment-demo restructure (nested objects,
  * arrays of objects, tuples, discriminated unions). 4 useForm calls
- * + useStepper composition in a single scope.
+ * + useWizard composition in a single scope.
  *
  * The fixture is never executed at runtime — `_neverInvoked` shapes
  * the call-site inference so the typechecker exercises each surface
@@ -18,7 +18,7 @@
  */
 import { z } from 'zod'
 import { useForm } from '../../../dist/zod-v4'
-import { useStepper } from '../../../dist/index'
+import { useWizard } from '../../../dist/index'
 
 const referenceSchema = z.object({
   shipperRef: z.string(),
@@ -91,7 +91,7 @@ function _neverInvoked() {
   const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
   const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
 
-  const stepper = useStepper([refForm, cargoForm, serviceForm, reviewForm])
+  const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
 
   refForm.setValue('shipperRef', 'TRACK-001')
   cargoForm.setValue('items.0.sku', 'X')
@@ -100,9 +100,9 @@ function _neverInvoked() {
   serviceForm.setValue('pickup.city', 'Lusaka')
   serviceForm.setValue('delivery.country', 'ZM')
 
-  const refValid: boolean = stepper.statuses.reference.isValid
-  const cargoErr: number = stepper.statuses.cargo.errorCount
-  const current: 'reference' | 'cargo' | 'service' | 'review' = stepper.current.value
+  const refValid: boolean = wizard.statuses.reference.isValid
+  const cargoErr: number = wizard.statuses.cargo.errorCount
+  const current: 'reference' | 'cargo' | 'service' | 'review' = wizard.current.value
 
   cargoForm.handleSubmit((data) => {
     const items: Array<{ sku: string; quantity: number; weightKg: number }> = data.items

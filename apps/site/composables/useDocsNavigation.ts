@@ -134,7 +134,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Undo & redo', to: '/docs/cross-cutting-state/undo-redo' },
       { title: 'Multi-tab sync', to: '/docs/cross-cutting-state/multi-tab-sync' },
       { title: 'injectForm', to: '/docs/cross-cutting-state/inject-form' },
-      { title: 'useStepper', to: '/docs/cross-cutting-state/use-stepper' },
+      { title: 'useWizard', to: '/docs/cross-cutting-state/use-wizard' },
       { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
     ],
   },

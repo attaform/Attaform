@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
 import type { FormStatus } from '../../src/runtime/types/types-wizard'
 
 /**
- * `defaultStatuses` seeds `stepper.statuses[key]` BEFORE each form's
+ * `defaultStatuses` seeds `wizard.statuses[key]` BEFORE each form's
  * meta becomes live. Useful for resumable wizards — a server-sent
  * status payload says "step cargo: valid, step review: dirty" and
  * the wizard renders the right step-gate hints from first paint.
@@ -79,7 +79,7 @@ const dirtySeed: FormStatus = {
   errorCount: 1,
 }
 
-describe('useStepper — defaultStatuses', () => {
+describe('useWizard — defaultStatuses', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -97,7 +97,7 @@ describe('useStepper — defaultStatuses', () => {
         key: 'ds-plain-b',
         defaultValues: () => Promise.resolve({ b: 'B' }),
       })
-      return useStepper([a, b], {
+      return useWizard([a, b], {
         defaultStatuses: { 'ds-plain-a': validSeed, 'ds-plain-b': dirtySeed },
       })
     })
@@ -121,7 +121,7 @@ describe('useStepper — defaultStatuses', () => {
         key: 'ds-fn-b',
         defaultValues: () => Promise.resolve({ b: 'B' }),
       })
-      return useStepper([a, b], {
+      return useWizard([a, b], {
         defaultStatuses: () => {
           calls += 1
           return { 'ds-fn-a': validSeed, 'ds-fn-b': dirtySeed }
@@ -153,7 +153,7 @@ describe('useStepper — defaultStatuses', () => {
         defaultValues: () => Promise.resolve({ b: 'B' }),
       })
       return {
-        stepper: useStepper([a, b], {
+        wizard: useWizard([a, b], {
           defaultStatuses: () =>
             new Promise((r) => {
               resolveSeed = r
@@ -165,15 +165,15 @@ describe('useStepper — defaultStatuses', () => {
     })
     apps.push(app)
     // Both forms unresolved + seed pending → status pending sentinel.
-    expect(result.stepper.statuses['ds-async-a'].isValid).toBe(false)
-    expect(result.stepper.statuses['ds-async-a'].errorCount).toBe(0)
+    expect(result.wizard.statuses['ds-async-a'].isValid).toBe(false)
+    expect(result.wizard.statuses['ds-async-a'].errorCount).toBe(0)
 
     // Seed resolves while neither form has resolved — seed takes over.
     resolveSeed({ 'ds-async-a': validSeed, 'ds-async-b': dirtySeed })
-    await waitUntil(() => (result.stepper.statuses['ds-async-a'].isValid ? true : null))
-    expect(result.stepper.statuses['ds-async-a'].isValid).toBe(true)
-    expect(result.stepper.statuses['ds-async-b'].isDirty).toBe(true)
-    expect(result.stepper.statuses['ds-async-b'].errorCount).toBe(1)
+    await waitUntil(() => (result.wizard.statuses['ds-async-a'].isValid ? true : null))
+    expect(result.wizard.statuses['ds-async-a'].isValid).toBe(true)
+    expect(result.wizard.statuses['ds-async-b'].isDirty).toBe(true)
+    expect(result.wizard.statuses['ds-async-b'].errorCount).toBe(1)
 
     // Once form a's hydration settles, its meta takes over — `defaultsResolved`
     // flips and the status follows meta. Form b is still deferred (non-current)
@@ -184,8 +184,8 @@ describe('useStepper — defaultStatuses', () => {
       await Promise.resolve()
       if (!result.a.meta.validating) break
     }
-    expect(result.stepper.statuses['ds-async-b'].isDirty).toBe(true)
-    expect(result.stepper.statuses['ds-async-a']).toEqual({
+    expect(result.wizard.statuses['ds-async-b'].isDirty).toBe(true)
+    expect(result.wizard.statuses['ds-async-a']).toEqual({
       isValid: result.a.meta.valid,
       isDirty: result.a.meta.dirty,
       isSubmitted: result.a.meta.submitted,
@@ -201,7 +201,7 @@ describe('useStepper — defaultStatuses', () => {
         defaultValues: { a: 'A-sync' },
       })
       return {
-        stepper: useStepper([a], {
+        wizard: useWizard([a], {
           defaultStatuses: { 'ds-over-a': dirtySeed },
         }),
         a,
@@ -209,15 +209,15 @@ describe('useStepper — defaultStatuses', () => {
     })
     apps.push(app)
     // Sync-default form is not hydrating → meta wins from the start.
-    expect(result.stepper.statuses['ds-over-a'].isDirty).toBe(false)
-    expect(result.stepper.statuses['ds-over-a'].errorCount).toBe(0)
+    expect(result.wizard.statuses['ds-over-a'].isDirty).toBe(false)
+    expect(result.wizard.statuses['ds-over-a'].errorCount).toBe(0)
   })
 
   it('throws at construction when seed contains an unknown key', () => {
     const captured = mountAndCaptureSetupError(() => {
       const a = useForm({ schema: schemaA, key: 'ds-unk-a' })
       const b = useForm({ schema: schemaB, key: 'ds-unk-b' })
-      return useStepper([a, b], {
+      return useWizard([a, b], {
         defaultStatuses: {
           'ds-unk-a': validSeed,
           'ds-unk-typo': dirtySeed,

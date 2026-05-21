@@ -10,7 +10,7 @@ import { waitUntil } from '../utils/form-harness'
 
 /**
  * `form.meta.submitted` is the boolean mirror of `submitCount > 0`,
- * surfaced so templates and `useStepper`'s `FormStatus` can read a
+ * surfaced so templates and `useWizard`'s `FormStatus` can read a
  * single scalar instead of comparing the counter against zero.
  *
  * Once a form has been submitted at all (success or failure), the flag

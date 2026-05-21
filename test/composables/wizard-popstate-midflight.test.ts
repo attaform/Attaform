@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Mid-flight popstate safety. The stepper registry's one-shot
+ * Mid-flight popstate safety. The wizard registry's one-shot
  * activation contract must hold even when the user pops back-and-
  * forth between steps while a step's async factory is in flight:
  *
@@ -39,7 +39,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — popstate mid-flight safety', () => {
+describe('useWizard — popstate mid-flight safety', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -61,13 +61,13 @@ describe('useStepper — popstate mid-flight safety', () => {
           return factoryPromise
         },
       })
-      return { stepper: useStepper([a, b], {}), a, b }
+      return { wizard: useWizard([a, b], {}), a, b }
     })
     apps.push(app)
     expect(factoryCalls).toBe(0)
 
     // Activate B — factory starts (one call).
-    result.stepper.next()
+    result.wizard.next()
     await nextTick()
     expect(factoryCalls).toBe(1)
     expect(result.b.hydrating).toBe(true)
@@ -75,7 +75,7 @@ describe('useStepper — popstate mid-flight safety', () => {
     // Pop back to A via popstate (silent setCurrent).
     window.history.back()
     await new Promise((r) => setTimeout(r, 20))
-    expect(result.stepper.current.value).toBe('mf-a')
+    expect(result.wizard.current.value).toBe('mf-a')
 
     // Resolve the factory; values apply to B even though it's not current.
     resolveFactory!({ b: 'fetched' })
@@ -90,7 +90,7 @@ describe('useStepper — popstate mid-flight safety', () => {
     // Pop forward to B — factory MUST NOT re-fire.
     window.history.forward()
     await new Promise((r) => setTimeout(r, 20))
-    expect(result.stepper.current.value).toBe('mf-b')
+    expect(result.wizard.current.value).toBe('mf-b')
     expect(factoryCalls).toBe(1)
   })
 
@@ -111,16 +111,16 @@ describe('useStepper — popstate mid-flight safety', () => {
           return factoryPromise
         },
       })
-      return { stepper: useStepper([a, b], {}), a, b }
+      return { wizard: useWizard([a, b], {}), a, b }
     })
     apps.push(app)
-    result.stepper.next()
+    result.wizard.next()
     await nextTick()
     expect(factoryCalls).toBe(1)
-    result.stepper.back()
-    result.stepper.next()
-    result.stepper.back()
-    result.stepper.next()
+    result.wizard.back()
+    result.wizard.next()
+    result.wizard.back()
+    result.wizard.next()
     expect(factoryCalls).toBe(1)
   })
 })

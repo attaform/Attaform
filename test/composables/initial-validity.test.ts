@@ -13,7 +13,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * defaults pass STRUCTURAL validation but fail REFINEMENT validation
  * (e.g. `z.string().min(1)` against `''`) renders as "valid" for the
  * one frame between mount and the queued microtask that runs the full
- * schema. UI bound to `valid` (submit-button enable, stepper "done"
+ * schema. UI bound to `valid` (submit-button enable, wizard "done"
  * pills) flashes briefly green before settling into the correct
  * invalid state.
  *

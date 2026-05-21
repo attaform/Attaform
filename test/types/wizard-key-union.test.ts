@@ -4,9 +4,9 @@ import { useForm } from '../../src/zod'
 import type { KeysOf, FormKeyOf, AnyForm } from '../../src/runtime/types/types-wizard'
 
 /**
- * Type-level checks for the stepper's key-union machinery. The motivating
+ * Type-level checks for the wizard's key-union machinery. The motivating
  * use case is multistep navigation typed by the union of all participating
- * form keys — `stepper.current.value` is `'a' | 'b'`, `goTo('a')`
+ * form keys — `wizard.current.value` is `'a' | 'b'`, `goTo('a')`
  * autocompletes, `goTo('typo')` is a type error.
  *
  * Tests run at typecheck time. `expectTypeOf` chain methods are no-ops
@@ -17,7 +17,7 @@ import type { KeysOf, FormKeyOf, AnyForm } from '../../src/runtime/types/types-w
 
 const schema = z.object({ email: z.string() })
 
-describe('stepper key-union types', () => {
+describe('wizard key-union types', () => {
   it('FormKeyOf extracts the literal key from a form return type', () => {
     function _neverInvoked() {
       const _form = useForm({ schema, key: 'signup' })

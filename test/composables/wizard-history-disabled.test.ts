@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * `history: false` opts out of `window.history` integration entirely.
  * Useful for embedded wizards where the host shell already owns the
- * URL, or for stepper instances rendered inside dialogs / drawers
+ * URL, or for wizard instances rendered inside dialogs / drawers
  * where a fresh history entry per step would be surprising.
  */
 
@@ -31,7 +31,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — history disabled', () => {
+describe('useWizard — history disabled', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -43,7 +43,7 @@ describe('useStepper — history disabled', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hd-nav-a' })
       const b = useForm({ schema: schemaB, key: 'hd-nav-b' })
-      return useStepper([a, b], { history: false })
+      return useWizard([a, b], { history: false })
     })
     apps.push(app)
     pushSpy.mockClear()
@@ -61,7 +61,7 @@ describe('useStepper — history disabled', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hd-seed-a' })
       const b = useForm({ schema: schemaB, key: 'hd-seed-b' })
-      return useStepper([a, b], { history: false })
+      return useWizard([a, b], { history: false })
     })
     apps.push(app)
     expect(result.current.value).toBe('hd-seed-a')
@@ -73,7 +73,7 @@ describe('useStepper — history disabled', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hd-url-a' })
       const b = useForm({ schema: schemaB, key: 'hd-url-b' })
-      return useStepper([a, b], { history: false })
+      return useWizard([a, b], { history: false })
     })
     apps.push(app)
     expect(replaceSpy).not.toHaveBeenCalled()
@@ -87,13 +87,13 @@ describe('useStepper — history disabled', () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hd-pop-a' })
       const b = useForm({ schema: schemaB, key: 'hd-pop-b' })
-      return useStepper([a, b], { history: false })
+      return useWizard([a, b], { history: false })
     })
     apps.push(app)
     result.next()
     expect(result.current.value).toBe('hd-pop-b')
     // Simulate a navigation event by manually replacing the URL and
-    // dispatching popstate. With history: false the stepper isn't
+    // dispatching popstate. With history: false the wizard isn't
     // listening, so `current` should stay put.
     window.history.replaceState(null, '', 'http://localhost:3000/wizard?step=hd-pop-a')
     window.dispatchEvent(new PopStateEvent('popstate'))

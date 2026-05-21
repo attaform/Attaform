@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createStepperHistory } from '../../src/runtime/core/wizard-history'
+import { createWizardHistory } from '../../src/runtime/core/wizard-history'
 
 /**
- * `createStepperHistory(param)` encapsulates `window.history` for the
- * stepper. The primitive is the only DOM-touching module in the
- * stepper surface — it abstracts pushState / replaceState / popstate
- * behind a small handle, lets the stepper composable stay focused on
+ * `createWizardHistory(param)` encapsulates `window.history` for the
+ * wizard. The primitive is the only DOM-touching module in the
+ * wizard surface — it abstracts pushState / replaceState / popstate
+ * behind a small handle, lets the wizard composable stay focused on
  * navigation semantics, and stays SSR-safe by returning a no-op
  * handle when `window` is undefined.
  */
 
 const ORIGINAL_URL = 'http://localhost:3000/wizard'
 
-describe('createStepperHistory — primitive', () => {
+describe('createWizardHistory — primitive', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)
   })
@@ -23,7 +23,7 @@ describe('createStepperHistory — primitive', () => {
   })
 
   it('push(key) calls pushState and writes `?step=<key>`', () => {
-    const handle = createStepperHistory('step')
+    const handle = createWizardHistory('step')
     const pushSpy = vi.spyOn(window.history, 'pushState')
     handle.push('cargo')
     expect(pushSpy).toHaveBeenCalledTimes(1)
@@ -33,7 +33,7 @@ describe('createStepperHistory — primitive', () => {
   })
 
   it('replace(key) calls replaceState — no pushState', () => {
-    const handle = createStepperHistory('step')
+    const handle = createWizardHistory('step')
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     handle.replace('review')
@@ -46,7 +46,7 @@ describe('createStepperHistory — primitive', () => {
   })
 
   it('read() returns the current step param value (or undefined)', () => {
-    const handle = createStepperHistory('step')
+    const handle = createWizardHistory('step')
     expect(handle.read()).toBeUndefined()
     handle.push('reference')
     expect(handle.read()).toBe('reference')
@@ -54,7 +54,7 @@ describe('createStepperHistory — primitive', () => {
   })
 
   it('subscribe(cb) fires the callback on popstate with the new key', async () => {
-    const handle = createStepperHistory('step')
+    const handle = createWizardHistory('step')
     const seen: Array<string | undefined> = []
     handle.subscribe((key) => seen.push(key))
     handle.push('a')
@@ -66,7 +66,7 @@ describe('createStepperHistory — primitive', () => {
   })
 
   it('dispose() removes the popstate listener (idempotent)', async () => {
-    const handle = createStepperHistory('step')
+    const handle = createWizardHistory('step')
     const cb = vi.fn()
     handle.subscribe(cb)
     handle.push('a')
@@ -80,7 +80,7 @@ describe('createStepperHistory — primitive', () => {
 
   it('preserves existing search params when writing the step param', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?ref=email&utm=launch`)
-    const handle = createStepperHistory('step')
+    const handle = createWizardHistory('step')
     handle.push('cargo')
     const url = new URL(window.location.href)
     expect(url.searchParams.get('step')).toBe('cargo')

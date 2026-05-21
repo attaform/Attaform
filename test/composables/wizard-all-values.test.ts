@@ -3,12 +3,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import { useStepper } from '../../src/runtime/composables/use-wizard'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `stepper.allValues` aggregates each form's `values` proxy under
- * its key. Drillable as `stepper.allValues.cargo.weight`. Useful
+ * `wizard.allValues` aggregates each form's `values` proxy under
+ * its key. Drillable as `wizard.allValues.cargo.weight`. Useful
  * for review screens that summarise every prior step's input
  * without prop-threading.
  */
@@ -31,7 +31,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useStepper — allValues', () => {
+describe('useWizard — allValues', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -49,7 +49,7 @@ describe('useStepper — allValues', () => {
         key: 'av-review',
         defaultValues: { note: 'send it' },
       })
-      return useStepper([cargo, review], {})
+      return useWizard([cargo, review], {})
     })
     apps.push(app)
     const allValues = result.allValues as Record<string, Record<string, unknown>>
@@ -65,10 +65,10 @@ describe('useStepper — allValues', () => {
         key: 'av-live-cargo',
         defaultValues: { weight: 5, description: 'box' },
       })
-      return { stepper: useStepper([cargo], {}), cargo }
+      return { wizard: useWizard([cargo], {}), cargo }
     })
     apps.push(app)
-    const allValues = result.stepper.allValues as Record<string, Record<string, unknown>>
+    const allValues = result.wizard.allValues as Record<string, Record<string, unknown>>
     expect(allValues['av-live-cargo']!['weight']).toBe(5)
     result.cargo.setValue('weight', 12)
     expect(allValues['av-live-cargo']!['weight']).toBe(12)

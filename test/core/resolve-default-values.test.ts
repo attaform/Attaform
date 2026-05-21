@@ -10,7 +10,7 @@ import { resolveTrichotomy } from '../../src/runtime/core/resolve-default-values
  *    function; consumers `await` either way).
  *
  * The classifier is the shared seam for `useForm({ defaultValues })`
- * (PR 1) and `useStepper({ defaultStatuses })` (PR 3). It's
+ * (PR 1) and `useWizard({ defaultStatuses })` (PR 3). It's
  * intentionally simple — just a `typeof` check — so the contract is
  * easy to reason about and the seam stays at the boundary, not buried
  * downstream.

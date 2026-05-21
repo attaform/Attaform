@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, defineComponent, h } from 'vue'
 import { z } from 'zod'
-import { useForm, useStepper } from '../../src/zod'
+import { useForm, useWizard } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { renderAttaformState } from '../../src/runtime/core/serialize'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
@@ -59,7 +59,7 @@ describe('wizard SSR prefetch', () => {
             return Promise.resolve({ household: '4', ack: 'yes' })
           },
         })
-        useStepper([account, profile, review] as const)
+        useWizard([account, profile, review] as const)
         return () => h('div')
       },
     })
@@ -100,7 +100,7 @@ describe('wizard SSR prefetch', () => {
             return Promise.resolve({ idNumber: 'LEAKED', name: 'LEAKED' })
           },
         }) as unknown as UseFormReturnType<{ idNumber: string; name: string }>
-        useStepper([a, b] as const)
+        useWizard([a, b] as const)
         // Stray activate() on the non-current step. Should be a no-op
         // on the server thanks to the wizard's skipPrefetch.
         void b.activate()
@@ -133,7 +133,7 @@ describe('wizard SSR prefetch', () => {
             return Promise.resolve({ idNumber: 'B', name: 'B' })
           },
         })
-        useStepper([a, b] as const, {
+        useWizard([a, b] as const, {
           getServerActiveStep: () => 'wizard-getter-b',
         })
         return () => h('div')

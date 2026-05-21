@@ -324,7 +324,7 @@ describe('initial validation seed — async-refine schema', () => {
     // `safeParse` threw on the async sibling and the catch swallowed
     // both classes of error — sync verdicts only landed after the
     // post-mount async pass. UI bound to construction-time errors
-    // ("fix N errors" badges, demo REPL stepper) missed the count
+    // ("fix N errors" badges, demo REPL wizard) missed the count
     // for one frame.
     //
     // Fix: when sync `safeParse` throws on async refines, the adapter

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import type { Plugin } from 'vite'
 import { attaform } from '../../src/vite'
 
 /**
@@ -19,34 +18,30 @@ import { attaform } from '../../src/vite'
  * silently mis-inject).
  */
 
-interface VitePluginTransformResult {
-  code: string
-  map?: unknown
+interface TransformOutput {
+  readonly code: string
 }
 
-type TransformReturn = string | VitePluginTransformResult | null | undefined
-type TransformHandler = (code: string, id: string) => TransformReturn | Promise<TransformReturn>
-type PluginWithTransform = Plugin & {
-  transform?: TransformHandler | { handler: TransformHandler }
-}
+type TransformReturn = string | TransformOutput | null | undefined | void
 
-function runTransform(code: string, id: string): TransformReturn | Promise<TransformReturn> {
-  const plugin: PluginWithTransform = attaform()
+type RawHandler = (this: unknown, code: string, id: string) => unknown
+
+function runTransform(code: string, id: string): TransformReturn {
+  const plugin = attaform() as unknown as {
+    transform?: RawHandler | { handler: RawHandler }
+  }
   const hook = plugin.transform
   if (hook === undefined) throw new Error('attaform() did not register a transform hook')
-  const handler: TransformHandler = typeof hook === 'function' ? hook : hook.handler
+  const handler = typeof hook === 'function' ? hook : hook.handler
   // Vite passes a `this` plugin context here, but the transform doesn't
   // call any context methods — a fresh empty object satisfies the
   // handler binding without polluting the test surface.
   const ctx: Record<string, never> = {}
-  return handler.call(ctx, code, id)
+  return handler.call(ctx, code, id) as TransformReturn
 }
 
 function transformedCode(code: string, id = '/src/Component.vue'): string {
   const result = runTransform(code, id)
-  if (result instanceof Promise) {
-    throw new Error('transform unexpectedly returned a Promise — make the test async if needed')
-  }
   if (result === null || result === undefined) return code
   if (typeof result === 'string') return result
   return result.code

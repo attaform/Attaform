@@ -73,7 +73,7 @@ type UseWizardReturnType<Forms> = {
 | `current`                | The active step's key (or `undefined` if the wizard is empty). Reactive via a getter, so templates branch on it directly.  |
 | `activeForm`             | The active step's form handle, identity-equal to the matching entry in `forms`. `undefined` when `current` is `undefined`. |
 | `activeIndex`            | Zero-based index of the active step. `-1` when the wizard is empty.                                                        |
-| `forms`                  | The original `forms` array. Iterate it for a rail or table of contents.                                                    |
+| `forms`                  | The `forms` array you passed in. Iterate it for a rail or table of contents.                                               |
 | `count`                  | Number of participating steps. Handy for "Step N of M" labels.                                                             |
 | `statuses`               | Drillable proxy of `FormStatus` per step (`valid`, `dirty`, `submitted`, `errorCount`).                                    |
 | `allValues`              | Drillable record of every step's `values` keyed by form key.                                                               |
@@ -81,21 +81,21 @@ type UseWizardReturnType<Forms> = {
 | `progress`               | Fraction in `[0, 1]`. Count of valid steps divided by total steps, or the consumer's `progress` override.                  |
 | `next` / `back` / `goTo` | Navigation. `goTo(key)` jumps to an arbitrary step by its form's key.                                                      |
 
-Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` track inside templates and `computed` blocks directly, matching the rest of the library (`form.values`, `form.meta`, etc.).
+Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` stay reactive inside templates and `computed` blocks directly, matching the rest of Attaform (`form.values`, `form.meta`, etc.).
 
-## `statuses`: three call forms
+## `statuses`: how to read it
 
 ```ts
 wizard.statuses // the whole proxy
-wizard.statuses() // → { account: FormStatus, profile: FormStatus, review: FormStatus }
-wizard.statuses('account') // → FormStatus for account
-wizard.statuses.account // → FormStatus for account (drillable read)
-wizard.statuses.account.valid // → boolean (reactive)
+wizard.statuses() // → { 'signup-account': FormStatus, 'signup-profile': FormStatus, 'signup-review': FormStatus }
+wizard.statuses('signup-account') // → FormStatus for one step
+wizard.statuses['signup-account'] // → FormStatus (drillable read)
+wizard.statuses['signup-account'].valid // → boolean (reactive)
 ```
 
 The drillable read is the template-friendly form; the callable form is convenient in script for one-off reads.
 
-`FormStatus` carries `valid`, `dirty`, `submitted`, and `errorCount`. The aggregator gates on each form's `defaultsResolved` so reading a status for a not-yet-activated step returns the pending sentinel without firing that step's factory. The rail can render without thrashing.
+`FormStatus` carries `valid`, `dirty`, `submitted`, and `errorCount`. The aggregator gates on each form's `defaultsResolved` so reading a status for a not-yet-activated step returns a pending `FormStatus` without firing that step's factory. The rail can render without thrashing.
 
 ## Navigation
 
@@ -105,13 +105,13 @@ wizard.back() // step back one
 wizard.goTo('profile') // jump to a specific step by key
 ```
 
-`WizardNavOptions` is currently a placeholder. Pass `{}` or omit it. Out-of-bounds calls dev-warn and no-op:
+`WizardNavOptions` carries `replace?: boolean` for history-replace semantics; see [Browser history](/docs/multistep/history) for the round-trip. Omit it for ordinary navigation. Out-of-bounds calls dev-warn and no-op:
 
 - `next()` on the last step.
 - `back()` on the first step.
 - `goTo(key)` with a key not in the `forms` array.
 
-The wizard never throws on navigation or construction. A third-party library wired into someone's checkout should bend, not crash.
+The wizard never throws on navigation or construction. Wired into someone's checkout, Attaform bends rather than crashing the surrounding app.
 
 ## Active form
 
@@ -146,7 +146,7 @@ The wizard never throws on navigation or construction. A third-party library wir
 </template>
 ```
 
-Steps that have not been activated contribute nothing to `allErrors`. That keeps the privacy invariant intact: a non-current step with an async `defaultValues` factory will not fire on the server just because the consumer reads the summary list.
+Steps that have not been activated contribute nothing to `allErrors`. That keeps the [privacy invariant](/docs/multistep/ssr#the-stated-invariant) intact: a non-current step with an async `defaultValues` factory will not fire on the server just because the consumer reads the summary list.
 
 ## Degenerate inputs
 

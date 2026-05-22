@@ -36,11 +36,11 @@ const review = useForm({ schema: reviewSchema, key: 'signup-review' })
 const wizard = useWizard([account, profile, review] as const)
 ```
 
-With no `history` option, the wizard:
+With no `history` option:
 
-- Calls `wizard.next()` → URL becomes `?step=signup-profile`. `pushState` adds a new history entry.
-- Calls `wizard.back()` → URL becomes `?step=signup-account`. The browser's back button walks the wizard.
-- Reload at `?step=signup-review` → wizard opens on the `signup-review` step (the form's resolved or seeded values populate normally).
+- `wizard.next()` pushes `?step=signup-profile`; the browser's back button retreats one step.
+- `wizard.back()` pushes `?step=signup-account`; forward advances again.
+- A reload at `?step=signup-review` opens the wizard on `signup-review`; the form's resolved or seeded values populate normally.
 - Other search params on the URL are preserved across navigations.
 
 ## Disabling history

@@ -47,7 +47,7 @@ import {
 import { hashStableString } from '../core/hash'
 import { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } from '../core/multi-tab-sync'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
-import { canonicalizePath, type Path, type PathKey } from '../core/paths'
+import { canonicalizePath, pathKeyToDotted, type Path, type PathKey } from '../core/paths'
 import { deleteAtPath, getAtPath, setAtPath, isPlainRecord } from '../core/path-walker'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry } from '../core/registry'
@@ -643,8 +643,21 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   // favour of the hydrated set. Without this, a server-rendered form
   // with no blank paths would gain ones the client's
   // construction-time defaults invented.
-  const initialBlankPaths: ReadonlyArray<string> | undefined =
-    pending === undefined ? walked.paths : undefined
+  //
+  // The walker emits opaque `PathKey` for its in-process callers
+  // (`expandUnsetAt` uses them as Map/Set keys directly). At this
+  // boundary we convert to dotted public paths so `createFormStore`
+  // sees one uniform shape for both this branch and the hydration
+  // branch.
+  let initialBlankPaths: ReadonlyArray<string> | undefined
+  if (pending === undefined) {
+    const dotted: string[] = []
+    for (const pk of walked.paths) {
+      const d = pathKeyToDotted(pk)
+      if (d !== null) dotted.push(d)
+    }
+    initialBlankPaths = dotted
+  }
   // `configuration` has already passed through `mergeWithDefaults`, so
   // `sensitiveNames` here is the cascade-resolved value (per-form >
   // global > undefined-falls-to-library-default). An empty array `[]`

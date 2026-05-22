@@ -31,7 +31,7 @@ import type { ShouldShowErrors, ShouldShowErrorsConfig } from '../types/types-ap
  *    container's `showErrors` too. The error returns the moment the
  *    new verdict lands and `validating` flips back to false.
  *
- * 3. **Post-submit override.** Once `formMeta.submitCount > 0` the
+ * 3. **Post-submit override.** Once `formMeta.submissionAttempts > 0` the
  *    heuristic surfaces every own-path error unconditionally (subject
  *    only to the two gates above). The consumer asked the form to
  *    commit; transient mid-edit hiding is no longer appropriate
@@ -75,7 +75,7 @@ export const defaultShouldShowErrors: ShouldShowErrors = (field, formMeta) => {
   )
   if (!hasOwnError) return false
   if (field.validating === true) return false
-  if (formMeta.submitCount > 0) return true
+  if (formMeta.submissionAttempts > 0) return true
   return field.touched === true && field.focused !== true
 }
 

@@ -73,7 +73,7 @@ Every form value mutation: `setValue`, `register`-backed input edits, any array 
 What's NOT captured:
 
 - **Field interaction state** — `touched` / `focused` / `blurred` / `connected`. UI interaction history; it shouldn't rewind. A field that was touched stays touched.
-- **Submission lifecycle** — `meta.submitCount`, `meta.submitError`.
+- **Submission lifecycle** — `meta.submissionAttempts`, `meta.submitError`.
 - **Validation in-flight state**.
 
 Calling `setFieldErrors` / `addFieldErrors` / `clearFieldErrors` does NOT record a position — those only touch the error map. Whatever errors are live when the next mutation lands go into that mutation's delta.

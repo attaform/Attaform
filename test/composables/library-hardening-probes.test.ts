@@ -3549,7 +3549,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
 
     type SubmitApi = {
       handleSubmit: (onSubmit: () => unknown, onError?: () => unknown) => () => Promise<void>
-      meta: { submitting: boolean; submitError: unknown; submitCount: number }
+      meta: { submitting: boolean; submitError: unknown; submissionAttempts: number }
     }
     const a = handle.a as SubmitApi
     const b = handle.b as SubmitApi
@@ -3581,13 +3581,13 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     await nextTick()
 
     // Lifecycle clears across BOTH siblings: submitting flips false,
-    // submitError captures the throw, submitCount increments once.
+    // submitError captures the throw, submissionAttempts increments once.
     expect(a.meta.submitting).toBe(false)
     expect(b.meta.submitting).toBe(false)
     expect(a.meta.submitError).toBe(boom)
     expect(b.meta.submitError).toBe(boom)
-    expect(a.meta.submitCount).toBe(1)
-    expect(b.meta.submitCount).toBe(1)
+    expect(a.meta.submissionAttempts).toBe(1)
+    expect(b.meta.submissionAttempts).toBe(1)
 
     // B's next submit can fire — the re-entry guard released along
     // with the throw. A fresh successful submit clears submitError.
@@ -3596,7 +3596,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(bCalls).toBe(1)
     expect(b.meta.submitError).toBeNull()
     expect(a.meta.submitError).toBeNull()
-    expect(b.meta.submitCount).toBe(2)
+    expect(b.meta.submissionAttempts).toBe(2)
   })
 
   it('a sync watcher on meta.submitting that throws does not desync activeSubmissions', async () => {
@@ -3653,7 +3653,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
 
     type SubmitApi = {
       handleSubmit: (onSubmit: () => unknown) => () => Promise<void>
-      meta: { submitting: boolean; submitCount: number }
+      meta: { submitting: boolean; submissionAttempts: number }
     }
     const api = handle.api as SubmitApi
     const watcherFired = handle.watcherFired as { count: number }

@@ -24,7 +24,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  *   └─────────────────────────────────────────────────────────┘
  *
  *   ┌─ Lives on `api.meta` ───────────────────────────────────┐
- *   │  dirty, valid, submitting, submitCount, submitError,    │
+ *   │  dirty, valid, submitting, submissionAttempts, submitError,    │
  *   │  showErrors, firstError, …                              │
  *   └─────────────────────────────────────────────────────────┘
  *
@@ -135,7 +135,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.meta.dirty).toBe('boolean')
     expect(typeof api.meta.valid).toBe('boolean')
     expect(typeof api.meta.submitting).toBe('boolean')
-    expect(typeof api.meta.submitCount).toBe('number')
+    expect(typeof api.meta.submissionAttempts).toBe('number')
 
     // showErrors / firstError landed in PR #186.
     expect(typeof api.meta.showErrors).toBe('boolean')
@@ -148,8 +148,8 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     void api.valid
     // @ts-expect-error api.submitting must NOT exist; use api.meta.submitting
     void api.submitting
-    // @ts-expect-error api.submitCount must NOT exist; use api.meta.submitCount
-    void api.submitCount
+    // @ts-expect-error api.submissionAttempts must NOT exist; use api.meta.submissionAttempts
+    void api.submissionAttempts
   })
 
   it('field accessors live directly on `api`', () => {

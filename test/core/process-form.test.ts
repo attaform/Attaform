@@ -306,24 +306,24 @@ describe('buildProcessForm', () => {
       expect(state.submitting.value).toBe(false)
     })
 
-    it('increments submitCount on success', async () => {
+    it('increments submissionAttempts on success', async () => {
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state, 'test:inst')
-      expect(state.submitCount.value).toBe(0)
+      expect(state.submissionAttempts.value).toBe(0)
       await handleSubmit(async () => {})()
-      expect(state.submitCount.value).toBe(1)
+      expect(state.submissionAttempts.value).toBe(1)
       await handleSubmit(async () => {})()
-      expect(state.submitCount.value).toBe(2)
+      expect(state.submissionAttempts.value).toBe(2)
     })
 
-    it('increments submitCount on validation failure', async () => {
+    it('increments submissionAttempts on validation failure', async () => {
       const state = alwaysInvalid()
       const { handleSubmit } = buildProcessForm(state, 'test:inst')
       await handleSubmit(async () => {})()
-      expect(state.submitCount.value).toBe(1)
+      expect(state.submissionAttempts.value).toBe(1)
     })
 
-    it('increments submitCount on user-callback throw', async () => {
+    it('increments submissionAttempts on user-callback throw', async () => {
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state, 'test:inst')
       const handler = handleSubmit(
@@ -333,7 +333,7 @@ describe('buildProcessForm', () => {
         }
       )
       await expect(handler()).rejects.toThrow('boom')
-      expect(state.submitCount.value).toBe(1)
+      expect(state.submissionAttempts.value).toBe(1)
     })
 
     it('captures a thrown onSubmit into submitError (and still re-throws)', async () => {
@@ -395,7 +395,7 @@ describe('buildProcessForm', () => {
       // while a prior call is still awaiting validation or onSuccess.
       // The second call returns early so onSuccess fires once and
       // side-effects (POSTs, etc) don't duplicate. `submitting` stays
-      // true for the duration of the live call only; `submitCount`
+      // true for the duration of the live call only; `submissionAttempts`
       // increments by exactly one.
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state, 'test:inst')
@@ -432,8 +432,8 @@ describe('buildProcessForm', () => {
       expect(firstCalls).toBe(1)
       expect(state.submitting.value).toBe(false)
       expect(state.activeSubmissions.value).toBe(0)
-      // submitCount counts only the live submission, not the rejected one.
-      expect(state.submitCount.value).toBe(1)
+      // submissionAttempts counts only the live submission, not the rejected one.
+      expect(state.submissionAttempts.value).toBe(1)
     })
   })
 
@@ -461,7 +461,7 @@ describe('buildProcessForm', () => {
       state.reset()
       expect(state.submitting.value).toBe(false)
       expect(state.activeSubmissions.value).toBe(0)
-      expect(state.submitCount.value).toBe(0)
+      expect(state.submissionAttempts.value).toBe(0)
 
       resolveSubmit()
       await Promise.resolve()
@@ -469,11 +469,11 @@ describe('buildProcessForm', () => {
 
       // In-flight finally ran, but all visible lifecycle counters stay
       // at their post-reset values — the completion belongs to the
-      // prior generation, so submitting, submitCount, and submitError
+      // prior generation, so submitting, submissionAttempts, and submitError
       // remain the "fresh form" state the consumer asked for.
       expect(state.submitting.value).toBe(false)
       expect(state.activeSubmissions.value).toBe(0)
-      expect(state.submitCount.value).toBe(0)
+      expect(state.submissionAttempts.value).toBe(0)
       expect(state.submitError.value).toBeNull()
     })
 
@@ -526,7 +526,7 @@ describe('buildProcessForm', () => {
       )
       await expect(handler()).rejects.toBe(err)
       expect(state.submitError.value).toBe(err)
-      expect(state.submitCount.value).toBe(1)
+      expect(state.submissionAttempts.value).toBe(1)
     })
 
     // C2 — generation guard on schema-error writes during validation.

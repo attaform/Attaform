@@ -1109,7 +1109,7 @@ export type UseFormConfiguration<
    * - `true` (default): the schema is run against the derived
    *   defaults immediately; any failures populate `form.errors` from
    *   the first frame. The UI decides when to *show* errors — gate
-   *   on `form.fields.<path>.touched`, `form.meta.submitCount`, etc.
+   *   on `form.fields.<path>.touched`, `form.meta.submissionAttempts`, etc.
    * - `false`: refinements are stripped during defaults derivation
    *   and construction-time validation is skipped. Useful for
    *   multi-step wizards, field arrays seeded with placeholder
@@ -1421,7 +1421,7 @@ export type AttaformDefaults = {
    *
    * ```ts
    * (field, formMeta) =>
-   *   formMeta.submitCount > 0 || (field.touched === true && field.dirty)
+   *   formMeta.submissionAttempts > 0 || (field.touched === true && field.dirty)
    * ```
    *
    * Compose with the library default via the public
@@ -3150,7 +3150,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * outcome (validation failure, callback success, callback throw).
    * Useful for "show errors after first submit attempt" UX.
    */
-  readonly submitCount: number
+  readonly submissionAttempts: number
 
   /**
    * The error thrown or rejected by the most recent submit callback
@@ -3175,7 +3175,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
 
   /**
    * `true` once `handleSubmit` has been invoked at least once, success
-   * or failure. Equivalent to `submitCount > 0`, exposed as a scalar
+   * or failure. Equivalent to `submissionAttempts > 0`, exposed as a scalar
    * for "show this only after the first submit attempt" UX in
    * templates.
    *
@@ -3743,7 +3743,7 @@ export type UseFormReturnType<
 
   /**
    * Form-level reactive flags, counters, and aggregates (`dirty`,
-   * `valid`, `submitting`, `submitCount`, and the flat `errors`
+   * `valid`, `submitting`, `submissionAttempts`, and the flat `errors`
    * array). See `FormMeta` for the full shape. Read leaves directly
    * with no `.value`.
    *
@@ -3766,7 +3766,7 @@ export type UseFormReturnType<
    *   - the dirty baseline (so the next edit flips `dirty` correctly);
    *   - field errors;
    *   - touched / focused / blurred per-field flags;
-   *   - submission state (`submitting` / `submitCount` / `submitError`);
+   *   - submission state (`submitting` / `submissionAttempts` / `submitError`);
    *   - the persisted draft, if persistence is configured.
    *
    * The next edit on a still-mounted opted-in input will start

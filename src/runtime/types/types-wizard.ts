@@ -61,7 +61,7 @@ export type WizardNavOptions = {
  *  - `dirty` — `form.meta.dirty`. `true` once any value differs
  *    from the original defaults.
  *  - `submitted` — `form.meta.submitted`. `true` once
- *    `submitCount` reaches one or more.
+ *    `submissionAttempts` reaches one or more.
  *  - `errorCount` — `form.meta.errorCount`. Count of active
  *    validation errors (zero when valid).
  */

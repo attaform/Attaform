@@ -9,12 +9,12 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * `form.meta.submitted` is the boolean mirror of `submitCount > 0`,
+ * `form.meta.submitted` is the boolean mirror of `submissionAttempts > 0`,
  * surfaced so templates and `useWizard`'s `FormStatus` can read a
  * single scalar instead of comparing the counter against zero.
  *
  * Once a form has been submitted at all (success or failure), the flag
- * stays `true` — like `submitCount`, it's monotonically non-decreasing
+ * stays `true` — like `submissionAttempts`, it's monotonically non-decreasing
  * over the form's lifetime. Resetting the form does not retroactively
  * un-submit it; if a consumer wants that semantic, they own it.
  */
@@ -57,7 +57,7 @@ describe('form.meta.submitted', () => {
     const { app, api } = mountForm(schema, { email: 'user@example.com' })
     apps.push(app)
     expect(api.meta.submitted).toBe(false)
-    expect(api.meta.submitCount).toBe(0)
+    expect(api.meta.submissionAttempts).toBe(0)
   })
 
   it('flips true on the first successful submit', async () => {
@@ -67,7 +67,7 @@ describe('form.meta.submitted', () => {
     await handler(new Event('submit'))
     await waitUntil(() => api.meta.submitted)
     expect(api.meta.submitted).toBe(true)
-    expect(api.meta.submitCount).toBe(1)
+    expect(api.meta.submissionAttempts).toBe(1)
   })
 
   it('flips true on the first failed submit too (validation failure counts)', async () => {
@@ -77,7 +77,7 @@ describe('form.meta.submitted', () => {
     await handler(new Event('submit'))
     await waitUntil(() => api.meta.submitted)
     expect(api.meta.submitted).toBe(true)
-    expect(api.meta.submitCount).toBe(1)
+    expect(api.meta.submissionAttempts).toBe(1)
   })
 
   it('stays true across subsequent submits', async () => {
@@ -85,9 +85,9 @@ describe('form.meta.submitted', () => {
     apps.push(app)
     const handler = api.handleSubmit(async () => {})
     await handler(new Event('submit'))
-    await waitUntil(() => api.meta.submitCount === 1)
+    await waitUntil(() => api.meta.submissionAttempts === 1)
     await handler(new Event('submit'))
-    await waitUntil(() => api.meta.submitCount === 2)
+    await waitUntil(() => api.meta.submissionAttempts === 2)
     expect(api.meta.submitted).toBe(true)
   })
 })

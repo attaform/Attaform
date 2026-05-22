@@ -19,7 +19,7 @@ function makeAccessor() {
   // full `FormMetaBase` shape (would require duplicating every
   // FieldState field) — fine for a test stub that's never read.
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-  const getFormMetaBase = () => ({ submitCount: 0 }) as never
+  const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
   return { state, getFieldState: buildFieldStateAccessor(state, getFormMetaBase) }
 }
 
@@ -291,7 +291,7 @@ describe('buildFieldStateAccessor — container aggregation', () => {
     // tests for the predicate live in
     // `test/composables/should-show-errors.test.ts`.
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-    const getFormMetaBase = () => ({ submitCount: 0 }) as never
+    const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
     return { state, getFieldState: buildFieldStateAccessor(state, getFormMetaBase) }
   }
 

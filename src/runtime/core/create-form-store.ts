@@ -324,7 +324,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   // don't prematurely flip submitting to false when the first completes.
   readonly submitting: Ref<boolean>
   readonly activeSubmissions: Ref<number>
-  readonly submitCount: Ref<number>
+  readonly submissionAttempts: Ref<number>
   readonly submitError: Ref<unknown>
 
   /**
@@ -1472,7 +1472,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // not just the first.
   const submitting = ref(false)
   const activeSubmissions = ref(0)
-  const submitCount = ref(0)
+  const submissionAttempts = ref(0)
   const submitError = ref<unknown>(null)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
@@ -3061,7 +3061,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submissionGeneration.value += 1
     submitting.value = false
     activeSubmissions.value = 0
-    submitCount.value = 0
+    submissionAttempts.value = 0
     submitError.value = null
     // Drop any pending field-validation timers / in-flight runs. Writes
     // that reached the controller-aborted branch resolve to a no-op, so
@@ -3310,7 +3310,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     shouldShowErrors: resolvedShouldShowErrors,
     submitting,
     activeSubmissions,
-    submitCount,
+    submissionAttempts,
     submitError,
     hydrating,
     hydrateError,

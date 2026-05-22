@@ -43,7 +43,7 @@ The return value is a function ready for `<form @submit.prevent>`. Call signatur
 
 When the returned handler fires:
 
-1. The form's submit count increments. `meta.submitCount` lifts; `defaultShouldShowErrors` starts allowing errors to surface for every field.
+1. The form's submit count increments. `meta.submissionAttempts` lifts; `defaultShouldShowErrors` starts allowing errors to surface for every field.
 2. Sync validation runs across every active path.
 3. Async refinements are awaited.
 4. If every refinement passes, `onSuccess(values)` is called with the **parsed** Zod output — `.transform`-aware, fully typed.

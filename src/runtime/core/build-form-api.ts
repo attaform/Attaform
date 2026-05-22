@@ -478,7 +478,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   // --- Submission lifecycle ---
   const submitting = computed<boolean>(() => state.submitting.value)
-  const submitCount = computed<number>(() => state.submitCount.value)
+  const submissionAttempts = computed<number>(() => state.submissionAttempts.value)
   const submitError = computed<unknown>(() => state.submitError.value)
 
   // --- Validation lifecycle ---
@@ -567,24 +567,24 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // Thunk producing a fresh `FormMetaBase` snapshot on each call —
   // the omit'd-shape second argument to `state.shouldShowErrors`.
   // Reads run inside the field-state computed, so every reactive
-  // primitive touched here (submitCount, canUndo, ...) registers as
+  // primitive touched here (submissionAttempts, canUndo, ...) registers as
   // a dependency of that computed. Bypasses the cached field-state
   // accessor by calling `buildContainerFieldStateBase` directly —
   // going through the accessor would recurse through the root path's
   // own showErrors computation.
   const getFormMetaBase = (): FormMetaBase => {
     const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY)
-    const submitCount = state.submitCount.value
+    const submissionAttempts = state.submissionAttempts.value
     return {
       ...rootBase,
       submitting: state.submitting.value,
-      submitCount,
+      submissionAttempts,
       submitError: state.submitError.value,
-      // Scalar mirrors over `errors.length` and `submitCount` — same
+      // Scalar mirrors over `errors.length` and `submissionAttempts` — same
       // values surfaced on `form.meta`. Available here so predicates
       // (`shouldShowErrors`) can read them too.
       errorCount: rootBase.errors.length,
-      submitted: submitCount > 0,
+      submitted: submissionAttempts > 0,
       instanceId: formInstanceId,
     }
   }
@@ -648,13 +648,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       meta: computed(() => rootFieldState.value.meta),
       // Lifecycle (form-level only — not on FieldState).
       submitting,
-      submitCount,
+      submissionAttempts,
       submitError,
       // Scalar mirrors over the array / counter — meta is a single
       // sticky surface for both templates and the upcoming
       // `useWizard`'s `FormStatus`, so the projections live here.
       errorCount: computed(() => metaErrors.value.length),
-      submitted: computed(() => submitCount.value > 0),
+      submitted: computed(() => submissionAttempts.value > 0),
       // Per-`useForm()`-call identity. Stable for one mount; new on
       // re-mount; orthogonal to `form.key` (which is the user-supplied
       // shared identifier). Useful for devtools panels disambiguating

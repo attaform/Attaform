@@ -42,7 +42,7 @@ With sync on, every same-keyed tab converges in near real-time. Tab B sees tab A
 | `blankPaths` set        | Per-mutation added/removed; snapshot on join.                       |
 | `errors`                | NOT synced — locally re-derived from values via validation.         |
 | Field interaction state | NOT synced — `touched`/`focused`/`blurred` are UI-state, tab-local. |
-| Submit lifecycle        | NOT synced — `submitCount` / `submitError` are per-callsite.        |
+| Submit lifecycle        | NOT synced — `submissionAttempts` / `submitError` are per-callsite. |
 | `instanceId`            | NOT synced — per-mount identity by definition.                      |
 | History chain           | NOT synced — each tab walks its own user's undo timeline.           |
 | `File` / `Blob` values  | NOT synced — security + performance default-deny. See below.        |

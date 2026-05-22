@@ -327,7 +327,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    *
    * Drives the submission-lifecycle refs on FormStore:
    *   - `submitting` flips true at entry, false in `finally`.
-   *   - `submitCount` increments once per call, regardless of outcome —
+   *   - `submissionAttempts` increments once per call, regardless of outcome —
    *     "how many times did the user click submit" is the consumer-facing
    *     question, independent of whether anything awaited.
    *   - `submitError` clears at entry and captures anything thrown from
@@ -461,14 +461,14 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         state.activeSubmissions.value = Math.max(0, state.activeSubmissions.value - 1)
         // `activeSubmissions` always decrements (the submission is done),
         // but the *visible* lifecycle counters — `submitting` and
-        // `submitCount` — only update when the submission's generation
+        // `submissionAttempts` — only update when the submission's generation
         // still matches. A post-reset completion is a no-op from the
         // consumer's point of view: reset already flipped `submitting`
-        // to false and zeroed `submitCount`, and the finished submission
+        // to false and zeroed `submissionAttempts`, and the finished submission
         // belongs to the prior generation.
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitting.value = state.activeSubmissions.value > 0
-          state.submitCount.value += 1
+          state.submissionAttempts.value += 1
         }
       }
     }

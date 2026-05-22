@@ -1,6 +1,6 @@
 ---
 title: meta
-description: form.meta is the form-level FieldState aggregation plus six submission bits, submitting, submitCount, submitError, errorCount, submitted, and instanceId.
+description: form.meta is the form-level FieldState aggregation plus six submission bits, submitting, submissionAttempts, submitError, errorCount, submitted, and instanceId.
 metaRows:
   - label: Category
     value: Return property
@@ -20,7 +20,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-Submit the demo without changing the simulate-failure toggle to watch `submitting` flip true mid-await, `submitCount` increment, `submitted` latch on. Flip the toggle and submit again to populate `submitError` with the rejected callback's message. The [Form-only properties](#form-only-properties) section below names every bit; the inherited FieldState aggregations [link forward to the fields page](/docs/reading-the-form/fields).
+Submit the demo without changing the simulate-failure toggle to watch `submitting` flip true mid-await, `submissionAttempts` increment, `submitted` latch on. Flip the toggle and submit again to populate `submitError` with the rejected callback's message. The [Form-only properties](#form-only-properties) section below names every bit; the inherited FieldState aggregations [link forward to the fields page](/docs/reading-the-form/fields).
 
 ::docs-demo{slug="meta" label="Meta Demo"}
 ::
@@ -45,14 +45,14 @@ form.meta.value // the full form values object
 
 These six reads exist only on `meta`, not on individual FieldStates.
 
-| Property      | Type      | Meaning                                                                                                             |
-| ------------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
-| `submitting`  | `boolean` | `true` while a `handleSubmit`-produced handler is running. Covers both the validation phase and the async callback. |
-| `submitCount` | `number`  | How many times the handler has been invoked (pass or fail). Useful for "show errors after first submit" UX.         |
-| `submitError` | `unknown` | The error from the most recent callback rejection. `null` on success and at the start of each new attempt.          |
-| `errorCount`  | `number`  | Scalar mirror of `errors.length`. Read it from templates and `watch()` without indexing the array.                  |
-| `submitted`   | `boolean` | `true` once `submitCount > 0`. Latches; survives `form.reset()`.                                                    |
-| `instanceId`  | `string`  | Per-`useForm()`-call identity, stable for the lifetime of one call. New on every fresh mount.                       |
+| Property             | Type      | Meaning                                                                                                             |
+| -------------------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `submitting`         | `boolean` | `true` while a `handleSubmit`-produced handler is running. Covers both the validation phase and the async callback. |
+| `submissionAttempts` | `number`  | How many times the handler has been invoked (pass or fail). Useful for "show errors after first submit" UX.         |
+| `submitError`        | `unknown` | The error from the most recent callback rejection. `null` on success and at the start of each new attempt.          |
+| `errorCount`         | `number`  | Scalar mirror of `errors.length`. Read it from templates and `watch()` without indexing the array.                  |
+| `submitted`          | `boolean` | `true` once `submissionAttempts > 0`. Latches; survives `form.reset()`.                                             |
+| `instanceId`         | `string`  | Per-`useForm()`-call identity, stable for the lifetime of one call. New on every fresh mount.                       |
 
 ## Templates
 
@@ -78,7 +78,7 @@ The form-summary pattern reads three:
 <p>
   {{ form.meta.dirty ? 'Unsaved changes' : 'No changes' }} ·
   {{ form.meta.valid ? 'Ready to submit' : `${form.meta.errorCount} error(s)` }} ·
-  Submitted {{ form.meta.submitCount }} time(s)
+  Submitted {{ form.meta.submissionAttempts }} time(s)
 </p>
 ```
 
@@ -118,5 +118,5 @@ Treat as identity, not state: don't parse it, don't compare ordinally, don't per
 ## Where to next
 
 - [`fields`](/docs/reading-the-form/fields): the per-leaf FieldState, including every property `meta` inherits.
-- [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface that drives `submitting`, `submitCount`, and `submitError`.
+- [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface that drives `submitting`, `submissionAttempts`, and `submitError`.
 - [The form](/docs/reading-the-form/the-form): the full reactive surface that surrounds `meta`.

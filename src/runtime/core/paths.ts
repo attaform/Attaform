@@ -232,6 +232,45 @@ export function pathKeyToDotted(key: PathKey): string | null {
 }
 
 /**
+ * Normalise an I/O-boundary path string into a canonical `PathKey`. Used
+ * by the form store and its hydration paths, where seeds can arrive in
+ * either of two shapes:
+ *
+ *  - dotted-string form (`'user.email'`) — public path notation, also
+ *    what persistence writes to disk via [[pathKeyToDotted]];
+ *  - already-canonical `PathKey` JSON (`'["user","email"]'`) — what the
+ *    construction-time unset walker emits and what the rest of the
+ *    runtime keys its internal data structures on.
+ *
+ * Detection: a string that parses as a JSON `Segment[]` is treated as
+ * an already-canonical `PathKey` and round-tripped untouched.
+ * Anything else falls through to [[canonicalizePath]]'s dotted-string
+ * parser, so `'user.email'` parses to `['user', 'email']` and gets
+ * stringified back into PathKey form.
+ *
+ * A consumer holding a literal-key string that happens to look like
+ * JSON (`'["foo"]'`) would be misread as a PathKey, but that's a
+ * degenerate case — array form (`['["foo"]']`) is the unambiguous
+ * way to address such a key everywhere paths are accepted.
+ */
+export function coerceToPathKey(input: string): PathKey {
+  if (input.length > 0 && input.charCodeAt(0) === 91 /* '[' */) {
+    try {
+      const parsed: unknown = JSON.parse(input)
+      if (
+        Array.isArray(parsed) &&
+        parsed.every((s) => typeof s === 'string' || typeof s === 'number')
+      ) {
+        return input as PathKey
+      }
+    } catch {
+      // Not JSON — fall through to the dotted-string branch.
+    }
+  }
+  return canonicalizePath(input).key
+}
+
+/**
  * The root path — an empty segment tuple. Pass to APIs that accept
  * a `Path` to address the form value as a whole.
  */

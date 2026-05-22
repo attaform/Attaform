@@ -1,15 +1,17 @@
 /**
  * Public types for `useWizard` — the multistep-form orchestrator.
  *
- * The wizard composes existing `useForm` instances. Each step is a
- * form with its own schema, key, validation, and persistence; the
- * wizard layers navigation, status aggregation, and activation
- * lifecycle on top.
+ * Forms self-describe their downstream neighbor(s) via `useForm({ next })`,
+ * and `useWizard(entry)` walks the declared graph from the entry form to
+ * discover every reachable step. Navigation, status aggregation, and
+ * activation lifecycle layer on top of that graph view.
  *
- * Discriminated `current` is the load-bearing type. Threading the
- * literal `K` through `useForm` (see `UseFormReturnType<..., K>`)
- * means `wizard.current` resolves to the union of participating
- * keys, and `goTo(key)` autocompletes that union.
+ * The wizard surface is loosely keyed (`Record<string, FormStatus>` /
+ * `Record<string, unknown>`). Cross-component graphs threaded through
+ * `injectWizard` lose lexical key knowledge anyway, so the public read
+ * surface is a string-keyed proxy. Typed per-form access flows back
+ * through the original form refs (and through `wizard.handleSubmit`'s
+ * `ctx.get(formRef)` accessor — Phase 4).
  */
 
 import type { FormKey } from './types-api'
@@ -21,32 +23,149 @@ import type { FormKey } from './types-api'
  * steps; the wizard does not care about those — it routes by `key`
  * at runtime and exposes the original form objects untouched.
  *
+ * `next` is the graph-position declaration (see `useForm({ next })`).
+ * Forms self-describe their successor(s), and `useWizard(entry)` walks
+ * the graph from there. The field is optional: a form without `next`
+ * is a terminal.
+ *
  * `UseFormReturnType<...>` satisfies this shape because its `key`
- * field is `readonly key: K extends FormKey`.
+ * field is `readonly key: K extends FormKey` and its `next` field is
+ * `readonly next: NormalizedNext | undefined`.
  */
-export type AnyForm = { readonly key: FormKey }
+export type AnyForm = {
+  readonly key: FormKey
+  readonly next?: NormalizedNext | undefined
+}
 
 /**
- * Extracts the literal key from a single keyed form's return type.
- * Lets the wizard discriminate `wizard.current` on the form
- * that owns the active step.
+ * Branching shape of `useForm({ next })`. The `forms` tuple lists every
+ * downstream form reachable from this step; `pick(parsed)` chooses one
+ * of them at navigation / submission time from the form's parsed
+ * output, or returns `undefined` to signal a dynamic terminal.
+ *
+ * Declare `forms` as a tuple (`[a, b] as const`) so TypeScript narrows
+ * `pick`'s return type to the literal union. Without `as const`, the
+ * tuple widens to `AnyForm[]` and narrowing collapses to `AnyForm`.
+ *
+ * `pick` is consulted only when the current form is valid; the walker
+ * may invoke it multiple times across navigation and submission, so
+ * the callback should be free of side effects.
  */
-export type FormKeyOf<F extends AnyForm> = F['key']
+export type NextBranching<Parsed, Forms extends readonly AnyForm[]> = {
+  readonly pick: (parsed: Parsed) => Forms[number] | undefined
+  readonly forms: Forms
+}
 
 /**
- * Union of keys across an array of forms. With three forms keyed
- * `'a' | 'b' | 'c'`, `KeysOf<typeof forms>` is `'a' | 'b' | 'c'`.
+ * Public `useForm({ next })` option. Two shapes:
+ *
+ *  - `AnyForm` — identity reference; the form's runtime successor is
+ *    always the named form (linear flow).
+ *  - `NextBranching` — declared list of possible successors with a
+ *    `pick` selector that fires against the form's parsed output.
+ *
+ * `Parsed` is the schema's `z.output` shape (what `handleSubmit`
+ * receives). `Forms` is the literal tuple of declared successors when
+ * the consumer used `as const`, falling back to `AnyForm[]` otherwise.
  */
-export type KeysOf<Forms extends readonly AnyForm[]> = Forms[number]['key']
+export type NextOption<Parsed = unknown, Forms extends readonly AnyForm[] = readonly AnyForm[]> =
+  | AnyForm
+  | NextBranching<Parsed, Forms>
 
 /**
- * Per-call navigation options. `replace` reserved for PR 4 (browser
- * history); included now so the call shape is stable across wizard
- * versions.
+ * Internal normalized shape stored on `FormStore.next`. Identity refs
+ * are lifted into the `{ pick, forms }` shape so the wizard graph
+ * walker reads one uniform contract. `undefined` for terminal forms
+ * (no `next` option supplied).
+ */
+export type NormalizedNext = {
+  readonly pick: (parsed: unknown) => AnyForm | undefined
+  readonly forms: readonly AnyForm[]
+}
+
+/**
+ * Per-call navigation options. `replace` controls whether the change
+ * pushes a new history entry or overwrites the current one.
  */
 export type WizardNavOptions = {
   readonly replace?: boolean
 }
+
+/**
+ * Recursive leaf type for `WizardSubmitContext.values`. Covers the
+ * realistic outputs a Zod-parsed form yields:
+ *
+ *  - primitives — `string`, `number`, `boolean`, `bigint`, `null`,
+ *    `undefined` (covers `z.string`, `z.number`, `z.boolean`,
+ *    `z.bigint`, `z.null`, `z.undefined`, `z.optional`, enums,
+ *    literals)
+ *  - host objects — `Date`, `File`, `Blob`, `URL` (covers `z.date`,
+ *    `z.file`, `z.instanceof(Blob)`, `z.url` when emitted as the URL
+ *    object form)
+ *  - collections — readonly arrays / `Set` / `Map` of the same
+ *    (covers `z.array`, `z.set`, `z.map`)
+ *  - records — string-keyed objects of the same (covers `z.object`,
+ *    `z.record`, `z.discriminatedUnion`, intersections)
+ *
+ * Schemas that yield custom classes, `Promise`, `Symbol`, or `RegExp`
+ * sit outside this union — reach for `ctx.get(form)` for the exact
+ * per-form output in those cases.
+ */
+export type WizardValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | null
+  | undefined
+  | Date
+  | File
+  | Blob
+  | URL
+  | readonly WizardValue[]
+  | ReadonlySet<WizardValue>
+  | ReadonlyMap<WizardValue, WizardValue>
+  | { readonly [key: string]: WizardValue }
+
+/**
+ * Context object passed to the `onSubmit` callback registered via
+ * `wizard.handleSubmit(onSubmit, onError?)`. Composes three views of the
+ * walked runtime path so consumers can route submission data however
+ * suits the integration:
+ *
+ *  - `values` — loose-keyed aggregate of each walked form's parsed
+ *    output. The default for "POST everything to the backend" wiring.
+ *  - `get(form)` — typed accessor that reads the parsed output for a
+ *    specific form. Works with `injectForm`-resolved refs in
+ *    cross-component graphs, since the form ref carries its own
+ *    schema info regardless of where it came from.
+ *  - `path` — the ordered runtime path from entry to terminal, with
+ *    branching `pick(parsed)` callbacks resolved against the current
+ *    parsed values. Iterate this when a per-form callback (audit
+ *    log, sequential POST, etc.) needs the runtime order.
+ */
+export type WizardSubmitContext = {
+  readonly values: Readonly<Record<string, WizardValue>>
+  readonly get: <F extends AnyForm>(form: F) => F extends { readonly values: infer V } ? V : unknown
+  readonly path: readonly AnyForm[]
+}
+
+/**
+ * `onSubmit` callback registered via
+ * `wizard.handleSubmit(onSubmit, onError?)`. Fires once every form on
+ * the runtime path has parsed successfully. Sync or async; the
+ * returned promise gates `wizard.submitting`.
+ */
+export type WizardOnSubmit = (ctx: WizardSubmitContext) => void | Promise<void>
+
+/**
+ * Optional `onError` callback registered via
+ * `wizard.handleSubmit(onSubmit, onError?)`. Receives the aggregate
+ * error list — entries originate from per-form validation, activation
+ * failures (`atta:activation-failed`), and out-of-list `pick` returns.
+ * Sync or async; the returned promise gates `wizard.submitting`.
+ */
+export type WizardOnError = (errors: readonly AggregateError[]) => void | Promise<void>
 
 /**
  * Per-form summary surface — what `wizard.statuses[key]` exposes
@@ -60,8 +179,10 @@ export type WizardNavOptions = {
  *    while the first-validation-done gate has not flipped.
  *  - `dirty` — `form.meta.dirty`. `true` once any value differs
  *    from the original defaults.
- *  - `submitted` — `form.meta.submitted`. `true` once
- *    `submitCount` reaches one or more.
+ *  - `submitted` — `form.meta.submitted`. `true` once a
+ *    `handleSubmit` callback has resolved without throwing. A failed
+ *    submit (validation or callback rejection) leaves this `false`;
+ *    `submissionAttempts > 0` is the "user has tried" signal.
  *  - `errorCount` — `form.meta.errorCount`. Count of active
  *    validation errors (zero when valid).
  */
@@ -73,24 +194,13 @@ export type FormStatus = {
 }
 
 /**
- * `defaultStatuses` and `wizard.statuses` both use this shape — a
- * record keyed by each form's key, with a `FormStatus` payload per
- * key. The mapped type preserves the literal union from
- * `KeysOf<Forms>`, so template autocomplete works without manual
- * type annotations.
- */
-export type Statuses<Forms extends readonly AnyForm[]> = {
-  readonly [K in KeysOf<Forms>]: FormStatus
-}
-
-/**
  * Flat error shape returned by `wizard.allErrors`. Cross-step
  * aggregations need a stable identity per error — `formKey` + `path`
  * — so consumers can render a wizard-wide error summary that links
  * back to the offending field.
  *
- * Sort order: wizard's `forms` order, then each form's internal
- * error order.
+ * Sort order: BFS-order from the wizard's entry form, then each
+ * form's internal error order.
  */
 export type AggregateError = {
   readonly formKey: FormKey
@@ -104,9 +214,6 @@ export type AggregateError = {
  * Drillable as `wizard.statuses.cargo.valid` (readable), as
  * `wizard.statuses('cargo')` (callable single-key), or as
  * `wizard.statuses()` (callable no-arg returns the whole record).
- *
- * `Readonly<S>` provides the readable surface; the call signatures
- * shadow it for `wizard.statuses(key)` and `wizard.statuses()`.
  */
 export type WizardStatusesProxy<S extends Record<string, FormStatus>> = ((
   key?: keyof S
@@ -127,11 +234,27 @@ export type WizardHistoryConfig = {
 }
 
 /**
- * `useWizard(forms, options)` — options is positional-required per
- * the "required internal params" doctrine. PR 3 adds
- * `defaultStatuses`; PR 4 adds `history` + `getServerActiveStep`.
+ * Options for `useWizard(entry, options)`. Loosely keyed because the
+ * wizard's reachable graph is discovered at construction from the
+ * entry's `next` declarations; the option types are framework-facing
+ * and cannot pre-commit to the literal-union of reachable keys.
  */
-export type WizardOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]> = {
+export type WizardOptions = {
+  /**
+   * Identifier used to register the wizard handle in the per-app
+   * registry. Descendant components call `injectWizard(key)` to reach
+   * the same wizard handle without prop-threading. Anonymous wizards
+   * (option omitted) skip the registry entirely and are reachable only
+   * via ambient `injectWizard()` from descendants of the parent that
+   * called `useWizard`.
+   *
+   * Duplicate-key registration is first-wins-silently (dev-warn on the
+   * second registration) to mirror `useForm`'s shared-key behavior. If
+   * two `useWizard({ key: 'foo' })` calls race in the same scope, the
+   * second is dropped and the first's handle stays canonical for the
+   * lifetime of the app.
+   */
+  readonly key?: string
   /**
    * Seed status payload used while a form is pre-resolved (async
    * `defaultValues` in flight, or wizard-deferred non-current).
@@ -143,49 +266,39 @@ export type WizardOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]>
    *   2. else seed value for this key → frozen seed
    *   3. else → pending sentinel
    *
-   * Unknown keys in the seed object throw at construction (typo
-   * safety).
+   * Unknown keys in the seed object are dropped with a dev-warn so a
+   * stale resume payload cannot crash construction.
    */
   readonly defaultStatuses?:
-    | Statuses<Forms>
-    | (() => Statuses<Forms>)
-    | (() => Promise<Statuses<Forms>>)
+    | Record<string, FormStatus>
+    | (() => Record<string, FormStatus>)
+    | (() => Promise<Record<string, FormStatus>>)
   /**
    * Fires whenever a participating form's status (`valid`,
    * `dirty`, `submitted`, or `errorCount`) materially changes —
    * one of those four scalars actually moved. The handler receives
    * the new status and the form whose status changed.
    *
-   * Fire-and-forget: a returned promise is NOT awaited. Use a
-   * separate \`onBeforeLeave\` (future) for nav-blocking guards.
-   *
-   * No debounce. The handler fires immediately on Vue's next watch
-   * flush after the underlying meta changes — chatter is naturally
-   * dampened by the material-change check (identical writes don't
-   * re-fire).
+   * Fire-and-forget: a returned promise is NOT awaited.
    */
-  readonly onStatusChange?: (status: FormStatus, form: Forms[number]) => void | Promise<void>
+  readonly onStatusChange?: (status: FormStatus, form: AnyForm) => void | Promise<void>
   /**
    * Optional progress override. When omitted, the wizard exposes
-   * \`progress\` as \`valid_form_count / count\` (normalised to
-   * \`[0, 1]\`). When provided, the returned number is used as-is —
-   * the consumer is responsible for any normalisation (\`[0, 1]\`
-   * vs raw count vs percentage).
+   * `progress` as `valid_form_count / count` (normalised to
+   * `[0, 1]`). When provided, the returned number is used as-is —
+   * the consumer is responsible for any normalisation.
    *
-   * The override is invoked inside a Vue \`computed\` so it must be
+   * The override is invoked inside a Vue `computed` so it must be
    * synchronous and may only read reactive sources (form values,
    * form.meta, wizard.statuses, etc.).
    */
-  readonly progress?: (forms: Forms) => number
+  readonly progress?: (forms: readonly AnyForm[]) => number
   /**
    * Browser-history integration. Default behaviour (option omitted
    * or `true`) is to record each navigation in `window.history` so
    * back/forward buttons walk steps and reload preserves the active
    * step via `?step=<key>`. `false` disables the integration.
    * An object form lets the consumer rename the URL param.
-   *
-   * SSR-safe regardless of value: when `window` is undefined the
-   * underlying primitive is a no-op.
    */
   readonly history?: boolean | WizardHistoryConfig
   /**
@@ -196,62 +309,211 @@ export type WizardOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]>
    * microtasks fire so the active step's `onServerPrefetch` runs
    * server-side and non-active steps stay deferred.
    *
-   * The getter runs on both server and client (the consumer's route
-   * source must be available on both); returning `undefined` falls
-   * through to URL `?step=<key>` and finally to `forms[0]`.
+   * The getter runs on both server and client; returning `undefined`
+   * falls through to URL `?step=<key>` and finally to `entry.key`.
    */
-  readonly getServerActiveStep?: () => KeysOf<Forms> | undefined
+  readonly getServerActiveStep?: () => string | undefined
+  /**
+   * When `wizard.handleSubmit` finds errors, automatically
+   * `wizard.goTo(firstFailedKey)` and then call that form's
+   * `applyInvalidSubmitPolicy()` (focus / scroll per the form's own
+   * `onInvalidSubmit` configuration). Default `true`; pass `false`
+   * to keep the active step where the user left it and handle
+   * navigation manually in the `onError` callback.
+   *
+   * The first failed key is the BFS-ordered first form (from the
+   * wizard's reachable set) with a non-empty error list after the
+   * walk completes. Aggregation order matches `wizard.allForms`.
+   */
+  readonly navigateToFirstError?: boolean
 }
 
 /**
- * Cross-form value aggregate. Each form's `values` proxy is exposed
- * under its key — drillable as `wizard.allValues.cargo.weight`.
- * Useful for review screens and final-submit aggregation.
- */
-export type AllValues<Forms extends readonly AnyForm[]> = {
-  readonly [K in KeysOf<Forms>]: unknown
-}
-
-/**
- * Return shape of `useWizard`. Every reactive read is a plain getter
- * (no `.value`) — `wizard.current`, `wizard.progress`, `wizard.allErrors`
- * track inside `computed`/template effects directly. This matches the
- * rest of the library (form.values, form.meta, etc.) and keeps the
- * consumer surface free of `.value` plumbing.
+ * Recursive key-only tree describing the wizard's static graph
+ * reachable from its entry. Returned from `wizard.flow.tree` and
+ * suitable for sitemap rendering via a recursive Vue component.
  *
- *   - `current`     — the active step's key (or `undefined` for an
- *                     empty / degenerate wizard).
+ * Convergent paths (two upstream forms both pointing at the same
+ * downstream form) produce duplicated subtrees — the structure is the
+ * DAG flattened to a tree, not a deduped DAG. Use `wizard.flow.allForms`
+ * for the BFS-ordered deduped list.
+ */
+export type WizardTreeNode = {
+  readonly key: FormKey
+  readonly next: readonly WizardTreeNode[]
+}
+
+/**
+ * Kinds of static / runtime graph anomaly surfaced via the wizard's
+ * `diagnose()` channel.
+ *
+ *  - `cycle` — a form's chain leads back to itself. Hard error at
+ *    `useWizard(entry)` construction (thrown, not warned).
+ *  - `missing-terminal` — every path from entry should reach a terminal
+ *    (`next` omitted, or empty branching). In a finite acyclic graph
+ *    this is equivalent to `cycle`; surfaced for completeness.
+ *  - `unreachable` — a form constructed in scope but no chain from
+ *    entry reaches it. Dev-warn.
+ *  - `empty-forms` — a branching `next: { pick, forms: [] }`. Treated
+ *    as a terminal but probably a typo. Dev-warn.
+ *  - `out-of-forms-pick` — `pick(parsed)` returned a form not declared
+ *    in `forms`. Runtime check (the normalized-next layer throws).
+ *  - `single-step` — entry form has no `next`. Valid but degenerate.
+ */
+export type WizardWarningKind =
+  | 'cycle'
+  | 'missing-terminal'
+  | 'unreachable'
+  | 'empty-forms'
+  | 'out-of-forms-pick'
+  | 'single-step'
+
+export type WizardWarning = {
+  readonly kind: WizardWarningKind
+  readonly severity: 'warn' | 'error'
+  readonly message: string
+  readonly key?: FormKey
+}
+
+/**
+ * Static + runtime introspection surface returned by `wizard.flow`.
+ * Composes three views of the wizard's reachable graph and one reactive
+ * runtime tracker, so consumers can render sitemaps, breadcrumb trails,
+ * diagnostic panels, and step-counter UIs from one cohesive namespace.
+ *
+ *  - `entry`     — the form passed to `useWizard(entry)`. Identity-equal
+ *                  to that argument; immutable for the wizard's
+ *                  lifetime.
+ *  - `tree`      — recursive `WizardTreeNode` view rooted at `entry`.
+ *                  Suitable for sitemap rendering via a recursive Vue
+ *                  component; convergent paths duplicate by design.
+ *  - `allForms`  — BFS-ordered, deduped list of reachable forms. The
+ *                  same list exposed at `wizard.allForms`; mirrored
+ *                  here so `wizard.flow` is the single hand-off when a
+ *                  caller wants the full picture.
+ *  - `visited`   — reactive runtime history. Push order matches the
+ *                  user's navigation sequence; `back()` does not pop the
+ *                  trail (it records the move forward into the
+ *                  previous step), so the array is the audit log, not
+ *                  the back-stack.
+ *  - `diagnose()` — frozen snapshot of construction-time graph
+ *                  warnings. Cycles throw at construction so they do
+ *                  not appear in this list; `empty-forms` and
+ *                  `single-step` do. Cheap call; consumers can hook
+ *                  the result into a dev-only warning panel.
+ */
+export type WizardFlow = {
+  readonly entry: AnyForm
+  readonly tree: WizardTreeNode
+  readonly allForms: readonly AnyForm[]
+  readonly visited: readonly FormKey[]
+  readonly diagnose: () => readonly WizardWarning[]
+}
+
+/**
+ * Return shape of `useWizard(entry, options)`. Every reactive read is
+ * a plain getter (no `.value`) — `wizard.current`, `wizard.progress`,
+ * `wizard.allErrors` track inside `computed` / template effects
+ * directly. This matches the rest of the library (form.values,
+ * form.meta, etc.) and keeps the consumer surface free of `.value`
+ * plumbing.
+ *
+ *   - `current`     — the active step's key (or `undefined` for a
+ *                     degenerate wizard).
  *   - `activeForm`  — the active step's form handle, identity-equal
- *                     to the matching entry in `forms`. `undefined`
- *                     when `current` is `undefined`.
- *   - `activeIndex` — 0-based index of the active step; `-1` when
- *                     `current` is `undefined`.
- *   - `forms`       — original tuple, so consumers can index by key.
- *   - `count`       — static step count.
- *   - `statuses`    — callable readonly proxy over `Statuses<Forms>` —
- *                     readable as `wizard.statuses.cargo.valid`,
- *                     callable as `wizard.statuses('cargo')` or
+ *                     to its matching entry in the reachable set.
+ *                     `undefined` when `current` is `undefined`.
+ *   - `activeIndex` — 0-based BFS-ordered index of the active step;
+ *                     `-1` when `current` is `undefined`.
+ *   - `entry`       — the entry form, identity-equal to the argument
+ *                     passed to `useWizard(entry)`.
+ *   - `allForms`    — BFS-ordered, deduped list of forms reachable
+ *                     from the entry. Use this for sitemaps, step
+ *                     counters, and "step N of M" displays.
+ *   - `count`       — `allForms.length`.
+ *   - `statuses`    — callable readonly proxy over the per-key
+ *                     `FormStatus` record — readable as
+ *                     `wizard.statuses.cargo.valid`, callable as
+ *                     `wizard.statuses('cargo')` or
  *                     `wizard.statuses()`. Each entry derives from
  *                     the matching form's `meta`.
  *   - `allValues`   — each form's `values` proxy under its key, for
  *                     cross-step review screens.
  *   - `allErrors`   — flat error list across resolved forms, ordered
- *                     by `forms` then per-form order. Dormant
+ *                     by BFS then per-form order. Dormant
  *                     (unactivated) forms contribute nothing.
  *   - `progress`    — normalised `valid_form_count / count` (or the
  *                     consumer's `progress` override).
+ *   - `canAdvance`  — `true` when the active form has a non-empty
+ *                     `next` declaration. Graph-structural; does not
+ *                     consult `pick(parsed)`, so dynamic terminals
+ *                     read as `canAdvance: true` until the runtime
+ *                     walker resolves the branch at submission.
+ *   - `canGoBack`   — `true` when `activeIndex > 0` (a prior step
+ *                     exists in BFS order). Mirrors the navigation
+ *                     surface `back()` operates over.
+ *   - `complete`    — `true` once `wizard.handleSubmit`'s `onSubmit`
+ *                     callback resolves without throwing. Flips back
+ *                     to `false` the first time any walked-path form
+ *                     becomes `meta.dirty` again (dirty-driven, not
+ *                     snapshot-driven). Cleared by `wizard.reset()`.
+ *   - `submitting`  — `true` while a `wizard.handleSubmit` call is in
+ *                     flight (covers the path walk AND the
+ *                     `onSubmit` / `onError` callback execution).
+ *                     Distinct from per-form `meta.submitting`, which
+ *                     stays `false` during the wizard walk because the
+ *                     wizard calls `form.process()` directly rather
+ *                     than each form's `handleSubmit`.
+ *   - `submissionAttempts` — count of `wizard.handleSubmit` invocations
+ *                     (success or failure). Useful for "show errors
+ *                     after first wizard attempt" UX gates.
+ *   - `handleSubmit` — wraps the consumer's submit logic with the
+ *                     full path-walk validation pipeline. Returns a
+ *                     submit handler suitable for
+ *                     `<form @submit.prevent="handler">` or imperative
+ *                     calls. See `WizardSubmitContext` for the
+ *                     `onSubmit` callback's argument shape.
+ *   - `reset`       — zeros wizard lifecycle (`complete`,
+ *                     `submitting`, `submissionAttempts`) and calls
+ *                     `form.reset()` on every reachable form. Returns
+ *                     the wizard to its construction state.
+ *   - `flow`        — introspection namespace bundling the static graph
+ *                     (`entry`, `tree`, `allForms`), runtime navigation
+ *                     history (`visited`), and the diagnostic warnings
+ *                     channel (`diagnose()`). The same data backs the
+ *                     top-level `entry` / `allForms` aliases — the
+ *                     namespace is the structured hand-off for sitemap
+ *                     and diagnostic UIs.
  */
-export type UseWizardReturnType<Forms extends readonly AnyForm[]> = {
-  readonly current: KeysOf<Forms> | undefined
-  readonly activeForm: Forms[number] | undefined
+export type UseWizardReturnType = {
+  /**
+   * The wizard's identifier in the per-app registry, or `undefined` if
+   * the consumer didn't pass `options.key`. Mirrors `form.key` so the
+   * wizard surface is symmetric with the form surface.
+   */
+  readonly key: string | undefined
+  readonly current: string | undefined
+  readonly activeForm: AnyForm | undefined
   readonly activeIndex: number
-  readonly forms: Forms
+  readonly entry: AnyForm
+  readonly allForms: readonly AnyForm[]
   readonly count: number
-  readonly statuses: WizardStatusesProxy<Statuses<Forms>>
-  readonly allValues: AllValues<Forms>
+  readonly statuses: WizardStatusesProxy<Record<string, FormStatus>>
+  readonly allValues: Record<string, unknown>
   readonly allErrors: readonly AggregateError[]
   readonly progress: number
-  readonly next: (options?: WizardNavOptions) => void
+  readonly canAdvance: boolean
+  readonly canGoBack: boolean
+  readonly complete: boolean
+  readonly submitting: boolean
+  readonly submissionAttempts: number
+  readonly next: (options?: WizardNavOptions) => Promise<void>
   readonly back: (options?: WizardNavOptions) => void
-  readonly goTo: (key: KeysOf<Forms>, options?: WizardNavOptions) => void
+  readonly goTo: (key: string, options?: WizardNavOptions) => void
+  readonly handleSubmit: (
+    onSubmit: WizardOnSubmit,
+    onError?: WizardOnError
+  ) => (event?: Event) => Promise<void>
+  readonly reset: () => void
+  readonly flow: WizardFlow
 }

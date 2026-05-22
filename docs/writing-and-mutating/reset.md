@@ -37,7 +37,7 @@ Every path goes back to its `defaultValues` entry — or, where no override was 
 - `dirty` flips false on every leaf.
 - `touched` flips false on every leaf.
 - `errors` clear at every path.
-- `meta.submitCount`, `meta.submitted`, `meta.submitError` stay (they latch across the lifetime of the form).
+- `meta.submissionAttempts`, `meta.submitted`, and `meta.submitError` all zero (the submission surface returns to its initial state).
 
 `reset()` is the right call after a successful submit when you want the form to look fresh, or when a "Discard changes" button needs to back out unsaved edits.
 

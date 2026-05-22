@@ -18,8 +18,9 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  *   - a wizard auto-marks the current step (covered by wizard tests).
  *
  * Without any positive trigger, the form renders the schema's slim
- * defaults — the factory stays dormant and PII fetches do not happen
- * on the server. That is the stated privacy invariant.
+ * defaults — the factory stays dormant and the server pays for no
+ * extra fetches. That is the activation rule that drives render
+ * efficiency.
  *
  * Tests use bare-vue SSR (`createSSRApp` + `renderToString`) so we
  * can observe the prefetch flow without Nuxt or `<Suspense>` wrappers.

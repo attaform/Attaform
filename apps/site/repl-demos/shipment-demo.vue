@@ -322,31 +322,18 @@
   })
 
   // ─── Forms ──────────────────────────────────────────────────────
-  const refForm = useForm({
-    schema: referenceSchema,
-    key: 'reference',
-    persist: { storage: 'local', key: 'attaform:shipment.reference' },
+  // Declared bottom-up: terminals first, entry last. Each form's `next`
+  // points at the form declared above. `useWizard(refForm)` walks the
+  // chain to discover every reachable step.
+  const reviewForm = useForm({
+    schema: reviewSchema,
+    key: 'review',
+    persist: { storage: 'local', key: 'attaform:shipment.review' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
-      reference: 'SHP-100001',
-      pickup: { country: 'US' },
-      delivery: { country: 'US' },
-      useSameDeliveryAddress: false,
-    },
-  })
-
-  const cargoForm = useForm({
-    schema: cargoSchema,
-    key: 'cargo',
-    persist: { storage: 'local', key: 'attaform:shipment.cargo' },
-    history: { max: 50 },
-    validateOn: 'change',
-    debounceMs: 200,
-    defaultValues: {
-      items: [],
-      details: { type: 'dry', fragile: false },
+      acknowledgements: [],
     },
   })
 
@@ -367,24 +354,44 @@
       // from "intentionally empty". Watch serviceForm.fields.notes.blank.
       notes: unset,
     },
+    next: reviewForm,
   })
 
-  const reviewForm = useForm({
-    schema: reviewSchema,
-    key: 'review',
-    persist: { storage: 'local', key: 'attaform:shipment.review' },
+  const cargoForm = useForm({
+    schema: cargoSchema,
+    key: 'cargo',
+    persist: { storage: 'local', key: 'attaform:shipment.cargo' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
-      acknowledgements: [],
+      items: [],
+      details: { type: 'dry', fragile: false },
     },
+    next: serviceForm,
   })
 
-  // Compose the four into a wizard. `useWizard` picks up the form
-  // keys for `current`, derives statuses from form meta, and threads
-  // the active step through browser back/forward via window.history.
-  const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
+  const refForm = useForm({
+    schema: referenceSchema,
+    key: 'reference',
+    persist: { storage: 'local', key: 'attaform:shipment.reference' },
+    history: { max: 50 },
+    validateOn: 'change',
+    debounceMs: 200,
+    defaultValues: {
+      reference: 'SHP-100001',
+      pickup: { country: 'US' },
+      delivery: { country: 'US' },
+      useSameDeliveryAddress: false,
+    },
+    next: cargoForm,
+  })
+
+  // Compose the four into a wizard. `useWizard` walks the entry's
+  // `next` chain to enumerate every step, derives statuses from each
+  // form's meta, and threads the active step through browser
+  // back/forward via window.history.
+  const wizard = useWizard(refForm)
 
   // ─── Pickup → delivery live mirror ───────────────────────────────
   // While the flag is on, copy pickup → delivery via the whole-form
@@ -553,9 +560,9 @@
   const onSubmit = reviewForm.handleSubmit(
     (review) => {
       const upstreamValid =
-        wizard.statuses.reference.valid &&
-        wizard.statuses.cargo.valid &&
-        wizard.statuses.service.valid
+        wizard.statuses['reference']!.valid &&
+        wizard.statuses['cargo']!.valid &&
+        wizard.statuses['service']!.valid
       if (!upstreamValid) {
         submitError.value =
           'One or more earlier steps need fixes. Use the summary below to jump to the offending field.'
@@ -624,14 +631,19 @@
 
   // Undo/redo targets the form that owns the active step — each form
   // has its own history stack so an undo on cargo doesn't roll back
-  // an address edit.
-  const activeForm = computed(() => wizard.activeForm)
+  // an address edit. `wizard.activeForm` widens to `AnyForm`; cast back
+  // to the actual form-handle union so the template can reach
+  // `history.canUndo` / `history.undo()` statically.
+  type WizardForm = typeof refForm | typeof cargoForm | typeof serviceForm | typeof reviewForm
+  const activeForm = computed(() => wizard.activeForm as WizardForm | undefined)
   const canGoNext = computed(() => {
     const key = wizard.current
     if (key === undefined) return false
-    return wizard.statuses[key].valid
+    return wizard.statuses[key]?.valid === true
   })
-  const isAnyValidating = computed(() => wizard.forms.some((f) => f.meta.validating))
+  const isAnyValidating = computed(() =>
+    wizard.allForms.some((f) => (f as unknown as { meta: { validating: boolean } }).meta.validating)
+  )
 
   // Acknowledgement multi-checkbox helper — read / write the array via
   // setValue. `register()` doesn't bind multi-checkboxes natively in
@@ -657,13 +669,13 @@
       <!-- ─── Wizard ─── -->
       <nav class="wizard" aria-label="Form progress">
         <button
-          v-for="(form, idx) in wizard.forms"
+          v-for="(form, idx) in wizard.allForms"
           :key="form.key"
           type="button"
           class="step"
           :class="{
             active: wizard.current === form.key,
-            done: wizard.statuses[form.key as FormKey].valid,
+            done: wizard.statuses[form.key]?.valid === true,
           }"
           :aria-current="wizard.current === form.key ? 'step' : undefined"
           @click="wizard.goTo(form.key as FormKey)"

@@ -214,26 +214,26 @@ describe('history — blankPaths preservation', () => {
     // 1. Type a real value: storage = 5, blankPaths = {}
     api.setValue('count', 5)
     expect(api.values.count).toBe(5)
-    expect(api.blankPaths.value.includes(countKey)).toBe(false)
+    expect(api.blankPaths.value.has(countKey)).toBe(false)
 
     // 2. Clear via the unset sentinel: storage = 0 (slim default), blankPaths = {count}.
     api.setValue('count', unset)
     expect(api.values.count).toBe(0)
-    expect(api.blankPaths.value.includes(countKey)).toBe(true)
+    expect(api.blankPaths.value.has(countKey)).toBe(true)
 
     // 3. Type again: storage = 10, blankPaths = {} (re-typing clears the blank mark).
     api.setValue('count', 10)
     expect(api.values.count).toBe(10)
-    expect(api.blankPaths.value.includes(countKey)).toBe(false)
+    expect(api.blankPaths.value.has(countKey)).toBe(false)
 
-    // 4. Undo — the snapshot we land on captured storage = 0 with blankPaths = {count}.
+    // 4. Undo, the snapshot we land on captured storage = 0 with blankPaths = {count}.
     expect(api.history.undo()).toBe(true)
     expect(api.values.count).toBe(0)
     // The bug: blankPaths was reset along the redo path (step 3 above)
     // and applyFormReplacement does not touch the set, so the restored
     // state shows a misleading '0' on the wire. The fix re-seeds the
     // set from the snapshot before the form replacement lands.
-    expect(api.blankPaths.value.includes(countKey)).toBe(true)
+    expect(api.blankPaths.value.has(countKey)).toBe(true)
   })
 
   it('redo replays a blank mark that the user just undid', () => {
@@ -247,11 +247,11 @@ describe('history — blankPaths preservation', () => {
 
     api.history.undo()
     expect(api.values.count).toBe(0)
-    expect(api.blankPaths.value.includes(countKey)).toBe(true)
+    expect(api.blankPaths.value.has(countKey)).toBe(true)
 
     expect(api.history.redo()).toBe(true)
     expect(api.values.count).toBe(12)
-    expect(api.blankPaths.value.includes(countKey)).toBe(false)
+    expect(api.blankPaths.value.has(countKey)).toBe(false)
   })
 })
 

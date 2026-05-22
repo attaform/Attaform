@@ -76,7 +76,7 @@ The Vue DevTools panel surfaces the same data as the [Nuxt panel](/docs/devtools
 | Form list            | One entry per registered form, keyed by `form.key`.                     |
 | Form value           | Editable JSON tree — writes flow through the same store-mutation path.  |
 | Schema / User errors | Split by source.                                                        |
-| Aggregates           | `submitting`, `submitCount`, `submitError`, `activeValidations`.        |
+| Aggregates           | `submitting`, `submissionAttempts`, `submitError`, `activeValidations`. |
 | Timeline             | `form.change` / `submit.success` / `reset` events with value snapshots. |
 
 The only difference is location: instead of the Nuxt DevTools overlay's sidebar, the panel appears in the Vue DevTools' inspector list under **Attaform**.

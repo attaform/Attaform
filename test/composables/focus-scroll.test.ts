@@ -307,6 +307,101 @@ describe('focusFirstError — DOM-order semantics', () => {
   })
 })
 
+describe('applyInvalidSubmitPolicy — public API', () => {
+  let focusSpy: ReturnType<typeof vi.spyOn>
+  let scrollSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
+      HTMLElement.prototype.scrollIntoView = function scrollIntoView() {
+        return undefined
+      }
+    }
+    focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+    scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.style.display === 'none' ? null : this.parentNode
+      },
+    })
+  })
+
+  afterEach(() => {
+    focusSpy.mockRestore()
+    scrollSpy.mockRestore()
+  })
+
+  it("no-arg call reads the form's onInvalidSubmit option (default focus-first-error)", async () => {
+    const { api, app } = mountWith({ errorsFor: ['email'] })
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    scrollSpy.mockClear()
+    api.applyInvalidSubmitPolicy()
+    expect(focusSpy).toHaveBeenCalled()
+    expect(scrollSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+
+  it('no-arg call honors a configured scroll-to-first-error option', async () => {
+    const { api, app } = mountWith({
+      errorsFor: ['email'],
+      onInvalidSubmit: 'scroll-to-first-error',
+    })
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    scrollSpy.mockClear()
+    api.applyInvalidSubmitPolicy()
+    expect(scrollSpy).toHaveBeenCalled()
+    expect(focusSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+
+  it("explicit scroll-to-first-error overrides the form's configured policy", async () => {
+    const { api, app } = mountWith({
+      errorsFor: ['email'],
+      onInvalidSubmit: 'focus-first-error',
+    })
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    scrollSpy.mockClear()
+    api.applyInvalidSubmitPolicy('scroll-to-first-error')
+    expect(scrollSpy).toHaveBeenCalled()
+    expect(focusSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+
+  it('explicit none is a safe no-op', async () => {
+    const { api, app } = mountWith({ errorsFor: ['email'] })
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    scrollSpy.mockClear()
+    api.applyInvalidSubmitPolicy('none')
+    expect(focusSpy).not.toHaveBeenCalled()
+    expect(scrollSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+
+  it('explicit both scrolls then focuses with preventScroll', async () => {
+    const { api, app } = mountWith({ errorsFor: ['email'] })
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    scrollSpy.mockClear()
+    api.applyInvalidSubmitPolicy('both')
+    expect(scrollSpy).toHaveBeenCalled()
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+    app.unmount()
+  })
+
+  it('no-error no-op: no focus or scroll calls fire when the error store is empty', () => {
+    const { api, app } = mountWith({ errorsFor: [] })
+    expect(() => api.applyInvalidSubmitPolicy()).not.toThrow()
+    expect(focusSpy).not.toHaveBeenCalled()
+    expect(scrollSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+})
+
 describe('focusFirstError — shared-key form isolation', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
 

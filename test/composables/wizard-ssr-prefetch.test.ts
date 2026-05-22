@@ -19,9 +19,10 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  * step cannot bypass the wizard's intent — `skipPrefetch` wins over
  * `enqueuePrefetch` inside `shouldPrefetch`).
  *
- * Privacy invariant under test: a three-step wizard fetching PII on
- * each step's async factory must fetch only the current step on the
- * server, regardless of where the consumer points `activate()` calls.
+ * Render-efficiency invariant under test: a three-step wizard with
+ * an expensive async factory on each step must fetch only the current
+ * step on the server, regardless of where the consumer points
+ * `activate()` calls. A 40-step wizard saves 39 fetches per request.
  */
 
 const accountSchema = z.object({ ssn: z.string(), email: z.string() })
@@ -35,12 +36,12 @@ describe('wizard SSR prefetch', () => {
     let reviewCalls = 0
     const App = defineComponent({
       setup() {
-        const account = useForm({
-          schema: accountSchema,
-          key: 'wizard-ssr-account',
+        const review = useForm({
+          schema: reviewSchema,
+          key: 'wizard-ssr-review',
           defaultValues: () => {
-            accountCalls += 1
-            return Promise.resolve({ ssn: '000-00-0000', email: 'a@example.com' })
+            reviewCalls += 1
+            return Promise.resolve({ household: '4', ack: 'yes' })
           },
         })
         const profile = useForm({
@@ -50,16 +51,18 @@ describe('wizard SSR prefetch', () => {
             profileCalls += 1
             return Promise.resolve({ idNumber: 'P-123', name: 'Ada' })
           },
+          next: review,
         })
-        const review = useForm({
-          schema: reviewSchema,
-          key: 'wizard-ssr-review',
+        const account = useForm({
+          schema: accountSchema,
+          key: 'wizard-ssr-account',
           defaultValues: () => {
-            reviewCalls += 1
-            return Promise.resolve({ household: '4', ack: 'yes' })
+            accountCalls += 1
+            return Promise.resolve({ ssn: '000-00-0000', email: 'a@example.com' })
           },
+          next: profile,
         })
-        useWizard([account, profile, review] as const)
+        useWizard(account)
         return () => h('div')
       },
     })
@@ -82,16 +85,11 @@ describe('wizard SSR prefetch', () => {
     // The wizard's "user is not on this step" signal must defeat any
     // other positive trigger — even a consumer who explicitly calls
     // `activate()` on a non-current step does not cause its factory
-    // to fire on the server. This is the privacy backstop for
-    // regulated-industry consumers.
+    // to fire on the server. This is the render-efficiency floor:
+    // the wizard's skip-list overrides every positive mark.
     let leakedCalls = 0
     const App = defineComponent({
       setup() {
-        const a = useForm({
-          schema: accountSchema,
-          key: 'wizard-skip-a',
-          defaultValues: () => Promise.resolve({ ssn: '', email: '' }),
-        })
         const b = useForm({
           schema: profileSchema,
           key: 'wizard-skip-b',
@@ -100,7 +98,13 @@ describe('wizard SSR prefetch', () => {
             return Promise.resolve({ idNumber: 'LEAKED', name: 'LEAKED' })
           },
         }) as unknown as UseFormReturnType<{ idNumber: string; name: string }>
-        useWizard([a, b] as const)
+        const a = useForm({
+          schema: accountSchema,
+          key: 'wizard-skip-a',
+          defaultValues: () => Promise.resolve({ ssn: '', email: '' }),
+          next: b,
+        })
+        useWizard(a)
         // Stray activate() on the non-current step. Should be a no-op
         // on the server thanks to the wizard's skipPrefetch.
         void b.activate()
@@ -117,14 +121,6 @@ describe('wizard SSR prefetch', () => {
     let bCalls = 0
     const App = defineComponent({
       setup() {
-        const a = useForm({
-          schema: accountSchema,
-          key: 'wizard-getter-a',
-          defaultValues: () => {
-            aCalls += 1
-            return Promise.resolve({ ssn: 'A', email: 'A' })
-          },
-        })
         const b = useForm({
           schema: profileSchema,
           key: 'wizard-getter-b',
@@ -133,7 +129,16 @@ describe('wizard SSR prefetch', () => {
             return Promise.resolve({ idNumber: 'B', name: 'B' })
           },
         })
-        useWizard([a, b] as const, {
+        const a = useForm({
+          schema: accountSchema,
+          key: 'wizard-getter-a',
+          defaultValues: () => {
+            aCalls += 1
+            return Promise.resolve({ ssn: 'A', email: 'A' })
+          },
+          next: b,
+        })
+        useWizard(a, {
           getServerActiveStep: () => 'wizard-getter-b',
         })
         return () => h('div')

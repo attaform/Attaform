@@ -18,8 +18,8 @@
      * regardless — overwriting with the literal `[redacted]` string
      * would destroy the real value.
      */
-    editable?: boolean
-    onEdit?: (path: ReadonlyArray<string | number>, next: unknown) => void
+    editable?: boolean | undefined
+    onEdit?: ((path: ReadonlyArray<string | number>, next: unknown) => void) | undefined
     /**
      * Canonical JSON-array key of the currently-selected path (`null`
      * for no selection). Compared against this node's own key so the
@@ -27,13 +27,13 @@
      * rather than a path array because string equality is cheap and
      * cross-renders consistently.
      */
-    selectedKey?: string | null
+    selectedKey?: string | null | undefined
     /**
      * Click handler for the key label. Called with the node's current
      * path-from-root; the panel toggles selection on identical paths.
      * When omitted, the key label is plain text (no selection UX).
      */
-    onSelectPath?: (path: ReadonlyArray<string | number>) => void
+    onSelectPath?: ((path: ReadonlyArray<string | number>) => void) | undefined
   }>()
 
   // Top-level expanded by default; deeper nodes collapsed past 2 levels

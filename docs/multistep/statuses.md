@@ -32,7 +32,7 @@ type FormStatus = {
 
 Each field tracks the per-step form's `meta`. A step's status flips when its meta does. The four scalars are deliberately small. They're what step indicators, navigation gates, and submit summaries reach for.
 
-## Three call forms
+## How to read it
 
 ```ts
 import { useForm, useWizard } from 'attaform/zod'
@@ -40,9 +40,9 @@ import { useForm, useWizard } from 'attaform/zod'
 const accountSchema = z.object({ email: z.email() })
 const profileSchema = z.object({ name: z.string().min(1) })
 
-const account = useForm({ schema: accountSchema, key: 'signup-account' })
 const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
-const wizard = useWizard([account, profile] as const)
+const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
+const wizard = useWizard(account)
 
 wizard.statuses // the whole proxy
 wizard.statuses() // { 'signup-account': FormStatus, 'signup-profile': FormStatus }
@@ -59,12 +59,12 @@ Reading `wizard.statuses['signup-profile'].valid` does NOT activate the `signup-
 
 ```vue
 <script setup lang="ts">
-  const wizard = useWizard([account, profile, review] as const)
+  const wizard = useWizard(account)
 </script>
 
 <template>
   <ol class="wizard-rail">
-    <li v-for="form in wizard.forms" :key="form.key">
+    <li v-for="form in wizard.allForms" :key="form.key">
       <span
         class="dot"
         :class="{
@@ -78,18 +78,18 @@ Reading `wizard.statuses['signup-profile'].valid` does NOT activate the `signup-
 </template>
 ```
 
-A step that has not yet been activated reports the pending sentinel (`valid: false`, `dirty: false`, `submitted: false`, `errorCount: 0`) instead of firing its `defaultValues` factory. The rail can render every step's dot without forcing every step's async data to load.
+A step that has not yet been activated reports a pending `FormStatus` (`valid: false`, `dirty: false`, `submitted: false`, `errorCount: 0`) instead of firing its `defaultValues` factory. The rail can render every step's dot without forcing every step's async data to load.
 
 See [lazy activation](/docs/multistep/lazy-activation) for the full activation rule.
 
 ## Seeding statuses up-front (`defaultStatuses`)
 
-For resumable wizards (server-sent step status, draft-restore flows, e-commerce checkouts that reopen mid-flow), `defaultStatuses` seeds `wizard.statuses[key]` BEFORE the per-form meta becomes live. Three shapes mirror `defaultValues`:
+For resumable wizards (server-sent step status, draft-restore flows, e-commerce checkouts that reopen mid-flow), `defaultStatuses` seeds `wizard.statuses[key]` before the per-form meta becomes live. Three shapes mirror `defaultValues`:
 
 ```ts
 import { useWizard } from 'attaform/zod'
 
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   defaultStatuses: {
     'signup-account': { valid: true, dirty: false, submitted: true, errorCount: 0 },
     'signup-profile': { valid: false, dirty: true, submitted: false, errorCount: 1 },
@@ -101,7 +101,7 @@ const wizard = useWizard([account, profile, review] as const, {
 Or a sync factory:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   defaultStatuses: () => buildStatusesFromDraft(draftStore.snapshot),
 })
 ```
@@ -109,7 +109,7 @@ const wizard = useWizard([account, profile, review] as const, {
 Or an async factory:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   defaultStatuses: async () => fetchSavedFlowStatuses(userId),
 })
 ```
@@ -118,16 +118,16 @@ Resolution priority per step:
 
 1. The step's form has `defaultsResolved === true` (its async / sync default settled). Status derives from `form.meta`.
 2. The step has a seed entry from `defaultStatuses`. The seed value renders.
-3. Otherwise, the pending sentinel renders.
+3. Otherwise, a pending `FormStatus` renders.
 
 Unknown keys in the seed object dev-warn and are ignored. Known keys still apply.
 
 ## Reacting to changes (`onStatusChange`)
 
-`onStatusChange` fires whenever a participating form's `valid`, `dirty`, `submitted`, or `errorCount` materially changes. The handler receives the new status and the form whose status changed:
+`onStatusChange` fires whenever a participating form's `valid`, `dirty`, `submitted`, or `errorCount` changes. The handler receives the new status and the form whose status changed:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   onStatusChange: (status, form) => {
     analytics.track('wizard_step_status', {
       key: form.key,

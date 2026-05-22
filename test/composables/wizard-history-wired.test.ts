@@ -50,16 +50,16 @@ describe('useWizard — history wired', () => {
     window.history.replaceState(null, '', ORIGINAL_URL)
   })
 
-  it('next() calls pushState with the new step key', () => {
+  it('next() calls pushState with the new step key', async () => {
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hw-next-a' })
-      const b = useForm({ schema: schemaB, key: 'hw-next-b' })
-      return useWizard([a, b], {})
+      const b = useForm({ schema: schemaB, key: 'hw-next-b', defaultValues: { b: 'b' } })
+      const a = useForm({ schema: schemaA, key: 'hw-next-a', defaultValues: { a: 'a' }, next: b })
+      return useWizard(a, {})
     })
     apps.push(app)
     pushSpy.mockClear()
-    result.next()
+    await result.next()
     expect(pushSpy).toHaveBeenCalledTimes(1)
     expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-next-b')
     pushSpy.mockRestore()
@@ -69,10 +69,10 @@ describe('useWizard — history wired', () => {
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hw-go-a' })
-      const b = useForm({ schema: schemaB, key: 'hw-go-b' })
       const c = useForm({ schema: schemaC, key: 'hw-go-c' })
-      return useWizard([a, b, c], {})
+      const b = useForm({ schema: schemaB, key: 'hw-go-b', next: c })
+      const a = useForm({ schema: schemaA, key: 'hw-go-a', next: b })
+      return useWizard(a, {})
     })
     apps.push(app)
     pushSpy.mockClear()
@@ -92,12 +92,12 @@ describe('useWizard — history wired', () => {
 
   it('popstate restores current.value to the URL key', async () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hw-pop-a' })
-      const b = useForm({ schema: schemaB, key: 'hw-pop-b' })
-      return useWizard([a, b], {})
+      const b = useForm({ schema: schemaB, key: 'hw-pop-b', defaultValues: { b: 'b' } })
+      const a = useForm({ schema: schemaA, key: 'hw-pop-a', defaultValues: { a: 'a' }, next: b })
+      return useWizard(a, {})
     })
     apps.push(app)
-    result.next()
+    await result.next()
     expect(result.current).toBe('hw-pop-b')
     window.history.back()
     await new Promise((r) => setTimeout(r, 20))
@@ -107,10 +107,10 @@ describe('useWizard — history wired', () => {
   it('seeds initial current.value from `?step=<knownKey>` on mount', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?step=hw-seed-b`)
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hw-seed-a' })
-      const b = useForm({ schema: schemaB, key: 'hw-seed-b' })
       const c = useForm({ schema: schemaC, key: 'hw-seed-c' })
-      return useWizard([a, b, c], {})
+      const b = useForm({ schema: schemaB, key: 'hw-seed-b', next: c })
+      const a = useForm({ schema: schemaA, key: 'hw-seed-a', next: b })
+      return useWizard(a, {})
     })
     apps.push(app)
     expect(result.current).toBe('hw-seed-b')
@@ -118,9 +118,9 @@ describe('useWizard — history wired', () => {
 
   it('writes the URL step param on mount to reflect the initial step', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hw-init-a' })
       const b = useForm({ schema: schemaB, key: 'hw-init-b' })
-      return useWizard([a, b], {})
+      const a = useForm({ schema: schemaA, key: 'hw-init-a', next: b })
+      return useWizard(a, {})
     })
     apps.push(app)
     expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-init-a')
@@ -130,9 +130,9 @@ describe('useWizard — history wired', () => {
   it('ignores unknown step keys from URL — falls back to forms[0]', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?step=notreal`)
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hw-unknown-a' })
       const b = useForm({ schema: schemaB, key: 'hw-unknown-b' })
-      return useWizard([a, b], {})
+      const a = useForm({ schema: schemaA, key: 'hw-unknown-a', next: b })
+      return useWizard(a, {})
     })
     apps.push(app)
     expect(result.current).toBe('hw-unknown-a')

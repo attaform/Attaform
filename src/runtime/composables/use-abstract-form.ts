@@ -24,6 +24,7 @@ import { extractSchemaFields } from '../core/extract-schema-fields'
 import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
 import { createHistoryModule, type HistoryModule } from '../core/history'
+import { normalizeNext } from '../core/normalize-next'
 import {
   buildPersistedPayload,
   cleanupOrphanKeys,
@@ -47,7 +48,7 @@ import {
 import { hashStableString } from '../core/hash'
 import { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } from '../core/multi-tab-sync'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
-import { canonicalizePath, pathKeyToDotted, type Path, type PathKey } from '../core/paths'
+import { canonicalizePath, coerceToPathKey, type Path, type PathKey } from '../core/paths'
 import { deleteAtPath, getAtPath, setAtPath, isPlainRecord } from '../core/path-walker'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry } from '../core/registry'
@@ -644,19 +645,15 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   // with no blank paths would gain ones the client's
   // construction-time defaults invented.
   //
-  // The walker emits opaque `PathKey` for its in-process callers
-  // (`expandUnsetAt` uses them as Map/Set keys directly). At this
-  // boundary we convert to dotted public paths so `createFormStore`
-  // sees one uniform shape for both this branch and the hydration
-  // branch.
+  // The walker emits opaque `PathKey` strings (canonicalised JSON
+  // segment arrays). The rest of the runtime — `setValueAtPath`, DU
+  // reshape, hydration apply, persistence payloads, history snapshots,
+  // multi-tab sync — keys `blankPaths` by the same PathKey form, so we
+  // pass `walked.paths` straight through to `createFormStore` without
+  // reformatting at this boundary.
   let initialBlankPaths: ReadonlyArray<string> | undefined
   if (pending === undefined) {
-    const dotted: string[] = []
-    for (const pk of walked.paths) {
-      const d = pathKeyToDotted(pk)
-      if (d !== null) dotted.push(d)
-    }
-    initialBlankPaths = dotted
+    initialBlankPaths = walked.paths
   }
   // `configuration` has already passed through `mergeWithDefaults`, so
   // `sensitiveNames` here is the cascade-resolved value (per-form >
@@ -688,8 +685,8 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     // override or a future transform mark has a consistent set to diff
     // against; `shouldFire` lets the activate path bail when the
     // wizard explicitly skipped this key — even an explicit
-    // `form.activate()` defers to the wizard's privacy backstop on the
-    // server.
+    // `form.activate()` defers to the wizard's render-efficiency
+    // skip-list on the server.
     ...(registry.ssr
       ? {
           ssrPrefetch: {
@@ -712,6 +709,13 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     ...(resolvedSegmentMatchesSensitive !== undefined
       ? { segmentMatchesSensitive: resolvedSegmentMatchesSensitive }
       : {}),
+    // Wizard graph declaration. Identity refs lift to a single-element
+    // `{ pick, forms }` tuple; branching inputs pass through with a
+    // runtime guard. `undefined` for terminal forms — same as omitting
+    // the option entirely. `next` is never plumbed through registry
+    // defaults (per-form only), so this read is direct from the
+    // configuration, not from `merged`.
+    ...(configuration.next !== undefined ? { next: normalizeNext(configuration.next) } : {}),
   }
   const state = createFormStore<F, G>(createOptions)
   // Storage type is FormStore<GenericForm>; the lookup above narrows
@@ -1139,8 +1143,14 @@ function wirePersistence<F extends GenericForm>(
         state.originalBlankPaths.delete(k)
       }
       for (const k of payload.data.blankPaths ?? []) {
-        state.blankPaths.add(k as PathKey)
-        state.originalBlankPaths.add(k as PathKey)
+        // Persisted blankPaths land on disk in dotted-string form (see
+        // `buildPersistedPayload`'s `pathKeyToDotted` conversion).
+        // `coerceToPathKey` normalises back to the internal PathKey so
+        // every lookup (`.has(canonical)`, dirty diff, persistence
+        // filter) keys on a single representation.
+        const key = coerceToPathKey(k)
+        state.blankPaths.add(key)
+        state.originalBlankPaths.add(key)
       }
       if (include === 'form+errors') {
         // Each store rebuilds independently from its persisted entries.

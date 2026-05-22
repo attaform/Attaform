@@ -57,8 +57,8 @@
             <td>{{ form.meta.submitted }}</td>
           </tr>
           <tr>
-            <th>submitCount</th>
-            <td>{{ form.meta.submitCount }}</td>
+            <th>submissionAttempts</th>
+            <td>{{ form.meta.submissionAttempts }}</td>
             <th>errorCount</th>
             <td>{{ form.meta.errorCount }}</td>
           </tr>

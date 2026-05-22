@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App, type VNode } from 'vue'
 import { z } from 'zod'
-import { unset, useForm } from '../../src/zod'
+import { unset, useForm, type UseFormReturn } from '../../src/zod'
 import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/registry'
 import { vRegister } from '../../src/runtime/core/directive'
 import { waitUntil } from '../utils/form-harness'
@@ -30,7 +30,7 @@ const schema = z.object({
   age: z.number(),
 })
 
-type FormApi = ReturnType<typeof useForm<typeof schema>>
+type FormApi = UseFormReturn<typeof schema>
 
 function mountAgeInput(): {
   app: App
@@ -83,7 +83,7 @@ describe('age: unset on z.number() — initial render shows blank input', () => 
   it('age path is in blankPaths immediately after mount', () => {
     const { app, form } = mountAgeInput()
     apps.push(app)
-    expect(form.blankPaths.value).toContain('age')
+    expect(form.blankPaths.value.has('age')).toBe(true)
     expect(form.values.age).toBe(0)
   })
 
@@ -108,7 +108,7 @@ describe('age: unset on z.number() — initial render shows blank input', () => 
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (form.values.age === 7 ? true : null))
     expect(form.values.age).toBe(7)
-    expect(form.blankPaths.value).not.toContain('age')
+    expect(form.blankPaths.value.has('age')).toBe(false)
     expect(input.value).toBe('7')
   })
 })

@@ -23,6 +23,7 @@ import type {
   ValueOfUnion,
   WriteShape,
 } from './types-core'
+import type { AnyForm, NextOption, NormalizedNext } from './types-wizard'
 
 /**
  * Identifier for a form. A `FormKey` is the string passed via
@@ -1030,6 +1031,7 @@ export type UseFormConfiguration<
   Schema extends AbstractSchema<Form, GetValueFormType>,
   DefaultValues extends DefaultValuesInput<Form>,
   K extends FormKey = FormKey,
+  Forms extends readonly AnyForm[] = readonly AnyForm[],
 > = {
   /**
    * The schema describing the form's shape and validation rules.
@@ -1109,7 +1111,7 @@ export type UseFormConfiguration<
    * - `true` (default): the schema is run against the derived
    *   defaults immediately; any failures populate `form.errors` from
    *   the first frame. The UI decides when to *show* errors — gate
-   *   on `form.fields.<path>.touched`, `form.meta.submitCount`, etc.
+   *   on `form.fields.<path>.touched`, `form.meta.submissionAttempts`, etc.
    * - `false`: refinements are stripped during defaults derivation
    *   and construction-time validation is skipped. Useful for
    *   multi-step wizards, field arrays seeded with placeholder
@@ -1327,6 +1329,29 @@ export type UseFormConfiguration<
    */
   multiTab?: boolean
   /**
+   * Declares this form's downstream neighbor(s) in a wizard graph.
+   * Two shapes:
+   *
+   *   - `AnyForm` — identity reference; the form's runtime successor
+   *     is always the named form (linear flow).
+   *   - `{ pick, forms }` — declared list of possible successors with
+   *     a `pick` selector. `pick(parsed)` runs against the form's
+   *     `z.output` shape (the same shape `handleSubmit` receives) and
+   *     returns one of `forms`, or `undefined` for a dynamic terminal.
+   *
+   * Declare `forms` with `as const` so TypeScript narrows `pick`'s
+   * return type to the literal union. Without `as const`, the tuple
+   * widens to `AnyForm[]` and narrowing collapses.
+   *
+   * Omit `next` to mark this form as a terminal step. The walker
+   * treats any form whose `next` is undefined as a wizard endpoint.
+   *
+   * Read at `useWizard(entryForm)` construction time and at every
+   * navigation / submission consultation. `pick` should be free of
+   * side effects — the walker may invoke it multiple times.
+   */
+  next?: NextOption<GetValueFormType, Forms>
+  /**
    * @internal
    * SSR prefetch mark — set by the `attaform/vite` compile-time
    * transform on `useForm` calls whose surrounding SFC template (or a
@@ -1421,7 +1446,7 @@ export type AttaformDefaults = {
    *
    * ```ts
    * (field, formMeta) =>
-   *   formMeta.submitCount > 0 || (field.touched === true && field.dirty)
+   *   formMeta.submissionAttempts > 0 || (field.touched === true && field.dirty)
    * ```
    *
    * Compose with the library default via the public
@@ -3150,7 +3175,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * outcome (validation failure, callback success, callback throw).
    * Useful for "show errors after first submit attempt" UX.
    */
-  readonly submitCount: number
+  readonly submissionAttempts: number
 
   /**
    * The error thrown or rejected by the most recent submit callback
@@ -3174,13 +3199,15 @@ export type FormMeta<F = unknown> = FieldState<F> & {
   readonly errorCount: number
 
   /**
-   * `true` once `handleSubmit` has been invoked at least once, success
-   * or failure. Equivalent to `submitCount > 0`, exposed as a scalar
-   * for "show this only after the first submit attempt" UX in
-   * templates.
+   * `true` once a `handleSubmit` callback has resolved without
+   * throwing. Independent of `submissionAttempts` — a failed submit
+   * (validation failure or callback rejection) increments attempts but
+   * leaves `submitted` at `false`. Templates read it as "the form has
+   * been submitted successfully at least once."
    *
-   * Monotonically non-decreasing over the form's lifetime — once
-   * flipped, it stays `true` even after `form.reset()`.
+   * Cleared by `form.reset()` alongside `submissionAttempts` and
+   * `submitError`. For "the user has attempted a submit," read
+   * `submissionAttempts > 0` directly.
    */
   readonly submitted: boolean
 
@@ -3247,6 +3274,46 @@ export type FormMeta<F = unknown> = FieldState<F> & {
  * For schemas without write-boundary wrappers or transforms the three
  * shapes coincide.
  */
+
+/**
+ * Read-only view returned by `form.blankPaths.value`. Exposes lookup
+ * (`.has`), aggregate (`.size`), and iteration over the form's
+ * blank-marked paths.
+ *
+ * `.has(input)` and the iterator yield consistent results across both
+ * input conventions the library accepts everywhere a path is named:
+ *
+ *  - **Dotted string**: `'user.email'`, matching what `register('user.email')`
+ *    or `setValue('items.0.sku', …)` accept. Convenient when no segment
+ *    contains a literal dot.
+ *  - **Array form**: `['user', 'email']`, mirroring `register(['user', 'email'])`.
+ *    Required when a single segment contains literal dots (e.g.
+ *    `['address.primary']` for a top-level key named `address.primary` —
+ *    the dotted form `'address.primary'` would be parsed as two
+ *    segments).
+ *
+ * Iteration yields `Path` arrays so the structure is unambiguous —
+ * consumers building debug UI or persisting the set never have to guess
+ * whether a dot in a segment is a separator or part of the name.
+ *
+ * Mutating the view does nothing — writes still go through
+ * `setValue(path, unset)`, `markBlank()` on a register binding, or the
+ * directive's input listener on numeric clear.
+ */
+export interface BlankPathsView {
+  /** Number of blank-marked paths. */
+  readonly size: number
+  /**
+   * `true` when the path is in the blank set. Accepts dotted-string
+   * form (parsed by [[parseDottedPath]]) or the array form.
+   */
+  has(input: string | Path): boolean
+  /** Snapshot of all blank-marked paths as segment arrays. */
+  values(): readonly Path[]
+  /** Iterates the blank-marked paths as segment arrays. */
+  [Symbol.iterator](): IterableIterator<Path>
+}
+
 export type UseFormReturnType<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,
@@ -3520,6 +3587,22 @@ export type UseFormReturnType<
    */
   key: K
 
+  /**
+   * Normalized `next` declaration captured from
+   * `useForm({ next })`. Identity refs lift to a single-element
+   * `{ pick, forms }` tuple so the wizard graph walker reads one
+   * uniform shape; branching inputs pass through with a runtime guard
+   * that throws `OutOfFormsListError` on out-of-list `pick` returns.
+   *
+   * `undefined` when `next` was omitted — the form is a terminal step
+   * in any wizard graph that reaches it.
+   *
+   * Read by `useWizard(entryForm)` during the construction-time graph
+   * walk and by the navigation / submission pipelines that consult
+   * `pick`. Consumers do not normally read this directly.
+   */
+  readonly next: NormalizedNext | undefined
+
   // --- Async-defaults lifecycle ---
 
   /**
@@ -3743,7 +3826,7 @@ export type UseFormReturnType<
 
   /**
    * Form-level reactive flags, counters, and aggregates (`dirty`,
-   * `valid`, `submitting`, `submitCount`, and the flat `errors`
+   * `valid`, `submitting`, `submissionAttempts`, and the flat `errors`
    * array). See `FormMeta` for the full shape. Read leaves directly
    * with no `.value`.
    *
@@ -3766,7 +3849,8 @@ export type UseFormReturnType<
    *   - the dirty baseline (so the next edit flips `dirty` correctly);
    *   - field errors;
    *   - touched / focused / blurred per-field flags;
-   *   - submission state (`submitting` / `submitCount` / `submitError`);
+   *   - submission state (`submitting` / `submissionAttempts` /
+   *     `submitted` / `submitError`);
    *   - the persisted draft, if persistence is configured.
    *
    * The next edit on a still-mounted opted-in input will start
@@ -3898,6 +3982,22 @@ export type UseFormReturnType<
   scrollToFirstError: (options?: ScrollIntoViewOptions) => boolean
 
   /**
+   * Drive the form's `onInvalidSubmit` policy imperatively. The same
+   * focus/scroll behavior `handleSubmit` runs after a failed submit,
+   * but available standalone. Defaults to the policy configured via
+   * `useForm({ onInvalidSubmit })` (or `'focus-first-error'` when
+   * omitted). Pass an explicit policy to override for one call.
+   *
+   * Used by `useWizard` after navigating to the first failing form
+   * during `wizard.handleSubmit`, so the failing form's own configured
+   * policy fires once its DOM is in view.
+   *
+   * No-op when no errored field is currently registered or when the
+   * resolved policy is `'none'`.
+   */
+  applyInvalidSubmitPolicy: (policy?: OnInvalidSubmitPolicy) => void
+
+  /**
    * Programmatically mark fields as touched — the sticky flag the
    * standard "show errors after interaction" pattern reads. Closes
    * the gap when fields are populated without a DOM gesture (post-
@@ -3956,25 +4056,28 @@ export type UseFormReturnType<
     value: ArrayItem<Form, Path>
   ) => void
   /**
-   * Read-only view of the form's blank path set. Each entry
-   * is a canonical `PathKey` (the `JSON.stringify(segments)` form
-   * `canonicalizePath` produces). The set is reactive — Vue 3.5
-   * tracks `.has()` / `for..of` / size accesses, so consumers can
-   * drive conditional UI off it directly:
+   * Read-only view of the form's blank path set. Reactive — Vue 3.5
+   * tracks `.has()` / `for..of` / size accesses, so consumers can drive
+   * conditional UI off it directly:
    *
    * ```ts
    * watchEffect(() => {
    *   if (form.blankPaths.value.size > 0) {
-   *     console.warn('unanswered fields:', [...form.blankPaths.value])
+   *     const paths = [...form.blankPaths.value]   // Path[][] — array of segments per entry
+   *     console.warn('unanswered fields:', paths.map((p) => p.join('.')))
    *   }
    * })
    * ```
    *
+   * `.has(input)` accepts the dotted-string form (`'user.email'`) or
+   * the array form (`['user', 'email']`). The array form disambiguates
+   * keys with literal dots (e.g. `['address.primary']`). See
+   * [[BlankPathsView]] for the full surface.
+   *
    * For per-path access, use `form.fields.<path>.blank`.
    * Writes happen through `setValue(path, unset)`,
    * `markBlank()` on a register binding, and the directive's
-   * input listener on numeric clear. Mutating the snapshot returned
-   * here does nothing — it's `Object.freeze`-d.
+   * input listener on numeric clear.
    */
-  blankPaths: ComputedRef<ReadonlySet<string>>
+  blankPaths: ComputedRef<BlankPathsView>
 }

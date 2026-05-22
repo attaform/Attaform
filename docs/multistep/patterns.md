@@ -1,11 +1,12 @@
 ---
 title: Patterns
-description: Idiomatic wizard patterns. Linear vs branching flows, conditional steps, per-step persistence, per-step undo. Small primitives composed without library-side magic.
+description: Idiomatic wizard patterns. Linear flows, branching graphs, dynamic terminals, per-step persistence, per-step undo. Small primitives composed without library-side magic.
 metaRows:
   - label: Linear
-    value: 'next() / back() walks forms in order'
+    value: 'next: someForm (identity ref)'
+    kind: code
   - label: Branching
-    value: 'goTo(key) skips ahead based on values'
+    value: 'next: { pick, forms }'
     kind: code
   - label: Per-step
     value: persistence + undo follow each form
@@ -13,114 +14,121 @@ metaRows:
 
 # Patterns
 
-> Each step of a wizard is a regular `useForm` call. The wizard is a thin orchestrator. Branching, conditional steps, per-step persistence, and per-step undo all come from the form-level primitives composing through the wizard, not from special wizard knobs.
+> Each step of a wizard is a regular `useForm` call. The wizard is a thin orchestrator. Branching, dynamic terminals, per-step persistence, and per-step undo all come from the form-level primitives composing through the wizard, not from special wizard knobs.
 
 ::docs-meta-table
 ::
 
 ## Linear wizards
 
-The default shape: walk the forms array in order. `wizard.next()` advances; `wizard.back()` retreats. Out-of-bounds calls dev-warn and no-op.
+The default shape: a chain of identity-ref `next` declarations. `wizard.next()` validates the active step before advancing; `wizard.back()` retreats. Out-of-bounds calls dev-warn and no-op.
 
 ```ts
 import { useForm, useWizard } from 'attaform/zod'
+import { z } from 'zod'
 
 const accountSchema = z.object({ email: z.email() })
 const profileSchema = z.object({ name: z.string().min(1) })
 const reviewSchema = z.object({ tos: z.literal(true) })
 
-const account = useForm({ schema: accountSchema, key: 'signup-account' })
-const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
 const review = useForm({ schema: reviewSchema, key: 'signup-review' })
+const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
+const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
 
-const wizard = useWizard([account, profile, review] as const)
-
-function onAccountNext(): void {
-  account.handleSubmit(() => wizard.next())()
-}
+const wizard = useWizard(account)
 ```
 
-Each step gates on its own `form.handleSubmit` to advance: validation fails locally on the active step, then the wizard advances.
+Declare terminal-first, entry-last. `wizard.next()` validates the active form for you, so the template wires straight to it:
+
+```vue
+<button v-if="wizard.canAdvance" @click="wizard.next()">Next</button>
+```
 
 ## Branching wizards
 
-Use `wizard.goTo(key)` to jump past a step based on the active step's values:
+When the active step's parsed values determine which form is next, use the structured `next` shape. The `pick` callback runs against `z.output<typeof schema>`:
 
 ```ts
-function onAccountNext(): void {
-  account.handleSubmit((data) => {
-    if (data.email.endsWith('@enterprise.com')) {
-      wizard.goTo('signup-review')
-    } else {
-      wizard.next()
-    }
-  })()
-}
+const review = useForm({ schema: reviewSchema, key: 'signup-review' })
+const userProfile = useForm({ schema: userProfileSchema, key: 'signup-user', next: review })
+const orgProfile = useForm({ schema: orgSchema, key: 'signup-org', next: review })
+
+const accountSchema = z.object({ kind: z.enum(['user', 'organization']) })
+const account = useForm({
+  schema: accountSchema,
+  key: 'signup-account',
+  next: {
+    pick: (parsed) => (parsed.kind === 'organization' ? orgProfile : userProfile),
+    forms: [orgProfile, userProfile] as const,
+  },
+})
+
+const wizard = useWizard(account)
 ```
 
-Enterprise users skip the consumer-profile step. Reading `data.email` inside `handleSubmit` is the type-safe path (the callback receives parsed values).
+The `forms` tuple is declared `as const` so TypeScript narrows `pick`'s return type to `orgProfile | userProfile | undefined`. The wizard's static analysis walks every declared branch, so `wizard.flow.allForms` enumerates `account`, `orgProfile`, `userProfile`, and `review` regardless of which path the user ends up taking.
 
-A branching wizard's `wizard.current` still walks the actual visited steps. The browser history stack records each `goTo` push so the back button returns through the visited path, not the array order.
+Enterprise users skip the consumer-profile step. Reading `parsed.kind` inside `pick` is the type-safe path; the callback receives the form's parsed output, not the raw input.
 
-## Conditional steps
+A branching wizard's `wizard.current` walks the runtime path taken. The browser history stack records each navigation so the back button returns through the visited path, not the static graph order.
 
-Two idiomatic shapes:
+## Dynamic terminals with `pick(parsed) → undefined`
 
-### Filter the forms array
-
-If a step doesn't apply for the entire flow, omit it from the array:
+A `pick` callback that returns `undefined` flags the current form as a dynamic terminal. The wizard treats the active step as the runtime end of the path even though the static graph could have continued:
 
 ```ts
-const visible = computed(() =>
-  user.value.kind === 'organisation' ? [account, organisation, review] : [account, profile, review]
-)
-const wizard = useWizard(visible.value as const)
+const review = useForm({ schema: reviewSchema, key: 'signup-review' })
+const survey = useForm({ schema: surveySchema, key: 'signup-survey', next: review })
+
+const accountSchema = z.object({ email: z.email(), willTakeSurvey: z.boolean() })
+const account = useForm({
+  schema: accountSchema,
+  key: 'signup-account',
+  next: {
+    pick: (parsed) => (parsed.willTakeSurvey ? survey : undefined),
+    forms: [survey] as const,
+  },
+})
 ```
 
-This is the right shape when the step's applicability is determined at wizard-construction time. The wizard never sees the omitted form, so `wizard.statuses`, `wizard.allValues`, and `wizard.allErrors` reflect only the visible steps.
+Users who decline the survey terminate at `account`; users who opt in walk through `survey` then `review`. The dynamic terminal is computed each time `wizard.next()` or `wizard.handleSubmit` consults `pick`, so a toggle change after the fact is respected on the next navigation.
 
-### Skip with `goTo`
+## Manual jumps with `goTo`
 
-If applicability depends on values entered during the flow, keep the step in the array and skip it conditionally:
+`wizard.goTo(key)` skips the validation gate. Use it when the user explicitly clicked a rail item:
 
-```ts
-function onAccountNext(): void {
-  account.handleSubmit((data) => {
-    if (data.kind === 'organisation') {
-      wizard.goTo('signup-organisation')
-    } else {
-      wizard.goTo('signup-profile')
-    }
-  })()
-}
+```vue
+<button type="button" @click="wizard.goTo(form.key)">Jump to {{ form.key }}</button>
 ```
 
-The skipped step's form still exists. The aggregator gates on `defaultsResolved`, so a skipped step contributes `PENDING_STATUS` to `wizard.statuses` and nothing to `wizard.allErrors` until something activates it.
+`wizard.handleSubmit` catches the upstream validation gaps that `goTo` lets through. Clicking Finish on a step the user jumped to without filling earlier forms walks the runtime path, surfaces every error, and (with `navigateToFirstError: true`, the default) goes back to the first failing step.
 
 ## Per-step persistence
 
 Each step is its own `useForm` call, so each step gets its own `persist` config:
 
 ```ts
-const account = useForm({
-  schema: accountSchema,
-  key: 'signup-account',
-  persist: 'local', // localStorage, namespaced by key
-})
-
-const profile = useForm({
-  schema: profileSchema,
-  key: 'signup-profile',
-  persist: 'session', // sessionStorage, separate from account
-})
-
 const review = useForm({
   schema: reviewSchema,
   key: 'signup-review',
   // No persist; sensitive consent stays in-memory only
 })
 
-const wizard = useWizard([account, profile, review] as const)
+const profile = useForm({
+  schema: profileSchema,
+  key: 'signup-profile',
+  next: review,
+  persist: 'session', // sessionStorage, separate from account
+})
+
+const account = useForm({
+  schema: accountSchema,
+  key: 'signup-account',
+  next: profile,
+  persist: 'local', // localStorage, namespaced by key
+})
+
+const wizard = useWizard(account)
 ```
 
 `account` and `profile` survive a refresh; `review` doesn't. The wizard itself doesn't persist. `?step=<key>` in the URL is the wizard's own restore mechanism (see [Browser history](/docs/multistep/history)).
@@ -132,7 +140,7 @@ Sensitive-name protection applies per-form: `password` / `creditCard` / `ssn` le
 Same shape: each step gets its own `history` chain:
 
 ```ts
-const cargoForm = useForm({
+const cargo = useForm({
   schema: cargoSchema,
   key: 'cargo',
   history: { limit: 25 }, // undo / redo across the cargo step
@@ -158,13 +166,14 @@ The wizard composes naturally with per-form undo. A keyboard shortcut bound to t
 </template>
 ```
 
-`wizard.activeForm` is identity-equal to the matching entry in `wizard.forms`, so undo / redo dispatch goes to the right form's history.
+`wizard.activeForm` is identity-equal to the matching entry in `wizard.allForms`, so undo / redo dispatch goes to the right form's history.
 
 Each step's history is independent. Undoing in the `cargo` step does not retreat changes made earlier in the `account` step. That matches user expectation: "undo what I just typed here."
 
 ## Cross-reference
 
-- [`useWizard`](/docs/multistep/use-wizard) for the navigation surface and `activeForm`.
+- [`useWizard`](/docs/multistep/use-wizard) for the navigation surface, `activeForm`, and `handleSubmit`.
+- [`injectWizard`](/docs/multistep/inject-wizard) for cross-component access to the wizard handle.
 - [Browser history](/docs/multistep/history) for wizard-level URL round-tripping.
 - [Per-field opt-in](/docs/persistence/per-field-opt-in) for the per-form persistence story.
 - [Undo & redo](/docs/cross-cutting-state/undo-redo) for the per-form history chain.

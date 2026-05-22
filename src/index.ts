@@ -47,13 +47,24 @@ export { injectForm } from './runtime/composables/use-form-context'
 // into a wizard with navigation, status aggregation, and activation
 // lifecycle. See the composable's docblock for invariants.
 export { useWizard } from './runtime/composables/use-wizard'
+export { injectWizard } from './runtime/composables/inject-wizard'
+export type { InjectWizardInput } from './runtime/composables/inject-wizard'
 export type {
   AnyForm,
-  FormKeyOf,
-  KeysOf,
+  NextBranching,
+  NextOption,
+  NormalizedNext,
+  WizardFlow,
   WizardNavOptions,
+  WizardOnError,
+  WizardOnSubmit,
   WizardOptions,
+  WizardSubmitContext,
+  WizardValue,
   UseWizardReturnType,
+  WizardTreeNode,
+  WizardWarning,
+  WizardWarningKind,
 } from './runtime/types/types-wizard'
 
 // Ambient bridge for components that wrap a single field and want to
@@ -196,7 +207,6 @@ export {
   RegistryNotInstalledError,
   ReservedFormKeyError,
   SensitivePersistFieldError,
-  StepperLateRegistrationError,
   SubmitErrorHandlerError,
 } from './runtime/core/errors'
 

@@ -1,0 +1,91 @@
+name: Deploy docs to Vercel
+run-name: Deploy docs to Vercel${{ github.event.inputs.reason != '' && format(' — {0}', github.event.inputs.reason) || '' }}
+
+# Manual-only production deployment for the docs site at apps/site.
+# Vercel's git-push auto-deploys from `main` are disabled in
+# apps/site/vercel.json (`git.deploymentEnabled.main = false`), so
+# this workflow is the ONLY path that ships the production site.
+#
+# Why manual: the docs reference symbols, types, and behavior shipped
+# by the `attaform` npm package. Auto-publishing docs on every merge
+# to main risks the published docs page referencing an API that
+# isn't on npm yet. The release order is now strictly:
+#
+#   1. Run `Publish to NPM and Version Bump` (publish-npm.yml)
+#   2. Wait for `npm install attaform@<version>` to resolve the new
+#      tarball (registry usually serves new versions within a minute)
+#   3. Run THIS workflow to ship the matching docs
+#
+# Preview deploys for non-main branches and PRs continue to fire
+# automatically — `deploymentEnabled` only gates the production
+# branch, so PR previews still help review docs changes pre-merge.
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for this deploy (e.g. "0.18.0 release", "fix broken link"). Shown in the workflow run name; optional but useful for the activity log.'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Scoping to the `Production (Docs)` GitHub Environment buys three
+    # things on top of a plain repo secret:
+    #   1. Activity log: each run shows up under repo → Deployments,
+    #      with timestamp + triggering user, so the docs-release ledger
+    #      lives in one obvious place.
+    #   2. Branch restriction: the environment's "Deployment branches
+    #      and tags" rules gate which refs can read the secret. Lock to
+    #      `main` so a fork or feature-branch copy of this workflow
+    #      can't reach VERCEL_DEPLOY_HOOK_URL.
+    #   3. Optional reviewer gate: the environment's "Required
+    #      reviewers" rule (configured in the repo's settings, NOT here)
+    #      adds a manual-approval click before each deploy.
+    environment:
+      name: 'Production (Docs)'
+    steps:
+      # Vercel Deploy Hooks are POST-only webhook URLs scoped to a
+      # specific project + branch. Creating one in the Vercel
+      # dashboard:
+      #   Project → Settings → Git → Deploy Hooks → Create Hook
+      #   Name:   "Manual production deploy"
+      #   Branch: main
+      # The resulting URL goes into the `VERCEL_DEPLOY_HOOK_URL` repo
+      # secret. The URL itself is the auth token — anyone with the URL
+      # can trigger a production deploy, so it lives only as a secret
+      # and never in the repo.
+      #
+      # Hitting the hook bypasses `deploymentEnabled.main = false`
+      # (that flag governs git-push auto-deploys, not hook-triggered
+      # ones) and queues a production build from the current `main`
+      # tip on Vercel's side. The response carries the queued job's
+      # id + state; the human-visible deployment URL only appears
+      # after Vercel builds, so we surface the dashboard link instead.
+      - name: Trigger Vercel production deploy
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
+            echo "::error::VERCEL_DEPLOY_HOOK_URL secret is not set. Create a Deploy Hook in Vercel (Project Settings → Git → Deploy Hooks, branch: main), then add the URL as a repo secret named VERCEL_DEPLOY_HOOK_URL."
+            exit 1
+          fi
+          RESPONSE=$(curl --fail-with-body -sS -X POST "$VERCEL_DEPLOY_HOOK_URL")
+          echo "Vercel response: $RESPONSE"
+          {
+            echo "### Vercel deploy queued"
+            echo ""
+            echo "Triggered by: @${{ github.actor }}"
+            if [ -n "${{ github.event.inputs.reason }}" ]; then
+              echo "Reason: ${{ github.event.inputs.reason }}"
+            fi
+            echo ""
+            echo "Hook response:"
+            echo ""
+            echo '```json'
+            echo "$RESPONSE"
+            echo '```'
+            echo ""
+            echo "Track the build at https://vercel.com/dashboard — Vercel will publish to the production domain once the build succeeds."
+          } >> "$GITHUB_STEP_SUMMARY"

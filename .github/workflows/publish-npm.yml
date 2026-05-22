@@ -1,14 +1,22 @@
 name: Publish to NPM and Version Bump
-run-name: Publish ${{ github.event.inputs.prerelease_id != '' && format('{0} ({1})', github.event.inputs.version_type, github.event.inputs.prerelease_id) || github.event.inputs.version_type }} release to NPM
+run-name: ${{ github.event.inputs.exact_version != '' && format('Publish v{0} to NPM{1}', github.event.inputs.exact_version, github.event.inputs.dist_tag != '' && format(' @ {0}', github.event.inputs.dist_tag) || '') || format('Publish {0} release to NPM', github.event.inputs.prerelease_id != '' && format('{0} ({1})', github.event.inputs.version_type, github.event.inputs.prerelease_id) || github.event.inputs.version_type) }}
 on:
   workflow_dispatch:
     inputs:
       version_type:
-        description: 'Version type (major, minor, patch). For prereleases, this is the base bump that the prerelease attaches to (used only when starting a NEW prerelease cycle).'
+        description: 'Version type (major, minor, patch). For prereleases, this is the base bump that the prerelease attaches to (used only when starting a NEW prerelease cycle). Ignored when `exact_version` is set.'
         required: true
         default: 'patch'
       prerelease_id:
-        description: 'Prerelease identifier (alpha, beta, rc, next, ...). Leave EMPTY for a stable release. Example flow: 0.2.1 → 0.2.2-beta.0 → 0.2.2-beta.1 → 0.2.2.'
+        description: 'Prerelease identifier (alpha, beta, rc, next, ...). Leave EMPTY for a stable release. Example flow: 0.2.1 → 0.2.2-beta.0 → 0.2.2-beta.1 → 0.2.2. Ignored when `exact_version` is set.'
+        required: false
+        default: ''
+      exact_version:
+        description: 'Override mode: publish this EXACT semver (e.g. "1.16.3" or "1.16.3-hotfix.0") instead of computing from version_type / prerelease_id. Use for hotfixes to an older major line while a newer major holds the current `latest` tag. Pair with `dist_tag` so the publish does not clobber `latest`.'
+        required: false
+        default: ''
+      dist_tag:
+        description: 'npm dist-tag override. Leave EMPTY in normal flows — the workflow derives `latest` for stable releases and the preid for prereleases. Set this when publishing an off-latest version (e.g. "v1" for a v1.x hotfix while 2.x is current) so `npm install attaform` still resolves to the current major.'
         required: false
         default: ''
 jobs:
@@ -28,7 +36,29 @@ jobs:
         env:
           VERSION_TYPE: ${{ github.event.inputs.version_type }}
           PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+          EXACT_VERSION: ${{ github.event.inputs.exact_version }}
         run: |
+          # exact_version short-circuit: caller dictates the version
+          # verbatim, skipping version_type / prerelease_id math. Used
+          # for hotfix releases to older major lines (e.g. publishing
+          # 1.16.3 while 2.x is current). The publish step uses
+          # `dist_tag` to keep the off-latest tarball from shadowing
+          # the current `latest` — pair them together.
+          if [ -n "$EXACT_VERSION" ]; then
+            if ! echo "$EXACT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+)?$'; then
+              echo "::error::exact_version='$EXACT_VERSION' is not a valid semver string. Examples: 1.16.3, 1.16.3-hotfix.0"
+              exit 1
+            fi
+            CURRENT=$(node -p "require('./package.json').version")
+            if [ "$EXACT_VERSION" = "$CURRENT" ]; then
+              echo "::error::exact_version='$EXACT_VERSION' matches the current package.json version — pnpm version would reject the bump. Pick a distinct version or use a regular bump path."
+              exit 1
+            fi
+            echo "next_version=$EXACT_VERSION" >> $GITHUB_OUTPUT
+            echo "WORKFLOW_TITLE=Publish exact version $EXACT_VERSION to NPM" >> $GITHUB_ENV
+            exit 0
+          fi
+
           # Computed in Node so we can handle prerelease semantics without
           # depending on `semver` being installed (this step runs BEFORE
           # `pnpm install`). Pure-JS version inc, matching `semver.inc`:
@@ -155,8 +185,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION_TYPE: ${{ github.event.inputs.version_type }}
           PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+          EXACT_VERSION: ${{ github.event.inputs.exact_version }}
         run: |
-          if [ -n "$PRERELEASE_ID" ]; then
+          if [ -n "$EXACT_VERSION" ]; then
+            # Override mode: `pnpm version <exact-semver>` writes the
+            # version verbatim. npm/pnpm accept arbitrary semver here
+            # with no monotonic check, so hotfix-of-older-major bumps
+            # (e.g. 2.0.0 → 1.16.3 for a v1.x security patch) work.
+            pnpm version "$EXACT_VERSION"
+          elif [ -n "$PRERELEASE_ID" ]; then
             # Prerelease modes match the calculate-next-version logic.
             #   Already on a prerelease (any preid) → `prerelease --preid <id>`:
             #     this either bumps the counter (same preid) or switches
@@ -193,11 +230,20 @@ jobs:
         # resolves to `latest` (the stable line), and consumers opt in
         # via `npm install attaform@beta`. Without `--tag`, pnpm publish
         # defaults to `latest`, which would shadow the stable release.
+        #
+        # `dist_tag` input wins over prerelease_id when set — used in
+        # the exact_version override mode to publish a v1.x hotfix
+        # under a non-latest tag (e.g. "v1") so the older-major
+        # tarball does not shadow the current major on the default
+        # `npm install attaform`.
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+          DIST_TAG: ${{ github.event.inputs.dist_tag }}
         run: |
-          if [ -n "$PRERELEASE_ID" ]; then
+          if [ -n "$DIST_TAG" ]; then
+            pnpm publish --access public --provenance --tag "$DIST_TAG"
+          elif [ -n "$PRERELEASE_ID" ]; then
             pnpm publish --access public --provenance --tag "$PRERELEASE_ID"
           else
             pnpm publish --access public --provenance
@@ -264,8 +310,17 @@ jobs:
           # above would short-circuit here rather than produce an
           # orphan release. Stable releases use `--latest` (primary on
           # the repo's releases page); prereleases use `--prerelease`
-          # so they don't shadow the stable line.
-          if [ -n "${{ github.event.inputs.prerelease_id }}" ]; then
+          # so they don't shadow the stable line. Off-latest stable
+          # hotfixes (any non-empty, non-`latest` dist_tag) get neither
+          # flag — they appear in the release list but don't claim
+          # the "Latest" badge that the current major's release holds.
+          DIST_TAG_INPUT="${{ github.event.inputs.dist_tag }}"
+          if [ -n "$DIST_TAG_INPUT" ] && [ "$DIST_TAG_INPUT" != "latest" ]; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file "$RUNNER_TEMP/release-body.md" \
+              --verify-tag
+          elif [ -n "${{ github.event.inputs.prerelease_id }}" ]; then
             gh release create "$TAG" \
               --title "$TAG" \
               --notes-file "$RUNNER_TEMP/release-body.md" \

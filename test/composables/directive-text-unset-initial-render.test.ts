@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App, type VNode } from 'vue'
 import { z } from 'zod'
-import { unset, useForm } from '../../src/zod'
+import { unset, useForm, type UseFormReturn } from '../../src/zod'
 import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/registry'
 import { vRegister } from '../../src/runtime/core/directive'
 import { waitUntil } from '../utils/form-harness'
@@ -30,7 +30,7 @@ const schema = z.object({
   age: z.number(),
 })
 
-type FormApi = ReturnType<typeof useForm<typeof schema>>
+type FormApi = UseFormReturn<typeof schema>
 
 function mountAgeInput(): {
   app: App

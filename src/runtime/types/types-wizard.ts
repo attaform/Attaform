@@ -92,6 +92,42 @@ export type WizardNavOptions = {
 }
 
 /**
+ * Recursive leaf type for `WizardSubmitContext.values`. Covers the
+ * realistic outputs a Zod-parsed form yields:
+ *
+ *  - primitives — `string`, `number`, `boolean`, `bigint`, `null`,
+ *    `undefined` (covers `z.string`, `z.number`, `z.boolean`,
+ *    `z.bigint`, `z.null`, `z.undefined`, `z.optional`, enums,
+ *    literals)
+ *  - host objects — `Date`, `File`, `Blob`, `URL` (covers `z.date`,
+ *    `z.file`, `z.instanceof(Blob)`, `z.url` when emitted as the URL
+ *    object form)
+ *  - collections — readonly arrays / `Set` / `Map` of the same
+ *    (covers `z.array`, `z.set`, `z.map`)
+ *  - records — string-keyed objects of the same (covers `z.object`,
+ *    `z.record`, `z.discriminatedUnion`, intersections)
+ *
+ * Schemas that yield custom classes, `Promise`, `Symbol`, or `RegExp`
+ * sit outside this union — reach for `ctx.get(form)` for the exact
+ * per-form output in those cases.
+ */
+export type WizardValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | null
+  | undefined
+  | Date
+  | File
+  | Blob
+  | URL
+  | readonly WizardValue[]
+  | ReadonlySet<WizardValue>
+  | ReadonlyMap<WizardValue, WizardValue>
+  | { readonly [key: string]: WizardValue }
+
+/**
  * Context object passed to the `onSubmit` callback registered via
  * `wizard.handleSubmit(onSubmit, onError?)`. Composes three views of the
  * walked runtime path so consumers can route submission data however
@@ -109,7 +145,7 @@ export type WizardNavOptions = {
  *    log, sequential POST, etc.) needs the runtime order.
  */
 export type WizardSubmitContext = {
-  readonly values: Record<string, unknown>
+  readonly values: Readonly<Record<string, WizardValue>>
   readonly get: <F extends AnyForm>(form: F) => F extends { readonly values: infer V } ? V : unknown
   readonly path: readonly AnyForm[]
 }

@@ -60,6 +60,7 @@ export type {
   WizardOnSubmit,
   WizardOptions,
   WizardSubmitContext,
+  WizardValue,
   UseWizardReturnType,
   WizardTreeNode,
   WizardWarning,
@@ -206,7 +207,6 @@ export {
   RegistryNotInstalledError,
   ReservedFormKeyError,
   SensitivePersistFieldError,
-  StepperLateRegistrationError,
   SubmitErrorHandlerError,
 } from './runtime/core/errors'
 

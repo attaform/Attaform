@@ -27,13 +27,17 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Your first schema', to: '/docs/getting-started/your-first-schema' },
       { title: 'From schema to inputs', to: '/docs/getting-started/from-schema-to-inputs' },
       { title: 'From inputs to submit', to: '/docs/getting-started/from-inputs-to-submit' },
+      { title: 'Playgrounds', to: '/play' },
     ],
   },
   // Phase 1 fills in the remaining categories below as each page
   // lands. Empty `links` arrays render the heading as a disabled
   // sidebar group — visually placeholding the IA without surfacing
   // 404-bound URLs.
-  { heading: 'Schemas', links: [] },
+  {
+    heading: 'Schemas',
+    links: [{ title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' }],
+  },
   {
     heading: 'Reading the form',
     links: [
@@ -69,6 +73,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'clear & blank values', to: '/docs/writing-and-mutating/clear' },
       { title: 'unset — the absent sentinel', to: '/docs/writing-and-mutating/unset' },
       { title: 'Field-array mutations', to: '/docs/writing-and-mutating/field-arrays' },
+      { title: 'Variant memory', to: '/docs/writing-and-mutating/variant-memory' },
     ],
   },
   {
@@ -91,13 +96,33 @@ export const docsNavigation: DocsSection[] = [
   },
   {
     heading: 'Persistence',
-    links: [{ title: 'Persistence overview', to: '/docs/persistence/overview' }],
+    links: [
+      { title: 'Persistence overview', to: '/docs/persistence/overview' },
+      { title: 'Storage backends', to: '/docs/persistence/storage-backends' },
+      { title: 'Per-field opt-in', to: '/docs/persistence/per-field-opt-in' },
+      { title: 'Sensitive-name protection', to: '/docs/persistence/sensitive-names' },
+      { title: 'Imperative persistence', to: '/docs/persistence/imperative' },
+      { title: 'Edge cases & hydration', to: '/docs/persistence/edge-cases' },
+    ],
   },
-  { heading: 'Cross-cutting state', links: [] },
+  {
+    heading: 'Cross-cutting state',
+    links: [
+      { title: 'Undo & redo', to: '/docs/cross-cutting-state/undo-redo' },
+      { title: 'Multi-tab sync', to: '/docs/cross-cutting-state/multi-tab-sync' },
+      { title: 'injectForm', to: '/docs/cross-cutting-state/inject-form' },
+      { title: 'useStepper', to: '/docs/cross-cutting-state/use-stepper' },
+      { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
+    ],
+  },
   { heading: 'Server & SSR', links: [] },
   {
     heading: 'DevTools & debugging',
-    links: [{ title: 'Troubleshooting', to: '/docs/devtools-and-debugging/troubleshooting' }],
+    links: [
+      { title: 'The Attaform DevTools panel', to: '/docs/devtools-and-debugging/devtools-panel' },
+      { title: 'Vue DevTools integration', to: '/docs/devtools-and-debugging/vue-devtools' },
+      { title: 'Troubleshooting', to: '/docs/devtools-and-debugging/troubleshooting' },
+    ],
   },
   { heading: 'Reference', links: [] },
 ]

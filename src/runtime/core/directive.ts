@@ -738,6 +738,24 @@ const vRegisterText: RegisterTextCustomDirective = {
       // for empty input, and `slimDefault` resolves to undefined for
       // an optional number leaf, so `markBlank` writes the right thing
       // there already.
+      //
+      // When the path doesn't admit string AND doesn't admit
+      // undefined (e.g. required `z.number()` rendered as a plain
+      // text input), short-circuit through `markBlank` for the same
+      // reason `castToNumber` does: the empty-string write would be
+      // rejected by the slim-primitive gate, and the post-write
+      // force-sync below would then snap the DOM back to the stored
+      // numeric — making the final character undeletable.
+      if (
+        domValue === '' &&
+        isRegisterValue(value) &&
+        !value.acceptsString &&
+        !value.acceptsUndefined
+      ) {
+        writeLastTypedForm(value, null)
+        value.markBlank()
+        return
+      }
       const commit =
         domValue === '' && isRegisterValue(value) && value.acceptsUndefined ? undefined : domValue
       el[assignKey]?.(commit)

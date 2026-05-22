@@ -15,7 +15,7 @@ import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { AttaformErrorCode } from './error-codes'
 import { SubmitErrorHandlerError } from './errors'
-import { canonicalizePath, segmentsForPathKey, type Path } from './paths'
+import { canonicalizePath, segmentsForPathKey, type Path, type Segment } from './paths'
 
 /**
  * Tracks FormStores for which we've already emitted the
@@ -159,6 +159,13 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    * each call runs validation once against the current form snapshot.
    * Used by consumers who want to `await` a single validation run — the
    * debounced field-level path in 5.7, server-side round-trips, tests.
+   *
+   * Cancels any in-flight per-field validation (mirroring `handleSubmit`)
+   * so a late SFV resolution can't clobber this call's authoritative
+   * result, and writes the parsed refinement back to `schemaErrors` at
+   * the validated scope — `await validateAsync(path)` therefore lands
+   * a deterministic view of `form.errors.<path>` regardless of the
+   * background SFV race.
    */
   async function validateAsync(
     pathInput?: string | Path
@@ -176,7 +183,28 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     // exception into UI code.
     try {
       state.activeValidations.value += 1
+      // Abort any in-flight per-field validation runs so their late
+      // writes can't clobber the authoritative imperative result.
+      // Mirrors handleSubmit's pre-validate cancellation.
+      state.cancelFieldValidation()
       const refinement = await runRefinementValidation(dataAtPath, segments)
+      // Commit the refinement to schemaErrors at the validated scope.
+      // The adapter emits issue paths relative to the sub-schema it
+      // parsed (`[]` for a leaf; whole-form pass emits absolute paths
+      // already), so re-stamp with `segments` to land at canonical
+      // store keys. `applySchemaErrorsForSubtree` replaces every key
+      // under the scope so stale entries drop and current ones
+      // survive in their original insertion slots.
+      const scopePath: Path = segments ?? []
+      const errors = refinement.success ? [] : refinement.errors
+      const reStamped =
+        segments === undefined
+          ? errors
+          : errors.map((err) => ({
+              ...err,
+              path: [...segments, ...(err.path as Segment[])],
+            }))
+      state.applySchemaErrorsForSubtree(scopePath, reStamped)
       return stripData(composeWithDerivedBlank(refinement, segments))
     } catch (err) {
       return adapterThrowResponse(err)

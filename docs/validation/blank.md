@@ -35,7 +35,7 @@ Numeric inputs lie. A `<input type="number">` whose value the user has just clea
 - Trust storage and silently submit `0` for an unfilled required field (the public-housing-form footgun: "Income? `$0`. Approved.").
 - Re-define `0` as "definitely blank," which loses the case where the user actually meant `0`.
 
-`blankPaths` is the side-channel. It's a reactive `Set<PathKey>` recording paths where the runtime knows storage and the visible display diverge. The schema author writes `z.number()` and gets the "empty input" signal back without inventing a sentinel value.
+`blankPaths` is the side-channel. It's a reactive list of dotted public paths where the runtime knows storage and the visible display diverge. The schema author writes `z.number()` and gets the "empty input" signal back without inventing a sentinel value.
 
 ## When `blank` auto-marks
 
@@ -154,11 +154,11 @@ The `atta:no-value-supplied` error surfaces in `form.errors.<path>` and in `form
 
 ## `blank` and persistence
 
-Persistence treats `blankPaths` as first-class state. The persisted envelope includes the set, so a cleared numeric field stays visually empty after a reload (storage holds the slim default; the displayed-empty state survives). Without this, a "Score: " field a user cleared would resurrect as "0" after refresh, which is incorrect for the UX.
+Persistence treats `blankPaths` as first-class state. The persisted envelope includes the list, so a cleared numeric field stays visually empty after a reload (storage holds the slim default; the displayed-empty state survives). Without this, a "Score: " field a user cleared would resurrect as "0" after refresh, which is incorrect for the UX.
 
 ## `blank` and history
 
-Every history position captures the `blankPaths` set at the time of the snapshot. Undoing a "type a number, then clear it" sequence restores both the value AND the blank bit. The field reads as empty the way it did before the undo.
+Every history position captures the `blankPaths` list at the time of the snapshot. Undoing a "type a number, then clear it" sequence restores both the value AND the blank bit. The field reads as empty the way it did before the undo.
 
 ## Where to next
 

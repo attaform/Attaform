@@ -2126,6 +2126,22 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   acceptsUndefined: boolean
+  /**
+   * `true` when the schema's slim primitive set at this path includes
+   * `'string'`. Cached at register-time alongside
+   * [[acceptsUndefined]].
+   *
+   * Read by the directive's text-input listener so a DOM clear on a
+   * numeric-only (or boolean-only, bigint-only) leaf takes the
+   * `markBlank` path instead of writing `''` through the assigner:
+   * the slim-primitive gate would reject the empty string anyway,
+   * and the directive's post-write force-sync would then snap the
+   * DOM back to the last accepted value, making the final character
+   * undeletable. With `markBlank`, storage holds the slim default
+   * with the blank meta and the DOM stays empty.
+   * @internal
+   */
+  acceptsString: boolean
 }>
 
 /**
@@ -3888,25 +3904,24 @@ export type UseFormReturnType<
     value: ArrayItem<Form, Path>
   ) => void
   /**
-   * Read-only view of the form's blank path set. Each entry
-   * is a canonical `PathKey` (the `JSON.stringify(segments)` form
-   * `canonicalizePath` produces). The set is reactive — Vue 3.5
-   * tracks `.has()` / `for..of` / size accesses, so consumers can
-   * drive conditional UI off it directly:
+   * Read-only view of the form's blank paths as dotted public-path
+   * strings — the same notation passed to `register` / `setValue` /
+   * `errors`. Reactive: Vue 3.5 tracks iteration + length, so the
+   * computed re-fires whenever membership changes.
    *
    * ```ts
    * watchEffect(() => {
-   *   if (form.blankPaths.value.size > 0) {
-   *     console.warn('unanswered fields:', [...form.blankPaths.value])
+   *   if (form.blankPaths.value.length > 0) {
+   *     console.warn('unanswered fields:', form.blankPaths.value)
    *   }
    * })
    * ```
    *
-   * For per-path access, use `form.fields.<path>.blank`.
-   * Writes happen through `setValue(path, unset)`,
-   * `markBlank()` on a register binding, and the directive's
-   * input listener on numeric clear. Mutating the snapshot returned
-   * here does nothing — it's `Object.freeze`-d.
+   * For per-path checks, use `form.fields.<path>.blank` instead of
+   * scanning the array. Writes happen through
+   * `setValue(path, unset)`, `markBlank()` on a register binding,
+   * and the directive's input listener on numeric clear. The array
+   * is `Object.freeze`-d — mutating it throws.
    */
-  blankPaths: ComputedRef<ReadonlySet<string>>
+  blankPaths: ComputedRef<ReadonlyArray<string>>
 }

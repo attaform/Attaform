@@ -64,6 +64,7 @@ type FieldStateLike = {
   readonly firstError: ValidationError | undefined
   readonly touched: boolean
   readonly dirty: boolean
+  readonly validating: boolean
 }
 
 type FormLike = {
@@ -121,8 +122,13 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         injectError(form, ['email'], 'email required')
         form.touch('email')
         form.setValue('email', 'x')
-        await nextTick()
+        // Drain the change-mode validation chain so `field.validating`
+        // returns to false. The default predicate hides showErrors
+        // during revalidation (SWR for the in-flight verdict); the
+        // assertion below pins post-validation state.
+        await new Promise((r) => setTimeout(r, 0))
         expect(form.fields('email').dirty).toBe(true)
+        expect(form.fields('email').validating).toBe(false)
         expect(form.fields('email').showErrors).toBe(true)
       })
 
@@ -202,7 +208,9 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         // injected one when validateOn:'change' fires on setValue).
         form.touch('email')
         form.setValue('email', 'x')
-        await nextTick()
+        // Drain the change-mode validation chain so the SWR-hide
+        // window closes before the showErrors assertion.
+        await new Promise((r) => setTimeout(r, 0))
         expect(form.fields('email').showErrors).toBe(true)
         form.setFieldErrors([])
         await nextTick()
@@ -489,9 +497,41 @@ describe('shouldShowErrors — cross-cutting', () => {
       defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: true }, baseMeta)
     ).toBe(false)
 
+    // Currently validating: false, regardless of timing-gate satisfaction.
+    // SWR keeps the stale verdict in `field.errors`, but the UX gate
+    // hides it because the application is recomputing.
+    expect(
+      defaultShouldShowErrors(
+        { ...ownErrorField, touched: true, focused: false, validating: true },
+        baseMeta
+      )
+    ).toBe(false)
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, validating: true }, {
+        ...baseMeta,
+        submitCount: 1,
+      } as typeof baseMeta)
+    ).toBe(false)
+
     // After first submit attempt: true regardless of touched/focused.
     expect(
       defaultShouldShowErrors(ownErrorField, { ...baseMeta, submitCount: 1 } as typeof baseMeta)
+    ).toBe(true)
+
+    // Post-submit aggression: focused + untouched + has-own-error still
+    // surfaces the error. The user signalled they're done editing by
+    // hitting submit; transient mid-edit hiding no longer applies.
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: false, focused: true }, {
+        ...baseMeta,
+        submitCount: 1,
+      } as typeof baseMeta)
+    ).toBe(true)
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: true }, {
+        ...baseMeta,
+        submitCount: 1,
+      } as typeof baseMeta)
     ).toBe(true)
 
     // Container with ONLY descendant errors: false even after submit. The
@@ -510,6 +550,72 @@ describe('shouldShowErrors — cross-cutting', () => {
         submitCount: 1,
       } as typeof baseMeta)
     ).toBe(false)
+  })
+})
+
+describe('shouldShowErrors — SWR hide during validating', () => {
+  /**
+   * SWR contract: when a verdict is in flight, `field.errors` retains
+   * the stale entry (no flicker to empty), but `field.showErrors`
+   * goes false because the application is recomputing and would
+   * mis-narrate the current state if it surfaced the stale message.
+   * The error returns the moment validation completes if the new
+   * verdict still has issues.
+   */
+  it('async refine: showErrors hides during validation, returns when verdict lands', async () => {
+    let resolveValidation: (ok: boolean) => void = () => {}
+    const schema = zV4.object({
+      email: zV4.string().refine(
+        (val) => {
+          // Reject empty; for any non-empty value, await the
+          // externally-resolved gate so the test can observe the
+          // mid-validation window.
+          if (val.length === 0) return false
+          return new Promise<boolean>((resolve) => {
+            resolveValidation = resolve
+          })
+        },
+        { error: 'invalid email' }
+      ),
+    })
+
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `swr-validating-${Math.random()}`,
+          strict: false,
+          defaultValues: { email: '' },
+        } as never)
+      )
+    )
+
+    // Touch + submit so the timing gate is open. Mount-time validation
+    // produces a verdict on the empty string ("invalid email").
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').errors.length).toBeGreaterThan(0)
+    expect(form.fields('email').showErrors).toBe(true)
+
+    // Edit to a non-empty value. Change-mode validation schedules; the
+    // async refine pauses on the externally-resolved gate.
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    expect(form.fields('email').validating).toBe(true)
+    // SWR: the stale error stays in `errors`, so consumers reading the
+    // store directly still see something while the new verdict resolves.
+    expect(form.fields('email').errors.length).toBeGreaterThan(0)
+    // But `showErrors` hides during the recompute window.
+    expect(form.fields('email').showErrors).toBe(false)
+
+    // Resolve the validation as STILL invalid. The new verdict lands,
+    // validating returns to false, showErrors flips back to true.
+    resolveValidation(false)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(form.fields('email').validating).toBe(false)
+    expect(form.fields('email').errors.length).toBeGreaterThan(0)
+    expect(form.fields('email').showErrors).toBe(true)
   })
 })
 

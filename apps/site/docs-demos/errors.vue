@@ -10,9 +10,10 @@
         bio: z.string().max(50, 'Keep it under 50 chars'),
         handle: z.string().min(1, 'Pick a handle'),
       })
-      .refine((p) => p.bio.includes(p.handle), {
-        message: 'Bio must mention your handle.',
-      }),
+      .refine(
+        (p) => p.handle.length === 0 || p.bio.toLowerCase().includes(p.handle.toLowerCase()),
+        { message: 'Bio must mention your handle.' }
+      ),
   })
 
   const form = useForm({
@@ -20,7 +21,7 @@
     defaultValues: {
       name: '',
       email: 'not-an-email',
-      profile: { bio: 'A'.repeat(60), handle: 'attaboy' },
+      profile: { bio: 'A'.repeat(60), handle: 'ozzyfromspace' },
     },
     key: 'docs-demo-errors',
   })

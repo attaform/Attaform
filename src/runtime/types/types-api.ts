@@ -269,24 +269,37 @@ export type AbstractSchema<Form, GetValueFormType> = {
    */
   getEmptyValueAtPath(path: Path): unknown
   /**
-   * Reports whether `path` resolves to (or descends through) a
-   * schema-side normalizer that runs at parse, not at the write
-   * boundary. In Zod v4 that's `z.preprocess(fn, inner)` and
-   * `z.coerce.X()` (both desugar to `ZodPipe<ZodTransform, inner>`);
-   * in Zod v3 it's `ZodEffects` with `_def.effect.type === 'preprocess'`.
+   * Give the schema a chance to normalize the consumer's write value
+   * before it lands in storage / hits the slim-primitive gate. Each
+   * schema library exposes this concept differently — Zod calls it
+   * `z.preprocess(fn, inner)`, Yup calls it `.transform()`, Valibot
+   * spells it `pipe(transform(fn), inner)` — but the shape is the
+   * same: "this input shape gets coerced into that storage shape at
+   * the boundary."
    *
-   * Consulted by the slim-primitive write gate. When true at a path,
-   * the gate accepts the consumer's raw value verbatim and stops
-   * walking children — storage holds the user's input, and the
-   * normalizer fires during `safeParse` (handleSubmit / validate /
-   * validateAsync), not at `setValue` time.
+   * Runs SYNCHRONOUSLY at the write boundary so storage holds the
+   * post-normalization shape. Without this, a schema like `notify:
+   * z.preprocess(v => v == null ? defaultVar : v, innerDU)` would
+   * let the consumer write `null` and lock storage into `null` —
+   * because the gate sees the raw input (which the preprocess wrapper
+   * accepts as `unknown`) and storage holds a shape no variant
+   * matches.
    *
-   * Path-prefix semantic: returns true if ANY ancestor of `path`
-   * resolves to such a wrapper, so descendants under a preprocess-
-   * wrapped container also short-circuit the gate. Adapters cache
-   * the result by canonicalized path key.
+   * Adapters MUST:
+   *   - Return `value` unchanged when no normalization is declared at
+   *     the path.
+   *   - Return `value` unchanged when the user's normalization fn
+   *     returns a `Promise` (async coercion can't run at write time —
+   *     validation handles it during parse).
+   *   - Let user-thrown errors propagate (the user wrote the fn; we
+   *     just tag the path in the wrapper error for diagnostics).
+   *
+   * Normalization runs when `path` equals the wrapper's exact
+   * location. Writes deeper than the wrapper bypass it (a wrapper
+   * over the whole subtree can't be invoked from a partial leaf
+   * write).
    */
-  isPreprocessOrCoerceLeaf(path: Path): boolean
+  normalizeWriteValueAtPath(value: unknown, path: Path): unknown
   /**
    * Distinguish a tuple (fixed-length, position-typed) from an
    * unbounded array at `path`. The runtime calls this on every
@@ -2729,23 +2742,12 @@ export type FieldState<Value = unknown> = {
  * boundaries (array indices, record keys) re-introduce `| undefined`
  * via the structural index-signature channels.
  *
- * Preprocess / coerce leaves (StorageShape = `unknown`) are
- * statically known too — the IsUnknown filter keeps them on the
- * non-optional branch instead of being swept into the dynamic
- * `| undefined` arm by `undefined extends unknown`.
- *
  * Implementation-detail surface — consumers reach for `FieldStateMap`
  * or `FormErrorsSurface` instead.
  */
-type IsUnknown<T> = IsAny<T> extends true ? false : unknown extends T ? true : false
-
 export interface LeafSchemeFor<T> {
   field: FieldState<T>
-  errors: IsUnknown<T> extends true
-    ? readonly ValidationError[]
-    : undefined extends T
-      ? readonly ValidationError[] | undefined
-      : readonly ValidationError[]
+  errors: undefined extends T ? readonly ValidationError[] | undefined : readonly ValidationError[]
 }
 
 /**
@@ -2907,37 +2909,24 @@ export type FormErrorStore = Map<FormKey, FormErrorRecord>
  * Augmented with the callable signatures so dot-access and function-
  * call coexist on the same identifier.
  */
-export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> &
-  FormLevelErrorsSlot<Form> & {
-    (path: string): readonly ValidationError[]
-    /**
-     * Tuple-segment form. Validated against `FlatPath<Form>` so literal
-     * tuples that don't resolve to a known path fail at the call site.
-     * Dynamic `Path`-typed inputs hit the untyped fallback overload below.
-     */
-    <const S extends ReadonlyArray<string | number>>(
-      segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
-    ): readonly ValidationError[]
-    (segments: ReadonlyArray<string | number>): readonly ValidationError[]
-    /**
-     * No-arg call returns the form-level error aggregate — same as
-     * `form.errors([])` and `form.meta.errors`. Always a readonly array;
-     * empty when the form has no errors.
-     */
-    (): readonly ValidationError[]
-  }
-
-/**
- * Inject `form.errors[""]: readonly ValidationError[]` for the
- * root form-level bucket (hydration failures, root `.refine()`
- * results, `setFormErrors` entries) — unless the schema legitimately
- * owns a `''` key, in which case the standard walker shape wins and
- * we don't interfere. Container-level errors at non-root paths
- * surface via the call form (`form.errors('address')`).
- */
-type FormLevelErrorsSlot<Form> = '' extends keyof Form
-  ? unknown
-  : { readonly ['']: readonly ValidationError[] }
+export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
+  (path: string): readonly ValidationError[]
+  /**
+   * Tuple-segment form. Validated against `FlatPath<Form>` so literal
+   * tuples that don't resolve to a known path fail at the call site.
+   * Dynamic `Path`-typed inputs hit the untyped fallback overload below.
+   */
+  <const S extends ReadonlyArray<string | number>>(
+    segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
+  ): readonly ValidationError[]
+  (segments: ReadonlyArray<string | number>): readonly ValidationError[]
+  /**
+   * No-arg call returns the form-level error aggregate — same as
+   * `form.errors([])` and `form.meta.errors`. Always a readonly array;
+   * empty when the form has no errors.
+   */
+  (): readonly ValidationError[]
+}
 
 /**
  * Implementation-detail walker backing `form.errors` typed proxy.
@@ -3475,36 +3464,25 @@ export type UseFormReturnType<
    *
    * The form is fully usable while `isHydrating` is `true` — it holds
    * the schema's slim defaults. The flag exists so templates can show
-   * a spinner / dim the form while real data loads:
+   * a spinner / dim the form while real data loads, e.g.
    *
    * ```vue
    * <div :aria-busy="form.isHydrating">…</div>
    * ```
-   *
-   * Exposed as an auto-unwrapping `boolean` (no `.value`); reactivity
-   * is preserved via a getter that tracks the underlying ref at the
-   * access site, so `watch(() => form.isHydrating, …)` and template
-   * reads both fire on change.
    */
-  readonly isHydrating: boolean
+  readonly isHydrating: Readonly<Ref<boolean>>
 
   /**
-   * The error from the most recent function-form `defaultValues` factory,
-   * normalized to a `ValidationError` (code `atta:hydration-failed`) so the
-   * shape matches every other surface in `form.errors` / `form.meta.errors`.
-   * `null` on construction, on successful resolution, and whenever no
-   * factory has fired. Updates with each `form.rehydrate()` call.
+   * The error thrown or rejected by the most recent function-form
+   * `defaultValues` factory. `null` on construction, on successful
+   * resolution, and whenever no factory has fired. Updates with each
+   * `form.rehydrate()` call.
    *
-   * Distinct from `meta.submitError` so retry buttons and recovery UX can
-   * stay focused on the load-time failure without entangling the submit
-   * pipeline. Read directly in templates and script (no `.value`);
-   * reactivity is preserved via a getter:
-   *
-   * ```vue
-   * <p v-if="form.hydrateError">{{ form.hydrateError.message }}</p>
-   * ```
+   * Distinct from `meta.submitError` so retry buttons and recovery
+   * UX can stay focused on the load-time failure without entangling
+   * the submit pipeline.
    */
-  readonly hydrateError: ValidationError | null
+  readonly hydrateError: Readonly<Ref<unknown | null>>
 
   /**
    * Re-fire the captured `defaultValues` factory and re-apply its

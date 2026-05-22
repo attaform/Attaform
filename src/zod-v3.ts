@@ -35,15 +35,18 @@ export { useWizard } from './runtime/composables/use-wizard'
 export type {
   AggregateError,
   AnyForm,
-  FormKeyOf,
   FormStatus,
-  KeysOf,
-  Statuses,
+  NextBranching,
+  NextOption,
+  NormalizedNext,
   WizardHistoryConfig,
   WizardNavOptions,
   WizardOptions,
   WizardStatusesProxy,
   UseWizardReturnType,
+  WizardTreeNode,
+  WizardWarning,
+  WizardWarningKind,
 } from './runtime/types/types-wizard'
 export { zodAdapter } from './runtime/adapters/zod-v3'
 export { isZodSchemaType } from './runtime/adapters/zod-v3/helpers'

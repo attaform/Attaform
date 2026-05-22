@@ -41,9 +41,9 @@ describe('useWizard — history disabled', () => {
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hd-nav-a' })
       const b = useForm({ schema: schemaB, key: 'hd-nav-b' })
-      return useWizard([a, b], { history: false })
+      const a = useForm({ schema: schemaA, key: 'hd-nav-a', next: b })
+      return useWizard(a, { history: false })
     })
     apps.push(app)
     pushSpy.mockClear()
@@ -59,9 +59,9 @@ describe('useWizard — history disabled', () => {
   it('history: false does not seed initial step from `?step=<key>`', () => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard?step=hd-seed-b')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hd-seed-a' })
       const b = useForm({ schema: schemaB, key: 'hd-seed-b' })
-      return useWizard([a, b], { history: false })
+      const a = useForm({ schema: schemaA, key: 'hd-seed-a', next: b })
+      return useWizard(a, { history: false })
     })
     apps.push(app)
     expect(result.current).toBe('hd-seed-a')
@@ -71,9 +71,9 @@ describe('useWizard — history disabled', () => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard?other=stay')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hd-url-a' })
       const b = useForm({ schema: schemaB, key: 'hd-url-b' })
-      return useWizard([a, b], { history: false })
+      const a = useForm({ schema: schemaA, key: 'hd-url-a', next: b })
+      return useWizard(a, { history: false })
     })
     apps.push(app)
     expect(replaceSpy).not.toHaveBeenCalled()
@@ -85,9 +85,9 @@ describe('useWizard — history disabled', () => {
 
   it('history: false ignores popstate (current does not change)', async () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hd-pop-a' })
       const b = useForm({ schema: schemaB, key: 'hd-pop-b' })
-      return useWizard([a, b], { history: false })
+      const a = useForm({ schema: schemaA, key: 'hd-pop-a', next: b })
+      return useWizard(a, { history: false })
     })
     apps.push(app)
     result.next()

@@ -67,41 +67,43 @@ describe('useWizard — defaultStatuses', () => {
 
   it('accepts a plain-object seed', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({
-        schema: schemaA,
-        key: 'ds-plain-a',
-        defaultValues: () => Promise.resolve({ a: 'A' }),
-      })
       const b = useForm({
         schema: schemaB,
         key: 'ds-plain-b',
         defaultValues: () => Promise.resolve({ b: 'B' }),
       })
-      return useWizard([a, b], {
+      const a = useForm({
+        schema: schemaA,
+        key: 'ds-plain-a',
+        defaultValues: () => Promise.resolve({ a: 'A' }),
+        next: b,
+      })
+      return useWizard(a, {
         defaultStatuses: { 'ds-plain-a': validSeed, 'ds-plain-b': dirtySeed },
       })
     })
     apps.push(app)
     // Both forms have async defaults pending → seed should be visible.
-    expect(result.statuses['ds-plain-a'].valid).toBe(true)
-    expect(result.statuses['ds-plain-b'].dirty).toBe(true)
-    expect(result.statuses['ds-plain-b'].errorCount).toBe(1)
+    expect(result.statuses['ds-plain-a']!.valid).toBe(true)
+    expect(result.statuses['ds-plain-b']!.dirty).toBe(true)
+    expect(result.statuses['ds-plain-b']!.errorCount).toBe(1)
   })
 
   it('accepts a sync function seed', () => {
     let calls = 0
     const { app, result } = mountHarness(() => {
-      const a = useForm({
-        schema: schemaA,
-        key: 'ds-fn-a',
-        defaultValues: () => Promise.resolve({ a: 'A' }),
-      })
       const b = useForm({
         schema: schemaB,
         key: 'ds-fn-b',
         defaultValues: () => Promise.resolve({ b: 'B' }),
       })
-      return useWizard([a, b], {
+      const a = useForm({
+        schema: schemaA,
+        key: 'ds-fn-a',
+        defaultValues: () => Promise.resolve({ a: 'A' }),
+        next: b,
+      })
+      return useWizard(a, {
         defaultStatuses: () => {
           calls += 1
           return { 'ds-fn-a': validSeed, 'ds-fn-b': dirtySeed }
@@ -110,14 +112,20 @@ describe('useWizard — defaultStatuses', () => {
     })
     apps.push(app)
     expect(calls).toBe(1)
-    expect(result.statuses['ds-fn-a'].valid).toBe(true)
-    expect(result.statuses['ds-fn-b'].dirty).toBe(true)
+    expect(result.statuses['ds-fn-a']!.valid).toBe(true)
+    expect(result.statuses['ds-fn-b']!.dirty).toBe(true)
   })
 
   it('accepts an async function seed that lands later', async () => {
     let resolveSeed!: (value: { 'ds-async-a': FormStatus; 'ds-async-b': FormStatus }) => void
     let resolveA!: (value: { a: string }) => void
     const { app, result } = mountHarness(() => {
+      // Step b is non-current — its factory defers until activation.
+      const b = useForm({
+        schema: schemaB,
+        key: 'ds-async-b',
+        defaultValues: () => Promise.resolve({ b: 'B' }),
+      })
       const a = useForm({
         schema: schemaA,
         key: 'ds-async-a',
@@ -125,15 +133,10 @@ describe('useWizard — defaultStatuses', () => {
           new Promise<{ a: string }>((r) => {
             resolveA = r
           }),
-      })
-      // Step b is non-current — its factory defers until activation.
-      const b = useForm({
-        schema: schemaB,
-        key: 'ds-async-b',
-        defaultValues: () => Promise.resolve({ b: 'B' }),
+        next: b,
       })
       return {
-        wizard: useWizard([a, b], {
+        wizard: useWizard(a, {
           defaultStatuses: () =>
             new Promise((r) => {
               resolveSeed = r
@@ -145,15 +148,15 @@ describe('useWizard — defaultStatuses', () => {
     })
     apps.push(app)
     // Both forms unresolved + seed pending → status pending sentinel.
-    expect(result.wizard.statuses['ds-async-a'].valid).toBe(false)
-    expect(result.wizard.statuses['ds-async-a'].errorCount).toBe(0)
+    expect(result.wizard.statuses['ds-async-a']!.valid).toBe(false)
+    expect(result.wizard.statuses['ds-async-a']!.errorCount).toBe(0)
 
     // Seed resolves while neither form has resolved — seed takes over.
     resolveSeed({ 'ds-async-a': validSeed, 'ds-async-b': dirtySeed })
-    await waitUntil(() => (result.wizard.statuses['ds-async-a'].valid ? true : null))
-    expect(result.wizard.statuses['ds-async-a'].valid).toBe(true)
-    expect(result.wizard.statuses['ds-async-b'].dirty).toBe(true)
-    expect(result.wizard.statuses['ds-async-b'].errorCount).toBe(1)
+    await waitUntil(() => (result.wizard.statuses['ds-async-a']!.valid ? true : null))
+    expect(result.wizard.statuses['ds-async-a']!.valid).toBe(true)
+    expect(result.wizard.statuses['ds-async-b']!.dirty).toBe(true)
+    expect(result.wizard.statuses['ds-async-b']!.errorCount).toBe(1)
 
     // Once form a's hydration settles, its meta takes over — `defaultsResolved`
     // flips and the status follows meta. Form b is still deferred (non-current)
@@ -164,7 +167,7 @@ describe('useWizard — defaultStatuses', () => {
       await Promise.resolve()
       if (!result.a.meta.validating) break
     }
-    expect(result.wizard.statuses['ds-async-b'].dirty).toBe(true)
+    expect(result.wizard.statuses['ds-async-b']!.dirty).toBe(true)
     expect(result.wizard.statuses['ds-async-a']).toEqual({
       valid: result.a.meta.valid,
       dirty: result.a.meta.dirty,
@@ -181,7 +184,7 @@ describe('useWizard — defaultStatuses', () => {
         defaultValues: { a: 'A-sync' },
       })
       return {
-        wizard: useWizard([a], {
+        wizard: useWizard(a, {
           defaultStatuses: { 'ds-over-a': dirtySeed },
         }),
         a,
@@ -189,8 +192,8 @@ describe('useWizard — defaultStatuses', () => {
     })
     apps.push(app)
     // Sync-default form is not hydrating → meta wins from the start.
-    expect(result.wizard.statuses['ds-over-a'].dirty).toBe(false)
-    expect(result.wizard.statuses['ds-over-a'].errorCount).toBe(0)
+    expect(result.wizard.statuses['ds-over-a']!.dirty).toBe(false)
+    expect(result.wizard.statuses['ds-over-a']!.errorCount).toBe(0)
   })
 
   it('unknown seed key is ignored with a dev-warn (no throw)', () => {
@@ -201,14 +204,14 @@ describe('useWizard — defaultStatuses', () => {
     let captured: unknown
     const { app, result } = mountHarness(() => {
       try {
-        const a = useForm({ schema: schemaA, key: 'ds-unk-a' })
         const b = useForm({ schema: schemaB, key: 'ds-unk-b' })
+        const a = useForm({ schema: schemaA, key: 'ds-unk-a', next: b })
         return {
-          wizard: useWizard([a, b], {
+          wizard: useWizard(a, {
             defaultStatuses: {
               'ds-unk-a': validSeed,
               'ds-unk-typo': dirtySeed,
-            } as unknown as { 'ds-unk-a': FormStatus; 'ds-unk-b': FormStatus },
+            },
           }),
         }
       } catch (error) {
@@ -220,7 +223,7 @@ describe('useWizard — defaultStatuses', () => {
     expect(captured).toBeUndefined()
     expect(result.wizard).toBeDefined()
     // The known seed still applied; the unknown key did not crash.
-    expect(result.wizard?.statuses['ds-unk-a'].valid).toBe(true)
+    expect(result.wizard?.statuses['ds-unk-a']!.valid).toBe(true)
     warnSpy.mockRestore()
     expect(warnings.some((w) => w.includes('ds-unk-typo'))).toBe(true)
   })

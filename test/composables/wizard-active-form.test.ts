@@ -46,10 +46,10 @@ describe('useWizard — activeForm + activeIndex', () => {
 
   it('activeForm is the form whose key matches current', () => {
     const { app, result } = mountWizardHarness(() => {
-      const a = useForm({ schema, key: 'a' })
-      const b = useForm({ schema, key: 'b' })
       const c = useForm({ schema, key: 'c' })
-      return useWizard([a, b, c])
+      const b = useForm({ schema, key: 'b', next: c })
+      const a = useForm({ schema, key: 'a', next: b })
+      return useWizard(a)
     })
     apps.push(app)
     expect(result.activeForm?.key).toBe('a')
@@ -63,10 +63,10 @@ describe('useWizard — activeForm + activeIndex', () => {
 
   it('activeIndex is the 0-based index of the active step', () => {
     const { app, result } = mountWizardHarness(() => {
-      const a = useForm({ schema, key: 'a' })
-      const b = useForm({ schema, key: 'b' })
       const c = useForm({ schema, key: 'c' })
-      return useWizard([a, b, c])
+      const b = useForm({ schema, key: 'b', next: c })
+      const a = useForm({ schema, key: 'a', next: b })
+      return useWizard(a)
     })
     apps.push(app)
     expect(result.activeIndex).toBe(0)
@@ -80,13 +80,13 @@ describe('useWizard — activeForm + activeIndex', () => {
 
   it('activeForm tracks the same form identity as the forms array entry', () => {
     const { app, result } = mountWizardHarness(() => {
-      const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
-      return useWizard([a, b])
+      const a = useForm({ schema, key: 'a', next: b })
+      return useWizard(a)
     })
     apps.push(app)
-    expect(result.activeForm).toBe(result.forms[0])
+    expect(result.activeForm).toBe(result.allForms[0])
     result.next()
-    expect(result.activeForm).toBe(result.forms[1])
+    expect(result.activeForm).toBe(result.allForms[1])
   })
 })

@@ -41,15 +41,18 @@ export { useWizard } from './runtime/composables/use-wizard'
 export type {
   AggregateError,
   AnyForm,
-  FormKeyOf,
   FormStatus,
-  KeysOf,
-  Statuses,
+  NextBranching,
+  NextOption,
+  NormalizedNext,
   WizardHistoryConfig,
   WizardNavOptions,
   WizardOptions,
   WizardStatusesProxy,
   UseWizardReturnType,
+  WizardTreeNode,
+  WizardWarning,
+  WizardWarningKind,
 } from './runtime/types/types-wizard'
 export { AttaformErrorCode } from './runtime/core/error-codes'
 export { unset, isUnset } from './runtime/core/unset'

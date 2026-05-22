@@ -49,11 +49,15 @@ export { injectForm } from './runtime/composables/use-form-context'
 export { useWizard } from './runtime/composables/use-wizard'
 export type {
   AnyForm,
-  FormKeyOf,
-  KeysOf,
+  NextBranching,
+  NextOption,
+  NormalizedNext,
   WizardNavOptions,
   WizardOptions,
   UseWizardReturnType,
+  WizardTreeNode,
+  WizardWarning,
+  WizardWarningKind,
 } from './runtime/types/types-wizard'
 
 // Ambient bridge for components that wrap a single field and want to

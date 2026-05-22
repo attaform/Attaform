@@ -2,22 +2,6 @@
   import { useForm, useWizard } from 'attaform/zod'
   import { z } from 'zod'
 
-  const account = useForm({
-    schema: z.object({
-      email: z.email('Enter a valid email'),
-      password: z.string().min(8, 'At least 8 characters'),
-    }),
-    key: 'docs-demo-wizard-account',
-  })
-
-  const profile = useForm({
-    schema: z.object({
-      name: z.string().min(1, 'Name is required'),
-      city: z.string(),
-    }),
-    key: 'docs-demo-wizard-profile',
-  })
-
   const review = useForm({
     schema: z.object({
       newsletter: z.boolean(),
@@ -27,7 +11,25 @@
     key: 'docs-demo-wizard-review',
   })
 
-  const wizard = useWizard([account, profile, review] as const)
+  const profile = useForm({
+    schema: z.object({
+      name: z.string().min(1, 'Name is required'),
+      city: z.string(),
+    }),
+    key: 'docs-demo-wizard-profile',
+    next: review,
+  })
+
+  const account = useForm({
+    schema: z.object({
+      email: z.email('Enter a valid email'),
+      password: z.string().min(8, 'At least 8 characters'),
+    }),
+    key: 'docs-demo-wizard-account',
+    next: profile,
+  })
+
+  const wizard = useWizard(account)
 
   async function onFinish() {
     toast.success(`Welcome ${profile.values.name || profile.values.city || 'aboard'}`, {
@@ -44,10 +46,10 @@
   <div class="wizard">
     <ol class="rail">
       <li
-        v-for="(form, i) in wizard.forms"
+        v-for="(form, i) in wizard.allForms"
         :key="form.key"
         :class="{
-          done: wizard.statuses[form.key].valid && wizard.current !== form.key,
+          done: wizard.statuses[form.key]?.valid === true && wizard.current !== form.key,
           current: wizard.current === form.key,
         }"
       >
@@ -107,17 +109,17 @@
       <button
         type="button"
         class="ghost"
-        :disabled="wizard.current === wizard.forms[0].key"
+        :disabled="wizard.activeIndex === 0"
         @click="wizard.back()"
       >
         ← Back
       </button>
       <span class="step-of">
-        Step {{ wizard.forms.findIndex((f) => f.key === wizard.current) + 1 }} of
+        Step {{ wizard.allForms.findIndex((f) => f.key === wizard.current) + 1 }} of
         {{ wizard.count }}
       </span>
       <button
-        v-if="wizard.current !== wizard.forms[wizard.forms.length - 1]!.key"
+        v-if="wizard.activeIndex !== wizard.count - 1"
         type="button"
         class="primary"
         @click="wizard.next()"

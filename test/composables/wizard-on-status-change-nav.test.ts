@@ -44,10 +44,10 @@ describe('useWizard — onStatusChange nav-away firing', () => {
   it('fires for the form being left on next()', () => {
     const events: Array<{ formKey: string; reason: 'leave' | 'change' }> = []
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'navup-a' })
       const b = useForm({ schema: schemaB, key: 'navup-b' })
+      const a = useForm({ schema: schemaA, key: 'navup-a', next: b })
       return {
-        wizard: useWizard([a, b], {
+        wizard: useWizard(a, {
           onStatusChange: (_status, form) => {
             events.push({ formKey: form.key, reason: 'leave' })
           },
@@ -66,10 +66,10 @@ describe('useWizard — onStatusChange nav-away firing', () => {
   it('fires for the form being left on back()', () => {
     const events: string[] = []
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'navback-a' })
       const b = useForm({ schema: schemaB, key: 'navback-b' })
+      const a = useForm({ schema: schemaA, key: 'navback-a', next: b })
       return {
-        wizard: useWizard([a, b], {
+        wizard: useWizard(a, {
           onStatusChange: (_s, f) => {
             events.push(f.key)
           },
@@ -88,11 +88,11 @@ describe('useWizard — onStatusChange nav-away firing', () => {
   it('fires for the form being left on goTo()', () => {
     const events: string[] = []
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'navgoto-a' })
-      const b = useForm({ schema: schemaB, key: 'navgoto-b' })
       const c = useForm({ schema: schemaC, key: 'navgoto-c' })
+      const b = useForm({ schema: schemaB, key: 'navgoto-b', next: c })
+      const a = useForm({ schema: schemaA, key: 'navgoto-a', next: b })
       return {
-        wizard: useWizard([a, b, c], {
+        wizard: useWizard(a, {
           onStatusChange: (_s, f) => {
             events.push(f.key)
           },
@@ -110,10 +110,10 @@ describe('useWizard — onStatusChange nav-away firing', () => {
   it('does not fire on no-op nav (next at end / back at start)', () => {
     const events: string[] = []
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'navnoop-a' })
       const b = useForm({ schema: schemaB, key: 'navnoop-b' })
+      const a = useForm({ schema: schemaA, key: 'navnoop-a', next: b })
       return {
-        wizard: useWizard([a, b], {
+        wizard: useWizard(a, {
           onStatusChange: (_s, f) => {
             events.push(f.key)
           },
@@ -140,14 +140,15 @@ describe('useWizard — onStatusChange nav-away firing', () => {
   it("payload reflects the leaving-form's current status", () => {
     const events: Array<{ formKey: string; status: FormStatus }> = []
     const { app, result } = mountHarness(() => {
+      const b = useForm({ schema: schemaB, key: 'navpayload-b' })
       const a = useForm({
         schema: schemaA,
         key: 'navpayload-a',
         defaultValues: { a: 'a-set' },
+        next: b,
       })
-      const b = useForm({ schema: schemaB, key: 'navpayload-b' })
       return {
-        wizard: useWizard([a, b], {
+        wizard: useWizard(a, {
           onStatusChange: (status, form) => {
             events.push({ formKey: form.key, status })
           },

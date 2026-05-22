@@ -39,9 +39,9 @@ describe('useWizard — history param customization', () => {
 
   it('writes to the custom param on next()', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hp-write-a' })
       const b = useForm({ schema: schemaB, key: 'hp-write-b' })
-      return useWizard([a, b], { history: { param: 'wiz' } })
+      const a = useForm({ schema: schemaA, key: 'hp-write-a', next: b })
+      return useWizard(a, { history: { param: 'wiz' } })
     })
     apps.push(app)
     result.next()
@@ -53,9 +53,9 @@ describe('useWizard — history param customization', () => {
   it('reads the custom param on mount to seed initial step', () => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard?wiz=hp-seed-b')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hp-seed-a' })
       const b = useForm({ schema: schemaB, key: 'hp-seed-b' })
-      return useWizard([a, b], { history: { param: 'wiz' } })
+      const a = useForm({ schema: schemaA, key: 'hp-seed-a', next: b })
+      return useWizard(a, { history: { param: 'wiz' } })
     })
     apps.push(app)
     expect(result.current).toBe('hp-seed-b')
@@ -64,9 +64,9 @@ describe('useWizard — history param customization', () => {
   it('ignores the default `step` param when a custom param is set', () => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard?step=hp-isol-b')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'hp-isol-a' })
       const b = useForm({ schema: schemaB, key: 'hp-isol-b' })
-      return useWizard([a, b], { history: { param: 'wiz' } })
+      const a = useForm({ schema: schemaA, key: 'hp-isol-a', next: b })
+      return useWizard(a, { history: { param: 'wiz' } })
     })
     apps.push(app)
     expect(result.current).toBe('hp-isol-a')

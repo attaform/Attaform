@@ -43,13 +43,14 @@ describe('useWizard — active form with sync defaults', () => {
 
   it('sync defaults on step 0 are visible at construction', () => {
     const { app, result } = mountHarness(() => {
+      const b = useForm({ schema: schemaB, key: 'wizard-sync-b' })
       const a = useForm({
         schema: schemaA,
         key: 'wizard-sync-a',
         defaultValues: { a: 'A-sync' },
+        next: b,
       })
-      const b = useForm({ schema: schemaB, key: 'wizard-sync-b' })
-      return { wizard: useWizard([a, b], {}), a, b }
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     expect(result.a.values.a).toBe('A-sync')
@@ -58,13 +59,13 @@ describe('useWizard — active form with sync defaults', () => {
 
   it('sync defaults on a non-current step are visible at construction', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'wizard-sync-2-a' })
       const b = useForm({
         schema: schemaB,
         key: 'wizard-sync-2-b',
         defaultValues: { b: 'B-sync' },
       })
-      return { wizard: useWizard([a, b], {}), a, b }
+      const a = useForm({ schema: schemaA, key: 'wizard-sync-2-a', next: b })
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     expect(result.b.values.b).toBe('B-sync')

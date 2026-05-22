@@ -39,9 +39,9 @@ describe('useWizard — progress', () => {
 
   it('default is 0 when no forms are valid', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: reqSchema, key: 'pg-default-a' })
       const b = useForm({ schema: reqSchema, key: 'pg-default-b' })
-      return useWizard([a, b], {})
+      const a = useForm({ schema: reqSchema, key: 'pg-default-a', next: b })
+      return useWizard(a, {})
     })
     apps.push(app)
     expect(result.progress).toBe(0)
@@ -49,13 +49,14 @@ describe('useWizard — progress', () => {
 
   it('default tracks valid_count / total_count', async () => {
     const { app, result } = mountHarness(() => {
+      const b = useForm({ schema: reqSchema, key: 'pg-half-b' })
       const a = useForm({
         schema: okSchema,
         key: 'pg-half-a',
         defaultValues: { value: 'ready' },
+        next: b,
       })
-      const b = useForm({ schema: reqSchema, key: 'pg-half-b' })
-      return { wizard: useWizard([a, b], {}), a, b }
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     await result.a.validate()
@@ -69,9 +70,9 @@ describe('useWizard — progress', () => {
 
   it('override receives forms tuple and is the source of truth', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: okSchema, key: 'pg-over-a' })
       const b = useForm({ schema: okSchema, key: 'pg-over-b' })
-      return useWizard([a, b], {
+      const a = useForm({ schema: okSchema, key: 'pg-over-a', next: b })
+      return useWizard(a, {
         progress: (forms) => forms.length / 100,
       })
     })
@@ -81,14 +82,15 @@ describe('useWizard — progress', () => {
 
   it('override is reactive — re-evaluates when underlying statuses change', async () => {
     const { app, result } = mountHarness(() => {
+      const b = useForm({ schema: reqSchema, key: 'pg-reactive-b' })
       const a = useForm({
         schema: okSchema,
         key: 'pg-reactive-a',
         defaultValues: { value: 'ready' },
+        next: b,
       })
-      const b = useForm({ schema: reqSchema, key: 'pg-reactive-b' })
       return {
-        wizard: useWizard([a, b], {
+        wizard: useWizard(a, {
           progress: (forms) =>
             forms.filter((f) => {
               const meta = (f as unknown as { meta: { valid: boolean } }).meta

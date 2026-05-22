@@ -52,7 +52,6 @@ describe('useWizard — popstate mid-flight safety', () => {
       resolveFactory = resolve
     })
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'mf-a', defaultValues: { a: 'a-set' } })
       const b = useForm({
         schema: schemaB,
         key: 'mf-b',
@@ -61,7 +60,8 @@ describe('useWizard — popstate mid-flight safety', () => {
           return factoryPromise
         },
       })
-      return { wizard: useWizard([a, b], {}), a, b }
+      const a = useForm({ schema: schemaA, key: 'mf-a', defaultValues: { a: 'a-set' }, next: b })
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     expect(factoryCalls).toBe(0)
@@ -102,7 +102,6 @@ describe('useWizard — popstate mid-flight safety', () => {
       // throughout this probe.
     })
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'mf-deref-a', defaultValues: { a: 'a' } })
       const b = useForm({
         schema: schemaB,
         key: 'mf-deref-b',
@@ -111,7 +110,13 @@ describe('useWizard — popstate mid-flight safety', () => {
           return factoryPromise
         },
       })
-      return { wizard: useWizard([a, b], {}), a, b }
+      const a = useForm({
+        schema: schemaA,
+        key: 'mf-deref-a',
+        defaultValues: { a: 'a' },
+        next: b,
+      })
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     result.wizard.next()

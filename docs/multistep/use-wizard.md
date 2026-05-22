@@ -124,28 +124,28 @@ type UseWizardReturnType = {
 }
 ```
 
-| Member                   | What it is                                                                                                                              |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `key`                    | The wizard's identifier for [`injectWizard`](/docs/multistep/inject-wizard). `undefined` when no `key` is passed in options.            |
-| `current`                | The active step's key (or `undefined` for a degenerate wizard). Reactive via a getter, so templates branch on it directly.              |
-| `activeForm`             | The active step's form handle, identity-equal to the matching entry in `allForms`. `undefined` when `current` is `undefined`.           |
-| `activeIndex`            | Zero-based index of the active step within `allForms` (BFS order). `-1` when `current` is `undefined`.                                  |
-| `entry`                  | The form passed to `useWizard(entry)`. Identity-equal to the argument; immutable for the wizard's lifetime.                             |
-| `allForms`               | BFS-ordered, deduped list of every form reachable from `entry`. Iterate it for a rail, sitemap, or "Step N of M" label.                 |
-| `count`                  | `allForms.length`.                                                                                                                      |
-| `canAdvance`             | `true` when the active form has a non-empty `next` declaration. Graph-structural; reflects the static graph, not the validation state.  |
-| `canGoBack`              | `true` when a prior step exists in BFS order (`activeIndex > 0`).                                                                       |
-| `complete`               | `true` once `wizard.handleSubmit`'s callback resolves without throwing. Flips back to `false` when any walked-path form becomes dirty.  |
-| `submitting`             | `true` while a `wizard.handleSubmit` call is in flight (path walk + callback).                                                          |
-| `submissionAttempts`     | Count of `wizard.handleSubmit` invocations (success or failure).                                                                        |
-| `statuses`               | Drillable proxy of `FormStatus` per step (`valid`, `dirty`, `submitted`, `errorCount`).                                                 |
-| `allValues`              | Drillable record of every step's `values` keyed by form key.                                                                            |
-| `allErrors`              | Cross-step `AggregateError[]` for a wizard-wide summary. Dormant (unactivated) steps contribute nothing.                                |
-| `progress`               | Fraction in `[0, 1]`. Count of valid forms divided by total, or the consumer's `progress` override.                                     |
-| `next` / `back` / `goTo` | Navigation. `next()` is async because it validates the current step before advancing.                                                   |
+| Member                   | What it is                                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                    | The wizard's identifier for [`injectWizard`](/docs/multistep/inject-wizard). `undefined` when no `key` is passed in options.           |
+| `current`                | The active step's key (or `undefined` for a degenerate wizard). Reactive via a getter, so templates branch on it directly.             |
+| `activeForm`             | The active step's form handle, identity-equal to the matching entry in `allForms`. `undefined` when `current` is `undefined`.          |
+| `activeIndex`            | Zero-based index of the active step within `allForms` (BFS order). `-1` when `current` is `undefined`.                                 |
+| `entry`                  | The form passed to `useWizard(entry)`. Identity-equal to the argument; immutable for the wizard's lifetime.                            |
+| `allForms`               | BFS-ordered, deduped list of every form reachable from `entry`. Iterate it for a rail, sitemap, or "Step N of M" label.                |
+| `count`                  | `allForms.length`.                                                                                                                     |
+| `canAdvance`             | `true` when the active form has a non-empty `next` declaration. Graph-structural; reflects the static graph, not the validation state. |
+| `canGoBack`              | `true` when a prior step exists in BFS order (`activeIndex > 0`).                                                                      |
+| `complete`               | `true` once `wizard.handleSubmit`'s callback resolves without throwing. Flips back to `false` when any walked-path form becomes dirty. |
+| `submitting`             | `true` while a `wizard.handleSubmit` call is in flight (path walk + callback).                                                         |
+| `submissionAttempts`     | Count of `wizard.handleSubmit` invocations (success or failure).                                                                       |
+| `statuses`               | Drillable proxy of `FormStatus` per step (`valid`, `dirty`, `submitted`, `errorCount`).                                                |
+| `allValues`              | Drillable record of every step's `values` keyed by form key.                                                                           |
+| `allErrors`              | Cross-step `AggregateError[]` for a wizard-wide summary. Dormant (unactivated) steps contribute nothing.                               |
+| `progress`               | Fraction in `[0, 1]`. Count of valid forms divided by total, or the consumer's `progress` override.                                    |
+| `next` / `back` / `goTo` | Navigation. `next()` is async because it validates the current step before advancing.                                                  |
 | `handleSubmit`           | Returns a submit handler that walks the runtime path, validates every form along the way, then calls the consumer's `onSubmit`.        |
-| `reset`                  | Zeros wizard lifecycle and calls `form.reset()` on every reachable form.                                                                |
-| `flow`                   | Introspection namespace: `entry`, `tree`, `allForms`, `visited`, `diagnose()`. The structured hand-off for sitemaps and diagnostics.    |
+| `reset`                  | Zeros wizard lifecycle and calls `form.reset()` on every reachable form.                                                               |
+| `flow`                   | Introspection namespace: `entry`, `tree`, `allForms`, `visited`, `diagnose()`. The structured hand-off for sitemaps and diagnostics.   |
 
 Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` stay reactive inside templates and `computed` blocks directly, matching the rest of Attaform (`form.values`, `form.meta`, etc.).
 

@@ -16,8 +16,8 @@ import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
  * Build the leaf-aware `form.errors` callable Proxy. Drill via dot /
  * bracket OR call dynamically:
  *
- *   form.errors.email                  // ValidationError[] | undefined (leaf)
- *   form.errors.address.city           // ValidationError[] | undefined (leaf)
+ *   form.errors.email                  // readonly ValidationError[] (static leaf)
+ *   form.errors.address.city           // readonly ValidationError[] (chained static leaf)
  *   form.errors.address                // proxy for descent only (container)
  *   form.errors('address.city')        // function-call (dynamic / programmatic)
  *   form.errors(['address', 'city'])   // path-array form
@@ -43,7 +43,7 @@ import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
 export function buildErrorsProxy<F extends GenericForm>(
   state: FormStore<F, GenericForm>
 ): SurfaceProxy {
-  return buildSurfaceProxy<ValidationError[] | undefined>({
+  return buildSurfaceProxy<ValidationError[]>({
     schema: state.schema as unknown as Parameters<typeof buildSurfaceProxy>[0]['schema'],
     resolveLeaf: (path) => {
       // Active-path filter applies to SCHEMA + DERIVED-BLANK errors
@@ -69,7 +69,7 @@ export function buildErrorsProxy<F extends GenericForm>(
         if (blankForKey !== undefined) merged.push(...blankForKey)
       }
       if (userForKey !== undefined) merged.push(...userForKey)
-      return merged.length === 0 ? undefined : merged
+      return merged
     },
     // No leafKeys — at a leaf, the resolved value (the merged array or
     // undefined) IS the terminal.
@@ -83,10 +83,7 @@ export function buildErrorsProxy<F extends GenericForm>(
     // when valid) so consumer code that branches on truthiness keeps
     // working — the call-form just extends that semantic to
     // containers and dynamic paths.
-    resolveCallTarget: (path) => {
-      const errs = aggregateErrorsAt(state, path)
-      return errs.length === 0 ? undefined : errs
-    },
+    resolveCallTarget: (path) => aggregateErrorsAt(state, path),
   })
 }
 

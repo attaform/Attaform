@@ -21,13 +21,13 @@
       }),
   })
 
-  const { register, fields, handleSubmit, meta } = useForm({
+  const form = useForm({
     schema,
     validateOn: 'blur',
     key: 'docs-demo-async-refinements',
   })
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = form.handleSubmit(async (values) => {
     toast.success(`Created account: ${values.username}`, { description: values })
   })
 </script>
@@ -36,13 +36,13 @@
   <form @submit.prevent="onSubmit">
     <label>
       <span>Username (taken: ada, champ, athlete)</span>
-      <input v-register="register('username')" />
-      <small v-if="fields.username.validating">Checking availability…</small>
-      <em v-if="fields.username.showErrors">{{ fields.username.firstError?.message }}</em>
+      <input v-register="form.register('username')" />
+      <small v-if="form.fields.username.validating">Checking availability…</small>
+      <em v-if="form.fields.username.showErrors">{{ form.fields.username.firstError?.message }}</em>
     </label>
 
-    <button :disabled="meta.submitting" type="submit">
-      {{ meta.submitting ? 'Creating…' : 'Create account' }}
+    <button :disabled="form.meta.submitting" type="submit">
+      {{ form.meta.submitting ? 'Creating…' : 'Create account' }}
     </button>
   </form>
 </template>

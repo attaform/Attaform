@@ -1,6 +1,6 @@
 ---
 title: Arrays & tuples
-description: z.array() is variable-length, z.tuple() is fixed-length. Both bind through numeric path segments — register('items.0.name'), errors.tags[2], fields.items[3].title.
+description: z.array() is variable-length, z.tuple() is fixed-length. Both bind through numeric path segments: register('items.0.name'), errors.tags[2], fields.items[3].title.
 metaRows:
   - label: Category
     value: Schema feature
@@ -17,7 +17,7 @@ metaRows:
 
 # Arrays & tuples
 
-> Two container shapes, one binding pattern — numeric segments in the path point to elements, and the field-array helpers cover every mutation a list-shaped input needs.
+> Two container shapes, one binding pattern. Numeric segments in the path point to elements, and the field-array helpers cover every mutation a list-shaped input needs.
 
 ::docs-meta-table
 ::
@@ -27,7 +27,7 @@ The demo binds an array of objects (todo items) and a fixed-length tuple (a date
 ::docs-demo{slug="arrays-and-tuples" label="Arrays & Tuples Demo"}
 ::
 
-## `z.array(elem)` — variable length
+## `z.array(elem)`: variable length
 
 ```ts
 const schema = z.object({
@@ -64,7 +64,7 @@ Templates iterate with `v-for`:
 </template>
 ```
 
-The `i` keyed loop pattern is fine for static lists. For lists where items can reorder, use a stable per-row identifier instead — see [Performance](/docs/server-and-ssr/performance) for the keying discussion.
+The `i` keyed loop pattern is fine for static lists. For lists where items can reorder, use a stable per-row identifier instead; see [Performance](/docs/server-and-ssr/performance) for the keying discussion.
 
 ## Field-array helpers
 
@@ -80,9 +80,9 @@ Seven helpers cover the common mutations:
 | `form.move('path', from, to)`         | Move an element to a new index. |
 | `form.replace('path', elements[])`    | Replace the whole array.        |
 
-All seven preserve sibling state where applicable (touched, focused, errors), reorder field-state to follow the items, and record one undo position per call — see [Field-array mutations](/docs/writing-and-mutating/field-arrays) for the full reference.
+All seven preserve sibling state where applicable (touched, focused, errors), reorder field-state to follow the items, and record one undo position per call; see [Field-array mutations](/docs/writing-and-mutating/field-arrays) for the full reference.
 
-## `z.tuple([a, b, c])` — fixed length
+## `z.tuple([a, b, c])`: fixed length
 
 ```ts
 const schema = z.object({
@@ -102,17 +102,17 @@ form.values.dateRange[0] // Date
 form.values.dateRange[1] // Date
 form.register('dateRange.0') // path autocomplete narrows to position 0
 form.register('dateRange.1') // position 1
-form.register('dateRange.2') // type error — tuple has only 2 positions
+form.register('dateRange.2') // type error (tuple has only 2 positions)
 ```
 
-Tuples don't expose the field-array helpers — `form.append('dateRange', new Date())` is a type error because the tuple has a fixed shape. For mixed-shape sequences (a `[string, number, boolean]`), tuples are how you say "exactly this layout, in this order."
+Tuples don't expose the field-array helpers; `form.append('dateRange', new Date())` is a type error because the tuple has a fixed shape. For mixed-shape sequences (a `[string, number, boolean]`), tuples are how you say "exactly this layout, in this order."
 
 ## When to pick which
 
-- **Array** — when the list grows and shrinks at runtime, and every element has the same shape. Todos, tags, line items, attachments.
-- **Tuple** — when the sequence has a fixed length and the positions may differ in type or meaning. Date ranges, coordinate pairs, RGB color triples, [latitude, longitude] tuples.
+- **Array**: when the list grows and shrinks at runtime, and every element has the same shape. Todos, tags, line items, attachments.
+- **Tuple**: when the sequence has a fixed length and the positions may differ in type or meaning. Date ranges, coordinate pairs, RGB color triples, [latitude, longitude] tuples.
 
-If you find yourself reaching for `z.array(z.union([a, b]))` to mean "exactly one of A followed by exactly one of B," reach for a tuple instead — `z.tuple([a, b])` says the same thing, more precisely.
+If you find yourself reaching for `z.array(z.union([a, b]))` to mean "exactly one of A followed by exactly one of B," reach for a tuple instead; `z.tuple([a, b])` says the same thing, more precisely.
 
 ## Errors land where the schema expects
 
@@ -123,11 +123,11 @@ form.errors.todos[0]?.title // ValidationError[] for todos[0].title
 form.errors.dateRange[1] // ValidationError[] for dateRange[1]
 ```
 
-The aggregate `form.meta.errors` flattens every leaf's errors into a single list. Cross-element refinements (a `.refine` on the whole array) land on the array path itself rather than a specific element — `form.errors.todos[0]` (note the `[0]` index after the `.errors.todos` access) reads the first error attached to the array, which is the cross-element one.
+The aggregate `form.meta.errors` flattens every leaf's errors into a single list. Cross-element refinements (a `.refine` on the whole array) land on the array path itself rather than a specific element. `form.errors.todos[0]` (note the `[0]` index after the `.errors.todos` access) reads the first error attached to the array, which is the cross-element one.
 
 ## Async element-level refinements
 
-Element-level async refinements work the way you'd expect — each element validates independently:
+Element-level async refinements work the way you'd expect. Each element validates independently:
 
 ```ts
 const schema = z.object({
@@ -138,7 +138,7 @@ const schema = z.object({
   ),
 })
 
-// form.errors.skus[2] — pending until the async refinement settles
+// form.errors.skus[2]: pending until the async refinement settles
 // for that element
 ```
 
@@ -146,6 +146,6 @@ See [Async refinements](/docs/validation/async-refinements) for cancellation sem
 
 ## Where to next
 
-- [Field-array mutations](/docs/writing-and-mutating/field-arrays) — the seven helpers in depth, with element keying patterns.
-- [Records & maps](/docs/schemas/records) — when the keys aren't numeric indices.
-- [Nested objects](/docs/schemas/nested-objects) — fixed-shape composition vs. variable-length sequences.
+- [Field-array mutations](/docs/writing-and-mutating/field-arrays): the seven helpers in depth, with element keying patterns.
+- [Records & maps](/docs/schemas/records): when the keys aren't numeric indices.
+- [Nested objects](/docs/schemas/nested-objects): fixed-shape composition vs. variable-length sequences.

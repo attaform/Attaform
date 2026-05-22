@@ -165,5 +165,5 @@ Treat them as appendix items: stable enough to reference, but the public-facing 
 ## Where to next
 
 - [The schema contract](/docs/schemas/contract) — the high-level model these types implement.
-- [Custom schema adapters](/docs/reference/custom-adapters) — when you need the contract for a non-Zod schema library.
+- [`AbstractSchema`](/docs/schemas/abstract-schema): when you need the contract for a non-Zod schema library.
 - [Entry-point reference](/docs/reference/entry-points) — which subpath each type ships from.

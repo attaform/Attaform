@@ -1,6 +1,6 @@
 ---
 title: The schema contract
-description: A schema is the form's source of truth — types, defaults, refinements, and the validation surface flow from one declaration. Attaform is schema-agnostic at the core, with Zod adapters in the box.
+description: A schema declares the shape, constraints, and transformations of a value. Attaform is schema-agnostic at the core and ships first-class Zod adapters.
 metaRows:
   - label: Category
     value: Conceptual
@@ -17,109 +17,161 @@ metaRows:
 
 # The schema contract
 
-> One declaration drives the whole form — types for inference, defaults for initial state, refinements for validation, and the field metadata that powers labels and descriptions.
+> A schema declares a value's shape, types, constraints, and transformations. One declaration drives validation, type inference, defaults, and metadata, all from the same source.
 
 ::docs-meta-table
 ::
 
-This page is the mental model — there's no widget to demonstrate. The rest of the Schemas cluster makes each piece concrete with side-by-side schema-and-result demos.
+This page is the mental model for what a schema is and what it lets you do. The rest of the Schemas cluster takes each capability one at a time with side-by-side schema-and-result demos.
 
-## What a schema gives you
+## What a schema is
 
-A single schema declaration produces every reactive surface the form exposes:
+A schema is a declarative description of data. It states what keys exist, what types they hold, how they nest, which values are valid, and which transformations apply on the way in or out. A single declaration carries the answer to every question about the data's shape.
 
-| Surface                 | Comes from                                                                |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `form.values`           | The **read shape** — concrete types after defaults / preprocess resolve.  |
-| `form.fields.<path>`    | One `FieldState` per leaf — value, errors, touched, blurred, blank, meta. |
-| `form.errors.<path>`    | Errors emitted by `validateAtPath`, keyed by path and variant-filtered.   |
-| `form.meta`             | Aggregates over every field's state.                                      |
-| `handleSubmit` argument | The **submit shape** — post-transform output, type-narrowed.              |
-| `register(path)`        | Path autocomplete + per-field meta + the storage assigner.                |
-
-The schema is the only thing you write. The library walks it to derive the rest.
-
-## Three shapes, one schema
-
-Attaform distinguishes three views of the same schema:
+Different schema libraries take different approaches: parser-combinators, classes, descriptor objects, type-only signatures. Attaform is schema-agnostic at its core; the library consumes any object that implements the [`AbstractSchema`](#schema-agnostic-core) contract. Out of the box, [Zod](https://zod.dev) is the canonical adapter. Zod v4 is the default; Zod v3 is one import away.
 
 ```ts
-const schema = z.object({
-  flag: z.boolean().default(true),
-  trimmed: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string()),
-  ratio: z.string().transform((v) => Number(v) / 100),
-})
-```
-
-| Surface                           | Shape      | What it answers                                                      |
-| --------------------------------- | ---------- | -------------------------------------------------------------------- |
-| `form.values` / `form.fields`     | **read**   | What does storage hold now? `flag: boolean`                          |
-| `setValue` / `defaultValues`      | **write**  | What may consumers pass in? `flag?: boolean`                         |
-| `handleSubmit` / `form.process()` | **submit** | What does a successful parse yield? `flag: boolean`, `ratio: number` |
-
-The same schema produces all three; the surface determines which one you're holding. [How values are stored](/docs/schemas/storage-shape) is the deep dive.
-
-## The default adapter
-
-`attaform/zod` wraps Zod v4 — the canonical entry point for new projects. The adapter:
-
-- Walks the schema once at construction; caches structural metadata.
-- Implements `AbstractSchema` — the schema-agnostic contract the core consumes.
-- Handles `.optional()` / `.nullable()` / `.default()` / `.preprocess()` / `.transform()` / `z.discriminatedUnion` consistently.
-- Resolves field metadata via `withMeta` / `fieldMeta` for label, description, placeholder.
-
-```ts
-import { useForm, withMeta } from 'attaform/zod'
 import { z } from 'zod'
 
 const schema = z.object({
-  email: withMeta(z.email(), { label: 'Email', description: 'We use it for receipts.' }),
+  email: z.email(),
+  age: z.number().int().min(13),
 })
-
-const form = useForm({ schema })
 ```
 
-For projects still on Zod v3, swap the import to `attaform/zod-v3` — the surface is identical, the parsing engine differs.
+That schema is the artifact every dimension below describes. Attaform reads it once and derives validation, defaults, types, and reactive surfaces from it.
 
-## Schema-agnostic core
+## What a schema declares
 
-The core (`attaform`) doesn't import Zod. It consumes any object that implements the `AbstractSchema` contract — 12 required methods plus 2 optional hooks covering identity, defaults, shape introspection, and validation.
+A schema covers six dimensions. Each one stands on its own; the rest of the Schemas cluster takes each in depth.
 
-Most consumers never touch this. The Zod adapters cover ~99% of cases. Reach for [Custom schema adapters](/docs/reference/custom-adapters) when:
+### Shape
 
-- You're on Valibot, ArkType, Effect-Schema, or another type system the official adapters don't cover.
-- You have a hand-rolled validator whose output you want to flow through Attaform's reactive surface.
-
-The contract is small and stable — `fingerprint`, `getDefaultValues`, `validateAtPath`, plus the shape-introspection helpers the proxy needs.
-
-## Refinements vs. transforms
-
-Two kinds of "schema work" with different read-shape behavior:
+The structural skeleton: which keys exist, what types they hold, how they nest. Zod composes shape through `z.object`, `z.array`, `z.tuple`, `z.record`, `z.discriminatedUnion`, `z.enum`, and the primitives (`z.string`, `z.number`, `z.boolean`, `z.date`, `z.bigint`).
 
 ```ts
-// Refinement — runs at validate, doesn't change the shape
-z.string().refine((s) => /[a-z]/.test(s), 'Needs a lowercase letter')
+const schema = z.object({
+  profile: z.object({
+    name: z.string(),
+    interests: z.array(z.string()),
+  }),
+  notify: z.discriminatedUnion('channel', [
+    z.object({ channel: z.literal('email'), address: z.email() }),
+    z.object({ channel: z.literal('sms'), phone: z.string() }),
+  ]),
+})
+```
 
-// Transform — runs at parse, changes submit shape
+Shape is the substrate every other dimension builds on. The per-construct deep dives live at [Nested objects](/docs/schemas/nested-objects), [Arrays & tuples](/docs/schemas/arrays-and-tuples), [Records & maps](/docs/schemas/records), and [Discriminated unions](/docs/schemas/discriminated-unions).
+
+### Type safety
+
+Every key, every leaf, every nested path carries a TypeScript type derived from the declaration. The schema is the single thing the type system reads; inference flows outward from there.
+
+```ts
+type Account = z.infer<typeof schema>
+// { profile: { name: string; interests: string[] }, notify: ... }
+```
+
+No manual generics, no `any`, no reaching for plumbing whenever a field is added or renamed.
+
+### Validation
+
+Refinements declare which values are valid. A predicate runs against a parsed value and either passes or attaches an error.
+
+```ts
+const password = z
+  .string()
+  .min(8, 'At least 8 characters')
+  .refine((s) => /[A-Z]/.test(s), 'Needs an uppercase letter')
+```
+
+Refinements can be asynchronous. `z.string().refine(async (v) => await api.isAvailable(v))` awaits the predicate before parsing settles. Synchronous predicates run eagerly; asynchronous ones await before submit dispatches. [When validation runs](/docs/validation/when-validation-runs) covers the timing model.
+
+### Transformation
+
+Two boundaries can transform a value. `z.preprocess(fn, T)` runs before parsing, normalising input as it lands. `.transform(fn)` runs after parsing, converting the validated value to the wire format.
+
+```ts
+z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string())
+
 z.string().transform((s) => s.toLowerCase())
 ```
 
-- **Refinements** are visible in `form.errors.<path>` reactively as the field updates; they don't change `form.values.<path>`'s type.
-- **Transforms** are deferred to parse — `handleSubmit`'s argument sees the post-transform output, but `form.values.<path>` still holds the pre-transform input.
+The two run at different times and surface different shapes. [How values are stored](/docs/schemas/storage-shape) walks the implications.
 
-This split is intentional: refinements drive live UX feedback; transforms produce the wire format. Reading `form.values` doesn't require thinking about whether transforms have run.
+### Metadata
+
+Labels, descriptions, placeholders, and free-form annotations live on the schema itself. `withMeta` attaches them at any node.
+
+```ts
+import { withMeta } from 'attaform/zod'
+
+const schema = z.object({
+  email: withMeta(z.email(), {
+    label: 'Email address',
+    description: "We'll only use it for receipts.",
+    placeholder: 'you@example.com',
+  }),
+})
+```
+
+Metadata travels with the schema; UI that consumes it reads from the declaration directly.
+
+### Defaults
+
+`.default(x)` declares the value a field takes when no input is supplied. `.catch(x)` declares a fallback for parse failures.
+
+```ts
+const schema = z.object({
+  priority: z.string().default('normal'),
+  remember: z.boolean().default(true),
+})
+```
+
+[Defaults from the schema](/docs/schemas/defaults) covers how declared defaults seed initial values and which operations re-apply them.
+
+## Zod adapters
+
+`attaform/zod` wraps Zod v4 and is the canonical import for new projects. It walks the schema once at construction, caches structural metadata, and implements `AbstractSchema` against Zod's runtime.
+
+```ts
+import { useForm } from 'attaform/zod'
+```
+
+For projects still on Zod v3, swap the import: `attaform/zod-v3`. The consumer-facing surface is identical; the parsing engine and metadata walker differ to match v3's internals.
+
+## Schema-agnostic core
+
+The core package (`attaform`) doesn't import Zod. It consumes any object that implements `AbstractSchema`, a small contract covering identity, defaults, shape introspection, and validation. The Zod adapters cover the bulk of real-world schemas; reach for [`AbstractSchema`](/docs/schemas/abstract-schema) directly when you're wiring Valibot, ArkType, Effect Schema, or a hand-rolled validator.
+
+## Refinements vs. transforms
+
+Refinements and transforms look adjacent but answer different questions.
+
+```ts
+// Refinement: runs at validate, doesn't change the value
+z.string().refine((s) => /[a-z]/.test(s), 'Needs a lowercase letter')
+
+// Transform: runs at parse, changes the value
+z.string().transform((s) => s.toLowerCase())
+```
+
+Refinements ask "is this value acceptable?" Transforms ask "given this value, what should the next stage see?" Schemas stack both in any order; the order matters at validate / parse time.
+
+The split is intentional. Refinements drive live feedback as users type; transforms shape the wire format on the way out.
 
 ## Fingerprinting
 
-Every schema has a structural fingerprint — a short string that changes when the shape changes (adding / removing / renaming a field, changing a leaf type, restructuring nested objects) but stays stable under refinement / transform / metadata tweaks. The fingerprint:
+Every schema carries a structural fingerprint: a short string that changes when the shape changes (adding or removing a field, changing a leaf type, restructuring nesting) but stays stable under refinement, transform, or metadata tweaks. The fingerprint surfaces in two places:
 
-- Keys the persisted draft (so schema changes auto-invalidate stale drafts).
-- Catches shared-key mismatches in dev (two `useForm({ key: 'x' })` calls with different schemas warn).
+- Persistence keys (a schema change auto-invalidates stale drafts).
+- Shared-key form mismatches in dev (two `useForm({ key: 'x' })` calls with different schemas warn).
 
-You never compute it explicitly — `schema.fingerprint()` is on the adapter, called by the runtime when needed.
+`schema.fingerprint()` lives on the adapter; the runtime calls it when needed.
 
 ## Where to next
 
-- [Defaults from the schema](/docs/schemas/defaults) — how schema `.default()` declarations flow into `form.values`.
-- [How values are stored](/docs/schemas/storage-shape) — the slim write shape and the three-views model.
-- [Optional, nullable, defaulted](/docs/schemas/optional-nullable) — the three missing-ness modifiers and what each means at runtime.
+- [Defaults from the schema](/docs/schemas/defaults): how `.default()` declarations flow into initial values.
+- [How values are stored](/docs/schemas/storage-shape): the per-wrapper read-shape policy.
+- [Optional, nullable, defaulted](/docs/schemas/optional-nullable): three modifiers, three different meanings.

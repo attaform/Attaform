@@ -1,12 +1,8 @@
 <script setup lang="ts">
-  // Phase 1 demo for `handleSubmit`. The terms checkbox uses
-  // `z.literal(true)` so unchecking it makes the schema parse fail
-  // — readers see onError fire (alert), focus pull to the invalid
-  // field, and the success path alert when the form clears.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, handleSubmit, fields, meta } = useForm({
+  const form = useForm({
     schema: z.object({
       email: z.email('Enter a valid email'),
       terms: z.literal(true, { message: 'Accept the terms to continue' }),
@@ -14,7 +10,7 @@
     key: 'handle-submit',
   })
 
-  const onSubmit = handleSubmit(
+  const onSubmit = form.handleSubmit(
     async (values) => {
       await new Promise((resolve) => setTimeout(resolve, 600))
       toast.success(`Submitted as ${values.email}`, { description: values })
@@ -29,16 +25,16 @@
   <form @submit.prevent="onSubmit">
     <label>
       Email
-      <input v-register="register('email')" autocomplete="email" />
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
     <label class="checkbox">
-      <input v-register="register('terms')" type="checkbox" />
+      <input v-register="form.register('terms')" type="checkbox" />
       I accept the terms of service
-      <em v-if="fields.terms.showErrors">{{ fields.terms.firstError?.message }}</em>
+      <em v-if="form.fields.terms.showErrors">{{ form.fields.terms.firstError?.message }}</em>
     </label>
-    <button :disabled="meta.submitting" type="submit">
-      {{ meta.submitting ? 'Submitting…' : 'Submit' }}
+    <button :disabled="form.meta.submitting" type="submit">
+      {{ form.meta.submitting ? 'Submitting…' : 'Submit' }}
     </button>
   </form>
 </template>

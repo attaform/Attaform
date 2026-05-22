@@ -146,11 +146,11 @@ describe('DefaultValuesInput — type-level parity tests', () => {
   })
 
   describe('arrays of objects walk through elements', () => {
-    it('walks an array-of-objects element type', () => {
+    it('walks an array-of-objects element type, with Unset at every container level', () => {
       type Walked = DefaultValuesInput<{ items: Array<{ sku: string }> }>
-      expectTypeOf<Walked>().toMatchTypeOf<{
-        items?: Array<{ sku?: string | Unset }>
-      }>()
+      expectTypeOf<Walked>().toEqualTypeOf<
+        { items?: Array<{ sku?: string | Unset } | Unset> | Unset } | Unset
+      >()
     })
   })
 

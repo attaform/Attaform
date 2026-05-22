@@ -49,6 +49,8 @@ form.setValue('age', 'twenty-one') // type error
 
 `form.fields.<path>` knows the exact set of paths in the schema. `form.errors.<path>` is reactive, typed, narrowable.
 
+The types follow the form through every state. While the user is typing, `form.values` is wide enough to hold whatever they have put there so far: incomplete fields, undecided discriminators, rehydrated half-filled draft state from yesterday's session. Inside `handleSubmit`, the same data flows through the schema and emerges with literals narrowed, refinements honored, and discriminated unions discriminating. Wide where reality is wide, tight where the schema guarantees it. [Type safety](/docs/reading-the-form/type-safety) walks through the trade.
+
 ## Native inputs, Vue directive
 
 `v-register` is a Vue directive, not a wrapper component. Your `<input>` stays a native `<input>`; there's no field-component overhead between the DOM and the form.
@@ -85,5 +87,6 @@ These ship with the core, typed and orchestrated as first-class features:
 
 - [Quick start](/docs/getting-started/quick-start): your first form, end-to-end.
 - [The form object](/docs/reading-the-form/the-form-object): the full reactive surface returned by `useForm`.
+- [Type safety](/docs/reading-the-form/type-safety): wide while typing, tight inside `handleSubmit`, by design.
 - [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.
 - [The `v-register` directive](/docs/binding-inputs/v-register): how Attaform binds inputs.

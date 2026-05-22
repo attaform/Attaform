@@ -4,7 +4,7 @@
   import { z } from 'zod'
   import { onMounted, useTemplateRef } from 'vue'
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       color: z.string(),
     }),
@@ -46,18 +46,23 @@
 <template>
   <form @submit.prevent>
     <span class="label">Pick a color (no &lt;input&gt; — a custom widget)</span>
-    <div ref="widget" v-register="register('color')" class="widget" :data-color="values.color">
+    <div
+      ref="widget"
+      v-register="form.register('color')"
+      class="widget"
+      :data-color="form.values.color"
+    >
       <button
         v-for="c in swatches"
         :key="c"
         type="button"
         :style="{ background: c }"
-        :aria-pressed="values.color === c"
+        :aria-pressed="form.values.color === c"
         @click="pickColor(c)"
       />
     </div>
 
-    <pre>values.color = {{ JSON.stringify(values.color) }}</pre>
+    <pre>form.values.color = {{ JSON.stringify(form.values.color) }}</pre>
   </form>
 </template>
 

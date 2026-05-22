@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, fields, values } = useForm({
+  const form = useForm({
     schema: z.object({
       email: z.email('Enter a valid email'),
       password: z.string().min(8, 'At least 8 characters'),
@@ -17,26 +17,28 @@
   <form @submit.prevent>
     <label>
       Email
-      <input v-register="register('email')" autocomplete="email" />
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
     <label>
       Password
-      <input v-register="register('password')" type="password" autocomplete="off" />
-      <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
+      <input v-register="form.register('password')" type="password" autocomplete="off" />
+      <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
     </label>
     <label>
       Display name <span class="hint">(optional)</span>
-      <input v-register="register('displayName')" />
-      <em v-if="fields.displayName.showErrors">{{ fields.displayName.firstError?.message }}</em>
+      <input v-register="form.register('displayName')" />
+      <em v-if="form.fields.displayName.showErrors">{{
+        form.fields.displayName.firstError?.message
+      }}</em>
     </label>
     <label>
       Age
-      <input v-register="register('age')" type="number" />
-      <em v-if="fields.age.showErrors">{{ fields.age.firstError?.message }}</em>
+      <input v-register="form.register('age')" type="number" />
+      <em v-if="form.fields.age.showErrors">{{ form.fields.age.firstError?.message }}</em>
     </label>
-    <pre class="values">{{
-      JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    <pre class="form.values">{{
+      JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
     }}</pre>
   </form>
 </template>
@@ -76,7 +78,7 @@
     font-style: normal;
     font-weight: 400;
   }
-  .values {
+  .form.values {
     margin-top: 0.5rem;
     padding: 0.75rem;
     background: #f3f4f6;

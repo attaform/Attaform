@@ -36,8 +36,8 @@ Parent owns the form (no `key`):
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
 
-  const { handleSubmit } = useForm<Form>({ schema })
-  const onSubmit = handleSubmit(async (values) => {
+  const form = useForm<Form>({ schema })
+  const onSubmit = form.handleSubmit(async (values) => {
     await api.post('/signup', values)
   })
 </script>
@@ -58,13 +58,13 @@ Any descendant grabs the same form:
 <script setup lang="ts">
   import { injectForm } from 'attaform/zod'
 
-  const { register, fields } = injectForm<Form>()
+  const form = injectForm<Form>()
 </script>
 
 <template>
   <label>Email</label>
-  <input v-register="register('email')" />
-  <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+  <input v-register="form.register('email')" />
+  <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
 </template>
 ```
 
@@ -79,12 +79,12 @@ Floating save buttons, sidebar status widgets, anything in a different branch of
 <script setup lang="ts">
   import { injectForm } from 'attaform/zod'
 
-  const { meta, handleSubmit } = injectForm<Form>('signup')
-  const onSave = handleSubmit(async (values) => api.post('/signup', values))
+  const form = injectForm<Form>('signup')
+  const onSave = form.handleSubmit(async (values) => api.post('/signup', values))
 </script>
 
 <template>
-  <button :disabled="!meta.dirty || meta.submitting" @click="onSave">Save</button>
+  <button :disabled="!form.meta.dirty || form.meta.submitting" @click="onSave">Save</button>
 </template>
 ```
 
@@ -151,7 +151,7 @@ Both resolution modes ref-count on the form's registry entry. In practice:
 For the common case where the form is guaranteed to exist (it's set up in the same SFC tree), assert non-null at the call site:
 
 ```ts
-const { register, fields } = injectForm<Form>('signup')!
+const form = injectForm<Form>('signup')!
 ```
 
 For optional consumers (a floating panel that should hide when the form isn't mounted), guard the return:

@@ -39,7 +39,7 @@ Ships:
 - `fieldMeta` / `withMeta` — schema-attached field metadata (label, description, placeholder).
 - `kindOf`, `ZodKind`, `assertZodVersion` — runtime Zod-introspection helpers.
 - `FieldMetaPayload` — the metadata shape.
-- `unset`, `isUnset` — the absent-sentinel.
+- `unset`, `isUnset`: the blank-anywhere sentinel and its type guard.
 
 ## `attaform/zod-v3`
 
@@ -49,7 +49,7 @@ Zod v3 adapter for projects still on v3. New projects should use `attaform/zod`.
 import { useForm, withMeta } from 'attaform/zod-v3'
 ```
 
-Surface matches `attaform/zod` one-for-one — `useForm`, `injectForm`, `useRegister`, `useStepper`, `withMeta`, `fieldMeta`, `unset`. The runtime introspection is leaner (`isZodSchemaType` only); see [Custom schema adapters](/docs/reference/custom-adapters#zod-v3-vs-zod-v4--an-introspection-asymmetry) for the discussion.
+Surface matches `attaform/zod` one-for-one: `useForm`, `injectForm`, `useRegister`, `useStepper`, `withMeta`, `fieldMeta`, `unset`. The runtime introspection is leaner (`isZodSchemaType` only); see [`AbstractSchema`](/docs/schemas/abstract-schema#zod-v3-vs-zod-v4-an-introspection-asymmetry) for the discussion.
 
 ## `attaform/zod-v4`
 
@@ -59,7 +59,7 @@ Explicit Zod v4 entry. Currently identical to `attaform/zod` — kept for forwar
 
 The schema-agnostic entry. Drop here when:
 
-- You're wiring a custom schema library via [`AbstractSchema`](/docs/reference/custom-adapters).
+- You're wiring a custom schema library via [`AbstractSchema`](/docs/schemas/abstract-schema).
 - You need directive-layer symbols (`vRegister`, `assignKey`, `RegisterTransform`) not re-exported by the typed entries.
 - You're writing SSR bootstrap code (`renderAttaformState`, `hydrateAttaformState`, `escapeForInlineScript`).
 
@@ -198,4 +198,4 @@ For runtime imports under typical app code, import directly from `attaform` — 
 - [The schema contract](/docs/schemas/contract) — the bridge between the typed entries and the framework-agnostic core.
 - [Types reference](/docs/reference/types) — every type, grouped by purpose.
 - [Errors reference](/docs/reference/errors) — every library-thrown error class.
-- [Custom schema adapters](/docs/reference/custom-adapters) — the `AbstractSchema` contract for non-Zod libraries.
+- [`AbstractSchema`](/docs/schemas/abstract-schema): the contract for non-Zod schema libraries.

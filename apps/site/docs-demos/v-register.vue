@@ -1,12 +1,8 @@
 <script setup lang="ts">
-  // Phase 1 demo for "The v-register directive". One input bound
-  // through v-register; the table underneath surfaces the four
-  // FieldState bits the directive tracks (touched / focused /
-  // blurred / blank) — readers watch them flip as they interact.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, fields, values } = useForm({
+  const form = useForm({
     schema: z.object({
       email: z.email('Enter a valid email'),
     }),
@@ -18,30 +14,30 @@
   <form @submit.prevent>
     <label>
       Email
-      <input v-register="register('email')" autocomplete="email" />
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
     <table class="state">
       <tbody>
         <tr>
-          <th>values.email</th>
-          <td>{{ JSON.stringify(values.email) }}</td>
+          <th>form.values.email</th>
+          <td>{{ JSON.stringify(form.values.email) }}</td>
         </tr>
         <tr>
-          <th>fields.email.touched</th>
-          <td>{{ fields.email.touched }}</td>
+          <th>form.fields.email.touched</th>
+          <td>{{ form.fields.email.touched }}</td>
         </tr>
         <tr>
-          <th>fields.email.focused</th>
-          <td>{{ fields.email.focused }}</td>
+          <th>form.fields.email.focused</th>
+          <td>{{ form.fields.email.focused }}</td>
         </tr>
         <tr>
-          <th>fields.email.blurred</th>
-          <td>{{ fields.email.blurred }}</td>
+          <th>form.fields.email.blurred</th>
+          <td>{{ form.fields.email.blurred }}</td>
         </tr>
         <tr>
-          <th>fields.email.blank</th>
-          <td>{{ fields.email.blank }}</td>
+          <th>form.fields.email.blank</th>
+          <td>{{ form.fields.email.blank }}</td>
         </tr>
       </tbody>
     </table>

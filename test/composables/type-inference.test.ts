@@ -533,12 +533,22 @@ describe('useForm type inference — fields + errors', () => {
   it('form.errors is a FormErrorsSurface<Form> — leaf-aware drillable callable Proxy', () => {
     // Public type is a callable proxy; `(path)` returns a leaf array,
     // dot-access returns leaf array OR sub-shape depending on the path.
-    expectTypeOf(form.errors.email).toMatchTypeOf<readonly { message: string }[] | undefined>()
+    expectTypeOf(form.errors.email).toMatchTypeOf<readonly { message: string }[]>()
     // Callable signature exists on the surface itself.
     expectTypeOf(form.errors).toBeCallableWith('email')
     // No `.value` — the proxy is not a Ref.
     // @ts-expect-error — errors is not a Ref.
     void form.errors.value
+  })
+
+  it('form.errors.X for a statically-known z.object key excludes undefined', () => {
+    // `email` is a statically-known key on `z.object({ email: ... })`,
+    // so the proxy always resolves to an array (empty when no errors
+    // land, populated otherwise). Dynamic keys (record entries,
+    // beyond-bounds array indices) keep `| undefined` via the
+    // structural channels (numeric index signatures + noUncheckedIndexed-
+    // Access); statically-known leaves do not.
+    expectTypeOf(form.errors.email).not.toBeNullable()
   })
 })
 

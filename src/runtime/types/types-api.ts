@@ -2735,12 +2735,19 @@ export type FieldState<Value = unknown> = {
  * alias (`type FooShape<T> = LeafWalker<T, 'foo'>`). The walker
  * topology is shared; only the leaf changes.
  *
+ * The `errors` entry threads `T` to preserve `| undefined` when the
+ * value type itself includes undefined (DU variant-only fields whose
+ * lifted shape resolves to `X | undefined`). Statically-known leaves
+ * collapse to `readonly ValidationError[]` (no undefined); dynamic-key
+ * boundaries (array indices, record keys) re-introduce `| undefined`
+ * via the structural index-signature channels.
+ *
  * Implementation-detail surface — consumers reach for `FieldStateMap`
  * or `FormErrorsSurface` instead.
  */
 export interface LeafSchemeFor<T> {
   field: FieldState<T>
-  errors: readonly ValidationError[] | undefined
+  errors: undefined extends T ? readonly ValidationError[] | undefined : readonly ValidationError[]
 }
 
 /**
@@ -2861,14 +2868,18 @@ export type FormErrorStore = Map<FormKey, FormErrorRecord>
 
 /**
  * Type of `form.errors`. Leaf-aware drillable callable Proxy. At a
- * leaf path the proxy resolves to `ValidationError[] | undefined`;
- * at a container path it returns a sub-proxy you can keep drilling.
+ * statically-known leaf the proxy resolves to `readonly ValidationError[]`
+ * (empty array when no errors land); at dynamic boundaries (array
+ * indices, record keys, DU variant-only fields) it resolves to
+ * `readonly ValidationError[] | undefined`. At a container path it
+ * returns a sub-proxy you can keep drilling.
  *
  * Dot/bracket access mirrors the schema shape:
  *
  * ```ts
- * form.errors.email                  // ValidationError[] | undefined (leaf)
- * form.errors.user.profile.email     // ValidationError[] | undefined (chained leaves)
+ * form.errors.email                  // readonly ValidationError[] (static leaf)
+ * form.errors.user.profile.email     // readonly ValidationError[] (chained static leaves)
+ * form.errors.posts[3]?.title        // readonly ValidationError[] | undefined (past array boundary)
  * form.errors.address                // sub-proxy (container — descend further)
  * ```
  *
@@ -2888,15 +2899,18 @@ export type FormErrorStore = Map<FormKey, FormErrorRecord>
 
 /**
  * Recursive shape of the `form.errors` proxy. Mirrors the schema:
- * primitive leaves expose `ValidationError[] | undefined` directly;
- * containers expose a sub-shape you can keep drilling. Arrays expose
- * numeric-indexed sub-shapes.
+ * statically-known primitive leaves expose `readonly ValidationError[]`
+ * (always an array; empty when no errors); leaves whose value type
+ * itself includes `undefined` (DU variant-only fields) keep the
+ * `| undefined` branch. Containers expose a sub-shape you can keep
+ * drilling. Arrays expose numeric-indexed sub-shapes; reading a
+ * numeric index introduces `| undefined` via noUncheckedIndexedAccess.
  *
  * Augmented with the callable signatures so dot-access and function-
  * call coexist on the same identifier.
  */
 export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
-  (path: string): readonly ValidationError[] | undefined
+  (path: string): readonly ValidationError[]
   /**
    * Tuple-segment form. Validated against `FlatPath<Form>` so literal
    * tuples that don't resolve to a known path fail at the call site.
@@ -2904,14 +2918,14 @@ export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
    */
   <const S extends ReadonlyArray<string | number>>(
     segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
-  ): readonly ValidationError[] | undefined
-  (segments: ReadonlyArray<string | number>): readonly ValidationError[] | undefined
+  ): readonly ValidationError[]
+  (segments: ReadonlyArray<string | number>): readonly ValidationError[]
   /**
    * No-arg call returns the form-level error aggregate — same as
-   * `form.errors([])` and `form.meta.errors`. `undefined` when the
-   * form has no errors; readonly array otherwise.
+   * `form.errors([])` and `form.meta.errors`. Always a readonly array;
+   * empty when the form has no errors.
    */
-  (): readonly ValidationError[] | undefined
+  (): readonly ValidationError[]
 }
 
 /**
@@ -3137,7 +3151,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
  * form.register('email')        // bind to <input v-register>
  * form.values.email             // current value (proxy, no .value)
  * form.fields.email.dirty   // per-field flags
- * form.errors.email             // ValidationError[] | undefined
+ * form.errors.email             // readonly ValidationError[]
  * form.setValue('email', 'a@b.c')
  * form.handleSubmit(onSubmit)   // returns a submit handler
  * form.meta.submitting        // form-level reactive flag

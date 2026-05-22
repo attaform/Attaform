@@ -7,7 +7,7 @@
   const dashify: RegisterTransform = (v) =>
     typeof v === 'string' ? v.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') : v
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       title: z.string(),
       slug: z.string(),
@@ -20,18 +20,18 @@
   <form @submit.prevent>
     <label>
       <span>Title (untouched)</span>
-      <input v-register="register('title')" placeholder="My First Post" />
+      <input v-register="form.register('title')" placeholder="My First Post" />
     </label>
 
     <label>
       <span>Slug (lowercased, dashified — try mixed case + spaces)</span>
       <input
-        v-register="register('slug', { transforms: [lowercase, dashify] })"
+        v-register="form.register('slug', { transforms: [lowercase, dashify] })"
         placeholder="my-first-post"
       />
     </label>
 
-    <pre>{{ JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
+    <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 

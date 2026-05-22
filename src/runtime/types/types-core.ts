@@ -400,10 +400,14 @@ export type ArrayItem<Form, Path extends ArrayPath<Form>> =
  * the array-recursion branch so positionally-typed array literals
  * survive intact.
  *
- * Read-side types (handleSubmit's `data` argument,
- * validate*() result payloads) intentionally stay STRICT — those
- * payloads have been parsed by the schema, so the widened shape
- * doesn't apply.
+ * `WriteShape<T>` stays STRICT — no `| Unset` widening. It's used for
+ * the callback's prev-value argument in `setValue(path, prev => ...)`
+ * (which always receives a real value, never the sentinel), for
+ * read-side types where consumers expect a structural form shape, and
+ * by internal types like `FieldStateMap<T>`. The consumer-facing
+ * write-value type is `DefaultValuesShape<T>` (composed via
+ * `SetValuePayload`), which adds `| Unset` at every recursable
+ * position.
  */
 export type WriteShape<T> = T extends string | number | boolean | bigint | symbol | null | undefined
   ? T extends string
@@ -435,22 +439,24 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
  * brand-typed sentinel consumers pass to indicate "this leaf starts
  * displayed-empty" in `defaultValues`, `setValue`, and `reset`.
  *
- * Non-primitive leaves (`Date`, `RegExp`, `Map`, `Set`, functions)
- * stay strict — `defaultValues: { joinedAt: unset }` against a
- * `Date`-typed leaf is a type error.
+ * `Unset` is admitted at every position — primitive leaves, opaque
+ * leaves (`Date`, `RegExp`, `Map`, `Set`, functions), and containers
+ * (objects, arrays, tuples, records, DUs, optional / nullable
+ * wrappers). A container `unset` recursively marks every primitive
+ * descendant blank, so `defaultValues: { profile: unset }` and
+ * `setValue('cargo', unset)` typecheck cleanly.
  *
  * The recursion mirrors `WriteShape<T>` exactly so `defaultValues`
- * stays compatible at every nested position; the only divergence is
- * the leaf widening. Tuple positions, unbounded arrays, and nested
- * records all flow through unchanged.
+ * stays compatible at every nested position. Tuple positions,
+ * unbounded arrays, and nested records all flow through unchanged.
  *
  * Example:
  *
  *   DefaultValuesShape<{ income: number; name: string; age: 21 }>
- *     // → { income: number | Unset; name: string | Unset; age: number | Unset }
+ *     // → { income: number | Unset; name: string | Unset; age: number | Unset } | Unset
  *
  * Used by `UseFormConfiguration.defaultValues`, `setValue`'s value
- * parameter, and `reset`'s parameter (commit 7 widens all three).
+ * parameter, and `reset`'s parameter.
  */
 export type DefaultValuesShape<T> = T extends
   | string
@@ -472,23 +478,24 @@ export type DefaultValuesShape<T> = T extends
             ? symbol
             : T
   : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | ((...args: never) => unknown)
-    ? T
+    ? T | Unset
     : T extends readonly [unknown, ...unknown[]]
-      ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> }
+      ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
       : T extends ReadonlyArray<infer U>
         ? IsTuple<T> extends true
-          ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> }
-          : Array<DefaultValuesShape<U>>
+          ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
+          : Array<DefaultValuesShape<U>> | Unset
         : T extends object
-          ? { [K in keyof T]: DefaultValuesShape<T[K]> }
+          ? { [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
           : T
 
 /**
  * Single-walker fusion of `DeepPartial` and `DefaultValuesShape` — the
  * type accepted at `defaultValues`, `reset()`'s parameter, and every
- * partial-shape consumer. Every level is optional and every primitive
- * leaf admits its supertype `| Unset`, in one tree walk where the
- * prior `DeepPartial<DefaultValuesShape<F>>` composition walked twice.
+ * partial-shape consumer. Every level is optional and every position
+ * — primitive leaf, opaque leaf, or container — admits `| Unset`, in
+ * one tree walk where the prior `DeepPartial<DefaultValuesShape<F>>`
+ * composition walked twice.
  *
  * Both passes had identical topology (object → mapped, tuple →
  * positional, array → recurse, primitive → terminal) — the doubled
@@ -500,7 +507,10 @@ export type DefaultValuesShape<T> = T extends
  * by `DeepPartial`'s pass.
  *
  * Tuple positions, array elements, and discriminated-union variants
- * all flow through unchanged from the prior semantics.
+ * all flow through unchanged from the prior semantics. Container
+ * positions widen with `| Unset` so `defaultValues: { profile: unset }`
+ * and `reset({ cargo: unset })` typecheck — the runtime recursively
+ * marks every primitive descendant blank.
  *
  * ```ts
  * type T = DefaultValuesInput<{
@@ -510,9 +520,9 @@ export type DefaultValuesShape<T> = T extends
  * }>
  * // → {
  * //   email?: string | Unset
- * //   joinedAt?: Date
- * //   profile?: { name?: string | Unset; age?: number | Unset }
- * // }
+ * //   joinedAt?: Date | Unset
+ * //   profile?: { name?: string | Unset; age?: number | Unset } | Unset
+ * // } | Unset
  * ```
  */
 export type DefaultValuesInput<T> = T extends string
@@ -533,13 +543,13 @@ export type DefaultValuesInput<T> = T extends string
                   | Map<unknown, unknown>
                   | Set<unknown>
                   | ((...args: never) => unknown)
-              ? T
+              ? T | Unset
               : T extends readonly [unknown, ...unknown[]]
-                ? { -readonly [K in keyof T]?: DefaultValuesInput<T[K]> }
+                ? { -readonly [K in keyof T]?: DefaultValuesInput<T[K]> } | Unset
                 : T extends ReadonlyArray<infer U>
                   ? IsTuple<T> extends true
-                    ? { -readonly [K in keyof T]?: DefaultValuesInput<T[K]> }
-                    : Array<DefaultValuesInput<U>>
+                    ? { -readonly [K in keyof T]?: DefaultValuesInput<T[K]> } | Unset
+                    : Array<DefaultValuesInput<U>> | Unset
                   : T extends object
-                    ? { [K in keyof T]?: DefaultValuesInput<T[K]> }
+                    ? { [K in keyof T]?: DefaultValuesInput<T[K]> } | Unset
                     : T

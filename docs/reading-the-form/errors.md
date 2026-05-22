@@ -18,26 +18,26 @@ metaRows:
 ::docs-meta-table
 ::
 
-`form.errors.email` returns `ValidationError[] | undefined` — the array of refinement failures for the `email` path, or `undefined` if the field is valid. Reads are reactive: components re-render the moment a validation pass changes the result.
+`form.errors.email` returns `readonly ValidationError[]`: the array of refinement failures for the `email` path, empty when the field is valid. Statically-known leaves always resolve to an array; dynamic boundaries (array indices, record keys, DU variant-only fields) still resolve to `ValidationError[] | undefined`. Reads are reactive: components re-render the moment a validation pass changes the result.
 
 The first error's `.message` is what most templates render:
 
 ```vue
 <template>
   <input v-register="form.register('email')" />
-  <p v-if="form.errors.email">{{ form.errors.email[0]?.message }}</p>
+  <p v-if="form.errors.email.length">{{ form.errors.email[0]?.message }}</p>
 </template>
 ```
 
-For richer error display — gated by `shouldShowErrors`, or pulling the first error directly — reach for `form.fields.email.firstError.message` paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display ergonomics layered on.
+For richer error display, gated by `shouldShowErrors`, or pulling the first error directly, reach for `form.fields.email.firstError.message` paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display ergonomics layered on.
 
 ## Container reads
 
 `errors` is drillable. A container path returns the errors encountered inside it:
 
 ```ts
-form.errors.email // ValidationError[] | undefined
-form.errors.profile // ValidationError[] | undefined (collected from profile.*)
+form.errors.email // readonly ValidationError[]
+form.errors.profile // readonly ValidationError[] (collected from profile.*)
 ```
 
 For aggregated counts and validation state, see `form.meta`.

@@ -77,6 +77,6 @@ For "go back to the baseline this form was hydrated with," reach for [`reset`](/
 
 ## Where to next
 
-- [`reset` & `resetField`](/docs/writing-and-mutating/reset) — restore defaults instead of clearing.
-- [`unset`](/docs/writing-and-mutating/unset) — for optional fields where "absent" differs from "blank".
-- [Showing errors at the right time](/docs/validation/showing-errors) — how blank fields interact with the error-display predicate.
+- [`reset` & `resetField`](/docs/writing-and-mutating/reset): restore defaults instead of clearing.
+- [`unset`](/docs/writing-and-mutating/unset): flag any path blank in `defaultValues`, `setValue`, or `reset`.
+- [Showing errors at the right time](/docs/validation/showing-errors): how blank fields interact with the error-display predicate.

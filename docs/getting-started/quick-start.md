@@ -22,7 +22,7 @@ Try the form below: clear the password and submit to watch focus pull to the bro
 
 ## Build a form
 
-Hand `useForm` a Zod schema and the reactive form comes back ready. Destructure the three pieces this page uses: `register` for the input binding, `handleSubmit` for the submit gate, and `fields` for per-field error reads.
+Hand `useForm` a Zod schema and the reactive form comes back ready. This page reaches for three properties on the returned form: `register` for the input binding, `handleSubmit` for the submit gate, and `fields` for per-field error reads.
 
 ```ts
 import { useForm } from 'attaform/zod'
@@ -33,9 +33,9 @@ const schema = z.object({
   password: z.string().min(8),
 })
 
-const { register, handleSubmit, fields } = useForm({ schema })
+const form = useForm({ schema })
 
-const onSubmit = handleSubmit((values) => {
+const onSubmit = form.handleSubmit((values) => {
   // values is the parsed Zod output, fully typed.
   alert(JSON.stringify(values, null, 2))
 })
@@ -46,18 +46,18 @@ Bind inputs to schema paths with `v-register`:
 ```vue
 <template>
   <form @submit="onSubmit">
-    <input v-register="register('email')" />
-    <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+    <input v-register="form.register('email')" />
+    <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
 
-    <input v-register="register('password')" type="password" />
-    <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
+    <input v-register="form.register('password')" type="password" />
+    <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
 
     <button type="submit">Sign in</button>
   </form>
 </template>
 ```
 
-`register('email')` returns what the `v-register` directive binds to. The directive handles the value read, the write, the coercion, and focus on invalid submit. Errors render via `fields.<path>.firstError?.message`, gated by `fields.<path>.showErrors` so the form doesn't yell on first paint.
+`form.register('email')` returns what the `v-register` directive binds to. The directive handles the value read, the write, the coercion, and focus on invalid submit. Errors render via `form.fields.<path>.firstError?.message`, gated by `form.fields.<path>.showErrors` so the form doesn't yell on first paint.
 
 ## What's next
 

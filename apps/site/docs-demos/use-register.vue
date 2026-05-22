@@ -25,21 +25,21 @@
     },
   })
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       email: z.email('Enter a valid email'),
       handle: z.string().min(2),
     }),
     defaultValues: { handle: '' },
-    key: 'docs-demo-use-register',
+    key: 'docs-demo-use-form.register',
   })
 </script>
 
 <template>
   <form @submit.prevent>
-    <FieldRow v-register="register('email')" label="Email" />
-    <FieldRow v-register="register('handle')" label="Handle" />
-    <pre>{{ JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
+    <FieldRow v-register="form.register('email')" label="Email" />
+    <FieldRow v-register="form.register('handle')" label="Handle" />
+    <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 

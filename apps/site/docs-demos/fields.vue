@@ -12,12 +12,12 @@
     ),
   })
 
-  const { register, fields, handleSubmit } = useForm({
+  const form = useForm({
     schema,
-    key: 'docs-demo-fields',
+    key: 'docs-demo-form.fields',
   })
 
-  const onSubmit = handleSubmit(() => {
+  const onSubmit = form.handleSubmit(() => {
     /* surfacing meta isn't this demo's job */
   })
 
@@ -29,47 +29,47 @@
 <template>
   <form @submit.prevent="onSubmit">
     <label>
-      <span class="heading">{{ fields.email.label }}</span>
+      <span class="heading">{{ form.fields.email.label }}</span>
       <input
-        v-register="register('email')"
-        :placeholder="fields.email.placeholder"
+        v-register="form.register('email')"
+        :placeholder="form.fields.email.placeholder"
         autocomplete="email"
       />
-      <small v-if="fields.email.description">{{ fields.email.description }}</small>
-      <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
+      <small v-if="form.fields.email.description">{{ form.fields.email.description }}</small>
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
 
     <button type="submit">Submit</button>
 
     <div class="panel">
-      <p class="panel-title">fields.email</p>
+      <p class="panel-title">form.fields.email</p>
 
       <p class="group-title">State bits</p>
       <table>
         <tbody>
           <tr>
             <th>pristine</th>
-            <td>{{ fields.email.pristine }}</td>
+            <td>{{ form.fields.email.pristine }}</td>
             <th>dirty</th>
-            <td>{{ fields.email.dirty }}</td>
+            <td>{{ form.fields.email.dirty }}</td>
           </tr>
           <tr>
             <th>focused</th>
-            <td>{{ fields.email.focused }}</td>
+            <td>{{ form.fields.email.focused }}</td>
             <th>blurred</th>
-            <td>{{ fields.email.blurred }}</td>
+            <td>{{ form.fields.email.blurred }}</td>
           </tr>
           <tr>
             <th>touched</th>
-            <td>{{ fields.email.touched }}</td>
+            <td>{{ form.fields.email.touched }}</td>
             <th>blank</th>
-            <td>{{ fields.email.blank }}</td>
+            <td>{{ form.fields.email.blank }}</td>
           </tr>
           <tr>
             <th>connected</th>
-            <td>{{ fields.email.connected }}</td>
+            <td>{{ form.fields.email.connected }}</td>
             <th>updatedAt</th>
-            <td>{{ formatTime(fields.email.updatedAt) }}</td>
+            <td>{{ formatTime(form.fields.email.updatedAt) }}</td>
           </tr>
         </tbody>
       </table>
@@ -79,11 +79,11 @@
         <tbody>
           <tr>
             <th>value</th>
-            <td>{{ JSON.stringify(fields.email.value) }}</td>
+            <td>{{ JSON.stringify(form.fields.email.value) }}</td>
           </tr>
           <tr>
             <th>original</th>
-            <td>{{ JSON.stringify(fields.email.original) }}</td>
+            <td>{{ JSON.stringify(form.fields.email.original) }}</td>
           </tr>
         </tbody>
       </table>
@@ -93,15 +93,15 @@
         <tbody>
           <tr>
             <th>valid</th>
-            <td>{{ fields.email.valid }}</td>
+            <td>{{ form.fields.email.valid }}</td>
             <th>validating</th>
-            <td>{{ fields.email.validating }}</td>
+            <td>{{ form.fields.email.validating }}</td>
           </tr>
           <tr>
             <th>showErrors</th>
-            <td>{{ fields.email.showErrors }}</td>
+            <td>{{ form.fields.email.showErrors }}</td>
             <th>errors.length</th>
-            <td>{{ fields.email.errors.length }}</td>
+            <td>{{ form.fields.email.errors.length }}</td>
           </tr>
         </tbody>
       </table>
@@ -111,19 +111,19 @@
         <tbody>
           <tr>
             <th>label</th>
-            <td>{{ JSON.stringify(fields.email.label) }}</td>
+            <td>{{ JSON.stringify(form.fields.email.label) }}</td>
           </tr>
           <tr>
             <th>placeholder</th>
-            <td>{{ JSON.stringify(fields.email.placeholder) }}</td>
+            <td>{{ JSON.stringify(form.fields.email.placeholder) }}</td>
           </tr>
           <tr>
             <th>description</th>
-            <td>{{ JSON.stringify(fields.email.description) }}</td>
+            <td>{{ JSON.stringify(form.fields.email.description) }}</td>
           </tr>
           <tr>
             <th>path</th>
-            <td>{{ formatPath(fields.email.path) }}</td>
+            <td>{{ formatPath(form.fields.email.path) }}</td>
           </tr>
         </tbody>
       </table>

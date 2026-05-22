@@ -17,7 +17,7 @@ metaRows:
 
 # `setValue` patterns
 
-> The programmatic write surface — three call shapes, a callback option, a sentinel for absent.
+> The programmatic write surface: three call shapes, a callback option, and the `unset` sentinel for flagging any path blank.
 
 ::docs-meta-table
 ::
@@ -67,19 +67,23 @@ Every `setValue` call flows through the same write pipeline as the directive —
 
 The one difference: `setValue` writes are **never coerced**. Coercion is for user-typed DOM strings; values you pass to `setValue` are already typed at the call site (TypeScript checks it), so coercion would be a no-op at best and a footgun at worst.
 
-## Setting to absent
+## Flagging a path blank
 
-For optional fields whose presence (rather than value) matters, pass the `unset` sentinel — see the [unset page](/docs/writing-and-mutating/unset) for the full pattern.
+To flag a path as displayed-empty, pass the `unset` sentinel. The runtime writes the schema's slim value at that path and joins the path to `form.blankPaths` so the bound input renders empty.
 
 ```ts
 import { unset } from 'attaform/zod'
 
-form.setValue('middleName', unset) // not '' — actually absent
+form.setValue('middleName', unset) // storage holds '', form.blankPaths has 'middleName'
+form.setValue('profile', unset) // recursive, marks every primitive descendant
+form.setValue('cargo', unset) // DU stub, writes { kind: '' } with no variant body
 ```
+
+`unset` works at every path the consumer can address: primitive leaves, containers, arrays, tuples, records, discriminated unions, wrappers, and the root. See [the `unset` page](/docs/writing-and-mutating/unset) for the full contract.
 
 ## Where to next
 
-- [`reset` & `resetField`](/docs/writing-and-mutating/reset) — restore defaults instead of just writing.
-- [`clear`](/docs/writing-and-mutating/clear) — write blank values without going through defaults.
-- [Field-array mutations](/docs/writing-and-mutating/field-arrays) — append, insert, remove, swap, move, replace, prepend.
-- [`unset`](/docs/writing-and-mutating/unset) — the absent sentinel for optional fields.
+- [`reset` & `resetField`](/docs/writing-and-mutating/reset): restore defaults instead of just writing.
+- [`clear`](/docs/writing-and-mutating/clear): write blank values without going through defaults.
+- [Field-array mutations](/docs/writing-and-mutating/field-arrays): append, insert, remove, swap, move, replace, prepend.
+- [`unset`](/docs/writing-and-mutating/unset): the blank-anywhere sentinel for `defaultValues`, `setValue`, and `reset`.

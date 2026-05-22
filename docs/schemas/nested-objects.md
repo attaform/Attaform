@@ -1,6 +1,6 @@
 ---
 title: Nested objects
-description: z.object({ a: z.object({ b: z.string() }) }) composes through dot-path access — register('a.b'), errors.a.b, fields.a.b. Every nested object gets its own slim default at every level.
+description: z.object({ a: z.object({ b: z.string() }) }) composes through dot-path access: register('a.b'), errors.a.b, fields.a.b. Every nested object gets its own slim default at every level.
 metaRows:
   - label: Category
     value: Schema feature
@@ -17,12 +17,12 @@ metaRows:
 
 # Nested objects
 
-> Schemas compose by nesting — one `z.object` inside another. The proxy descends through dot-paths so `form.values.profile.name`, `form.errors.profile.name`, and `register('profile.name')` all work the way you'd expect.
+> Schemas compose by nesting: one `z.object` inside another. The proxy descends through dot-paths so `form.values.profile.name`, `form.errors.profile.name`, and `register('profile.name')` all work the way you'd expect.
 
 ::docs-meta-table
 ::
 
-This page is code-only — every other demo on the docs already nests objects. The shape, the proxy, and the path semantics are best understood through the snippets below; reach for a real demo on [Arrays & tuples](/docs/schemas/arrays-and-tuples) (which composes arrays of nested objects) or [Discriminated unions](/docs/schemas/discriminated-unions) (which nests variant objects inside the outer union) when you want to see it live.
+This page is code-only; every other demo in the docs already nests objects. The shape, the proxy, and the path semantics are best understood through the snippets below; reach for a real demo on [Arrays & tuples](/docs/schemas/arrays-and-tuples) (which composes arrays of nested objects) or [Discriminated unions](/docs/schemas/discriminated-unions) (which nests variant objects inside the outer union) when you want to see it live.
 
 ## The shape
 
@@ -48,12 +48,12 @@ Each leaf gets its own path:
 form.values.profile.name // string
 form.values.address.city // string
 form.register('profile.name') // path autocomplete narrows the union
-form.errors.address.postalCode // ValidationError[] | undefined
+form.errors.address.postalCode // readonly ValidationError[]
 ```
 
 ## The proxy descends transparently
 
-`form.values`, `form.errors`, and `form.fields` are all proxies — `form.values.profile.name` resolves through one descend per dot segment. The reactivity tracks at the path level, not the leaf level: re-running templates only fires for paths whose values changed.
+`form.values`, `form.errors`, and `form.fields` are all proxies; `form.values.profile.name` resolves through one descend per dot segment. The reactivity tracks at the path level, not the leaf level: re-running templates only fires for paths whose values changed.
 
 ```vue
 <template>
@@ -88,9 +88,10 @@ const schema = z
     message: 'Passwords must match',
     path: ['confirm'],
   })
+const form = useForm({ schema })
 ```
 
-A `.refine` on the outer object attaches its error to whatever `path` you specify. With no `path`, the error lands on the object root — accessible at `form.errors.<object-path>` directly. With a `path`, it lands on the named leaf — usually preferable for inline display, since the field component reads from `form.errors.confirm` either way.
+A `.refine` on the outer object attaches its error to whatever `path` you specify. With no `path`, the error lands on the object root, accessible at `form.errors.<object-path>` directly. With a `path`, it lands on the named leaf, usually preferable for inline display, since the field component reads from `form.errors.confirm` either way.
 
 For cross-field validations (password confirmation, address-postal-code matching, conditional-required dependencies), the `.refine` + `path: ['leafName']` pattern is the canonical move.
 
@@ -110,11 +111,11 @@ const schema = z.object({
 
 const form = useForm({ schema })
 
-form.values.ui.theme // 'light'  — inner default applied
+form.values.ui.theme // 'light' (inner default applied)
 form.values.ui.density // 'comfortable'
 ```
 
-The outer `.default({...})` is the fallback when the whole object is missing; the inner `.default()` calls fire per-leaf if the outer default is absent. In practice, defaulting at the leaves is enough — the runtime's slim-default synthesis handles missing objects.
+The outer `.default({...})` is the fallback when the whole object is missing; the inner `.default()` calls fire per-leaf if the outer default is absent. In practice, defaulting at the leaves is enough; the runtime's slim-default synthesis handles missing objects.
 
 ## Resetting a subtree
 
@@ -139,7 +140,7 @@ form.clearPersistedDraft('profile.bio') // wipe one persisted leaf
 form.history.undo() // global to the whole form (no subtree variant)
 ```
 
-Subtree-scoping keeps "Save section" / "Validate this step" wizard patterns cheap — no full-form re-traversal when you only care about one branch.
+Subtree-scoping keeps "Save section" / "Validate this step" wizard patterns cheap: no full-form re-traversal when you only care about one branch.
 
 ## When deeply nested objects feel wrong
 
@@ -148,10 +149,10 @@ If a schema reaches four or five levels deep and feels unwieldy, two patterns to
 - **Flatten the schema.** `address.line1` could become `addressLine1` if the grouping was structural rather than semantic. The binding code stays the same shape.
 - **Split into sub-forms.** Two `useForm` calls with separate keys, composed via [`injectForm`](/docs/cross-cutting-state/inject-form) or [`useStepper`](/docs/cross-cutting-state/use-stepper). Per-form persistence, history, and validation; one parent component coordinating.
 
-Both are escape hatches — the proxy doesn't have a depth limit, and the type inference holds at every level. But deeply-nested schemas often signal a structural-vs.-semantic mismatch worth a second look.
+Both are escape hatches; the proxy doesn't have a depth limit, and the type inference holds at every level. But deeply-nested schemas often signal a structural-vs.-semantic mismatch worth a second look.
 
 ## Where to next
 
-- [Arrays & tuples](/docs/schemas/arrays-and-tuples) — variable-length composition; the natural counterpart to nested objects.
-- [Records & maps](/docs/schemas/records) — when the nested keys are dynamic, not fixed at schema-write time.
-- [`injectForm`](/docs/cross-cutting-state/inject-form) — when nested-object sub-trees outgrow one component and want to live as sub-forms.
+- [Arrays & tuples](/docs/schemas/arrays-and-tuples): variable-length composition; the natural counterpart to nested objects.
+- [Records & maps](/docs/schemas/records): when the nested keys are dynamic, not fixed at schema-write time.
+- [`injectForm`](/docs/cross-cutting-state/inject-form): when nested-object sub-trees outgrow one component and want to live as sub-forms.

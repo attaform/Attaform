@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       lazyName: z.string(),
       trimmedSlug: z.string(),
@@ -16,27 +16,27 @@
   <form @submit.prevent>
     <label>
       <span><code>.lazy</code> — writes on change/blur, not on every keystroke</span>
-      <input v-register.lazy="register('lazyName')" placeholder="Type, then blur" />
-      <small>values.lazyName = {{ JSON.stringify(values.lazyName) }}</small>
+      <input v-register.lazy="form.register('lazyName')" placeholder="Type, then blur" />
+      <small>form.values.lazyName = {{ JSON.stringify(form.values.lazyName) }}</small>
     </label>
 
     <label>
       <span><code>.trim</code> — strips leading/trailing whitespace before the write</span>
       <input
-        v-register.trim="register('trimmedSlug')"
+        v-register.trim="form.register('trimmedSlug')"
         placeholder="Pad with spaces around a word"
       />
-      <small>values.trimmedSlug = {{ JSON.stringify(values.trimmedSlug) }}</small>
+      <small>form.values.trimmedSlug = {{ JSON.stringify(form.values.trimmedSlug) }}</small>
     </label>
 
     <label>
       <span
         ><code>.number</code> — coerces the DOM string to a number before storage even when
       </span>
-      <input v-register.number="register('typedAge')" placeholder="42" />
+      <input v-register.number="form.register('typedAge')" placeholder="42" />
       <small
-        >values.typedAge = {{ JSON.stringify(values.typedAge) }} (<em>{{
-          typeof values.typedAge
+        >form.values.typedAge = {{ JSON.stringify(form.values.typedAge) }} (<em>{{
+          typeof form.values.typedAge
         }}</em
         >)</small
       >

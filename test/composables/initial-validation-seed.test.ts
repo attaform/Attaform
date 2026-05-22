@@ -96,7 +96,7 @@ describe('initial validation seed — strict mode', () => {
     app.mount(root)
     apps.push(app)
     expect(typeof handle.api?.register).toBe('function')
-    expect(handle.api?.errors.email).toBeUndefined()
+    expect(handle.api?.errors.email).toEqual([])
   })
 
   it('strict is the default — omitting strict populates schemaErrors', () => {
@@ -127,8 +127,8 @@ describe('initial validation seed — strict mode', () => {
       defaultValues: { email: 'a@a.com', password: 'longenough' },
     })
     apps.push(app)
-    expect(api.errors.email).toBeUndefined()
-    expect(api.errors.password).toBeUndefined()
+    expect(api.errors.email).toEqual([])
+    expect(api.errors.password).toEqual([])
     expect(api.meta.valid).toBe(true)
   })
 })
@@ -187,7 +187,7 @@ describe('initial validation seed — async-refine schema', () => {
     const api = handle.api
     if (api === undefined) throw new Error('unreachable')
     // Synchronously, the form looks valid — the async pass hasn't run.
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
     // After microtasks settle, the refine error lands.
     const message = await waitFor(() => api.errors.email?.[0]?.message ?? null)
     expect(message).toBe('That email is already registered.')
@@ -227,7 +227,7 @@ describe('initial validation seed — async-refine schema', () => {
     // the would-fire signal (errors landing) — waitUntil times out
     // (returns null) when it never happens, which is the contract.
     await waitUntil(() => (api.errors.email !== undefined ? true : null), 50)
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
     expect(api.meta.valid).toBe(true)
   })
 
@@ -277,7 +277,7 @@ describe('initial validation seed — async-refine schema', () => {
       50
     )
     expect(api.meta.validating).toBe(false)
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
   })
 
   it('CSR first render observes validating: false; async pass fires on next microtask', async () => {
@@ -360,7 +360,7 @@ describe('initial validation seed — async-refine schema', () => {
     // Frame 1, no `await`: sync refine seeded directly. Async sibling's
     // verdict is still in flight.
     expect(api.errors.word?.[0]?.message).toBe('word required')
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
     expect(api.meta.valid).toBe(false)
     expect(api.meta.errors.length).toBeGreaterThan(0)
 
@@ -405,13 +405,13 @@ describe('initial validation seed — async-refine schema', () => {
     if (api === undefined) throw new Error('unreachable')
 
     // Frame 1: sync portion is clean.
-    expect(api.errors.word).toBeUndefined()
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.word).toEqual([])
+    expect(api.errors.email).toEqual([])
 
     // Async sibling lands its verdict after microtasks.
     const emailMessage = await waitFor(() => api.errors.email?.[0]?.message ?? null)
     expect(emailMessage).toBe('That email is already registered.')
-    expect(api.errors.word).toBeUndefined()
+    expect(api.errors.word).toEqual([])
   })
 
   it('mixed sync+async refines + lax mode: no construction-time seed at all', () => {
@@ -446,8 +446,8 @@ describe('initial validation seed — async-refine schema', () => {
     apps.push(app)
     const api = handle.api
     if (api === undefined) throw new Error('unreachable')
-    expect(api.errors.word).toBeUndefined()
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.word).toEqual([])
+    expect(api.errors.email).toEqual([])
     expect(api.meta.valid).toBe(true)
   })
 
@@ -506,8 +506,8 @@ describe('initial validation seed — lax mode', () => {
     // for numeric leaves.
     const { app, api } = mountWithZod({ strict: false })
     apps.push(app)
-    expect(api.errors.email).toBeUndefined()
-    expect(api.errors.password).toBeUndefined()
+    expect(api.errors.email).toEqual([])
+    expect(api.errors.password).toEqual([])
     expect(api.meta.valid).toBe(true)
   })
 })

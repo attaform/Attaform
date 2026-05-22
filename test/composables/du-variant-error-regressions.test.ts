@@ -124,16 +124,14 @@ describe('DU variant switch — error materialisation regressions', () => {
     // `{ notify: { number: [errors] } }` and per-leaf reads work.
     api.setValue('notify.channel', 'sms')
     await waitUntil(() => {
-      const errs = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
-        'notify.number'
-      )
+      const errs = (api.errors as unknown as (p: string) => ValidationError[])('notify.number')
       return errs && errs.length === 1 ? true : null
     })
 
     // Per-leaf read: the canonical key lookup must hit. Today this
     // returns undefined because the schemaErrors store has the entry
     // keyed at `["notify"]`, not `["notify","number"]`.
-    const numberErrors = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
+    const numberErrors = (api.errors as unknown as (p: string) => ValidationError[])(
       'notify.number'
     )
     expect(numberErrors).toHaveLength(1)
@@ -182,14 +180,12 @@ describe('DU variant switch — error materialisation regressions', () => {
     })
     apps.push(app)
     await waitUntil(() => {
-      const errs = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
-        'notify.address'
-      )
+      const errs = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
       return errs?.[0]?.code?.startsWith('zod:') ? true : null
     })
 
     // Confirm the email-variant error landed.
-    const addressBefore = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
+    const addressBefore = (api.errors as unknown as (p: string) => ValidationError[])(
       'notify.address'
     )
     expect(addressBefore?.[0]?.code).toMatch(/zod:/)
@@ -201,18 +197,16 @@ describe('DU variant switch — error materialisation regressions', () => {
     // `form.meta.errors` will leak it).
     api.setValue('notify.channel', 'sms')
     await waitUntil(() => {
-      const errs = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
-        'notify.address'
-      )
+      const errs = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
       return errs === undefined ? true : null
     })
 
     // The stale leaf entry must NOT show up anywhere — not in the
     // active-path-filtered surface, not in the unfiltered aggregate.
-    const addressAfter = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
+    const addressAfter = (api.errors as unknown as (p: string) => ValidationError[])(
       'notify.address'
     )
-    expect(addressAfter).toBeUndefined()
+    expect(addressAfter).toEqual([])
 
     const metaPathStrings = api.meta.errors.map((e) => e.path.join('.'))
     expect(metaPathStrings).not.toContain('notify.address')
@@ -231,15 +225,11 @@ describe('DU variant switch — error materialisation regressions', () => {
     })
     apps.push(app)
     await waitUntil(() => {
-      const errs = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
-        'notify.address'
-      )
+      const errs = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
       return errs?.some((e) => e.code === 'atta:no-value-supplied') ? true : null
     })
 
-    const initial = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
-      'notify.address'
-    )
+    const initial = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
     expect(initial?.some((e) => e.code === 'atta:no-value-supplied')).toBe(true)
 
     // Switch to sms — address is no longer in the active variant.
@@ -251,15 +241,11 @@ describe('DU variant switch — error materialisation regressions', () => {
     // membership). The derived blank error must reappear.
     api.setValue('notify.channel', 'email')
     await waitUntil(() => {
-      const errs = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
-        'notify.address'
-      )
+      const errs = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
       return errs?.some((e) => e.code === 'atta:no-value-supplied') ? true : null
     })
 
-    const restored = (api.errors as unknown as (p: string) => ValidationError[] | undefined)(
-      'notify.address'
-    )
+    const restored = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
     expect(restored?.some((e) => e.code === 'atta:no-value-supplied')).toBe(true)
 
     // Materialised tree: same expectation through JSON.stringify so a

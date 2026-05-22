@@ -185,7 +185,7 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     apps.push(app)
 
     // Pre: address was 'old@example.com' (valid for email variant).
-    expect(api.errors('notify.address')).toBeUndefined()
+    expect(api.errors('notify.address')).toEqual([])
 
     api.setValue('notify.channel', 'wat')
     await api.validateAsync()
@@ -3294,7 +3294,7 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     // alias for the whole form.
     expect(api.values.name).toBe('Ada')
     // Form-level errors at `''` are cleared.
-    expect(api.errors('')).toBeUndefined()
+    expect(api.errors('')).toEqual([])
   })
 
   it('resetField on a container path broadcasts the reset to descendants', async () => {
@@ -3424,8 +3424,8 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     }
 
     // Mount-time: lax + valid seed → no errors on either handle.
-    expect(a.errors.email).toBeUndefined()
-    expect(b.errors.email).toBeUndefined()
+    expect(a.errors.email).toEqual([])
+    expect(b.errors.email).toEqual([])
 
     // Drain helper: schema.validateAtPath resolves through one
     // microtask plus the adapter's own async (sync zod still returns
@@ -3440,8 +3440,8 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     // A's submit-only write must NOT trigger change-mode validation.
     a.setValue('email', 'first-bad-write')
     await drain()
-    expect(a.errors.email).toBeUndefined()
-    expect(b.errors.email).toBeUndefined()
+    expect(a.errors.email).toEqual([])
+    expect(b.errors.email).toEqual([])
 
     // B's change-mode write SHOULD trigger validation. The bad-email
     // value in storage now produces a schema error.
@@ -4874,7 +4874,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
 
     // The form is now back at the email variant. The sms validation's
     // errors must not have committed against the active path.
-    expect(api.errors('notify.number')).toBeUndefined()
+    expect(api.errors('notify.number')).toEqual([])
   })
 
   it('history disabled: canUndo/canRedo/historySize stay zero, undo/redo return false', async () => {
@@ -5268,7 +5268,7 @@ describe('chaos — setFieldErrors at edge paths', () => {
     // The formKey field is the targeted form's identifier. Errors with
     // a non-matching formKey should be ignored — they're for a
     // different form instance.
-    expect(api.errors('name')).toBeUndefined()
+    expect(api.errors('name')).toEqual([])
   })
 
   it('survives an error object with a circular reference in `cause`', async () => {

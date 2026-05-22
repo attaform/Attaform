@@ -22,7 +22,7 @@ The demo binds two inputs (an `email` and a `newsletter` checkbox) and wires a s
 
 ## Setting up the form
 
-This page focuses on two helpers from the form: `handleSubmit` (the submit-wrapping factory) and `meta` (the form's reactive status board). Hoist the schema and destructure both straight out of `useForm`:
+This page focuses on two helpers off the form: `handleSubmit` (the submit-wrapping factory) and `meta` (the form's reactive status board). Hoist the schema and save the form:
 
 ```ts
 import { useForm } from 'attaform/zod'
@@ -33,10 +33,10 @@ const schema = z.object({
   newsletter: z.boolean(),
 })
 
-const { handleSubmit, meta } = useForm({ schema })
+const form = useForm({ schema })
 ```
 
-The destructured form still carries every helper from earlier pages (`register`, `fields`, `values`). Only `handleSubmit` and `meta` are new here.
+The same `form` carries every helper from earlier pages (`register`, `fields`, `values`). Only `handleSubmit` and `meta` are new here.
 
 ## The submit handler
 
@@ -48,7 +48,7 @@ The destructured form still carries every helper from earlier pages (`register`,
 - Calls `onError(errors)` if validation fails. By default, focus moves to the first invalid field.
 
 ```ts
-const onSubmit = handleSubmit(
+const onSubmit = form.handleSubmit(
   async (values) => {
     await api.signup(values)
   },
@@ -62,13 +62,13 @@ const onSubmit = handleSubmit(
 <form @submit="onSubmit">…</form>
 ```
 
-## meta.submitting
+## form.meta.submitting
 
-While `onSuccess` is running, `meta.submitting` is `true`. Use it to disable the submit button or surface a spinner:
+While `onSuccess` is running, `form.meta.submitting` is `true`. Use it to disable the submit button or surface a spinner:
 
 ```vue
-<button :disabled="meta.submitting" type="submit">
-  {{ meta.submitting ? 'Saving…' : 'Save' }}
+<button :disabled="form.meta.submitting" type="submit">
+  {{ form.meta.submitting ? 'Saving…' : 'Save' }}
 </button>
 ```
 

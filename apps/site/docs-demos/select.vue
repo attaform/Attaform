@@ -2,7 +2,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const { register, values } = useForm({
+  const form = useForm({
     schema: z.object({
       country: z.enum(['us', 'uk', 'ca', 'au']),
       tags: z.array(z.string()),
@@ -16,7 +16,7 @@
   <form @submit.prevent>
     <label>
       <span>Country (single)</span>
-      <select v-register="register('country')">
+      <select v-register="form.register('country')">
         <option value="us">United States</option>
         <option value="uk">United Kingdom</option>
         <option value="ca">Canada</option>
@@ -26,7 +26,7 @@
 
     <label>
       <span>Tags (multi — hold ⌘ / Ctrl)</span>
-      <select v-register="register('tags')" multiple>
+      <select v-register="form.register('tags')" multiple>
         <option value="design">Design</option>
         <option value="eng">Engineering</option>
         <option value="ops">Ops</option>
@@ -36,7 +36,7 @@
 
     <pre>{{
       JSON.stringify(
-        { country: values.country, tags: values.tags },
+        { country: form.values.country, tags: form.values.tags },
         (_, v) => (v === undefined ? '(undefined)' : v),
         2
       )

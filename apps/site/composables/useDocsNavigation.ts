@@ -45,6 +45,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Arrays & tuples', to: '/docs/schemas/arrays-and-tuples' },
       { title: 'Records & maps', to: '/docs/schemas/records' },
       { title: 'Nested objects', to: '/docs/schemas/nested-objects' },
+      { title: 'AbstractSchema', to: '/docs/schemas/abstract-schema' },
     ],
   },
   {
@@ -56,6 +57,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'errors', to: '/docs/reading-the-form/errors' },
       { title: 'meta', to: '/docs/reading-the-form/meta' },
       { title: 'toRef', to: '/docs/reading-the-form/to-ref' },
+      { title: 'Type safety', to: '/docs/reading-the-form/type-safety' },
     ],
   },
   {
@@ -147,7 +149,6 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'Types reference', to: '/docs/reference/types' },
       { title: 'Errors reference', to: '/docs/reference/errors' },
-      { title: 'Custom schema adapters', to: '/docs/reference/custom-adapters' },
       { title: 'Entry-point reference', to: '/docs/reference/entry-points' },
     ],
   },

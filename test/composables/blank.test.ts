@@ -93,6 +93,39 @@ describe('defaultValues with `unset`', () => {
     expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(false)
     expect(form.values.name).toBe('alice')
   })
+
+  // Reproduces the bug surfaced by the /docs/schemas/defaults demo:
+  // `defaultValues: { count: unset }` against `z.number().default(10)`
+  // should write the slim/blank primitive (`0`) and mark the path
+  // blank, NOT honor the schema's `.default(10)`. `defaultValues` is
+  // the higher-priority surface, and `unset` is the user's explicit
+  // "blank this leaf" signal — the schema's declared default is
+  // intentionally bypassed (see `getEmptyValueAtPath` docblock in
+  // types-api.ts).
+  it('unset overrides z.number().default(N) with slim 0', () => {
+    const { app, form } = setupForm(z.object({ count: z.number().default(10) }), { count: unset })
+    apps.push(app)
+    expect(form.values.count).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
+  })
+
+  it('unset overrides z.string().default("...") with slim ""', () => {
+    const { app, form } = setupForm(z.object({ tag: z.string().default('untitled') }), {
+      tag: unset,
+    })
+    apps.push(app)
+    expect(form.values.tag).toBe('')
+    expect(form.blankPaths.value.has(canonicalizePath('tag').key)).toBe(true)
+  })
+
+  it('unset overrides z.boolean().default(true) with slim false', () => {
+    const { app, form } = setupForm(z.object({ notify: z.boolean().default(true) }), {
+      notify: unset,
+    })
+    apps.push(app)
+    expect(form.values.notify).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('notify').key)).toBe(true)
+  })
 })
 
 describe('setValue(path, unset)', () => {
@@ -131,6 +164,28 @@ describe('setValue(path, unset)', () => {
     expect(form.values.count).toBe(0)
     expect(form.blankPaths.value.size).toBe(1)
   })
+
+  // setValue + unset shares the same translation pipeline as
+  // defaultValues + unset (substituteUnsetSentinels). The contract is
+  // identical: the schema's declared `.default(N)` is bypassed in
+  // favor of the type's slim/blank primitive.
+  it('unset overrides z.number().default(N) with slim 0 on setValue', () => {
+    const { app, form } = setupForm(z.object({ count: z.number().default(10) }))
+    apps.push(app)
+    form.setValue('count', 99)
+    form.setValue('count', unset)
+    expect(form.values.count).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
+  })
+
+  it('unset overrides z.string().default("...") with slim "" on setValue', () => {
+    const { app, form } = setupForm(z.object({ tag: z.string().default('untitled') }))
+    apps.push(app)
+    form.setValue('tag', 'work-in-progress')
+    form.setValue('tag', unset)
+    expect(form.values.tag).toBe('')
+    expect(form.blankPaths.value.has(canonicalizePath('tag').key)).toBe(true)
+  })
 })
 
 describe('reset(args) with unset', () => {
@@ -150,6 +205,19 @@ describe('reset(args) with unset', () => {
     expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
     // Dirty resets to false: the new baseline is "blank for this path".
     expect(form.meta.dirty).toBe(false)
+  })
+
+  // reset + unset routes through the same translation pipeline; the
+  // schema's declared `.default(N)` is bypassed in favor of the
+  // slim/blank primitive.
+  it('reset({ count: unset }) overrides z.number().default(N) with slim 0', () => {
+    const { app, form } = setupForm(z.object({ count: z.number().default(10) }))
+    apps.push(app)
+    form.setValue('count', 42)
+
+    form.reset({ count: unset })
+    expect(form.values.count).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
   })
 })
 
@@ -204,36 +272,6 @@ describe('form.blankPaths bulk accessor', () => {
     expect(form.blankPaths.value.size).toBe(1)
     form.setValue('count', 5)
     expect(form.blankPaths.value.size).toBe(0)
-  })
-})
-
-describe('runtime guard: unset on non-primitive leaf', () => {
-  const apps: App[] = []
-  afterEach(() => {
-    while (apps.length > 0) apps.pop()?.unmount()
-  })
-
-  it('does not mark the object path itself, but recurses into the slim subtree to auto-mark numeric children', () => {
-    // Object leaf — schema's getDefaultAtPath returns the structural
-    // default `{ age: 0 }`. The walker emits a dev-warn for the
-    // misuse, replaces with the slim default, and recurses into the
-    // subtree so unspecified NUMERIC children still get auto-marked
-    // (consistent with omitting the object entirely). String children
-    // do NOT auto-mark — see `docs/blank.md` on the storage / display
-    // divergence rule.
-    const { app, form } = setupForm(
-      z.object({ profile: z.object({ name: z.string(), age: z.number() }) }),
-      { profile: unset as unknown as { name: string; age: number } }
-    )
-    apps.push(app)
-    // Object path itself NOT marked — `unset` at non-primitive is a
-    // misuse; the dev-warn signals "library is recovering."
-    expect(form.blankPaths.value.has(canonicalizePath('profile').key)).toBe(false)
-    // Numeric child auto-marked: storage / display divergence applies.
-    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
-    // String child NOT auto-marked: storage `''` matches DOM `''`,
-    // no side-channel needed.
-    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(false)
   })
 })
 
@@ -336,11 +374,31 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     expect(form.values.note).toBeNull()
   })
 
-  it('.default(N): marks the path; storage holds N (the default-author intent)', () => {
+  it('.default(N) for non-zero N: storage holds N, path is NOT marked blank', () => {
+    // `.default(7)` is the schema author's "start the form at 7"
+    // signal. The `<input type="number">` renders 7 natively (no
+    // storage/display divergence), so the auto-mark side-channel
+    // MUST NOT fire — auto-marking here would hide the prefill from
+    // the user even though storage holds 7. The contract: auto-mark
+    // exists only to bridge the slim-numeric (`0` / `0n`) display
+    // gap; any other declared default short-circuits it.
     const { app, form } = setupForm(z.object({ count: z.number().default(7) }))
     apps.push(app)
-    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(false)
     expect(form.values.count).toBe(7)
+  })
+
+  it('.default(0): storage holds 0, path IS marked blank (slim divergence)', () => {
+    // `.default(0)` declares the slim value explicitly. Auto-mark
+    // still fires because storage holds `0` and the input would
+    // otherwise render "0" — the schema author asked for 0 as the
+    // starting baseline but the field should display empty until
+    // the user interacts (otherwise "user typed 0" and "user
+    // supplied nothing" are visually identical).
+    const { app, form } = setupForm(z.object({ count: z.number().default(0) }))
+    apps.push(app)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
+    expect(form.values.count).toBe(0)
   })
 
   it('arrays: pass through without marking elements (runtime-added)', () => {
@@ -422,5 +480,349 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     const { app, form } = setupForm(z.object({ count: z.number(), name: z.string() }))
     apps.push(app)
     expect(form.meta.dirty).toBe(false)
+  })
+})
+
+/**
+ * Container-level `unset` — recursive primitive mark.
+ *
+ * `unset` is admitted at every position in `defaultValues`, `setValue`,
+ * and `reset`, not just primitive leaves. At a bare object container
+ * the walker recurses into the schema's slim/empty subtree and marks
+ * EVERY primitive descendant blank (strings + booleans + bigints +
+ * numerics — the auto-mark side-channel's numeric-only rule is for
+ * UNSPECIFIED leaves, not for explicit `unset`). At array, tuple, and
+ * record containers the walker writes the slim/empty value with NO
+ * per-element marks (matching the "always the falsy version" principle
+ * — per-element opt-in via explicit `[unset, unset]` still works).
+ * Wrappers (`.optional()` / `.nullable()`) write the wrapper's absent
+ * value (`undefined` / `null`) and mark the wrapper path itself. The
+ * container path itself does NOT enter `blankPaths`; the
+ * `fields.containerPath.blank` aggregate derives from descendants via
+ * the existing `buildContainerFieldStateBase` conjunction.
+ *
+ * Casts: pre-widening, `DefaultValuesShape<T>` only admits `Unset` at
+ * primitive leaves, so container-position `unset` is a TS error. The
+ * tests cast through `as never` to exercise the runtime contract. The
+ * type widening lands alongside the runtime fix and the casts go away
+ * with it.
+ */
+
+describe('defaultValues with container `unset` — bare object', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('marks every primitive descendant blank (string + number + boolean)', () => {
+    const { app, form } = setupForm(
+      z.object({
+        profile: z.object({
+          name: z.string(),
+          age: z.number(),
+          subscribed: z.boolean(),
+        }),
+      }),
+      { profile: unset } as never
+    )
+    apps.push(app)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.subscribed').key)).toBe(true)
+    expect(form.values.profile.name).toBe('')
+    expect(form.values.profile.age).toBe(0)
+    expect(form.values.profile.subscribed).toBe(false)
+  })
+
+  it('does NOT add the container path itself to blankPaths', () => {
+    const { app, form } = setupForm(
+      z.object({ profile: z.object({ name: z.string(), age: z.number() }) }),
+      { profile: unset } as never
+    )
+    apps.push(app)
+    expect(form.blankPaths.value.has(canonicalizePath('profile').key)).toBe(false)
+  })
+
+  it('bypasses .default(N): storage = slim, not the declared default', () => {
+    // Same contract as primitive `unset`: the schema's declared
+    // `.default(N)` is intentionally skipped in favor of the slim/empty
+    // primitive.
+    const { app, form } = setupForm(
+      z.object({
+        profile: z.object({
+          name: z.string().default('N/A'),
+          age: z.number().default(18),
+        }),
+      }),
+      { profile: unset } as never
+    )
+    apps.push(app)
+    expect(form.values.profile.name).toBe('')
+    expect(form.values.profile.age).toBe(0)
+  })
+
+  it("form.fields('profile').blank reads true via the descendant aggregate", () => {
+    // Container `.blank` lives on the FieldState terminal — invoke
+    // `form.fields('profile')` (call-form) to resolve it. Bare
+    // `form.fields.profile.blank` would descend into a non-existent
+    // `profile.blank` schema path and return another callable proxy.
+    const { app, form } = setupForm(
+      z.object({ profile: z.object({ name: z.string(), age: z.number() }) }),
+      { profile: unset } as never
+    )
+    apps.push(app)
+    const profileField = (form.fields as unknown as (p: string) => { blank: boolean })('profile')
+    expect(profileField.blank).toBe(true)
+  })
+
+  it("typing one descendant flips form.fields('profile').blank false (reactive)", () => {
+    const { app, form } = setupForm(
+      z.object({ profile: z.object({ name: z.string(), age: z.number() }) }),
+      { profile: unset } as never
+    )
+    apps.push(app)
+    const callable = form.fields as unknown as (p: string) => { blank: boolean }
+    expect(callable('profile').blank).toBe(true)
+    form.setValue('profile.name', 'alice')
+    expect(callable('profile').blank).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
+  })
+})
+
+describe('defaultValues with container `unset` — discriminated union', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('lands the discriminator-kind blank, no variant body', () => {
+    // Per the disc-path stub contract: writing `unset` at a DU
+    // container produces `{ <discKey>: <kind-blank> }` with no
+    // variant-specific keys. The first-variant slim would silently
+    // ACTIVATE the boat variant — that's the bug this contract
+    // forbids.
+    const schema = z.object({
+      cargo: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('boat'), length: z.number() }),
+        z.object({ kind: z.literal('truck'), payload: z.number() }),
+      ]),
+    })
+    const { app, form } = setupForm(schema, { cargo: unset } as never)
+    apps.push(app)
+    expect((form.values.cargo as { kind: string }).kind).toBe('')
+    // No variant body — the first-variant keys must NOT have been
+    // seeded.
+    expect((form.values.cargo as Record<string, unknown>)['length']).toBeUndefined()
+    expect((form.values.cargo as Record<string, unknown>)['payload']).toBeUndefined()
+    // The discriminator path is blank-marked (kind-appropriate
+    // blank '' for a string-typed discriminator).
+    expect(form.blankPaths.value.has(canonicalizePath('cargo.kind').key)).toBe(true)
+  })
+})
+
+describe('defaultValues with container `unset` — array / tuple / record', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('array: writes [] with no per-element marks', () => {
+    const { app, form } = setupForm(z.object({ tags: z.array(z.string()) }), {
+      tags: unset,
+    } as never)
+    apps.push(app)
+    expect(form.values.tags).toEqual([])
+    expect(form.blankPaths.value.size).toBe(0)
+  })
+
+  it('tuple: writes slim tuple with no per-position marks', () => {
+    const { app, form } = setupForm(z.object({ coords: z.tuple([z.string(), z.number()]) }), {
+      coords: unset,
+    } as never)
+    apps.push(app)
+    expect(form.values.coords).toEqual(['', 0])
+    expect(form.blankPaths.value.has(canonicalizePath('coords.0').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('coords.1').key)).toBe(false)
+  })
+
+  it('record: writes {} with no per-entry marks', () => {
+    const { app, form } = setupForm(z.object({ counts: z.record(z.string(), z.number()) }), {
+      counts: unset,
+    } as never)
+    apps.push(app)
+    expect(form.values.counts).toEqual({})
+    expect(form.blankPaths.value.size).toBe(0)
+  })
+})
+
+describe('defaultValues with container `unset` — wrappers', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('.optional() wrapper: writes undefined, marks the wrapper path', () => {
+    const { app, form } = setupForm(
+      z.object({
+        profile: z.object({ name: z.string(), age: z.number() }).optional(),
+      }),
+      { profile: unset } as never
+    )
+    apps.push(app)
+    expect(form.values.profile).toBeUndefined()
+    expect(form.blankPaths.value.has(canonicalizePath('profile').key)).toBe(true)
+  })
+
+  it('.nullable() wrapper: writes null, marks the wrapper path', () => {
+    const { app, form } = setupForm(
+      z.object({
+        profile: z.object({ name: z.string(), age: z.number() }).nullable(),
+      }),
+      { profile: unset } as never
+    )
+    apps.push(app)
+    expect(form.values.profile).toBeNull()
+    expect(form.blankPaths.value.has(canonicalizePath('profile').key)).toBe(true)
+  })
+})
+
+describe('defaultValues: unset at root', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('marks every primitive leaf blank, slim subtree in storage', () => {
+    // The housing-application use case: dev wants proof every field
+    // was touched. With `defaultValues: unset` at root, every string /
+    // number / boolean / bigint leaf enters `blankPaths`. As the user
+    // fills fields, leaves leave the set. `blankPaths.value.size === 0`
+    // becomes a clean audit signal for "every field touched".
+    const schema = z.object({
+      name: z.string().default('N/A'),
+      income: z.number().default(0),
+      agreed: z.boolean().default(true),
+    })
+    const { app, form } = setupForm(schema, unset as never)
+    apps.push(app)
+    expect(form.values.name).toBe('')
+    expect(form.values.income).toBe(0)
+    expect(form.values.agreed).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('income').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('agreed').key)).toBe(true)
+  })
+
+  it('blankPaths.size === count of primitive leaves; touching one shrinks it', () => {
+    const schema = z.object({
+      name: z.string(),
+      income: z.number(),
+      agreed: z.boolean(),
+    })
+    const { app, form } = setupForm(schema, unset as never)
+    apps.push(app)
+    expect(form.blankPaths.value.size).toBe(3)
+    form.setValue('income', 42_000)
+    expect(form.blankPaths.value.size).toBe(2)
+    expect(form.blankPaths.value.has(canonicalizePath('income').key)).toBe(false)
+  })
+
+  it('recurses through nested objects + arrays + DUs from root', () => {
+    const schema = z.object({
+      account: z.object({ email: z.string(), age: z.number() }),
+      tags: z.array(z.string()),
+      cargo: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('boat'), length: z.number() }),
+        z.object({ kind: z.literal('truck'), payload: z.number() }),
+      ]),
+    })
+    const { app, form } = setupForm(schema, unset as never)
+    apps.push(app)
+    // Object leaves: marked.
+    expect(form.blankPaths.value.has(canonicalizePath('account.email').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('account.age').key)).toBe(true)
+    // Array: no per-element marks (empty array per the array
+    // contract).
+    expect(form.values.tags).toEqual([])
+    // DU: discriminator marked, no variant body.
+    expect((form.values.cargo as { kind: string }).kind).toBe('')
+    expect(form.blankPaths.value.has(canonicalizePath('cargo.kind').key)).toBe(true)
+  })
+})
+
+describe('setValue(path, unset) on a container', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('object container: marks every primitive descendant, slim subtree in storage', () => {
+    const { app, form } = setupForm(
+      z.object({ profile: z.object({ name: z.string(), age: z.number() }) })
+    )
+    apps.push(app)
+    // Fill some descendants first.
+    form.setValue('profile.name', 'alice')
+    form.setValue('profile.age', 30)
+    expect(form.blankPaths.value.size).toBe(0)
+    // Whole-container unset re-blanks.
+    form.setValue('profile' as never, unset as never)
+    expect(form.values.profile.name).toBe('')
+    expect(form.values.profile.age).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
+  })
+
+  it('DU container: lands discriminator-kind blank, no variant body', () => {
+    const schema = z.object({
+      cargo: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('boat'), length: z.number() }),
+        z.object({ kind: z.literal('truck'), payload: z.number() }),
+      ]),
+    })
+    const { app, form } = setupForm(schema, {
+      cargo: { kind: 'boat', length: 12 },
+    })
+    apps.push(app)
+    form.setValue('cargo' as never, unset as never)
+    expect((form.values.cargo as { kind: string }).kind).toBe('')
+    expect((form.values.cargo as Record<string, unknown>)['length']).toBeUndefined()
+  })
+})
+
+describe('reset({ container: unset })', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('object container in reset args: marks every primitive descendant', () => {
+    const { app, form } = setupForm(
+      z.object({ profile: z.object({ name: z.string(), age: z.number() }) }),
+      { profile: { name: 'alice', age: 30 } }
+    )
+    apps.push(app)
+    expect(form.blankPaths.value.size).toBe(0)
+    form.reset({ profile: unset } as never)
+    expect(form.values.profile.name).toBe('')
+    expect(form.values.profile.age).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
+    // Dirty is false post-reset (the marks ARE the new baseline).
+    expect(form.meta.dirty).toBe(false)
+  })
+
+  it('reset(unset) at root: every primitive leaf marked, slim subtree', () => {
+    const { app, form } = setupForm(z.object({ name: z.string(), income: z.number() }), {
+      name: 'alice',
+      income: 50_000,
+    })
+    apps.push(app)
+    form.reset(unset as never)
+    expect(form.values.name).toBe('')
+    expect(form.values.income).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('income').key)).toBe(true)
   })
 })

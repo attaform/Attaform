@@ -17,7 +17,7 @@
       path: ['confirmPassword'],
     })
 
-  const { register, fields } = useForm({
+  const form = useForm({
     schema,
     key: 'docs-demo-per-field-validation',
   })
@@ -27,21 +27,21 @@
   <form @submit.prevent>
     <label>
       <span>Username (per-field schema chain)</span>
-      <input v-register="register('username')" />
-      <em v-if="fields.username.showErrors">{{ fields.username.firstError?.message }}</em>
+      <input v-register="form.register('username')" />
+      <em v-if="form.fields.username.showErrors">{{ form.fields.username.firstError?.message }}</em>
     </label>
 
     <label>
       <span>Password</span>
-      <input v-register="register('password')" type="password" autocomplete="off" />
-      <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
+      <input v-register="form.register('password')" type="password" autocomplete="off" />
+      <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
     </label>
 
     <label>
       <span>Confirm password (cross-field refinement)</span>
-      <input v-register="register('confirmPassword')" type="password" autocomplete="off" />
-      <em v-if="fields.confirmPassword.showErrors">{{
-        fields.confirmPassword.firstError?.message
+      <input v-register="form.register('confirmPassword')" type="password" autocomplete="off" />
+      <em v-if="form.fields.confirmPassword.showErrors">{{
+        form.fields.confirmPassword.firstError?.message
       }}</em>
     </label>
   </form>

@@ -135,11 +135,11 @@ Three patterns:
 ```ts
 import { unset } from 'attaform/zod'
 
-// 1. Plain values — explicit defaults flow into storage and the form
+// 1. Plain values: explicit defaults flow into storage and the form
 //    is not blank for those leaves.
 useForm({ schema, defaultValues: { email: 'me@example.com', count: 10 } })
 
-// 2. Omit defaultValues entirely — every NUMERIC primitive leaf
+// 2. Omit defaultValues entirely: every NUMERIC primitive leaf
 //    (number, bigint) is auto-marked blank at construction. Storage
 //    holds the schema's slim defaults; the form displays empty;
 //    `form.errors.<path>` reactively carries 'No value supplied' for
@@ -147,14 +147,15 @@ useForm({ schema, defaultValues: { email: 'me@example.com', count: 10 } })
 //    because their slim defaults match what the DOM shows natively.
 useForm({ schema })
 
-// 3. Mark specific leaves as `unset` — those leaves are blank
-//    explicitly, regardless of type. Numeric siblings without an
-//    explicit value still auto-mark; string / boolean siblings
-//    without an explicit value are NOT auto-marked.
+// 3. Mark any path as `unset`: leaf, container, or the whole form.
+//    The runtime writes the schema's slim value at the path and adds
+//    every primitive descendant to form.blankPaths.
 useForm({ schema, defaultValues: { email: unset, count: 10 } })
+useForm({ schema, defaultValues: { profile: unset } }) // container
+useForm({ schema, defaultValues: unset }) // root
 ```
 
-`unset` works in `setValue('email', unset)` and `reset({ email: unset })` identically — same semantic everywhere.
+`unset` works in `setValue('profile', unset)` and `reset({ email: unset })` identically: same semantic at every position.
 
 ## Alternative: userland wrapper
 

@@ -21,10 +21,19 @@ import type { FormKey } from './types-api'
  * steps; the wizard does not care about those — it routes by `key`
  * at runtime and exposes the original form objects untouched.
  *
+ * `next` is the graph-position declaration (see `useForm({ next })`).
+ * Forms self-describe their successor(s), and `useWizard(entry)` walks
+ * the graph from there. The field is optional: a form without `next`
+ * is a terminal.
+ *
  * `UseFormReturnType<...>` satisfies this shape because its `key`
- * field is `readonly key: K extends FormKey`.
+ * field is `readonly key: K extends FormKey` and its `next` field is
+ * `readonly next: NormalizedNext | undefined` (Phase 2).
  */
-export type AnyForm = { readonly key: FormKey }
+export type AnyForm = {
+  readonly key: FormKey
+  readonly next?: NormalizedNext | undefined
+}
 
 /**
  * Extracts the literal key from a single keyed form's return type.
@@ -258,6 +267,53 @@ export type WizardOptions<Forms extends readonly AnyForm[] = readonly AnyForm[]>
  */
 export type AllValues<Forms extends readonly AnyForm[]> = {
   readonly [K in KeysOf<Forms>]: unknown
+}
+
+/**
+ * Recursive key-only tree describing the wizard's static graph
+ * reachable from its entry. Returned from `wizard.flow.tree` and
+ * suitable for sitemap rendering via a recursive Vue component.
+ *
+ * Convergent paths (two upstream forms both pointing at the same
+ * downstream form) produce duplicated subtrees — the structure is the
+ * DAG flattened to a tree, not a deduped DAG. Use `wizard.flow.allForms`
+ * for the BFS-ordered deduped list.
+ */
+export type WizardTreeNode = {
+  readonly key: FormKey
+  readonly next: readonly WizardTreeNode[]
+}
+
+/**
+ * Kinds of static / runtime graph anomaly surfaced via the wizard's
+ * `diagnose()` channel.
+ *
+ *  - `cycle` — a form's chain leads back to itself. Hard error at
+ *    `useWizard(entry)` construction (thrown, not warned).
+ *  - `missing-terminal` — every path from entry should reach a terminal
+ *    (`next` omitted, or empty branching). In a finite acyclic graph
+ *    this is equivalent to `cycle`; surfaced for completeness.
+ *  - `unreachable` — a form constructed in scope but no chain from
+ *    entry reaches it. Dev-warn.
+ *  - `empty-forms` — a branching `next: { pick, forms: [] }`. Treated
+ *    as a terminal but probably a typo. Dev-warn.
+ *  - `out-of-forms-pick` — `pick(parsed)` returned a form not declared
+ *    in `forms`. Runtime check (the normalized-next layer throws).
+ *  - `single-step` — entry form has no `next`. Valid but degenerate.
+ */
+export type WizardWarningKind =
+  | 'cycle'
+  | 'missing-terminal'
+  | 'unreachable'
+  | 'empty-forms'
+  | 'out-of-forms-pick'
+  | 'single-step'
+
+export type WizardWarning = {
+  readonly kind: WizardWarningKind
+  readonly severity: 'warn' | 'error'
+  readonly message: string
+  readonly key?: FormKey
 }
 
 /**

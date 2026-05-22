@@ -59,6 +59,8 @@ export { injectForm } from './runtime/composables/use-form-context'
 export { useRegister } from './runtime/composables/use-register'
 export type { UseRegisterReturn } from './runtime/composables/use-register'
 export { useWizard } from './runtime/composables/use-wizard'
+export { injectWizard } from './runtime/composables/inject-wizard'
+export type { InjectWizardInput } from './runtime/composables/inject-wizard'
 export type {
   AggregateError,
   AnyForm,

@@ -47,6 +47,8 @@ export { injectForm } from './runtime/composables/use-form-context'
 // into a wizard with navigation, status aggregation, and activation
 // lifecycle. See the composable's docblock for invariants.
 export { useWizard } from './runtime/composables/use-wizard'
+export { injectWizard } from './runtime/composables/inject-wizard'
+export type { InjectWizardInput } from './runtime/composables/inject-wizard'
 export type {
   AnyForm,
   NextBranching,

@@ -205,6 +205,21 @@ export type WizardHistoryConfig = {
  */
 export type WizardOptions = {
   /**
+   * Identifier used to register the wizard handle in the per-app
+   * registry. Descendant components call `injectWizard(key)` to reach
+   * the same wizard handle without prop-threading. Anonymous wizards
+   * (option omitted) skip the registry entirely and are reachable only
+   * via ambient `injectWizard()` from descendants of the parent that
+   * called `useWizard`.
+   *
+   * Duplicate-key registration is first-wins-silently (dev-warn on the
+   * second registration) to mirror `useForm`'s shared-key behavior. If
+   * two `useWizard({ key: 'foo' })` calls race in the same scope, the
+   * second is dropped and the first's handle stays canonical for the
+   * lifetime of the app.
+   */
+  readonly key?: string
+  /**
    * Seed status payload used while a form is pre-resolved (async
    * `defaultValues` in flight, or wizard-deferred non-current).
    * Mirrors `defaultValues`' trichotomy: plain object, sync factory,
@@ -435,6 +450,12 @@ export type WizardFlow = {
  *                     and diagnostic UIs.
  */
 export type UseWizardReturnType = {
+  /**
+   * The wizard's identifier in the per-app registry, or `undefined` if
+   * the consumer didn't pass `options.key`. Mirrors `form.key` so the
+   * wizard surface is symmetric with the form surface.
+   */
+  readonly key: string | undefined
   readonly current: string | undefined
   readonly activeForm: AnyForm | undefined
   readonly activeIndex: number

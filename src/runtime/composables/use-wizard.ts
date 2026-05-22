@@ -1,6 +1,16 @@
-import { computed, getCurrentScope, onScopeDispose, ref, watch, type ComputedRef } from 'vue'
+import {
+  computed,
+  getCurrentInstance,
+  getCurrentScope,
+  onScopeDispose,
+  provide,
+  ref,
+  watch,
+  type ComputedRef,
+} from 'vue'
 import { buildWizardGraph, WizardCycleError } from '../core/wizard-graph'
-import { useRegistry } from '../core/registry'
+import { __DEV__ } from '../core/dev'
+import { kAttaformAncestorWizard, useRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
@@ -732,7 +742,9 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     diagnose,
   } as WizardFlow)
 
-  return {
+  const wizardKey = options.key
+  const handle: UseWizardReturnType = {
+    key: wizardKey,
     entry,
     allForms: forms,
     count: forms.length,
@@ -775,6 +787,36 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
       return submissionAttempts.value
     },
   }
+
+  // Register the handle under `options.key` so descendants can reach it
+  // via `injectWizard(key)`. First-wins-silently: a duplicate key
+  // (modal + main rendering the same wizard, HMR fast-refresh, etc.)
+  // keeps the live handle and dev-warns on the second registration so
+  // accidental collisions surface but the runtime stays predictable.
+  if (wizardKey !== undefined) {
+    const existing = registry.wizards.get(wizardKey)
+    if (existing === undefined) {
+      registry.wizards.set(wizardKey, handle)
+    } else if (__DEV__) {
+      console.warn(
+        `[attaform] useWizard({ key: "${wizardKey}" }): a wizard with this key is already registered. Keeping the existing handle. Pass a unique key to each useWizard call, or share the original handle via injectWizard("${wizardKey}").`
+      )
+    }
+    if (getCurrentScope() !== undefined) {
+      const releaseWizard = registry.trackWizardConsumer(wizardKey)
+      onScopeDispose(releaseWizard)
+    }
+  }
+
+  // Ambient provide so descendants can call `injectWizard()` (no key)
+  // and resolve the nearest wizard above them. Mirrors `useForm`'s
+  // `kFormContext` provide. Fires for both keyed and anonymous wizards
+  // — the ambient slot is independent of the registry path.
+  if (getCurrentInstance() !== null) {
+    provide(kAttaformAncestorWizard, handle)
+  }
+
+  return handle
 }
 
 export { WizardCycleError }

@@ -33,6 +33,13 @@ services:
     environment:
       # pnpm needs HOME for its store
       HOME: /root
+      # Default Node heap (~2 GiB on 64-bit) is too small for a type-aware
+      # ESLint pass over src/ + test/ + apps/site/ with two tsconfig
+      # projects loaded simultaneously, and vue-tsc/vitest occasionally
+      # crowd the same ceiling. Container has ~11.6 GiB available; 8 GiB
+      # gives every Node process the headroom it needs without pressuring
+      # the host.
+      NODE_OPTIONS: --max-old-space-size=8192
     # Long-running idle container; use `make up` (boots dev server) or `make shell` to interact
     command: ['sh', '-c', 'tail -f /dev/null']
 

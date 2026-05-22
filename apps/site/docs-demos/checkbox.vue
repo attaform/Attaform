@@ -43,7 +43,11 @@
     </fieldset>
 
     <pre>{{
-      JSON.stringify({ acceptTerms: values.acceptTerms, languages: values.languages }, null, 2)
+      JSON.stringify(
+        { acceptTerms: values.acceptTerms, languages: values.languages },
+        (_, v) => (v === undefined ? '(undefined)' : v),
+        2
+      )
     }}</pre>
   </form>
 </template>

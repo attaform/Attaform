@@ -55,7 +55,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   formInstanceId: string,
   options: BuildProcessFormOptions = {}
 ) {
-  const invalidPolicy: OnInvalidSubmitPolicy = options.onInvalidSubmit ?? 'none'
+  const invalidPolicy: OnInvalidSubmitPolicy = options.onInvalidSubmit ?? 'focus-first-error'
 
   function validate(pathInput?: string | Path): Readonly<Ref<ReactiveValidationStatus<F>>> {
     // Start in a pending state — the first async run has not settled yet.

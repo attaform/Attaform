@@ -32,7 +32,7 @@
     lastResult.value = 'process() → awaiting…'
     const res = await process()
     lastResult.value = res.success
-      ? `process() → ✓ parsed: ${JSON.stringify(res.data)}`
+      ? `process() → ✓ parsed: ${JSON.stringify(res.data, (_, v) => (v === undefined ? '(undefined)' : v))}`
       : `process() → ✗ invalid`
   }
 </script>
@@ -41,7 +41,7 @@
   <form @submit.prevent>
     <label>
       <span>Email</span>
-      <input v-register="register('email')" type="email" />
+      <input v-register="register('email')" />
       <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
 

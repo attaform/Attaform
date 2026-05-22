@@ -14,18 +14,21 @@ import type { FieldState, FormMeta, ShouldShowErrors, ValidationError } from '..
  *
  * `field.showErrors` is a derived boolean on `FieldState` that gates
  * error rendering through a centralised, configurable heuristic. The
- * heuristic — `shouldShowErrors(field, formMeta)` — resolves through
- * three tiers:
- *   1. Library default: `submitCount > 0 || (touched && dirty)`.
+ * heuristic `shouldShowErrors(field, formMeta)` resolves through three
+ * tiers:
+ *   1. Library default: own-path-error filter, then
+ *      `submitCount > 0 || (touched && !focused)`. Containers (intermediate
+ *      AND root) only fire on errors at their own path; leaves always
+ *      satisfy the filter when they have errors.
  *   2. `createAttaform({ defaults: { shouldShowErrors } })`.
- *   3. `useForm({ shouldShowErrors })` — wins over both above.
+ *   3. `useForm({ shouldShowErrors })`, wins over both above.
  *
- * Boolean shorthand: `true` → always show when errors exist; `false` →
- * never show. The predicate is invoked only when `errors.length > 0`,
+ * Boolean shorthand: `true` always shows when errors exist; `false`
+ * never shows. The predicate is invoked only when `errors.length > 0`,
  * so authors don't re-check inside the predicate body.
  *
  * The predicate's args (`field`, `formMeta`) are `Omit`'d of
- * `showErrors` / `firstError` at BOTH the type and runtime level —
+ * `showErrors` / `firstError` at BOTH the type and runtime level, so
  * recursion is impossible regardless of language (TS or JS).
  */
 
@@ -100,14 +103,17 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         expect(form.fields('email').showErrors).toBe(false)
       })
 
-      it('errors present, touched but not dirty → showErrors === false', async () => {
+      it('errors present, touched (post-blur), regardless of dirty → showErrors === true', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         form.touch('email')
         await nextTick()
         expect(form.fields('email').touched).toBe(true)
         expect(form.fields('email').dirty).toBe(false)
-        expect(form.fields('email').showErrors).toBe(false)
+        // New default: own-path error + (touched && !focused). form.touch()
+        // flips touched without DOM focus, so the predicate fires regardless
+        // of dirty. Catches "user blurred out of a required empty field".
+        expect(form.fields('email').showErrors).toBe(true)
       })
 
       it('errors present, touched and dirty → showErrors === true', async () => {
@@ -144,7 +150,7 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
     })
 
     describe('default heuristic — container', () => {
-      it('row-level container picks up descendant touched + dirty + errors', async () => {
+      it('row-level container with ONLY descendant errors does not duplicate them (showErrors === false)', async () => {
         const form = makeForm()
         injectError(form, ['users', 0, 'label'], 'label required')
         form.touch(['users', 0, 'label'])
@@ -152,16 +158,29 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         await nextTick()
         const row = form.fields('users.0')
         expect(row.errors.length).toBeGreaterThan(0)
-        expect(row.showErrors).toBe(true)
+        // Descendant errors are rendered by the descendant fields; the
+        // container's showErrors stays false to avoid UI duplication.
+        expect(row.showErrors).toBe(false)
       })
 
-      it('container shows nothing when descendants have errors but heuristic conditions unmet', async () => {
+      it('container shows nothing when descendants have errors and timing conditions unmet', async () => {
         const form = makeForm()
         injectError(form, ['users', 0, 'label'], 'label required')
         await nextTick()
         const row = form.fields('users.0')
         expect(row.errors.length).toBeGreaterThan(0)
         expect(row.showErrors).toBe(false)
+      })
+
+      it('row-level container with its OWN error surfaces it after timing gate', async () => {
+        const form = makeForm()
+        // Error at the container path itself (e.g., an object-level refine
+        // or a server-side cross-field error mapped to the row).
+        injectError(form, ['users', 0], 'row is invalid')
+        await form.handleSubmit(() => {})()
+        await nextTick()
+        const row = form.fields('users.0')
+        expect(row.showErrors).toBe(true)
       })
     })
 
@@ -193,14 +212,23 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
     })
 
     describe('form.meta.showErrors', () => {
-      it('aggregates over the whole form via the same heuristic', async () => {
+      it('stays false when only descendant (leaf) errors exist (the leaves render their own)', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         expect(form.meta.showErrors).toBe(false)
         await form.handleSubmit(() => {})()
         await nextTick()
-        expect(form.meta.showErrors).toBe(true)
+        // form.meta.showErrors === rootFieldState.showErrors with the own-path
+        // filter applied at root. Leaf errors don't surface here so the form
+        // banner can't duplicate them. Aggregate banners should bind to
+        // form.meta.errorCount > 0 instead.
+        expect(form.meta.showErrors).toBe(false)
       })
+
+      // Affirmative "root-level error fires form.meta.showErrors" coverage
+      // lives in the cross-cutting synthetic test below; the integration
+      // path needs an object-level schema refine to land an error at the
+      // root path [], which isn't worth wiring per-adapter here.
     })
   })
 }
@@ -436,9 +464,10 @@ describe('shouldShowErrors — cross-cutting', () => {
   })
 
   it('defaultShouldShowErrors result tracks the documented heuristic on synthetic inputs', () => {
-    const baseField = {
+    const ownErrorField = {
       errors: [{ path: ['x'], message: 'm', formKey: 'k', code: 'c' }],
       touched: false,
+      focused: false,
       dirty: false,
       path: ['x'],
     } as unknown as Omit<FieldState, 'showErrors' | 'firstError'>
@@ -446,16 +475,41 @@ describe('shouldShowErrors — cross-cutting', () => {
       submitCount: 0,
     } as unknown as Omit<FormMeta, 'showErrors' | 'firstError'>
 
-    expect(defaultShouldShowErrors(baseField, baseMeta)).toBe(false)
-    expect(defaultShouldShowErrors({ ...baseField, touched: true, dirty: true }, baseMeta)).toBe(
-      true
-    )
+    // No submit, not touched: false.
+    expect(defaultShouldShowErrors(ownErrorField, baseMeta)).toBe(false)
+
+    // Touched and not focused (post-blur): true, regardless of dirty.
     expect(
-      defaultShouldShowErrors(baseField, { ...baseMeta, submitCount: 1 } as typeof baseMeta)
+      defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: false }, baseMeta)
     ).toBe(true)
-    expect(defaultShouldShowErrors({ ...baseField, touched: true, dirty: false }, baseMeta)).toBe(
-      false
-    )
+
+    // Touched and still focused (mid-edit): false. Hide transient errors
+    // while the user is actively editing the field.
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: true }, baseMeta)
+    ).toBe(false)
+
+    // After first submit attempt: true regardless of touched/focused.
+    expect(
+      defaultShouldShowErrors(ownErrorField, { ...baseMeta, submitCount: 1 } as typeof baseMeta)
+    ).toBe(true)
+
+    // Container with ONLY descendant errors: false even after submit. The
+    // own-path filter blocks the container from duplicating leaf-rendered
+    // errors.
+    const containerOnlyDescendantErrors = {
+      errors: [{ path: ['x', 'y'], message: 'm', formKey: 'k', code: 'c' }],
+      touched: true,
+      focused: false,
+      dirty: true,
+      path: ['x'],
+    } as unknown as Omit<FieldState, 'showErrors' | 'firstError'>
+    expect(
+      defaultShouldShowErrors(containerOnlyDescendantErrors, {
+        ...baseMeta,
+        submitCount: 1,
+      } as typeof baseMeta)
+    ).toBe(false)
   })
 })
 

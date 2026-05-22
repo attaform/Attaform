@@ -23,7 +23,7 @@ metaRows:
 
 Three small `useForm` calls — account, profile, review — feed into one `useStepper`. The progress bar reflects `stepper.progress` (the fraction of valid steps), the rail highlights `stepper.current`, and each step's form keeps its own schema and reactive surface. Tap **Next** / **Back** to walk the chain; the **Finish** button fires on the last step.
 
-::docs-demo{slug="use-stepper"}
+::docs-demo{slug="use-stepper" label="Stepper Demo"}
 ::
 
 ## The composition

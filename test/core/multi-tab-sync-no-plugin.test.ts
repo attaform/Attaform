@@ -142,6 +142,7 @@ describe('multi-tab sync — no-plugin lazy-install path', () => {
       captureA.form = useForm({
         schema,
         key: 'multitab-shared',
+        multiTab: true,
         defaultValues: { username: '', password: '', comment: '' },
       }) as unknown as SyncForm
     })
@@ -149,6 +150,7 @@ describe('multi-tab sync — no-plugin lazy-install path', () => {
       captureB.form = useForm({
         schema,
         key: 'multitab-shared',
+        multiTab: true,
         defaultValues: { username: '', password: '', comment: '' },
       }) as unknown as SyncForm
     })
@@ -190,6 +192,7 @@ describe('multi-tab sync — no-plugin lazy-install path', () => {
       captureA.form = useForm({
         schema,
         key: 'multitab-sensitive',
+        multiTab: true,
         defaultValues: { username: '', password: '', comment: '' },
       }) as unknown as SyncForm
     })
@@ -197,6 +200,7 @@ describe('multi-tab sync — no-plugin lazy-install path', () => {
       captureB.form = useForm({
         schema,
         key: 'multitab-sensitive',
+        multiTab: true,
         defaultValues: { username: '', password: '', comment: '' },
       }) as unknown as SyncForm
     })

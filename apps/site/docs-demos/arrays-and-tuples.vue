@@ -34,7 +34,7 @@
     <fieldset>
       <legend>z.array — variable length</legend>
       <div v-for="(_, i) in form.values.todos" :key="i" class="row">
-        <input v-register="form.register(`todos.${i}.title`)" type="text" placeholder="Title" />
+        <input v-register="form.register(`todos.${i}.title`)" placeholder="Title" />
         <label class="check">
           <input v-register="form.register(`todos.${i}.done`)" type="checkbox" />
           done
@@ -56,7 +56,7 @@
       </label>
     </fieldset>
 
-    <pre>{{ JSON.stringify(form.values, null, 2) }}</pre>
+    <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 

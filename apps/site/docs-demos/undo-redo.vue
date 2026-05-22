@@ -30,7 +30,7 @@
   <form @submit.prevent @keydown="onKeydown">
     <label>
       Title
-      <input v-register="form.register('title')" type="text" />
+      <input v-register="form.register('title')" />
     </label>
     <label>
       Body
@@ -39,7 +39,7 @@
     <fieldset>
       <legend>Tags</legend>
       <div v-for="(_, i) in form.values.tags" :key="i" class="tag-row">
-        <input v-register="form.register(`tags.${i}`)" type="text" />
+        <input v-register="form.register(`tags.${i}`)" />
         <button type="button" @click="form.remove('tags', i)">−</button>
       </div>
       <button type="button" class="ghost" @click="addTag">Add tag</button>

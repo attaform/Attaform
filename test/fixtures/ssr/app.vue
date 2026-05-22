@@ -8,6 +8,15 @@
   const schema = z.object({
     favoriteGame: z.string().default('chess'),
     chessInArray: z.array(z.string()).default(['chess']),
+    // Repros the schema-to-inputs demo's country pattern: a schema-level
+    // default chained AFTER a refine. The SSR-time transform must still
+    // emit a `selected` attribute on the option matching the default
+    // value, even though the schema chain wraps `.default()` inside a
+    // `.refine()`.
+    refinedDefault: z
+      .string()
+      .default('JP')
+      .refine((v) => v.length === 2, 'must be a 2-letter code'),
   })
   const { register } = useForm({ schema, key: 'ssr-select-fixture' })
 
@@ -131,6 +140,17 @@
       </select>
 
       <select id="select-without-options-1" v-register="register('favoriteGame')"></select>
+
+      <!-- Reproduces the docs schema-to-inputs demo: placeholder option
+           with value="" plus a schema chain that puts `.default('JP')`
+           inside a `.refine(...)`. The SSR-time `selected` attribute
+           must land on the JP option, NOT the placeholder. -->
+      <select id="refined-default-select" v-register="register('refinedDefault')">
+        <option value="">- Select -</option>
+        <option value="US">US</option>
+        <option value="JP">JP</option>
+        <option value="CA">CA</option>
+      </select>
 
       <select
         id="select-with-invalid-element-matching-value-1"

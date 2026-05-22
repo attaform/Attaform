@@ -1,8 +1,4 @@
 <script setup lang="ts">
-  // Phase 1 demo for "From inputs to submit". Closes the loop —
-  // schema + register binding + handleSubmit with an awaited
-  // simulated API call so the reader sees meta.submitting flip true
-  // for ~1.2 seconds and the button disable + relabel itself.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
@@ -15,18 +11,16 @@
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    // Simulated API roundtrip — long enough that the button
-    // visibly disables and relabels.
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    alert(`Subscribed!\n\nemail: ${values.email}\nnewsletter: ${values.newsletter ? 'yes' : 'no'}`)
+    toast.success(`Subscribed: ${values.email}`, { description: values })
   })
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form @submit="onSubmit">
     <label>
       Email
-      <input v-register="register('email')" type="email" autocomplete="email" />
+      <input v-register="register('email')" autocomplete="email" />
       <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <label class="checkbox">

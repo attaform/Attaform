@@ -98,6 +98,31 @@ describe('SSR behavior of useForm', async () => {
           // This does not satisfy the HTML5 spec, but is more permissive so things don't feel broken
           expect(option?.selected).toBe(true)
         })
+
+        it('schema chain with .default() inside .refine() still marks the SSR option selected', async () => {
+          // Reproduces the docs schema-to-inputs demo: a placeholder
+          // option with value="" PLUS a schema that wraps `.default('JP')`
+          // inside a `.refine(...)`. The SSR-time transform must reach
+          // through the refine wrapper to the underlying default value
+          // so the matching option gets the `selected` attribute server
+          // side. Otherwise the browser falls back to the first option
+          // (the empty placeholder) and the dropdown visibly flips to
+          // 'JP' on client hydration.
+          const html = await $fetch('/')
+          assertHTML(html)
+
+          const window = new JSDOM(html).window
+          const selectElement = window.document.getElementById('refined-default-select')
+          expect(selectElement).not.toBeNull()
+          expect(selectElement?.tagName).toBe('SELECT')
+
+          const options = (selectElement as HTMLSelectElement).options
+          const selectedOption = options[options.selectedIndex]
+
+          expect(selectedOption).not.toBeUndefined()
+          expect(selectedOption?.value).toBe('JP')
+          expect(selectedOption?.selected).toBe(true)
+        })
       })
     })
 

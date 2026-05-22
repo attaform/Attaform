@@ -61,7 +61,7 @@ form.errors.address.postalCode // ValidationError[] | undefined
     <legend>Profile</legend>
     <label>
       Name
-      <input v-register="form.register('profile.name')" type="text" />
+      <input v-register="form.register('profile.name')" />
       <em v-if="form.fields.profile.name.showErrors">
         {{ form.fields.profile.name.firstError?.message }}
       </em>

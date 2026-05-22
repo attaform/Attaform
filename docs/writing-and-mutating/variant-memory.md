@@ -23,7 +23,7 @@ metaRows:
 
 Two side-by-side forms with the same payment schema. Type into the card variant, switch to bank, switch back. The left form (`rememberVariants: true`) restores your card details; the right form (`rememberVariants: false`) starts fresh every switch. Same schema, opposite memory policy.
 
-::docs-demo{slug="variant-memory"}
+::docs-demo{slug="variant-memory" label="Variant Memory Demo"}
 ::
 
 ## The default

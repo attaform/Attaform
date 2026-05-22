@@ -21,7 +21,7 @@ metaRows:
 
 This form persists to `'session'` with `clearOnSubmitSuccess: false` and `score` is a numeric field. Type a score, add tags, refresh — values hydrate before the first render and the draft survives a successful submit. Behind the scenes, the orphan-cleanup pass runs every mount, the schema fingerprint gates the read, and the numeric blank handling stays consistent across reload.
 
-::docs-demo{slug="persistence-edge-cases"}
+::docs-demo{slug="persistence-edge-cases" label="Edge Cases Demo"}
 ::
 
 ## Schema-change auto-invalidation

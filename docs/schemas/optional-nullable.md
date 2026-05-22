@@ -24,7 +24,7 @@ metaRows:
 
 The demo runs the same field through all three modifiers side by side. Watch how each one reports its value when nothing has been typed — and how each one validates when you do start typing.
 
-::docs-demo{slug="optional-nullable"}
+::docs-demo{slug="optional-nullable" label="Optional & Nullable Demo"}
 ::
 
 ## The trichotomy at a glance

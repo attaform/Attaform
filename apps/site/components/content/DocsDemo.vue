@@ -12,9 +12,13 @@
   import { computed } from 'vue'
   import { ExternalLink } from 'lucide-vue-next'
 
-  const props = defineProps<{
-    slug: string
-  }>()
+  const props = withDefaults(
+    defineProps<{
+      slug: string
+      label?: string
+    }>(),
+    { label: 'Demo' }
+  )
 
   // Round-trip path: the playground's "Back to docs" link returns
   // here. Built from the current route so a reader who lands on
@@ -48,7 +52,7 @@
 <template>
   <div class="not-prose my-6 overflow-hidden rounded-xl border border-border bg-bg shadow-sm">
     <div class="flex items-center justify-between border-b border-border bg-surface/40 px-3">
-      <span class="px-3 py-2 text-xs font-semibold tracking-wide text-fg uppercase">Demo</span>
+      <span class="px-3 py-2 text-xs font-semibold text-fg">{{ props.label }}</span>
       <NuxtLink
         :to="playgroundLink"
         class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg"

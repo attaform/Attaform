@@ -1,11 +1,14 @@
 ---
 title: Multi-tab sync
-description: Same-keyed forms in same-origin tabs auto-pair via BroadcastChannel — every keystroke mirrors across tabs in near real-time, with sensitive paths filtered both directions and HTTPS-or-localhost required.
+description: Set multiTab to true on a keyed useForm and same-origin tabs sharing that key mirror each other live via BroadcastChannel. Opt-in by design, paired with the persist opt-in for a consistent "richer state needs explicit consent" rule.
 metaRows:
   - label: Category
     value: Module
   - label: Opt in
-    value: useForm({ key })
+    value: useForm({ key, multiTab: true })
+    kind: code
+  - label: Library default
+    value: multiTab false
     kind: code
   - label: Transport
     value: BroadcastChannel (same-origin)
@@ -15,14 +18,14 @@ metaRows:
 
 # Multi-tab sync
 
-> Same-keyed forms in same-origin tabs converge live — type in one, the other catches up on the next microtask. No subscription wiring, no opt-in beyond the form's `key`.
+> Same-keyed forms in same-origin tabs converge live, once you opt in. Type in one, the other catches up on the next microtask.
 
 ::docs-meta-table
 ::
 
-Open this page in a second tab (duplicate, or a regular new tab navigating to the same URL), then type in either one. Both tabs share the same `key:` and the same Attaform form, so the broadcaster mirrors every keystroke. Errors and submit lifecycle stay tab-local — only values and `blankPaths` cross the wire.
+Open this page in a second tab (duplicate, or a regular new tab navigating to the same URL), then type in either one. The demo's `useForm` sets `multiTab: true` so the broadcaster mirrors every keystroke. Errors and submit lifecycle stay tab-local — only values and `blankPaths` cross the wire.
 
-::docs-demo{slug="multi-tab-sync"}
+::docs-demo{slug="multi-tab-sync" label="Multi-tab Sync Demo"}
 ::
 
 ## What it closes
@@ -42,6 +45,7 @@ With sync on, every same-keyed tab converges in near real-time. Tab B sees tab A
 | Submit lifecycle        | NOT synced — `submitCount` / `submitError` are per-callsite.        |
 | `instanceId`            | NOT synced — per-mount identity by definition.                      |
 | History chain           | NOT synced — each tab walks its own user's undo timeline.           |
+| `File` / `Blob` values  | NOT synced — security + performance default-deny. See below.        |
 
 Errors aren't broadcast because they'd carry sensitive context ("invalid SSN: 123-45-6789"). Each tab re-runs its own validation against the synced value — one source of truth for the data, zero leaks.
 
@@ -57,21 +61,30 @@ There's no focus-skip rule — the field a user is currently in WILL accept remo
 
 The opted-out field stays tab-local — broadcasts neither out nor in for that path, even when the rest of the form syncs.
 
-## Disabling sync
+## Enabling and disabling sync
 
-Three levels of opt-out. The cascade goes (most specific wins):
+Multi-tab sync is **off by default**. The same opt-in cascade `persist` uses (per-form `useForm` > plugin-level `createAttaform({ defaults })` > library default `false`) decides whether the broadcaster instantiates. To enable at any scope:
 
 ```ts
-register(path, { multiTab: false }) // single field tab-local
-useForm({ multiTab: false }) // whole form tab-isolated
-createAttaform({ defaults: { multiTab: false } }) // app-wide
+useForm({ key: 'signup', multiTab: true }) // single form
+createAttaform({ defaults: { multiTab: true } }) // app-wide default
 ```
 
-The cascade is downgrade-only. `multiTab: false` at any level prevents the broadcaster from instantiating; `multiTab: true` at a more specific level cannot bring it back if a broader scope already disabled it.
+Once enabled at the form scope, individual fields can opt out:
+
+```vue
+<input v-register="form.register('notes', { multiTab: false })" />
+```
+
+The cascade is most-specific-wins. A field's `register({ multiTab: false })` takes a tab-local stance even when the form is otherwise broadcasting. Form-level or plugin-level `multiTab: false` disables the module entirely; nothing instantiates.
+
+### Why opt-in
+
+Same-keyed forms broadcasting by default surprises users (a value typed in one tab appearing in another they'd forgotten) and leaks state for forms whose paths don't match the `sensitiveNames` heuristic. Pairing with `persist` (also opt-in) gives the library one consistent rule for state that escapes the local form scope: explicit consent. If you want sync, you say so once on the form.
 
 ## Pairing with `persist`
 
-Sync and persistence are independent — both, either, or neither.
+Sync and persistence are independent opt-ins. Both flags follow the same cascade and the same "off by default" stance, so adopters compose them deliberately: pick the one(s) you need.
 
 - **Sync only**: live cross-tab convergence; no durable baseline. Reloading the tab loses the in-memory state and fresh-joins via handshake to any other live tab.
 - **Persist only**: durable baseline; tabs don't see each other's mid-edit state.
@@ -81,8 +94,8 @@ Sync and persistence are independent — both, either, or neither.
 useForm({
   schema,
   key: 'signup',
-  persist: 'local', // warm-start
-  // multiTab implicit-true → live cross-tab convergence
+  persist: 'local', // opt-in to warm-start
+  multiTab: true, // opt-in to live cross-tab convergence
 })
 ```
 
@@ -100,11 +113,11 @@ This is the same gate browsers apply to other sensitive APIs (clipboard, geoloca
 
 `BroadcastChannel` is **same-origin only** — browser-enforced. Cross-origin tabs, iframes, and windows cannot subscribe. Messages are transient (not persisted) — no replay-across-reload surface.
 
-What sync expands vs. the no-sync status quo:
+What enabling sync expands vs. the no-sync status quo:
 
-- **XSS amplification.** An XSS bug in any tab can passively eavesdrop on or actively inject into every same-origin tab running the same keyed form. Same-origin trust is binary; this is irreducible at the library layer.
-- **Third-party scripts on the same origin** (analytics, embedded widgets, ad SDKs) can subscribe to channels.
-- **PII / PHI exposure** widens — previously gated behind a persistence opt-in, now flows by default for any keyed form.
+- **XSS amplification.** An XSS bug in any tab can passively eavesdrop on or actively inject into every same-origin tab running the same keyed form with `multiTab: true`. Same-origin trust is binary; this is irreducible at the library layer.
+- **Third-party scripts on the same origin** (analytics, embedded widgets, ad SDKs) can subscribe to channels for forms that opted in.
+- **PII / PHI exposure** widens to the channel scope. Auditing which forms set `multiTab: true` is now the gate; the library default (off) is the safe baseline.
 
 ### Defenses (built in, not optional)
 
@@ -120,6 +133,7 @@ What sync expands vs. the no-sync status quo:
 - **Echo drop via per-module `senderId`.** Every outbound message carries a per-`useForm` UUID; receivers drop messages whose `senderId` matches their own. Defends intra-tab self-loops and any UA echo behaviour.
 - **Protocol versioning.** Every message carries `v: 1`; unknown versions are dropped silently. Lets the wire format evolve across rolling deploys without silently corrupting older tabs.
 - **No errors / submit lifecycle on the wire.** An error message could carry sensitive context, so it never leaves the local tab.
+- **`File` and `Blob` values are never synced.** A user picking a sensitive file (passport scan, tax form, ID) shouldn't see that file silently broadcast to a sibling tab — that's a real disclosure surface on shared computers, in forgotten popups, or against same-origin XSS that opened a hidden tab. File blobs are also large enough that the synchronous `structuredClone` would stutter the channel. Outbound patches strip File-valued leaves, the snapshot scrubber strips File leaves from joining-tab handshakes, and inbound traffic rejects File-valued payloads (defense in depth, in case a peer ships an older bundle). If you genuinely need cross-tab file sharing, serialise to a string (base64, blob URL, server-side reference token) at a different field and accept the explicit trade-off.
 
 ## Where to next
 

@@ -152,6 +152,23 @@ export default [
     },
   },
 
+  // Playground-only `toast` global. Injected at runtime by
+  // `DemoReplEditor.client.vue`'s `previewOptions.customCode.useCode`
+  // and exposed in demos under `apps/site/docs-demos/` and
+  // `apps/site/repl-demos/`. Matching ambient TypeScript declarations
+  // live in `apps/site/types/playground-globals.d.ts` (vue-tsc) and
+  // inline inside `DemoReplEditor.client.vue` (Volar's in-Monaco TS
+  // service). Without this entry, ESLint trips `no-undef` because
+  // ambient TS declarations don't reach the JS lint rules.
+  {
+    files: ['apps/site/docs-demos/**/*.vue', 'apps/site/repl-demos/**/*.vue'],
+    languageOptions: {
+      globals: {
+        toast: 'readonly',
+      },
+    },
+  },
+
   // File structure rules
   {
     files: ['**/*.{js,ts,vue}'],

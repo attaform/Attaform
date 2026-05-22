@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs shell install test test-watch lint format check prepare typecheck bundle-repl publish-prep watch watch-bg unwatch
+.PHONY: help build up down clean clean-orphans restart logs shell install test test-watch lint format check prepare typecheck bundle-repl publish-prep watch watch-bg unwatch
 .DEFAULT_GOAL := help
 
 CONTAINER := attaform-dev
@@ -17,8 +17,14 @@ up: down  ## Stop any prior stack, regen the playground type bundle, start the d
 	docker compose exec attaform sh -c "cd apps/site && pnpm bundle:repl"
 	docker compose exec attaform pnpm dev
 
-down:  ## Stop and remove the dev container
+down:  ## Stop and remove the dev container (named node_modules volumes persist for fast restarts)
 	docker compose down
+
+clean:  ## Stop the container AND remove its named volumes — first `make up` after this re-seeds node_modules from the image
+	docker compose down -v
+
+clean-orphans:  ## One-time fix: prune dangling Docker volumes left by the old anonymous-volume layout (frees GBs from /var/lib/docker)
+	docker volume prune -f
 
 restart:  ## Rebuild image, regen the playground type bundle, and bring the dev server back up
 	docker compose build
@@ -36,12 +42,13 @@ shell:  ## Drop into an interactive shell inside the container
 # --- pnpm scripts (run inside the container) ---
 
 # `node_modules/` is intentionally split between two filesystems
-# (anonymous volumes in docker-compose.yml): the container has Linux
-# binaries for the dev server, the host has macOS binaries for editor
-# LSP tooling (vtsls, ESLint, Volar, etc.). Both must be kept in
-# lockstep so a host-side LSP can resolve workspace deps that the
-# container-side install registered. The single `pnpm-lock.yaml` is
-# bind-mounted, so the host install picks up whatever the container's
+# (named volumes in docker-compose.yml — `attaform_root_node_modules`
+# and `attaform_site_node_modules`): the container has Linux binaries
+# for the dev server, the host has macOS binaries for editor LSP
+# tooling (vtsls, ESLint, Volar, etc.). Both must be kept in lockstep
+# so a host-side LSP can resolve workspace deps that the container-
+# side install registered. The single `pnpm-lock.yaml` is bind-
+# mounted, so the host install picks up whatever the container's
 # `--force` install resolved — no drift.
 install:  ## Force-refresh deps (container + host) and run dev:prepare (lib stub + Nuxt types)
 	docker compose exec attaform pnpm install --force

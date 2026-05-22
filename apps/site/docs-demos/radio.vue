@@ -29,7 +29,9 @@
       </label>
     </fieldset>
 
-    <pre>{{ JSON.stringify({ plan: values.plan }, null, 2) }}</pre>
+    <pre>{{
+      JSON.stringify({ plan: values.plan }, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

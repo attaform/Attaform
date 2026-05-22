@@ -16,7 +16,7 @@
   <form @submit.prevent>
     <label>
       <span><code>.lazy</code> — writes on change/blur, not on every keystroke</span>
-      <input v-register.lazy="register('lazyName')" type="text" placeholder="Type, then blur" />
+      <input v-register.lazy="register('lazyName')" placeholder="Type, then blur" />
       <small>values.lazyName = {{ JSON.stringify(values.lazyName) }}</small>
     </label>
 
@@ -24,7 +24,6 @@
       <span><code>.trim</code> — strips leading/trailing whitespace before the write</span>
       <input
         v-register.trim="register('trimmedSlug')"
-        type="text"
         placeholder="Pad with spaces around a word"
       />
       <small>values.trimmedSlug = {{ JSON.stringify(values.trimmedSlug) }}</small>
@@ -33,9 +32,8 @@
     <label>
       <span
         ><code>.number</code> — coerces the DOM string to a number before storage even when
-        type="text"</span
-      >
-      <input v-register.number="register('typedAge')" type="text" placeholder="42" />
+      </span>
+      <input v-register.number="register('typedAge')" placeholder="42" />
       <small
         >values.typedAge = {{ JSON.stringify(values.typedAge) }} (<em>{{
           typeof values.typedAge

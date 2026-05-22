@@ -17,12 +17,12 @@
   <form @submit.prevent>
     <label>
       <span>Name <small v-if="fields.name.dirty">— dirty</small></span>
-      <input v-register="register('name')" type="text" />
+      <input v-register="register('name')" />
     </label>
 
     <label>
       <span>Email <small v-if="fields.email.dirty">— dirty</small></span>
-      <input v-register="register('email')" type="email" />
+      <input v-register="register('email')" />
     </label>
 
     <label class="check">

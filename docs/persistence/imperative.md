@@ -23,7 +23,7 @@ metaRows:
 
 Neither field in this demo opts into persistence via `register` — but `form.persist(path)` writes them anyway. That's the bypass: the method ignores the per-field opt-in gate so a "Save draft" button can capture whatever's on screen, including fields that don't otherwise persist. The clear buttons demonstrate the per-path and whole-form variants.
 
-::docs-demo{slug="imperative-persistence"}
+::docs-demo{slug="imperative-persistence" label="Imperative Demo"}
 ::
 
 ## `form.persist(path, options?)`

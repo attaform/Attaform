@@ -22,7 +22,7 @@ metaRows:
 
 Submit the demo without changing the simulate-failure toggle to watch `submitting` flip true mid-await, `submitCount` increment, `isSubmitted` latch on. Flip the toggle and submit again to populate `submitError` with the rejected callback's message. The [Form-only properties](#form-only-properties) section below names every bit; the inherited FieldState aggregations [link forward to the fields page](/docs/reading-the-form/fields).
 
-::docs-demo{slug="meta"}
+::docs-demo{slug="meta" label="Meta Demo"}
 ::
 
 ## Two halves

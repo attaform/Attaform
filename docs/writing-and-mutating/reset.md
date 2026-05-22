@@ -23,7 +23,7 @@ metaRows:
 
 Type into any field to flip it dirty. Click `resetField` to restore one path; click `reset()` to restore everything; click `reset(newDefaults)` to redirect the defaults AND restore in one call. The dirty markers and the form-level pristine/dirty status update reactively as state reset propagates.
 
-::docs-demo{slug="reset"}
+::docs-demo{slug="reset" label="Reset Demo"}
 ::
 
 ## `reset()` restores defaults

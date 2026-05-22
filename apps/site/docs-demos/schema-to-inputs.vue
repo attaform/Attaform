@@ -1,19 +1,27 @@
 <script setup lang="ts">
-  // Phase 1 demo for "From schema to inputs". Five native input
-  // shapes — text, number, select, checkbox, textarea — all
-  // bound through the same `v-register` directive against fields
-  // typed accordingly in the schema. Highlights: no wrapper
-  // component, native coercion handled by the directive.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const COUNTRIES = ['US', 'CA', 'MX', 'GB', 'DE', 'FR', 'JP'] as const
+  const COUNTRIES = {
+    US: 'United States of America',
+    CA: 'Canada',
+    MX: 'Mexico',
+    GB: 'United Kingdom',
+    DE: 'Germany',
+    FR: 'France',
+    JP: 'Japan',
+  } as const
 
   const { register, fields, values } = useForm({
     schema: z.object({
       fullName: z.string().min(2, 'Tell us your name'),
       age: z.number().int().min(13, '13 or older to sign up'),
-      country: z.enum(COUNTRIES),
+      country: z
+        .string()
+        .default('')
+        .refine((v) => v in COUNTRIES, {
+          message: 'Please select a country from the dropdown',
+        }),
       newsletter: z.boolean(),
       bio: z.string().optional(),
     }),
@@ -25,7 +33,7 @@
   <form @submit.prevent>
     <label>
       Full name
-      <input v-register="register('fullName')" type="text" autocomplete="name" />
+      <input v-register="register('fullName')" autocomplete="name" />
       <em v-if="fields.fullName.showErrors">{{ fields.fullName.firstError?.message }}</em>
     </label>
     <label>
@@ -36,8 +44,8 @@
     <label>
       Country
       <select v-register="register('country')">
-        <option value="" disabled>Choose…</option>
-        <option v-for="code in COUNTRIES" :key="code" :value="code">{{ code }}</option>
+        <option value="">- Select a country -</option>
+        <option v-for="(name, code) in COUNTRIES" :key="code" :value="code">{{ name }}</option>
       </select>
       <em v-if="fields.country.showErrors">{{ fields.country.firstError?.message }}</em>
     </label>
@@ -49,7 +57,9 @@
       Bio <span class="hint">(optional)</span>
       <textarea v-register="register('bio')" rows="3"></textarea>
     </label>
-    <pre class="values">{{ JSON.stringify(values, null, 2) }}</pre>
+    <pre class="values">{{
+      JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

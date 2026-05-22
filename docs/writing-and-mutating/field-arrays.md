@@ -22,7 +22,7 @@ metaRows:
 
 Use the row arrows and per-row × button to move and remove items; the buttons below dispatch every helper against the array. Watch the readout — the order, count, and contents reflect each call. Stable keys mean per-item validation state, dirty bits, and DOM focus survive shape changes; reordering doesn't reset what the user typed.
 
-::docs-demo{slug="field-arrays"}
+::docs-demo{slug="field-arrays" label="Field Arrays Demo"}
 ::
 
 ## The seven helpers

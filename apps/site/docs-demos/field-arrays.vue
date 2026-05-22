@@ -15,7 +15,7 @@
   <form @submit.prevent>
     <ol class="rows">
       <li v-for="(_, i) in values.checkpoints" :key="i" class="row">
-        <input v-register="register(`checkpoints.${i}` as const)" type="text" />
+        <input v-register="register(`checkpoints.${i}` as const)" />
         <div class="row-actions">
           <button type="button" title="Move up" @click="i > 0 && move('checkpoints', i, i - 1)">
             ↑
@@ -54,7 +54,9 @@
       </button>
     </div>
 
-    <pre>{{ JSON.stringify(values.checkpoints, null, 2) }}</pre>
+    <pre>{{
+      JSON.stringify(values.checkpoints, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

@@ -1,9 +1,4 @@
 <script setup lang="ts">
-  // Phase 1 demo for "Your first schema". Spread of Zod feature
-  // surfaces — required string, password with min, optional string,
-  // required int — wired against a single useForm so the reader
-  // sees Attaform's slim defaults populate from the schema and the
-  // live `values` object update under their typing.
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
@@ -22,17 +17,17 @@
   <form @submit.prevent>
     <label>
       Email
-      <input v-register="register('email')" type="email" autocomplete="email" />
+      <input v-register="register('email')" autocomplete="email" />
       <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
     <label>
       Password
-      <input v-register="register('password')" type="password" autocomplete="new-password" />
+      <input v-register="register('password')" type="password" autocomplete="off" />
       <em v-if="fields.password.showErrors">{{ fields.password.firstError?.message }}</em>
     </label>
     <label>
       Display name <span class="hint">(optional)</span>
-      <input v-register="register('displayName')" type="text" />
+      <input v-register="register('displayName')" />
       <em v-if="fields.displayName.showErrors">{{ fields.displayName.firstError?.message }}</em>
     </label>
     <label>
@@ -40,7 +35,9 @@
       <input v-register="register('age')" type="number" />
       <em v-if="fields.age.showErrors">{{ fields.age.firstError?.message }}</em>
     </label>
-    <pre class="values">{{ JSON.stringify(values, null, 2) }}</pre>
+    <pre class="values">{{
+      JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+    }}</pre>
   </form>
 </template>
 

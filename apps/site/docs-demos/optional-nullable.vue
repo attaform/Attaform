@@ -36,7 +36,7 @@
       <tbody>
         <tr>
           <td><code>.optional()</code></td>
-          <td><input v-register="form.register('optional')" type="text" /></td>
+          <td><input v-register="form.register('optional')" /></td>
           <td
             ><code>{{ fmt(form.values.optional) }}</code></td
           >
@@ -47,7 +47,7 @@
         </tr>
         <tr>
           <td><code>.nullable()</code></td>
-          <td><input v-register="form.register('nullable')" type="text" /></td>
+          <td><input v-register="form.register('nullable')" /></td>
           <td
             ><code>{{ fmt(form.values.nullable) }}</code></td
           >
@@ -58,7 +58,7 @@
         </tr>
         <tr>
           <td><code>.default('seed')</code></td>
-          <td><input v-register="form.register('defaulted')" type="text" /></td>
+          <td><input v-register="form.register('defaulted')" /></td>
           <td
             ><code>{{ fmt(form.values.defaulted) }}</code></td
           >
@@ -69,7 +69,7 @@
         </tr>
         <tr>
           <td><code>z.string().min(1)</code></td>
-          <td><input v-register="form.register('required')" type="text" /></td>
+          <td><input v-register="form.register('required')" /></td>
           <td
             ><code>{{ fmt(form.values.required) }}</code></td
           >

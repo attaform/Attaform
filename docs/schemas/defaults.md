@@ -24,7 +24,7 @@ metaRows:
 
 The demo below shows the same schema mounted three ways: bare (defaults from the schema), with a `defaultValues` overlay (per-form override), and with `unset` (a specific leaf opted back to blank). Each form starts from the same declaration; the option drives the initial state.
 
-::docs-demo{slug="schema-defaults"}
+::docs-demo{slug="schema-defaults" label="Schema Defaults Demo"}
 ::
 
 ## Schema-declared defaults

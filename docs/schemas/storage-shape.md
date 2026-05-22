@@ -24,7 +24,7 @@ metaRows:
 
 The demo below shows the same schema across all three views — what `form.values` returns at runtime, what `setValue` accepts, and what `handleSubmit`'s callback sees. Watch the transforms only kick in on submit; reads stay in the input shape.
 
-::docs-demo{slug="storage-shape"}
+::docs-demo{slug="storage-shape" label="Storage Shape Demo"}
 ::
 
 ## The three shapes

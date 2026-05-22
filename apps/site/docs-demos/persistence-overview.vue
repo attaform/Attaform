@@ -25,7 +25,7 @@
   <form @submit.prevent>
     <label>
       Title
-      <input v-register="form.register('title', { persist: true })" type="text" />
+      <input v-register="form.register('title', { persist: true })" />
       <em v-if="form.fields.title.showErrors">{{ form.fields.title.firstError?.message }}</em>
     </label>
     <label>

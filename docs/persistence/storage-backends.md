@@ -23,7 +23,7 @@ metaRows:
 
 This form persists to `'indexeddb'` — type, refresh the page, and your draft (including the live `Date` instance on the due-date field) comes back through structured clone. Swapping to `'local'` or `'session'` is a one-word change in `persist`; the bundle includes only the backend you pick.
 
-::docs-demo{slug="storage-backends"}
+::docs-demo{slug="storage-backends" label="Storage Backends Demo"}
 ::
 
 ## The four kinds

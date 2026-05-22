@@ -23,7 +23,7 @@ metaRows:
 
 Toggle the single checkbox to flip the boolean. Tick a few in the group to watch the array populate with the matching enum literals — the order in storage reflects the order the boxes were checked. The schema's leaf type at each path decides which binding mode the directive picks.
 
-::docs-demo{slug="checkbox"}
+::docs-demo{slug="checkbox" label="Checkbox Demo"}
 ::
 
 ## Single checkbox → boolean

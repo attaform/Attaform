@@ -247,8 +247,16 @@ describe('onInvalidSubmit policy wiring', () => {
     app.unmount()
   })
 
-  it('none (default): submit failure does not touch focus or scroll', async () => {
+  it('default (focus-first-error): submit failure focuses the first errored field', async () => {
     const { api, app } = mountWith({ errorsFor: ['email'] })
+    await api.handleSubmit(async () => {})()
+    expect(focusSpy).toHaveBeenCalled()
+    expect(scrollSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+
+  it('none: explicit opt-out skips focus and scroll', async () => {
+    const { api, app } = mountWith({ errorsFor: ['email'], onInvalidSubmit: 'none' })
     await api.handleSubmit(async () => {})()
     expect(focusSpy).not.toHaveBeenCalled()
     expect(scrollSpy).not.toHaveBeenCalled()

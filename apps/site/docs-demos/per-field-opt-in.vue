@@ -28,7 +28,7 @@
         Title
         <small> <input v-model="persistTitle" type="checkbox" /> Persist this field </small>
       </span>
-      <input v-register="form.register('title', { persist: persistTitle })" type="text" />
+      <input v-register="form.register('title', { persist: persistTitle })" />
     </label>
 
     <label class="row">

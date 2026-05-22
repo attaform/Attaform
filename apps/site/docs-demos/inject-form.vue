@@ -18,7 +18,7 @@
   })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    alert(`Submitted: ${JSON.stringify(values, null, 2)}`)
+    toast.success(`Welcome ${values.profile.name}`, { description: values })
   })
 
   type FormShape = z.infer<typeof schema>
@@ -72,7 +72,7 @@
   <form @submit.prevent="onSubmit">
     <label>
       Email (in the parent component)
-      <input v-register="form.register('email')" type="email" autocomplete="email" />
+      <input v-register="form.register('email')" autocomplete="email" />
       <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
     </label>
 

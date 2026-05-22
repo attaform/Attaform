@@ -32,7 +32,7 @@
     <pre>{{
       JSON.stringify(
         { name: values.name, age: values.age, bio: values.bio },
-        (_, v) => (typeof v === 'number' ? `${v} (number)` : v),
+        (_, v) => (v === undefined ? '(undefined)' : typeof v === 'number' ? `${v} (number)` : v),
         2
       )
     }}</pre>

@@ -24,7 +24,7 @@ metaRows:
 
 Type a value into the middle name field, then click `setValue('middleName', '')` to write an empty string. Click `setValue('middleName', unset)` to write the absent sentinel. Watch the panel: `isUnset(values.middleName)` flips true only for the unset write. Both are valid for an `.optional()` schema, but downstream consumers can tell them apart.
 
-::docs-demo{slug="unset"}
+::docs-demo{slug="unset" label="Unset Demo"}
 ::
 
 ## When presence matters

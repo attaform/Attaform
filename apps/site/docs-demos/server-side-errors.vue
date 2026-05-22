@@ -40,7 +40,7 @@
       }
     }
 
-    alert('✓ Account created')
+    toast.success(`Account created: ${values.username}`, { description: values })
   })
 </script>
 
@@ -53,13 +53,13 @@
 
     <label>
       <span>Email</span>
-      <input v-register="register('email')" type="email" autocomplete="email" />
+      <input v-register="register('email')" autocomplete="email" />
       <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
 
     <label>
       <span>Username</span>
-      <input v-register="register('username')" type="text" />
+      <input v-register="register('username')" />
       <em v-if="fields.username.showErrors">{{ fields.username.firstError?.message }}</em>
     </label>
 

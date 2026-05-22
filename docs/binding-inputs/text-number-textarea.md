@@ -23,7 +23,7 @@ metaRows:
 
 Type into all three inputs and watch the JSON readout update. The number input's value lands as a `number` (not a string), even though the DOM only deals in strings. The directive handles the leaf-type coercion; the [Schema-driven coercion](/docs/binding-inputs/coercion) page explains the rule that powers it.
 
-::docs-demo{slug="text-number-textarea"}
+::docs-demo{slug="text-number-textarea" label="Text Inputs Demo"}
 ::
 
 ## Bind any of the three

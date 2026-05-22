@@ -24,7 +24,7 @@ metaRows:
 
 The parent owns the form and renders the email field. `ProfileFieldset` and `StatusPill` are inline render-function components that call `injectForm('docs-demo-inject-form')` to reach the same form — no props passed, same reactive surface. Both child components are defined in this SFC and run unchanged regardless of how deep they sit in the tree.
 
-::docs-demo{slug="inject-form"}
+::docs-demo{slug="inject-form" label="Form Injection Demo"}
 ::
 
 ## The common case — ambient resolution
@@ -63,12 +63,12 @@ Any descendant grabs the same form:
 
 <template>
   <label>Email</label>
-  <input v-register="register('email')" type="email" />
+  <input v-register="register('email')" />
   <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
 </template>
 ```
 
-You supply the `Form` generic — Vue's injection system erases it, so the library can't recover the shape on your behalf. Other than that, `injectForm<Form>()` returns an object type-identical to `useForm`'s return.
+You supply the `Form` generic — Vue's injection system erases it, so the library can't recover the shape on your behalf. Other than that, `injectForm<Form>()` returns a form type-identical to `useForm`'s return.
 
 ## Reaching a form that isn't an ancestor
 

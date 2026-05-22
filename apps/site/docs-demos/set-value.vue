@@ -19,12 +19,12 @@
   <form @submit.prevent>
     <label>
       <span>Name</span>
-      <input v-register="register('name')" type="text" />
+      <input v-register="register('name')" />
     </label>
 
     <label>
       <span>Email</span>
-      <input v-register="register('profile.email')" type="email" />
+      <input v-register="register('profile.email')" />
     </label>
 
     <label>
@@ -55,7 +55,7 @@
       </button>
     </div>
 
-    <pre>{{ JSON.stringify(values, null, 2) }}</pre>
+    <pre>{{ JSON.stringify(values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 

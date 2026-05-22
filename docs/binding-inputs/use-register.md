@@ -22,7 +22,7 @@ metaRows:
 
 Type into either of the two fields rendered by `<FieldRow>` and watch the JSON readout update. The parent applies `v-register="register('email')"` to the `<FieldRow>` root; inside `FieldRow`, `useRegister()` captures that binding and `v-register="rv"` reattaches it to the inner `<input>`. The [How it works](#how-it-works) section traces every step.
 
-::docs-demo{slug="use-register"}
+::docs-demo{slug="use-register" label="useRegister Demo"}
 ::
 
 ## When to reach for it
@@ -50,7 +50,7 @@ When the wrapper's root **is** the input itself, Vue's attribute fallthrough alr
 <template>
   <label class="field-row">
     <span>{{ label }}</span>
-    <input v-register="rv" type="text" />
+    <input v-register="rv" />
   </label>
 </template>
 ```

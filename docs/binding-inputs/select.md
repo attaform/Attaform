@@ -24,7 +24,7 @@ metaRows:
 
 Pick a country from the single select to watch the JSON readout switch its scalar value. In the multi-select below, hold ⌘ (or Ctrl) and click multiple options — every picked option's `value=` attribute lands in the `tags` array in selection order. The directive reads the schema leaf at each path and infers single vs. multi automatically.
 
-::docs-demo{slug="select"}
+::docs-demo{slug="select" label="Select Demo"}
 ::
 
 ## Single select → scalar

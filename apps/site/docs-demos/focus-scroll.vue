@@ -27,13 +27,13 @@
 
     <label>
       <span>Name</span>
-      <input v-register="register('name')" type="text" />
+      <input v-register="register('name')" />
       <em v-if="fields.name.showErrors">{{ fields.name.firstError?.message }}</em>
     </label>
 
     <label>
       <span>Email</span>
-      <input v-register="register('email')" type="email" />
+      <input v-register="register('email')" />
       <em v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</em>
     </label>
 

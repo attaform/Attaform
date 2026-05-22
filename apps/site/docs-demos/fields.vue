@@ -32,7 +32,6 @@
       <span class="heading">{{ fields.email.label }}</span>
       <input
         v-register="register('email')"
-        type="email"
         :placeholder="fields.email.placeholder"
         autocomplete="email"
       />

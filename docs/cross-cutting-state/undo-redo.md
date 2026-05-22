@@ -23,7 +23,7 @@ metaRows:
 
 Type into any field, append a few tags, then hit `⌘Z` / `⌘⇧Z` (or click the buttons) to walk the chain. `canUndo` and `canRedo` gate the buttons reactively; `clear()` reseeds the chain at the current state — the move you'd make after a "Save successful" milestone.
 
-::docs-demo{slug="undo-redo"}
+::docs-demo{slug="undo-redo" label="Undo & Redo Demo"}
 ::
 
 ## The option

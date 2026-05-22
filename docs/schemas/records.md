@@ -24,7 +24,7 @@ metaRows:
 
 The demo binds a record of per-user preferences. The keys are user IDs you don't know at compile time, so the schema declares `z.record(z.string(), z.boolean())` — a string-keyed dictionary of booleans. Each key binds dynamically via `register(\`prefs.${userId}\`)`.
 
-::docs-demo{slug="records"}
+::docs-demo{slug="records" label="Records Demo"}
 ::
 
 ## `z.record(keySchema, valueSchema)`

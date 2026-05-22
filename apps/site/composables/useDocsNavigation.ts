@@ -22,8 +22,8 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'Introduction', to: '/docs/getting-started/introduction' },
       { title: 'Why Attaform', to: '/docs/getting-started/why-attaform' },
-      { title: 'Quick start', to: '/docs/getting-started/quick-start' },
       { title: 'Installation', to: '/docs/getting-started/installation' },
+      { title: 'Quick start', to: '/docs/getting-started/quick-start' },
       { title: 'Your first schema', to: '/docs/getting-started/your-first-schema' },
       { title: 'From schema to inputs', to: '/docs/getting-started/from-schema-to-inputs' },
       { title: 'From inputs to submit', to: '/docs/getting-started/from-inputs-to-submit' },

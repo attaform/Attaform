@@ -23,7 +23,7 @@ metaRows:
 
 Type into the email input, blur it, refocus, submit — every cell in the demo's panel updates live. Each `fields.email.<bit>` read is reactive; the schema metadata at the bottom comes from `withMeta(...)` on the schema itself. The [What FieldState carries](#what-fieldstate-carries) section below groups all 22 properties by job.
 
-::docs-demo{slug="fields"}
+::docs-demo{slug="fields" label="Field State Demo"}
 ::
 
 ## Drillable Proxy

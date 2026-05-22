@@ -3898,6 +3898,22 @@ export type UseFormReturnType<
   scrollToFirstError: (options?: ScrollIntoViewOptions) => boolean
 
   /**
+   * Drive the form's `onInvalidSubmit` policy imperatively. The same
+   * focus/scroll behavior `handleSubmit` runs after a failed submit,
+   * but available standalone. Defaults to the policy configured via
+   * `useForm({ onInvalidSubmit })` (or `'focus-first-error'` when
+   * omitted). Pass an explicit policy to override for one call.
+   *
+   * Used by `useWizard` after navigating to the first failing form
+   * during `wizard.handleSubmit`, so the failing form's own configured
+   * policy fires once its DOM is in view.
+   *
+   * No-op when no errored field is currently registered or when the
+   * resolved policy is `'none'`.
+   */
+  applyInvalidSubmitPolicy: (policy?: OnInvalidSubmitPolicy) => void
+
+  /**
    * Programmatically mark fields as touched — the sticky flag the
    * standard "show errors after interaction" pattern reads. Closes
    * the gap when fields are populated without a DOM gesture (post-

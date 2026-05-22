@@ -550,7 +550,7 @@ function pathStartsWith(target: Path, prefix: Path): boolean {
   return true
 }
 
-function applyInvalidSubmitPolicy<F extends GenericForm>(
+export function applyInvalidSubmitPolicy<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   formInstanceId: string,
   policy: OnInvalidSubmitPolicy

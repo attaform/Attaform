@@ -42,7 +42,7 @@ import {
 } from './paths'
 import { PERSISTENCE_MODULE_KEY, type PersistenceModule } from './persistence'
 import { enforceSensitiveCheck } from './persistence/sensitive-names'
-import { buildProcessForm } from './process-form'
+import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
 import { isUnset } from './unset'
 import {
@@ -159,6 +159,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // property. Only pass the key when the consumer opted in.
   const processOptions =
     options.onInvalidSubmit !== undefined ? { onInvalidSubmit: options.onInvalidSubmit } : {}
+  const defaultInvalidSubmitPolicy: OnInvalidSubmitPolicy =
+    options.onInvalidSubmit ?? 'focus-first-error'
   const {
     validate: validateBuilt,
     validateAsync: validateAsyncBuilt,
@@ -784,6 +786,15 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return true
   }
 
+  // Drives the same focus/scroll policy that `handleSubmit` runs after a
+  // failed submit, but exposed as a method so the wizard's failed-path
+  // navigation can invoke the failing form's own configured policy after
+  // a `goTo`. Defaults to the form's `onInvalidSubmit` option so the
+  // caller doesn't have to repeat the configured choice.
+  const applyInvalidSubmitPolicyPublic = (policy?: OnInvalidSubmitPolicy): void => {
+    applyInvalidSubmitPolicy(state, formInstanceId, policy ?? defaultInvalidSubmitPolicy)
+  }
+
   // --- Field arrays ---
   const fieldArrays = buildFieldArrayApi(state)
 
@@ -904,6 +915,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     >['clearPersistedDraft'],
     focusFirstError: gated(focusFirstError),
     scrollToFirstError: gated(scrollToFirstError),
+    applyInvalidSubmitPolicy: gated(applyInvalidSubmitPolicyPublic),
     touch: gated(touch) as UseFormReturnType<Form, GetValueFormType>['touch'],
     get history() {
       void state.activate()

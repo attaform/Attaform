@@ -39,24 +39,55 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'The form object', to: '/docs/reading-the-form/the-form-object' },
       { title: 'values', to: '/docs/reading-the-form/values' },
+      { title: 'fields', to: '/docs/reading-the-form/fields' },
       { title: 'errors', to: '/docs/reading-the-form/errors' },
+      { title: 'meta', to: '/docs/reading-the-form/meta' },
+      { title: 'toRef', to: '/docs/reading-the-form/to-ref' },
     ],
   },
   {
     heading: 'Binding inputs',
-    links: [{ title: 'The v-register directive', to: '/docs/binding-inputs/v-register' }],
+    links: [
+      { title: 'The v-register directive', to: '/docs/binding-inputs/v-register' },
+      { title: 'Text, number, textarea', to: '/docs/binding-inputs/text-number-textarea' },
+      { title: 'Checkbox', to: '/docs/binding-inputs/checkbox' },
+      { title: 'Radio groups', to: '/docs/binding-inputs/radio' },
+      { title: 'Select & multi-select', to: '/docs/binding-inputs/select' },
+      { title: 'File inputs', to: '/docs/binding-inputs/file' },
+      { title: 'Modifiers', to: '/docs/binding-inputs/modifiers' },
+      { title: 'Register transforms', to: '/docs/binding-inputs/transforms' },
+      { title: 'Custom assigners', to: '/docs/binding-inputs/custom-assigners' },
+      { title: 'useRegister', to: '/docs/binding-inputs/use-register' },
+      { title: 'Schema-driven coercion', to: '/docs/binding-inputs/coercion' },
+    ],
   },
-  { heading: 'Writing & mutating', links: [] },
+  {
+    heading: 'Writing & mutating',
+    links: [
+      { title: 'setValue patterns', to: '/docs/writing-and-mutating/set-value' },
+      { title: 'reset & resetField', to: '/docs/writing-and-mutating/reset' },
+      { title: 'clear & blank values', to: '/docs/writing-and-mutating/clear' },
+      { title: 'unset — the absent sentinel', to: '/docs/writing-and-mutating/unset' },
+      { title: 'Field-array mutations', to: '/docs/writing-and-mutating/field-arrays' },
+    ],
+  },
   {
     heading: 'Validation',
     links: [
       { title: 'When validation runs', to: '/docs/validation/when-validation-runs' },
+      { title: 'Per-field validation', to: '/docs/validation/per-field-validation' },
+      { title: 'Async refinements', to: '/docs/validation/async-refinements' },
+      { title: 'The validation lifecycle', to: '/docs/validation/lifecycle' },
       { title: 'Showing errors at the right time', to: '/docs/validation/showing-errors' },
     ],
   },
   {
     heading: 'Submitting',
-    links: [{ title: 'handleSubmit', to: '/docs/submitting/handle-submit' }],
+    links: [
+      { title: 'handleSubmit', to: '/docs/submitting/handle-submit' },
+      { title: 'Server-side errors', to: '/docs/submitting/server-side-errors' },
+      { title: 'Focus & scroll on invalid submit', to: '/docs/submitting/focus-scroll' },
+    ],
   },
   {
     heading: 'Persistence',

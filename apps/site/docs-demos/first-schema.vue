@@ -9,7 +9,7 @@
 
   const { register, fields, values } = useForm({
     schema: z.object({
-      email: z.string().email('Enter a valid email'),
+      email: z.email('Enter a valid email'),
       password: z.string().min(8, 'At least 8 characters'),
       displayName: z.string().min(2, 'At least 2 characters').optional(),
       age: z.number().int().min(13, 'You must be 13 or older'),

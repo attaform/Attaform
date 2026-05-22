@@ -134,13 +134,17 @@ export default [
   // `components/ui/` rely on Nuxt's pathPrefix auto-import to expose
   // them as multi-word tags (`Button.vue` → `<UiButton>`). Root-level
   // `error.vue` is the framework's catch-all error page (the name is
-  // mandatory). The rule's filename heuristic doesn't see any of this,
-  // so we scope it off.
+  // mandatory). Docs-demo SFCs are URL-slug-driven (`fields.vue`,
+  // `meta.vue`, `checkbox.vue`) — the slug IS the reader-facing surface
+  // (`/play/<slug>`, `<DocsDemo slug="...">`), so the rule's filename
+  // heuristic doesn't help readers either. Scope the rule off across
+  // all four.
   {
     files: [
       'apps/site/pages/**/*.vue',
       'apps/site/layouts/**/*.vue',
       'apps/site/components/**/*.vue',
+      'apps/site/docs-demos/**/*.vue',
       'apps/site/error.vue',
     ],
     rules: {

@@ -8,7 +8,7 @@
 
   const { register, handleSubmit, fields, meta } = useForm({
     schema: z.object({
-      email: z.string().email('Enter a valid email'),
+      email: z.email('Enter a valid email'),
       terms: z.literal(true, { message: 'Accept the terms to continue' }),
     }),
     key: 'handle-submit',

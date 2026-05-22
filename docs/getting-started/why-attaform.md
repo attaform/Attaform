@@ -27,7 +27,7 @@ Every part of the public surface is typed against your schema:
 ```ts
 const form = useForm({
   schema: z.object({
-    email: z.string().email(),
+    email: z.email(),
     age: z.number().int().min(13),
   }),
 })

@@ -26,7 +26,7 @@ const form = useForm({
   schema: z.object({
     profile: z.object({
       name: z.string(),
-      email: z.string().email(),
+      email: z.email(),
     }),
     age: z.number(),
   }),

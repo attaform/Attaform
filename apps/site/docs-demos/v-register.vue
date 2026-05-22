@@ -8,7 +8,7 @@
 
   const { register, fields, values } = useForm({
     schema: z.object({
-      email: z.string().email('Enter a valid email'),
+      email: z.email('Enter a valid email'),
     }),
     key: 'v-register',
   })

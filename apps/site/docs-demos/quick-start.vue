@@ -9,7 +9,7 @@
 
   const { register, handleSubmit, fields, meta } = useForm({
     schema: z.object({
-      email: z.string().email('Enter a valid email'),
+      email: z.email('Enter a valid email'),
       password: z.string().min(8, 'At least 8 characters'),
     }),
     key: 'quick-start',

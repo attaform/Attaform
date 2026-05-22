@@ -325,6 +325,13 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly submitting: Ref<boolean>
   readonly activeSubmissions: Ref<number>
   readonly submissionAttempts: Ref<number>
+  /**
+   * `true` once a `handleSubmit` callback resolved without throwing.
+   * Independent of `submissionAttempts` — a failed submit increments
+   * attempts but leaves `submitted` at `false`. Cleared by `reset()`
+   * alongside the rest of the submission surface.
+   */
+  readonly submitted: Ref<boolean>
   readonly submitError: Ref<unknown>
 
   /**
@@ -1473,6 +1480,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const submitting = ref(false)
   const activeSubmissions = ref(0)
   const submissionAttempts = ref(0)
+  const submitted = ref(false)
   const submitError = ref<unknown>(null)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
@@ -3062,6 +3070,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submitting.value = false
     activeSubmissions.value = 0
     submissionAttempts.value = 0
+    submitted.value = false
     submitError.value = null
     // Drop any pending field-validation timers / in-flight runs. Writes
     // that reached the controller-aborted branch resolve to a no-op, so
@@ -3311,6 +3320,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submitting,
     activeSubmissions,
     submissionAttempts,
+    submitted,
     submitError,
     hydrating,
     hydrateError,

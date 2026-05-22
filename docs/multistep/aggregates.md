@@ -110,6 +110,10 @@ That keeps the [SSR privacy invariant](/docs/multistep/ssr#the-stated-invariant)
 
 On the client, navigating to a step activates that step's factory and its errors join the aggregate naturally.
 
+## `FormStatus.submitted` is success-only
+
+Each step's `FormStatus` mirrors that form's `meta.submitted`, which flips `true` only after a `handleSubmit` callback resolves without throwing. Failed submits (validation failure or callback rejection) leave it `false`. For "the user has tried this step," read each form's `meta.submissionAttempts > 0` directly. A wizard-level "user clicked Finish" signal will land alongside `wizard.handleSubmit` in a follow-on iteration.
+
 ## Cross-reference
 
 - [`useWizard`](/docs/multistep/use-wizard) for navigation and `activeForm`.

@@ -479,6 +479,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // --- Submission lifecycle ---
   const submitting = computed<boolean>(() => state.submitting.value)
   const submissionAttempts = computed<number>(() => state.submissionAttempts.value)
+  const submitted = computed<boolean>(() => state.submitted.value)
   const submitError = computed<unknown>(() => state.submitError.value)
 
   // --- Validation lifecycle ---
@@ -574,17 +575,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // own showErrors computation.
   const getFormMetaBase = (): FormMetaBase => {
     const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY)
-    const submissionAttempts = state.submissionAttempts.value
     return {
       ...rootBase,
       submitting: state.submitting.value,
-      submissionAttempts,
+      submissionAttempts: state.submissionAttempts.value,
       submitError: state.submitError.value,
-      // Scalar mirrors over `errors.length` and `submissionAttempts` — same
-      // values surfaced on `form.meta`. Available here so predicates
-      // (`shouldShowErrors`) can read them too.
       errorCount: rootBase.errors.length,
-      submitted: submissionAttempts > 0,
+      submitted: state.submitted.value,
       instanceId: formInstanceId,
     }
   }
@@ -650,11 +647,11 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       submitting,
       submissionAttempts,
       submitError,
-      // Scalar mirrors over the array / counter — meta is a single
-      // sticky surface for both templates and the upcoming
-      // `useWizard`'s `FormStatus`, so the projections live here.
+      // Scalar mirror over the array — meta is a single sticky surface
+      // for both templates and `useWizard`'s `FormStatus`, so the
+      // projection lives here.
       errorCount: computed(() => metaErrors.value.length),
-      submitted: computed(() => submissionAttempts.value > 0),
+      submitted,
       // Per-`useForm()`-call identity. Stable for one mount; new on
       // re-mount; orthogonal to `form.key` (which is the user-supplied
       // shared identifier). Useful for devtools panels disambiguating

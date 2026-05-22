@@ -60,8 +60,10 @@ export type WizardNavOptions = {
  *    while the first-validation-done gate has not flipped.
  *  - `dirty` — `form.meta.dirty`. `true` once any value differs
  *    from the original defaults.
- *  - `submitted` — `form.meta.submitted`. `true` once
- *    `submissionAttempts` reaches one or more.
+ *  - `submitted` — `form.meta.submitted`. `true` once a
+ *    `handleSubmit` callback has resolved without throwing. A failed
+ *    submit (validation or callback rejection) leaves this `false`;
+ *    `submissionAttempts > 0` is the "user has tried" signal.
  *  - `errorCount` — `form.meta.errorCount`. Count of active
  *    validation errors (zero when valid).
  */

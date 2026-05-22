@@ -3174,13 +3174,15 @@ export type FormMeta<F = unknown> = FieldState<F> & {
   readonly errorCount: number
 
   /**
-   * `true` once `handleSubmit` has been invoked at least once, success
-   * or failure. Equivalent to `submissionAttempts > 0`, exposed as a scalar
-   * for "show this only after the first submit attempt" UX in
-   * templates.
+   * `true` once a `handleSubmit` callback has resolved without
+   * throwing. Independent of `submissionAttempts` — a failed submit
+   * (validation failure or callback rejection) increments attempts but
+   * leaves `submitted` at `false`. Templates read it as "the form has
+   * been submitted successfully at least once."
    *
-   * Monotonically non-decreasing over the form's lifetime — once
-   * flipped, it stays `true` even after `form.reset()`.
+   * Cleared by `form.reset()` alongside `submissionAttempts` and
+   * `submitError`. For "the user has attempted a submit," read
+   * `submissionAttempts > 0` directly.
    */
   readonly submitted: boolean
 
@@ -3766,7 +3768,8 @@ export type UseFormReturnType<
    *   - the dirty baseline (so the next edit flips `dirty` correctly);
    *   - field errors;
    *   - touched / focused / blurred per-field flags;
-   *   - submission state (`submitting` / `submissionAttempts` / `submitError`);
+   *   - submission state (`submitting` / `submissionAttempts` /
+   *     `submitted` / `submitError`);
    *   - the persisted draft, if persistence is configured.
    *
    * The next edit on a still-mounted opted-in input will start

@@ -438,6 +438,14 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           state.clearSchemaErrors()
         }
         await onSubmit(merged.data)
+        // Flip `submitted` true once the user callback resolved
+        // without throwing — independent of `submissionAttempts`.
+        // Generation guard: a `reset()` that fired during the await
+        // already zeroed the submission surface; honor the consumer's
+        // intent by leaving `submitted` at the post-reset `false`.
+        if (state.submissionGeneration.value === genAtEntry) {
+          state.submitted.value = true
+        }
         // Notify subscribers (persistence's clear-on-success handler,
         // future hooks). Fires only when the user callback resolved —
         // validation-failure and callback-throw skip it.

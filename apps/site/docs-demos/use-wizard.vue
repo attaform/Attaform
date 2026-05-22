@@ -51,8 +51,10 @@
           current: wizard.current === form.key,
         }"
       >
-        <span class="step-num">{{ i + 1 }}</span>
-        <span class="step-label">{{ form.key.replace('docs-demo-wizard-', '') }}</span>
+        <button type="button" class="step-button" @click="wizard.goTo(form.key)">
+          <span class="step-num">{{ i + 1 }}</span>
+          <span class="step-label">{{ form.key.replace('docs-demo-wizard-', '') }}</span>
+        </button>
       </li>
     </ol>
 
@@ -150,21 +152,38 @@
   .rail li {
     flex: 1;
     display: flex;
+  }
+  .step-button {
+    flex: 1;
+    display: flex;
     align-items: center;
     gap: 0.375rem;
     padding: 0.375rem 0.5rem;
     background: #f3f4f6;
+    border: 0;
     border-radius: 0.375rem;
     font-size: 0.75rem;
+    font-weight: 400;
     color: #6b7280;
     text-transform: capitalize;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: filter 120ms ease;
   }
-  .rail li.current {
+  .step-button:hover {
+    filter: brightness(0.95);
+  }
+  .step-button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+  .rail li.current .step-button {
     background: #dbeafe;
     color: #1e40af;
     font-weight: 500;
   }
-  .rail li.done {
+  .rail li.done .step-button {
     background: #ecfdf5;
     color: #047857;
   }

@@ -76,15 +76,20 @@ describe('derivedBlankErrors — insertion-order stability across DU reshape', (
     apps.push(app)
     await waitUntil(() => (api.blankPaths.value.size >= 2 ? true : null))
 
-    const initialBlanks = [...api.blankPaths.value]
+    // `blankPaths.value` yields Path arrays; join each into the dotted
+    // form for a readable order-equality assertion. The semantic check
+    // is insertion order, not the value representation.
+    const initialBlanks = [...api.blankPaths.value].map((p) => p.join('.'))
     expect(initialBlanks).toEqual(['notify.n', 'age'])
 
     api.setValue('notify', { kind: 'num', n: 0 })
     await waitUntil(() =>
-      [...api.blankPaths.value].join('|') === initialBlanks.join('|') ? true : null
+      [...api.blankPaths.value].map((p) => p.join('.')).join('|') === initialBlanks.join('|')
+        ? true
+        : null
     )
 
-    const afterReshapeBlanks = [...api.blankPaths.value]
+    const afterReshapeBlanks = [...api.blankPaths.value].map((p) => p.join('.'))
     expect(afterReshapeBlanks).toEqual(initialBlanks)
   })
 

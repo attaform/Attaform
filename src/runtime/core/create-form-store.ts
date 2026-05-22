@@ -18,6 +18,7 @@ import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from '
 import { AttaformErrorCode } from './error-codes'
 import {
   canonicalizePath,
+  coerceToPathKey,
   FORM_ERRORS_PATH,
   FORM_ERRORS_PATH_KEY,
   segmentsForPathKey,
@@ -1382,13 +1383,27 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // un-clear actions. Hydration takes precedence over `initialBlankPaths`
   // (the SSR snapshot wins when present), matching how the hydrated
   // `form` value overrides the schema's getDefaultValues result.
+  //
+  // The I/O boundary accepts strings in either shape:
+  //
+  //  - dotted-string paths (`'user.email'`) — what the public path
+  //    notation looks like, also what persistence writes to disk
+  //    (`buildPersistedPayload` converts via `pathKeyToDotted`);
+  //  - already-canonical `PathKey` strings (`'["user","email"]'`) —
+  //    what the construction-time unset walker emits and what the rest
+  //    of the runtime keys on.
+  //
+  // `coerceToPathKey` normalises both shapes to a canonical `PathKey`
+  // so the live Set is uniformly keyed regardless of which seed source
+  // (walker, SSR hydration payload, persisted draft) supplied the entry.
   const initialTransientList: ReadonlyArray<string> =
     hydration?.blankPaths ?? options.initialBlankPaths ?? []
   const blankPaths = reactive(new Set<PathKey>()) as Set<PathKey>
   const originalBlankPaths = new Set<PathKey>()
   for (const raw of initialTransientList) {
-    blankPaths.add(raw as PathKey)
-    originalBlankPaths.add(raw as PathKey)
+    const key = coerceToPathKey(raw)
+    blankPaths.add(key)
+    originalBlankPaths.add(key)
   }
 
   // Per-form variant memory. On a discriminated-union switch the

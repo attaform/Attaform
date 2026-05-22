@@ -3274,6 +3274,46 @@ export type FormMeta<F = unknown> = FieldState<F> & {
  * For schemas without write-boundary wrappers or transforms the three
  * shapes coincide.
  */
+
+/**
+ * Read-only view returned by `form.blankPaths.value`. Exposes lookup
+ * (`.has`), aggregate (`.size`), and iteration over the form's
+ * blank-marked paths.
+ *
+ * `.has(input)` and the iterator yield consistent results across both
+ * input conventions the library accepts everywhere a path is named:
+ *
+ *  - **Dotted string**: `'user.email'`, matching what `register('user.email')`
+ *    or `setValue('items.0.sku', …)` accept. Convenient when no segment
+ *    contains a literal dot.
+ *  - **Array form**: `['user', 'email']`, mirroring `register(['user', 'email'])`.
+ *    Required when a single segment contains literal dots (e.g.
+ *    `['address.primary']` for a top-level key named `address.primary` —
+ *    the dotted form `'address.primary'` would be parsed as two
+ *    segments).
+ *
+ * Iteration yields `Path` arrays so the structure is unambiguous —
+ * consumers building debug UI or persisting the set never have to guess
+ * whether a dot in a segment is a separator or part of the name.
+ *
+ * Mutating the view does nothing — writes still go through
+ * `setValue(path, unset)`, `markBlank()` on a register binding, or the
+ * directive's input listener on numeric clear.
+ */
+export interface BlankPathsView {
+  /** Number of blank-marked paths. */
+  readonly size: number
+  /**
+   * `true` when the path is in the blank set. Accepts dotted-string
+   * form (parsed by [[parseDottedPath]]) or the array form.
+   */
+  has(input: string | Path): boolean
+  /** Snapshot of all blank-marked paths as segment arrays. */
+  values(): readonly Path[]
+  /** Iterates the blank-marked paths as segment arrays. */
+  [Symbol.iterator](): IterableIterator<Path>
+}
+
 export type UseFormReturnType<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,
@@ -4016,25 +4056,28 @@ export type UseFormReturnType<
     value: ArrayItem<Form, Path>
   ) => void
   /**
-   * Read-only view of the form's blank path set. Each entry
-   * is a canonical `PathKey` (the `JSON.stringify(segments)` form
-   * `canonicalizePath` produces). The set is reactive — Vue 3.5
-   * tracks `.has()` / `for..of` / size accesses, so consumers can
-   * drive conditional UI off it directly:
+   * Read-only view of the form's blank path set. Reactive — Vue 3.5
+   * tracks `.has()` / `for..of` / size accesses, so consumers can drive
+   * conditional UI off it directly:
    *
    * ```ts
    * watchEffect(() => {
    *   if (form.blankPaths.value.size > 0) {
-   *     console.warn('unanswered fields:', [...form.blankPaths.value])
+   *     const paths = [...form.blankPaths.value]   // Path[][] — array of segments per entry
+   *     console.warn('unanswered fields:', paths.map((p) => p.join('.')))
    *   }
    * })
    * ```
    *
+   * `.has(input)` accepts the dotted-string form (`'user.email'`) or
+   * the array form (`['user', 'email']`). The array form disambiguates
+   * keys with literal dots (e.g. `['address.primary']`). See
+   * [[BlankPathsView]] for the full surface.
+   *
    * For per-path access, use `form.fields.<path>.blank`.
    * Writes happen through `setValue(path, unset)`,
    * `markBlank()` on a register binding, and the directive's
-   * input listener on numeric clear. Mutating the snapshot returned
-   * here does nothing — it's `Object.freeze`-d.
+   * input listener on numeric clear.
    */
-  blankPaths: ComputedRef<ReadonlySet<string>>
+  blankPaths: ComputedRef<BlankPathsView>
 }

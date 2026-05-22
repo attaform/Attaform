@@ -83,7 +83,7 @@ describe('age: unset on z.number() — initial render shows blank input', () => 
   it('age path is in blankPaths immediately after mount', () => {
     const { app, form } = mountAgeInput()
     apps.push(app)
-    expect(form.blankPaths.value).toContain('age')
+    expect(form.blankPaths.value.has('age')).toBe(true)
     expect(form.values.age).toBe(0)
   })
 
@@ -108,7 +108,7 @@ describe('age: unset on z.number() — initial render shows blank input', () => 
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (form.values.age === 7 ? true : null))
     expect(form.values.age).toBe(7)
-    expect(form.blankPaths.value).not.toContain('age')
+    expect(form.blankPaths.value.has('age')).toBe(false)
     expect(input.value).toBe('7')
   })
 })

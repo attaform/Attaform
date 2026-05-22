@@ -15,7 +15,7 @@ import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { AttaformErrorCode } from './error-codes'
 import { SubmitErrorHandlerError } from './errors'
-import { canonicalizePath, segmentsForPathKey, type Path } from './paths'
+import { canonicalizePath, segmentsForPathKey, type Path, type Segment } from './paths'
 
 /**
  * Tracks FormStores for which we've already emitted the
@@ -55,7 +55,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   formInstanceId: string,
   options: BuildProcessFormOptions = {}
 ) {
-  const invalidPolicy: OnInvalidSubmitPolicy = options.onInvalidSubmit ?? 'none'
+  const invalidPolicy: OnInvalidSubmitPolicy = options.onInvalidSubmit ?? 'focus-first-error'
 
   function validate(pathInput?: string | Path): Readonly<Ref<ReactiveValidationStatus<F>>> {
     // Start in a pending state — the first async run has not settled yet.
@@ -159,6 +159,13 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    * each call runs validation once against the current form snapshot.
    * Used by consumers who want to `await` a single validation run — the
    * debounced field-level path in 5.7, server-side round-trips, tests.
+   *
+   * Cancels any in-flight per-field validation (mirroring `handleSubmit`)
+   * so a late SFV resolution can't clobber this call's authoritative
+   * result, and writes the parsed refinement back to `schemaErrors` at
+   * the validated scope — `await validateAsync(path)` therefore lands
+   * a deterministic view of `form.errors.<path>` regardless of the
+   * background SFV race.
    */
   async function validateAsync(
     pathInput?: string | Path
@@ -176,7 +183,28 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     // exception into UI code.
     try {
       state.activeValidations.value += 1
+      // Abort any in-flight per-field validation runs so their late
+      // writes can't clobber the authoritative imperative result.
+      // Mirrors handleSubmit's pre-validate cancellation.
+      state.cancelFieldValidation()
       const refinement = await runRefinementValidation(dataAtPath, segments)
+      // Commit the refinement to schemaErrors at the validated scope.
+      // The adapter emits issue paths relative to the sub-schema it
+      // parsed (`[]` for a leaf; whole-form pass emits absolute paths
+      // already), so re-stamp with `segments` to land at canonical
+      // store keys. `applySchemaErrorsForSubtree` replaces every key
+      // under the scope so stale entries drop and current ones
+      // survive in their original insertion slots.
+      const scopePath: Path = segments ?? []
+      const errors = refinement.success ? [] : refinement.errors
+      const reStamped =
+        segments === undefined
+          ? errors
+          : errors.map((err) => ({
+              ...err,
+              path: [...segments, ...(err.path as Segment[])],
+            }))
+      state.applySchemaErrorsForSubtree(scopePath, reStamped)
       return stripData(composeWithDerivedBlank(refinement, segments))
     } catch (err) {
       return adapterThrowResponse(err)
@@ -299,7 +327,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    *
    * Drives the submission-lifecycle refs on FormStore:
    *   - `submitting` flips true at entry, false in `finally`.
-   *   - `submitCount` increments once per call, regardless of outcome —
+   *   - `submissionAttempts` increments once per call, regardless of outcome —
    *     "how many times did the user click submit" is the consumer-facing
    *     question, independent of whether anything awaited.
    *   - `submitError` clears at entry and captures anything thrown from
@@ -410,6 +438,14 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           state.clearSchemaErrors()
         }
         await onSubmit(merged.data)
+        // Flip `submitted` true once the user callback resolved
+        // without throwing — independent of `submissionAttempts`.
+        // Generation guard: a `reset()` that fired during the await
+        // already zeroed the submission surface; honor the consumer's
+        // intent by leaving `submitted` at the post-reset `false`.
+        if (state.submissionGeneration.value === genAtEntry) {
+          state.submitted.value = true
+        }
         // Notify subscribers (persistence's clear-on-success handler,
         // future hooks). Fires only when the user callback resolved —
         // validation-failure and callback-throw skip it.
@@ -433,14 +469,14 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         state.activeSubmissions.value = Math.max(0, state.activeSubmissions.value - 1)
         // `activeSubmissions` always decrements (the submission is done),
         // but the *visible* lifecycle counters — `submitting` and
-        // `submitCount` — only update when the submission's generation
+        // `submissionAttempts` — only update when the submission's generation
         // still matches. A post-reset completion is a no-op from the
         // consumer's point of view: reset already flipped `submitting`
-        // to false and zeroed `submitCount`, and the finished submission
+        // to false and zeroed `submissionAttempts`, and the finished submission
         // belongs to the prior generation.
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitting.value = state.activeSubmissions.value > 0
-          state.submitCount.value += 1
+          state.submissionAttempts.value += 1
         }
       }
     }
@@ -522,7 +558,7 @@ function pathStartsWith(target: Path, prefix: Path): boolean {
   return true
 }
 
-function applyInvalidSubmitPolicy<F extends GenericForm>(
+export function applyInvalidSubmitPolicy<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   formInstanceId: string,
   policy: OnInvalidSubmitPolicy

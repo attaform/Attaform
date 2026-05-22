@@ -73,9 +73,7 @@ describe('text input — numeric path', () => {
     expect(api.values.age).toBe(25)
   })
 
-  it('empty string passes through; gate rejects (no silent zero)', async () => {
-    // Suppress the gate's dev-warn so test output stays clean.
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('empty string routes through markBlank (slim default + blank meta)', async () => {
     const { api, root } = mount(schema, { age: 5, note: '' }, (api) => {
       const rv = api.register('age')
       return h('div', null, [
@@ -86,12 +84,17 @@ describe('text input — numeric path', () => {
     const input = root.querySelector('[data-field="age"]') as HTMLInputElement
     input.value = ''
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    // No predicate change is possible since the gate rejects — wait for the
-    // post-input microtask to finish via a benign tick.
     await waitUntil(() => (input.value === '' ? true : null))
-    // Empty string is NOT coerced to 0; it passes through and the
-    // gate rejects → state preserves the original 5.
-    expect(api.values.age).toBe(5)
+    // The path doesn't admit string — instead of letting the empty
+    // string hit the assigner (where the gate would reject and the
+    // post-write force-sync would snap the DOM back to '5'), the
+    // directive routes through `markBlank`: storage lands on the slim
+    // default (0 for z.number()) and the blank meta is staged so
+    // submit-time validation surfaces "Required" instead of letting 0
+    // pass as a real user input.
+    expect(api.values.age).toBe(0)
+    expect(api.blankPaths.value.has('age')).toBe(true)
+    expect(input.value).toBe('')
   })
 })
 

@@ -24,7 +24,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  *   └─────────────────────────────────────────────────────────┘
  *
  *   ┌─ Lives on `api.meta` ───────────────────────────────────┐
- *   │  dirty, valid, submitting, submitCount, submitError,    │
+ *   │  dirty, valid, submitting, submissionAttempts, submitError,    │
  *   │  showErrors, firstError, …                              │
  *   └─────────────────────────────────────────────────────────┘
  *
@@ -135,7 +135,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.meta.dirty).toBe('boolean')
     expect(typeof api.meta.valid).toBe('boolean')
     expect(typeof api.meta.submitting).toBe('boolean')
-    expect(typeof api.meta.submitCount).toBe('number')
+    expect(typeof api.meta.submissionAttempts).toBe('number')
 
     // showErrors / firstError landed in PR #186.
     expect(typeof api.meta.showErrors).toBe('boolean')
@@ -148,8 +148,8 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     void api.valid
     // @ts-expect-error api.submitting must NOT exist; use api.meta.submitting
     void api.submitting
-    // @ts-expect-error api.submitCount must NOT exist; use api.meta.submitCount
-    void api.submitCount
+    // @ts-expect-error api.submissionAttempts must NOT exist; use api.meta.submissionAttempts
+    void api.submissionAttempts
   })
 
   it('field accessors live directly on `api`', () => {
@@ -275,7 +275,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handleA: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handleA.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handleA.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -315,7 +320,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handle.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -367,7 +377,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handle.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -413,6 +428,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
         handle.api = useForm({
           schema: secretSchema,
           key: formKey,
+          multiTab: true,
           defaultValues: { name: '', password: '' },
         }) as SecretApi
         return () => h('div')
@@ -459,7 +475,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        handle.api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         return () => h('div')
       },
     })
@@ -601,7 +622,12 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const handle: { api?: Api } = {}
     const App = defineComponent({
       setup() {
-        const api = useForm({ schema, key: formKey, defaultValues: { name: '', email: '' } })
+        const api = useForm({
+          schema,
+          key: formKey,
+          multiTab: true,
+          defaultValues: { name: '', email: '' },
+        })
         handle.api = api
         return () =>
           h('div', [
@@ -706,7 +732,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
     expect(api.values.name).toBe('local-typed')
 
     // Wipe storage to a sentinel, then push a sibling-driven write.
-    const sentinel = JSON.stringify({ v: 4, data: { form: { name: 'sentinel' } } })
+    const sentinel = JSON.stringify({ v: 5, data: { form: { name: 'sentinel' } } })
     localStorage.setItem(persistKey, sentinel)
 
     const external = new BroadcastChannel(channelName)
@@ -761,6 +787,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
         handle.api = useForm({
           schema: medSchema,
           key: formKey,
+          multiTab: true,
           defaultValues: { name: '', mrn: '' },
         }) as MedApi
         return () => h('div')

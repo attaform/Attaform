@@ -16,6 +16,17 @@ export type SchemaForFill = {
    * See `AbstractSchema.arrayShapeAtPath` for the full contract.
    */
   arrayShapeAtPath(path: Path): number | null | undefined
+  /**
+   * Slim primitive set at `path`. Used by `mergeStructural` to
+   * distinguish "consumer omitted this key from a partial" (fill from
+   * schema default) from "consumer explicitly wrote undefined into a
+   * path that admits undefined" (preserve undefined). Returns `null`
+   * when the adapter can't introspect — callers fall back to the
+   * legacy fill-with-default behavior.
+   * See `AbstractSchema.getSlimPrimitiveTypesAtPath` for the full
+   * contract.
+   */
+  getSlimPrimitiveTypesAtPath?: (path: Path) => ReadonlySet<string>
 }
 
 /**
@@ -256,7 +267,21 @@ function mergeStructuralImpl(
   // Consumer is missing — fall back to the schema default. When the
   // schema default itself is `undefined` (path doesn't exist in the
   // schema), the result is `undefined` and we don't fight it.
-  if (consumer === undefined) return defaultValue
+  //
+  // Exception: when the schema's slim primitive set at this path
+  // admits `undefined` (e.g. `.optional()`), an explicit consumer
+  // undefined IS the intended value — preserve it. Otherwise the
+  // directive's optional-clear write (the user emptied an
+  // `.optional()` input) would get substituted with whatever the
+  // structural wrappers' default resolves to (`null` for
+  // `.nullable().optional()`), defeating the schema-aware DOM-clear
+  // mapping.
+  if (consumer === undefined) {
+    if (schema.getSlimPrimitiveTypesAtPath?.(scratch).has('undefined') === true) {
+      return undefined
+    }
+    return defaultValue
+  }
 
   // Null wins: deliberate consumer signal. Schema-validation catches
   // null-vs-non-nullable; runtime doesn't override consumer intent.
@@ -312,9 +337,13 @@ function mergeStructuralImpl(
     }
     let mutated = false
     const out: Record<string, unknown> = { ...consumer }
-    // Fill schema-default keys missing from consumer.
+    // Fill schema-default keys that are MISSING from consumer (key
+    // not present at all). An explicit `consumer[key] = undefined`
+    // means the consumer named the slot empty on purpose — distinct
+    // from omitting the key — and the schema default doesn't override
+    // it.
     for (const key of Object.keys(defaultValue)) {
-      if (!(key in consumer) || consumer[key] === undefined) {
+      if (!(key in consumer)) {
         const defAtKey = defaultValue[key]
         // Recurse so that filling produces a structurally-complete
         // sub-tree (covers nested-object defaults that themselves
@@ -328,12 +357,19 @@ function mergeStructuralImpl(
         }
       }
     }
-    // Recurse into consumer-supplied keys to catch nested gaps.
+    // Recurse into consumer-supplied keys to catch nested gaps. Skip
+    // keys whose consumer value is `undefined` — the spread above
+    // already kept them, and recursing would re-fill from the
+    // schema default (mergeStructuralImpl's leaf branch returns the
+    // default for an undefined consumer), erasing the consumer's
+    // explicit empty.
     for (const key of Object.keys(consumer)) {
+      const cVal = consumer[key]
+      if (cVal === undefined) continue
       scratch.push(key)
-      const merged = mergeStructuralImpl(schema, scratch, consumer[key], defaultValue[key])
+      const merged = mergeStructuralImpl(schema, scratch, cVal, defaultValue[key])
       scratch.pop()
-      if (merged !== consumer[key]) {
+      if (merged !== cVal) {
         out[key] = merged
         mutated = true
       }

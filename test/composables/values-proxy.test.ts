@@ -230,7 +230,7 @@ describe('form.errors — readonly proxy over the form error map', () => {
       ])
       expect(api.errors.email).toHaveLength(1)
       expect(api.errors.email?.[0]?.message).toBe('taken')
-      expect(api.errors.age).toBeUndefined()
+      expect(api.errors.age).toEqual([])
     } finally {
       unmount()
     }

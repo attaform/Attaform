@@ -24,6 +24,15 @@
   const props = withDefaults(
     defineProps<{
       height?: string
+      // Overrides the editor's seed source. Forwarded to
+      // `<DemoReplEditor>`. Undefined means "use the default shipment
+      // demo" — the original homepage + freeform-playground behaviour.
+      initialSource?: string
+      // Multi-file seed: `{ 'src/App.vue': '<source>', 'src/Foo.vue': ... }`.
+      // Wins over `initialSource` when both are provided. The editor
+      // store seeds all entries verbatim; the file at `src/App.vue`
+      // is the entry point.
+      initialFiles?: Record<string, string>
     }>(),
     { height: '37.5rem' }
   )
@@ -47,57 +56,74 @@
 
 <template>
   <div
-    class="demo-repl relative overflow-hidden rounded-xl border bg-bg shadow-sm"
+    class="demo-repl relative flex flex-col overflow-hidden rounded-xl border bg-bg shadow-sm"
     :style="{ height: props.height }"
   >
-    <!-- Skeleton: SSR-rendered, mirrors the editor's geometry so the
-         page lays out identically before and after the swap.
-         File-tab strip on top (35px = @vue/repl's `--header-height`),
-         then a 50/50 horizontal split: code pane on the left (with
-         code-line-shaped bones), preview pane on the right (with its
-         own header strip + body). Hidden once the real editor lands;
-         until then it pulses gently to signal "loading" rather than
-         "broken." -->
-    <div
-      v-if="!showEditor"
-      class="absolute inset-0 flex flex-col"
-      aria-hidden="true"
-      data-testid="demo-repl-skeleton"
-    >
-      <!-- File-tab strip -->
-      <div class="flex h-[2.1875rem] items-center gap-3 border-b border-border bg-surface/40 px-3">
-        <div class="h-3 w-16 rounded-sm bg-fg-subtle/15"></div>
-      </div>
-      <!-- Body: code on left, preview on right, 50/50 -->
-      <div class="flex flex-1 min-h-0">
-        <div class="flex flex-1 flex-col gap-2 border-r border-border bg-surface/20 p-4">
-          <div class="h-3 w-3/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-2/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-3/4 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-1/3 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-1/2 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-2/3 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-1/4 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-3/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-2/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-          <div class="h-3 w-1/2 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
-        </div>
-        <div class="flex flex-1 flex-col">
-          <!-- Preview-side header strip (mirrors the renamed "Preview" tab) -->
-          <div
-            class="flex h-[2.1875rem] items-center gap-3 border-b border-border bg-surface/40 px-3"
-          >
-            <div class="h-3 w-12 rounded-sm bg-fg-subtle/15"></div>
-          </div>
-          <div class="flex-1 bg-surface/10"></div>
-        </div>
-      </div>
-    </div>
+    <!-- Multi-file hint: tells visitors who click the "+" file-add
+         button how cross-file imports resolve. Sits above the editor
+         chrome so it never competes with the file-tab strip for
+         horizontal space. -->
+    <p class="shrink-0 border-b border-border bg-surface/60 px-3 py-1.5 text-xs text-fg-subtle">
+      Files share one folder. Import siblings as
+      <code class="font-mono text-fg-muted">./Filename.vue</code>.
+    </p>
 
-    <!-- The real editor. `.client.vue` so it never appears in SSR
-         markup; `v-if` defers its mount until two ticks past
-         hydration, so its Sandbox iframe installs into a settled DOM. -->
-    <DemoReplEditor v-if="showEditor" />
+    <div class="relative min-h-0 flex-1">
+      <!-- Skeleton: SSR-rendered, mirrors the editor's geometry so the
+           page lays out identically before and after the swap.
+           File-tab strip on top (35px = @vue/repl's `--header-height`),
+           then a 50/50 horizontal split: code pane on the left (with
+           code-line-shaped bones), preview pane on the right (with its
+           own header strip + body). Hidden once the real editor lands;
+           until then it pulses gently to signal "loading" rather than
+           "broken." -->
+      <div
+        v-if="!showEditor"
+        class="absolute inset-0 flex flex-col"
+        aria-hidden="true"
+        data-testid="demo-repl-skeleton"
+      >
+        <!-- File-tab strip -->
+        <div
+          class="flex h-[2.1875rem] items-center gap-3 border-b border-border bg-surface/40 px-3"
+        >
+          <div class="h-3 w-16 rounded-sm bg-fg-subtle/15"></div>
+        </div>
+        <!-- Body: code on left, preview on right, 50/50 -->
+        <div class="flex flex-1 min-h-0">
+          <div class="flex flex-1 flex-col gap-2 border-r border-border bg-surface/20 p-4">
+            <div class="h-3 w-3/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-2/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-3/4 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-1/3 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-1/2 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-2/3 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-1/4 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-3/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-2/5 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+            <div class="h-3 w-1/2 rounded-sm bg-fg-subtle/15 motion-safe:animate-pulse"></div>
+          </div>
+          <div class="flex flex-1 flex-col">
+            <!-- Preview-side header strip (mirrors the renamed "Preview" tab) -->
+            <div
+              class="flex h-[2.1875rem] items-center gap-3 border-b border-border bg-surface/40 px-3"
+            >
+              <div class="h-3 w-12 rounded-sm bg-fg-subtle/15"></div>
+            </div>
+            <div class="flex-1 bg-surface/10"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- The real editor. `.client.vue` so it never appears in SSR
+           markup; `v-if` defers its mount until two ticks past
+           hydration, so its Sandbox iframe installs into a settled DOM. -->
+      <DemoReplEditor
+        v-if="showEditor"
+        :initial-source="props.initialSource"
+        :initial-files="props.initialFiles"
+      />
+    </div>
   </div>
 </template>
 
@@ -134,15 +160,11 @@
     transition-delay: 0ms;
   }
 
-  /* Hide the file-add "+" button. The :show-import-map / :show-tsconfig
-     props already drop those two right-aligned tabs, but @vue/repl
-     renders the "+" button unconditionally — there's no prop for it.
-     Keeping the demo single-file makes the example self-contained:
-     a visitor can't accidentally land in an empty Comp.vue tab and
-     get confused about whether the demo is broken. */
-  .demo-repl .file-selector .add {
-    display: none;
-  }
+  /* Multi-file support: @vue/repl's "+" button (`.file-selector .add`)
+     is left visible so visitors can add siblings to the seed file. The
+     hint banner above the editor (in the template above) explains how
+     cross-file imports resolve. No CSS gate here; we just want the
+     "+" affordance to ship. */
 
   /* @vue/repl renders the lone "preview" tab as <span>preview</span>
      and uppercases it via `text-transform: uppercase`. Overriding to
@@ -151,5 +173,21 @@
      on the button, sized off the span's content width) intact. */
   .demo-repl .tab-buttons button > span {
     text-transform: capitalize;
+  }
+
+  /* @vue/repl's EditorContainer.vue mounts a `<div class="editor-
+     floating">` in the bottom-right of the editor pane that hosts the
+     "Show Error" + "Auto Save" toggle buttons. `DemoReplEditor.client
+     .vue` already passes `showErrorText: false` + `autoSaveText:
+     false` to suppress the BUTTONS, but the wrapping `<div>` still
+     renders (empty, just two `<!---->` placeholders). The wrapper is
+     `position: absolute` so it stays in the layout and visually
+     occludes the bottom-right corner of the editor pane — overlapping
+     the code area and intercepting clicks meant for the editor.
+     Hiding the empty wrapper restores the corner without affecting
+     anything else (the underlying buttons are already gone via the
+     editorOptions flags). */
+  .demo-repl .editor-floating:empty {
+    display: none;
   }
 </style>

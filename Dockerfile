@@ -30,6 +30,8 @@ COPY . .
 
 # Long-running idle container; `make up` runs the dev server via
 # `docker compose exec`. Source is bind-mounted at runtime, the
-# node_modules paths are anonymous volumes seeded from this image's
-# install above.
+# node_modules paths are NAMED volumes (see docker-compose.yml's
+# `attaform_*_node_modules`) seeded from this image's install above
+# on first mount, then reused across every `make up`/`make down`
+# cycle without orphaning.
 CMD ["sh", "-c", "tail -f /dev/null"]

@@ -46,22 +46,32 @@ export { injectForm } from './runtime/composables/use-form-context'
 // Multistep-form orchestrator. Composes existing `useForm` instances
 // into a wizard with navigation, status aggregation, and activation
 // lifecycle. See the composable's docblock for invariants.
-export { useStepper } from './runtime/composables/use-stepper'
+export { useWizard } from './runtime/composables/use-wizard'
+export { injectWizard } from './runtime/composables/inject-wizard'
+export type { InjectWizardInput } from './runtime/composables/inject-wizard'
 export type {
   AnyForm,
-  FormKeyOf,
-  KeysOf,
-  StepperNavOptions,
-  StepperOptions,
-  UseStepperReturnType,
-} from './runtime/types/types-stepper'
+  NextBranching,
+  NextOption,
+  NormalizedNext,
+  WizardFlow,
+  WizardNavOptions,
+  WizardOnError,
+  WizardOnSubmit,
+  WizardOptions,
+  WizardSubmitContext,
+  WizardValue,
+  UseWizardReturnType,
+  WizardTreeNode,
+  WizardWarning,
+  WizardWarningKind,
+} from './runtime/types/types-wizard'
 
 // Ambient bridge for components that wrap a single field and want to
-// re-bind v-register onto an inner native element. See the
-// `useRegister` section in `docs/api.md` for the wrapper-component
-// pattern; for compound components reaching multiple fields, prefer
-// `injectForm`.
+// re-bind v-register onto an inner native element. For wrappers that
+// bind multiple fields (compound forms), prefer `injectForm`.
 export { useRegister } from './runtime/composables/use-register'
+export type { UseRegisterReturn } from './runtime/composables/use-register'
 
 // The v-register directive (registered automatically by createAttaform,
 // but exported for advanced consumers who install directives themselves).

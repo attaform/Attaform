@@ -1,5 +1,6 @@
 import type { App } from 'vue'
 import type { FormKey } from '../types/types-api'
+import { pathKeyToDotted, type PathKey } from './paths'
 import { getRegistryFromApp, type SerializedFormData } from './registry'
 
 /**
@@ -43,8 +44,14 @@ export function renderAttaformState(app: App): SerializedAttaformState {
     // Skip the blank field when the set is empty so the
     // wire payload stays minimal for forms that don't use it. The
     // optional shape on the consuming side handles the absence
-    // cleanly (defaults to "no blank paths").
-    const transientList = Array.from(state.blankPaths)
+    // cleanly (defaults to "no blank paths"). PathKey → dotted at
+    // the boundary so the wire shape matches the rest of the
+    // public path notation.
+    const transientList: string[] = []
+    for (const pk of state.blankPaths) {
+      const d = pathKeyToDotted(pk as PathKey)
+      if (d !== null) transientList.push(d)
+    }
     forms.push([
       key,
       {

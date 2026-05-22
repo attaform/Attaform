@@ -438,30 +438,31 @@ const transformSchema = z.object({
 })
 
 describe('preprocess / transform — write-boundary vs parse-time semantics', () => {
-  it('z.preprocess(fn, z.string()) — type peels to inner-schema input', () => {
+  it('z.preprocess(fn, z.string()) — type collapses to unknown (input contract)', () => {
     type Form = UseFormReturn<typeof preprocessSchema>
     const formT = makeFormProxy<Form>()
-    expectTypeOf(formT.values.trimmed).toEqualTypeOf<string>()
+    expectTypeOf(formT.values.trimmed).toEqualTypeOf<unknown>()
   })
 
-  it('z.preprocess(fn, z.string()) — storage holds the inner-schema falsy, not undefined', () => {
+  it('z.preprocess(fn, z.string()) — mount storage defaults to undefined', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: preprocessSchema, key: uniqueKey('pre-synth') })
     )
     try {
-      expect(api.values.trimmed).toBe('')
-      expect(typeof api.values.trimmed).toBe('string')
+      // The write boundary is `unknown`, so the runtime can't honestly
+      // synthesise a default. The slot waits for `defaultValues` or a
+      // `setValue` instead.
+      expect(api.values.trimmed).toBeUndefined()
     } finally {
       unmount()
     }
   })
 
-  // RED today: preprocess throwing on a write leaves the field at
-  // `undefined` (or whatever the throw policy is). POST-FIX, the
-  // field falls back to a "reasonable value" — concrete sub-policy
-  // (inner-falsy vs prior-value) settled when the implementation
-  // lands. The narrow guarantee this probe pins: NEVER undefined.
-  it('preprocess failure on write does not strand the field at undefined', () => {
+  // Under the no-write-mutation contract, `z.preprocess` never runs at
+  // the write boundary — so a throwing preprocess fn can't blow up
+  // `setValue`. The probe anchors that the consumer's raw write lands
+  // intact regardless of the fn's behaviour at parse time.
+  it('preprocess throws never reach the write boundary; storage retains raw input', () => {
     const throwyPreprocess = z.object({
       v: z.preprocess(() => {
         throw new Error('preprocess refused')
@@ -471,17 +472,11 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
       useForm({ schema: throwyPreprocess, key: uniqueKey('pre-throw') })
     )
     try {
-      // Pre-write: synthesis path holds (inner falsy).
-      expect(api.values.v).toBe('')
-      // Write attempt that triggers the throw.
-      try {
-        api.setValue('v', 'anything')
-      } catch {
-        // Throw policy at the write boundary is open; the probe only
-        // pins the resulting storage state.
-      }
-      expect(api.values.v).not.toBeUndefined()
-      expect(typeof api.values.v).toBe('string')
+      expect(api.values.v).toBeUndefined()
+      // setValue runs without invoking the preprocess fn. Raw 'anything'
+      // lands in storage; the throw would only surface at safeParse time.
+      api.setValue('v', 'anything')
+      expect(api.values.v).toBe('anything')
     } finally {
       unmount()
     }
@@ -526,10 +521,12 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
     expectTypeOf(formT.values.meta.retries).toEqualTypeOf<number>()
   })
 
-  // Same precision when the carrier is a preprocess instead of a
-  // transform — both pipe shapes route through StorageShape on the
-  // non-transform side.
-  it('z.preprocess(fn, z.object({…})) — inner defaulted leaf peels to T', () => {
+  // Preprocess wrapping a container collapses the whole subtree to
+  // `unknown` at the type level — the write boundary accepts the
+  // consumer's raw input, so the read view can't promise inner-key
+  // peeling. This is the deliberate asymmetry with `.transform()`
+  // (case above), where the input side stays typed.
+  it('z.preprocess(fn, z.object({…})) — whole subtree collapses to unknown', () => {
     const _schema = z.object({
       meta: z.preprocess(
         (v) => v,
@@ -540,7 +537,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
     })
     type Form = UseFormReturn<typeof _schema>
     const formT = makeFormProxy<Form>()
-    expectTypeOf(formT.values.meta.tag).toEqualTypeOf<string>()
+    expectTypeOf(formT.values.meta).toEqualTypeOf<unknown>()
   })
 })
 
@@ -746,17 +743,15 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
   // (`ErrorsProxyShape<WriteShape<ReadForm>>`). Pinning the descent
   // surfaces forces the two-pass split to keep working.
   it('errors proxy descent reaches every container path', () => {
-    expectTypeOf(formT.errors.reference).toEqualTypeOf<readonly ValidationError[] | undefined>()
-    expectTypeOf(formT.errors.pickup.city).toEqualTypeOf<readonly ValidationError[] | undefined>()
+    expectTypeOf(formT.errors.reference).toEqualTypeOf<readonly ValidationError[]>()
+    expectTypeOf(formT.errors.pickup.city).toEqualTypeOf<readonly ValidationError[]>()
     expectTypeOf(formT.errors.cargo.items).toBeObject()
     expectTypeOf(formT.errors.notes).toEqualTypeOf<readonly ValidationError[] | undefined>()
   })
 
   it('errors callable form returns a ValidationError list at a known path', () => {
-    expectTypeOf(formT.errors(['pickup', 'city'])).toEqualTypeOf<
-      readonly ValidationError[] | undefined
-    >()
-    expectTypeOf(formT.errors('reference')).toEqualTypeOf<readonly ValidationError[] | undefined>()
+    expectTypeOf(formT.errors(['pickup', 'city'])).toEqualTypeOf<readonly ValidationError[]>()
+    expectTypeOf(formT.errors('reference')).toEqualTypeOf<readonly ValidationError[]>()
   })
 
   // `setValue` types its `value` argument as `PathSetValuePayload<...>`,

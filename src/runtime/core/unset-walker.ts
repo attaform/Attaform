@@ -1,6 +1,5 @@
 import type { AbstractSchema } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
-import { __DEV__ } from './dev'
 import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
 import { isUnset } from './unset'
 
@@ -17,15 +16,18 @@ import { isUnset } from './unset'
  * divergence** — see `docs/recipes/blank-inputs.md` for the concept. Two sources of
  * marks, gated by that purpose:
  *
- *   1. **Explicit `unset` (any primitive leaf)** — the consumer wrote
- *      `unset` at a primitive leaf (`defaultValues: { count: unset }` /
- *      `setValue('count', unset)` / `reset({ count: unset })`). The
- *      sentinel is replaced with the schema's slim default and the
- *      path is added to the result. Explicit user intent applies
- *      across every primitive type (string / number / boolean /
- *      bigint), so the mark records "the consumer asked for blank
- *      here" regardless of whether storage and display would otherwise
- *      diverge.
+ *   1. **Explicit `unset` (any position)** — the consumer wrote
+ *      `unset` at a primitive leaf OR a container
+ *      (`defaultValues: { count: unset }` /
+ *      `defaultValues: { profile: unset }` / `setValue('cargo', unset)`).
+ *      At a primitive leaf, the sentinel is replaced with the schema's
+ *      slim default and the leaf path is marked. At a container, the
+ *      walker recurses through the schema's slim subtree and marks
+ *      every primitive descendant — `expandUnsetAt` handles the
+ *      recursion, re-checking `getUnionDiscriminatorAtPath` at every
+ *      level so nested discriminated unions stub out as
+ *      `{ <discKey>: <kind-blank> }` rather than over-marking the
+ *      first variant's body.
  *
  *   2. **Unspecified numeric leaf (auto-mark)** — the consumer's
  *      payload is partial (or omitted entirely) and the schema has a
@@ -44,14 +46,10 @@ import { isUnset } from './unset'
  *
  * Recurses into plain objects, arrays, and tuples; non-recursable
  * containers (`Date`, `RegExp`, `Map`, `Set`, functions) pass through
- * unchanged. Arrays are NOT auto-mark-recursed (their elements are
- * runtime-added; per-element opt-in via explicit `unset`).
- *
- * Runtime guard: if `unset` lands at a path whose slim default isn't
- * a primitive, emit a one-time dev-warn and recurse into the slim
- * subtree for auto-mark — the path itself is NOT marked.
- * `DefaultValuesShape<T>` blocks this at compile time; the runtime
- * check is a guardrail for plain-JS consumers and dynamic plumbing.
+ * unchanged. Arrays / tuples / records under explicit `unset` write
+ * the falsy concrete (`[]` / slim tuple / `{}`) with no per-element
+ * marks — per-element opt-in via the existing `[unset, unset]`
+ * syntax still works.
  */
 export function walkUnsetSentinels<T>(
   values: T,
@@ -77,15 +75,7 @@ function walk(
   paths: PathKey[]
 ): unknown {
   if (isUnset(input)) {
-    const slim = schema.getDefaultAtPath(segments)
-    if (!isPrimitiveOrEmpty(slim)) {
-      warnNonPrimitiveLeaf(segments, slim)
-      // Recurse into slim subtree so unspecified primitive leaves
-      // below this misused `unset` still get auto-marked.
-      return walkUnspecified(slim, segments, paths)
-    }
-    paths.push(canonicalizePath(segments).key)
-    return slim
+    return expandUnsetAt(segments, schema, paths)
   }
   // User omitted this key — fall through to walkUnspecified on the
   // schema's slim default at this path so primitive leaves get marked.
@@ -130,6 +120,7 @@ function walk(
     // schema with `user.{name, age}` marks `user.age`).
     const slim = schema.getDefaultAtPath(segments)
     const inputKeys = Object.keys(input as object)
+    const inputKeysSet = new Set(inputKeys)
     const allKeys = new Set<string>(inputKeys)
     if (
       slim !== null &&
@@ -147,6 +138,17 @@ function walk(
     let mutated = allKeys.size !== inputKeys.length
     for (const key of allKeys) {
       const orig = (input as Record<string, unknown>)[key]
+      // Explicit consumer-supplied `undefined` at a key: the consumer
+      // named the slot empty. Preserve the signal in storage instead
+      // of treating it like "key absent" and filling from the schema's
+      // slim default — distinct semantics with distinct implications
+      // for the schema-error filter (the path lands in
+      // `authoredPaths` and validation runs against undefined).
+      if (orig === undefined && inputKeysSet.has(key)) {
+        out[key] = undefined
+        mutated = true
+        continue
+      }
       const walked = walk(orig, [...segments, key], schema, paths)
       out[key] = walked
       if (walked !== orig) mutated = true
@@ -172,7 +174,7 @@ function walk(
  */
 export function walkUnspecified(slim: unknown, segments: Segment[], paths: PathKey[]): unknown {
   if (isPrimitiveOrEmpty(slim)) {
-    if (isNumericPrimitive(slim)) {
+    if (isSlimNumericPrimitive(slim)) {
       paths.push(canonicalizePath(segments).key)
     }
     return slim
@@ -242,16 +244,7 @@ function substitute(
   paths: PathKey[]
 ): unknown {
   if (isUnset(input)) {
-    const slim = schema.getDefaultAtPath(segments)
-    if (!isPrimitiveOrEmpty(slim)) {
-      // unset misuse at non-primitive leaf — match the existing
-      // walker's guardrail: warn once, write the slim default, do
-      // NOT mark the offending path.
-      warnNonPrimitiveLeaf(segments, slim)
-      return slim
-    }
-    paths.push(canonicalizePath(segments).key)
-    return slim
+    return expandUnsetAt(segments, schema, paths)
   }
   if (input === undefined || input === null) return input
   if (
@@ -294,30 +287,115 @@ function isPrimitiveOrEmpty(value: unknown): boolean {
 }
 
 /**
- * `true` when `value` is a numeric primitive — the only types where
- * storage and display diverge enough that the runtime needs the
- * `blank` side-channel to tell "user typed 0" from "user supplied
- * nothing." Strings (`''` storage = `''` display), booleans (`false`
- * storage = unchecked display), null, and undefined never auto-mark.
+ * `true` when `value` is the slim numeric primitive (`0` or `0n`).
+ * Auto-mark fires here and ONLY here: a `<input type="number">`
+ * can't render `0` as anything other than `"0"`, so the runtime
+ * records "storage holds the slim, display blank" to distinguish
+ * "user supplied nothing" from "user typed 0." Other numeric values
+ * (`10`, `42`, the schema's `.default(N)` for N ≠ 0) have no
+ * divergence — the input renders them natively — so they MUST NOT
+ * auto-mark; doing so would force the schema author's prefill to
+ * silently disappear from the rendered field even though storage
+ * holds the declared value. Strings (`''` storage = `''` display),
+ * booleans (`false` storage = unchecked display), null, and
+ * undefined never auto-mark for the same reason: no divergence to
+ * record.
  */
-function isNumericPrimitive(value: unknown): boolean {
-  const t = typeof value
-  return t === 'number' || t === 'bigint'
+function isSlimNumericPrimitive(value: unknown): boolean {
+  return value === 0 || value === 0n
 }
 
-const warnedNonPrimitivePaths: Set<string> | null = __DEV__ ? new Set<string>() : null
+/**
+ * Return the kind-appropriate blank primitive for a slim-default value
+ * sampled from the schema. `''` for strings, `0` for numbers, `0n` for
+ * bigints, `false` for booleans, `null` for nullable wrappers, and
+ * `undefined` for everything else (the wrapper-absent / opaque case).
+ *
+ * Used by the DU container branch in `expandUnsetAt` to write the
+ * stub discriminator value AND by `setValue('cargo.kind', unset)`
+ * (the discriminator-leaf direct case in `build-form-api.ts`) so
+ * both paths land the same blank shape.
+ */
+export function blankForKind(slimDefault: unknown): unknown {
+  if (typeof slimDefault === 'string') return ''
+  if (typeof slimDefault === 'number') return 0
+  if (typeof slimDefault === 'bigint') return 0n
+  if (typeof slimDefault === 'boolean') return false
+  if (slimDefault === null) return null
+  return undefined
+}
 
-function warnNonPrimitiveLeaf(segments: Segment[], slim: unknown): void {
-  if (warnedNonPrimitivePaths === null) return
-  const dotted = segments.map(String).join('.')
-  if (warnedNonPrimitivePaths.has(dotted)) return
-  warnedNonPrimitivePaths.add(dotted)
-  const slimType = slim === null ? 'null' : slim instanceof Date ? 'Date' : typeof slim
-  console.warn(
-    `[attaform] \`unset\` at "${dotted || '<root>'}" is a no-op — ` +
-      `unset only works at primitive leaves (string / number / boolean / bigint, ` +
-      `plus their optional / nullable variants), got "${slimType}". ` +
-      `The slim default was written but the path is NOT marked blank. ` +
-      `(TypeScript catches this at compile time; this warn covers plain-JS callers.)`
-  )
+/**
+ * Recursive translation of an explicit `unset` at `segments` into the
+ * cleaned storage value plus the list of paths to mark blank. Used at
+ * three callsites: the `walk()` recursor inside `walkUnsetSentinels`,
+ * the `substitute()` recursor inside `substituteUnsetSentinels`, and
+ * the `setValue(path, unset)` direct case in `build-form-api.ts`.
+ *
+ * Detection order, applied at every recursion level:
+ *
+ *   1. **Discriminated union at this path** — write the stub
+ *      `{ <discKey>: blankForKind(discSlim) }` and mark only the
+ *      discriminator path. No variant body. Checking the DU at every
+ *      level (not just the entry) keeps nested unions clean: a root
+ *      `defaultValues: unset` against a schema with nested DUs stubs
+ *      each DU it encounters rather than recursing into a first
+ *      variant's body.
+ *
+ *   2. **Primitive leaf or wrapper-absent (`undefined` / `null`)** —
+ *      write the slim and mark the path. `getEmptyValueAtPath` returns
+ *      `undefined` / `null` for `.optional()` / `.nullable()` wrappers,
+ *      so wrapper-absent values flow through this branch naturally.
+ *
+ *   3. **Opaque non-recursable leaf (`Date`, `RegExp`, `Map`, `Set`,
+ *      function)** — write the falsy concrete from the schema and
+ *      mark the path. No recursion.
+ *
+ *   4. **Array / tuple / record** — write the schema's slim concrete
+ *      (`[]` / slim tuple / `{}`) with no per-element marks.
+ *      Per-element opt-in still works via the existing `[unset, …]`
+ *      syntax handled by the surrounding `walk`/`substitute` recursion
+ *      on non-unset inputs.
+ *
+ *   5. **Bare object** — recurse into every key via `expandUnsetAt` so
+ *      DU detection re-applies at each child level.
+ */
+export function expandUnsetAt(
+  segments: readonly Segment[],
+  schema: AbstractSchema<GenericForm, GenericForm>,
+  paths: PathKey[]
+): unknown {
+  const du = schema.getUnionDiscriminatorAtPath(segments)
+  if (du !== undefined) {
+    const discPath = [...segments, du.discriminatorKey]
+    const discSlim = schema.getEmptyValueAtPath(discPath)
+    paths.push(canonicalizePath(discPath).key)
+    return { [du.discriminatorKey]: blankForKind(discSlim) }
+  }
+
+  const slim = schema.getEmptyValueAtPath(segments)
+
+  if (isPrimitiveOrEmpty(slim)) {
+    paths.push(canonicalizePath(segments).key)
+    return slim
+  }
+
+  if (
+    slim instanceof Date ||
+    slim instanceof RegExp ||
+    slim instanceof Map ||
+    slim instanceof Set ||
+    typeof slim === 'function'
+  ) {
+    paths.push(canonicalizePath(segments).key)
+    return slim
+  }
+
+  if (Array.isArray(slim)) return slim
+
+  const result: Record<string, unknown> = {}
+  for (const key of Object.keys(slim as object)) {
+    result[key] = expandUnsetAt([...segments, key], schema, paths)
+  }
+  return result
 }

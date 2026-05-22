@@ -29,6 +29,17 @@ export default defineBuildConfig({
     // (served by `attaform/vite`'s middleware) imports
     // `attaform/devtools-panel`. Dev-only — production builds never
     // load the panel.
+    //
+    // Directional contract: `input` is read-only — mkdist NEVER writes
+    // back to `src/runtime/components/`. Every artifact (the lossy
+    // `.vue` post-transform output AND the Volar-emitted `.d.vue.ts` /
+    // `.vue.d.ts` declaration stubs) lands in `outDir`. If those stubs
+    // ever materialise inside `input/`, the regression is in whatever
+    // wrote them (a Volar emit-on-save misconfig in the editor, a
+    // stale `vue-tsc` invocation without `--noEmit`, a manual file
+    // copy), not in this config. `test/source-shape.test.ts` is the
+    // standing tripwire that catches the corruption regardless of
+    // writer.
     {
       builder: 'mkdist',
       input: './src/runtime/components/',

@@ -168,7 +168,7 @@ describe('form.errors(path) — aggregation at any depth', () => {
     apps.push(app)
     seedAllErrors(api)
 
-    expect(callErrors(api)('reference')).toBeUndefined()
+    expect(callErrors(api)('reference')).toEqual([])
   })
 
   it('preserves the meta.errors ordering at every prefix', () => {

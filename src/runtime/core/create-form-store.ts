@@ -12,11 +12,13 @@ import type {
 } from '../types/types-api'
 import { resolveShouldShowErrors } from './should-show-errors'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
+import type { NormalizedNext } from '../types/types-wizard'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
 import {
   canonicalizePath,
+  coerceToPathKey,
   FORM_ERRORS_PATH,
   FORM_ERRORS_PATH_KEY,
   segmentsForPathKey,
@@ -156,7 +158,17 @@ function walkDuStubs(
   if (du !== undefined) {
     const discValue = rec[du.discriminatorKey]
     if (discValue !== undefined && !du.isVariantSelected(discValue)) {
-      if (warned !== undefined && __DEV__) {
+      // Kind-blank stub (`''` / `0` / `0n` / `false` / `null`) is the
+      // intentional "no variant selected yet" signal from
+      // `expandUnsetAt` — don't warn. The warn is for typo-style bugs
+      // where the user wrote `kind: 'BAD'` and got a stub by accident.
+      const isKindBlank =
+        discValue === '' ||
+        discValue === 0 ||
+        discValue === 0n ||
+        discValue === false ||
+        discValue === null
+      if (!isKindBlank && warned !== undefined && __DEV__) {
         const dotted = path.map((s) => String(s)).join('.') || '(root)'
         const key = `${dotted}::${String(discValue)}`
         if (!warned.has(key)) {
@@ -204,6 +216,14 @@ export type OriginalsRecord = {
 
 export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly formKey: FormKey
+  /**
+   * Normalized `next` declaration from `useForm({ next })`. Identity
+   * refs lift to a single-element `{ pick, forms }` shape so the wizard
+   * graph walker reads one uniform contract. `undefined` for terminal
+   * forms (no `next` option supplied). Static for the FormStore's
+   * lifetime — `next` is not reactive and is not cleared by `reset()`.
+   */
+  readonly next: NormalizedNext | undefined
   readonly form: Ref<F>
   readonly fields: Map<PathKey, FieldRecord>
   readonly elements: Map<PathKey, ElementRecord>
@@ -314,7 +334,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   // don't prematurely flip submitting to false when the first completes.
   readonly submitting: Ref<boolean>
   readonly activeSubmissions: Ref<number>
-  readonly submitCount: Ref<number>
+  readonly submissionAttempts: Ref<number>
+  /**
+   * `true` once a `handleSubmit` callback resolved without throwing.
+   * Independent of `submissionAttempts` — a failed submit increments
+   * attempts but leaves `submitted` at `false`. Cleared by `reset()`
+   * alongside the rest of the submission surface.
+   */
+  readonly submitted: Ref<boolean>
   readonly submitError: Ref<unknown>
 
   /**
@@ -323,12 +350,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * `useForm({ key })` call that resolves to this store — the second
    * caller sees the first caller's hydration state.
    */
-  readonly isHydrating: Ref<boolean>
+  readonly hydrating: Ref<boolean>
   /**
    * Error from the most recent function-form `defaultValues` factory.
-   * `null` when no factory has fired or the last one succeeded.
+   * Normalized to a `ValidationError` (code `atta:hydration-failed`) so the
+   * shape matches `form.errors` / `form.meta.errors` entries. `null` when
+   * no factory has fired or the last one succeeded.
    */
-  readonly hydrateError: Ref<unknown>
+  readonly hydrateError: Ref<ValidationError | null>
   /**
    * The function-form `defaultValues` factory, captured at the first
    * `useForm({ key })` call that wired this store. `undefined` for
@@ -336,41 +365,43 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly defaultValuesFactory: Ref<(() => unknown | Promise<unknown>) | undefined>
   /**
-   * `true` once `useAbstractForm`'s settle path has started running
-   * the captured factory (CSR microtask body or
-   * `onServerPrefetch`'s SSR body). Read by `useStepper`'s
-   * late-registration guard: if a stepper-claimed form has settled
-   * before the claim arrived, the defer-claim contract can't honor
-   * the privacy guarantee and we throw `StepperLateRegistrationError`.
-   */
-  readonly factorySettleStarted: Ref<boolean>
-  /**
    * `true` once the form's effective defaults have been applied —
    * sync `defaultValues` at construction, or async factory whose
-   * settle completed. Stays `false` for deferred (stepper-claimed,
-   * non-current) forms until they activate. Read by `useStepper` to
-   * decide whether seed status or live meta should surface.
+   * settle completed. Stays `false` for dormant lazy forms until they
+   * activate. Read by `useWizard` to decide whether seed status or
+   * live meta should surface.
    */
   readonly defaultsResolved: Ref<boolean>
   /**
-   * Bridge populated by `useStepper` when this form participates in a
-   * stepper. `useAbstractForm.settle` consults `shouldDefer()` before
-   * firing the captured async-defaults factory: if `true`, settle
-   * bails and registers an activation callback that fires the factory
-   * once the step becomes current. `undefined` when the form is
-   * standalone — no defer-claim, factory fires normally.
+   * `true` once the captured async factory has been kicked off (set
+   * synchronously by `activate()`, before the factory itself resolves).
+   * Distinct from `defaultsResolved`, which only flips after the factory
+   * settles. The pair lets the API surface tell "we've started" apart
+   * from "we're done."
    */
-  readonly stepperHandle: Ref<
-    | {
-        shouldDefer: () => boolean
-        registerActivation: (callback: () => void) => void
-      }
-    | undefined
-  >
+  readonly activated: Ref<boolean>
+  /**
+   * In-flight activation promise. Concurrent callers (cross-component
+   * SSR consumers, recursive factory reads, parallel `activate()`
+   * calls) receive the same promise, ensuring the factory runs once
+   * even under contention.
+   */
+  readonly activationPromise: Ref<Promise<void> | undefined>
+  /**
+   * Idempotent activation entrypoint. Fires the captured function-form
+   * `defaultValues` factory on first call and stores the in-flight
+   * promise. Subsequent calls return the same promise until the factory
+   * settles; thereafter calls return `Promise.resolve()`. Plain-value
+   * forms (no factory captured) always return a resolved promise. The
+   * public API surface routes all reactive interactions (getters and
+   * methods, except `key`) through this entrypoint so the form
+   * activates on first use.
+   */
+  activate(): Promise<void>
   /**
    * Re-fire the captured function-form `defaultValues` factory. Throws
    * synchronously when no factory was captured (plain-value form).
-   * Resolves after `isHydrating` flips back to `false`; consumers can
+   * Resolves after `hydrating` flips back to `false`; consumers can
    * `await form.rehydrate()` to gate UI on the fresh load.
    *
    * Does NOT touch dirty / touched / submit state — chain
@@ -494,6 +525,16 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   setSchemaErrorsForPath(path: Path, errors: ValidationError[]): void
   setAllSchemaErrors(errors: readonly ValidationError[]): void
   clearSchemaErrors(path?: Path): void
+  /**
+   * Replace `schemaErrors` under `path` with `errors`, keying each
+   * error by its OWN absolute path. Used by validation pipelines
+   * (scheduleFieldValidation, validateAsync, handleSubmit, reset)
+   * to commit a parse result wholesale — entries not in the new
+   * pass get dropped from the subtree, surviving keys update in
+   * place to preserve insertion order. Pass `path === []` for the
+   * whole-form scope.
+   */
+  applySchemaErrorsForSubtree(path: Path, errors: ValidationError[]): void
 
   // User-driven writers. Used by build-form-api's setFieldErrors* surfaces.
   setAllUserErrors(errors: readonly ValidationError[]): void
@@ -882,6 +923,38 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * when omitted, the library-default closure is used.
    */
   readonly segmentMatchesSensitive?: ((segment: Segment) => boolean) | undefined
+  /**
+   * SSR prefetch coordination, bound at `buildFreshState` time. Omitted
+   * on the client where the queue is never read.
+   *
+   * `enqueue()` records this form's key on the registry's prefetch set
+   * so any activation path (explicit `form.activate()`, gated reads
+   * through the public surface, recursive factory reads) signals
+   * intent to the SSR drain.
+   *
+   * `shouldFire()` returns whether `state.activate()` should actually
+   * fire the captured factory on the server. The wizard's negative
+   * override — `registry.skipPrefetch(key)` for non-current steps —
+   * flips this to `false` even when `enqueue()` has been called, so
+   * the render-efficiency skip for non-current steps survives a stray
+   * `form.activate()` or a future transform mark on a skipped step.
+   * Returns `true` for any form the wizard hasn't skipped, including
+   * plain-value forms where the factory branch is skipped anyway.
+   */
+  readonly ssrPrefetch?:
+    | {
+        enqueue: () => void
+        shouldFire: () => boolean
+      }
+    | undefined
+  /**
+   * Normalized wizard-graph `next` declaration captured by
+   * `useAbstractForm` via `normalizeNext(configuration.next)`. Passed
+   * through to the FormStore at construction so the wizard graph
+   * walker can read it via `state.next`. Static — `next` is not
+   * re-resolved on reset and is not subject to registry defaults.
+   */
+  readonly next?: NormalizedNext | undefined
 }
 
 /**
@@ -978,11 +1051,78 @@ function cloneVariantSnapshot(value: unknown): unknown {
   return out
 }
 
+/**
+ * Walk the consumer's `defaultValues` argument and stamp every leaf path
+ * as "consumer-authored." Even an explicit `undefined` at a leaf counts:
+ * the consumer named the path, so any verdict against that undefined IS
+ * one they had a chance to provoke and should see.
+ *
+ * Plain records and arrays descend; non-record leaves (primitives, Date,
+ * Map, class instances) mark their own path and stop.
+ */
+function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<PathKey>): void {
+  if (prefix.length > 0) out.add(canonicalizePath(prefix).key)
+  if (isPlainRecord(value)) {
+    for (const k of Object.keys(value)) {
+      walkAuthoredFromConstraints((value as Record<string, unknown>)[k], [...prefix, k], out)
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      walkAuthoredFromConstraints(value[i], [...prefix, i], out)
+    }
+  }
+}
+
+/**
+ * Diff two `getDefaultValues` outputs (with vs without
+ * `useDefaultSchemaValues`) to find every path where the schema author
+ * declared a `.default(...)` chain. Paths whose value differs between
+ * the two passes are positions where a declared default takes effect,
+ * including `.default(undefined)` — which still differs from the slim
+ * baseline because the latter falls through to the inner schema's
+ * empty value (`''`, `0`, etc.) rather than the wrapper's chosen
+ * undefined.
+ */
+function walkAuthoredFromSchemaDiff(
+  withDefaults: unknown,
+  withoutDefaults: unknown,
+  prefix: Path,
+  out: Set<PathKey>
+): void {
+  if (isPlainRecord(withDefaults) && isPlainRecord(withoutDefaults)) {
+    const left = withDefaults as Record<string, unknown>
+    const right = withoutDefaults as Record<string, unknown>
+    const keys = new Set<string>([...Object.keys(left), ...Object.keys(right)])
+    for (const k of keys) {
+      walkAuthoredFromSchemaDiff(left[k], right[k], [...prefix, k], out)
+    }
+    return
+  }
+  if (Array.isArray(withDefaults) && Array.isArray(withoutDefaults)) {
+    const len = Math.max(withDefaults.length, withoutDefaults.length)
+    for (let i = 0; i < len; i++) {
+      walkAuthoredFromSchemaDiff(withDefaults[i], withoutDefaults[i], [...prefix, i], out)
+    }
+    return
+  }
+  if (!Object.is(withDefaults, withoutDefaults) && prefix.length > 0) {
+    out.add(canonicalizePath(prefix).key)
+  }
+}
+
 export function createFormStore<F extends GenericForm, G extends GenericForm = F>(
   options: CreateFormStoreOptions<F, G>
 ): FormStore<F, G> {
   const { formKey, schema, defaultValues, strict = true, hydration } = options
   const ssr = options.ssr === true
+  const ssrPrefetch = options.ssrPrefetch
+  // Normalized wizard graph declaration. Captured once at construction
+  // — `next` is metadata about the form's role in a wizard graph, not
+  // reactive state. Stored verbatim so `useWizard` can walk identity
+  // refs and branching `{ pick, forms }` shapes through one contract.
+  const next = options.next
   const rememberVariants: boolean = options.rememberVariants !== false
   const fieldValidationMode: ValidateOn = options.validateOn ?? 'change'
   // Sanitise the debounce value before threading it into `setTimeout`.
@@ -1001,6 +1141,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   type FieldValidationEntry = {
     controller: AbortController
     timer: ReturnType<typeof setTimeout> | null
+    // `true` once the chain's `.finally` has decremented the counters
+    // for this entry. `cancelFieldValidation` checks this flag to avoid
+    // double-decrementing a chain that already settled but whose entry
+    // is still in the map waiting to be replaced by the next schedule.
+    settled: boolean
   }
   const fieldValidationState = new Map<PathKey, FieldValidationEntry>()
 
@@ -1088,6 +1233,63 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     strict,
   })
   const schemaInitialData = schemaResponse.data
+
+  // Paths the consumer or schema-author explicitly authored a starting
+  // value at — used by the schema-error filter to distinguish "missing
+  // user input" from "consumer chose this starting state."
+  //
+  // Two contributions:
+  //   1. Every leaf in the consumer's `defaultValues` argument. Even
+  //      `{ url: undefined }` counts — the consumer named the path,
+  //      so any validation verdict against that undefined IS
+  //      verdict-worthy from their perspective.
+  //   2. Schema-declared `.default(value)` chains, detected by diffing
+  //      two `getDefaultValues` passes (with vs without
+  //      `useDefaultSchemaValues`). Paths where the with-defaults
+  //      data differs from the slim baseline are positions the schema
+  //      author declared a default at, including `.default(undefined)`.
+  const authoredPaths = new Set<PathKey>()
+  /**
+   * Rebuild `authoredPaths` from a fresh constraints baseline + schema
+   * defaults. Used at construction AND at `reset()` time. Both moments
+   * replace the form's pristine reference, so the authoring set must
+   * track the new baseline. Idempotent: clears the Set first, then
+   * re-populates from (1) the constraints argument and (2) a diff of
+   * the schema's with-defaults vs slim baselines.
+   */
+  function rebuildAuthoredPaths(constraints: unknown, schemaWithDefaultsData: unknown): void {
+    authoredPaths.clear()
+    if (constraints !== undefined) {
+      walkAuthoredFromConstraints(constraints, [], authoredPaths)
+    }
+    const slimResponse = schema.getDefaultValues({
+      useDefaultSchemaValues: false,
+      strict,
+    })
+    walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimResponse.data, [], authoredPaths)
+  }
+  rebuildAuthoredPaths(defaultValues, schemaInitialData)
+
+  /**
+   * Filter schema-source verdicts: drop issues at preprocess / coerce
+   * leaves whose storage is undefined AND whose path the consumer
+   * never authored. Form-level errors (`path.length === 0`) and
+   * verdicts at paths with non-undefined storage always pass through.
+   * Mount and field-validation pipelines run errors through this
+   * filter; `handleSubmit` does not (submit is the moment "you must
+   * have supplied all fields" applies, and the consumer should see
+   * every verdict).
+   */
+  function filterAuthoredErrors(errors: readonly ValidationError[]): ValidationError[] {
+    return errors.filter((err) => {
+      const pathSegments = err.path as Path
+      if (pathSegments.length === 0) return true
+      const value = getAtPath(form.value, pathSegments)
+      if (value !== undefined) return true
+      if (authoredPaths.has(canonicalizePath(pathSegments).key)) return true
+      return !schema.isPreprocessOrCoerceLeaf(pathSegments)
+    })
+  }
 
   // Clone per instance so two forms sharing a schema (or one form
   // re-mounted from the same schema cache) don't alias the same
@@ -1181,13 +1383,27 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // un-clear actions. Hydration takes precedence over `initialBlankPaths`
   // (the SSR snapshot wins when present), matching how the hydrated
   // `form` value overrides the schema's getDefaultValues result.
+  //
+  // The I/O boundary accepts strings in either shape:
+  //
+  //  - dotted-string paths (`'user.email'`) — what the public path
+  //    notation looks like, also what persistence writes to disk
+  //    (`buildPersistedPayload` converts via `pathKeyToDotted`);
+  //  - already-canonical `PathKey` strings (`'["user","email"]'`) —
+  //    what the construction-time unset walker emits and what the rest
+  //    of the runtime keys on.
+  //
+  // `coerceToPathKey` normalises both shapes to a canonical `PathKey`
+  // so the live Set is uniformly keyed regardless of which seed source
+  // (walker, SSR hydration payload, persisted draft) supplied the entry.
   const initialTransientList: ReadonlyArray<string> =
     hydration?.blankPaths ?? options.initialBlankPaths ?? []
   const blankPaths = reactive(new Set<PathKey>()) as Set<PathKey>
   const originalBlankPaths = new Set<PathKey>()
   for (const raw of initialTransientList) {
-    blankPaths.add(raw as PathKey)
-    originalBlankPaths.add(raw as PathKey)
+    const key = coerceToPathKey(raw)
+    blankPaths.add(key)
+    originalBlankPaths.add(key)
   }
 
   // Per-form variant memory. On a discriminated-union switch the
@@ -1300,35 +1516,31 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // not just the first.
   const submitting = ref(false)
   const activeSubmissions = ref(0)
-  const submitCount = ref(0)
+  const submissionAttempts = ref(0)
+  const submitted = ref(false)
   const submitError = ref<unknown>(null)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
   // first call for this key: `defaultValuesFactory` captures the
-  // function-form input, `isHydrating` flips true until settle
+  // function-form input, `hydrating` flips true until settle
   // completes. Plain-value forms leave the refs at their zero state.
-  const isHydrating = ref(false)
-  const hydrateError = ref<unknown>(null)
+  const hydrating = ref(false)
+  const hydrateError = ref<ValidationError | null>(null)
   const defaultValuesFactory = ref<(() => unknown | Promise<unknown>) | undefined>(undefined)
-  // Flipped to `true` once `useAbstractForm`'s settle microtask body
-  // starts running (CSR) or `onServerPrefetch` invokes the body
-  // (SSR). Read by `useStepper`'s late-registration guard.
-  const factorySettleStarted = ref(false)
   // `true` once the form's effective defaults have been applied —
   // either a sync `defaultValues` at construction, or an async
-  // factory whose settle completed. Stays `false` for deferred
-  // (stepper-claimed, non-current) forms until they activate. Read by
-  // `useStepper` to decide whether to surface seed status vs. live
-  // meta.
+  // factory whose settle completed. Stays `false` for dormant lazy
+  // forms until they activate. Read by `useWizard` to decide whether
+  // to surface seed status vs. live meta.
   const defaultsResolved = ref(false)
-  const stepperHandle = ref<
-    | {
-        shouldDefer: () => boolean
-        registerActivation: (callback: () => void) => void
-      }
-    | undefined
-  >(undefined)
+  // Lazy-activation state. `activated` flips `true` the moment the
+  // captured async factory has been kicked off (synchronously, before
+  // it resolves). `activationPromise` holds the in-flight settle so
+  // concurrent callers (cross-component SSR consumers, recursive
+  // factory reads) share a single fetch.
+  const activated = ref(false)
+  const activationPromise = ref<Promise<void> | undefined>(undefined)
   // Initial-validity gate. See `FormStore.firstValidationDone` JSDoc.
   // Only ASYNC-validating strict schemas need the gate: sync schemas
   // either surface refinement errors at construction (slim parse
@@ -1562,22 +1774,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // surface in `Object.getOwnPropertySymbols(values.x)` and break
     // downstream JSON serialization (persistence) + variant memory.
     value = stripSymbolsDeep(value)
-    // Give the schema a chance to normalize the consumer's input
-    // before it hits the slim-primitive gate or storage. Zod expresses
-    // this via `z.preprocess(fn, inner)`; other adapters expose
-    // analogous constructs. Without this hook, a schema like `notify:
-    // z.preprocess(v => v == null ? defaultVar : v, innerDU)` would
-    // let the consumer write `null` and lock storage into `null` —
-    // the preprocess wrapper accepts `unknown` at the input side, the
-    // slim-gate has nothing to reject against, and the input lands
-    // verbatim. Running the normalization at the write boundary means
-    // storage holds the shape the user declared, and validation sees
-    // a consistent value.
-    value = schema.normalizeWriteValueAtPath(value, path)
     // Slim-primitive write gate: every leaf in the value must match
     // the schema's slim primitive set at its sub-path. Refinement-level
     // constraints (.email/.min/enum membership/etc.) are NOT enforced
     // here — they're a validation concern. See ./slim-primitive-gate.ts.
+    // The gate short-circuits at `z.preprocess` / `z.coerce` wrappers
+    // so storage retains the consumer's raw input; the schema-side
+    // normalizers fire during `safeParse`, not at the write boundary.
     if (!isSlimPrimitiveValid(schema, form, path, value)) {
       return false
     }
@@ -1733,6 +1936,19 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       blankPaths.delete(pathKey)
     }
 
+    // Authored bookkeeping: a setValue is the consumer authoring `path`
+    // (and every sub-path inside `value`, if it's a container). The
+    // schema-error filter consults this set to distinguish "no consumer
+    // input at this preprocess / coerce leaf" from "consumer wrote
+    // undefined here." The latter must surface verdicts; the former
+    // is the runtime no-value-yet stub the filter exists to suppress.
+    // Marking before the identity short-circuit covers the
+    // setValue('url', undefined) over an already-undefined leaf case;
+    // the mark is cheap and consistent either way.
+    const wasAuthoredBefore = authoredPaths.has(pathKey)
+    walkAuthoredFromConstraints(value, path, authoredPaths)
+    const newlyAuthored = !wasAuthoredBefore && authoredPaths.has(pathKey)
+
     // Structural-completeness invariant: every write must leave the
     // form satisfying the slim schema. Two ingress points to fill:
     //   1. The target value (consumer may have passed a partial; the
@@ -1758,6 +1974,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // appears broken.
     const currentValue = getAtPath(form.value, path)
     if (Object.is(currentValue, completedValue)) {
+      // Storage unchanged, skip the replacement to avoid spurious
+      // re-renders. Narrow exception: at a preprocess / coerce leaf,
+      // a write that newly authors the path changes the filter's
+      // verdict semantics. Prior validation passes were suppressed
+      // because the path wasn't authored yet; a fresh pass needs to
+      // fire so the verdict surfaces. The narrow scope (preprocess /
+      // coerce only) preserves the original short-circuit for plain
+      // primitives — `setValue('income', 0)` over a mount-time `0`
+      // stays a true no-op and doesn't kick off a validation cycle.
+      if (newlyAuthored && schema.isPreprocessOrCoerceLeaf(path)) {
+        const modeForAuthoringTransition = meta?.instance?.validateOn ?? fieldValidationMode
+        if (modeForAuthoringTransition === 'change') {
+          scheduleFieldValidation(path, false /* debounced */, {
+            ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
+            ...(meta?.instance?.debounceMs !== undefined
+              ? { debounceMs: meta.instance.debounceMs }
+              : {}),
+          })
+        }
+      }
       return true
     }
     const nextForm = setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F
@@ -2012,13 +2248,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       prev.controller.abort()
     }
     const controller = new AbortController()
-    const fresh: FieldValidationEntry = { controller, timer: null }
+    const fresh: FieldValidationEntry = { controller, timer: null, settled: false }
     fieldValidationState.set(key, fresh)
 
     const run = () => {
       fresh.timer = null
       if (controller.signal.aborted) return
-      const data = getAtPath(form.value, path)
       // Defense-in-depth: the increments below trigger reactive
       // subscribers (sync watchers on `api.meta.validating` or
       // `api.fields.X.validating`). If one of those subscribers throws,
@@ -2044,31 +2279,36 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         }
         throw err
       }
+      // Whole-form revalidation on every leaf change. Sub-schema-only
+      // passes leave ancestor refines (and root refines) stale: a
+      // `.refine()` on `z.object({...})` keys its verdict at the
+      // container path, which is neither the leaf nor a descendant of
+      // it, so a leaf-scoped `applySchemaErrorsForSubtree` doesn't
+      // touch it. Running the whole-form pass and writing via
+      // `applySchemaErrorsForSubtree([], ...)` lets every refine at
+      // every depth re-evaluate against the live form value and
+      // replaces every `schemaErrors` key in one go — stale entries
+      // drop, current ones survive. Per-path debounce / abort keys
+      // (above) still coalesce rapid same-leaf typing into one run;
+      // `validateAsync` / `handleSubmit` cancel pending chains so
+      // their authoritative whole-form writes aren't clobbered by
+      // a late SFV resolution.
       void Promise.resolve()
-        .then(() => schema.validateAtPath(data, path))
+        .then(() => schema.validateAtPath(form.value, undefined))
         .then((response) => {
           if (controller.signal.aborted) return
-          // The adapter emits issue paths relative to the sub-schema it
-          // parsed (e.g. `[]` for a leaf string). Re-stamp each error
-          // with the absolute field path so the schemaErrors store and
-          // `form.errors.<dotted path>` reads agree on the canonical
-          // key.
-          const reStamped = response.success
-            ? []
-            : response.errors.map((err) => ({
-                ...err,
-                path: [...path, ...(err.path as Segment[])],
-              }))
-          // Apply at the LEAF level: when the scheduled path is a
-          // container (e.g. `['notify']` after a DU reshape), the
-          // adapter returns multiple issues at distinct leaf paths.
-          // Storing them all under the scheduled key would (a) hide
-          // them from the canonical-key lookup `form.errors.notify.X`
-          // and (b) survive across variant switches as ghost entries
-          // because `setSchemaErrorsForPath(parent, [])` only clears
-          // the parent's own key, not the descendants written by a
-          // previous run.
-          applySchemaErrorsForSubtree(path, reStamped)
+          const errors = response.success ? [] : response.errors
+          // Drop schema verdicts at preprocess / coerce paths whose
+          // storage is undefined AND the consumer didn't author a
+          // starting value there. Under the no-write-mutation contract,
+          // a refine running against the preprocess sentinel for "no
+          // value" produces a verdict against state nobody authored —
+          // suppressing it keeps the construction-time async seed
+          // from flickering when the field is first touched. Authored
+          // paths (defaultValues OR schema `.default(...)`) skip the
+          // filter; their verdicts ARE legitimate.
+          const filtered = filterAuthoredErrors(errors)
+          applySchemaErrorsForSubtree([], filtered)
         })
         .catch(() => {
           // Adapter contract forbids throws — swallow here so a misbehaving
@@ -2079,6 +2319,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         .finally(() => {
           activeValidations.value = Math.max(0, activeValidations.value - 1)
           decFieldValidation(key)
+          fresh.settled = true
         })
     }
 
@@ -2094,8 +2335,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   }
 
   function cancelFieldValidation(): void {
-    for (const entry of fieldValidationState.values()) {
-      if (entry.timer !== null) clearTimeout(entry.timer)
+    for (const [pkey, entry] of fieldValidationState) {
+      if (entry.timer !== null) {
+        // Debounce timer hasn't fired yet — run() never executed, so
+        // no `activeValidations` / `fieldValidationCounts` increment
+        // happened. Just clear the timer; nothing to roll back.
+        clearTimeout(entry.timer)
+      } else if (!entry.settled) {
+        // run() already fired and the chain is still in flight. Its
+        // own `.finally` will decrement when the chain settles, but
+        // the chain could outlive the caller (handleSubmit /
+        // validateAsync) that's cancelling us. Release the counters
+        // synchronously here so `meta.validating` reflects the cancel
+        // immediately; the late `.finally`'s `Math.max(0, ...)`
+        // clamps the duplicate decrement to zero.
+        activeValidations.value = Math.max(0, activeValidations.value - 1)
+        decFieldValidation(pkey)
+      }
+      // Settled entries left in the map (waiting for the next
+      // schedule to evict them) have already decremented in their
+      // own `.finally` — skip the counter touch entirely.
       entry.controller.abort()
     }
     fieldValidationState.clear()
@@ -2547,7 +2806,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // --- Rehydrate ---
   // Imperative re-fire of the captured function-form `defaultValues`
   // factory. Lives on the store so every consumer of the shared key
-  // sees one source of truth for `isHydrating`. Mirrors the
+  // sees one source of truth for `hydrating`. Mirrors the
   // construction-time settle path: factory result merges over the
   // current values via `mergeSparseHydration`, applies through
   // `applyFormReplacement({ hydration: true })` (history-module aware),
@@ -2565,13 +2824,70 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         '[attaform] form.rehydrate(): no defaultValues factory was captured. Configure useForm({ defaultValues: () => ... }) to enable rehydrate.'
       )
     }
-    return runFactoryAndApply(factory)
+    return fireFactory(factory)
+  }
+
+  // Shared kickoff path for `activate` and `rehydrate`. Both fire the
+  // captured factory, mark the form `activated`, and publish the
+  // in-flight promise so concurrent `activate()` calls join rather
+  // than double-fire. The promise self-clears on settle so a
+  // subsequent refetch can publish a fresh one.
+  function fireFactory(factory: () => unknown | Promise<unknown>): Promise<void> {
+    activated.value = true
+    const promise = runFactoryAndApply(factory)
+    activationPromise.value = promise
+    void promise.finally(() => {
+      if (activationPromise.value === promise) activationPromise.value = undefined
+    })
+    return promise
+  }
+
+  // Idempotent activation. The new lazy-by-default model fires the
+  // captured function-form `defaultValues` factory only via this
+  // entrypoint — public getters/methods on the form API surface call
+  // through to it so the first reactive interaction triggers the
+  // factory. Concurrent callers share the in-flight promise so two
+  // SSR consumers reading the same store await the same fetch. A
+  // previously-rejected attempt leaves `activated === true` and
+  // `defaultsResolved === false`; subsequent `activate()` calls are
+  // no-ops so reading `form.hydrateError` doesn't replay the failure.
+  // `form.rehydrate()` is the explicit replay primitive.
+  function activate(): Promise<void> {
+    // SSR coordination — enqueue intent first so the diff against any
+    // wizard skip / transform mark is consistent across resolved /
+    // dormant / mid-activation states. Then consult `shouldFire`: when
+    // a wizard skipped this key, the backstop wins even over an
+    // explicit consumer `form.activate()` call. The closure is bound
+    // to the registry at construction time and is absent on the
+    // client where the queue is never read.
+    if (ssrPrefetch !== undefined) {
+      ssrPrefetch.enqueue()
+      if (!ssrPrefetch.shouldFire()) return Promise.resolve()
+    }
+    if (defaultsResolved.value === true) return Promise.resolve()
+    if (activationPromise.value !== undefined) return activationPromise.value
+    if (activated.value === true) return Promise.resolve()
+    const factory = defaultValuesFactory.value
+    if (factory === undefined) return Promise.resolve()
+    return fireFactory(factory)
   }
 
   async function runFactoryAndApply(factory: () => unknown | Promise<unknown>): Promise<void> {
-    isHydrating.value = true
+    hydrating.value = true
+    // Stale-while-revalidate: keep any prior `HydrationFailed` entry
+    // visible until the new attempt settles. Same contract field
+    // errors follow under `field.validating === true` — the surface
+    // shouldn't flicker to empty during the retry. The entry is
+    // replaced on failure or cleared on success in the branches
+    // below.
     try {
       const value = await factory()
+      // The factory's resolved value is the consumer's late-bound
+      // `defaultValues`. Mark every leaf inside it as authored so the
+      // schema-error filter surfaces verdicts at preprocess / coerce
+      // paths the factory named with explicit undefined (same contract
+      // as the sync `defaultValues` argument applied at construction).
+      walkAuthoredFromConstraints(value, [], authoredPaths)
       const full = mergeSparseHydration(
         toRaw(form.value) as F,
         value,
@@ -2579,13 +2895,55 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       )
       applyFormReplacement(full, { hydration: true })
       scheduleFieldValidation([], true /* immediate */)
+      // Success: drop the previous attempt's error (if any) from both
+      // surfaces. New attempt's verdict has landed; the stale entry
+      // would now mis-narrate the state.
+      clearHydrationFailedEntry()
       hydrateError.value = null
       defaultsResolved.value = true
     } catch (error) {
-      hydrateError.value = error
+      // Failure: replace (clear-then-append) so a repeat failure
+      // produces a single fresh entry rather than accumulating dupes.
+      // Single ValidationError covers both surfaces: the dedicated
+      // `hydrateError` ref AND the standard `schemaErrors` channel
+      // that feeds `form.meta.errors`. SSR factory rejections cross
+      // the wire through `schemaErrors`; the local `hydrateError`
+      // ref points to the same entry so the shape is identical at
+      // every read site.
+      clearHydrationFailedEntry()
+      hydrateError.value = appendHydrationFailedEntry(error)
     } finally {
-      isHydrating.value = false
+      hydrating.value = false
     }
+  }
+
+  function clearHydrationFailedEntry(): void {
+    const existing = schemaErrors.get(FORM_ERRORS_PATH_KEY)
+    if (existing === undefined) return
+    const filtered = existing.filter((e) => e.code !== AttaformErrorCode.HydrationFailed)
+    if (filtered.length === 0) {
+      schemaErrors.delete(FORM_ERRORS_PATH_KEY)
+    } else {
+      schemaErrors.set(FORM_ERRORS_PATH_KEY, filtered)
+    }
+  }
+
+  function appendHydrationFailedEntry(error: unknown): ValidationError {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Hydration failed'
+    const entry: ValidationError = {
+      message,
+      path: [...FORM_ERRORS_PATH],
+      formKey,
+      code: AttaformErrorCode.HydrationFailed,
+    }
+    const existing = schemaErrors.get(FORM_ERRORS_PATH_KEY) ?? []
+    schemaErrors.set(FORM_ERRORS_PATH_KEY, [...existing, entry])
+    return entry
   }
 
   // --- Reset ---
@@ -2619,8 +2977,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       strict,
     })
     const next = resetResponse.data
-    // Replace form in one shot — applyFormReplacement will emit diffAndApply
-    // patches and touch field records for every changed leaf.
+    // Rebuild authoredPaths against the post-reset baseline. Reset is
+    // "fresh start" semantics, so the prior authoring set is wiped and
+    // re-derived from (1) the reset's constraints argument (consumer
+    // authored those paths) and (2) the schema-default diff (schema-
+    // declared `.default(...)` paths, including `.default(undefined)`).
+    rebuildAuthoredPaths(resetSource, next)
+    // Replace form in one shot. `applyFormReplacement` emits diffAndApply
+    // patches and touches field records for every changed leaf.
     applyFormReplacement(next)
     // Rebuild originals from the new baseline. The set becomes the
     // post-reset pristine reference — a subsequent dirty comparison
@@ -2701,7 +3065,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // `validateAtPath` throws on schemas with always-running async
     // refines and falls through to async-only). The window between
     // `reset()` returning and the re-queued async pass landing reads
-    // `valid: true` for every container — the docs-site stepper
+    // `valid: true` for every container — the docs-site wizard
     // demo's step titles turn green for ~600ms-1.5s. Restoring the
     // gate keeps containers `valid: false` throughout that window.
     firstValidationDone.value = !strict || schema.needsAsyncValidation?.() !== true
@@ -2742,7 +3106,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submissionGeneration.value += 1
     submitting.value = false
     activeSubmissions.value = 0
-    submitCount.value = 0
+    submissionAttempts.value = 0
+    submitted.value = false
     submitError.value = null
     // Drop any pending field-validation timers / in-flight runs. Writes
     // that reached the controller-aborted branch resolve to a no-op, so
@@ -2979,6 +3344,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   return {
     formKey,
+    next,
     form,
     fields,
     elements,
@@ -2991,15 +3357,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     shouldShowErrors: resolvedShouldShowErrors,
     submitting,
     activeSubmissions,
-    submitCount,
+    submissionAttempts,
+    submitted,
     submitError,
-    isHydrating,
+    hydrating,
     hydrateError,
     defaultValuesFactory,
-    factorySettleStarted,
     defaultsResolved,
-    stepperHandle,
+    activated,
+    activationPromise,
     rehydrate,
+    activate,
     submissionGeneration,
     activeValidations,
     firstValidationDone,
@@ -3017,6 +3385,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     setSchemaErrorsForPath,
     setAllSchemaErrors,
     clearSchemaErrors,
+    applySchemaErrorsForSubtree,
     setAllUserErrors,
     addUserErrors,
     clearUserErrors,

@@ -26,8 +26,35 @@ export const AttaformErrorCode = {
   NoValueSupplied: 'atta:no-value-supplied',
   /** The schema adapter's `validateAtPath` threw synchronously. */
   AdapterThrew: 'atta:adapter-threw',
+  /**
+   * User code inside a `z.preprocess`, `.refine`, or `.transform`
+   * threw (sync or async). The adapter caught the throw and surfaced
+   * it as a `ValidationError` at the field path so the form's normal
+   * error pipeline handles it instead of leaking as an unhandled
+   * rejection or routing through `submitError`.
+   */
+  ValidatorThrew: 'atta:validator-threw',
+  /**
+   * A function-form `defaultValues` factory threw or its promise
+   * rejected. The runtime captures the raw error on `form.hydrateError`
+   * and ALSO surfaces a form-level `ValidationError` (path `[]`) so
+   * the standard error pipeline carries the signal. Critical for the
+   * SSR round-trip: `hydrateError` itself does not ride the wire
+   * payload, but `schemaErrors` does, so the client sees the failure
+   * after rehydration without an extra channel.
+   */
+  HydrationFailed: 'atta:hydration-failed',
   /** The supplied path didn't resolve to any node in the schema. */
   PathNotFound: 'atta:path-not-found',
+  /**
+   * A walked form's `activate()` (async `defaultValues` factory) threw
+   * during `wizard.handleSubmit`'s path walk. Surfaced as a synthetic
+   * `ValidationError` at the form-level path (`[]`) so the wizard's
+   * aggregate error pipeline can carry the failure alongside ordinary
+   * validation errors. The raw factory error remains on
+   * `form.hydrateError` for retry UX.
+   */
+  ActivationFailed: 'atta:activation-failed',
 } as const
 
 export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof AttaformErrorCode]

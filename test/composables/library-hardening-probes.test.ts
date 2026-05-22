@@ -185,7 +185,7 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     apps.push(app)
 
     // Pre: address was 'old@example.com' (valid for email variant).
-    expect(api.errors('notify.address')).toBeUndefined()
+    expect(api.errors('notify.address')).toEqual([])
 
     api.setValue('notify.channel', 'wat')
     await api.validateAsync()
@@ -514,10 +514,10 @@ describe('DU hardening — undo across an invalid intermediate', () => {
     // write. The pre-write state is `{channel:'email', address:'kept@x.io'}`,
     // i.e. a valid variant.
     const notify = api.values.notify as AnyNotify
-    const isValid =
+    const valid =
       (notify.channel === 'email' && typeof notify.address === 'string') ||
       (notify.channel === 'sms' && typeof notify.number === 'string')
-    expect(isValid).toBe(true)
+    expect(valid).toBe(true)
   })
 })
 
@@ -573,11 +573,11 @@ describe('DU hardening — invalid discriminator at an array element', () => {
     // outcomes; what matters is no mixed shape.
     const e0 = api.values.events[0] as AnyEvent
     const isStub = Object.keys(e0).length === 1 && e0.type === 'unknown'
-    const isValid =
+    const valid =
       isStub ||
       (e0.type === 'click' && typeof e0.x === 'string' && !('value' in e0)) ||
       (e0.type === 'text' && typeof e0.value === 'string' && !('x' in e0))
-    expect(isValid).toBe(true)
+    expect(valid).toBe(true)
   })
 })
 
@@ -2784,11 +2784,11 @@ describe('chaos — z.coerce at the discriminator', () => {
     expect(valid).toBe(true)
   })
 
-  it('z.coerce.string() at a non-DU leaf turns numeric writes into strings', async () => {
+  it('z.coerce.string() at a non-DU leaf stores the raw write verbatim', async () => {
     const schema = z.object({ name: z.coerce.string() })
     type Api = Omit<UseFormReturnType<z.output<typeof schema>>, 'setValue'> & {
       setValue: (path: string, value: unknown) => boolean
-      values: { name: string }
+      values: { name: unknown }
     }
     const handle: { api?: Api } = {}
     const App = defineComponent({
@@ -2809,11 +2809,11 @@ describe('chaos — z.coerce at the discriminator', () => {
     api.setValue('name', 42)
     await nextTick()
 
-    // Either the gate rejected (storage stays '') or coerce kicks in
-    // (storage becomes '42'). The bug case: storage holds the number
-    // 42 and `typeof api.values.name === 'number'` despite the schema
-    // promising `string`.
-    expect(typeof api.values.name).toBe('string')
+    // Under the no-write-mutation contract, schema-side coerce runs at
+    // parse / submit, not at the write boundary. The raw number 42
+    // lands in storage; safeParse turns it into the string '42' when
+    // the consumer calls validate / handleSubmit.
+    expect(api.values.name).toBe(42)
   })
 })
 
@@ -2824,7 +2824,7 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it("preprocess that defaults `null` to a valid variant doesn't smuggle null into storage", async () => {
+  it('preprocess wrapping a DU: raw null lands in storage; coalescing fires at parse', async () => {
     const inner = z.discriminatedUnion('channel', [
       z.object({ channel: z.literal('email'), address: z.string() }),
       z.object({ channel: z.literal('sms'), number: z.string() }),
@@ -2834,7 +2834,7 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     })
     type Api = Omit<UseFormReturnType<z.output<typeof schema>>, 'setValue'> & {
       setValue: (path: string, value: unknown) => boolean
-      values: { notify: { channel: string } & Record<string, unknown> }
+      values: { notify: unknown }
     }
     const handle: { api?: Api } = {}
     const App = defineComponent({
@@ -2852,27 +2852,20 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     apps.push(app)
     const api = handle.api as Api
 
-    // Try writing null at the union path. Either rejected by slim-gate
-    // (preprocess hasn't run yet) or smuggled past (preprocess turned
-    // it into the email variant). The bug case: `null` reaches storage.
+    // Under the no-write-mutation contract, the preprocess fn runs at
+    // parse / submit only. The raw null lands in storage at the union
+    // path; the fallback variant materialises during safeParse.
     api.setValue('notify', null)
     await nextTick()
 
-    expect(api.values.notify).not.toBeNull()
-    const notify = api.values.notify as AnyNotify
-    const valid =
-      (notify.channel === 'email' && typeof notify.address === 'string') ||
-      (notify.channel === 'sms' && typeof notify.number === 'string')
-    expect(valid).toBe(true)
+    expect(api.values.notify).toBeNull()
   })
 
-  it("v3: preprocess that defaults `null` to a valid variant doesn't smuggle null into storage", async () => {
-    // Zod v3 parity for the v4 B6 fix above. v3 expresses
-    // `z.preprocess(fn, inner)` as a ZodEffects whose
-    // `_def.effect.type === 'preprocess'`; the v3 adapter's
-    // `normalizeWriteValueAtPath` detects it and applies the fn at
-    // write time, so storage holds the post-preprocess shape — not
-    // the raw input.
+  it('v3: preprocess wrapping a DU: raw null lands in storage', async () => {
+    // v3 parity. Zod v3 expresses `z.preprocess(fn, inner)` as a
+    // ZodEffects with `_def.effect.type === 'preprocess'`; the v3
+    // adapter's `isPreprocessOrCoerceLeaf` predicate fires at the
+    // wrapper and the slim-gate accepts the raw write verbatim.
     const inner = zV3.discriminatedUnion('channel', [
       zV3.object({ channel: zV3.literal('email'), address: zV3.string() }),
       zV3.object({ channel: zV3.literal('sms'), number: zV3.string() }),
@@ -2896,18 +2889,13 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
     apps.push(app)
     const api = handle.api as {
       setValue: (p: string, v: unknown) => boolean
-      values: { notify: { channel: string } & Record<string, unknown> }
+      values: { notify: unknown }
     }
 
     api.setValue('notify', null)
     await nextTick()
 
-    expect(api.values.notify).not.toBeNull()
-    const notify = api.values.notify
-    const valid =
-      (notify['channel'] === 'email' && typeof notify['address'] === 'string') ||
-      (notify['channel'] === 'sms' && typeof notify['number'] === 'string')
-    expect(valid).toBe(true)
+    expect(api.values.notify).toBeNull()
   })
 })
 
@@ -3294,7 +3282,7 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     // alias for the whole form.
     expect(api.values.name).toBe('Ada')
     // Form-level errors at `''` are cleared.
-    expect(api.errors('')).toBeUndefined()
+    expect(api.errors('')).toEqual([])
   })
 
   it('resetField on a container path broadcasts the reset to descendants', async () => {
@@ -3424,8 +3412,8 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     }
 
     // Mount-time: lax + valid seed → no errors on either handle.
-    expect(a.errors.email).toBeUndefined()
-    expect(b.errors.email).toBeUndefined()
+    expect(a.errors.email).toEqual([])
+    expect(b.errors.email).toEqual([])
 
     // Drain helper: schema.validateAtPath resolves through one
     // microtask plus the adapter's own async (sync zod still returns
@@ -3440,8 +3428,8 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     // A's submit-only write must NOT trigger change-mode validation.
     a.setValue('email', 'first-bad-write')
     await drain()
-    expect(a.errors.email).toBeUndefined()
-    expect(b.errors.email).toBeUndefined()
+    expect(a.errors.email).toEqual([])
+    expect(b.errors.email).toEqual([])
 
     // B's change-mode write SHOULD trigger validation. The bad-email
     // value in storage now produces a schema error.
@@ -3561,7 +3549,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
 
     type SubmitApi = {
       handleSubmit: (onSubmit: () => unknown, onError?: () => unknown) => () => Promise<void>
-      meta: { submitting: boolean; submitError: unknown; submitCount: number }
+      meta: { submitting: boolean; submitError: unknown; submissionAttempts: number }
     }
     const a = handle.a as SubmitApi
     const b = handle.b as SubmitApi
@@ -3593,13 +3581,13 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     await nextTick()
 
     // Lifecycle clears across BOTH siblings: submitting flips false,
-    // submitError captures the throw, submitCount increments once.
+    // submitError captures the throw, submissionAttempts increments once.
     expect(a.meta.submitting).toBe(false)
     expect(b.meta.submitting).toBe(false)
     expect(a.meta.submitError).toBe(boom)
     expect(b.meta.submitError).toBe(boom)
-    expect(a.meta.submitCount).toBe(1)
-    expect(b.meta.submitCount).toBe(1)
+    expect(a.meta.submissionAttempts).toBe(1)
+    expect(b.meta.submissionAttempts).toBe(1)
 
     // B's next submit can fire — the re-entry guard released along
     // with the throw. A fresh successful submit clears submitError.
@@ -3608,7 +3596,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(bCalls).toBe(1)
     expect(b.meta.submitError).toBeNull()
     expect(a.meta.submitError).toBeNull()
-    expect(b.meta.submitCount).toBe(2)
+    expect(b.meta.submissionAttempts).toBe(2)
   })
 
   it('a sync watcher on meta.submitting that throws does not desync activeSubmissions', async () => {
@@ -3665,7 +3653,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
 
     type SubmitApi = {
       handleSubmit: (onSubmit: () => unknown) => () => Promise<void>
-      meta: { submitting: boolean; submitCount: number }
+      meta: { submitting: boolean; submissionAttempts: number }
     }
     const api = handle.api as SubmitApi
     const watcherFired = handle.watcherFired as { count: number }
@@ -4340,7 +4328,7 @@ describe('chaos — persistence: hydrate with invalid discriminator in stored pa
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 4,
+        v: 5,
         data: {
           form: {
             name: 'Ada',
@@ -4383,7 +4371,7 @@ describe('chaos — persistence: hydrate with invalid discriminator in stored pa
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 4,
+        v: 5,
         data: {
           form: {
             name: 'Ada',
@@ -4553,7 +4541,7 @@ describe('chaos — persistence: hydrate with invalid discriminator in stored pa
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 4,
+        v: 5,
         data: {
           form: {
             name: 'Ada',
@@ -4874,7 +4862,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
 
     // The form is now back at the email variant. The sms validation's
     // errors must not have committed against the active path.
-    expect(api.errors('notify.number')).toBeUndefined()
+    expect(api.errors('notify.number')).toEqual([])
   })
 
   it('history disabled: canUndo/canRedo/historySize stay zero, undo/redo return false', async () => {
@@ -4921,7 +4909,7 @@ describe('chaos — persistence + history together', () => {
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 4,
+        v: 5,
         data: {
           form: { name: 'persisted', notify: { channel: 'email', address: 'p@x.io' } },
         },
@@ -5268,7 +5256,7 @@ describe('chaos — setFieldErrors at edge paths', () => {
     // The formKey field is the targeted form's identifier. Errors with
     // a non-matching formKey should be ignored — they're for a
     // different form instance.
-    expect(api.errors('name')).toBeUndefined()
+    expect(api.errors('name')).toEqual([])
   })
 
   it('survives an error object with a circular reference in `cause`', async () => {
@@ -5565,7 +5553,7 @@ describe('chaos — server/client default-value divergence on a DU', () => {
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 4,
+        v: 5,
         data: {
           form: { name: 'Persisted', notify: { channel: 'sms', number: '5551234' } },
         },
@@ -5633,7 +5621,7 @@ describe('chaos — multi-tab persistence via the storage event', () => {
 
     // Simulate: another tab wrote to the same key.
     const newPayload = JSON.stringify({
-      v: 4,
+      v: 5,
       data: { form: { name: 'tab-B', notify: { channel: 'email', address: 'b@c.io' } } },
     })
     localStorage.setItem(storageKey, newPayload)
@@ -5943,7 +5931,7 @@ describe('chaos — mount then immediately unmount during async hydration', () =
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 4,
+        v: 5,
         data: { form: { name: 'p', notify: { channel: 'email', address: 'p@x.io' } } },
       })
     )

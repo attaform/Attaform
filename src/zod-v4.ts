@@ -36,20 +36,30 @@ export type { ZodKind } from './runtime/adapters/zod-v4/introspect'
 // discoverability alongside useForm.
 export { injectForm } from './runtime/composables/use-form-context'
 export { useRegister } from './runtime/composables/use-register'
-export { useStepper } from './runtime/composables/use-stepper'
+export type { UseRegisterReturn } from './runtime/composables/use-register'
+export { useWizard } from './runtime/composables/use-wizard'
+export { injectWizard } from './runtime/composables/inject-wizard'
+export type { InjectWizardInput } from './runtime/composables/inject-wizard'
 export type {
   AggregateError,
   AnyForm,
-  FormKeyOf,
   FormStatus,
-  KeysOf,
-  Statuses,
-  StepperHistoryConfig,
-  StepperNavOptions,
-  StepperOptions,
-  StepperStatusesProxy,
-  UseStepperReturnType,
-} from './runtime/types/types-stepper'
+  NextBranching,
+  NextOption,
+  NormalizedNext,
+  WizardFlow,
+  WizardHistoryConfig,
+  WizardNavOptions,
+  WizardOnError,
+  WizardOnSubmit,
+  WizardOptions,
+  WizardStatusesProxy,
+  WizardSubmitContext,
+  UseWizardReturnType,
+  WizardTreeNode,
+  WizardWarning,
+  WizardWarningKind,
+} from './runtime/types/types-wizard'
 export { AttaformErrorCode } from './runtime/core/error-codes'
 export { unset, isUnset } from './runtime/core/unset'
 export type { Unset } from './runtime/core/unset'

@@ -21,12 +21,14 @@ import type { UseFormReturn } from '../../src/zod'
  * (no widening to a string index signature).
  *
  * Distribution-preserved regression on `form.values`: value shapes
- * are not lifted — `form.values.cargo` keeps its discriminated-union
- * structure so a downstream consumer can pattern-match on the
- * runtime variant. (Note: literal discriminators are widened by
- * `WriteShape`, so TS's discriminator narrowing on `cargo.type`
- * doesn't fire; the regression guard here checks that the union
- * structure is preserved, not that narrowing engages.)
+ * are not lifted, so `form.values.cargo` keeps its discriminated-union
+ * structure for a downstream consumer to pattern-match on the runtime
+ * variant. WriteShape intentionally widens literal discriminators
+ * (`z.literal('dry')` to `string`) so the in-flight read surface
+ * mirrors reality: mid-typing, the discriminator may be `''` or a
+ * value the user has not committed to yet. Literal narrowing engages
+ * inside `handleSubmit`, where `values` is the schema's parsed
+ * output. See /docs/reading-the-form/type-safety.
  */
 
 describe('IsUnion / KeyofUnion / ValueOfUnion — utility behavior', () => {
@@ -179,6 +181,27 @@ describe('useForm — chained access on form.errors with cargo schema', () => {
   it('non-existent keys are rejected', () => {
     // @ts-expect-error 'nonexistent' is not a key on any cargo variant
     void form.errors.cargo.nonexistent
+  })
+})
+
+describe('useForm — discriminator literals widen to string by design (in-flight types)', () => {
+  // form.values models what the form is actually holding right now,
+  // not what the schema will accept at submit time. A user might not
+  // have picked a variant yet, might be rehydrating a half-filled
+  // draft where the discriminator is `''`, or might be mid-keystroke
+  // in an input wired to the discriminator. Narrowing
+  // `form.values.cargo.type` to the literal union would lie about
+  // every one of those cases, so WriteShape widens
+  // `z.literal('dry') | z.literal('refrigerated') | ...` to `string`
+  // to mirror reality.
+  //
+  // The literal narrowing engages where it earns its keep: inside
+  // `handleSubmit((values) => ...)`, where `values` is the schema's
+  // parsed output. There, `values.cargo.type` is the literal union
+  // and TS narrows on it correctly. See
+  // /docs/reading-the-form/type-safety for the full discussion.
+  it('form.values.cargo.type is plain string (in-flight, pre-validation)', () => {
+    expectTypeOf(form.values.cargo.type).toEqualTypeOf<string>()
   })
 })
 

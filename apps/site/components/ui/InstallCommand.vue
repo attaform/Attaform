@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { Copy, Check, ArrowRight } from 'lucide-vue-next'
+  import { ArrowRight } from 'lucide-vue-next'
 
   // Self-contained install card: title + manager picker + copy-
   // able command + quick-start link. Used on the homepage hero,
@@ -61,27 +61,6 @@
   // zod" (21 chars) → "npm install attaform zod" (24 chars); the
   // grid cell sizes off the longest, so the card never resizes.
   const allCommands = computed(() => managers.map((m) => `${m} ${verbs[m]} ${props.packages}`))
-
-  const copied = ref(false)
-  let resetTimer: ReturnType<typeof setTimeout> | null = null
-
-  async function copy() {
-    if (!import.meta.client) return
-    try {
-      await navigator.clipboard.writeText(command.value)
-      copied.value = true
-      if (resetTimer) clearTimeout(resetTimer)
-      resetTimer = setTimeout(() => (copied.value = false), 1500)
-    } catch {
-      // Clipboard access can throw in private mode or insecure
-      // contexts. Silently no-op — the user can select and copy
-      // by hand.
-    }
-  }
-
-  onBeforeUnmount(() => {
-    if (resetTimer) clearTimeout(resetTimer)
-  })
 </script>
 
 <template>
@@ -129,15 +108,7 @@
           <span class="text-fg-subtle select-none">$ </span>{{ command }}
         </code>
       </div>
-      <button
-        type="button"
-        class="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-muted transition-[background-color,color] duration-(--duration-fast) hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
-        :aria-label="copied ? 'Copied' : 'Copy install command'"
-        @click="copy"
-      >
-        <Check v-if="copied" class="h-4 w-4 text-success" :stroke-width="2.25" />
-        <Copy v-else class="h-4 w-4" :stroke-width="2" />
-      </button>
+      <UiCopyButton :text="command" label="Copy install command" />
     </div>
 
     <!-- Quick-start link below — the "now what?" affordance for

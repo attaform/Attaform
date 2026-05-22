@@ -224,7 +224,7 @@ describe('form.errors — callable form', () => {
     // no errors exist.
     const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
     const root = (form.errors as unknown as () => unknown)()
-    expect(root).toBeUndefined()
+    expect(root).toEqual([])
   })
 
   it('form.errors at a container materialises descendants as a nested tree', () => {
@@ -478,7 +478,7 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
     expect(form.fields.address.toString.path).toEqual(['address', 'toString'])
 
     // Per-leaf error reads through the same dot-path.
-    expect(form.errors.address.toString).toBeUndefined()
+    expect(form.errors.address.toString).toEqual([])
 
     // String coercion at the PARENT still produces a primitive, because
     // `Symbol.toPrimitive` is the hot path for `String(...)` and isn't

@@ -23,6 +23,7 @@ import type {
   ValueOfUnion,
   WriteShape,
 } from './types-core'
+import type { AnyForm, NextOption, NormalizedNext } from './types-wizard'
 
 /**
  * Identifier for a form. A `FormKey` is the string passed via
@@ -269,37 +270,24 @@ export type AbstractSchema<Form, GetValueFormType> = {
    */
   getEmptyValueAtPath(path: Path): unknown
   /**
-   * Give the schema a chance to normalize the consumer's write value
-   * before it lands in storage / hits the slim-primitive gate. Each
-   * schema library exposes this concept differently — Zod calls it
-   * `z.preprocess(fn, inner)`, Yup calls it `.transform()`, Valibot
-   * spells it `pipe(transform(fn), inner)` — but the shape is the
-   * same: "this input shape gets coerced into that storage shape at
-   * the boundary."
+   * Reports whether `path` resolves to (or descends through) a
+   * schema-side normalizer that runs at parse, not at the write
+   * boundary. In Zod v4 that's `z.preprocess(fn, inner)` and
+   * `z.coerce.X()` (both desugar to `ZodPipe<ZodTransform, inner>`);
+   * in Zod v3 it's `ZodEffects` with `_def.effect.type === 'preprocess'`.
    *
-   * Runs SYNCHRONOUSLY at the write boundary so storage holds the
-   * post-normalization shape. Without this, a schema like `notify:
-   * z.preprocess(v => v == null ? defaultVar : v, innerDU)` would
-   * let the consumer write `null` and lock storage into `null` —
-   * because the gate sees the raw input (which the preprocess wrapper
-   * accepts as `unknown`) and storage holds a shape no variant
-   * matches.
+   * Consulted by the slim-primitive write gate. When true at a path,
+   * the gate accepts the consumer's raw value verbatim and stops
+   * walking children — storage holds the user's input, and the
+   * normalizer fires during `safeParse` (handleSubmit / validate /
+   * validateAsync), not at `setValue` time.
    *
-   * Adapters MUST:
-   *   - Return `value` unchanged when no normalization is declared at
-   *     the path.
-   *   - Return `value` unchanged when the user's normalization fn
-   *     returns a `Promise` (async coercion can't run at write time —
-   *     validation handles it during parse).
-   *   - Let user-thrown errors propagate (the user wrote the fn; we
-   *     just tag the path in the wrapper error for diagnostics).
-   *
-   * Normalization runs when `path` equals the wrapper's exact
-   * location. Writes deeper than the wrapper bypass it (a wrapper
-   * over the whole subtree can't be invoked from a partial leaf
-   * write).
+   * Path-prefix semantic: returns true if ANY ancestor of `path`
+   * resolves to such a wrapper, so descendants under a preprocess-
+   * wrapped container also short-circuit the gate. Adapters cache
+   * the result by canonicalized path key.
    */
-  normalizeWriteValueAtPath(value: unknown, path: Path): unknown
+  isPreprocessOrCoerceLeaf(path: Path): boolean
   /**
    * Distinguish a tuple (fixed-length, position-typed) from an
    * unbounded array at `path`. The runtime calls this on every
@@ -649,15 +637,23 @@ export type ReactiveValidationStatus<Form> = PendingValidationStatus | SettledVa
 
 /**
  * What to do when a submit attempt fails validation. The library can
- * focus and/or scroll the first errored field into view without
- * wiring an `onError` callback yourself. Off by default.
+ * focus and/or scroll the first errored field into view without you
+ * wiring an `onError` callback yourself. Defaults to
+ * `'focus-first-error'` because moving keyboard / screen-reader focus
+ * to the broken field on submit is an accessibility baseline; opt out
+ * with `'none'` if you're managing focus elsewhere.
  *
- * - `'none'` (default): no automatic UI nudge.
- * - `'focus-first-error'`: focus the first errored field's first
- *   visible element (with `preventScroll: true` so it doesn't fight
- *   any `'scroll-to-first-error'` choice you make).
- * - `'scroll-to-first-error'`: scroll that element into view.
- * - `'both'`: scroll first, then focus.
+ * - `'focus-first-error'` (default): focus the first errored field's
+ *   first visible element. Modern browsers scroll the focused element
+ *   into view by default; pair with `'both'` if you want an explicit
+ *   scroll alongside.
+ * - `'scroll-to-first-error'`: scroll that element into view without
+ *   moving focus.
+ * - `'both'`: scroll first, then focus (with `preventScroll: true` so
+ *   the browser doesn't undo the explicit scroll).
+ * - `'none'`: no automatic UI nudge; the dev handles focus / scroll
+ *   manually via `form.focusFirstError()` or `form.scrollToFirstError()`
+ *   from an `onError` callback.
  *
  * If no errored field has a currently mounted, visible element, the
  * policy silently no-ops.
@@ -1035,6 +1031,7 @@ export type UseFormConfiguration<
   Schema extends AbstractSchema<Form, GetValueFormType>,
   DefaultValues extends DefaultValuesInput<Form>,
   K extends FormKey = FormKey,
+  Forms extends readonly AnyForm[] = readonly AnyForm[],
 > = {
   /**
    * The schema describing the form's shape and validation rules.
@@ -1068,7 +1065,7 @@ export type UseFormConfiguration<
    * throw `ReservedFormKeyError` if passed.
    *
    * When passed as a string literal, the literal is preserved on
-   * `form.key` so `useStepper` and other consumers can discriminate
+   * `form.key` so `useWizard` and other consumers can discriminate
    * against the union of known keys at compile time.
    */
   key?: K
@@ -1094,8 +1091,8 @@ export type UseFormConfiguration<
    * defaultValues: () => buildDraft()
    *
    * // Async function — form starts with the schema's slim defaults
-   * // and `form.isHydrating` flips true while the promise is
-   * // in flight; on resolve the values apply and `isHydrating` flips
+   * // and `form.hydrating` flips true while the promise is
+   * // in flight; on resolve the values apply and `hydrating` flips
    * // false. Under SSR the factory fires via `onServerPrefetch` so
    * // the resolved payload bakes into hydration transfer state and
    * // the client never re-fetches.
@@ -1114,7 +1111,7 @@ export type UseFormConfiguration<
    * - `true` (default): the schema is run against the derived
    *   defaults immediately; any failures populate `form.errors` from
    *   the first frame. The UI decides when to *show* errors — gate
-   *   on `form.fields.<path>.touched`, `form.meta.submitCount`, etc.
+   *   on `form.fields.<path>.touched`, `form.meta.submissionAttempts`, etc.
    * - `false`: refinements are stripped during defaults derivation
    *   and construction-time validation is skipped. Useful for
    *   multi-step wizards, field arrays seeded with placeholder
@@ -1127,12 +1124,16 @@ export type UseFormConfiguration<
   /**
    * Automatic UI nudge on submit-validation failure. Fires after
    * errors are populated and before your `onError` callback runs.
-   * Default `'none'`.
+   * Default `'focus-first-error'`, which moves keyboard / screen-reader
+   * focus to the broken field as an accessibility baseline.
    *
-   * - `'focus-first-error'`: focus the first errored field's first
-   *   visible element (without scrolling).
-   * - `'scroll-to-first-error'`: scroll it into view.
+   * - `'focus-first-error'` (default): focus the first errored field's
+   *   first visible element.
+   * - `'scroll-to-first-error'`: scroll it into view without focusing.
    * - `'both'`: scroll, then focus.
+   * - `'none'`: opt out entirely; handle focus / scroll yourself in an
+   *   `onError` callback via `form.focusFirstError()` or
+   *   `form.scrollToFirstError()`.
    *
    * If no errored field has a currently-mounted, visible element,
    * the policy silently no-ops.
@@ -1295,31 +1296,76 @@ export type UseFormConfiguration<
    */
   sensitiveNames?: readonly string[]
   /**
-   * Cross-tab synchronisation via BroadcastChannel. Defaults to `true`
-   * (when the browser supports it and the page is in a secure
-   * context): a keyed `useForm` callsite auto-pairs with same-keyed
-   * siblings in other same-origin tabs and mirrors their mutations
-   * in near real-time.
+   * Cross-tab synchronisation via BroadcastChannel. **Defaults to
+   * `false` (opt-in).** Setting `true` on a keyed `useForm` callsite
+   * auto-pairs the form with same-keyed siblings in other same-origin
+   * tabs and mirrors their mutations in near real-time.
    *
    * **Resolution order (per-register override > per-form > global > library):**
    *
-   *   register(path, { multiTab })  >  useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`true`)
+   *   register(path, { multiTab })  >  useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`false`)
    *
-   * **When to set `false`:** forms holding PII / PHI, contexts where
-   * tab isolation is required by policy, or any flow where conflicting
-   * tab edits could corrupt user intent. Sensitive-named paths (via
-   * `sensitiveNames`) are always stripped from outbound broadcasts
-   * regardless of this setting.
+   * **Why opt-in.** Same-keyed forms broadcasting by default leaks
+   * surprise: a user editing in one tab sees their values appear in a
+   * sibling tab they forgot was open, including PII / PHI for forms
+   * that don't explicitly use `sensitiveNames`. Mirrors the `persist`
+   * default (also opt-in): both opt-in surfaces compose into one
+   * consistent "richer state needs explicit consent" rule.
    *
-   * **Secure-context requirement.** Multi-tab sync is silently disabled
-   * outside `window.isSecureContext === true` (HTTPS or localhost). On
-   * plain HTTP a one-shot dev warning fires and the module noops.
+   * **What's stripped even when opt-in.** `File` and `Blob` values
+   * never traverse the channel regardless of this flag (security +
+   * `structuredClone` cost). Sensitive-named paths (via
+   * `sensitiveNames`) are stripped both directions. See the
+   * multi-tab sync page for the full security model.
+   *
+   * **Secure-context requirement.** Even with `multiTab: true`, sync
+   * is silently disabled outside `window.isSecureContext === true`
+   * (HTTPS or localhost). On plain HTTP a one-shot dev warning fires
+   * and the module noops.
    *
    * **Anonymous (auto-keyed) forms skip sync entirely** — without a
    * consumer-supplied `key`, cross-tab identity is undefined and the
    * channel would be solo by construction.
    */
   multiTab?: boolean
+  /**
+   * Declares this form's downstream neighbor(s) in a wizard graph.
+   * Two shapes:
+   *
+   *   - `AnyForm` — identity reference; the form's runtime successor
+   *     is always the named form (linear flow).
+   *   - `{ pick, forms }` — declared list of possible successors with
+   *     a `pick` selector. `pick(parsed)` runs against the form's
+   *     `z.output` shape (the same shape `handleSubmit` receives) and
+   *     returns one of `forms`, or `undefined` for a dynamic terminal.
+   *
+   * Declare `forms` with `as const` so TypeScript narrows `pick`'s
+   * return type to the literal union. Without `as const`, the tuple
+   * widens to `AnyForm[]` and narrowing collapses.
+   *
+   * Omit `next` to mark this form as a terminal step. The walker
+   * treats any form whose `next` is undefined as a wizard endpoint.
+   *
+   * Read at `useWizard(entryForm)` construction time and at every
+   * navigation / submission consultation. `pick` should be free of
+   * side effects — the walker may invoke it multiple times.
+   */
+  next?: NextOption<GetValueFormType, Forms>
+  /**
+   * @internal
+   * SSR prefetch mark — set by the `attaform/vite` compile-time
+   * transform on `useForm` calls whose surrounding SFC template (or a
+   * computed feeding it) reads the form's reactive state. The flag
+   * enqueues the form on the registry's SSR prefetch queue so an
+   * async `defaultValues` factory runs inside `onServerPrefetch` and
+   * the resolved payload bakes into the hydration transfer state.
+   *
+   * Consumers do not write this directly — `form.activate()` is the
+   * documented escape hatch when the transform's static analysis
+   * can't see a reference (cross-module sharing, dynamic property
+   * access, headless contexts).
+   */
+  __ssrAccessed?: boolean
 }
 
 /**
@@ -1400,7 +1446,7 @@ export type AttaformDefaults = {
    *
    * ```ts
    * (field, formMeta) =>
-   *   formMeta.submitCount > 0 || (field.touched === true && field.dirty)
+   *   formMeta.submissionAttempts > 0 || (field.touched === true && field.dirty)
    * ```
    *
    * Compose with the library default via the public
@@ -1489,25 +1535,28 @@ export type AttaformDefaults = {
    */
   sensitiveNames?: readonly string[]
   /**
-   * App-wide default for `useForm({ multiTab })`. Default `true` when
-   * the runtime supports `BroadcastChannel` AND `window.isSecureContext`
-   * is true (HTTPS in production, localhost in development) — same gate
-   * browsers apply to other sensitive APIs (clipboard, geolocation,
-   * push, web crypto subtle).
-   *
-   * Set to `false` once at the plugin level for a multi-tenant
-   * deployment that prefers tab-isolation by default; individual forms
-   * can still opt back in via `useForm({ multiTab: true })`.
+   * App-wide default for `useForm({ multiTab })`. Library default is
+   * `false` (opt-in) — same posture as `persist`. Set to `true` once
+   * at the plugin level to enable cross-tab sync for every form in
+   * the app by default; individual forms can still opt out via
+   * `useForm({ multiTab: false })`.
    *
    * **Resolution order (per-form wins):**
    *
-   *   useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`true`)
+   *   useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`false`)
    *
-   * **Secure-context gate.** Multi-tab sync only activates over HTTPS
-   * or localhost. On plain HTTP, the module silently noops with a
-   * one-shot dev-mode warning — production deployments MUST be served
-   * over HTTPS for sync to function. See the multi-tab-sync recipe's
-   * Security section for the threat model.
+   * **Why opt-in.** Auto-broadcasting same-keyed forms surprises users
+   * (a value typed in one tab appearing in another they forgot was
+   * open) and leaks state for forms that don't explicitly use
+   * `sensitiveNames`. Paired with `persist` (also opt-in), the two
+   * "richer state" surfaces follow one consistent rule: explicit
+   * consent.
+   *
+   * **Secure-context gate.** Even with `multiTab: true`, sync only
+   * activates over HTTPS or localhost. On plain HTTP, the module
+   * silently noops with a one-shot dev-mode warning — production
+   * deployments MUST be served over HTTPS for sync to function. See
+   * the multi-tab-sync recipe's Security section for the threat model.
    */
   multiTab?: boolean
 }
@@ -2102,6 +2151,37 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   markBlank: () => boolean
+  /**
+   * `true` when the schema's slim primitive set at this path includes
+   * `'undefined'` — i.e. the leaf was declared `.optional()` (or as
+   * part of a union admitting `undefined`). Cached at register-time.
+   *
+   * Read by the directive's text-input listener to map a DOM clear
+   * (`el.value === ''`) onto `undefined` storage instead of `''`, so
+   * the `.optional()` "absent" semantic survives user interactions.
+   * Without this, a user who typed an invalid value into an optional
+   * field and then cleared it would be stuck with a permanent
+   * validation error (storage holds `''`, which is neither
+   * `undefined` nor a valid inner value).
+   * @internal
+   */
+  acceptsUndefined: boolean
+  /**
+   * `true` when the schema's slim primitive set at this path includes
+   * `'string'`. Cached at register-time alongside
+   * [[acceptsUndefined]].
+   *
+   * Read by the directive's text-input listener so a DOM clear on a
+   * numeric-only (or boolean-only, bigint-only) leaf takes the
+   * `markBlank` path instead of writing `''` through the assigner:
+   * the slim-primitive gate would reject the empty string anyway,
+   * and the directive's post-write force-sync would then snap the
+   * DOM back to the last accepted value, making the final character
+   * undeletable. With `markBlank`, storage holds the slim default
+   * with the blank meta and the DOM stays empty.
+   * @internal
+   */
+  acceptsString: boolean
 }>
 
 /**
@@ -2334,6 +2414,49 @@ export type RegisterDirective =
   | RegisterSelectCustomDirective
   | RegisterRadioCustomDirective
   | RegisterModelDynamicCustomDirective
+
+/**
+ * Module augmentation: register `v-register` with Vue's template
+ * type system. Lives in `types-api` because every public entry
+ * (`attaform`, `attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`)
+ * transitively reaches this file via the `useForm` return type, so
+ * the augmentation propagates to consumer SFCs regardless of which
+ * entry they import from — and regardless of whether they install
+ * `attaform/nuxt` or the Vite plugin.
+ *
+ * Augmentation targets `vue` rather than `@vue/runtime-core`:
+ * `GlobalDirectives` is originally declared in `@vue/runtime-core`,
+ * but consumers and Volar's strict-template codegen both resolve
+ * the interface through `vue`'s `export * from '@vue/runtime-dom'`
+ * → `export * from '@vue/runtime-core'` chain. TypeScript merges
+ * interfaces across re-exports, so augmenting `'vue'` reaches Volar
+ * without needing `@vue/runtime-core` to be hoisted into the
+ * library's own `node_modules` for its own typecheck.
+ */
+declare module 'vue' {
+  interface GlobalDirectives {
+    /**
+     * The `v-register` directive. Binds a form field to a native
+     * input, select, textarea, checkbox, or radio:
+     *
+     * ```vue
+     * <input v-register="form.register('email')" />
+     * ```
+     *
+     * Also works on custom components whose root is NOT a native
+     * input — call `useRegister()` in the child's setup to read the
+     * parent's binding, then re-bind `v-register` onto an inner
+     * native element. (When the wrapper's root IS the input itself,
+     * attribute fallthrough handles it; `useRegister` is unnecessary.)
+     *
+     * Modifier support varies by element:
+     *   - text / number / textarea: `.lazy`, `.trim`, `.number`
+     *   - select: `.number`
+     *   - checkbox / radio: none
+     */
+    vRegister: RegisterDirective
+  }
+}
 
 /**
  * Callback form of `setValue`'s value argument. Receives the previous
@@ -2670,12 +2793,30 @@ export type FieldState<Value = unknown> = {
  * alias (`type FooShape<T> = LeafWalker<T, 'foo'>`). The walker
  * topology is shared; only the leaf changes.
  *
+ * The `errors` entry threads `T` to preserve `| undefined` when the
+ * value type itself includes undefined (DU variant-only fields whose
+ * lifted shape resolves to `X | undefined`). Statically-known leaves
+ * collapse to `readonly ValidationError[]` (no undefined); dynamic-key
+ * boundaries (array indices, record keys) re-introduce `| undefined`
+ * via the structural index-signature channels.
+ *
+ * Preprocess / coerce leaves (StorageShape = `unknown`) are
+ * statically known too — the IsUnknown filter keeps them on the
+ * non-optional branch instead of being swept into the dynamic
+ * `| undefined` arm by `undefined extends unknown`.
+ *
  * Implementation-detail surface — consumers reach for `FieldStateMap`
  * or `FormErrorsSurface` instead.
  */
+type IsUnknown<T> = IsAny<T> extends true ? false : unknown extends T ? true : false
+
 export interface LeafSchemeFor<T> {
   field: FieldState<T>
-  errors: readonly ValidationError[] | undefined
+  errors: IsUnknown<T> extends true
+    ? readonly ValidationError[]
+    : undefined extends T
+      ? readonly ValidationError[] | undefined
+      : readonly ValidationError[]
 }
 
 /**
@@ -2710,20 +2851,43 @@ export type LeafWalker<
 > = [T] extends [string | number | boolean | bigint | symbol | null | undefined | Date | File]
   ? LeafSchemeFor<T>[Kind]
   : [T] extends [ReadonlyArray<infer U>]
-    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> }
+    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> } & ContainerSelfErrorsSlot<
+        T,
+        Kind
+      >
     : [T] extends [object]
       ? [IsUnion<T>] extends [true]
         ? StripOptional extends true
           ? {
               readonly [K in KeyofUnion<T>]-?: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            }
+            } & ContainerSelfErrorsSlot<T, Kind>
           : {
               readonly [K in KeyofUnion<T>]: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            }
+            } & ContainerSelfErrorsSlot<T, Kind>
         : StripOptional extends true
-          ? { readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional> }
-          : { readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional> }
+          ? {
+              readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional>
+            } & ContainerSelfErrorsSlot<T, Kind>
+          : {
+              readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
+            } & ContainerSelfErrorsSlot<T, Kind>
       : LeafSchemeFor<T>[Kind]
+
+/**
+ * Intersection augmenting every container in the `form.errors` walker
+ * with a `''` sentinel slot — the per-container home for cross-field
+ * refine errors, server-side container marks, and (at root) form-level
+ * errors. Gated on `Kind extends 'errors'` so `form.values` and
+ * `form.fields` surfaces stay untouched. Carve-out for schemas that
+ * legitimately declare a `''` field: the declared field type wins; at
+ * runtime the two collide harmlessly (errors at the literal leaf and
+ * any container-self errors share the slot via array concat).
+ */
+type ContainerSelfErrorsSlot<T, Kind> = Kind extends 'errors'
+  ? '' extends keyof T
+    ? unknown
+    : { readonly ['']: readonly ValidationError[] }
+  : unknown
 
 export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
 
@@ -2796,14 +2960,18 @@ export type FormErrorStore = Map<FormKey, FormErrorRecord>
 
 /**
  * Type of `form.errors`. Leaf-aware drillable callable Proxy. At a
- * leaf path the proxy resolves to `ValidationError[] | undefined`;
- * at a container path it returns a sub-proxy you can keep drilling.
+ * statically-known leaf the proxy resolves to `readonly ValidationError[]`
+ * (empty array when no errors land); at dynamic boundaries (array
+ * indices, record keys, DU variant-only fields) it resolves to
+ * `readonly ValidationError[] | undefined`. At a container path it
+ * returns a sub-proxy you can keep drilling.
  *
  * Dot/bracket access mirrors the schema shape:
  *
  * ```ts
- * form.errors.email                  // ValidationError[] | undefined (leaf)
- * form.errors.user.profile.email     // ValidationError[] | undefined (chained leaves)
+ * form.errors.email                  // readonly ValidationError[] (static leaf)
+ * form.errors.user.profile.email     // readonly ValidationError[] (chained static leaves)
+ * form.errors.posts[3]?.title        // readonly ValidationError[] | undefined (past array boundary)
  * form.errors.address                // sub-proxy (container — descend further)
  * ```
  *
@@ -2823,15 +2991,18 @@ export type FormErrorStore = Map<FormKey, FormErrorRecord>
 
 /**
  * Recursive shape of the `form.errors` proxy. Mirrors the schema:
- * primitive leaves expose `ValidationError[] | undefined` directly;
- * containers expose a sub-shape you can keep drilling. Arrays expose
- * numeric-indexed sub-shapes.
+ * statically-known primitive leaves expose `readonly ValidationError[]`
+ * (always an array; empty when no errors); leaves whose value type
+ * itself includes `undefined` (DU variant-only fields) keep the
+ * `| undefined` branch. Containers expose a sub-shape you can keep
+ * drilling. Arrays expose numeric-indexed sub-shapes; reading a
+ * numeric index introduces `| undefined` via noUncheckedIndexedAccess.
  *
  * Augmented with the callable signatures so dot-access and function-
  * call coexist on the same identifier.
  */
 export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
-  (path: string): readonly ValidationError[] | undefined
+  (path: string): readonly ValidationError[]
   /**
    * Tuple-segment form. Validated against `FlatPath<Form>` so literal
    * tuples that don't resolve to a known path fail at the call site.
@@ -2839,14 +3010,14 @@ export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
    */
   <const S extends ReadonlyArray<string | number>>(
     segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
-  ): readonly ValidationError[] | undefined
-  (segments: ReadonlyArray<string | number>): readonly ValidationError[] | undefined
+  ): readonly ValidationError[]
+  (segments: ReadonlyArray<string | number>): readonly ValidationError[]
   /**
    * No-arg call returns the form-level error aggregate — same as
-   * `form.errors([])` and `form.meta.errors`. `undefined` when the
-   * form has no errors; readonly array otherwise.
+   * `form.errors([])` and `form.meta.errors`. Always a readonly array;
+   * empty when the form has no errors.
    */
-  (): readonly ValidationError[] | undefined
+  (): readonly ValidationError[]
 }
 
 /**
@@ -3004,7 +3175,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * outcome (validation failure, callback success, callback throw).
    * Useful for "show errors after first submit attempt" UX.
    */
-  readonly submitCount: number
+  readonly submissionAttempts: number
 
   /**
    * The error thrown or rejected by the most recent submit callback
@@ -3028,15 +3199,17 @@ export type FormMeta<F = unknown> = FieldState<F> & {
   readonly errorCount: number
 
   /**
-   * `true` once `handleSubmit` has been invoked at least once, success
-   * or failure. Equivalent to `submitCount > 0`, exposed as a scalar
-   * for "show this only after the first submit attempt" UX in
-   * templates.
+   * `true` once a `handleSubmit` callback has resolved without
+   * throwing. Independent of `submissionAttempts` — a failed submit
+   * (validation failure or callback rejection) increments attempts but
+   * leaves `submitted` at `false`. Templates read it as "the form has
+   * been submitted successfully at least once."
    *
-   * Monotonically non-decreasing over the form's lifetime — once
-   * flipped, it stays `true` even after `form.reset()`.
+   * Cleared by `form.reset()` alongside `submissionAttempts` and
+   * `submitError`. For "the user has attempted a submit," read
+   * `submissionAttempts > 0` directly.
    */
-  readonly isSubmitted: boolean
+  readonly submitted: boolean
 
   /**
    * Per-`useForm()`-call identity. Stable for the lifetime of one
@@ -3072,7 +3245,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
  * form.register('email')        // bind to <input v-register>
  * form.values.email             // current value (proxy, no .value)
  * form.fields.email.dirty   // per-field flags
- * form.errors.email             // ValidationError[] | undefined
+ * form.errors.email             // readonly ValidationError[]
  * form.setValue('email', 'a@b.c')
  * form.handleSubmit(onSubmit)   // returns a submit handler
  * form.meta.submitting        // form-level reactive flag
@@ -3101,6 +3274,46 @@ export type FormMeta<F = unknown> = FieldState<F> & {
  * For schemas without write-boundary wrappers or transforms the three
  * shapes coincide.
  */
+
+/**
+ * Read-only view returned by `form.blankPaths.value`. Exposes lookup
+ * (`.has`), aggregate (`.size`), and iteration over the form's
+ * blank-marked paths.
+ *
+ * `.has(input)` and the iterator yield consistent results across both
+ * input conventions the library accepts everywhere a path is named:
+ *
+ *  - **Dotted string**: `'user.email'`, matching what `register('user.email')`
+ *    or `setValue('items.0.sku', …)` accept. Convenient when no segment
+ *    contains a literal dot.
+ *  - **Array form**: `['user', 'email']`, mirroring `register(['user', 'email'])`.
+ *    Required when a single segment contains literal dots (e.g.
+ *    `['address.primary']` for a top-level key named `address.primary` —
+ *    the dotted form `'address.primary'` would be parsed as two
+ *    segments).
+ *
+ * Iteration yields `Path` arrays so the structure is unambiguous —
+ * consumers building debug UI or persisting the set never have to guess
+ * whether a dot in a segment is a separator or part of the name.
+ *
+ * Mutating the view does nothing — writes still go through
+ * `setValue(path, unset)`, `markBlank()` on a register binding, or the
+ * directive's input listener on numeric clear.
+ */
+export interface BlankPathsView {
+  /** Number of blank-marked paths. */
+  readonly size: number
+  /**
+   * `true` when the path is in the blank set. Accepts dotted-string
+   * form (parsed by [[parseDottedPath]]) or the array form.
+   */
+  has(input: string | Path): boolean
+  /** Snapshot of all blank-marked paths as segment arrays. */
+  values(): readonly Path[]
+  /** Iterates the blank-marked paths as segment arrays. */
+  [Symbol.iterator](): IterableIterator<Path>
+}
+
 export type UseFormReturnType<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,
@@ -3374,6 +3587,22 @@ export type UseFormReturnType<
    */
   key: K
 
+  /**
+   * Normalized `next` declaration captured from
+   * `useForm({ next })`. Identity refs lift to a single-element
+   * `{ pick, forms }` tuple so the wizard graph walker reads one
+   * uniform shape; branching inputs pass through with a runtime guard
+   * that throws `OutOfFormsListError` on out-of-list `pick` returns.
+   *
+   * `undefined` when `next` was omitted — the form is a terminal step
+   * in any wizard graph that reaches it.
+   *
+   * Read by `useWizard(entryForm)` during the construction-time graph
+   * walk and by the navigation / submission pipelines that consult
+   * `pick`. Consumers do not normally read this directly.
+   */
+  readonly next: NormalizedNext | undefined
+
   // --- Async-defaults lifecycle ---
 
   /**
@@ -3383,27 +3612,62 @@ export type UseFormReturnType<
    * its promise settles). `false` otherwise, including when
    * `defaultValues` is a plain value.
    *
-   * The form is fully usable while `isHydrating` is `true` — it holds
+   * The form is fully usable while `hydrating` is `true` — it holds
    * the schema's slim defaults. The flag exists so templates can show
-   * a spinner / dim the form while real data loads, e.g.
+   * a spinner / dim the form while real data loads:
    *
    * ```vue
-   * <div :aria-busy="form.isHydrating">…</div>
+   * <div :aria-busy="form.hydrating">…</div>
    * ```
+   *
+   * Exposed as an auto-unwrapping `boolean` (no `.value`); reactivity
+   * is preserved via a getter that tracks the underlying ref at the
+   * access site, so `watch(() => form.hydrating, …)` and template
+   * reads both fire on change. Reading this property activates the
+   * form's factory under the lazy-by-default rule.
    */
-  readonly isHydrating: Readonly<Ref<boolean>>
+  readonly hydrating: boolean
 
   /**
-   * The error thrown or rejected by the most recent function-form
-   * `defaultValues` factory. `null` on construction, on successful
-   * resolution, and whenever no factory has fired. Updates with each
-   * `form.rehydrate()` call.
+   * The error from the most recent function-form `defaultValues` factory,
+   * normalized to a `ValidationError` (code `atta:hydration-failed`) so the
+   * shape matches every other surface in `form.errors` / `form.meta.errors`.
+   * `null` on construction, on successful resolution, and whenever no
+   * factory has fired. Updates with each `form.rehydrate()` call.
    *
-   * Distinct from `meta.submitError` so retry buttons and recovery
-   * UX can stay focused on the load-time failure without entangling
-   * the submit pipeline.
+   * Distinct from `meta.submitError` so retry buttons and recovery UX can
+   * stay focused on the load-time failure without entangling the submit
+   * pipeline. Read directly in templates and script (no `.value`);
+   * reactivity is preserved via a getter:
+   *
+   * ```vue
+   * <p v-if="form.hydrateError">{{ form.hydrateError.message }}</p>
+   * ```
    */
-  readonly hydrateError: Readonly<Ref<unknown | null>>
+  readonly hydrateError: ValidationError | null
+
+  /**
+   * `true` once the form's defaults have been applied — either a plain
+   * `defaultValues` value at construction or an async factory whose
+   * settle completed successfully. Stays `false` for dormant lazy
+   * forms (factory not yet activated) and for failed activations
+   * (`hydrateError` set). Once `true`, stays `true` through refetches
+   * so stale-while-revalidate UIs can keep rendering the prior values
+   * while a `rehydrate()` is in flight.
+   *
+   * Composes with `hydrating` and `hydrateError`:
+   *
+   * ```vue
+   * <Spinner v-if="!form.ready && form.hydrating" />
+   * <ErrorBanner v-if="!form.ready && form.hydrateError" :error="form.hydrateError" />
+   * <form v-if="form.ready">…</form>
+   * ```
+   *
+   * Exposed as a reactive `boolean` (no `.value`). Reading it activates
+   * the factory under the lazy-by-default rule — observing readiness
+   * implies use.
+   */
+  readonly ready: boolean
 
   /**
    * Re-fire the captured `defaultValues` factory and re-apply its
@@ -3411,12 +3675,25 @@ export type UseFormReturnType<
    * source changes (the user picks a different draft, a background
    * sync indicates fresh server data, etc.).
    *
-   * Resolves after `isHydrating` flips back to `false`. Throws
+   * Resolves after `hydrating` flips back to `false`. Throws
    * synchronously when the form was constructed with a plain-value
    * `defaultValues` (nothing to re-fire). Does NOT clear dirty /
    * touched / submit state — chain `form.reset()` for that.
    */
   rehydrate(): Promise<void>
+
+  /**
+   * Idempotent activation. Forms are lazy-by-default: a function-form
+   * `defaultValues` factory fires on the first reactive interaction
+   * (reading `form.values`, calling `form.setValue`, etc.). Call
+   * `form.activate()` to kick the factory explicitly — typically from
+   * `setup` so SSR's `onServerPrefetch` hook awaits the resolution
+   * before the page renders. Subsequent calls return the in-flight
+   * promise until the factory settles, after which they resolve
+   * immediately. Plain-value forms (no factory captured) always
+   * return a resolved promise.
+   */
+  activate(): Promise<void>
 
   // --- Reactive field-error API ---
 
@@ -3549,7 +3826,7 @@ export type UseFormReturnType<
 
   /**
    * Form-level reactive flags, counters, and aggregates (`dirty`,
-   * `valid`, `submitting`, `submitCount`, and the flat `errors`
+   * `valid`, `submitting`, `submissionAttempts`, and the flat `errors`
    * array). See `FormMeta` for the full shape. Read leaves directly
    * with no `.value`.
    *
@@ -3572,7 +3849,8 @@ export type UseFormReturnType<
    *   - the dirty baseline (so the next edit flips `dirty` correctly);
    *   - field errors;
    *   - touched / focused / blurred per-field flags;
-   *   - submission state (`submitting` / `submitCount` / `submitError`);
+   *   - submission state (`submitting` / `submissionAttempts` /
+   *     `submitted` / `submitError`);
    *   - the persisted draft, if persistence is configured.
    *
    * The next edit on a still-mounted opted-in input will start
@@ -3704,6 +3982,22 @@ export type UseFormReturnType<
   scrollToFirstError: (options?: ScrollIntoViewOptions) => boolean
 
   /**
+   * Drive the form's `onInvalidSubmit` policy imperatively. The same
+   * focus/scroll behavior `handleSubmit` runs after a failed submit,
+   * but available standalone. Defaults to the policy configured via
+   * `useForm({ onInvalidSubmit })` (or `'focus-first-error'` when
+   * omitted). Pass an explicit policy to override for one call.
+   *
+   * Used by `useWizard` after navigating to the first failing form
+   * during `wizard.handleSubmit`, so the failing form's own configured
+   * policy fires once its DOM is in view.
+   *
+   * No-op when no errored field is currently registered or when the
+   * resolved policy is `'none'`.
+   */
+  applyInvalidSubmitPolicy: (policy?: OnInvalidSubmitPolicy) => void
+
+  /**
    * Programmatically mark fields as touched — the sticky flag the
    * standard "show errors after interaction" pattern reads. Closes
    * the gap when fields are populated without a DOM gesture (post-
@@ -3762,25 +4056,28 @@ export type UseFormReturnType<
     value: ArrayItem<Form, Path>
   ) => void
   /**
-   * Read-only view of the form's blank path set. Each entry
-   * is a canonical `PathKey` (the `JSON.stringify(segments)` form
-   * `canonicalizePath` produces). The set is reactive — Vue 3.5
-   * tracks `.has()` / `for..of` / size accesses, so consumers can
-   * drive conditional UI off it directly:
+   * Read-only view of the form's blank path set. Reactive — Vue 3.5
+   * tracks `.has()` / `for..of` / size accesses, so consumers can drive
+   * conditional UI off it directly:
    *
    * ```ts
    * watchEffect(() => {
    *   if (form.blankPaths.value.size > 0) {
-   *     console.warn('unanswered fields:', [...form.blankPaths.value])
+   *     const paths = [...form.blankPaths.value]   // Path[][] — array of segments per entry
+   *     console.warn('unanswered fields:', paths.map((p) => p.join('.')))
    *   }
    * })
    * ```
    *
+   * `.has(input)` accepts the dotted-string form (`'user.email'`) or
+   * the array form (`['user', 'email']`). The array form disambiguates
+   * keys with literal dots (e.g. `['address.primary']`). See
+   * [[BlankPathsView]] for the full surface.
+   *
    * For per-path access, use `form.fields.<path>.blank`.
    * Writes happen through `setValue(path, unset)`,
    * `markBlank()` on a register binding, and the directive's
-   * input listener on numeric clear. Mutating the snapshot returned
-   * here does nothing — it's `Object.freeze`-d.
+   * input listener on numeric clear.
    */
-  blankPaths: ComputedRef<ReadonlySet<string>>
+  blankPaths: ComputedRef<BlankPathsView>
 }

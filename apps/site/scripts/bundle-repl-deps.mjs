@@ -7,8 +7,21 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Self-host every dep that the in-page REPL imports, so the docs site
-// has zero third-party CDN dependencies. Outputs land under
-// apps/site/public/lib/ and are referenced by DemoRepl's import map.
+// has zero third-party CDN dependencies. Outputs land in
+// `apps/site/.repl-cache/`; Nitro's `publicAssets` config (see
+// nuxt.config.ts) mounts that directory at `/lib/`, which is what
+// DemoReplEditor.client.vue's import map and Volar callbacks resolve
+// against.
+//
+// Why `.repl-cache/` rather than `public/lib/`: bundled `.d.ts` files
+// in `public/` end up inside the Nuxt-generated tsconfig's include
+// scope (`apps/site/**/*`). The REPL's declaration bundles re-emit
+// the library's `declare global { interface Window { ... } }` block,
+// so vue-tsc reports a TS2717 collision against the runtime
+// declaration in `src/runtime/core/` the moment a developer runs
+// typecheck after a `make up` session has populated the bundle.
+// Living outside `public/` keeps the artifacts off vue-tsc's project
+// graph while Nitro keeps serving them at the same `/lib/` URLs.
 //
 // Two parallel pipelines, both watch-aware:
 //
@@ -28,7 +41,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '../../..')
-const outDir = resolve(here, '../public/lib')
+const outDir = resolve(here, '../.repl-cache')
 const typesDir = resolve(outDir, 'types')
 
 // Resolve `@vue/runtime-dom`'s real on-disk path independent of the
@@ -156,11 +169,12 @@ await copyFile(
 // target: Worker"). Monaco then falls back to running the language
 // service on the main thread, freezing the UI.
 //
-// Workaround: copy the worker chunks to `public/lib/repl-workers/`
-// where Nitro's static file server emits them as-is (no Vite touch).
-// DemoRepl overrides `self.MonacoEnvironment.getWorker` to construct
-// workers from these clean URLs, sidestepping both the @vite/client
-// injection and the path-fragility of `import.meta.url` in dev.
+// Workaround: copy the worker chunks to `<outDir>/repl-workers/`
+// (mounted at `/lib/repl-workers/` via Nitro's publicAssets), where
+// the static file server emits them as-is (no Vite touch). DemoRepl
+// overrides `self.MonacoEnvironment.getWorker` to construct workers
+// from these clean URLs, sidestepping both the @vite/client injection
+// and the path-fragility of `import.meta.url` in dev.
 //
 // Filenames are renamed to stable names — `editor.worker.js` and
 // `vue.worker.js` — so DemoRepl doesn't have to track @vue/repl's
@@ -336,6 +350,66 @@ const packageManifests = {
   },
 }
 
+// rollup-plugin-dts bundles `src/index.ts` and `src/zod.ts` independently
+// and inlines every relative-imported declaration into each output. That
+// duplicates a handful of `unique symbol`-branded types (PathKey, Unset)
+// across `attaform/index.d.ts` and `attaform/zod.d.ts`. Each `unique
+// symbol` declaration has its own nominal identity, so the two bundles'
+// `PathKey` resolve as DIFFERENT types in Volar — a demo that pulls
+// `useForm` from `attaform/zod` and `useRegister` from `attaform`
+// produces a "Two different types with this name exist" error on
+// `v-register="rv"` even though the runtime types are identical.
+//
+// Fix: after both bundles emit, post-process `attaform/zod.d.ts` to
+// strip the branded-type declarations and re-import them from
+// `./index`. Both bundles then share one brand identity, so the
+// "incompatible PathKey" error goes away. The published lib's source
+// is unaffected — this only adjusts the REPL's flattened bundles.
+const SHARED_BRANDED_TYPE_BLOCKS = [
+  {
+    typeName: 'Unset',
+    regex:
+      /\/\*\* Internal brand for the `Unset` type\. Never exposed at runtime\. \*\/\s*\ndeclare const _unsetBrand: unique symbol;\s*\n\/\*\*[\s\S]*?\*\/\s*\ntype Unset = typeof _unsetBrand;\s*\n/,
+  },
+  {
+    typeName: 'PathKey',
+    regex:
+      /\/\*\*\s*\n \* Path primitives for advanced integrations[\s\S]*?\*\/\s*\ndeclare const pathKeyBrand: unique symbol;\s*\n\/\*\*[\s\S]*?\*\/\s*\ntype PathKey = string & \{\s*\n\s*readonly \[pathKeyBrand\]: 'PathKey';\s*\n\};\s*\n/,
+  },
+]
+
+async function unifyAttaformBrandedTypes() {
+  const zodDtsPath = resolve(typesDir, 'attaform/zod.d.ts')
+  let content = await readFile(zodDtsPath, 'utf8')
+
+  const imported = []
+  for (const { typeName, regex } of SHARED_BRANDED_TYPE_BLOCKS) {
+    if (regex.test(content)) {
+      content = content.replace(regex, '')
+      imported.push(typeName)
+    } else {
+      console.warn(
+        `[bundle-repl-deps] expected to find a "${typeName}" branded-type block in zod.d.ts; ` +
+          `the rolled-up output may have changed shape. Check the regex in SHARED_BRANDED_TYPE_BLOCKS.`
+      )
+    }
+  }
+
+  if (imported.length > 0) {
+    // Insert after the last existing import statement so the new line
+    // sits alongside the others rather than orphaned above them.
+    const importHeaderMatch = content.match(/^(?:import .+\n)+/)
+    const importLine = `import type { ${imported.join(', ')} } from './index';\n`
+    if (importHeaderMatch) {
+      content = importHeaderMatch[0] + importLine + content.slice(importHeaderMatch[0].length)
+    } else {
+      content = importLine + content
+    }
+  }
+
+  await writeFile(zodDtsPath, content)
+}
+
 // Just attaform's two .d.ts entry points. Re-run on every src/ change
 // during watch mode so the REPL's Volar always sees the latest types.
 // vue + zod aren't included here because they come from node_modules
@@ -357,6 +431,7 @@ async function emitAttaformTypeBundles() {
       name: 'attaform-zod',
     }),
   ])
+  await unifyAttaformBrandedTypes()
 }
 
 async function emitTypeBundles() {
@@ -509,5 +584,5 @@ if (watch) {
   console.log('[bundle-repl-deps] watching src/ for runtime + type changes')
 } else {
   await Promise.all(ctxs.map((c) => c.dispose()))
-  console.log('[bundle-repl-deps] bundled to public/lib/ (runtime + types)')
+  console.log('[bundle-repl-deps] bundled to .repl-cache/ (runtime + types)')
 }

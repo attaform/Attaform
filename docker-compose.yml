@@ -8,11 +8,20 @@ services:
     # parent shell exits.
     init: true
     volumes:
-      # Mount source so edits on host reflect in container
+      # Mount source so edits on host reflect in container.
       - .:/app
-      # Anonymous volume preserves the container's node_modules (host's may differ)
-      - /app/node_modules
-      - /app/apps/site/node_modules
+      # Persist the container's node_modules trees via NAMED volumes
+      # rather than anonymous ones. Anonymous volumes get fresh UUIDs
+      # on every `docker compose up` and orphan on every `down` (Docker
+      # has no reliable way to match them to the next run), which over
+      # a few weeks of `make up` / `make down` cycles piles tens of GB
+      # of dangling volumes into `/var/lib/docker/volumes/` and
+      # eventually fills the host disk. Named volumes are referenced
+      # by name, reused across restarts at zero cost, and only ever
+      # removed when `docker compose down -v` runs explicitly (see
+      # `make clean` for the project-scoped form).
+      - attaform_root_node_modules:/app/node_modules
+      - attaform_site_node_modules:/app/apps/site/node_modules
     ports:
       - '3000:3000' # docs site dev server
       # @nuxt/devtools 4.x's @vitejs/devtools serves its RPC websocket
@@ -24,5 +33,19 @@ services:
     environment:
       # pnpm needs HOME for its store
       HOME: /root
+      # Default Node heap (~2 GiB on 64-bit) is too small for a type-aware
+      # ESLint pass over src/ + test/ + apps/site/ with two tsconfig
+      # projects loaded simultaneously, and vue-tsc/vitest occasionally
+      # crowd the same ceiling. Container has ~11.6 GiB available; 8 GiB
+      # gives every Node process the headroom it needs without pressuring
+      # the host.
+      NODE_OPTIONS: --max-old-space-size=8192
     # Long-running idle container; use `make up` (boots dev server) or `make shell` to interact
     command: ['sh', '-c', 'tail -f /dev/null']
+
+volumes:
+  # Named volumes seeded from the Dockerfile's `pnpm install` on first
+  # mount, then reused across every `make up` / `make down` cycle.
+  # Removed only by `docker compose down -v` (exposed as `make clean`).
+  attaform_root_node_modules:
+  attaform_site_node_modules:

@@ -26,8 +26,15 @@ pnpm-debug.log*
 # Generated dirs
 dist
 apps/site/.repl-cache
-apps/site/public/lib
 apps/site/public/_pagefind
+
+# Volar / mkdist Vue declaration stubs. These belong in dist/ only —
+# the mkdist preset (build.config.ts) emits them at pack time. If a
+# Volar emit-on-save or a misconfigured vue-tsc run drops them next
+# to source .vue files, this rule keeps them out of commits. See
+# test/source-shape.test.ts for the standing CI tripwire.
+**/*.d.vue.ts
+**/*.vue.d.ts
 
 # TypeScript
 /*.tsbuildinfo

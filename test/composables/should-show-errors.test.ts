@@ -14,18 +14,21 @@ import type { FieldState, FormMeta, ShouldShowErrors, ValidationError } from '..
  *
  * `field.showErrors` is a derived boolean on `FieldState` that gates
  * error rendering through a centralised, configurable heuristic. The
- * heuristic — `shouldShowErrors(field, formMeta)` — resolves through
- * three tiers:
- *   1. Library default: `submitCount > 0 || (touched && dirty)`.
+ * heuristic `shouldShowErrors(field, formMeta)` resolves through three
+ * tiers:
+ *   1. Library default: own-path-error filter, then
+ *      `submissionAttempts > 0 || (touched && !focused)`. Containers (intermediate
+ *      AND root) only fire on errors at their own path; leaves always
+ *      satisfy the filter when they have errors.
  *   2. `createAttaform({ defaults: { shouldShowErrors } })`.
- *   3. `useForm({ shouldShowErrors })` — wins over both above.
+ *   3. `useForm({ shouldShowErrors })`, wins over both above.
  *
- * Boolean shorthand: `true` → always show when errors exist; `false` →
- * never show. The predicate is invoked only when `errors.length > 0`,
+ * Boolean shorthand: `true` always shows when errors exist; `false`
+ * never shows. The predicate is invoked only when `errors.length > 0`,
  * so authors don't re-check inside the predicate body.
  *
  * The predicate's args (`field`, `formMeta`) are `Omit`'d of
- * `showErrors` / `firstError` at BOTH the type and runtime level —
+ * `showErrors` / `firstError` at BOTH the type and runtime level, so
  * recursion is impossible regardless of language (TS or JS).
  */
 
@@ -61,6 +64,7 @@ type FieldStateLike = {
   readonly firstError: ValidationError | undefined
   readonly touched: boolean
   readonly dirty: boolean
+  readonly validating: boolean
 }
 
 type FormLike = {
@@ -72,7 +76,7 @@ type FormLike = {
     onSubmit: (data: unknown) => void | Promise<void>,
     onError?: (errors: readonly ValidationError[]) => void
   ) => () => Promise<void>
-  meta: { submitCount: number; submitting: boolean; showErrors: boolean }
+  meta: { submissionAttempts: number; submitting: boolean; showErrors: boolean }
   key: string
 }
 
@@ -93,21 +97,24 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
     }
 
     describe('default heuristic — leaf', () => {
-      it('errors present, untouched, submitCount=0 → showErrors === false', () => {
+      it('errors present, untouched, submissionAttempts=0 → showErrors === false', () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         expect(form.fields('email').errors.length).toBe(1)
         expect(form.fields('email').showErrors).toBe(false)
       })
 
-      it('errors present, touched but not dirty → showErrors === false', async () => {
+      it('errors present, touched (post-blur), regardless of dirty → showErrors === true', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         form.touch('email')
         await nextTick()
         expect(form.fields('email').touched).toBe(true)
         expect(form.fields('email').dirty).toBe(false)
-        expect(form.fields('email').showErrors).toBe(false)
+        // New default: own-path error + (touched && !focused). form.touch()
+        // flips touched without DOM focus, so the predicate fires regardless
+        // of dirty. Catches "user blurred out of a required empty field".
+        expect(form.fields('email').showErrors).toBe(true)
       })
 
       it('errors present, touched and dirty → showErrors === true', async () => {
@@ -115,21 +122,26 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         injectError(form, ['email'], 'email required')
         form.touch('email')
         form.setValue('email', 'x')
-        await nextTick()
+        // Drain the change-mode validation chain so `field.validating`
+        // returns to false. The default predicate hides showErrors
+        // during revalidation (SWR for the in-flight verdict); the
+        // assertion below pins post-validation state.
+        await new Promise((r) => setTimeout(r, 0))
         expect(form.fields('email').dirty).toBe(true)
+        expect(form.fields('email').validating).toBe(false)
         expect(form.fields('email').showErrors).toBe(true)
       })
 
-      it('errors present, untouched, submitCount=1 → showErrors === true', async () => {
+      it('errors present, untouched, submissionAttempts=1 → showErrors === true', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         await form.handleSubmit(() => {})()
         await nextTick()
-        expect(form.meta.submitCount).toBeGreaterThan(0)
+        expect(form.meta.submissionAttempts).toBeGreaterThan(0)
         expect(form.fields('email').showErrors).toBe(true)
       })
 
-      it('no errors, submitCount=10, touched and dirty → showErrors === false (errors-empty gate)', async () => {
+      it('no errors, submissionAttempts=10, touched and dirty → showErrors === false (errors-empty gate)', async () => {
         const form = makeForm()
         form.touch('email')
         form.setValue('email', 'x')
@@ -138,13 +150,13 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         }
         await nextTick()
         expect(form.fields('email').errors.length).toBe(0)
-        expect(form.meta.submitCount).toBe(10)
+        expect(form.meta.submissionAttempts).toBe(10)
         expect(form.fields('email').showErrors).toBe(false)
       })
     })
 
     describe('default heuristic — container', () => {
-      it('row-level container picks up descendant touched + dirty + errors', async () => {
+      it('row-level container with ONLY descendant errors does not duplicate them (showErrors === false)', async () => {
         const form = makeForm()
         injectError(form, ['users', 0, 'label'], 'label required')
         form.touch(['users', 0, 'label'])
@@ -152,16 +164,29 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         await nextTick()
         const row = form.fields('users.0')
         expect(row.errors.length).toBeGreaterThan(0)
-        expect(row.showErrors).toBe(true)
+        // Descendant errors are rendered by the descendant fields; the
+        // container's showErrors stays false to avoid UI duplication.
+        expect(row.showErrors).toBe(false)
       })
 
-      it('container shows nothing when descendants have errors but heuristic conditions unmet', async () => {
+      it('container shows nothing when descendants have errors and timing conditions unmet', async () => {
         const form = makeForm()
         injectError(form, ['users', 0, 'label'], 'label required')
         await nextTick()
         const row = form.fields('users.0')
         expect(row.errors.length).toBeGreaterThan(0)
         expect(row.showErrors).toBe(false)
+      })
+
+      it('row-level container with its OWN error surfaces it after timing gate', async () => {
+        const form = makeForm()
+        // Error at the container path itself (e.g., an object-level refine
+        // or a server-side cross-field error mapped to the row).
+        injectError(form, ['users', 0], 'row is invalid')
+        await form.handleSubmit(() => {})()
+        await nextTick()
+        const row = form.fields('users.0')
+        expect(row.showErrors).toBe(true)
       })
     })
 
@@ -183,7 +208,9 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         // injected one when validateOn:'change' fires on setValue).
         form.touch('email')
         form.setValue('email', 'x')
-        await nextTick()
+        // Drain the change-mode validation chain so the SWR-hide
+        // window closes before the showErrors assertion.
+        await new Promise((r) => setTimeout(r, 0))
         expect(form.fields('email').showErrors).toBe(true)
         form.setFieldErrors([])
         await nextTick()
@@ -193,14 +220,23 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
     })
 
     describe('form.meta.showErrors', () => {
-      it('aggregates over the whole form via the same heuristic', async () => {
+      it('stays false when only descendant (leaf) errors exist (the leaves render their own)', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         expect(form.meta.showErrors).toBe(false)
         await form.handleSubmit(() => {})()
         await nextTick()
-        expect(form.meta.showErrors).toBe(true)
+        // form.meta.showErrors === rootFieldState.showErrors with the own-path
+        // filter applied at root. Leaf errors don't surface here so the form
+        // banner can't duplicate them. Aggregate banners should bind to
+        // form.meta.errorCount > 0 instead.
+        expect(form.meta.showErrors).toBe(false)
       })
+
+      // Affirmative "root-level error fires form.meta.showErrors" coverage
+      // lives in the cross-cutting synthetic test below; the integration
+      // path needs an object-level schema refine to land an error at the
+      // root path [], which isn't worth wiring per-adapter here.
     })
   })
 }
@@ -219,12 +255,12 @@ function describeOverrideTier(
       ])
     }
 
-    it('plugin-level override: custom predicate ignores submitCount', async () => {
+    it('plugin-level override: custom predicate ignores submissionAttempts', async () => {
       const form = makeForm((field) => field.touched === true, undefined)
       inject(form)
       await form.handleSubmit(() => {})()
       await nextTick()
-      expect(form.meta.submitCount).toBeGreaterThan(0)
+      expect(form.meta.submissionAttempts).toBeGreaterThan(0)
       // touched is still false (no DOM blur, no programmatic touch)
       expect(form.fields('email').showErrors).toBe(false)
       form.touch('email')
@@ -426,7 +462,7 @@ describe('shouldShowErrors — cross-cutting', () => {
     )
     form.setFieldErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
     // Special case path[0] === 'urgent' is false for 'email' — falls through
-    // to the default heuristic, which is false at this state (untouched, submitCount=0).
+    // to the default heuristic, which is false at this state (untouched, submissionAttempts=0).
     await nextTick()
     expect(form.fields('email').showErrors).toBe(false)
     // Trigger the default branch's true case.
@@ -436,26 +472,153 @@ describe('shouldShowErrors — cross-cutting', () => {
   })
 
   it('defaultShouldShowErrors result tracks the documented heuristic on synthetic inputs', () => {
-    const baseField = {
+    const ownErrorField = {
       errors: [{ path: ['x'], message: 'm', formKey: 'k', code: 'c' }],
       touched: false,
+      focused: false,
       dirty: false,
       path: ['x'],
     } as unknown as Omit<FieldState, 'showErrors' | 'firstError'>
     const baseMeta = {
-      submitCount: 0,
+      submissionAttempts: 0,
     } as unknown as Omit<FormMeta, 'showErrors' | 'firstError'>
 
-    expect(defaultShouldShowErrors(baseField, baseMeta)).toBe(false)
-    expect(defaultShouldShowErrors({ ...baseField, touched: true, dirty: true }, baseMeta)).toBe(
-      true
-    )
+    // No submit, not touched: false.
+    expect(defaultShouldShowErrors(ownErrorField, baseMeta)).toBe(false)
+
+    // Touched and not focused (post-blur): true, regardless of dirty.
     expect(
-      defaultShouldShowErrors(baseField, { ...baseMeta, submitCount: 1 } as typeof baseMeta)
+      defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: false }, baseMeta)
     ).toBe(true)
-    expect(defaultShouldShowErrors({ ...baseField, touched: true, dirty: false }, baseMeta)).toBe(
-      false
+
+    // Touched and still focused (mid-edit): false. Hide transient errors
+    // while the user is actively editing the field.
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: true }, baseMeta)
+    ).toBe(false)
+
+    // Currently validating: false, regardless of timing-gate satisfaction.
+    // SWR keeps the stale verdict in `field.errors`, but the UX gate
+    // hides it because the application is recomputing.
+    expect(
+      defaultShouldShowErrors(
+        { ...ownErrorField, touched: true, focused: false, validating: true },
+        baseMeta
+      )
+    ).toBe(false)
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, validating: true }, {
+        ...baseMeta,
+        submissionAttempts: 1,
+      } as typeof baseMeta)
+    ).toBe(false)
+
+    // After first submit attempt: true regardless of touched/focused.
+    expect(
+      defaultShouldShowErrors(ownErrorField, {
+        ...baseMeta,
+        submissionAttempts: 1,
+      } as typeof baseMeta)
+    ).toBe(true)
+
+    // Post-submit aggression: focused + untouched + has-own-error still
+    // surfaces the error. The user signalled they're done editing by
+    // hitting submit; transient mid-edit hiding no longer applies.
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: false, focused: true }, {
+        ...baseMeta,
+        submissionAttempts: 1,
+      } as typeof baseMeta)
+    ).toBe(true)
+    expect(
+      defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: true }, {
+        ...baseMeta,
+        submissionAttempts: 1,
+      } as typeof baseMeta)
+    ).toBe(true)
+
+    // Container with ONLY descendant errors: false even after submit. The
+    // own-path filter blocks the container from duplicating leaf-rendered
+    // errors.
+    const containerOnlyDescendantErrors = {
+      errors: [{ path: ['x', 'y'], message: 'm', formKey: 'k', code: 'c' }],
+      touched: true,
+      focused: false,
+      dirty: true,
+      path: ['x'],
+    } as unknown as Omit<FieldState, 'showErrors' | 'firstError'>
+    expect(
+      defaultShouldShowErrors(containerOnlyDescendantErrors, {
+        ...baseMeta,
+        submissionAttempts: 1,
+      } as typeof baseMeta)
+    ).toBe(false)
+  })
+})
+
+describe('shouldShowErrors — SWR hide during validating', () => {
+  /**
+   * SWR contract: when a verdict is in flight, `field.errors` retains
+   * the stale entry (no flicker to empty), but `field.showErrors`
+   * goes false because the application is recomputing and would
+   * mis-narrate the current state if it surfaced the stale message.
+   * The error returns the moment validation completes if the new
+   * verdict still has issues.
+   */
+  it('async refine: showErrors hides during validation, returns when verdict lands', async () => {
+    let resolveValidation: (ok: boolean) => void = () => {}
+    const schema = zV4.object({
+      email: zV4.string().refine(
+        (val) => {
+          // Reject empty; for any non-empty value, await the
+          // externally-resolved gate so the test can observe the
+          // mid-validation window.
+          if (val.length === 0) return false
+          return new Promise<boolean>((resolve) => {
+            resolveValidation = resolve
+          })
+        },
+        { error: 'invalid email' }
+      ),
+    })
+
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `swr-validating-${Math.random()}`,
+          strict: false,
+          defaultValues: { email: '' },
+        } as never)
+      )
     )
+
+    // Touch + submit so the timing gate is open. Mount-time validation
+    // produces a verdict on the empty string ("invalid email").
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').errors.length).toBeGreaterThan(0)
+    expect(form.fields('email').showErrors).toBe(true)
+
+    // Edit to a non-empty value. Change-mode validation schedules; the
+    // async refine pauses on the externally-resolved gate.
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    expect(form.fields('email').validating).toBe(true)
+    // SWR: the stale error stays in `errors`, so consumers reading the
+    // store directly still see something while the new verdict resolves.
+    expect(form.fields('email').errors.length).toBeGreaterThan(0)
+    // But `showErrors` hides during the recompute window.
+    expect(form.fields('email').showErrors).toBe(false)
+
+    // Resolve the validation as STILL invalid. The new verdict lands,
+    // validating returns to false, showErrors flips back to true.
+    resolveValidation(false)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(form.fields('email').validating).toBe(false)
+    expect(form.fields('email').errors.length).toBeGreaterThan(0)
+    expect(form.fields('email').showErrors).toBe(true)
   })
 })
 
@@ -478,6 +641,6 @@ describe('shouldShowErrors — type-level guards', () => {
     // full IDE access to touched / dirty / errors / path / etc.
     expectTypeOf<Field['touched']>().toEqualTypeOf<boolean>()
     expectTypeOf<Field['dirty']>().toEqualTypeOf<boolean>()
-    expectTypeOf<Meta['submitCount']>().toEqualTypeOf<number>()
+    expectTypeOf<Meta['submissionAttempts']>().toEqualTypeOf<number>()
   })
 })

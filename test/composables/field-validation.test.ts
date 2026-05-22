@@ -77,7 +77,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     api.setValue('email', 'no')
     api.setValue('email', 'notanemail')
     // Nothing written yet — debounce hasn't elapsed.
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
 
     // Advance past the debounce and flush microtasks to let the async
     // safeParseAsync settle.
@@ -101,7 +101,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     api.setValue('email', 'fixed@example.com')
     await vi.advanceTimersByTimeAsync(100)
     await drainMicrotasks()
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
   })
 
   it('submit entry aborts pending field runs — submit result wins', async () => {
@@ -145,7 +145,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     api.setValue('email', 'not-an-email')
     await vi.advanceTimersByTimeAsync(1000)
     await drainMicrotasks()
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
   })
 })
 
@@ -162,7 +162,7 @@ describe('validateOn: "blur"', () => {
     api.setValue('email', 'invalid')
     await drainMicrotasks()
     // No write-path validation in blur mode.
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
   })
 })
 
@@ -183,6 +183,6 @@ describe('field validation: reset cancels pending runs', () => {
     await vi.advanceTimersByTimeAsync(500)
     await drainMicrotasks()
     // Reset cleared the timer — no field-run wrote anything to errors.
-    expect(api.errors.email).toBeUndefined()
+    expect(api.errors.email).toEqual([])
   })
 })

@@ -265,7 +265,7 @@ describe('discriminated-union variant switch — numeric variant blank auto-mark
     const api = mountNumeric()
 
     // Initially flat / amount — string leaf, no auto-mark.
-    expect(api.errors('payout.threshold')).toBeUndefined()
+    expect(api.errors('payout.threshold')).toEqual([])
 
     api.setValue('payout.kind', 'tiered')
     await nextTick()
@@ -1389,7 +1389,7 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     // is the bug fix — pre-fix, form.errors leaked the email variant's
     // address error after switching to sms because schemaErrors had a
     // dotted-path entry that nothing cleaned up.
-    expect(api.errors('notify.address')).toBeUndefined()
+    expect(api.errors('notify.address')).toEqual([])
   })
 
   it('round-trip with variant memory restores form.errors visibility', async () => {
@@ -1400,7 +1400,7 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
 
     api.setValue('notify.channel', 'sms')
     await nextTick()
-    expect(api.errors('notify.address')).toBeUndefined()
+    expect(api.errors('notify.address')).toEqual([])
 
     // Switch back. Variant memory restores the value at notify.address,
     // so hasAtPath returns true again and the filter unmasks the error.
@@ -1423,7 +1423,7 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    expect(api.errors('notify.address')).toBeUndefined()
+    expect(api.errors('notify.address')).toEqual([])
     const fields = (
       api as unknown as {
         fields: { notify: { address: { errors: ValidationError[] } } }
@@ -1458,7 +1458,7 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
 
     // form.errors hides it (active-path filter — notify.address isn't
     // in the live shape).
-    expect(api.errors('notify.address')).toBeUndefined()
+    expect(api.errors('notify.address')).toEqual([])
 
     // Per-field surface retains it (userErrors store, untouched by
     // schema re-validation).
@@ -1494,7 +1494,7 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     expect(api.errors('notify.number')).toHaveLength(1)
     // The email variant's construction-seeded error is still in the
     // store but stays filtered out.
-    expect(api.errors('notify.address')).toBeUndefined()
+    expect(api.errors('notify.address')).toEqual([])
   })
 })
 
@@ -1584,8 +1584,8 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
   it('api.errors.cargo.tempMinC chain yields undefined when no errors are present', () => {
     const { app, api } = mountCargoLift()
     apps.push(app)
-    expect(api.errors.cargo.tempMinC).toBeUndefined()
-    expect(api.errors.cargo.fragile).toBeUndefined()
+    expect(api.errors.cargo.tempMinC).toEqual([])
+    expect(api.errors.cargo.fragile).toEqual([])
   })
 
   it('api.errors.cargo.tempMinC populates after a schema-violating write on the refrigerated variant', async () => {

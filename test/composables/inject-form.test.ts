@@ -429,7 +429,7 @@ describe('injectForm — explicit key resolution', () => {
 })
 
 describe('injectForm — consumer ref-counting', () => {
-  it('keeps the form alive while any child holds it; evicts after last unmount', () => {
+  it('keeps the form alive while any child holds it; evicts after last unmount', async () => {
     // We ref-count via the trackConsumer path in injectForm. Unmount
     // the parent after the child while the underlying form is still
     // needed — the registry must keep the state alive as long as any
@@ -437,7 +437,8 @@ describe('injectForm — consumer ref-counting', () => {
     //
     // Vue's component teardown order is child-first-then-parent, so the
     // observable invariant is: while the tree is mounted, the form's
-    // state is resolvable by key; after unmount, it's evicted.
+    // state is resolvable by key; after unmount, it's evicted on the
+    // next microtask (deferred so a same-tick re-mount can reuse it).
 
     const Child = defineComponent({
       setup() {
@@ -461,7 +462,8 @@ describe('injectForm — consumer ref-counting', () => {
     expect(registryApp._attaform.forms.has('lifetime-form')).toBe(true)
 
     app.unmount()
-    // After unmount: eviction has run.
+    // Microtask-deferred eviction: drain the queue before asserting.
+    await Promise.resolve()
     expect(registryApp._attaform.forms.has('lifetime-form')).toBe(false)
   })
 })

@@ -3,16 +3,22 @@
  *
  * Per leaf:
  *
- * 1. `z.preprocess(fn, inner)` — compiles to `ZodPipe<ZodTransform, inner>`.
- *    The preprocess fn fires at the write boundary (synthesized into
- *    `setValue`), so storage holds whatever `inner` stores. Recurse
- *    `StorageShape` on `inner` so a defaulted leaf inside `inner` still
- *    reads `T` (not `T | undefined`).
+ * 1. Schema-side input normalizers — `z.preprocess(fn, inner)` AND
+ *    `z.coerce.X()`. Zod v4 represents these differently
+ *    (`ZodPipe<ZodTransform, inner>` for preprocess; a primitive
+ *    with `def.coerce === true` for coerce), but they share the
+ *    same type-level marker: `_zod.input` is `unknown`. The
+ *    normalizer runs at parse time, NOT at the write boundary, so
+ *    storage holds the consumer's raw input and the type collapses
+ *    to `unknown` to match. Reach the typed value via
+ *    `handleSubmit`, `validate`, or `validateAsync` — they re-parse
+ *    storage through the wrapper.
  *
  * 2. `inner.transform(fn)` — compiles to `ZodPipe<inner, ZodTransform>`.
  *    Transforms fire at submit / validate, NOT at the write boundary,
  *    so storage holds whatever `inner` stores. Recurse `StorageShape`
- *    on `inner` for the same reason.
+ *    on `inner` so a defaulted leaf inside `inner` still reads `T`
+ *    (not `T | undefined`).
  *
  *    A bare top-level `ZodTransform` (no `in` schema) reads
  *    `_zod.input` directly — there's no inner to recurse into.
@@ -27,12 +33,12 @@
  *    Nested objects delegate to Zod's own recursion on `_zod.output`,
  *    which peels nested defaults inside structural containers.
  *
- * Recursion: the alias calls itself on the non-transform side of a
- * pipe so the inner shape gets the same per-key storage treatment as
- * the top level. Without it, an inner `.default(...)` inside a
- * transformed object would peel back to `T | undefined` (the broad
- * input contract). Recursion only fires for pipe leaves — most leaves
- * skip it.
+ * Detection order: case 1 wins via the `_zod.input` IsUnknown check
+ * before the pipe/transform cascade fires, so wrapped variants like
+ * `z.coerce.number().optional()` (input = `unknown | undefined` →
+ * collapses to `unknown`) and `z.preprocess(fn, z.object(...))` (input
+ * = `unknown`) both land on `unknown` without descending. The IsAny
+ * filter keeps `z.any()` from being mistaken for coerce.
  *
  * Implementation note: direct `_zod` property access mirrors Zod's
  * own `$InferObjectOutput` / `$InferObjectInput`, which read
@@ -55,6 +61,20 @@ export type StorageShape<S> = S extends {
   : StorageLeaf<S>
 
 /**
+ * Detects a schema whose `_zod.input` is `unknown` — the marker both
+ * `z.preprocess(fn, _)` and `z.coerce.X()` share in Zod v4. Excludes
+ * `any` via the canonical `0 extends 1 & T` test so `z.any()` leaves
+ * fall through to the cascade below and keep their `any` typing.
+ */
+type InputIsUnknown<L> = L extends { _zod: { input: infer In } }
+  ? 0 extends 1 & In
+    ? false
+    : unknown extends In
+      ? true
+      : false
+  : false
+
+/**
  * Implementation-detail per-leaf branching for `StorageShape`.
  * Exported so the bundled `.d.ts` carries a single alias body —
  * every leaf of a Zod object schema otherwise re-emits the full
@@ -62,20 +82,19 @@ export type StorageShape<S> = S extends {
  * badly with multiple complex schemas in the same scope. Consumers
  * should reach for `StorageShape` instead.
  */
-export type StorageLeaf<L> = L extends {
-  _zod: { def: { type: 'pipe'; in: infer A; out: infer B } }
-}
-  ? A extends { _zod: { def: { type: 'transform' } } }
-    ? StorageShape<B>
-    : B extends { _zod: { def: { type: 'transform' } } }
-      ? StorageShape<A>
-      : L extends { _zod: { output: infer Out } }
-        ? Out
-        : never
-  : L extends { _zod: { def: { type: 'transform' } } }
-    ? L extends { _zod: { input: infer In } }
-      ? In
-      : never
-    : L extends { _zod: { output: infer Out } }
-      ? Out
-      : never
+export type StorageLeaf<L> =
+  InputIsUnknown<L> extends true
+    ? unknown
+    : L extends { _zod: { def: { type: 'pipe'; in: infer A; out: infer B } } }
+      ? B extends { _zod: { def: { type: 'transform' } } }
+        ? StorageShape<A>
+        : L extends { _zod: { output: infer Out } }
+          ? Out
+          : never
+      : L extends { _zod: { def: { type: 'transform' } } }
+        ? L extends { _zod: { input: infer In } }
+          ? In
+          : never
+        : L extends { _zod: { output: infer Out } }
+          ? Out
+          : never

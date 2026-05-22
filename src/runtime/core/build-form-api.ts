@@ -1,5 +1,6 @@
 import { computed, reactive, readonly, type Ref } from 'vue'
 import type {
+  BlankPathsView,
   CoercionRegistry,
   FormErrorsSurface,
   FormHistoryNamespace,
@@ -42,10 +43,15 @@ import {
 } from './paths'
 import { PERSISTENCE_MODULE_KEY, type PersistenceModule } from './persistence'
 import { enforceSensitiveCheck } from './persistence/sensitive-names'
-import { buildProcessForm } from './process-form'
+import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
 import { isUnset } from './unset'
-import { substituteUnsetSentinels, walkUnsetSentinels } from './unset-walker'
+import {
+  blankForKind,
+  expandUnsetAt,
+  substituteUnsetSentinels,
+  walkUnsetSentinels,
+} from './unset-walker'
 import { buildValuesProxy } from './values-proxy'
 
 export type BuildFormApiOptions = {
@@ -72,40 +78,6 @@ export type BuildFormApiOptions = {
   shouldShowErrors?: ShouldShowErrors
   coerce?: boolean | CoercionRegistry
   rememberVariants?: boolean
-}
-
-/**
- * Wrap a Set in a read-only facade. `Object.freeze(new Set(...))` does
- * NOT prevent `add` / `delete` / `clear` mutations on the underlying
- * Set — those methods bypass the frozen state. The Proxy traps the
- * mutating methods and rebinds method/getter access to the underlying
- * Set so internal-slot accesses (e.g. `size`, `has`) keep working.
- */
-function blankForKind(slimDefault: unknown): unknown {
-  if (typeof slimDefault === 'string') return ''
-  if (typeof slimDefault === 'number') return 0
-  if (typeof slimDefault === 'bigint') return 0n
-  if (typeof slimDefault === 'boolean') return false
-  if (slimDefault === null) return null
-  return undefined
-}
-
-function readonlySetSnapshot<T>(source: Iterable<T>): ReadonlySet<T> {
-  const snapshot = new Set(source)
-  return new Proxy(snapshot, {
-    get(target, prop) {
-      if (prop === 'add' || prop === 'delete' || prop === 'clear') {
-        return () => {
-          throw new TypeError(`Cannot mutate readonly Set: '${String(prop)}' is not allowed.`)
-        }
-      }
-      // Bind the result to `target` so Set's internal-slot accessors
-      // (`size`, `has`, `forEach`, the iterator protocol) receive the
-      // underlying Set as `this` instead of the Proxy.
-      const value = Reflect.get(target, prop, target)
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  }) as ReadonlySet<T>
 }
 
 /**
@@ -163,6 +135,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // property. Only pass the key when the consumer opted in.
   const processOptions =
     options.onInvalidSubmit !== undefined ? { onInvalidSubmit: options.onInvalidSubmit } : {}
+  const defaultInvalidSubmitPolicy: OnInvalidSubmitPolicy =
+    options.onInvalidSubmit ?? 'focus-first-error'
   const {
     validate: validateBuilt,
     validateAsync: validateAsyncBuilt,
@@ -213,51 +187,87 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
         next,
         state.schema as unknown as Parameters<typeof walkUnsetSentinels>[1]
       )
-      const ok = state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
-      if (!ok) return false
-      // Mark each blank path. `setValueAtPath` was just called
-      // with cleaned values, so the gate hook's implicit-unmark would
-      // have removed any prior blank entries for the paths
-      // we just touched — re-add them now.
+      // Pre-add descendant blank marks to `state.blankPaths` so the
+      // upcoming root write's `applyFormReplacement` captures them in
+      // a single history delta alongside the storage change. The
+      // root-level write itself never marks `[]` (no leaf at root),
+      // so `{blank: true}` is not passed. See `writeUnsetAt` for the
+      // matching mark-routing rationale.
       for (const pathKey of walked.paths) {
-        const segments = segmentsForPathKey(pathKey)
-        if (segments === null) continue
-        state.setValueAtPath(
-          segments,
-          state.schema.getDefaultAtPath(segments),
-          withInstanceMeta({ blank: true })
-        )
+        state.blankPaths.add(pathKey)
       }
-      return true
+      return state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
     }
     const segments = canonicalizePath(pathOrValue as string | Path).segments
-    // `unset` at a specific path: resolve the slim default and route
-    // through `setValueAtPath` with `blank: true`. Storage
-    // gets the well-typed default; the path is marked for the
-    // displayValue / required-empty machinery.
-    if (isUnset(maybeValue)) {
+    // `unset` at a specific path — direct or returned by the path-form
+    // callback. Routed through a shared helper so leaves, containers,
+    // and the discriminator-key special case all land the same shape.
+    const writeUnsetAt = (): boolean => {
       // Discriminator-path special case: the slim default at a disc
       // path is the first variant's literal (e.g. 'email'). Seeding
       // that here would silently activate a variant the consumer
       // didn't pick. Use a kind-appropriate primitive blank instead so
       // setValueAtPath's stub branch lands `{ [discKey]: blank }`
-      // with no variant body.
+      // with no variant body. The container `unset` at a DU's PARENT
+      // path is handled by `expandUnsetAt` itself (it stubs the DU
+      // there); this leaf check covers writes targeting the
+      // discriminator directly.
       const last = segments.length > 0 ? segments[segments.length - 1] : undefined
       if (typeof last === 'string') {
         const parent = segments.slice(0, -1)
         const parentDU = state.schema.getUnionDiscriminatorAtPath(parent)
         if (parentDU?.discriminatorKey === last) {
-          const slimDefault = state.schema.getDefaultAtPath(segments)
+          const slimDefault = state.schema.getEmptyValueAtPath(segments)
           const blank = blankForKind(slimDefault)
           return state.setValueAtPath(segments, blank, withInstanceMeta({ blank: true }))
         }
       }
-      return state.setValueAtPath(
+      // General case: `expandUnsetAt` writes the slim primitive at
+      // leaves, the falsy concrete at arrays/tuples/records, the DU
+      // stub `{ [discKey]: kind-blank }` at union containers, and
+      // recurses for bare objects — marking every primitive
+      // descendant. The schema's declared `.default(N)` is
+      // intentionally bypassed — see the matching note in
+      // unset-walker.ts.
+      const blankPaths: PathKey[] = []
+      const expanded = expandUnsetAt(
         segments,
-        state.schema.getDefaultAtPath(segments),
-        withInstanceMeta({ blank: true })
+        state.schema as unknown as Parameters<typeof expandUnsetAt>[1],
+        blankPaths
       )
+      const segmentsKey = canonicalizePath(segments).key
+      // Leaf unset (single mark == write path): combine the value-
+      // write and blank flag into ONE setValueAtPath call so
+      // `applyFormReplacement` captures both the storage change AND
+      // the new blank state in a single history delta. Splitting into
+      // value-write-without-flag + mark-via-flag identity short-
+      // circuits the second call and the blank change escapes history.
+      if (blankPaths.length === 1 && blankPaths[0] === segmentsKey) {
+        return state.setValueAtPath(segments, expanded, withInstanceMeta({ blank: true }))
+      }
+      // Container unset: marks live at descendants. Write the value
+      // first (this fires `applyFormReplacement` and goes through any
+      // DU reshape's blank-trim), then re-mark each blank path via a
+      // same-value setValueAtPath with `{blank: true}` so the gate
+      // hook re-adds them. Reading from storage rather than
+      // `getEmptyValueAtPath` keeps DU discriminator stubs intact:
+      // at a disc path the schema's empty is the FIRST variant literal
+      // (e.g. `'boat'`), which would silently overwrite the kind-blank
+      // `''` the parent write just landed.
+      const ok = state.setValueAtPath(segments, expanded, withInstanceMeta())
+      if (!ok) return false
+      for (const pathKey of blankPaths) {
+        const blankSegments = segmentsForPathKey(pathKey)
+        if (blankSegments === null) continue
+        state.setValueAtPath(
+          blankSegments,
+          state.getValueAtPath(blankSegments),
+          withInstanceMeta({ blank: true })
+        )
+      }
+      return true
     }
+    if (isUnset(maybeValue)) return writeUnsetAt()
     // Path-form callback: when the slot at `segments` is unpopulated,
     // hand the consumer the schema's default at that path instead of
     // `undefined` so `(prev) => prev.first.toUpperCase()` is safe.
@@ -271,15 +281,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       const current = state.getValueAtPath(segments)
       const prev = current === undefined ? state.schema.getDefaultAtPath(segments) : current
       resolvedValue = (maybeValue as (prev: unknown) => unknown)(prev)
-      // Callback returned `unset` — translate the same way as the
-      // direct case above.
-      if (isUnset(resolvedValue)) {
-        return state.setValueAtPath(
-          segments,
-          state.schema.getDefaultAtPath(segments),
-          withInstanceMeta({ blank: true })
-        )
-      }
+      // Callback returned bare `unset` — route through the same
+      // helper as the direct case so leaves, containers, and the
+      // discriminator-key special case all land identically.
+      if (isUnset(resolvedValue)) return writeUnsetAt()
     } else {
       resolvedValue = maybeValue
     }
@@ -301,17 +306,17 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     )
     const ok = state.setValueAtPath(segments, walked.cleanedValues, withInstanceMeta())
     if (!ok) return false
-    // Mark each substituted leaf blank. Re-write the slim default
-    // explicitly with `blank: true` so the gate hook adds the path
-    // to `blankPaths` (the variant reshape's `walkUnspecified` only
-    // auto-marks numeric leaves; this loop catches the
-    // string / boolean / bigint cases the consumer flagged blank).
+    // Re-mark each substituted leaf blank via a same-value setValueAtPath
+    // with `{blank: true}` so the gate hook re-adds them (any DU reshape
+    // that ran during the parent write trimmed blanks under the variant
+    // path). Reading from storage rather than `getEmptyValueAtPath`
+    // keeps DU discriminator stubs intact.
     for (const pathKey of walked.paths) {
       const blankSegments = segmentsForPathKey(pathKey)
       if (blankSegments === null) continue
       state.setValueAtPath(
         blankSegments,
-        state.schema.getDefaultAtPath(blankSegments),
+        state.getValueAtPath(blankSegments),
         withInstanceMeta({ blank: true })
       )
     }
@@ -449,7 +454,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   // --- Submission lifecycle ---
   const submitting = computed<boolean>(() => state.submitting.value)
-  const submitCount = computed<number>(() => state.submitCount.value)
+  const submissionAttempts = computed<number>(() => state.submissionAttempts.value)
+  const submitted = computed<boolean>(() => state.submitted.value)
   const submitError = computed<unknown>(() => state.submitError.value)
 
   // --- Validation lifecycle ---
@@ -538,24 +544,20 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // Thunk producing a fresh `FormMetaBase` snapshot on each call —
   // the omit'd-shape second argument to `state.shouldShowErrors`.
   // Reads run inside the field-state computed, so every reactive
-  // primitive touched here (submitCount, canUndo, ...) registers as
+  // primitive touched here (submissionAttempts, canUndo, ...) registers as
   // a dependency of that computed. Bypasses the cached field-state
   // accessor by calling `buildContainerFieldStateBase` directly —
   // going through the accessor would recurse through the root path's
   // own showErrors computation.
   const getFormMetaBase = (): FormMetaBase => {
     const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY)
-    const submitCount = state.submitCount.value
     return {
       ...rootBase,
       submitting: state.submitting.value,
-      submitCount,
+      submissionAttempts: state.submissionAttempts.value,
       submitError: state.submitError.value,
-      // Scalar mirrors over `errors.length` and `submitCount` — same
-      // values surfaced on `form.meta`. Available here so predicates
-      // (`shouldShowErrors`) can read them too.
       errorCount: rootBase.errors.length,
-      isSubmitted: submitCount > 0,
+      submitted: state.submitted.value,
       instanceId: formInstanceId,
     }
   }
@@ -619,13 +621,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       meta: computed(() => rootFieldState.value.meta),
       // Lifecycle (form-level only — not on FieldState).
       submitting,
-      submitCount,
+      submissionAttempts,
       submitError,
-      // Scalar mirrors over the array / counter — meta is a single
-      // sticky surface for both templates and the upcoming
-      // `useStepper`'s `FormStatus`, so the projections live here.
+      // Scalar mirror over the array — meta is a single sticky surface
+      // for both templates and `useWizard`'s `FormStatus`, so the
+      // projection lives here.
       errorCount: computed(() => metaErrors.value.length),
-      isSubmitted: computed(() => submitCount.value > 0),
+      submitted,
       // Per-`useForm()`-call identity. Stable for one mount; new on
       // re-mount; orthogonal to `form.key` (which is the user-supplied
       // shared identifier). Useful for devtools panels disambiguating
@@ -667,16 +669,14 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // structurally compatible with `WriteShape<Form>`, so the cast
       // here is safe.
       state.reset(walked.cleanedValues as DeepPartial<unknown> as Parameters<typeof state.reset>[0])
+      // `state.reset` clears `blankPaths` along with the values; re-
+      // seed it now with the walker-discovered paths. Direct add is
+      // safe because we just established the new baseline via
+      // `state.reset`, so there's no history bookkeeping conflict.
+      // Mirror each into `originalBlankPaths` too, so the post-reset
+      // dirty=false reference holds these as part of the baseline.
       for (const pathKey of walked.paths) {
-        const segments = segmentsForPathKey(pathKey)
-        if (segments === null) continue
-        state.setValueAtPath(
-          segments,
-          state.schema.getDefaultAtPath(segments),
-          withInstanceMeta({ blank: true })
-        )
-        // Mirror the new baseline into originalBlankPaths so the
-        // post-reset state is the dirty=false reference.
+        state.blankPaths.add(pathKey)
         state.originalBlankPaths.add(pathKey as PathKey)
       }
     }
@@ -759,20 +759,52 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return true
   }
 
+  // Drives the same focus/scroll policy that `handleSubmit` runs after a
+  // failed submit, but exposed as a method so the wizard's failed-path
+  // navigation can invoke the failing form's own configured policy after
+  // a `goTo`. Defaults to the form's `onInvalidSubmit` option so the
+  // caller doesn't have to repeat the configured choice.
+  const applyInvalidSubmitPolicyPublic = (policy?: OnInvalidSubmitPolicy): void => {
+    applyInvalidSubmitPolicy(state, formInstanceId, policy ?? defaultInvalidSubmitPolicy)
+  }
+
   // --- Field arrays ---
   const fieldArrays = buildFieldArrayApi(state)
 
   // --- Bulk blank introspection ---
-  // Read-only view of the form's blank path set. Vue 3.5
-  // tracks `.has()` / `for..of` / size accesses on a reactive Set,
-  // so the computed below is a lazy, dependency-tracked passthrough.
-  // Wrapped in a Proxy that traps mutating methods so consumers can't
-  // pollute the snapshot they receive (`Object.freeze` does NOT make
-  // a Set readonly — `add` / `delete` / `clear` still work on frozen
-  // Sets). Writes still go through `setValue(_, unset)` /
-  // `markBlank()` / the directive's input listener.
-  const blankPathsView = computed<ReadonlySet<string>>(() => {
-    return readonlySetSnapshot(state.blankPaths)
+  // Read-only view of the form's blank path set. Snapshots the internal
+  // `Set<PathKey>` (JSON-form keys) at evaluation time and exposes a
+  // `BlankPathsView` that canonicalises inputs and yields `Path` arrays
+  // — see [[BlankPathsView]] for the rationale. Vue 3.5's reactive Set
+  // tracking on the `state.blankPaths` iteration makes this computed
+  // re-evaluate whenever entries change. Writes still go through
+  // `setValue(_, unset)` / `markBlank()` / the directive's input
+  // listener.
+  const blankPathsView = computed<BlankPathsView>(() => {
+    const keys = new Set<PathKey>()
+    const paths: Path[] = []
+    for (const pk of state.blankPaths) {
+      keys.add(pk)
+      const segs = segmentsForPathKey(pk)
+      if (segs !== null) paths.push(segs)
+    }
+    Object.freeze(paths)
+    const view: BlankPathsView = {
+      get size() {
+        return keys.size
+      },
+      has(input: string | Path): boolean {
+        const { key } = canonicalizePath(input)
+        return keys.has(key)
+      },
+      values(): readonly Path[] {
+        return paths
+      },
+      [Symbol.iterator](): IterableIterator<Path> {
+        return paths[Symbol.iterator]()
+      },
+    }
+    return Object.freeze(view)
   })
 
   // --- Pinia-style reactive readonly proxy over the form's value ---
@@ -793,54 +825,112 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // for downstream `===` checks and Vue's render diff.
   const fieldStateProxy = buildFieldStateProxy(state, getFormMetaBase, fieldStateAccessorOptions)
 
+  // Lazy-activation gate: every public method routes through `activate`
+  // so the first reactive interaction kicks the captured factory. The
+  // activation promise is intentionally ignored — recursive activates,
+  // factory rejections, and SSR awaiting are coordinated on `state`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function gated<F extends (...args: any[]) => any>(fn: F): F {
+    return ((...args: Parameters<F>) => {
+      void state.activate()
+      return fn(...args)
+    }) as F
+  }
+
   return {
-    handleSubmit,
-    // `values` is the callable readonly Proxy. Each `get` trap reads
-    // through `inner.value` (a `computed(() => readonly(form.value))`)
-    // so reactivity tracking propagates at the call site. Identity-
-    // stable across whole-form swaps (the inner readonly proxy
-    // re-keys; the outer callable proxy stays the same instance).
-    values: valuesProxy as unknown as UseFormReturnType<Form, GetValueFormType>['values'],
-    fields: fieldStateProxy as unknown as UseFormReturnType<Form, GetValueFormType>['fields'],
-    setValue: setValueImpl as UseFormReturnType<Form, GetValueFormType>['setValue'],
-    validate: validate as UseFormReturnType<Form, GetValueFormType>['validate'],
-    validateAsync: validateAsync as UseFormReturnType<Form, GetValueFormType>['validateAsync'],
-    process: process as UseFormReturnType<Form, GetValueFormType>['process'],
-    register: register as UseFormReturnType<Form, GetValueFormType>['register'],
+    handleSubmit: gated(handleSubmit),
+    // Callable readonly Proxies (`values`, `fields`, `errors`) and the
+    // reactive containers (`meta`, `history`, `blankPaths`) are exposed
+    // through getters so reading them activates the form on first
+    // touch. Each underlying object is identity-stable across reads.
+    get values(): UseFormReturnType<Form, GetValueFormType>['values'] {
+      void state.activate()
+      return valuesProxy as unknown as UseFormReturnType<Form, GetValueFormType>['values']
+    },
+    get fields(): UseFormReturnType<Form, GetValueFormType>['fields'] {
+      void state.activate()
+      return fieldStateProxy as unknown as UseFormReturnType<Form, GetValueFormType>['fields']
+    },
+    setValue: gated(setValueImpl) as UseFormReturnType<Form, GetValueFormType>['setValue'],
+    validate: gated(validate) as UseFormReturnType<Form, GetValueFormType>['validate'],
+    validateAsync: gated(validateAsync) as UseFormReturnType<
+      Form,
+      GetValueFormType
+    >['validateAsync'],
+    process: gated(process) as UseFormReturnType<Form, GetValueFormType>['process'],
+    register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
-    // Read-only views over the per-store async-defaults lifecycle
-    // refs (see FormStore.isHydrating / hydrateError). Plain-value
-    // forms hold these at their zero state for the form's lifetime.
-    isHydrating: readonly(state.isHydrating) as Readonly<Ref<boolean>>,
-    hydrateError: readonly(state.hydrateError) as Readonly<Ref<unknown | null>>,
+    // Normalized `next` declaration. `undefined` for terminal forms.
+    // Read by `useWizard` during graph construction and by the
+    // navigation / submission pipelines that consult `pick`.
+    next: state.next,
+    // Auto-unwrapping views over the per-store async-defaults lifecycle
+    // refs (see FormStore.hydrating / hydrateError). Reading either
+    // activates the form — observing factory state implies use.
+    get hydrating(): boolean {
+      void state.activate()
+      return state.hydrating.value
+    },
+    get hydrateError(): ValidationError | null {
+      void state.activate()
+      return state.hydrateError.value
+    },
+    // Orthogonal to `hydrating` and `hydrateError`: `ready` flips true
+    // once defaults are applied (sync at construction or async factory
+    // resolved successfully). One-way latch — stays true through later
+    // refetches even when those refetches fail, so stale-while-
+    // revalidate UIs keep rendering the prior values while
+    // `hydrateError` surfaces the refresh failure.
+    get ready(): boolean {
+      void state.activate()
+      return state.defaultsResolved.value
+    },
+    // `rehydrate` and `activate` are themselves activation entry points
+    // — they fire the factory by design. Wrapping them with `gated`
+    // would double-fire (`state.activate()` plus the underlying call),
+    // so they call `state` directly.
     rehydrate: () => state.rehydrate(),
-    errors: errorsProxy as unknown as FormErrorsSurface<Form>,
-    toRef: pathToRef as UseFormReturnType<Form, GetValueFormType>['toRef'],
-    setFieldErrors,
-    addFieldErrors,
-    clearFieldErrors,
-    setFormErrors,
-    clearFormErrors,
-    meta: formMeta,
-    reset: reset as UseFormReturnType<Form, GetValueFormType>['reset'],
-    resetField: resetField as UseFormReturnType<Form, GetValueFormType>['resetField'],
-    clear: clear as UseFormReturnType<Form, GetValueFormType>['clear'],
-    persist: persist as UseFormReturnType<Form, GetValueFormType>['persist'],
-    clearPersistedDraft: clearPersistedDraft as UseFormReturnType<
+    activate: () => state.activate(),
+    get errors(): FormErrorsSurface<Form> {
+      void state.activate()
+      return errorsProxy as unknown as FormErrorsSurface<Form>
+    },
+    toRef: gated(pathToRef) as UseFormReturnType<Form, GetValueFormType>['toRef'],
+    setFieldErrors: gated(setFieldErrors),
+    addFieldErrors: gated(addFieldErrors),
+    clearFieldErrors: gated(clearFieldErrors),
+    setFormErrors: gated(setFormErrors),
+    clearFormErrors: gated(clearFormErrors),
+    get meta() {
+      void state.activate()
+      return formMeta
+    },
+    reset: gated(reset) as UseFormReturnType<Form, GetValueFormType>['reset'],
+    resetField: gated(resetField) as UseFormReturnType<Form, GetValueFormType>['resetField'],
+    clear: gated(clear) as UseFormReturnType<Form, GetValueFormType>['clear'],
+    persist: gated(persist) as UseFormReturnType<Form, GetValueFormType>['persist'],
+    clearPersistedDraft: gated(clearPersistedDraft) as UseFormReturnType<
       Form,
       GetValueFormType
     >['clearPersistedDraft'],
-    focusFirstError,
-    scrollToFirstError,
-    touch: touch as UseFormReturnType<Form, GetValueFormType>['touch'],
-    history: formHistory,
-    append: fieldArrays.append as UseFormReturnType<Form, GetValueFormType>['append'],
-    prepend: fieldArrays.prepend as UseFormReturnType<Form, GetValueFormType>['prepend'],
-    insert: fieldArrays.insert as UseFormReturnType<Form, GetValueFormType>['insert'],
-    remove: fieldArrays.remove as UseFormReturnType<Form, GetValueFormType>['remove'],
-    swap: fieldArrays.swap as UseFormReturnType<Form, GetValueFormType>['swap'],
-    move: fieldArrays.move as UseFormReturnType<Form, GetValueFormType>['move'],
-    replace: fieldArrays.replace as UseFormReturnType<Form, GetValueFormType>['replace'],
-    blankPaths: blankPathsView,
+    focusFirstError: gated(focusFirstError),
+    scrollToFirstError: gated(scrollToFirstError),
+    applyInvalidSubmitPolicy: gated(applyInvalidSubmitPolicyPublic),
+    touch: gated(touch) as UseFormReturnType<Form, GetValueFormType>['touch'],
+    get history() {
+      void state.activate()
+      return formHistory
+    },
+    append: gated(fieldArrays.append) as UseFormReturnType<Form, GetValueFormType>['append'],
+    prepend: gated(fieldArrays.prepend) as UseFormReturnType<Form, GetValueFormType>['prepend'],
+    insert: gated(fieldArrays.insert) as UseFormReturnType<Form, GetValueFormType>['insert'],
+    remove: gated(fieldArrays.remove) as UseFormReturnType<Form, GetValueFormType>['remove'],
+    swap: gated(fieldArrays.swap) as UseFormReturnType<Form, GetValueFormType>['swap'],
+    move: gated(fieldArrays.move) as UseFormReturnType<Form, GetValueFormType>['move'],
+    replace: gated(fieldArrays.replace) as UseFormReturnType<Form, GetValueFormType>['replace'],
+    get blankPaths() {
+      void state.activate()
+      return blankPathsView
+    },
   }
 }

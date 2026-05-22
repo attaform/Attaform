@@ -56,7 +56,7 @@ describe('default-values hydration skips history', () => {
   it('async resolution does not push an undo entry', async () => {
     const { app, api } = mountForm(schema, () => Promise.resolve({ email: 'a@b.c', name: 'Ada' }))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.values.email).toBe('a@b.c')
     // Despite the apply that just landed, history must remain clean —
     // undo would otherwise expose the transient slim-default state.
@@ -66,7 +66,7 @@ describe('default-values hydration skips history', () => {
   it('user mutations after hydration record normally', async () => {
     const { app, api } = mountForm(schema, () => Promise.resolve({ email: 'a@b.c', name: 'Ada' }))
     apps.push(app)
-    await waitUntil(() => (api.isHydrating.value === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.history.canUndo).toBe(false)
 
     api.setValue('email', 'updated@example.com')

@@ -6,7 +6,7 @@
  * `attaform/zod-v4` and `attaform`.
  *
  * This script is the acceptance test for the depth-efficiency
- * refactor: a 4-form `useStepper` pattern with discriminated unions,
+ * refactor: a 4-form `useWizard` pattern with discriminated unions,
  * nested objects, arrays, and tuples must not trip TS2589 ("Type
  * instantiation is excessively deep") under the bundled `.d.ts`.
  *
@@ -49,7 +49,7 @@ if (!distIsRealBundle()) {
   run('pnpm prepack')
 }
 
-console.log('[check-bundled-types] typechecking 4-form-stepper fixture against bundled .d.ts')
+console.log('[check-bundled-types] typechecking 4-form-wizard fixture against bundled .d.ts')
 try {
   run(`pnpm exec tsc --project "${fixtureTsConfig}"`)
   console.log('[check-bundled-types] ok — bundled types support the 4-form pattern')

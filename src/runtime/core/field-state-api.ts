@@ -84,7 +84,7 @@ export type FormMetaBase = Omit<FormMeta<unknown>, 'showErrors' | 'firstError'>
  * accessor's returned `computed` invokes this thunk to materialise
  * a fresh `FormMetaBase` snapshot — Vue's reactivity tracks every
  * `Ref.value` read inside, so the field-state computed re-evaluates
- * when (e.g.) `submitCount` changes. Stateless function, not a Ref:
+ * when (e.g.) `submissionAttempts` changes. Stateless function, not a Ref:
  * we never need to swap predicates at runtime, and a plain function
  * keeps the dependency graph shallow.
  */

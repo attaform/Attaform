@@ -93,7 +93,7 @@ describe('derivedBlankErrors — auto-mark fires for numeric primitives', () => 
     expect(api.errors.income?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
     api.setValue('income', 50_000)
     await nextTick()
-    expect(api.errors.income).toBeUndefined()
+    expect(api.errors.income).toEqual([])
   })
 
   it('writing `unset` re-adds the derived error reactively', async () => {
@@ -102,7 +102,7 @@ describe('derivedBlankErrors — auto-mark fires for numeric primitives', () => 
 
     api.setValue('income', 50_000)
     await nextTick()
-    expect(api.errors.income).toBeUndefined()
+    expect(api.errors.income).toEqual([])
 
     api.setValue('income', unset)
     await nextTick()
@@ -145,7 +145,7 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    expect(handle.api?.errors.name).toBeUndefined()
+    expect(handle.api?.errors.name).toEqual([])
     expect(handle.api?.fields.name.blank).toBe(false)
     expect(handle.api?.meta.valid).toBe(true)
   })
@@ -164,7 +164,7 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    expect(handle.api?.errors.agreed).toBeUndefined()
+    expect(handle.api?.errors.agreed).toEqual([])
     expect(handle.api?.fields.agreed.blank).toBe(false)
     expect(handle.api?.meta.valid).toBe(true)
   })
@@ -191,7 +191,7 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
     // a blank error.
     handle.api?.setValue('name', 'A')
     await nextTick()
-    expect(handle.api?.errors.name).toBeUndefined()
+    expect(handle.api?.errors.name).toEqual([])
 
     handle.api?.setValue('name', '')
     // `meta.valid` is the strict signal — drain the per-field run
@@ -200,7 +200,7 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
       await Promise.resolve()
       await nextTick()
     }
-    expect(handle.api?.errors.name).toBeUndefined()
+    expect(handle.api?.errors.name).toEqual([])
     expect(handle.api?.fields.name.blank).toBe(false)
     expect(handle.api?.meta.valid).toBe(true)
   })
@@ -292,7 +292,7 @@ describe('derivedBlankErrors — schema modifiers gate the synthesis', () => {
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    expect(handle.api?.errors.income).toBeUndefined()
+    expect(handle.api?.errors.income).toEqual([])
     expect(handle.api?.meta.valid).toBe(true)
   })
 
@@ -310,7 +310,7 @@ describe('derivedBlankErrors — schema modifiers gate the synthesis', () => {
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    expect(handle.api?.errors.income).toBeUndefined()
+    expect(handle.api?.errors.income).toEqual([])
     expect(handle.api?.meta.valid).toBe(true)
   })
 
@@ -328,7 +328,7 @@ describe('derivedBlankErrors — schema modifiers gate the synthesis', () => {
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    expect(handle.api?.errors.income).toBeUndefined()
+    expect(handle.api?.errors.income).toEqual([])
     expect(handle.api?.meta.valid).toBe(true)
   })
 
@@ -351,8 +351,8 @@ describe('derivedBlankErrors — schema modifiers gate the synthesis', () => {
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    expect(handle.api?.errors.income).toBeUndefined()
-    expect(handle.api?.errors.netWorth).toBeUndefined()
+    expect(handle.api?.errors.income).toEqual([])
+    expect(handle.api?.errors.netWorth).toEqual([])
     expect(handle.api?.meta.valid).toBe(true)
   })
 })
@@ -482,7 +482,7 @@ describe('derivedBlankErrors — lifecycle integration', () => {
     await handler()
 
     expect(submitted).toBe(true)
-    expect(api.errors.income).toBeUndefined()
-    expect(api.errors.netWorth).toBeUndefined()
+    expect(api.errors.income).toEqual([])
+    expect(api.errors.netWorth).toEqual([])
   })
 })

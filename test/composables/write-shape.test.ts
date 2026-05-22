@@ -32,6 +32,12 @@ function makeFormProxy<T>(): T {
  *
  * Read-side post-validation types (handleSubmit's `data` argument,
  * validate*() result payloads) intentionally stay STRICT.
+ *
+ * `WriteShape` itself stays STRICT — the consumer-facing write
+ * value uses `DefaultValuesShape<T>` (admits `Unset`), composed via
+ * `SetValuePayload`. `WriteShape` is the callback's prev-value
+ * argument (always a real value) and the structural shape for
+ * read-side surfaces like `FieldStateMap<T>`.
  */
 
 describe('WriteShape — primitive-literal widening', () => {

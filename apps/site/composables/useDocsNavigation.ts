@@ -14,7 +14,16 @@
 // troubleshooting). Later phases fill in the remaining ~56 pages.
 
 export type DocsLink = { title: string; to: string }
-export type DocsSection = { heading: string; links: DocsLink[] }
+// A non-clickable label that groups the page links beneath it inside a
+// section. Renders as a small uppercase heading in the sidebar; the
+// pager walks through it transparently (subheadings filter out of
+// `docsLinksFlat`), and the breadcrumb ignores it entirely so the
+// trail stays "Docs / Section / Page" rather than four levels deep.
+export type DocsSubheading = { subheading: string }
+export type DocsNavItem = DocsLink | DocsSubheading
+export type DocsSection = { heading: string; links: DocsNavItem[] }
+
+export const isDocsLink = (item: DocsNavItem): item is DocsLink => 'to' in item
 
 export const docsNavigation: DocsSection[] = [
   {
@@ -64,16 +73,17 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Binding inputs',
     links: [
       { title: 'The v-register directive', to: '/docs/binding-inputs/v-register' },
+      { title: 'useRegister', to: '/docs/binding-inputs/use-register' },
       { title: 'Text, number, textarea', to: '/docs/binding-inputs/text-number-textarea' },
       { title: 'Checkbox', to: '/docs/binding-inputs/checkbox' },
       { title: 'Radio groups', to: '/docs/binding-inputs/radio' },
       { title: 'Select & multi-select', to: '/docs/binding-inputs/select' },
       { title: 'File inputs', to: '/docs/binding-inputs/file' },
+      { subheading: 'Advanced binding patterns' },
       { title: 'Modifiers', to: '/docs/binding-inputs/modifiers' },
       { title: 'Register transforms', to: '/docs/binding-inputs/transforms' },
-      { title: 'Custom assigners', to: '/docs/binding-inputs/custom-assigners' },
-      { title: 'useRegister', to: '/docs/binding-inputs/use-register' },
       { title: 'Schema-driven coercion', to: '/docs/binding-inputs/coercion' },
+      { title: 'Custom assigners', to: '/docs/binding-inputs/custom-assigners' },
     ],
   },
   {
@@ -157,9 +167,10 @@ export const docsNavigation: DocsSection[] = [
 
 // All links in canonical reading order. Used by the pager (prev/next)
 // and any consumer that needs to walk the nav linearly without
-// thinking about section grouping.
-export const docsLinksFlat: ReadonlyArray<DocsLink> = docsNavigation.flatMap(
-  (section) => section.links
+// thinking about section grouping. Subheadings filter out so the
+// pager hops cleanly from page to page.
+export const docsLinksFlat: ReadonlyArray<DocsLink> = docsNavigation.flatMap((section) =>
+  section.links.filter(isDocsLink)
 )
 
 // Returns the prev/next link for the current route. Composables that
@@ -179,14 +190,18 @@ export function useDocsPagination() {
 
 // Derives the breadcrumb trail from the current path + the nav
 // structure. Always opens with a clickable "Docs" home, then the
-// section heading (text only — sections aren't pages), then the
-// current page title (text only — we're already there).
+// section heading (text only, sections aren't pages), then the
+// current page title (text only, we're already there). Subheadings
+// inside a section are sidebar-only grouping; they don't appear in
+// the breadcrumb so the trail stays at the IA's two real levels.
 export function useDocsBreadcrumb() {
   const route = useRoute()
   return computed(() => {
     const segments: Array<{ label: string; to?: string }> = [{ label: 'Docs', to: '/docs' }]
     for (const section of docsNavigation) {
-      const link = section.links.find((l) => l.to === route.path)
+      const link = section.links.find(
+        (item): item is DocsLink => isDocsLink(item) && item.to === route.path
+      )
       if (link) {
         segments.push({ label: section.heading })
         segments.push({ label: link.title })

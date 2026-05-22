@@ -68,6 +68,7 @@ import {
 } from 'vue'
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
+import { V_REGISTER_MARKER } from '../core/directive'
 import { ensureAttaformInstalled } from '../core/plugin'
 import type { RegisterValue } from '../types/types-api'
 
@@ -208,16 +209,43 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
 
   const refreshAndStripBridgeAttrs = (): void => {
     const rawAttrs = instance.attrs as Record<string, unknown>
-    // Capture only when the bridge key is present. The strip below
-    // removes `registerValue` from attrs, so a second invocation of
-    // this function (e.g. `onBeforeMount` after the synchronous setup
-    // call) would otherwise overwrite the captured rv with `undefined`.
-    // Vue's `setFullProps` re-populates attrs on every parent render,
-    // so the `onBeforeUpdate` invocation correctly sees the key again
+    // Primary path: the compile-time `selectNodeTransform` injected a
+    // `:registerValue` bridge prop on the host component, which Vue's
+    // `initProps` lands in `instance.attrs.registerValue`. Capture
+    // only when the key is present; the strip below removes it from
+    // attrs, so a second invocation of this function (e.g.
+    // `onBeforeMount` after the synchronous setup call) would
+    // otherwise overwrite the captured rv with `undefined`. Vue's
+    // `setFullProps` re-populates attrs on every parent render, so
+    // the `onBeforeUpdate` invocation correctly sees the key again
     // and re-captures.
     if ('registerValue' in rawAttrs) {
       capturedRegisterValue.value = rawAttrs['registerValue'] as RegisterValue<V> | undefined
       delete rawAttrs['registerValue']
+    } else {
+      // Fallback path: no compile-time transform ran, so the bridge
+      // attr never appeared. Read the directive binding directly off
+      // the host vnode's `dirs` array. Vue populates `vnode.dirs`
+      // when the parent's render encounters `v-register` on this
+      // component, regardless of whether the consumer's bundler
+      // wired `attaform/vite`. Match by the `V_REGISTER_MARKER`
+      // symbol on the directive object so we don't false-match
+      // unrelated user directives that happen to share a structural
+      // shape — and so cross-bundle (`attaform` + `attaform/zod`
+      // loaded as separate copies) keeps working, since the marker
+      // is `Symbol.for(...)`.
+      const dirs = instance.vnode.dirs
+      if (dirs !== null && dirs !== undefined) {
+        for (const dir of dirs) {
+          const marked = (dir.dir as { [k: symbol]: unknown } | null | undefined)?.[
+            V_REGISTER_MARKER
+          ]
+          if (marked === true) {
+            capturedRegisterValue.value = dir.value as RegisterValue<V> | undefined
+            break
+          }
+        }
+      }
     }
     if ('value' in rawAttrs) delete rawAttrs['value']
   }

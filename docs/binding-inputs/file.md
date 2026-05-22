@@ -21,7 +21,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-Pick a file in the single input to watch the avatar slot fill in with the file name + size. Pick more in the multi-input below to see them stack — the directive writes a `File[]` in the order the picker returned them. Both surfaces hand you live `File` handles you can append to `FormData` or stream into an upload.
+Pick a file in the single input to watch the avatar slot fill in with the file name + size. Pick more in the multi-input below to see them stack; the directive writes a `File[]` in the order the picker returned them. Both surfaces hand you live `File` handles you can append to `FormData` or stream into an upload.
 
 ::docs-demo{slug="file" label="File Input Demo"}
 ::
@@ -29,7 +29,7 @@ Pick a file in the single input to watch the avatar slot fill in with the file n
 ## Single file → File | null
 
 ```vue
-<input v-register="register('avatar')" type="file" accept="image/*" />
+<input v-register="form.register('avatar')" type="file" accept="image/*" />
 ```
 
 ```ts
@@ -48,7 +48,7 @@ Selecting a file writes the `File` handle into storage. Clearing the input (or s
 ## Multiple files → File[]
 
 ```vue
-<input v-register="register('attachments')" type="file" multiple />
+<input v-register="form.register('attachments')" type="file" multiple />
 ```
 
 ```ts
@@ -79,14 +79,14 @@ const onSubmit = form.handleSubmit(async (values) => {
 })
 ```
 
-The schema's `z.file()` leaf type carries the constraint through validation; refinements like `.min(size)`, `.max(size)`, `.mime([...])` surface in `errors.<path>` like any other validator.
+The schema's `z.file()` leaf type carries the constraint through validation; refinements like `.min(size)`, `.max(size)`, `.mime([...])` surface in `form.errors.<path>` like any other validator.
 
 ## Reset behavior
 
-`form.reset()` clears the file input back to `null` / `[]`. The directive also resets the underlying `<input>`'s `value` attribute — the picker shows "No file chosen" after the reset, no stale filename hanging around.
+`form.reset()` clears the file input back to `null` / `[]`. The directive also resets the underlying `<input>`'s `value` attribute, so the picker shows "No file chosen" after the reset, no stale filename hanging around.
 
 ## Where to next
 
-- [`reset` & `resetField`](/docs/writing-and-mutating/reset) — programmatic clearing.
-- [Schema-driven coercion](/docs/binding-inputs/coercion) — how File leaves move through the directive.
-- [`handleSubmit`](/docs/submitting/handle-submit) — wraps your upload callback in the validation gate.
+- [`reset` & `resetField`](/docs/writing-and-mutating/reset): programmatic clearing.
+- [Schema-driven coercion](/docs/binding-inputs/coercion): how File leaves move through the directive.
+- [`handleSubmit`](/docs/submitting/handle-submit): wraps your upload callback in the validation gate.

@@ -120,6 +120,7 @@ function walk(
     // schema with `user.{name, age}` marks `user.age`).
     const slim = schema.getDefaultAtPath(segments)
     const inputKeys = Object.keys(input as object)
+    const inputKeysSet = new Set(inputKeys)
     const allKeys = new Set<string>(inputKeys)
     if (
       slim !== null &&
@@ -137,6 +138,17 @@ function walk(
     let mutated = allKeys.size !== inputKeys.length
     for (const key of allKeys) {
       const orig = (input as Record<string, unknown>)[key]
+      // Explicit consumer-supplied `undefined` at a key: the consumer
+      // named the slot empty. Preserve the signal in storage instead
+      // of treating it like "key absent" and filling from the schema's
+      // slim default — distinct semantics with distinct implications
+      // for the schema-error filter (the path lands in
+      // `authoredPaths` and validation runs against undefined).
+      if (orig === undefined && inputKeysSet.has(key)) {
+        out[key] = undefined
+        mutated = true
+        continue
+      }
       const walked = walk(orig, [...segments, key], schema, paths)
       out[key] = walked
       if (walked !== orig) mutated = true

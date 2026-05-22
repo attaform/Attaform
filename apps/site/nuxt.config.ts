@@ -2,7 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { logger as nuxtKitLogger } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
-import attaformModule from '../../src/nuxt'
+import attaformModule from 'attaform/nuxt'
 import { rendererRich, transformerTwoslash } from '@shikijs/twoslash'
 import type { Logger, LogOptions, Plugin as VitePlugin } from 'vite'
 import attaformPkg from '../../package.json'
@@ -69,6 +69,53 @@ const fixViteAssetImportMetaUrlFilter: VitePlugin = {
     if (!target?.transform || typeof target.transform === 'function') return
     if (target.transform.filter == null) return
     target.transform.filter.code = 'import.meta.url'
+  },
+}
+
+// `pages/play/[slug].vue`, `pages/play/index.vue`, and
+// `components/content/DocsDemo.vue` each discover every demo SFC
+// via `import.meta.glob('../../docs-demos/*.vue', { eager: true })`.
+// The glob's key set is resolved once at module-eval time. When a
+// new SFC lands inside `docs-demos/` after a consumer module has
+// already compiled, Vite's default invalidation is best-effort: the
+// file watcher fires, but the consumer's transform cache does not
+// always rerun before the next SSR render. The symptom is a 404
+// from `/play/<new-slug>` (the play routes) or an in-page
+// `[DocsDemo] no demo found for slug "..."` throw (the inline
+// embed used in docs pages).
+//
+// This plugin watches `apps/site/docs-demos/` for `add` and `unlink`
+// events. On either, it invalidates every glob consumer in the
+// dev server's module graph and broadcasts a full reload, so the
+// next render sees the fresh glob keys. Modify events are left
+// alone — they invalidate the touched SFC via Vite's normal HMR
+// path, which the consumer module already proxies.
+const invalidateDemoGlobConsumersOnDemoChange: VitePlugin = {
+  name: 'attaform:invalidate-demo-glob-consumers-on-demo-change',
+  apply: 'serve',
+  configureServer(server) {
+    const siteRoot = dirname(fileURLToPath(import.meta.url))
+    const demosDir = resolve(siteRoot, 'docs-demos')
+    const globConsumers = [
+      resolve(siteRoot, 'pages/play/[slug].vue'),
+      resolve(siteRoot, 'pages/play/index.vue'),
+      resolve(siteRoot, 'components/content/DocsDemo.vue'),
+    ]
+    function invalidate(): void {
+      for (const consumer of globConsumers) {
+        const mods = server.moduleGraph.getModulesByFile(consumer)
+        if (mods == null) continue
+        for (const mod of mods) server.moduleGraph.invalidateModule(mod)
+      }
+      server.ws.send({ type: 'full-reload' })
+    }
+    function onFsEvent(path: string): void {
+      if (!path.startsWith(demosDir)) return
+      if (!path.endsWith('.vue')) return
+      invalidate()
+    }
+    server.watcher.on('add', onFsEvent)
+    server.watcher.on('unlink', onFsEvent)
   },
 }
 
@@ -432,6 +479,9 @@ export default defineNuxtConfig({
     '/docs/troubleshooting': {
       redirect: { to: '/docs/devtools-and-debugging/troubleshooting', statusCode: 301 },
     },
+    '/docs/perf': {
+      redirect: { to: '/docs/server-and-ssr/performance', statusCode: 301 },
+    },
     '/docs/recipes/persistence': {
       redirect: { to: '/docs/persistence/overview', statusCode: 301 },
     },
@@ -599,7 +649,11 @@ export default defineNuxtConfig({
     ],
   },
   vite: {
-    plugins: [tailwindcss(), fixViteAssetImportMetaUrlFilter],
+    plugins: [
+      tailwindcss(),
+      fixViteAssetImportMetaUrlFilter,
+      invalidateDemoGlobConsumersOnDemoChange,
+    ],
     // Source-resolve the workspace `attaform` package for the docs
     // site's Vite environments. Without these aliases, every
     // `import { useForm } from 'attaform/zod'` (and every other

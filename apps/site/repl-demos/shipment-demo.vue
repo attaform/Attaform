@@ -1,8 +1,8 @@
 <script setup lang="ts">
   // ─────────────────────────────────────────────────────────────────
-  // Cargo shipment booking — multistep wizard built on `useStepper`
+  // Cargo shipment booking — multistep wizard built on `useWizard`
   // composing four `useForm` instances. Each step owns its own schema,
-  // history, and persistence; the stepper orchestrates navigation,
+  // history, and persistence; the wizard orchestrates navigation,
   // status aggregation, and the cross-form submit.
   //
   // Stresses: discriminated unions, enums, field arrays, async field +
@@ -14,7 +14,7 @@
 
   import { computed, nextTick, ref, watch } from 'vue'
   import { z } from 'zod'
-  import { fieldMeta, useForm, useStepper, unset, withMeta } from 'attaform/zod'
+  import { fieldMeta, useForm, useWizard, unset, withMeta } from 'attaform/zod'
   import type { FieldState } from 'attaform'
 
   // ─── Mock async services ─────────────────────────────────────────
@@ -322,31 +322,18 @@
   })
 
   // ─── Forms ──────────────────────────────────────────────────────
-  const refForm = useForm({
-    schema: referenceSchema,
-    key: 'reference',
-    persist: { storage: 'local', key: 'attaform:shipment.reference' },
+  // Declared bottom-up: terminals first, entry last. Each form's `next`
+  // points at the form declared above. `useWizard(refForm)` walks the
+  // chain to discover every reachable step.
+  const reviewForm = useForm({
+    schema: reviewSchema,
+    key: 'review',
+    persist: { storage: 'local', key: 'attaform:shipment.review' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
-      reference: 'SHP-100001',
-      pickup: { country: 'US' },
-      delivery: { country: 'US' },
-      useSameDeliveryAddress: false,
-    },
-  })
-
-  const cargoForm = useForm({
-    schema: cargoSchema,
-    key: 'cargo',
-    persist: { storage: 'local', key: 'attaform:shipment.cargo' },
-    history: { max: 50 },
-    validateOn: 'change',
-    debounceMs: 200,
-    defaultValues: {
-      items: [],
-      details: { type: 'dry', fragile: false },
+      acknowledgements: [],
     },
   })
 
@@ -367,24 +354,44 @@
       // from "intentionally empty". Watch serviceForm.fields.notes.blank.
       notes: unset,
     },
+    next: reviewForm,
   })
 
-  const reviewForm = useForm({
-    schema: reviewSchema,
-    key: 'review',
-    persist: { storage: 'local', key: 'attaform:shipment.review' },
+  const cargoForm = useForm({
+    schema: cargoSchema,
+    key: 'cargo',
+    persist: { storage: 'local', key: 'attaform:shipment.cargo' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
-      acknowledgements: [],
+      items: [],
+      details: { type: 'dry', fragile: false },
     },
+    next: serviceForm,
   })
 
-  // Compose the four into a wizard. `useStepper` picks up the form
-  // keys for `current`, derives statuses from form meta, and threads
-  // the active step through browser back/forward via window.history.
-  const stepper = useStepper([refForm, cargoForm, serviceForm, reviewForm])
+  const refForm = useForm({
+    schema: referenceSchema,
+    key: 'reference',
+    persist: { storage: 'local', key: 'attaform:shipment.reference' },
+    history: { max: 50 },
+    validateOn: 'change',
+    debounceMs: 200,
+    defaultValues: {
+      reference: 'SHP-100001',
+      pickup: { country: 'US' },
+      delivery: { country: 'US' },
+      useSameDeliveryAddress: false,
+    },
+    next: cargoForm,
+  })
+
+  // Compose the four into a wizard. `useWizard` walks the entry's
+  // `next` chain to enumerate every step, derives statuses from each
+  // form's meta, and threads the active step through browser
+  // back/forward via window.history.
+  const wizard = useWizard(refForm)
 
   // ─── Pickup → delivery live mirror ───────────────────────────────
   // While the flag is on, copy pickup → delivery via the whole-form
@@ -404,8 +411,8 @@
   ]
 
   // ─── Step metadata ───────────────────────────────────────────────
-  // Stepper drives the nav — `current` is the active form's key, and
-  // `statuses[key].isValid` is what gates the Next button.
+  // The wizard drives the nav — `current` is the active form's key, and
+  // `statuses[key].valid` is what gates the Next button.
   const STEP_TITLES = {
     reference: 'Origin & destination',
     cargo: 'Cargo',
@@ -422,9 +429,9 @@
   } as const
 
   // ─── Error summary (review step) ────────────────────────────────
-  // `stepper.allErrors` is the flat aggregate across all four forms.
+  // `wizard.allErrors` is the flat aggregate across all four forms.
   // Group by formKey × top-level path so each section renders a tidy
-  // panel. Each row jumps to the owning step via `stepper.goTo`.
+  // panel. Each row jumps to the owning step via `wizard.goTo`.
   type ErrorGroup = {
     formKey: FormKey
     stepTitle: string
@@ -447,7 +454,7 @@
 
   const groupedErrors = computed(() => {
     const groups = new Map<string, ErrorGroup>()
-    for (const e of stepper.allErrors.value) {
+    for (const e of wizard.allErrors) {
       const formKey = e.formKey as FormKey
       const root = String(e.path[0] ?? '(root)')
       const key = `${formKey}:${root}`
@@ -470,7 +477,7 @@
   })
 
   function goToError(formKey: FormKey, path: ReadonlyArray<string | number>) {
-    stepper.goTo(formKey)
+    wizard.goTo(formKey)
     // nextTick so the active step body paints before we try to focus.
     nextTick(() => formByKey[formKey].fields(path).element?.focus())
   }
@@ -547,15 +554,15 @@
   // (postal lookups, SKU checks, capacity, signature). Before
   // surfacing success we re-check the prior three forms' statuses —
   // the user can edit upstream steps after reaching review, so the
-  // stepper.statuses gate is what catches "looks valid but pickup
+  // wizard.statuses gate is what catches "looks valid but pickup
   // dropped invalid after the user came back here".
   const submitError = ref<string | null>(null)
   const onSubmit = reviewForm.handleSubmit(
     (review) => {
       const upstreamValid =
-        stepper.statuses.reference.isValid &&
-        stepper.statuses.cargo.isValid &&
-        stepper.statuses.service.isValid
+        wizard.statuses['reference']!.valid &&
+        wizard.statuses['cargo']!.valid &&
+        wizard.statuses['service']!.valid
       if (!upstreamValid) {
         submitError.value =
           'One or more earlier steps need fixes. Use the summary below to jump to the offending field.'
@@ -581,7 +588,7 @@
     cargoForm.reset()
     serviceForm.reset()
     reviewForm.reset()
-    stepper.goTo('reference')
+    wizard.goTo('reference')
     submitError.value = null
   }
 
@@ -624,10 +631,19 @@
 
   // Undo/redo targets the form that owns the active step — each form
   // has its own history stack so an undo on cargo doesn't roll back
-  // an address edit.
-  const activeForm = computed(() => formByKey[stepper.current.value])
-  const canGoNext = computed(() => stepper.statuses[stepper.current.value].isValid)
-  const isAnyValidating = computed(() => stepper.forms.some((f) => f.meta.validating))
+  // an address edit. `wizard.activeForm` widens to `AnyForm`; cast back
+  // to the actual form-handle union so the template can reach
+  // `history.canUndo` / `history.undo()` statically.
+  type WizardForm = typeof refForm | typeof cargoForm | typeof serviceForm | typeof reviewForm
+  const activeForm = computed(() => wizard.activeForm as WizardForm | undefined)
+  const canGoNext = computed(() => {
+    const key = wizard.current
+    if (key === undefined) return false
+    return wizard.statuses[key]?.valid === true
+  })
+  const isAnyValidating = computed(() =>
+    wizard.allForms.some((f) => (f as unknown as { meta: { validating: boolean } }).meta.validating)
+  )
 
   // Acknowledgement multi-checkbox helper — read / write the array via
   // setValue. `register()` doesn't bind multi-checkboxes natively in
@@ -650,19 +666,19 @@
         <p>4 steps · your manifest waits at the dock</p>
       </header>
 
-      <!-- ─── Stepper ─── -->
-      <nav class="stepper" aria-label="Form progress">
+      <!-- ─── Wizard ─── -->
+      <nav class="wizard" aria-label="Form progress">
         <button
-          v-for="(form, idx) in stepper.forms"
+          v-for="(form, idx) in wizard.allForms"
           :key="form.key"
           type="button"
           class="step"
           :class="{
-            active: stepper.current.value === form.key,
-            done: stepper.statuses[form.key as FormKey].isValid,
+            active: wizard.current === form.key,
+            done: wizard.statuses[form.key]?.valid === true,
           }"
-          :aria-current="stepper.current.value === form.key ? 'step' : undefined"
-          @click="stepper.goTo(form.key as FormKey)"
+          :aria-current="wizard.current === form.key ? 'step' : undefined"
+          @click="wizard.goTo(form.key as FormKey)"
         >
           <span class="step-num">{{ idx + 1 }}</span>
           <span class="step-title">{{ STEP_TITLES[form.key as FormKey] }}</span>
@@ -670,7 +686,7 @@
       </nav>
 
       <!-- ─── Step 1: addresses ─── -->
-      <section v-if="stepper.current.value === 'reference'" class="step-body">
+      <section v-if="wizard.current === 'reference'" class="step-body">
         <div class="field" :class="fieldClasses(refForm.fields.reference)">
           <label for="reference">{{ refForm.fields.reference.label }}</label>
           <small v-if="refForm.fields.reference.description" class="help">
@@ -772,7 +788,7 @@
       </section>
 
       <!-- ─── Step 2: cargo ─── -->
-      <section v-else-if="stepper.current.value === 'cargo'" class="step-body">
+      <section v-else-if="wizard.current === 'cargo'" class="step-body">
         <div class="variant-picker">
           <label>Cargo class</label>
           <div class="chip-row">
@@ -940,7 +956,7 @@
       </section>
 
       <!-- ─── Step 3: service & insurance ─── -->
-      <section v-else-if="stepper.current.value === 'service'" class="step-body">
+      <section v-else-if="wizard.current === 'service'" class="step-body">
         <div class="variant-picker">
           <label>Service mode</label>
           <div class="chip-row">
@@ -1070,7 +1086,7 @@
       </section>
 
       <!-- ─── Step 4: review ─── -->
-      <section v-else-if="stepper.current.value === 'review'" class="step-body review">
+      <section v-else-if="wizard.current === 'review'" class="step-body review">
         <h3>Review your manifest</h3>
         <p class="muted">Everything looks accurate? Sign and book below.</p>
         <pre>{{
@@ -1085,17 +1101,17 @@
           )
         }}</pre>
 
-        <!-- Aggregate error summary across all forms. `stepper.allErrors`
+        <!-- Aggregate error summary across all forms. `wizard.allErrors`
              is the load-bearing aggregate; each row jumps via
-             stepper.goTo(formKey). -->
+             wizard.goTo(formKey). -->
         <aside v-if="groupedErrors.length > 0" class="errors-summary" aria-live="polite">
           <header class="errors-summary-head">
             <span class="errors-summary-icon" aria-hidden="true">⚠</span>
             <div>
               <h3 class="errors-summary-title">
-                {{ stepper.allErrors.value.length }}
-                {{ stepper.allErrors.value.length === 1 ? 'item' : 'items' }} on the manifest before
-                it ships.
+                {{ wizard.allErrors.length }}
+                {{ wizard.allErrors.length === 1 ? 'item' : 'items' }} on the manifest before it
+                ships.
               </h3>
               <p class="errors-summary-hint">Tap any line to jump to the field.</p>
             </div>
@@ -1170,16 +1186,16 @@
           <button
             type="button"
             class="ghost"
-            :disabled="!activeForm.history.canUndo"
-            @click="activeForm.history.undo()"
+            :disabled="!activeForm?.history.canUndo"
+            @click="activeForm?.history.undo()"
           >
             ↶ Undo
           </button>
           <button
             type="button"
             class="ghost"
-            :disabled="!activeForm.history.canRedo"
-            @click="activeForm.history.redo()"
+            :disabled="!activeForm?.history.canRedo"
+            @click="activeForm?.history.redo()"
           >
             ↷ Redo
           </button>
@@ -1187,19 +1203,19 @@
         </div>
         <div class="nav-right">
           <button
-            v-if="stepper.current.value !== 'reference'"
+            v-if="wizard.current !== 'reference'"
             type="button"
             class="secondary"
-            @click="stepper.back()"
+            @click="wizard.back()"
           >
             Back
           </button>
           <button
-            v-if="stepper.current.value !== 'review'"
+            v-if="wizard.current !== 'review'"
             type="button"
             class="primary"
             :disabled="!canGoNext"
-            @click="stepper.next()"
+            @click="wizard.next()"
           >
             Next
             <span v-if="isAnyValidating" class="badge">…</span>
@@ -1279,8 +1295,8 @@
     color: #667085;
   }
 
-  /* ─── Stepper ─── */
-  .stepper {
+  /* ─── Wizard ─── */
+  .wizard {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 0.5rem;
@@ -1865,12 +1881,12 @@
       grid-template-columns: 1fr;
     }
 
-    /* Stepper: switch from a 4-column grid to a flex-wrap row so steps
+    /* Wizard: switch from a 4-column grid to a flex-wrap row so steps
      wrap onto multiple lines on narrow viewports rather than crushing
      into a single row with hidden labels. flex: 1 1 auto lets each
      step take its natural width but share extra space evenly when
      they fit on one line. */
-    .stepper {
+    .wizard {
       display: flex;
       flex-wrap: wrap;
       gap: 0.375rem;
@@ -1963,7 +1979,7 @@
     .form {
       padding: 1rem;
     }
-    .stepper {
+    .wizard {
       padding: 0.375rem;
       gap: 0.25rem;
     }

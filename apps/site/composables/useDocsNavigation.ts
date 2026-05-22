@@ -14,7 +14,16 @@
 // troubleshooting). Later phases fill in the remaining ~56 pages.
 
 export type DocsLink = { title: string; to: string }
-export type DocsSection = { heading: string; links: DocsLink[] }
+// A non-clickable label that groups the page links beneath it inside a
+// section. Renders as a small uppercase heading in the sidebar; the
+// pager walks through it transparently (subheadings filter out of
+// `docsLinksFlat`), and the breadcrumb ignores it entirely so the
+// trail stays "Docs / Section / Page" rather than four levels deep.
+export type DocsSubheading = { subheading: string }
+export type DocsNavItem = DocsLink | DocsSubheading
+export type DocsSection = { heading: string; links: DocsNavItem[] }
+
+export const isDocsLink = (item: DocsNavItem): item is DocsLink => 'to' in item
 
 export const docsNavigation: DocsSection[] = [
   {
@@ -51,7 +60,7 @@ export const docsNavigation: DocsSection[] = [
   {
     heading: 'Reading the form',
     links: [
-      { title: 'The form object', to: '/docs/reading-the-form/the-form-object' },
+      { title: 'The form', to: '/docs/reading-the-form/the-form' },
       { title: 'values', to: '/docs/reading-the-form/values' },
       { title: 'fields', to: '/docs/reading-the-form/fields' },
       { title: 'errors', to: '/docs/reading-the-form/errors' },
@@ -64,16 +73,17 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Binding inputs',
     links: [
       { title: 'The v-register directive', to: '/docs/binding-inputs/v-register' },
+      { title: 'useRegister', to: '/docs/binding-inputs/use-register' },
       { title: 'Text, number, textarea', to: '/docs/binding-inputs/text-number-textarea' },
       { title: 'Checkbox', to: '/docs/binding-inputs/checkbox' },
       { title: 'Radio groups', to: '/docs/binding-inputs/radio' },
       { title: 'Select & multi-select', to: '/docs/binding-inputs/select' },
       { title: 'File inputs', to: '/docs/binding-inputs/file' },
+      { subheading: 'Advanced binding patterns' },
       { title: 'Modifiers', to: '/docs/binding-inputs/modifiers' },
       { title: 'Register transforms', to: '/docs/binding-inputs/transforms' },
-      { title: 'Custom assigners', to: '/docs/binding-inputs/custom-assigners' },
-      { title: 'useRegister', to: '/docs/binding-inputs/use-register' },
       { title: 'Schema-driven coercion', to: '/docs/binding-inputs/coercion' },
+      { title: 'Custom assigners', to: '/docs/binding-inputs/custom-assigners' },
     ],
   },
   {
@@ -93,6 +103,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'When validation runs', to: '/docs/validation/when-validation-runs' },
       { title: 'Per-field validation', to: '/docs/validation/per-field-validation' },
       { title: 'Async refinements', to: '/docs/validation/async-refinements' },
+      { title: 'URL availability check', to: '/docs/validation/url-availability-check' },
       { title: 'The validation lifecycle', to: '/docs/validation/lifecycle' },
       { title: 'Showing errors at the right time', to: '/docs/validation/showing-errors' },
       { title: 'The blank field-state bit', to: '/docs/validation/blank' },
@@ -123,8 +134,20 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Undo & redo', to: '/docs/cross-cutting-state/undo-redo' },
       { title: 'Multi-tab sync', to: '/docs/cross-cutting-state/multi-tab-sync' },
       { title: 'injectForm', to: '/docs/cross-cutting-state/inject-form' },
-      { title: 'useStepper', to: '/docs/cross-cutting-state/use-stepper' },
       { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
+    ],
+  },
+  {
+    heading: 'Multistep flows',
+    links: [
+      { title: 'useWizard', to: '/docs/multistep/use-wizard' },
+      { title: 'injectWizard', to: '/docs/multistep/inject-wizard' },
+      { title: 'Statuses', to: '/docs/multistep/statuses' },
+      { title: 'Browser history', to: '/docs/multistep/history' },
+      { title: 'SSR & render efficiency', to: '/docs/multistep/ssr' },
+      { title: 'Aggregates', to: '/docs/multistep/aggregates' },
+      { title: 'Lazy activation', to: '/docs/multistep/lazy-activation' },
+      { title: 'Patterns', to: '/docs/multistep/patterns' },
     ],
   },
   {
@@ -156,9 +179,10 @@ export const docsNavigation: DocsSection[] = [
 
 // All links in canonical reading order. Used by the pager (prev/next)
 // and any consumer that needs to walk the nav linearly without
-// thinking about section grouping.
-export const docsLinksFlat: ReadonlyArray<DocsLink> = docsNavigation.flatMap(
-  (section) => section.links
+// thinking about section grouping. Subheadings filter out so the
+// pager hops cleanly from page to page.
+export const docsLinksFlat: ReadonlyArray<DocsLink> = docsNavigation.flatMap((section) =>
+  section.links.filter(isDocsLink)
 )
 
 // Returns the prev/next link for the current route. Composables that
@@ -178,14 +202,18 @@ export function useDocsPagination() {
 
 // Derives the breadcrumb trail from the current path + the nav
 // structure. Always opens with a clickable "Docs" home, then the
-// section heading (text only — sections aren't pages), then the
-// current page title (text only — we're already there).
+// section heading (text only, sections aren't pages), then the
+// current page title (text only, we're already there). Subheadings
+// inside a section are sidebar-only grouping; they don't appear in
+// the breadcrumb so the trail stays at the IA's two real levels.
 export function useDocsBreadcrumb() {
   const route = useRoute()
   return computed(() => {
     const segments: Array<{ label: string; to?: string }> = [{ label: 'Docs', to: '/docs' }]
     for (const section of docsNavigation) {
-      const link = section.links.find((l) => l.to === route.path)
+      const link = section.links.find(
+        (item): item is DocsLink => isDocsLink(item) && item.to === route.path
+      )
       if (link) {
         segments.push({ label: section.heading })
         segments.push({ label: link.title })

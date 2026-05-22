@@ -39,7 +39,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 
 When validation fails, the handler:
 
-1. Marks `meta.submitCount` and `meta.isSubmitted`.
+1. Increments `meta.submissionAttempts`. `meta.submitted` stays `false`; it only flips on a successful callback.
 2. Surfaces errors at every invalid path.
 3. Calls `focusFirstError()` (the same method exposed below).
 4. Calls `onError(errors)` if you passed one.

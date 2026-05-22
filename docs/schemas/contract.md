@@ -90,7 +90,7 @@ Refinements can be asynchronous. `z.string().refine(async (v) => await api.isAva
 
 ### Transformation
 
-Two boundaries can transform a value. `z.preprocess(fn, T)` runs before parsing, normalising input as it lands. `.transform(fn)` runs after parsing, converting the validated value to the wire format.
+Two stages within parse can transform a value. `z.preprocess(fn, T)` normalises the input before the inner schema sees it. `.transform(fn)` converts the validated value to the wire format.
 
 ```ts
 z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string())
@@ -98,7 +98,7 @@ z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string())
 z.string().transform((s) => s.toLowerCase())
 ```
 
-The two run at different times and surface different shapes. [How values are stored](/docs/schemas/storage-shape) walks the implications.
+Both fire at parse time (`handleSubmit`, `validate`, `validateAsync`); storage holds the consumer's raw input verbatim. [How values are stored](/docs/schemas/storage-shape) walks the implications.
 
 ### Metadata
 

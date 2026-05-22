@@ -5,6 +5,7 @@ import { aggregateErrorsAt } from './field-state-api'
 import { getAtPath, hasAtPath } from './path-walker'
 import {
   canonicalizePath,
+  FORM_ERRORS_PATH_KEY,
   segmentsForPathKey,
   type PathKey,
   type Path,
@@ -58,22 +59,61 @@ export function buildErrorsProxy<F extends GenericForm>(
       // (`form.fields.<path>.errors`, `state.getErrorsForPath`) and
       // the `form.meta.errors` aggregate are unaffected by this
       // filter.
-      const { key } = canonicalizePath(path as Path)
-      const userForKey = state.userErrors.get(key)
-      const isActive = hasAtPath(state.form.value, path as ReadonlyArray<Segment>)
-      const merged: ValidationError[] = []
-      if (isActive) {
-        const schemaForKey = state.schemaErrors.get(key)
-        const blankForKey = state.derivedBlankErrors.value.get(key)
-        if (schemaForKey !== undefined) merged.push(...schemaForKey)
-        if (blankForKey !== undefined) merged.push(...blankForKey)
+      //
+      // A path ending in `''` at depth >= 1 is the container-self
+      // sentinel: it surfaces errors stored at the parent container
+      // path (cross-field refines, server-side container marks) plus
+      // any literal-`''` leaf errors (rare schema collision). At
+      // depth 0 (the root `['']`) the parent would be `[]`, which is
+      // canonicalised to the same form-level bucket the root sentinel
+      // already addresses, so a single lookup suffices.
+      const isContainerSelfAccess = path.length > 1 && path[path.length - 1] === ''
+
+      const collectAtKey = (key: PathKey, active: boolean, into: ValidationError[]): void => {
+        if (active) {
+          const s = state.schemaErrors.get(key)
+          const b = state.derivedBlankErrors.value.get(key)
+          if (s !== undefined) into.push(...s)
+          if (b !== undefined) into.push(...b)
+        }
+        const u = state.userErrors.get(key)
+        if (u !== undefined) into.push(...u)
       }
-      if (userForKey !== undefined) merged.push(...userForKey)
+
+      const merged: ValidationError[] = []
+      if (isContainerSelfAccess) {
+        const containerPath = path.slice(0, -1) as ReadonlyArray<Segment>
+        const containerKey = canonicalizePath(containerPath as Path).key
+        const literalKey = canonicalizePath(path as Path).key
+        const active = hasAtPath(state.form.value, containerPath)
+        collectAtKey(containerKey, active, merged)
+        // Skip the literal lookup when canonical keys collide — the
+        // root path resolves both to the same form-level bucket and
+        // we'd double-count without this guard.
+        if (literalKey !== containerKey) collectAtKey(literalKey, active, merged)
+        return merged
+      }
+
+      const { key } = canonicalizePath(path as Path)
+      const isFormLevel = key === FORM_ERRORS_PATH_KEY
+      const active = isFormLevel || hasAtPath(state.form.value, path as ReadonlyArray<Segment>)
+      collectAtKey(key, active, merged)
       return merged
     },
     // No leafKeys — at a leaf, the resolved value (the merged array or
     // undefined) IS the terminal.
     materializeContainer: (segments) => materializeErrors(state, segments),
+    // Any path ending in `''` is a meaningful terminal at the proxy
+    // layer: at root it's the form-level bucket; at depth >= 1 it's
+    // the container-self sentinel that surfaces cross-field refines
+    // and container-targeted marks. `resolveLeaf` translates `[...,
+    // '']` lookups to the parent container path before querying the
+    // stores. When a schema legitimately owns a `''` field, the
+    // literal leaf and any container-self errors share the slot
+    // (errors concatenate) — vanishingly rare, accepted as the
+    // ergonomic cost of one unified sentinel convention at every
+    // depth.
+    isTerminalAt: (segs) => segs.length >= 1 && segs[segs.length - 1] === '',
     // Call-form aggregates: `form.errors(path)` returns a single
     // `ValidationError[]` for any depth (leaf or container) — same
     // shared `aggregateErrorsAt` helper that `form.meta.errors` and
@@ -89,21 +129,35 @@ export function buildErrorsProxy<F extends GenericForm>(
 
 /**
  * Build a sparse, nested error tree under `containerSegments` for
- * `JSON.stringify(form.errors.<container>)`. Includes every leaf-keyed
- * descendant whose path is reachable in the live form value (the same
- * active-path filter `resolveLeaf` applies), excludes paths that
- * resolve to the container itself (cross-field refines and form-level
- * errors live in `form.meta.errors`, which is the unfiltered flat
- * aggregate). Sparse: containers with no error-bearing descendants
- * don't appear in the tree.
+ * `JSON.stringify(form.errors.<container>)`. Includes every error-
+ * bearing path reachable in the live form value (the same active-path
+ * filter `resolveLeaf` applies); container-self errors (cross-field
+ * refines, server-side container marks, root form-level entries) land
+ * under the `''` sentinel slot at every container depth. Sparse: a
+ * container with no self errors and no descendant errors does not
+ * appear in the tree; an empty `''` slot never appears.
+ *
+ * Placement rules per error entry at `fullPath`:
+ *
+ *   - Synthetic root form-level path (`['']`) — place at `tree['']`
+ *     when materialising at root; the prefix check filters it out at
+ *     any other container.
+ *   - Container-self at the current materialisation root
+ *     (`fullPath` exactly equals `containerSegments`) — place at
+ *     `tree['']`.
+ *   - Schema leaf descendant — place at the relative path directly.
+ *   - Schema container descendant (the path resolves to a non-leaf
+ *     node in the schema, i.e. a cross-field refine at that container)
+ *     — place at `[...relativePath, '']` so the descendant container's
+ *     self errors sit in its own `''` slot.
  *
  * Reactivity contract: every read in this function (the three error
- * stores, the form Ref) happens at call time. JSON.stringify invokes
- * `toJSON` once per stringify call inside the consumer's active
- * effect, so dependency tracking captures every store on every render
- * and re-runs on mutation. The per-path proxy memoisation in
- * `surface-proxy.ts` caches the proxy itself, NOT the materialised
- * object — there is no staleness.
+ * stores, the form Ref, the schema's `isLeafAtPath`) happens at call
+ * time. JSON.stringify invokes `toJSON` once per stringify call inside
+ * the consumer's active effect, so dependency tracking captures every
+ * store on every render and re-runs on mutation. The per-path proxy
+ * memoisation in `surface-proxy.ts` caches the proxy itself, NOT the
+ * materialised object — there is no staleness.
  */
 function materializeErrors<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -135,23 +189,63 @@ function materializeErrors<F extends GenericForm>(
       // cache. Cold path (corrupt key) returns null and we skip.
       const fullPath = segmentsForPathKey(pathKey)
       if (fullPath === null) continue
-      // Skip paths that aren't strict descendants of the container.
-      // Exception at the ROOT container (`containerSegments.length === 0`):
-      // form-level user entries live at the empty-string path `['']`
-      // (length 1), which IS a strict descendant of the root by length,
-      // but with a `''` first segment that placeAt routes under an
-      // empty-string key — letting consumers debug-print form-level
-      // messages without a separate API call.
-      if (fullPath.length <= containerSegments.length) continue
-      for (let i = 0; i < containerSegments.length; i++) {
-        if (fullPath[i] !== containerSegments[i]) continue entries
+
+      // Synthetic root form-level path is the canonical home for
+      // root-level errors (hydration failures, root `.refine()`,
+      // `setFormErrors`). It's `['']`, exempt from the prefix check
+      // and the active-path filter — the empty-string segment never
+      // resolves to a real value slot. Only relevant at root
+      // materialisation; at any non-root container the prefix check
+      // filters it out below.
+      const isSyntheticFormLevel = fullPath.length === 1 && fullPath[0] === ''
+
+      // Standard descendant-or-equal check against the materialisation
+      // container. Strict descendants AND the container itself
+      // (container-self errors) BOTH belong in the tree.
+      if (!isSyntheticFormLevel) {
+        if (fullPath.length < containerSegments.length) continue
+        for (let i = 0; i < containerSegments.length; i++) {
+          if (fullPath[i] !== containerSegments[i]) continue entries
+        }
+      } else if (containerSegments.length !== 0) {
+        continue
       }
+
       // Active-path filter matches `resolveLeaf` semantics so a leaf
       // read and a container materialisation never disagree. Only
       // schema-class stores apply it — user errors stay visible
-      // whether or not their path is reachable.
-      if (applyActivePathFilter && !hasAtPath(state.form.value, fullPath)) continue
-      placeAt(tree, fullPath.slice(containerSegments.length), errors)
+      // whether or not their path is reachable. The synthetic root
+      // form-level path is exempt (no value slot to check).
+      if (applyActivePathFilter && !isSyntheticFormLevel && !hasAtPath(state.form.value, fullPath))
+        continue
+
+      let placePath: readonly Segment[]
+      if (isSyntheticFormLevel) {
+        placePath = ['']
+      } else {
+        const relativePath = fullPath.slice(containerSegments.length)
+        if (relativePath.length === 0) {
+          // Container-self error at the current materialisation root.
+          placePath = ['']
+        } else if (state.schema.isLeafAtPath(fullPath as Path)) {
+          // Schema leaf — place directly.
+          placePath = relativePath
+        } else if (state.schema.getSlimPrimitiveTypesAtPath(fullPath as Path).size > 0) {
+          // Schema container descendant (known to the schema, non-leaf
+          // by `isLeafAtPath`) — place under its own `''` slot so the
+          // container-self errors don't clobber descendant leaves.
+          placePath = [...relativePath, '']
+        } else {
+          // Unknown path — not in the schema at all. User-provided
+          // error (server reply, manual mark) targeting a key the
+          // schema doesn't recognise. Surface as a leaf so consumers
+          // can debug what the server returned without the sentinel
+          // wrapping their data unexpectedly.
+          placePath = relativePath
+        }
+      }
+
+      placeAt(tree, placePath, errors)
     }
   }
 

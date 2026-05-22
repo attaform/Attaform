@@ -25,7 +25,7 @@
     </label>
 
     <label>
-      <span>Tags (multi — hold ⌘ / Ctrl)</span>
+      <span>Tags (multi, hold ⌘ / Ctrl)</span>
       <select v-register="form.register('tags')" multiple>
         <option value="design">Design</option>
         <option value="eng">Engineering</option>

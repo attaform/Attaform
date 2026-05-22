@@ -88,7 +88,7 @@
     if (form === null) return null
     return {
       submitting: form.submitting.value,
-      submitCount: form.submitCount.value,
+      submissionAttempts: form.submissionAttempts.value,
       submitError: form.submitError.value,
       activeValidations: form.activeValidations.value,
     }
@@ -568,8 +568,8 @@
               <dl class="atf-aggregates">
                 <dt>submitting</dt>
                 <dd>{{ fmt(aggregates.submitting) }}</dd>
-                <dt>submitCount</dt>
-                <dd>{{ fmt(aggregates.submitCount) }}</dd>
+                <dt>submissionAttempts</dt>
+                <dd>{{ fmt(aggregates.submissionAttempts) }}</dd>
                 <dt>submitError</dt>
                 <dd>{{ fmt(aggregates.submitError) }}</dd>
                 <dt>activeValidations</dt>

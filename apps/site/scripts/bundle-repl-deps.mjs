@@ -350,6 +350,66 @@ const packageManifests = {
   },
 }
 
+// rollup-plugin-dts bundles `src/index.ts` and `src/zod.ts` independently
+// and inlines every relative-imported declaration into each output. That
+// duplicates a handful of `unique symbol`-branded types (PathKey, Unset)
+// across `attaform/index.d.ts` and `attaform/zod.d.ts`. Each `unique
+// symbol` declaration has its own nominal identity, so the two bundles'
+// `PathKey` resolve as DIFFERENT types in Volar — a demo that pulls
+// `useForm` from `attaform/zod` and `useRegister` from `attaform`
+// produces a "Two different types with this name exist" error on
+// `v-register="rv"` even though the runtime types are identical.
+//
+// Fix: after both bundles emit, post-process `attaform/zod.d.ts` to
+// strip the branded-type declarations and re-import them from
+// `./index`. Both bundles then share one brand identity, so the
+// "incompatible PathKey" error goes away. The published lib's source
+// is unaffected — this only adjusts the REPL's flattened bundles.
+const SHARED_BRANDED_TYPE_BLOCKS = [
+  {
+    typeName: 'Unset',
+    regex:
+      /\/\*\* Internal brand for the `Unset` type\. Never exposed at runtime\. \*\/\s*\ndeclare const _unsetBrand: unique symbol;\s*\n\/\*\*[\s\S]*?\*\/\s*\ntype Unset = typeof _unsetBrand;\s*\n/,
+  },
+  {
+    typeName: 'PathKey',
+    regex:
+      /\/\*\*\s*\n \* Path primitives for advanced integrations[\s\S]*?\*\/\s*\ndeclare const pathKeyBrand: unique symbol;\s*\n\/\*\*[\s\S]*?\*\/\s*\ntype PathKey = string & \{\s*\n\s*readonly \[pathKeyBrand\]: 'PathKey';\s*\n\};\s*\n/,
+  },
+]
+
+async function unifyAttaformBrandedTypes() {
+  const zodDtsPath = resolve(typesDir, 'attaform/zod.d.ts')
+  let content = await readFile(zodDtsPath, 'utf8')
+
+  const imported = []
+  for (const { typeName, regex } of SHARED_BRANDED_TYPE_BLOCKS) {
+    if (regex.test(content)) {
+      content = content.replace(regex, '')
+      imported.push(typeName)
+    } else {
+      console.warn(
+        `[bundle-repl-deps] expected to find a "${typeName}" branded-type block in zod.d.ts; ` +
+          `the rolled-up output may have changed shape. Check the regex in SHARED_BRANDED_TYPE_BLOCKS.`
+      )
+    }
+  }
+
+  if (imported.length > 0) {
+    // Insert after the last existing import statement so the new line
+    // sits alongside the others rather than orphaned above them.
+    const importHeaderMatch = content.match(/^(?:import .+\n)+/)
+    const importLine = `import type { ${imported.join(', ')} } from './index';\n`
+    if (importHeaderMatch) {
+      content = importHeaderMatch[0] + importLine + content.slice(importHeaderMatch[0].length)
+    } else {
+      content = importLine + content
+    }
+  }
+
+  await writeFile(zodDtsPath, content)
+}
+
 // Just attaform's two .d.ts entry points. Re-run on every src/ change
 // during watch mode so the REPL's Volar always sees the latest types.
 // vue + zod aren't included here because they come from node_modules
@@ -371,6 +431,7 @@ async function emitAttaformTypeBundles() {
       name: 'attaform-zod',
     }),
   ])
+  await unifyAttaformBrandedTypes()
 }
 
 async function emitTypeBundles() {

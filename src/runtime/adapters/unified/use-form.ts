@@ -48,6 +48,7 @@ import type {
   UseFormConfiguration,
 } from '../../types/types-api'
 import type { DefaultValuesInput, GenericForm } from '../../types/types-core'
+import type { AnyForm } from '../../types/types-wizard'
 
 // ───────────────────────────────────────────────────────────────────
 // Per-major projection helpers. Each overload's constraint scopes the
@@ -88,14 +89,19 @@ type V3ReadOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
  * v4 schemas match this overload first via their structural `def`
  * field. v3 schemas fall through to the v3 overload below.
  */
-export function useForm<Schema extends z.ZodObject, K extends FormKey = FormKey>(
+export function useForm<
+  Schema extends z.ZodObject,
+  K extends FormKey = FormKey,
+  Forms extends readonly AnyForm[] = readonly AnyForm[],
+>(
   configuration: Omit<
     UseFormConfiguration<
       V4FormOf<Schema>,
       V4OutOf<Schema>,
       AbstractSchema<V4FormOf<Schema>, V4OutOf<Schema>>,
       DefaultValuesInput<V4FormOf<Schema>>,
-      K
+      K,
+      Forms
     >,
     'schema' | 'validateOn' | 'debounceMs'
   > & { schema: Schema } & ValidateOnConfig
@@ -118,14 +124,19 @@ export function useForm<Schema extends z.ZodObject, K extends FormKey = FormKey>
  * v3 schemas match this overload; v4 schemas hit the v4 overload
  * above first and never reach here.
  */
-export function useForm<Schema extends zV3.ZodObject<zV3.ZodRawShape>, K extends FormKey = FormKey>(
+export function useForm<
+  Schema extends zV3.ZodObject<zV3.ZodRawShape>,
+  K extends FormKey = FormKey,
+  Forms extends readonly AnyForm[] = readonly AnyForm[],
+>(
   configuration: Omit<
     UseFormConfiguration<
       V3FormOf<Schema>,
       V3OutOf<Schema>,
       AbstractSchema<V3FormOf<Schema>, V3OutOf<Schema>>,
       DefaultValuesInput<V3FormOf<Schema>>,
-      K
+      K,
+      Forms
     >,
     'schema' | 'validateOn' | 'debounceMs'
   > & { schema: Schema } & ValidateOnConfig

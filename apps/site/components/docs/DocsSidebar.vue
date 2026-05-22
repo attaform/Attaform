@@ -19,21 +19,30 @@
       <div v-for="section in sections" :key="section.heading" class="mb-7 last:mb-0">
         <h3 class="mb-3 text-sm font-semibold text-fg">{{ section.heading }}</h3>
         <ul>
-          <li v-for="link in section.links" :key="link.to">
-            <!-- exact-active-class flips the link to the active state.
-                 The `.docs-nav-item` styles below replace the simple
-                 `border-l` with a pseudo-element that scales in from
-                 the center on activate — state changes feel intentional
-                 rather than instant. Inactive width is preserved (0.0625rem)
-                 so the link doesn't reflow when the indicator appears. -->
-            <NuxtLink
-              :to="link.to"
-              exact-active-class="docs-nav-item--active"
-              class="docs-nav-item relative block py-1.5 pr-2 pl-4 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:text-fg"
+          <template v-for="(item, idx) in section.links">
+            <li
+              v-if="'subheading' in item"
+              :key="`sub-${item.subheading}`"
+              class="mt-4 mb-1.5 pl-4 text-[0.6875rem] font-semibold tracking-wider text-fg-subtle uppercase first:mt-0"
             >
-              {{ link.title }}
-            </NuxtLink>
-          </li>
+              {{ item.subheading }}
+            </li>
+            <li v-else :key="`link-${item.to}-${idx}`">
+              <!-- exact-active-class flips the link to the active state.
+                   The `.docs-nav-item` styles below replace the simple
+                   `border-l` with a pseudo-element that scales in from
+                   the center on activate — state changes feel intentional
+                   rather than instant. Inactive width is preserved (0.0625rem)
+                   so the link doesn't reflow when the indicator appears. -->
+              <NuxtLink
+                :to="item.to"
+                exact-active-class="docs-nav-item--active"
+                class="docs-nav-item relative block py-1.5 pr-2 pl-4 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:text-fg"
+              >
+                {{ item.title }}
+              </NuxtLink>
+            </li>
+          </template>
         </ul>
       </div>
     </nav>

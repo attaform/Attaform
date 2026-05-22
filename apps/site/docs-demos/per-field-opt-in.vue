@@ -76,7 +76,7 @@
     align-items: center;
     gap: 0.25rem;
   }
-  input[type='text'],
+  input,
   textarea {
     padding: 0.5rem 0.75rem;
     border-radius: 0.375rem;
@@ -84,7 +84,7 @@
     font-size: 0.875rem;
     font-family: inherit;
   }
-  input[type='text']:focus,
+  input:focus,
   textarea:focus {
     outline: 2px solid #2563eb;
     outline-offset: -1px;

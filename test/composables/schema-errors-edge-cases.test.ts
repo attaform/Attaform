@@ -147,6 +147,65 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
 
     expect(api.meta.errors.some((e) => /city and zip/.test(e.message))).toBe(true)
   })
+
+  it('container-level refine error: read-surface coverage across every API', async () => {
+    // A `.refine()` at a container path is a legitimate Zod pattern: the
+    // resulting error's absolute path equals the container's own path.
+    // Four surfaces include it — the flat aggregate, both call-form
+    // entry points, and the property-access materialisation under the
+    // container's `''` sentinel slot.
+    const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
+    apps.push(app)
+    const submit = api.handleSubmit(
+      () => {},
+      () => {}
+    )
+    await submit()
+    await nextTick()
+
+    const matchesRefine = (e: ValidationError): boolean => /city and zip/.test(e.message)
+
+    // Surface 1: flat aggregate.
+    expect(api.meta.errors.some(matchesRefine)).toBe(true)
+
+    // Surface 2: call form with array path.
+    const callArr = (
+      api.errors as unknown as (p: ReadonlyArray<string | number>) => readonly ValidationError[]
+    )(['address'])
+    expect(callArr.some(matchesRefine)).toBe(true)
+
+    // Surface 3: call form with dotted string.
+    const callStr = (api.errors as unknown as (p: string) => readonly ValidationError[])('address')
+    expect(callStr.some(matchesRefine)).toBe(true)
+
+    // Surface 4: property-access materialisation under the container's
+    // `''` sentinel slot. Container-self errors land alongside any
+    // descendant leaf errors so consumers reading the tree see the
+    // refine without needing the call form.
+    const stringified = JSON.parse(
+      JSON.stringify((api.errors as unknown as Record<string, unknown>)['address'])
+    ) as Record<string, unknown>
+    const selfSlot = stringified[''] as ReadonlyArray<{ message: string }> | undefined
+    expect(selfSlot?.some((e) => matchesRefine(e as ValidationError))).toBe(true)
+  })
+
+  it('form-level errors surface at form.errors[""] (root self-slot)', async () => {
+    // The empty-string key is reserved for the root form-level bucket
+    // (hydration failures, root `.refine()` results, `setFormErrors`
+    // entries). Returns `readonly ValidationError[]` directly — no
+    // descend, no materialize. Container-level errors live elsewhere
+    // (call form `form.errors('address')`); the `''` convention is
+    // root-only.
+    const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
+    apps.push(app)
+    api.setFormErrors([{ message: 'manual form-level error', code: 'consumer:test' }])
+    await nextTick()
+
+    const formLevel = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']
+    expect(Array.isArray(formLevel)).toBe(true)
+    expect(formLevel?.some((e) => e.message === 'manual form-level error')).toBe(true)
+    expect(formLevel?.[0]?.path).toEqual([''])
+  })
 })
 
 describe('schemaErrors edge cases — failing → passing transition', () => {

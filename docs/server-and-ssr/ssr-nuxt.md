@@ -54,7 +54,7 @@ The client-side form is identical to the server one — no second round of valid
 
 ## Auto-imports
 
-The Nuxt module auto-imports `useForm`, `injectForm`, `useStepper`, and `useRegister` globally — no `import` statement needed in `<script setup>`:
+The Nuxt module auto-imports `useForm`, `injectForm`, `useWizard`, and `useRegister` globally — no `import` statement needed in `<script setup>`:
 
 ```vue
 <script setup lang="ts">

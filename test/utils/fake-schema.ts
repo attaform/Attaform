@@ -53,11 +53,14 @@ export function fakeSchema<F extends GenericForm>(
         formKey: '',
       }
     },
-    normalizeWriteValueAtPath(value) {
-      // fakeSchema doesn't model preprocess/transform — input
-      // normalization is a real-adapter concern. Pass through
-      // unchanged so the runtime's write path stays a single line.
-      return value
+    isPreprocessOrCoerceLeaf(path) {
+      // fakeSchema doesn't model preprocess / coerce wrappers, so the
+      // slim-write gate always runs its normal kind check against
+      // `getSlimPrimitiveTypesAtPath` on these schemas. Tests that
+      // need to exercise the preprocess short-circuit override this
+      // on the returned object.
+      void path
+      return false
     },
     getDefaultAtPath(path) {
       // fakeSchema is data-keyed, not schema-keyed — it can't distinguish

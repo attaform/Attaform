@@ -135,7 +135,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
       form.setFieldErrors([
         { path: ['email'], message: 'required', formKey: form.key, code: 'test' },
       ])
-      // Default heuristic: untouched + submitCount=0 → showErrors === false
+      // Default heuristic: untouched + submissionAttempts=0 → showErrors === false
       expect(form.fields('email').showErrors).toBe(false)
       // ...but firstError is still the data, regardless.
       expect(form.fields('email').firstError?.message).toBe('required')

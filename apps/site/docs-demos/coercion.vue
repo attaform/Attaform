@@ -15,7 +15,7 @@
 <template>
   <form @submit.prevent>
     <label>
-      <span><code>count</code> — schema is <code>z.number()</code></span>
+      <span><code>count</code>: schema is <code>z.number()</code></span>
       <input v-register="form.register('count')" placeholder="Type a number…" />
       <small
         >Stored as: <em>{{ JSON.stringify(form.values.count) }}</em> ({{
@@ -25,7 +25,7 @@
     </label>
 
     <label>
-      <span><code>enabled</code> — schema is <code>z.boolean()</code></span>
+      <span><code>enabled</code>: schema is <code>z.boolean()</code></span>
       <input v-register="form.register('enabled')" placeholder="Type 'true' or 'false'" />
       <small
         >Stored as: <em>{{ JSON.stringify(form.values.enabled) }}</em> ({{

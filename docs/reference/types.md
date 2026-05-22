@@ -123,14 +123,14 @@ This page is reference material — alphabetical-ish by purpose. Most consumers 
 | `SerializedAttaformState` | runtime/core/serialize  | The SSR payload shape.                                           |
 | `SerializedFormData`      | runtime/core/registry   | Single form's serialized state.                                  |
 
-## Stepper
+## Wizard
 
-| Type                                         | Source                      | Purpose                                                   |
-| -------------------------------------------- | --------------------------- | --------------------------------------------------------- |
-| `UseStepperReturnType<Forms>`                | runtime/types/types-stepper | The whole stepper return — current, statuses, navigation. |
-| `StepperOptions<Forms>`                      | runtime/types/types-stepper | The options bag.                                          |
-| `AnyForm` / `FormKeyOf<F>` / `KeysOf<Forms>` | runtime/types/types-stepper | Helpers for typing forms passed to `useStepper`.          |
-| `StepperNavOptions`                          | runtime/types/types-stepper | Options forwarded to `next` / `back` / `goTo`.            |
+| Type                                         | Source                     | Purpose                                                  |
+| -------------------------------------------- | -------------------------- | -------------------------------------------------------- |
+| `UseWizardReturnType<Forms>`                 | runtime/types/types-wizard | The whole wizard return — current, statuses, navigation. |
+| `WizardOptions<Forms>`                       | runtime/types/types-wizard | The options bag.                                         |
+| `AnyForm` / `FormKeyOf<F>` / `KeysOf<Forms>` | runtime/types/types-wizard | Helpers for typing forms passed to `useWizard`.          |
+| `WizardNavOptions`                           | runtime/types/types-wizard | Options forwarded to `next` / `back` / `goTo`.           |
 
 ## DevTools
 

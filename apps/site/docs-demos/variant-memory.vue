@@ -193,7 +193,7 @@
     font-size: 0.875rem;
     font-weight: 500;
   }
-  input[type='text'] {
+  input {
     padding: 0.5rem 0.75rem;
     border-radius: 0.375rem;
     border: 1px solid #d1d5db;

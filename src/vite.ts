@@ -41,6 +41,7 @@ import { inputTextAreaNodeTransform } from './runtime/lib/core/transforms/input-
 import { selectNodeTransform } from './runtime/lib/core/transforms/select-transform'
 import { vRegisterHintTransform } from './runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from './runtime/lib/core/transforms/v-register-preamble-transform'
+import { transformSsrAccessed } from './runtime/lib/core/transforms/ssr-accessed-transform'
 
 /** Options for `attaform()`. */
 export interface AttaformVitePluginOptions {
@@ -356,6 +357,16 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
       // `skipSelf: true` is defensive — our filter rejects the rewritten
       // target anyway, but keeps the hook reentrant under future edits.
       return this.resolve(aliasTarget, importer, { skipSelf: true })
+    },
+    transform(code, id) {
+      // SFC pre-pass: when a `<script setup>` binds `useForm` or
+      // `injectForm` and the surrounding `<template>` references that
+      // binding, inject `__ssrAccessed: true` into the call's options
+      // bag. The runtime registry uses the flag to enqueue the form
+      // on the SSR prefetch queue before `onServerPrefetch` fires.
+      // Runs ahead of `@vitejs/plugin-vue` thanks to `enforce: 'pre'`
+      // so its rewrites are part of the source the Vue plugin sees.
+      return transformSsrAccessed(code, id)
     },
   }
 }

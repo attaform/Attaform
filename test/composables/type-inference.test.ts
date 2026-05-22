@@ -569,7 +569,7 @@ describe('useForm type inference — form-level state bundle', () => {
     expectTypeOf(form.meta.valid).toEqualTypeOf<boolean>()
     expectTypeOf(form.meta.submitting).toEqualTypeOf<boolean>()
     expectTypeOf(form.meta.validating).toEqualTypeOf<boolean>()
-    expectTypeOf(form.meta.submitCount).toEqualTypeOf<number>()
+    expectTypeOf(form.meta.submissionAttempts).toEqualTypeOf<number>()
     expectTypeOf(form.meta.submitError).toEqualTypeOf<unknown>()
     expectTypeOf(form.history.canUndo).toEqualTypeOf<boolean>()
     expectTypeOf(form.history.canRedo).toEqualTypeOf<boolean>()
@@ -580,7 +580,7 @@ describe('useForm type inference — form-level state bundle', () => {
     // @ts-expect-error — state is readonly; prefer setValue / handleSubmit
     form.meta.submitting = true
     // @ts-expect-error — same for counters
-    form.meta.submitCount = 5
+    form.meta.submissionAttempts = 5
   })
 
   it('rejects unknown keys', () => {

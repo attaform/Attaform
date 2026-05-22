@@ -39,7 +39,7 @@ const schema = z.object({
 const form = useForm({ schema })
 ```
 
-What is the type of `form.values.email`? `string`. Not a branded `Email`, not `string & { __brand: 'email' }`. Plain `string`. The reason is that during form completion, `form.values.email` legitimately holds `"a"`, then `"andy"`, then `"andy@"`. None of those satisfy `z.email()`, and the schema knows that. That is why `form.errors.email` populates while the user is mid-typing.
+What is the type of `form.values.email`? `string`. Not a branded `Email`, not `string & { __brand: 'email' }`. Plain `string`. The reason is that during form completion, `form.values.email` legitimately holds `"a"`, then `"andy"`, then `"andy@"`. None of those satisfy `z.email()`, and the schema knows that. That is why [`form.errors.email`](/docs/reading-the-form/errors) populates while the user is mid-typing.
 
 If `form.values.email` were typed as a branded `Email`, the type would lie about what is actually there. The runtime value would be `"andy@"`; the static type would claim it is a valid email. The compiler cannot help you when it has been told a fiction.
 
@@ -96,9 +96,9 @@ const onSubmit = form.handleSubmit((values) => {
 })
 ```
 
-The argument to your success callback is `z.infer<typeof schema>`, Zod's parsed output. Every literal is preserved, every refinement is honored, every transform is applied. If the schema did not parse cleanly, the success callback never fires; the error callback runs instead with the un-validated values for you to inspect.
+The argument to your success callback is `z.infer<typeof schema>`, Zod's parsed output. Every literal is preserved, every refinement is honored, every transform is applied. If the schema did not parse cleanly, the success callback never fires; the error callback runs instead with the in-flight values for you to inspect.
 
-That is the contract: while you are building the form, the types help you handle every shape it might be in. The moment validation succeeds, the types snap to what the schema actually guarantees.
+That is the contract: while the form is being filled in, the types help you handle every shape it might be in. The moment validation succeeds, the types snap to what the schema actually guarantees.
 
 ## Why not narrow earlier?
 

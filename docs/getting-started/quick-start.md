@@ -62,5 +62,5 @@ Bind inputs to schema paths with `v-register`:
 ## What's next
 
 - [Your first schema](/docs/getting-started/your-first-schema): what Attaform reads from a Zod definition.
-- [The form object](/docs/reading-the-form/the-form-object): the full reactive surface returned by `useForm`.
+- [The form](/docs/reading-the-form/the-form): the full reactive surface returned by `useForm`.
 - [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.

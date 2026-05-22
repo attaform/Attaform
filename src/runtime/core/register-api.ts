@@ -198,6 +198,27 @@ export function buildRegister<F extends GenericForm>(
     // schema tree.
     const slimDefault = state.schema.getDefaultAtPath(segments)
 
+    // `true` when the leaf's slim-primitive set includes `'undefined'`
+    // (i.e. the path was declared `.optional()`). The text-input
+    // listener consults this on DOM clear: when the user empties an
+    // optional field, the directive writes `undefined` rather than
+    // `''`, so the schema's `.optional()` semantic remains reachable
+    // from the DOM after any interaction. Number-typed leaves don't
+    // need a separate path — `slimDefault` for an optional number
+    // resolves to `undefined`, so `markBlank` writes the right thing
+    // already.
+    const slimTypes = state.schema.getSlimPrimitiveTypesAtPath(segments)
+    const acceptsUndefined = slimTypes.has('undefined')
+    // `true` when the slim set admits `'string'`. The text-input
+    // listener uses the negation: when a DOM clear lands on a leaf
+    // that does NOT admit string (e.g. a required `z.number()`
+    // rendered as `<input type="text">` without the `.number`
+    // modifier), the assigner would reject the empty-string write and
+    // the post-write force-sync would snap the DOM back to the stored
+    // numeric. Routing through `markBlank` instead keeps the DOM
+    // empty and stages the blank meta for submit-time validation.
+    const acceptsString = slimTypes.has('string')
+
     const persist = options?.persist === true
     const acknowledgeSensitive = options?.acknowledgeSensitive === true
     const multiTab = options?.multiTab !== false
@@ -339,6 +360,8 @@ export function buildRegister<F extends GenericForm>(
       transforms,
       coerce,
       ...(coerceElement !== undefined ? { coerceElement } : {}),
+      acceptsUndefined,
+      acceptsString,
     }
     return shallowReadonly(internalRv) as RegisterValue
   }

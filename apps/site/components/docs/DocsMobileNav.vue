@@ -113,15 +113,24 @@
             <div v-for="section in sections" :key="section.heading" class="mb-7 last:mb-0">
               <h3 class="mb-3 text-sm font-semibold text-fg">{{ section.heading }}</h3>
               <ul>
-                <li v-for="link in section.links" :key="link.to">
-                  <NuxtLink
-                    :to="link.to"
-                    exact-active-class="border-accent font-medium text-accent"
-                    class="block border-l border-border py-1.5 pr-2 pl-4 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:border-fg-subtle hover:text-fg"
+                <template v-for="(item, idx) in section.links">
+                  <li
+                    v-if="'subheading' in item"
+                    :key="`sub-${item.subheading}`"
+                    class="mt-4 mb-1.5 pl-4 text-[0.6875rem] font-semibold tracking-wider text-fg-subtle uppercase first:mt-0"
                   >
-                    {{ link.title }}
-                  </NuxtLink>
-                </li>
+                    {{ item.subheading }}
+                  </li>
+                  <li v-else :key="`link-${item.to}-${idx}`">
+                    <NuxtLink
+                      :to="item.to"
+                      exact-active-class="border-accent font-medium text-accent"
+                      class="block border-l border-border py-1.5 pr-2 pl-4 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:border-fg-subtle hover:text-fg"
+                    >
+                      {{ item.title }}
+                    </NuxtLink>
+                  </li>
+                </template>
               </ul>
             </div>
           </nav>

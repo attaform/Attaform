@@ -24,7 +24,7 @@
     </label>
 
     <label>
-      <span>Slug (lowercased, dashified — try mixed case + spaces)</span>
+      <span>Slug (lowercased, dashified; try mixed case + spaces)</span>
       <input
         v-register="form.register('slug', { transforms: [lowercase, dashify] })"
         placeholder="my-first-post"

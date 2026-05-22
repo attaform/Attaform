@@ -65,4 +65,4 @@ Overrides are partial. Fields you don't mention pick up the schema's own default
 ## Where to next
 
 - [From schema to inputs](/docs/getting-started/from-schema-to-inputs): bind the schema to native inputs with `register` + `v-register`.
-- [The form object](/docs/reading-the-form/the-form-object): every property `useForm` returns.
+- [The form](/docs/reading-the-form/the-form): every property `useForm` returns.

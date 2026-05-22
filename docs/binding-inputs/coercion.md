@@ -16,12 +16,12 @@ metaRows:
 
 # Schema-driven coercion
 
-> Two built-in rules handle 90 % of real forms — string → number and string → boolean. Compose more when your schema needs them.
+> Two built-in rules handle 90 % of real forms: string → number and string → boolean. Compose more when your schema needs them.
 
 ::docs-meta-table
 ::
 
-Type a number into the `count` field and watch it land in storage as a `number` (not a string). Type "true" or "false" into `enabled` and see it commit as a `boolean`. Both inputs are `type="text"` — coercion is what makes `z.number()` and `z.boolean()` leaves work against plain text inputs at the directive layer.
+Type a number into the `count` field and watch it land in storage as a `number` (not a string). Type "true" or "false" into `enabled` and see it commit as a `boolean`. Both inputs are `type="text"`; coercion is what makes `z.number()` and `z.boolean()` leaves work against plain text inputs at the directive layer.
 
 ::docs-demo{slug="coercion" label="Coercion Demo"}
 ::
@@ -42,7 +42,7 @@ The same two rules cover most native HTML input shapes: `<input type="number">` 
 
 ## When coercion fires
 
-Coercion runs **only on user-typed DOM values**. Programmatic writes through `form.setValue`, `register('path').setValueWithInternalPath`, or the field-array helpers are **never** coerced — they're typed against the schema's leaf type at the call site, so the value already matches.
+Coercion runs **only on user-typed DOM values**. Programmatic writes through [`form.setValue`](/docs/writing-and-mutating/set-value), `form.register('path').setValueWithInternalPath`, or the field-array helpers are **never** coerced; they're typed against the schema's leaf type at the call site, so the value already matches. The strictness is intentional: if you've got the value in hand in code, you knew its type when you typed it.
 
 The coercion step sits between the directive's value extraction and the slim-type gate's write check:
 
@@ -52,13 +52,15 @@ DOM event → extract → modifier (.trim, .number) → transforms[] → coerce 
 
 A value the registry can't coerce (`coerced: false`) passes through unchanged; the slim gate handles the rejection downstream with a typed diagnostic.
 
+[`<input type="file">`](/docs/binding-inputs/file) inputs skip coercion entirely; `File` handles are objects, not strings, and land in storage as-is.
+
 ## Extending the default registry
 
 `useForm({ coerce })` accepts three forms:
 
 ```ts
 useForm({ coerce: true }) //   defaults (string→number, string→boolean)
-useForm({ coerce: false }) //   no coercion — slim gate rejects mismatches as-is
+useForm({ coerce: false }) //   no coercion; slim gate rejects mismatches as-is
 useForm({ coerce: [...defaultCoercionRules, defineCoercion({ ... })] })
 ```
 
@@ -84,7 +86,7 @@ useForm({
 })
 ```
 
-Now `<input type="text" v-register="register('publishedAt')" />` against a `z.date()` leaf works without modifiers.
+Now `<input type="text" v-register="form.register('publishedAt')" />` against a `z.date()` leaf works without modifiers.
 
 ## App-wide defaults
 
@@ -110,10 +112,11 @@ Per-form `useForm({ coerce })` overrides the plugin default. The plugin default 
 
 ## Sync, no throws
 
-Coercion rules MUST be sync. They SHOULD NOT throw — wrap internal try / catch when the conversion can fail (e.g. `BigInt('not-a-number')` throws for non-numeric strings). The library wraps each invocation in try / catch as defense in depth; throws are caught, logged once per `(input, output)` pair, and the original value passes through to the slim gate.
+Coercion rules MUST be sync. They SHOULD NOT throw; wrap internal try / catch when the conversion can fail (e.g. `BigInt('not-a-number')` throws for non-numeric strings). The library wraps each invocation in try / catch as defense in depth; throws are caught, logged once per `(input, output)` pair, and the original value passes through to the slim gate.
 
 ## Where to next
 
-- [Modifiers](/docs/binding-inputs/modifiers) — `.number` for the `<input type="text">` + numeric-leaf combo without touching the registry.
-- [Register transforms](/docs/binding-inputs/transforms) — the per-field write pipeline that runs before coercion.
-- [The `v-register` directive](/docs/binding-inputs/v-register) — the layer coercion plugs into.
+- [Modifiers](/docs/binding-inputs/modifiers): `.number` for the `<input type="text">` + numeric-leaf combo without touching the registry.
+- [Register transforms](/docs/binding-inputs/transforms): the per-field write pipeline that runs before coercion.
+- [`form.setValue`](/docs/writing-and-mutating/set-value): the programmatic-write surface that bypasses coercion entirely.
+- [The `v-register` directive](/docs/binding-inputs/v-register): the layer coercion plugs into.

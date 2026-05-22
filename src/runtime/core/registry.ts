@@ -2,6 +2,7 @@ import type { App, InjectionKey } from 'vue'
 import { getCurrentInstance, inject, shallowReactive } from 'vue'
 import type { AttaformDefaults, FormKey } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
+import type { UseWizardReturnType } from '../types/types-wizard'
 import type { FormStore } from './create-form-store'
 import { OutsideSetupError, RegistryNotInstalledError } from './errors'
 import { detectSSR, type SSRDetectOptions } from './ssr'
@@ -71,6 +72,15 @@ export type AttaformRegistry = {
    */
   readonly forms: Map<FormKey, FormStore<GenericForm>>
   /**
+   * Live wizards keyed by the consumer-supplied `key` option. Populated
+   * by `useWizard(entry, { key })`; consulted by `injectWizard(key)` to
+   * resolve cross-component wizard handles. Anonymous wizards (no
+   * `key`) do NOT register here — they're reachable only via ambient
+   * provide/inject.
+   * @internal
+   */
+  readonly wizards: Map<string, UseWizardReturnType>
+  /**
    * Snapshots staged by `hydrateAttaformState` waiting to be consumed by the next `useForm` call.
    * @internal
    */
@@ -87,6 +97,39 @@ export type AttaformRegistry = {
    * @internal
    */
   readonly trackConsumer: (key: FormKey) => () => void
+  /**
+   * Track a consumer of wizard `key`. Returns a dispose function — call
+   * it when the consumer unmounts. The wizard handle is evicted from
+   * `wizards` once the last consumer disposes, mirroring the form
+   * consumer-counting mechanics. Anonymous wizards never enter this
+   * counter (they have no key to count under).
+   * @internal
+   */
+  readonly trackWizardConsumer: (key: string) => () => void
+  /**
+   * Mark a form as eligible for SSR prefetch. The form's
+   * `onServerPrefetch` hook consults `shouldPrefetch(key)` and runs the
+   * captured `defaultValues` factory only when this set contains the
+   * key (and the skip set does not). Set by `form.activate()`,
+   * `useWizard`'s current-step auto-mark, and the future Vite transform.
+   * @internal
+   */
+  readonly enqueuePrefetch: (key: FormKey) => void
+  /**
+   * Mark a form as ineligible for SSR prefetch. Overrides `enqueuePrefetch`.
+   * Used by `useWizard` to keep non-current steps dormant on the
+   * server even when a transform mark or stray `activate()` would
+   * otherwise enqueue them — the wizard's "user isn't on this step"
+   * signal wins.
+   * @internal
+   */
+  readonly skipPrefetch: (key: FormKey) => void
+  /**
+   * Whether `key`'s SSR prefetch should run. Returns `true` iff the key
+   * is enqueued AND not skipped.
+   * @internal
+   */
+  readonly shouldPrefetch: (key: FormKey) => boolean
   /**
    * Wait for all pending persistence writes across every live form
    * to settle. Useful for SSR shutdown and integration tests that
@@ -112,6 +155,22 @@ export type AttaformRegistry = {
 // `attaform:` prefix namespaces the key safely. Same reasoning
 // for `kFormContext` and `kFormInstanceId` below.
 export const kAttaformRegistry: InjectionKey<AttaformRegistry> = Symbol.for('attaform:registry')
+
+/**
+ * Provides the nearest-ancestor wizard handle to descendants. Installed
+ * by `useWizard` after the handle is built, so any nested component can
+ * call `injectWizard()` (no key) to reach the closest wizard without
+ * threading the handle through props.
+ *
+ * Mirrors `kFormContext`'s shape — `Symbol.for(...)` for module-
+ * duplication safety; consumers never read this key directly. Keyed
+ * wizards remain reachable via `injectWizard(key)` regardless of
+ * tree position; the ambient slot is the convenience path for
+ * components that just want "whatever wizard is above me."
+ */
+export const kAttaformAncestorWizard: InjectionKey<UseWizardReturnType> = Symbol.for(
+  'attaform:ancestor-wizard'
+)
 
 /**
  * Provides the current form's FormStore to descendants. Installed by
@@ -175,6 +234,11 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
   // per-key. `shallowReactive` avoids Vue's deep Ref-unwrapping, which would
   // mangle FormStore.form's Ref<F> type into F on lookup.
   const forms = shallowReactive(new Map<FormKey, FormStore<GenericForm>>())
+  // Wizards live alongside forms but follow simpler lifecycle: no IO to
+  // drain on eviction (the wizard handle is just an object that closes
+  // over per-form state). Reactive container so consumers can observe
+  // registration in templates if they ever need to (e.g. dev panels).
+  const wizards = shallowReactive(new Map<string, UseWizardReturnType>())
   const pendingHydration = shallowReactive(new Map<FormKey, SerializedFormData>())
   // Consumer counts are bookkeeping — not reactive. No template should ever
   // depend on "how many useForm calls are live", and using a plain Map
@@ -187,40 +251,111 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
   // unmounted forms have a chance to flush.
   const evicting = new Set<FormStore<GenericForm>>()
 
+  // Eviction is deferred to the next microtask when consumer count
+  // hits zero — a new consumer that claims the same key inside the
+  // same tick cancels the schedule and reuses the live FormStore.
+  // Catches Vue's HMR re-mount, `<KeepAlive>` swaps, and any
+  // unmount-then-remount pattern that completes synchronously.
+  // Tokens are per-schedule so a churn cycle that flips zero → one
+  // → zero produces a fresh schedule and the older token's microtask
+  // no-ops on the cancellation flag.
+  type EvictionToken = { cancelled: boolean }
+  const pendingEvictions = new Map<FormKey, EvictionToken>()
+
+  function cancelPendingEviction(key: FormKey): void {
+    const pending = pendingEvictions.get(key)
+    if (pending === undefined) return
+    pending.cancelled = true
+    pendingEvictions.delete(key)
+  }
+
   function trackConsumer(key: FormKey): () => void {
+    // A new consumer claiming the key while an eviction is pending is
+    // a re-mount, not a termination. Cancel before bumping the count.
+    cancelPendingEviction(key)
     consumers.set(key, (consumers.get(key) ?? 0) + 1)
     let disposed = false
     return () => {
       if (disposed) return
       disposed = true
       const remaining = (consumers.get(key) ?? 1) - 1
-      if (remaining <= 0) {
-        // Tear down non-reactive resources the FormStore owns (field-
-        // validation timers, abort controllers) BEFORE dropping the
-        // registry reference — once the Map entry is gone we can't
-        // reach the state anymore.
-        const state = forms.get(key)
-        consumers.delete(key)
-        // Eviction from `forms` stays synchronous: any consumer that
-        // reads `registry.forms` after unmount (tests, devtools) sees
-        // the form gone immediately. Drain-then-dispose runs async in
-        // the background so the persistence layer's debounced final
-        // write can complete — the FormStore is reachable through the
-        // closure here even after `forms.delete`.
-        forms.delete(key)
-        if (state !== undefined) {
-          evicting.add(state)
-          void state
-            .awaitPendingWrites()
-            .catch(() => undefined)
-            .finally(() => {
-              evicting.delete(state)
-              state.dispose()
-            })
-        }
-      } else {
+      if (remaining > 0) {
         consumers.set(key, remaining)
+        return
       }
+      // Last consumer disposed. Schedule eviction on the next
+      // microtask; cancel if a new consumer claims the key first.
+      // `consumers` is cleared immediately so a re-mount's count
+      // starts at one (consistent with a cold mount); `forms` stays
+      // populated so the re-mount's `useForm({ key })` lookup finds
+      // the live FormStore and skips factory re-firing.
+      consumers.delete(key)
+      const token: EvictionToken = { cancelled: false }
+      pendingEvictions.set(key, token)
+      queueMicrotask(() => {
+        if (token.cancelled) return
+        // Defensive: a newer schedule may have replaced this token
+        // without cancelling it (can't happen under the current code
+        // path, but the guard makes the invariant explicit).
+        if (pendingEvictions.get(key) !== token) return
+        pendingEvictions.delete(key)
+        const state = forms.get(key)
+        forms.delete(key)
+        if (state === undefined) return
+        // Drain-then-dispose runs in the background so the
+        // persistence layer's debounced final write can complete —
+        // the FormStore is reachable through the closure here even
+        // after `forms.delete`.
+        evicting.add(state)
+        void state
+          .awaitPendingWrites()
+          .catch(() => undefined)
+          .finally(() => {
+            evicting.delete(state)
+            state.dispose()
+          })
+      })
+    }
+  }
+
+  // Wizard ref-counting + deferred eviction — mirrors the form mechanics
+  // above but skips the drain step (wizards have no IO). The deferred-
+  // eviction-cancel pattern catches the wizard HMR / KeepAlive remount
+  // case: a fresh consumer claiming the key inside the same tick cancels
+  // the schedule and reuses the live handle, so children using
+  // `injectWizard(key)` aren't handed a stale reference after a parent
+  // re-mount.
+  const wizardConsumers = new Map<string, number>()
+  const pendingWizardEvictions = new Map<string, EvictionToken>()
+
+  function cancelPendingWizardEviction(key: string): void {
+    const pending = pendingWizardEvictions.get(key)
+    if (pending === undefined) return
+    pending.cancelled = true
+    pendingWizardEvictions.delete(key)
+  }
+
+  function trackWizardConsumer(key: string): () => void {
+    cancelPendingWizardEviction(key)
+    wizardConsumers.set(key, (wizardConsumers.get(key) ?? 0) + 1)
+    let disposed = false
+    return () => {
+      if (disposed) return
+      disposed = true
+      const remaining = (wizardConsumers.get(key) ?? 1) - 1
+      if (remaining > 0) {
+        wizardConsumers.set(key, remaining)
+        return
+      }
+      wizardConsumers.delete(key)
+      const token: EvictionToken = { cancelled: false }
+      pendingWizardEvictions.set(key, token)
+      queueMicrotask(() => {
+        if (token.cancelled) return
+        if (pendingWizardEvictions.get(key) !== token) return
+        pendingWizardEvictions.delete(key)
+        wizards.delete(key)
+      })
     }
   }
 
@@ -233,7 +368,36 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
     await Promise.allSettled(states.map((state) => state.awaitPendingWrites()))
   }
 
-  return { forms, pendingHydration, ssr, defaults, trackConsumer, shutdown }
+  // SSR prefetch coordination. Plain (non-reactive) Sets — the read
+  // path is `onServerPrefetch` callbacks, which fire imperatively after
+  // setup, not from inside a reactive effect. A new registry is
+  // created per SSR request (createAttaform() call), so cross-request
+  // state cannot leak.
+  const prefetchEnqueued = new Set<FormKey>()
+  const prefetchSkipped = new Set<FormKey>()
+  function enqueuePrefetch(key: FormKey): void {
+    prefetchEnqueued.add(key)
+  }
+  function skipPrefetch(key: FormKey): void {
+    prefetchSkipped.add(key)
+  }
+  function shouldPrefetch(key: FormKey): boolean {
+    return prefetchEnqueued.has(key) && !prefetchSkipped.has(key)
+  }
+
+  return {
+    forms,
+    wizards,
+    pendingHydration,
+    ssr,
+    defaults,
+    trackConsumer,
+    trackWizardConsumer,
+    enqueuePrefetch,
+    skipPrefetch,
+    shouldPrefetch,
+    shutdown,
+  }
 }
 
 /**

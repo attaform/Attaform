@@ -395,6 +395,20 @@ const getModelAssigner = (
   // vRegisterSelect's change handler) can detect rejection and gate
   // post-write side effects like the `_assigning` flag.
   const defaultAssigner: CustomDirectiveRegisterAssignerFn = (value) => {
+    // Schema-aware undefined short-circuit: when the path admits
+    // undefined and the commit IS undefined (the text-input listener
+    // mapped a DOM clear), skip transforms + coerce. Consumer-supplied
+    // transforms today never receive undefined, so passing it through
+    // would force every existing transform to add a `if (v == null)`
+    // guard. Treat undefined as the schema-side absent signal that
+    // bypasses normalization. Coerce already passes undefined cleanly
+    // for paths that admit it, so skipping is a clarity win.
+    if (value === undefined && registerValue.acceptsUndefined) {
+      return registerValue.setValueWithInternalPath(
+        undefined,
+        computePersistMeta(el, registerValue)
+      )
+    }
     const r = runTransforms(value, registerValue)
     if (!r.ok) return false
     const coerced = applyCoerce(r.value, registerValue)
@@ -713,7 +727,38 @@ const vRegisterText: RegisterTextCustomDirective = {
         // DOM matches storage exactly.
         if (isRegisterValue(value)) writeLastTypedForm(value, typedString)
       }
-      el[assignKey]?.(domValue)
+      // Schema-aware DOM clear: when the user empties an `.optional()`
+      // string field, write `undefined` to storage rather than `''`.
+      // Otherwise an `.optional()` schema's "absent" semantic would be
+      // unreachable from the DOM once the user has typed anything, and
+      // schemas like `z.string().email().optional()` would lock in a
+      // permanent validation error after a clear (storage `''` is
+      // neither undefined nor a valid email). Only the text path
+      // reaches here — the castToNumber branch above already returns
+      // for empty input, and `slimDefault` resolves to undefined for
+      // an optional number leaf, so `markBlank` writes the right thing
+      // there already.
+      //
+      // When the path doesn't admit string AND doesn't admit
+      // undefined (e.g. required `z.number()` rendered as a plain
+      // text input), short-circuit through `markBlank` for the same
+      // reason `castToNumber` does: the empty-string write would be
+      // rejected by the slim-primitive gate, and the post-write
+      // force-sync below would then snap the DOM back to the stored
+      // numeric — making the final character undeletable.
+      if (
+        domValue === '' &&
+        isRegisterValue(value) &&
+        !value.acceptsString &&
+        !value.acceptsUndefined
+      ) {
+        writeLastTypedForm(value, null)
+        value.markBlank()
+        return
+      }
+      const commit =
+        domValue === '' && isRegisterValue(value) && value.acceptsUndefined ? undefined : domValue
+      el[assignKey]?.(commit)
       // After the default assigner runs, force-sync the DOM when
       // storage diverges from the post-cast/post-trim `domValue`.
       // Two cases produce no Vue re-render and so leave the
@@ -1653,6 +1698,17 @@ export type VXCustomDirective =
   | typeof vRegisterDynamic
 
 /**
+ * Marker installed on the v-register directive object so consumers
+ * (notably `useRegister`) can identify it in a child vnode's
+ * directive list even when the consumer's bundler hasn't installed
+ * attaform's compile-time transforms. `Symbol.for(...)` round-trips
+ * across duplicate bundle copies: `attaform` and `attaform/zod` can
+ * land on different `vRegister` references in the playground or
+ * under pnpm-hoist edge cases, but both carry the same marker.
+ */
+export const V_REGISTER_MARKER: unique symbol = Symbol.for('attaform:v-register-directive')
+
+/**
  * The `v-register` directive. Bind a form field to a native input,
  * select, textarea, checkbox, or radio:
  *
@@ -1666,8 +1722,15 @@ export type VXCustomDirective =
  *
  * The directive picks the right binding strategy automatically based
  * on the element's `tagName` and `type`. Registered globally by
- * `createAttaform()` — most consumers never import it
- * directly, but it's exposed for advanced integrations that wire
- * directives manually.
+ * `createAttaform()`. Most consumers never import it directly, but
+ * it's exposed for advanced integrations that wire directives
+ * manually.
  */
 export const vRegister = vRegisterDynamic
+
+// Stamp the marker on the directive object after definition. Reading
+// it from `vnode.dirs[].dir[V_REGISTER_MARKER]` lets `useRegister`
+// find the parent's binding even without the compile-time bridge-
+// prop injection — keeps the wrapper pattern working in bare-Vue and
+// playground setups.
+;(vRegisterDynamic as unknown as { [k: symbol]: true })[V_REGISTER_MARKER] = true

@@ -46,7 +46,7 @@ Each value gets a dynamic-key path segment:
 ```ts
 form.values.prefs['user-42'] // boolean | undefined
 form.register('prefs.user-42') // path autocomplete; the key segment is dynamic
-form.errors.prefs['user-99'] // ValidationError[] | undefined
+form.errors.prefs['user-99'] // ValidationError[] (empty when no errors)
 ```
 
 The key schema constrains what's valid; the value schema validates each entry:
@@ -142,7 +142,7 @@ The template renders re-run when the underlying record / map updates because `fo
 Errors land at the keyed path, the same as array elements:
 
 ```ts
-form.errors.prefs['user-42'] // ValidationError[] | undefined
+form.errors.prefs['user-42'] // ValidationError[] (empty when no errors)
 form.errors.scoresByUser['user-99'] // (works for maps too)
 ```
 

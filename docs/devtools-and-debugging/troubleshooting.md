@@ -84,6 +84,6 @@ To invalidate drafts without changing the schema (e.g. shipping a security fix t
 
 ## Where to next
 
-- [The form object](/docs/reading-the-form/the-form-object) — the full reactive surface.
-- [`errors`](/docs/reading-the-form/errors) — per-path error reads.
-- [Persistence overview](/docs/persistence/overview) — the dual opt-in model and storage backends.
+- [The form](/docs/reading-the-form/the-form): the full reactive surface.
+- [`errors`](/docs/reading-the-form/errors): per-path error reads.
+- [Persistence overview](/docs/persistence/overview): the dual opt-in model and storage backends.

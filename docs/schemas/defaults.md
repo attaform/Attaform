@@ -95,6 +95,58 @@ useForm({ schema, defaultValues: unset }) // every primitive leaf
 
 The third pattern uses `unset` as a sentinel that lands at any path. Required schemas under the unset path surface a `code: 'atta:no-value-supplied'` error reactively. See [the `unset` page](/docs/writing-and-mutating/unset) for the position-by-position contract and [the `blank` field-state bit](/docs/validation/blank) for the storage / display divergence story.
 
+## Per-mount sync defaults
+
+`defaultValues` accepts a function as well as a plain value. The sync function form runs once per `useForm` call (on a microtask after construction) and captures whatever's in scope at that moment. Use it when the defaults are cheap to compute but need to read live state at mount time, e.g. a per-instance session ID, the current timestamp, or a value pulled from a sync store:
+
+```ts
+const sessionCounter = ref(0)
+
+const form = useForm({
+  schema,
+  defaultValues: () => ({
+    sessionId: `sess-${++sessionCounter.value}`,
+    createdAt: new Date().toISOString(),
+    topic: '',
+  }),
+})
+```
+
+Each call to `form.rehydrate()` re-fires the captured factory, so a "new session" button is one method call away. The factory's closure picks up whatever the outer scope holds right now, which is the value over a plain frozen `defaultValues` object.
+
+::docs-demo{slug="defaults-sync-factory" label="Sync factory demo"}
+::
+
+`form.hydrating` does flip `true` for a microtask while the sync factory runs, then back to `false`. Templates that read it usually won't see the brief flicker; the flag is mostly relevant for the async form below.
+
+## Loading defaults asynchronously
+
+When the defaults need a network round-trip, return a `Promise`:
+
+```ts
+const form = useForm({
+  schema,
+  defaultValues: async () => api.fetchDraft(userId),
+})
+```
+
+The form is fully usable while the factory is in flight; it holds the schema's slim defaults and exposes the load state through `form.hydrating`:
+
+```vue
+<form :aria-busy="form.hydrating">
+  <input v-register="form.register('email')" :disabled="form.hydrating" />
+</form>
+```
+
+When the promise resolves the payload overlays onto storage, the same way a plain `defaultValues` object would; `hydrating` flips back to `false`.
+
+If the factory throws or rejects, the error lands on `form.hydrateError` as a `ValidationError` (`code: 'atta:hydration-failed'`). The same entry also surfaces through `form.meta.errors`, so error UI can render off either surface. The form stays usable with the slim defaults; call `form.rehydrate()` to refire the captured factory, e.g. wired to a retry button.
+
+::docs-demo{slug="defaults-async-factory" label="Async factory demo"}
+::
+
+Under SSR the factory fires via `onServerPrefetch`, so the resolved payload bakes into the hydration transfer state; the client never re-fetches on hydrate.
+
 ## Numeric leaves auto-mark blank
 
 Numeric primitives (`number`, `bigint`) are special: when no explicit value is supplied, the leaf auto-marks as blank because storage's slim default (`0`, `0n`) differs from what the DOM shows (an empty `<input type="number">`).

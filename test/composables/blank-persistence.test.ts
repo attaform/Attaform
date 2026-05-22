@@ -6,7 +6,6 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
-import { canonicalizePath } from '../../src/runtime/core/paths'
 import { fingerprintZodSchema } from '../../src/runtime/adapters/zod-v4/fingerprint'
 import { hashStableString } from '../../src/runtime/core/hash'
 import { createAttaform } from '../../src/runtime/core/plugin'
@@ -122,17 +121,17 @@ describe('persistence — blank round-trips across mount', () => {
     document.body.innerHTML = ''
   })
 
-  it('a v=3 payload with blankPaths restores the empty UI state on next mount', async () => {
-    const incomeKey = canonicalizePath('income').key
-    // Pre-seed a v=3 payload that mirrors what the lib would have
+  it('a v=5 payload with blankPaths restores the empty UI state on next mount', async () => {
+    // Pre-seed a v=5 payload that mirrors what the lib would have
     // written on a previous session: storage holds the slim default
-    // (0) but the path is in `blankPaths` so the UI
-    // re-renders blank.
+    // (0) but the path is in `blankPaths` so the UI re-renders
+    // blank. On-disk blankPaths shape switched to dotted public
+    // paths at v=5.
     localStorage.setItem(
       fpKey('te-rt'),
       JSON.stringify({
-        v: 4,
-        data: { form: { income: 0 }, blankPaths: [incomeKey] },
+        v: 5,
+        data: { form: { income: 0 }, blankPaths: ['income'] },
       })
     )
 
@@ -162,7 +161,7 @@ describe('persistence — blank round-trips across mount', () => {
     // Poll until hydration lands the persisted blank mark — the
     // dynamic-imported adapter chain can outlast a fixed-time pump on
     // a contended runner.
-    await waitUntil(() => (captured?.blankPaths.value.has(incomeKey) === true ? true : null))
+    await waitUntil(() => (captured?.blankPaths.value.has('income') === true ? true : null))
 
     if (captured === undefined) throw new Error('form not captured')
     const binding = captured.register('income')
@@ -226,17 +225,16 @@ describe('persistence — blank round-trips across mount', () => {
 
     // Poll until the post-clear write lands the blankPaths entry —
     // the 10ms debounce + adapter.setItem can outlast a fixed pump.
-    const incomeKey = canonicalizePath('income').key
     const raw = await waitUntil(() => {
       const r = localStorage.getItem(fpKey('te-write'))
       if (r === null) return null
       const p = JSON.parse(r) as { data?: { blankPaths?: string[] } }
-      return p.data?.blankPaths?.includes(incomeKey) === true ? r : null
+      return p.data?.blankPaths?.includes('income') === true ? r : null
     })
     expect(raw).not.toBeNull()
     const payload = JSON.parse(raw as string)
-    expect(payload.v).toBe(4)
-    expect(payload.data.blankPaths).toContain(incomeKey)
+    expect(payload.v).toBe(5)
+    expect(payload.data.blankPaths).toContain('income')
   })
 
   it('hydration overrides construction-time auto-mark — persisted empty list wins', async () => {
@@ -247,7 +245,7 @@ describe('persistence — blank round-trips across mount', () => {
     localStorage.setItem(
       fpKey('te-hyd'),
       JSON.stringify({
-        v: 4,
+        v: 5,
         data: { form: { income: 100 }, blankPaths: [] },
       })
     )

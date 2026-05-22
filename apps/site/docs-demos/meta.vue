@@ -20,6 +20,7 @@
     if (values.simulateFailure) {
       throw new Error('Simulated API failure')
     }
+    toast.success(`Submitted as ${values.email}`, { description: values })
   })
 
   const formatError = (err: unknown) =>
@@ -52,12 +53,12 @@
           <tr>
             <th>submitting</th>
             <td>{{ form.meta.submitting }}</td>
-            <th>isSubmitted</th>
-            <td>{{ form.meta.isSubmitted }}</td>
+            <th>submitted</th>
+            <td>{{ form.meta.submitted }}</td>
           </tr>
           <tr>
-            <th>submitCount</th>
-            <td>{{ form.meta.submitCount }}</td>
+            <th>submissionAttempts</th>
+            <td>{{ form.meta.submissionAttempts }}</td>
             <th>errorCount</th>
             <td>{{ form.meta.errorCount }}</td>
           </tr>

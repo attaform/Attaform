@@ -28,6 +28,11 @@
       // `<DemoReplEditor>`. Undefined means "use the default shipment
       // demo" — the original homepage + freeform-playground behaviour.
       initialSource?: string
+      // Multi-file seed: `{ 'src/App.vue': '<source>', 'src/Foo.vue': ... }`.
+      // Wins over `initialSource` when both are provided. The editor
+      // store seeds all entries verbatim; the file at `src/App.vue`
+      // is the entry point.
+      initialFiles?: Record<string, string>
     }>(),
     { height: '37.5rem' }
   )
@@ -113,7 +118,11 @@
       <!-- The real editor. `.client.vue` so it never appears in SSR
            markup; `v-if` defers its mount until two ticks past
            hydration, so its Sandbox iframe installs into a settled DOM. -->
-      <DemoReplEditor v-if="showEditor" :initial-source="props.initialSource" />
+      <DemoReplEditor
+        v-if="showEditor"
+        :initial-source="props.initialSource"
+        :initial-files="props.initialFiles"
+      />
     </div>
   </div>
 </template>

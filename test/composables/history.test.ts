@@ -4,7 +4,6 @@ import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { unset, useForm } from '../../src/zod'
 import type { UseFormConfig, UseFormReturn } from '../../src/zod'
-import { canonicalizePath } from '../../src/runtime/core/paths'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
@@ -187,7 +186,7 @@ describe('history — blankPaths preservation', () => {
   // the form value alone would pin a cleared field to '0' on the screen.
   const numericSchema = z.object({ count: z.number() })
   type NumericApi = UseFormReturn<typeof numericSchema>
-  const countKey = canonicalizePath('count').key
+  const countKey = 'count'
 
   function mountNumericForm(): { app: App; api: NumericApi } {
     const handle: { api?: NumericApi } = {}
@@ -227,7 +226,7 @@ describe('history — blankPaths preservation', () => {
     expect(api.values.count).toBe(10)
     expect(api.blankPaths.value.has(countKey)).toBe(false)
 
-    // 4. Undo — the snapshot we land on captured storage = 0 with blankPaths = {count}.
+    // 4. Undo, the snapshot we land on captured storage = 0 with blankPaths = {count}.
     expect(api.history.undo()).toBe(true)
     expect(api.values.count).toBe(0)
     // The bug: blankPaths was reset along the redo path (step 3 above)

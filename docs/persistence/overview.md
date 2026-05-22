@@ -92,5 +92,5 @@ Pair with a "Clear my draft" button or a post-submit cleanup hook. By default, d
 
 ## Where to next
 
-- [The form object](/docs/reading-the-form/the-form-object) — the full reactive surface.
-- [Troubleshooting](/docs/devtools-and-debugging/troubleshooting) — diagnose hydration mismatches with the DevTools panel.
+- [The form](/docs/reading-the-form/the-form): the full reactive surface.
+- [Troubleshooting](/docs/devtools-and-debugging/troubleshooting): diagnose hydration mismatches with the DevTools panel.

@@ -147,7 +147,7 @@ Reading `form.errors.income` directly gives you whatever the schema and the blan
 
 `handleSubmit` checks `blankPaths` against the schema before running the success callback:
 
-- If `blankPaths` is non-empty AND the schema requires those paths, submission fails. The success callback never runs, `meta.submitCount` ticks, and `meta.submitError` carries the aggregate.
+- If `blankPaths` is non-empty AND the schema requires those paths, submission fails. The success callback never runs, `meta.submissionAttempts` ticks, and `meta.submitError` carries the aggregate.
 - If `blankPaths` is non-empty but the schema accepts the empty case (`.optional()`, `.nullable()`, `.default(x)`), submission proceeds.
 
 The `atta:no-value-supplied` error surfaces in `form.errors.<path>` and in `form.meta.errors`: same shape as a schema-emitted error, distinct `code` for filtering.

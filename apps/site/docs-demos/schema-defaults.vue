@@ -78,7 +78,7 @@
           <input v-register="blanked.register('notify')" type="checkbox" />
         </label>
         <label>
-          count <small v-if="blanked.fields.count.blank" class="blank">(blank)</small>
+          <span>count <small v-if="blanked.fields.count.blank" class="blank">(blank)</small></span>
           <input v-register="blanked.register('count')" type="number" />
           <em v-if="blanked.fields.count.showErrors">{{
             blanked.fields.count.firstError?.message
@@ -131,8 +131,7 @@
     color: #6b7280;
     font-family: ui-monospace, monospace;
   }
-  input[type='text'],
-  input[type='number'] {
+  input {
     padding: 0.375rem 0.5rem;
     border-radius: 0.375rem;
     border: 1px solid #d1d5db;

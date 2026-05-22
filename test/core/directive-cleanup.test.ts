@@ -60,6 +60,8 @@ function makeRegisterValue<T>(
     persistOptIns: overrides.persistOptIns ?? createPersistOptInRegistry(),
     isSensitivePath: () => false,
     multiTab: true,
+    acceptsUndefined: false,
+    acceptsString: true,
   }
   return { value, register, deregister, setValue }
 }

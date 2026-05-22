@@ -72,9 +72,9 @@ While `onSuccess` is running, `form.meta.submitting` is `true`. Use it to disabl
 </button>
 ```
 
-`submitting` flips back to `false` when the callback resolves or rejects (`handleSubmit` catches the rejection and routes the failure to its error hook). The full `meta` surface (`submitCount`, `submitError`, `isSubmitted`, and the 22 inherited FieldState bits) lives on [the `meta` page](/docs/reading-the-form/meta).
+`submitting` flips back to `false` when the callback resolves or rejects (`handleSubmit` catches the rejection and routes the failure to its error hook). The full `meta` surface (`submissionAttempts`, `submitError`, `submitted`, and the 22 inherited FieldState bits) lives on [the `meta` page](/docs/reading-the-form/meta).
 
 ## Where to next
 
 - [`handleSubmit`](/docs/submitting/handle-submit): the full submit surface, including error handlers and event semantics.
-- [The form object](/docs/reading-the-form/the-form-object): every method and property `useForm` returns.
+- [The form](/docs/reading-the-form/the-form): every method and property `useForm` returns.

@@ -23,21 +23,60 @@
   // Lazy resolution is technically possible but buys little. The
   // raw source is plain text (~1–2 KB) and the playground is
   // already loading the heavyweight @vue/repl + Monaco bundle.
-  const sources = import.meta.glob<true, string, string>('../../docs-demos/*.vue', {
+  //
+  // Two shapes supported, mirroring DocsDemo's resolution:
+  //   - flat:   docs-demos/<slug>.vue
+  //   - folder: docs-demos/<slug>/{App,Foo,Bar}.vue
+  // The folder form wins when both exist; every .vue inside the
+  // folder seeds into the REPL store under src/, preserving the
+  // import path so `import Foo from './Foo.vue'` keeps resolving.
+  const flatSources = import.meta.glob<true, string, string>('../../docs-demos/*.vue', {
+    eager: true,
+    query: '?raw',
+    import: 'default',
+  })
+  const folderSources = import.meta.glob<true, string, string>('../../docs-demos/*/*.vue', {
     eager: true,
     query: '?raw',
     import: 'default',
   })
 
-  const sourceText = computed(() => sources[`../../docs-demos/${slug.value}.vue`])
+  // Build the file map the REPL editor will seed. Folder demos
+  // produce `{ 'src/App.vue': ..., 'src/FieldRow.vue': ... }`; flat
+  // demos collapse to `{ 'src/App.vue': ... }`. The REPL store also
+  // accepts a single entry, so the single-file case stays simple.
+  const initialFiles = computed<Record<string, string> | undefined>(() => {
+    const folderPrefix = `../../docs-demos/${slug.value}/`
+    const folderFiles: Record<string, string> = {}
+    for (const [key, source] of Object.entries(folderSources)) {
+      if (key.startsWith(folderPrefix)) {
+        const name = key.slice(folderPrefix.length)
+        folderFiles[`src/${name}`] = source
+      }
+    }
+    if (Object.keys(folderFiles).length > 0) return folderFiles
 
-  if (!sourceText.value) {
+    const flat = flatSources[`../../docs-demos/${slug.value}.vue`]
+    if (flat !== undefined) return { 'src/App.vue': flat }
+    return undefined
+  })
+
+  if (!initialFiles.value) {
     throw createError({
       statusCode: 404,
       statusMessage: `No playground for slug "${slug.value}"`,
       fatal: true,
     })
   }
+
+  // Display name for the "Editing apps/site/docs-demos/..." inline
+  // code on the page header. Folder demos point at the directory;
+  // flat demos point at the single file.
+  const sourceLabel = computed(() => {
+    const folderPrefix = `../../docs-demos/${slug.value}/`
+    const hasFolder = Object.keys(folderSources).some((k) => k.startsWith(folderPrefix))
+    return hasFolder ? `${slug.value}/` : `${slug.value}.vue`
+  })
 
   function formatTitle(value: string): string {
     return value
@@ -75,11 +114,11 @@
             <p class="text-sm font-semibold tracking-wide text-accent uppercase">Playground</p>
             <h1 class="mt-3 text-display-md font-semibold text-fg">{{ title }}</h1>
             <p class="mt-4 text-sm text-fg-muted">
-              Editing <UiInlineCode>apps/site/docs-demos/{{ slug }}.vue</UiInlineCode>. The
-              playground is a self-contained sandbox: source edits and form state stay local to this
-              tab so you can experiment freely. To see cross-tab features in action (multi-tab sync,
-              persistence across reloads), open the inline demo on the docs page in two browser
-              tabs.
+              Editing <UiInlineCode>apps/site/docs-demos/{{ sourceLabel }}</UiInlineCode
+              >. The playground is a self-contained sandbox: source edits and form state stay local
+              to this tab so you can experiment freely. To see cross-tab features in action
+              (multi-tab sync, persistence across reloads), open the inline demo on the docs page in
+              two browser tabs.
             </p>
           </div>
           <div class="flex items-center gap-3 text-sm">
@@ -100,7 +139,7 @@
           </div>
         </div>
 
-        <DemoRepl height="calc(100vh - 16rem)" :initial-source="sourceText" />
+        <DemoRepl height="calc(100vh - 16rem)" :initial-files="initialFiles" />
       </div>
     </UiContainer>
   </div>

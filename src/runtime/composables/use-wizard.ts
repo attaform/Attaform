@@ -19,6 +19,7 @@ import type {
   AggregateError,
   AnyForm,
   FormStatus,
+  WizardValue,
   WizardFlow,
   WizardHistoryConfig,
   WizardNavOptions,
@@ -646,15 +647,15 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
         // (matching `forms`) so the error list and value record are
         // stable regardless of branch interleaving.
         const errors: AggregateError[] = []
-        const values: Record<string, unknown> = {}
+        const values: Record<string, WizardValue> = {}
         for (const form of forms) {
           const processed = cache.get(form.key)
           if (processed === undefined) continue
           if (processed.success === true) {
-            values[form.key] = processed.data
+            values[form.key] = processed.data as WizardValue
             continue
           }
-          if (processed.data !== undefined) values[form.key] = processed.data
+          if (processed.data !== undefined) values[form.key] = processed.data as WizardValue
           for (const err of processed.errors) {
             const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
               formKey: err.formKey,

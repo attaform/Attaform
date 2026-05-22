@@ -376,7 +376,7 @@ describe('persistence — non-opted-in blank paths survive hydration', () => {
     // blank set after hydration. Pre-fix the persistence
     // hydrate cleared the set and replaced it with the persisted
     // (empty) array, dropping 'salary' from the set.
-    expect(captured.api.blankPaths.value.includes('salary')).toBe(true)
+    expect(captured.api.blankPaths.value.has('salary')).toBe(true)
 
     // The user-visible consequence: the registered displayValue is
     // `''` (blank bypass), not `'0'`. The compile-time

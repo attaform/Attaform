@@ -188,7 +188,17 @@ export default [
     //   - syncPersistOptIn carve-out reads vnode.props.type to dodge
     //     the el.type pre-patch timing window
     // Measured at 38.78 KB.
-    limit: '40 KB',
+    //
+    // Raised 40 → 44 KB on the wizard composition branch (#221):
+    //   - useWizard(entry) + graph walker (wizard-graph.ts) +
+    //     handleSubmit pipeline + complete / submissionAttempts /
+    //     canAdvance state + reset, all in the shared core chunk
+    //   - injectWizard composable + ambient provide/inject
+    //   - registry wizard map alongside the forms map
+    //   - form.applyInvalidSubmitPolicy public extraction
+    //   - meta.submissionAttempts rename + dedicated submitted ref
+    // Measured at 42.6 KB.
+    limit: '44 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -265,7 +275,13 @@ export default [
     // Raised 51 → 52 KB tracking index.mjs's file-input v-register
     // bump (same shared core chunk: vRegisterFile variant, 'file'
     // ZodKind plumbing, persistence carve-out). Measured at 50.99 KB.
-    limit: '52 KB',
+    //
+    // Raised 52 → 56 KB tracking index.mjs's wizard composition
+    // bump (#221): wizard graph walker, handleSubmit pipeline,
+    // injectWizard, registry extension, applyInvalidSubmitPolicy
+    // extraction, submitted/submissionAttempts split. Measured at
+    // 54.98 KB.
+    limit: '56 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -297,7 +313,11 @@ export default [
     // bump (same shared core chunk + v4-side 'file' ZodKind plumbing
     // across kindOf / defaultForKind / slim-primitives / fingerprint /
     // path-walker / strip / walkForMeta). Measured at 45.02 KB.
-    limit: '46 KB',
+    //
+    // Raised 46 → 51 KB tracking index.mjs's wizard composition
+    // bump (#221): same shared core chunk additions (graph walker,
+    // handleSubmit, injectWizard, registry). Measured at 49.2 KB.
+    limit: '51 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -354,7 +374,11 @@ export default [
     // Raised 44 → 45 KB tracking index.mjs's file-input v-register
     // bump (same shared core chunk + v3 PERMISSIVE_V3 'file' entry).
     // Measured at 44.41 KB.
-    limit: '45 KB',
+    //
+    // Raised 45 → 50 KB tracking index.mjs's wizard composition
+    // bump (#221): same shared core chunk additions (graph walker,
+    // handleSubmit, injectWizard, registry). Measured at 48.07 KB.
+    limit: '50 KB',
     gzip: true,
     ignore: ['zod', 'lodash-es'],
     modifyEsbuildConfig: asEsm,
@@ -369,7 +393,15 @@ export default [
     //     module's DevTools meta pill and runtime-config slot.
     //   - Polished module meta (`name: 'Attaform'`, `version`, `docs`).
     // Measured at 6.22 KB; ~0.8 KB headroom.
-    limit: '7 KB',
+    //
+    // Raised 7 → 14 KB on the wizard composition branch (#221):
+    //   - useWizard SSR-prefetch hook integration into the Nuxt
+    //     plugin path
+    //   - registry wizard map extensions pulled in through the
+    //     shared core chunk
+    //   - SSR active-step seeding via getServerActiveStep
+    // Measured at 12.56 KB.
+    limit: '14 KB',
     gzip: true,
     ignore: ['@nuxt/kit', 'nuxt/app'],
     modifyEsbuildConfig: asEsmNode,
@@ -393,7 +425,14 @@ export default [
     // inline `<script type="module">` so bare specifiers like `vue`
     // and `attaform/devtools-panel` resolve through node_modules.
     // Measured at 5.16 KB; ~0.8 KB headroom.
-    limit: '6 KB',
+    //
+    // Raised 6 → 13 KB on the wizard composition branch (#221):
+    //   - graph-walker module pulled into the Vite plugin's
+    //     transform pipeline through shared core re-exports
+    //   - wizard SSR / hydration handshake helpers visible to the
+    //     transform side
+    // Measured at 12.05 KB.
+    limit: '13 KB',
     gzip: true,
     ignore: ['vite'],
     modifyEsbuildConfig: asEsmNode,

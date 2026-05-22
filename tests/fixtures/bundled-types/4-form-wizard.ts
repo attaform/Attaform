@@ -86,12 +86,15 @@ const reviewSchema = z.object({
 })
 
 function _neverInvoked() {
-  const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
-  const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
-  const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
+  // Bottom-up declaration: terminal form first, then each predecessor
+  // references its successor via `next:`. The wizard walks the graph
+  // from the entry to discover every reachable step.
   const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
+  const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const, next: reviewForm })
+  const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const, next: serviceForm })
+  const refForm = useForm({ schema: referenceSchema, key: 'reference' as const, next: cargoForm })
 
-  const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
+  const wizard = useWizard(refForm)
 
   refForm.setValue('shipperRef', 'TRACK-001')
   cargoForm.setValue('items.0.sku', 'X')
@@ -102,7 +105,7 @@ function _neverInvoked() {
 
   const refValid: boolean = wizard.statuses.reference.valid
   const cargoErr: number = wizard.statuses.cargo.errorCount
-  const current: 'reference' | 'cargo' | 'service' | 'review' = wizard.current.value
+  const current: string | undefined = wizard.current
 
   cargoForm.handleSubmit((data) => {
     const items: Array<{ sku: string; quantity: number; weightKg: number }> = data.items

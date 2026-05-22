@@ -134,7 +134,9 @@ For optional consumers (a floating panel that should hide when the wizard isn't 
 </script>
 
 <template>
-  <aside v-if="wizard" class="wizard-status">Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}</aside>
+  <aside v-if="wizard" class="wizard-status"
+    >Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}</aside
+  >
 </template>
 ```
 

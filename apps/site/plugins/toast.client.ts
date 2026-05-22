@@ -56,8 +56,14 @@ function attempt(action: () => void): void {
 function serialize(v: unknown): string {
   if (typeof v === 'string') return v
   if (v == null) return String(v)
+  if (typeof v === 'bigint') return `${v}n`
+  if (v instanceof Date) return v.toISOString()
+  if (typeof File !== 'undefined' && v instanceof File) return `[File: ${v.name}]`
+  if (typeof Blob !== 'undefined' && v instanceof Blob)
+    return `[Blob: ${v.type || 'unknown'}, ${v.size}B]`
+  if (typeof URL !== 'undefined' && v instanceof URL) return v.toString()
   try {
-    const json = JSON.stringify(v, null, 2)
+    const json = JSON.stringify(v, jsonReplacer, 2)
     if (typeof json === 'string') return json
     if (typeof v === 'function') return '[function]'
     if (typeof v === 'symbol') return v.toString()
@@ -69,6 +75,30 @@ function serialize(v: unknown): string {
       return '[unserializable]'
     }
   }
+}
+
+// JSON.stringify replacer that surgically renders the values
+// `JSON.stringify` can't natively express. Each leaf gets a faithful
+// string representation so demos and loggers can show realistic form
+// payloads without dumping useless `{}` for host objects.
+//
+// `Date` round-trips via the standard ISO format; `bigint` carries an
+// `n` suffix to disambiguate from `number`; `File`/`Blob` render as
+// metadata handles (name + type + size) since their bytes don't
+// belong in a toast; `URL` flattens via `toString`; `Map`/`Set`
+// expand to their JSON-friendly array shapes so the inner leaves
+// continue to recurse through this same replacer.
+function jsonReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === 'bigint') return `${value}n`
+  if (value instanceof Date) return value.toISOString()
+  if (typeof File !== 'undefined' && value instanceof File) return `[File: ${value.name}]`
+  if (typeof Blob !== 'undefined' && value instanceof Blob) {
+    return `[Blob: ${value.type || 'unknown'}, ${value.size}B]`
+  }
+  if (typeof URL !== 'undefined' && value instanceof URL) return value.toString()
+  if (value instanceof Set) return Array.from(value)
+  if (value instanceof Map) return Array.from(value.entries())
+  return value
 }
 
 function normalizeOptions(options: ToastOptions | undefined): { description?: string } | undefined {

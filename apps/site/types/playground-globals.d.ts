@@ -45,9 +45,16 @@ declare global {
     | string
     | number
     | boolean
+    | bigint
     | null
     | undefined
+    | Date
+    | File
+    | Blob
+    | URL
     | readonly ToastBody[]
+    | ReadonlySet<ToastBody>
+    | ReadonlyMap<ToastBody, ToastBody>
     | { readonly [key: string]: ToastBody }
     | ((...args: never[]) => unknown)
 

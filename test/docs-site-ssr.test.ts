@@ -36,11 +36,13 @@ describe('docs-site config: attaform/nuxt is wired into modules', () => {
   const configPath = fileURLToPath(new URL('../apps/site/nuxt.config.ts', import.meta.url))
   const source = readFileSync(configPath, 'utf8')
 
-  it('imports the attaform Nuxt module from source', () => {
-    // Source-relative import: the workspace uses jiti shims in dist,
-    // so the source-aliased import is the only way the docs site
-    // picks up live changes during dev.
-    expect(source).toMatch(/import\s+\w+\s+from\s+['"]\.\.\/\.\.\/src\/nuxt['"]/)
+  it('imports the attaform Nuxt module', () => {
+    // The docs site dogfoods the published package shape — `attaform/nuxt`
+    // is the workspace package export, aliased at the Vite layer to the
+    // local source so live edits still reach the dev server. Asserting
+    // on the package specifier keeps the test honest about what the
+    // shipped module shape looks like to a real consumer.
+    expect(source).toMatch(/import\s+\w+\s+from\s+['"]attaform\/nuxt['"]/)
   })
 
   it('lists the imported module in nuxt.config.modules', () => {
@@ -48,7 +50,7 @@ describe('docs-site config: attaform/nuxt is wired into modules', () => {
     // local name the import bound the module to. Allows the name to
     // be renamed without breaking the test, as long as it lives in
     // the modules array.
-    const importMatch = source.match(/import\s+(\w+)\s+from\s+['"]\.\.\/\.\.\/src\/nuxt['"]/)
+    const importMatch = source.match(/import\s+(\w+)\s+from\s+['"]attaform\/nuxt['"]/)
     expect(importMatch).not.toBeNull()
     const moduleName = importMatch![1]
     const modulesArrayMatch = source.match(/modules\s*:\s*\[([^\]]*)\]/)

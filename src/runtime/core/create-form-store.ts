@@ -935,7 +935,7 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * fire the captured factory on the server. The wizard's negative
    * override — `registry.skipPrefetch(key)` for non-current steps —
    * flips this to `false` even when `enqueue()` has been called, so
-   * the privacy invariant for non-current steps survives a stray
+   * the render-efficiency skip for non-current steps survives a stray
    * `form.activate()` or a future transform mark on a skipped step.
    * Returns `true` for any form the wizard hasn't skipped, including
    * plain-value forms where the factory branch is skipped anyway.

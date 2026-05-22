@@ -1,24 +1,24 @@
 ---
-title: SSR & the privacy invariant
-description: Wizards fire only the current step's async factory on the server. Non-current steps stay dormant regardless of template references. The compile-time transform, the wizard's auto-mark, and form.activate() compose into a stated privacy invariant suitable for regulated-industry consumers.
+title: SSR & render efficiency
+description: useWizard fires only the current step's async factory on the server. Non-current steps stay quiet regardless of template references. The compile-time transform, the wizard's auto-mark, and form.activate() compose into a single activation rule, render only what's seen.
 metaRows:
   - label: Server triggers
     value: 'activate · wizard auto-mark · attaform/vite'
   - label: Wizard skip-list
     value: overrides every other mark for non-current steps
   - label: Active step source
-    value: 'getServerActiveStep | URL ?step | forms[0]'
+    value: 'getServerActiveStep | URL ?step | flow.entry'
     kind: code
 ---
 
-# SSR & the privacy invariant
+# SSR & render efficiency
 
-> A wizard composed of three steps with async `defaultValues` factories will fetch one step's data on the server, never three. Non-current steps stay dormant even when their reactive state appears in the rendered template. This is the property that makes `useWizard` safe to wire into government, healthcare, and finance forms whose per-step factories touch sensitive sources.
+> A wizard with three steps fetches one step's data on the server, never three. A wizard with forty steps still fetches one. Non-current steps stay quiet even when their reactive state appears in the rendered template. Attaform ships only what the user actually sees.
 
 ::docs-meta-table
 ::
 
-## The stated invariant
+## The activation rule
 
 An async `defaultValues` factory will not execute on the server unless one of:
 
@@ -28,7 +28,7 @@ An async `defaultValues` factory will not execute on the server unless one of:
 
 Non-current steps of a `useWizard` never execute their factories on the server, regardless of template references. The wizard's skip-list overrides every positive trigger above.
 
-That last sentence is the privacy backstop. Even if the transform marks every step's binding as accessed (a template that branches by step would naturally do so), the wizard's non-current-step skip wins.
+That last sentence is the render-efficiency floor. Even when the transform marks every step's binding as accessed (a template that branches by step would naturally do so), the wizard's non-current-step skip wins. A 40-step wizard saves 39 fetches per request.
 
 ## Three positive triggers
 
@@ -57,8 +57,12 @@ void userForm.activate()
 When `useWizard` constructs on the server, it marks the active step's form for prefetch synchronously. The consumer needs no extra wiring; the wizard's UX contract ("current step is what the user sees") earns the mark on its own:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const)
-// On the server: account is auto-marked. profile and review are skipped.
+const review = useForm({ schema: reviewSchema, key: 'signup-review' })
+const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
+const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
+
+const wizard = useWizard(account)
+// On the server, account is auto-marked. profile and review stay quiet.
 ```
 
 `getServerActiveStep` (below) is how the consumer tells the wizard which step is current on each request.
@@ -99,10 +103,10 @@ Consumers never write `__ssrAccessed` directly. It's an internal mark whose pres
 Non-current steps of a `useWizard` are added to the registry's skip set on the server, regardless of any positive trigger that might have fired for the same key. A template that conditionally branches across all three steps (so the transform marks all three forms) still produces:
 
 - `wizard.activeForm` factory: fires on the server, payload bakes into hydration.
-- Other steps' factories: dormant. The hydration transfer state carries the schema's slim defaults for those keys.
+- Other steps' factories: quiet. The hydration transfer state carries the schema's slim defaults for those keys.
 - Client: navigating to a non-current step activates that step's factory on the client (lazy activation handles the rest).
 
-The skip overrides marks even when the consumer explicitly calls `form.activate()` on a non-current step from inside a wizard. Attaform treats the wizard's privacy contract as load-bearing.
+The skip overrides marks even when the consumer explicitly calls `form.activate()` on a non-current step from inside a wizard. Attaform treats the wizard's render-efficiency contract as load-bearing.
 
 ## `getServerActiveStep`
 
@@ -112,7 +116,7 @@ Attaform is framework-agnostic. It does not import a router or read a session. T
 import { useRoute } from '#imports' // Nuxt
 const route = useRoute()
 
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   getServerActiveStep: () => {
     const step = route.query.step
     if (typeof step === 'string')
@@ -126,9 +130,9 @@ The wizard consults `getServerActiveStep()` **before** deciding which form's fac
 
 1. `getServerActiveStep()` returns a known key. The wizard marks that form.
 2. Returns `undefined` and the request URL carries `?step=<key>` (matched against `history.param`). The wizard marks that form.
-3. Otherwise the wizard marks `forms[0]`.
+3. Otherwise the wizard marks `flow.entry` (the entry form passed to `useWizard`).
 
-The getter runs on both server and client. The consumer's route source must be available on both. Returning a key that doesn't appear in `forms` dev-warns and falls back to `forms[0]`.
+The getter runs on both server and client. The consumer's route source must be available on both. Returning a key that doesn't appear in the reachable graph dev-warns and falls back to `flow.entry`.
 
 ## Letting the framework own slow factories
 
@@ -164,7 +168,7 @@ The transform reads one SFC at a time and tracks bindings whose surrounding temp
 | Form passed through plain `provide` / `inject`     | Transform sees the upstream call, not the downstream read | Use `injectForm({ key })` so the transform can mark |
 | Non-Vite bundlers (Webpack, Rspack, Rollup-plain)  | No transform pass installed                               | Call `form.activate()` for forms that need SSR data |
 
-Uncovered cases degrade to the schema's slim defaults on the server. The client's first interaction activates the factory and the data lands a moment later. No crash, no hydration mismatch, no privacy break.
+Uncovered cases degrade to the schema's slim defaults on the server. The client's first interaction activates the factory and the data lands a moment later. No crash, no hydration mismatch, no surprise fetch.
 
 `form.activate()` is the documented escape hatch. Wiring one explicit call beats every workaround.
 

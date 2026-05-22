@@ -29,11 +29,11 @@ const accountSchema = z.object({ email: z.email() })
 const profileSchema = z.object({ name: z.string().min(1) })
 const reviewSchema = z.object({ tos: z.literal(true) })
 
-const account = useForm({ schema: accountSchema, key: 'signup-account' })
-const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
 const review = useForm({ schema: reviewSchema, key: 'signup-review' })
+const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
+const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
 
-const wizard = useWizard([account, profile, review] as const)
+const wizard = useWizard(account)
 ```
 
 With no `history` option:
@@ -48,7 +48,7 @@ With no `history` option:
 For embedded wizards (modal flows, in-page widgets, sub-flows whose step state should not show up in the page URL), pass `history: false`:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   history: false,
 })
 ```
@@ -60,10 +60,10 @@ Step state lives in the wizard's own ref; navigations no longer touch `window.hi
 When two wizards live on the same page, or `?step` clashes with an existing query param, rename it:
 
 ```ts
-const checkout = useWizard([cart, shipping, payment] as const, {
+const checkout = useWizard(cart, {
   history: { param: 'checkout' },
 })
-const onboarding = useWizard([invite, profile, tour] as const, {
+const onboarding = useWizard(invite, {
   history: { param: 'onboard' },
 })
 ```
@@ -85,11 +85,11 @@ Replace is the right call for fix-ups (validation redirects, normalized URLs, pr
 
 ## SSR safety
 
-The integration reads `window` lazily. On the server, the wizard skips every history call and opens on `forms[0]` (or whatever `getServerActiveStep()` returned). The HTML serializes the right step without ever touching browser globals.
+The integration reads `window` lazily. On the server, the wizard skips every history call and opens on `entry.key` (or whatever `getServerActiveStep()` returned). The HTML serializes the right step without ever touching browser globals.
 
-See [the SSR page](/docs/multistep/ssr) for the per-request active-step source and the privacy invariant.
+See [the SSR page](/docs/multistep/ssr) for the per-request active-step source and the render-efficiency floor.
 
 ## Cross-reference
 
 - [`useWizard`](/docs/multistep/use-wizard) for navigation methods.
-- [SSR & the privacy invariant](/docs/multistep/ssr) for `getServerActiveStep` and server-side step selection.
+- [SSR & render efficiency](/docs/multistep/ssr) for `getServerActiveStep` and server-side step selection.

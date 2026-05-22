@@ -15,10 +15,11 @@ import { waitUntil } from '../utils/form-harness'
  * factory is a hydration source, not a refresh hook — chain
  * `form.rehydrate()` to force a re-load).
  *
- * The motivating privacy story: a 25-step public-housing form where
- * Step 14 needs SSN. The wizard guarantees Step 14's factory only
- * runs once the user reaches Step 14 — even if the consumer wires
- * all forms in setup.
+ * The motivating render-efficiency story: a 25-step application form
+ * where Step 14 fetches an expensive enrollment record. The wizard
+ * guarantees Step 14's factory only runs once the user reaches
+ * Step 14, even if the consumer wires all forms in setup. A 25-step
+ * wizard pays for one step's data at a time.
  */
 
 const schemaA = z.object({ a: z.string() })

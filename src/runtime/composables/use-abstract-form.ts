@@ -689,8 +689,8 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     // override or a future transform mark has a consistent set to diff
     // against; `shouldFire` lets the activate path bail when the
     // wizard explicitly skipped this key — even an explicit
-    // `form.activate()` defers to the wizard's privacy backstop on the
-    // server.
+    // `form.activate()` defers to the wizard's render-efficiency
+    // skip-list on the server.
     ...(registry.ssr
       ? {
           ssrPrefetch: {

@@ -19,9 +19,10 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  * step cannot bypass the wizard's intent — `skipPrefetch` wins over
  * `enqueuePrefetch` inside `shouldPrefetch`).
  *
- * Privacy invariant under test: a three-step wizard fetching PII on
- * each step's async factory must fetch only the current step on the
- * server, regardless of where the consumer points `activate()` calls.
+ * Render-efficiency invariant under test: a three-step wizard with
+ * an expensive async factory on each step must fetch only the current
+ * step on the server, regardless of where the consumer points
+ * `activate()` calls. A 40-step wizard saves 39 fetches per request.
  */
 
 const accountSchema = z.object({ ssn: z.string(), email: z.string() })
@@ -84,8 +85,8 @@ describe('wizard SSR prefetch', () => {
     // The wizard's "user is not on this step" signal must defeat any
     // other positive trigger — even a consumer who explicitly calls
     // `activate()` on a non-current step does not cause its factory
-    // to fire on the server. This is the privacy backstop for
-    // regulated-industry consumers.
+    // to fire on the server. This is the render-efficiency floor:
+    // the wizard's skip-list overrides every positive mark.
     let leakedCalls = 0
     const App = defineComponent({
       setup() {

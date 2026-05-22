@@ -152,7 +152,7 @@ describe('persistence hydration — validation runs against the rehydrated value
     // Pre-fix the refine never fired on hydration; the form looked valid.
     localStorage.setItem(
       `test-async-hydrate-strict:${ASYNC_FP}`,
-      JSON.stringify({ v: 4, data: { form: { email: 'taken@example.com' } } })
+      JSON.stringify({ v: 5, data: { form: { email: 'taken@example.com' } } })
     )
     const { app, api } = mountAsyncForm('test-async-hydrate-strict', true)
     apps.push(app)
@@ -170,7 +170,7 @@ describe('persistence hydration — validation runs against the rehydrated value
     // post-hydration revalidation is independent of `strict`.
     localStorage.setItem(
       `test-async-hydrate-lax:${ASYNC_FP}`,
-      JSON.stringify({ v: 4, data: { form: { email: 'taken@example.com' } } })
+      JSON.stringify({ v: 5, data: { form: { email: 'taken@example.com' } } })
     )
     const { app, api } = mountAsyncForm('test-async-hydrate-lax', false)
     apps.push(app)
@@ -187,7 +187,7 @@ describe('persistence hydration — validation runs against the rehydrated value
     // construction-time seed disagreed with the rehydrated value.
     localStorage.setItem(
       `test-sync-hydrate:${SYNC_FP}`,
-      JSON.stringify({ v: 4, data: { form: { email: 'not-an-email' } } })
+      JSON.stringify({ v: 5, data: { form: { email: 'not-an-email' } } })
     )
     const { app, api } = mountSyncForm('test-sync-hydrate')
     apps.push(app)
@@ -204,7 +204,7 @@ describe('persistence hydration — validation runs against the rehydrated value
     // carrying a stale "Invalid email" about the empty default.
     localStorage.setItem(
       `test-async-hydrate-valid:${ASYNC_FP}`,
-      JSON.stringify({ v: 4, data: { form: { email: 'fresh@example.com' } } })
+      JSON.stringify({ v: 5, data: { form: { email: 'fresh@example.com' } } })
     )
     const { app, api } = mountAsyncForm('test-async-hydrate-valid', true)
     apps.push(app)
@@ -221,7 +221,7 @@ describe('persistence hydration — validation runs against the rehydrated value
     // `validating` never flipped true.
     localStorage.setItem(
       `test-async-hydrate-flag:${ASYNC_FP}`,
-      JSON.stringify({ v: 4, data: { form: { email: 'taken@example.com' } } })
+      JSON.stringify({ v: 5, data: { form: { email: 'taken@example.com' } } })
     )
     const { app, api } = mountAsyncForm('test-async-hydrate-flag', true)
     apps.push(app)

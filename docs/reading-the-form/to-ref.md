@@ -16,24 +16,28 @@ metaRows:
 
 # `toRef`
 
-> The ref-shaped escape hatch, for the rare consumer that needs `Ref<T>` instead of the Proxy.
+> Get a `Readonly<Ref<T>>` at any schema path, for the rare case a consumer surface expects a Vue ref instead of the values Proxy.
 
 ::docs-meta-table
 ::
-`form.toRef(path)` returns a `Readonly<Ref<T>>` whose `.value` tracks the storage at `path`. Reach for it only when an outside surface needs the ref shape. For normal reads, `form.values.<path>` is always the right call.
+
+`form.toRef(path)` returns a `Readonly<Ref<T>>` whose `.value` tracks storage at `path`. For normal reads (templates, computeds, conditional rendering), `form.values.<path>` is the right call. `toRef` is for ref-shaped interop only.
+
+```ts
+const schema = z.object({
+  profile: z.object({ email: z.email() }),
+  todos: z.array(z.object({ title: z.string() })),
+})
+
+const form = useForm({ schema })
+```
 
 ## When to use it
 
 External composables, watchers, and DevTools probes sometimes expect a `Ref` rather than a Proxy property:
 
 ```ts
-const schema = z.object({
-  email: z.email(),
-})
-
-const form = useForm({ schema })
-
-const emailRef = form.toRef('email') // Readonly<Ref<string>>
+const emailRef = form.toRef('profile.email') // Readonly<Ref<string>>
 
 // Hand off to a composable that takes a Ref
 useExternalComposable(emailRef)
@@ -44,29 +48,25 @@ watch(emailRef, (next) => {
 })
 ```
 
-For everything else (templates, computed reads, conditional rendering) prefer `form.values.email` directly. The Proxy is reactive without ceremony; `toRef` is for ref-shaped interop only.
-
 ## Two call forms
 
-`toRef` accepts either a dotted path or a segment tuple. Both resolve to the same leaf:
+`toRef` accepts either a dotted path or a segment tuple. Both resolve to the same leaf with the same inferred type:
 
 ```ts
 form.toRef('profile.email')
 form.toRef(['profile', 'email'])
 ```
 
-The tuple form sidesteps the dotted-key collision (a schema key containing a literal `.`) and gives TypeScript a precise typed-tuple inference path. The dotted form is shorter and idiomatic for plain object schemas. Pick whichever matches the surrounding code's grammar.
+The dotted form is shorter and idiomatic. The tuple form is the escape hatch for keys that contain a literal `.` (a dotted form can't disambiguate `{ 'a.b': … }` from nested `{ a: { b: … } }`). Pick whichever matches the surrounding code's grammar.
 
 ## Read-only by contract
 
 `toRef` returns `Readonly<Ref<T>>`. Writes go through the same paths every other consumer uses:
 
 ```ts
-form.setValue('email', 'a@b.c') // imperative write
-form.register('email') // bound writes via v-register
-form.append('todos', {
-  /* … */
-}) // structural writes
+form.setValue('profile.email', 'a@b.c') // imperative write
+form.register('profile.email') // bound writes via v-register
+form.append('todos', { title: '' }) // structural writes
 ```
 
 The library tracks dirty, touched, and validation state through those write paths. Assigning to `.value` directly throws; `toRef` is a read handle, not a backdoor.
@@ -76,14 +76,14 @@ The library tracks dirty, touched, and validation state through those write path
 `toRef` returns a `ComputedRef`-equivalent shape: reads inside reactive scopes track the path, and consumers re-run when storage at `path` changes. Two refs to the same path share reactivity; they don't double-subscribe.
 
 ```ts
-const refA = form.toRef('email')
-const refB = form.toRef('email')
+const refA = form.toRef('profile.email')
+const refB = form.toRef('profile.email')
 
 // refA.value === refB.value, always.
 // One storage write triggers both refs' subscribers.
 ```
 
-The same path-precise reactivity Vue offers on `form.values.email`, just wrapped in a `Ref`.
+The same path-precise reactivity Vue offers on `form.values.profile.email`, just wrapped in a `Ref`.
 
 ## Where to next
 

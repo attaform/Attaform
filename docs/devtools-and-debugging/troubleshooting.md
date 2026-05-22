@@ -62,7 +62,7 @@ The dev-mode console warning `v-register on <div> is a no-op …` points here.
 
 ## "Submit fails with 'No value supplied' on a field the user can leave blank"
 
-The path is in the form's `blankPaths` list and bound to a required schema. Three resolutions:
+The path is in the form's `blankPaths` set and bound to a required schema. Three resolutions:
 
 - **The field is genuinely optional.** Wrap the schema: `z.string().optional()`, `z.number().nullable()`, or `z.string().default('')`.
 - **The field is required but `''` should count as "filled".** Supply an explicit default: `defaultValues: { email: '' }`. The library reads this as "empty string is intentional" and skips the auto-mark for that leaf.

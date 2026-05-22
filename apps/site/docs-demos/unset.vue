@@ -54,7 +54,7 @@
       </p>
       <p>
         <code>form.blankPaths</code> =
-        <em>{{ JSON.stringify(form.blankPaths.value) }}</em>
+        <em>{{ JSON.stringify([...form.blankPaths.value]) }}</em>
       </p>
       <p>
         <code>form.fields('profile').blank</code> =

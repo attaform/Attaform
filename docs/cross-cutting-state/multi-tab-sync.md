@@ -39,7 +39,7 @@ With sync on, every same-keyed tab converges in near real-time. Tab B sees tab A
 | Surface                 | Sync model                                                          |
 | ----------------------- | ------------------------------------------------------------------- |
 | `form.values`           | Per-mutation `Patch[]` (live); full snapshot on join.               |
-| `blankPaths` list       | Per-mutation added/removed; snapshot on join.                       |
+| `blankPaths` set        | Per-mutation added/removed; snapshot on join.                       |
 | `errors`                | NOT synced — locally re-derived from values via validation.         |
 | Field interaction state | NOT synced — `touched`/`focused`/`blurred` are UI-state, tab-local. |
 | Submit lifecycle        | NOT synced — `submitCount` / `submitError` are per-callsite.        |

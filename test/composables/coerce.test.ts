@@ -19,6 +19,7 @@ import type { UseFormConfigV4, UseFormReturnV4 } from '../../src/zod'
 import { vRegister, isRegisterValue, assignKey } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { defineCoercion, defaultCoercionRules } from '../../src/runtime/core/schema-coerce'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 import { waitUntil } from '../utils/form-harness'
 
 let app: App | undefined
@@ -93,7 +94,7 @@ describe('text input — numeric path', () => {
     // submit-time validation surfaces "Required" instead of letting 0
     // pass as a real user input.
     expect(api.values.age).toBe(0)
-    expect(api.blankPaths.value.includes('age')).toBe(true)
+    expect(api.blankPaths.value.has(canonicalizePath('age').key)).toBe(true)
     expect(input.value).toBe('')
   })
 })

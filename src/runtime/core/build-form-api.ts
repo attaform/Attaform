@@ -36,7 +36,6 @@ import {
   FORM_ERRORS_PATH_KEY,
   ROOT_PATH,
   ROOT_PATH_KEY,
-  pathKeyToDotted,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -78,6 +77,31 @@ export type BuildFormApiOptions = {
   shouldShowErrors?: ShouldShowErrors
   coerce?: boolean | CoercionRegistry
   rememberVariants?: boolean
+}
+
+/**
+ * Wrap a Set in a read-only facade. `Object.freeze(new Set(...))` does
+ * NOT prevent `add` / `delete` / `clear` mutations on the underlying
+ * Set — those methods bypass the frozen state. The Proxy traps the
+ * mutating methods and rebinds method/getter access to the underlying
+ * Set so internal-slot accesses (e.g. `size`, `has`) keep working.
+ */
+function readonlySetSnapshot<T>(source: Iterable<T>): ReadonlySet<T> {
+  const snapshot = new Set(source)
+  return new Proxy(snapshot, {
+    get(target, prop) {
+      if (prop === 'add' || prop === 'delete' || prop === 'clear') {
+        return () => {
+          throw new TypeError(`Cannot mutate readonly Set: '${String(prop)}' is not allowed.`)
+        }
+      }
+      // Bind the result to `target` so Set's internal-slot accessors
+      // (`size`, `has`, `forEach`, the iterator protocol) receive the
+      // underlying Set as `this` instead of the Proxy.
+      const value = Reflect.get(target, prop, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as ReadonlySet<T>
 }
 
 /**
@@ -764,22 +788,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const fieldArrays = buildFieldArrayApi(state)
 
   // --- Bulk blank introspection ---
-  // Read-only view of the form's blank paths as a dotted-public-path
-  // array. Internal storage stays keyed on the opaque `PathKey`
-  // (efficient `.has()` on the hot path); we convert at the surface
-  // so consumers iterate the same path notation they pass to
-  // `register` / `setValue` / `errors`. Vue 3.5 tracks the underlying
-  // Set's iteration + size, so the computed re-evaluates on
-  // membership changes only. `Object.freeze` produces a genuinely
-  // immutable array — unlike a frozen Set, where `add` / `delete`
-  // still mutate.
-  const blankPathsView = computed<ReadonlyArray<string>>(() => {
-    const out: string[] = []
-    for (const key of state.blankPaths) {
-      const dotted = pathKeyToDotted(key)
-      if (dotted !== null) out.push(dotted)
-    }
-    return Object.freeze(out)
+  // Read-only view of the form's blank path set. Vue 3.5
+  // tracks `.has()` / `for..of` / size accesses on a reactive Set,
+  // so the computed below is a lazy, dependency-tracked passthrough.
+  // Wrapped in a Proxy that traps mutating methods so consumers can't
+  // pollute the snapshot they receive (`Object.freeze` does NOT make
+  // a Set readonly — `add` / `delete` / `clear` still work on frozen
+  // Sets). Writes still go through `setValue(_, unset)` /
+  // `markBlank()` / the directive's input listener.
+  const blankPathsView = computed<ReadonlySet<string>>(() => {
+    return readonlySetSnapshot(state.blankPaths)
   })
 
   // --- Pinia-style reactive readonly proxy over the form's value ---

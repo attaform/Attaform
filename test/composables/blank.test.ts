@@ -4,6 +4,7 @@ import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { unset, useForm } from '../../src/zod'
 import type { UseFormConfigV4 } from '../../src/zod'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/registry'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
@@ -46,21 +47,21 @@ describe('defaultValues with `unset`', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }), { count: unset })
     apps.push(app)
     expect(form.values.count).toBe(0)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
   })
 
   it('string leaf: storage is "", set is populated', () => {
     const { app, form } = setupForm(z.object({ name: z.string() }), { name: unset })
     apps.push(app)
     expect(form.values.name).toBe('')
-    expect(form.blankPaths.value.includes('name')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(true)
   })
 
   it('boolean leaf: storage is false, set is populated', () => {
     const { app, form } = setupForm(z.object({ agreed: z.boolean() }), { agreed: unset })
     apps.push(app)
     expect(form.values.agreed).toBe(false)
-    expect(form.blankPaths.value.includes('agreed')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('agreed').key)).toBe(true)
   })
 
   it('multiple leaves can be marked', () => {
@@ -69,7 +70,7 @@ describe('defaultValues with `unset`', () => {
       name: unset,
     })
     apps.push(app)
-    expect(form.blankPaths.value.length).toBe(2)
+    expect(form.blankPaths.value.size).toBe(2)
   })
 
   it('nested leaves are marked at their canonical paths', () => {
@@ -78,8 +79,8 @@ describe('defaultValues with `unset`', () => {
       { user: { name: unset, age: unset } }
     )
     apps.push(app)
-    expect(form.blankPaths.value.includes('user.name')).toBe(true)
-    expect(form.blankPaths.value.includes('user.age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('user.name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('user.age').key)).toBe(true)
   })
 
   it('mixed marked and unmarked leaves coexist', () => {
@@ -88,8 +89,8 @@ describe('defaultValues with `unset`', () => {
       name: 'alice',
     })
     apps.push(app)
-    expect(form.blankPaths.value.includes('income')).toBe(true)
-    expect(form.blankPaths.value.includes('name')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('income').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(false)
     expect(form.values.name).toBe('alice')
   })
 
@@ -105,7 +106,7 @@ describe('defaultValues with `unset`', () => {
     const { app, form } = setupForm(z.object({ count: z.number().default(10) }), { count: unset })
     apps.push(app)
     expect(form.values.count).toBe(0)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
   })
 
   it('unset overrides z.string().default("...") with slim ""', () => {
@@ -114,7 +115,7 @@ describe('defaultValues with `unset`', () => {
     })
     apps.push(app)
     expect(form.values.tag).toBe('')
-    expect(form.blankPaths.value.includes('tag')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('tag').key)).toBe(true)
   })
 
   it('unset overrides z.boolean().default(true) with slim false', () => {
@@ -123,7 +124,7 @@ describe('defaultValues with `unset`', () => {
     })
     apps.push(app)
     expect(form.values.notify).toBe(false)
-    expect(form.blankPaths.value.includes('notify')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('notify').key)).toBe(true)
   })
 })
 
@@ -137,21 +138,21 @@ describe('setValue(path, unset)', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }))
     apps.push(app)
     form.setValue('count', 99)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
 
     form.setValue('count', unset)
     expect(form.values.count).toBe(0)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
   })
 
   it('subsequent regular write removes the path', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }))
     apps.push(app)
     form.setValue('count', unset)
-    expect(form.blankPaths.value.length).toBe(1)
+    expect(form.blankPaths.value.size).toBe(1)
 
     form.setValue('count', 42)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
     expect(form.values.count).toBe(42)
   })
 
@@ -161,7 +162,7 @@ describe('setValue(path, unset)', () => {
     form.setValue('count', 5)
     form.setValue('count', () => unset)
     expect(form.values.count).toBe(0)
-    expect(form.blankPaths.value.length).toBe(1)
+    expect(form.blankPaths.value.size).toBe(1)
   })
 
   // setValue + unset shares the same translation pipeline as
@@ -174,7 +175,7 @@ describe('setValue(path, unset)', () => {
     form.setValue('count', 99)
     form.setValue('count', unset)
     expect(form.values.count).toBe(0)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
   })
 
   it('unset overrides z.string().default("...") with slim "" on setValue', () => {
@@ -183,7 +184,7 @@ describe('setValue(path, unset)', () => {
     form.setValue('tag', 'work-in-progress')
     form.setValue('tag', unset)
     expect(form.values.tag).toBe('')
-    expect(form.blankPaths.value.includes('tag')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('tag').key)).toBe(true)
   })
 })
 
@@ -197,11 +198,11 @@ describe('reset(args) with unset', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }))
     apps.push(app)
     form.setValue('count', 42)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
 
     form.reset({ count: unset })
     expect(form.values.count).toBe(0)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
     // Dirty resets to false: the new baseline is "blank for this path".
     expect(form.meta.dirty).toBe(false)
   })
@@ -216,7 +217,7 @@ describe('reset(args) with unset', () => {
 
     form.reset({ count: unset })
     expect(form.values.count).toBe(0)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
   })
 })
 
@@ -252,13 +253,13 @@ describe('form.blankPaths bulk accessor', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }), { count: unset })
     apps.push(app)
     const snapshot = form.blankPaths.value
-    // The snapshot is a frozen array. Mutating methods throw in
-    // strict mode (vitest runs strict), so consumers can't pollute
-    // the cached view.
-    expect(Object.isFrozen(snapshot)).toBe(true)
-    expect(() => (snapshot as unknown as string[]).push('foo')).toThrow(TypeError)
-    expect(() => (snapshot as unknown as string[]).pop()).toThrow(TypeError)
-    expect(() => ((snapshot as unknown as string[])[0] = 'foo')).toThrow(TypeError)
+    // The snapshot is a Proxy that traps add / delete / clear so
+    // consumers can't pollute the cached view. `Object.isFrozen` is
+    // not a meaningful test here: frozen Sets remain mutable, so the
+    // real protection is the runtime throw on the mutating methods.
+    expect(() => (snapshot as unknown as Set<string>).add('foo')).toThrow(TypeError)
+    expect(() => (snapshot as unknown as Set<string>).delete('count')).toThrow(TypeError)
+    expect(() => (snapshot as unknown as Set<string>).clear()).toThrow(TypeError)
   })
 
   it('reflects marks and unmarks reactively', () => {
@@ -266,11 +267,11 @@ describe('form.blankPaths bulk accessor', () => {
     // leaf auto-mark covered separately in the auto-mark suite below.
     const { app, form } = setupForm(z.object({ count: z.number() }), { count: 0 })
     apps.push(app)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
     form.setValue('count', unset)
-    expect(form.blankPaths.value.length).toBe(1)
+    expect(form.blankPaths.value.size).toBe(1)
     form.setValue('count', 5)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
   })
 })
 
@@ -295,8 +296,8 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     // Storage `''` matches DOM `''` — no side-channel needed; the
     // schema (`z.string()`) accepts `''` and the library doesn't
     // override that verdict.
-    expect(form.blankPaths.value.includes('email')).toBe(false)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('email').key)).toBe(false)
+    expect(form.blankPaths.value.size).toBe(0)
   })
 
   it('marks numeric leaves only when defaultValues is omitted entirely', () => {
@@ -305,11 +306,11 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     )
     apps.push(app)
     // String / boolean: storage matches DOM; no auto-mark.
-    expect(form.blankPaths.value.includes('name')).toBe(false)
-    expect(form.blankPaths.value.includes('agreed')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('agreed').key)).toBe(false)
     // Number: storage `0` ≠ DOM `''`; auto-mark fires.
-    expect(form.blankPaths.value.includes('age')).toBe(true)
-    expect(form.blankPaths.value.length).toBe(1)
+    expect(form.blankPaths.value.has(canonicalizePath('age').key)).toBe(true)
+    expect(form.blankPaths.value.size).toBe(1)
   })
 
   it('partial defaults: auto-marks only unspecified leaves', () => {
@@ -317,8 +318,8 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
       name: 'alice',
     })
     apps.push(app)
-    expect(form.blankPaths.value.includes('name')).toBe(false)
-    expect(form.blankPaths.value.includes('age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('age').key)).toBe(true)
     expect(form.values.name).toBe('alice')
     expect(form.values.age).toBe(0)
   })
@@ -330,8 +331,8 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     // non-`unset` value", not "consumer supplied a non-default value".
     const { app, form } = setupForm(z.object({ count: z.number() }), { count: 0 })
     apps.push(app)
-    expect(form.blankPaths.value.includes('count')).toBe(false)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(false)
+    expect(form.blankPaths.value.size).toBe(0)
   })
 
   it('nested object: marks unspecified leaves at their canonical paths', () => {
@@ -340,8 +341,8 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
       { user: { name: 'alice' } }
     )
     apps.push(app)
-    expect(form.blankPaths.value.includes('user.name')).toBe(false)
-    expect(form.blankPaths.value.includes('user.age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('user.name').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('user.age').key)).toBe(true)
   })
 
   it('nested object: omitting the outer object recurses, marks numeric children only', () => {
@@ -350,18 +351,18 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     )
     apps.push(app)
     // String child: not auto-marked.
-    expect(form.blankPaths.value.includes('user.name')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('user.name').key)).toBe(false)
     // Numeric child: auto-marked.
-    expect(form.blankPaths.value.includes('user.age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('user.age').key)).toBe(true)
     // The object path itself is NOT marked — only primitive leaves are.
-    expect(form.blankPaths.value.includes('user')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('user').key)).toBe(false)
   })
 
   it('optional string leaf is NOT auto-marked (slim is undefined, no divergence)', () => {
     const { app, form } = setupForm(z.object({ note: z.string().optional() }))
     apps.push(app)
     // `undefined` isn't a numeric primitive — no auto-mark.
-    expect(form.blankPaths.value.includes('note')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('note').key)).toBe(false)
     expect(form.values.note).toBeUndefined()
   })
 
@@ -369,7 +370,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     const { app, form } = setupForm(z.object({ note: z.string().nullable() }))
     apps.push(app)
     // `null` isn't a numeric primitive — no auto-mark.
-    expect(form.blankPaths.value.includes('note')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('note').key)).toBe(false)
     expect(form.values.note).toBeNull()
   })
 
@@ -383,7 +384,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     // gap; any other declared default short-circuits it.
     const { app, form } = setupForm(z.object({ count: z.number().default(7) }))
     apps.push(app)
-    expect(form.blankPaths.value.includes('count')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(false)
     expect(form.values.count).toBe(7)
   })
 
@@ -396,7 +397,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     // supplied nothing" are visually identical).
     const { app, form } = setupForm(z.object({ count: z.number().default(0) }))
     apps.push(app)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
     expect(form.values.count).toBe(0)
   })
 
@@ -404,9 +405,9 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     const { app, form } = setupForm(z.object({ tags: z.array(z.string()) }))
     apps.push(app)
     // `tags` itself is a non-primitive leaf — not marked.
-    expect(form.blankPaths.value.includes('tags')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('tags').key)).toBe(false)
     // No spurious indexed marks either.
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
   })
 
   it('explicit value at a leaf does NOT mark even if value happens to equal slim default', () => {
@@ -417,7 +418,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     apps.push(app)
     // Both leaves had user-supplied values (matching slim defaults)
     // — neither is auto-marked.
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
   })
 
   it('explicit unset opts string leaves in (universal opt-in beats type-gated auto-mark)', () => {
@@ -430,8 +431,8 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
       name: unset,
     })
     apps.push(app)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
-    expect(form.blankPaths.value.includes('name')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(true)
   })
 
   it('explicit unset on numeric + omitted string: only numeric is marked', () => {
@@ -441,21 +442,21 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
       count: unset,
     })
     apps.push(app)
-    expect(form.blankPaths.value.includes('count')).toBe(true)
-    expect(form.blankPaths.value.includes('name')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(false)
   })
 
   it('auto-marks ride into the post-construction baseline (reset restores them)', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }))
     apps.push(app)
     // Construction auto-marks `count`.
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
     // User types a value — mark is removed.
     form.setValue('count', 42)
-    expect(form.blankPaths.value.includes('count')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(false)
     // reset() with no args should restore the construction baseline.
     form.reset()
-    expect(form.blankPaths.value.includes('count')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('count').key)).toBe(true)
   })
 
   it('reset(args) auto-marks unspecified leaves in the new defaults', () => {
@@ -464,11 +465,11 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
       age: 30,
     })
     apps.push(app)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
     // Reset with a partial — `age` is omitted, so it gets auto-marked.
     form.reset({ name: 'bob' })
-    expect(form.blankPaths.value.includes('name')).toBe(false)
-    expect(form.blankPaths.value.includes('age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('age').key)).toBe(true)
     expect(form.values.name).toBe('bob')
     expect(form.values.age).toBe(0)
   })
@@ -525,9 +526,9 @@ describe('defaultValues with container `unset` — bare object', () => {
       { profile: unset } as never
     )
     apps.push(app)
-    expect(form.blankPaths.value.includes('profile.name')).toBe(true)
-    expect(form.blankPaths.value.includes('profile.age')).toBe(true)
-    expect(form.blankPaths.value.includes('profile.subscribed')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.subscribed').key)).toBe(true)
     expect(form.values.profile.name).toBe('')
     expect(form.values.profile.age).toBe(0)
     expect(form.values.profile.subscribed).toBe(false)
@@ -539,7 +540,7 @@ describe('defaultValues with container `unset` — bare object', () => {
       { profile: unset } as never
     )
     apps.push(app)
-    expect(form.blankPaths.value.includes('profile')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('profile').key)).toBe(false)
   })
 
   it('bypasses .default(N): storage = slim, not the declared default', () => {
@@ -584,8 +585,8 @@ describe('defaultValues with container `unset` — bare object', () => {
     expect(callable('profile').blank).toBe(true)
     form.setValue('profile.name', 'alice')
     expect(callable('profile').blank).toBe(false)
-    expect(form.blankPaths.value.includes('profile.name')).toBe(false)
-    expect(form.blankPaths.value.includes('profile.age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
   })
 })
 
@@ -616,7 +617,7 @@ describe('defaultValues with container `unset` — discriminated union', () => {
     expect((form.values.cargo as Record<string, unknown>)['payload']).toBeUndefined()
     // The discriminator path is blank-marked (kind-appropriate
     // blank '' for a string-typed discriminator).
-    expect(form.blankPaths.value.includes('cargo.kind')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('cargo.kind').key)).toBe(true)
   })
 })
 
@@ -632,7 +633,7 @@ describe('defaultValues with container `unset` — array / tuple / record', () =
     } as never)
     apps.push(app)
     expect(form.values.tags).toEqual([])
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
   })
 
   it('tuple: writes slim tuple with no per-position marks', () => {
@@ -641,8 +642,8 @@ describe('defaultValues with container `unset` — array / tuple / record', () =
     } as never)
     apps.push(app)
     expect(form.values.coords).toEqual(['', 0])
-    expect(form.blankPaths.value.includes('coords.0')).toBe(false)
-    expect(form.blankPaths.value.includes('coords.1')).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('coords.0').key)).toBe(false)
+    expect(form.blankPaths.value.has(canonicalizePath('coords.1').key)).toBe(false)
   })
 
   it('record: writes {} with no per-entry marks', () => {
@@ -651,7 +652,7 @@ describe('defaultValues with container `unset` — array / tuple / record', () =
     } as never)
     apps.push(app)
     expect(form.values.counts).toEqual({})
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
   })
 })
 
@@ -670,7 +671,7 @@ describe('defaultValues with container `unset` — wrappers', () => {
     )
     apps.push(app)
     expect(form.values.profile).toBeUndefined()
-    expect(form.blankPaths.value.includes('profile')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile').key)).toBe(true)
   })
 
   it('.nullable() wrapper: writes null, marks the wrapper path', () => {
@@ -682,7 +683,7 @@ describe('defaultValues with container `unset` — wrappers', () => {
     )
     apps.push(app)
     expect(form.values.profile).toBeNull()
-    expect(form.blankPaths.value.includes('profile')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile').key)).toBe(true)
   })
 })
 
@@ -708,9 +709,9 @@ describe('defaultValues: unset at root', () => {
     expect(form.values.name).toBe('')
     expect(form.values.income).toBe(0)
     expect(form.values.agreed).toBe(false)
-    expect(form.blankPaths.value.includes('name')).toBe(true)
-    expect(form.blankPaths.value.includes('income')).toBe(true)
-    expect(form.blankPaths.value.includes('agreed')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('income').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('agreed').key)).toBe(true)
   })
 
   it('blankPaths.size === count of primitive leaves; touching one shrinks it', () => {
@@ -721,10 +722,10 @@ describe('defaultValues: unset at root', () => {
     })
     const { app, form } = setupForm(schema, unset as never)
     apps.push(app)
-    expect(form.blankPaths.value.length).toBe(3)
+    expect(form.blankPaths.value.size).toBe(3)
     form.setValue('income', 42_000)
-    expect(form.blankPaths.value.length).toBe(2)
-    expect(form.blankPaths.value.includes('income')).toBe(false)
+    expect(form.blankPaths.value.size).toBe(2)
+    expect(form.blankPaths.value.has(canonicalizePath('income').key)).toBe(false)
   })
 
   it('recurses through nested objects + arrays + DUs from root', () => {
@@ -739,14 +740,14 @@ describe('defaultValues: unset at root', () => {
     const { app, form } = setupForm(schema, unset as never)
     apps.push(app)
     // Object leaves: marked.
-    expect(form.blankPaths.value.includes('account.email')).toBe(true)
-    expect(form.blankPaths.value.includes('account.age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('account.email').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('account.age').key)).toBe(true)
     // Array: no per-element marks (empty array per the array
     // contract).
     expect(form.values.tags).toEqual([])
     // DU: discriminator marked, no variant body.
     expect((form.values.cargo as { kind: string }).kind).toBe('')
-    expect(form.blankPaths.value.includes('cargo.kind')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('cargo.kind').key)).toBe(true)
   })
 })
 
@@ -764,13 +765,13 @@ describe('setValue(path, unset) on a container', () => {
     // Fill some descendants first.
     form.setValue('profile.name', 'alice')
     form.setValue('profile.age', 30)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
     // Whole-container unset re-blanks.
     form.setValue('profile' as never, unset as never)
     expect(form.values.profile.name).toBe('')
     expect(form.values.profile.age).toBe(0)
-    expect(form.blankPaths.value.includes('profile.name')).toBe(true)
-    expect(form.blankPaths.value.includes('profile.age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
   })
 
   it('DU container: lands discriminator-kind blank, no variant body', () => {
@@ -802,12 +803,12 @@ describe('reset({ container: unset })', () => {
       { profile: { name: 'alice', age: 30 } }
     )
     apps.push(app)
-    expect(form.blankPaths.value.length).toBe(0)
+    expect(form.blankPaths.value.size).toBe(0)
     form.reset({ profile: unset } as never)
     expect(form.values.profile.name).toBe('')
     expect(form.values.profile.age).toBe(0)
-    expect(form.blankPaths.value.includes('profile.name')).toBe(true)
-    expect(form.blankPaths.value.includes('profile.age')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('profile.age').key)).toBe(true)
     // Dirty is false post-reset (the marks ARE the new baseline).
     expect(form.meta.dirty).toBe(false)
   })
@@ -821,7 +822,7 @@ describe('reset({ container: unset })', () => {
     form.reset(unset as never)
     expect(form.values.name).toBe('')
     expect(form.values.income).toBe(0)
-    expect(form.blankPaths.value.includes('name')).toBe(true)
-    expect(form.blankPaths.value.includes('income')).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('name').key)).toBe(true)
+    expect(form.blankPaths.value.has(canonicalizePath('income').key)).toBe(true)
   })
 })

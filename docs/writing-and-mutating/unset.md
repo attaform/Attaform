@@ -22,7 +22,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-The demo carries a primitive leaf (`email`) and a container (`profile` with `name` + `age`). Click `setValue('email', unset)` to flag the leaf blank, or `setValue('profile', unset)` to flag the whole container blank. The panel shows storage (always concrete, never the sentinel) and the live `blankPaths` list.
+The demo carries a primitive leaf (`email`) and a container (`profile` with `name` + `age`). Click `setValue('email', unset)` to flag the leaf blank, or `setValue('profile', unset)` to flag the whole container blank. The panel shows storage (always concrete, never the sentinel) and the live `blankPaths` set.
 
 ::docs-demo{slug="unset" label="Unset Demo"}
 ::
@@ -32,7 +32,7 @@ The demo carries a primitive leaf (`email`) and a container (`profile` with `nam
 `unset` is a sentinel symbol exported from every entry point. Pass it as a value in `defaultValues`, `setValue`, or `reset`. The runtime translates it into two effects at the targeted path:
 
 1. **Storage** receives the schema's slim concrete. For primitive leaves that's `''`, `0`, `0n`, `false`. For `.optional()` wrappers it's `undefined`; for `.nullable()` it's `null`. For container paths the runtime recurses: an object writes a shape with every leaf at its slim, an array writes `[]`, a tuple writes its slim positions, a record writes `{}`, a discriminated union writes `{ <discriminatorKey>: '' }` with no variant body.
-2. **`form.blankPaths`** gains every primitive descendant under the target. The `v-register` directive reads from the same list when binding the DOM input, so the field renders empty even though storage holds a concrete value.
+2. **`form.blankPaths`** gains every primitive descendant under the target. The `v-register` directive reads from the same set when binding the DOM input, so the field renders empty even though storage holds a concrete value.
 
 Reads through `form.values.<path>` always see the slim value. Storage never holds the sentinel symbol.
 
@@ -98,7 +98,7 @@ form.fields.email.blank // true after setValue('email', unset)
 form.fields('profile').blank // true when every descendant of profile is blank
 ```
 
-`form.blankPaths.value` carries the full list as a `ReadonlyArray<string>` of dotted public paths (`'income'`, `'profile.bio'`, `'items.0.name'`) — the same notation passed to `register` / `setValue` / `errors`. Use it from persistence layers, debug overlays, and anywhere else you want the whole list. The `v-register` directive reads the same signals and renders the DOM empty.
+`form.blankPaths.value` carries the full set as `ReadonlySet<PathKey>` for callers that want the whole list (persistence, debug overlays). The `v-register` directive reads the same signals and renders the DOM empty.
 
 ## Required schemas raise `no-value-supplied`
 

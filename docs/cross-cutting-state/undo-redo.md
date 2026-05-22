@@ -68,7 +68,7 @@ Every form value mutation: `setValue`, `register`-backed input edits, any array 
 
 - The form value.
 - The error map at the time of the captured position.
-- The `blankPaths` list (so cleared-but-defaulted numeric fields keep showing as empty after an undo, instead of resurrecting their slim default).
+- The `blankPaths` set (so cleared-but-defaulted numeric fields keep showing as empty after an undo, instead of resurrecting their slim default).
 
 What's NOT captured:
 

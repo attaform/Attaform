@@ -55,7 +55,7 @@ mount                                  mount
 
 `'local'` and `'session'` hydrate before the first render — no flash, the user never sees the schema's defaults. `'indexeddb'` is async; the first paint uses the schema defaults, then the hydration applies on the next microtask. For most forms this is invisible; for first-paint-critical surfaces (a credit-card form on a checkout funnel), `'session'` is the safer choice.
 
-Numeric blank-state survives reload symmetrically. A field with no `defaultValues` entry and a numeric type starts blank-marked at construction; the persisted envelope includes the `blankPaths` list, so a numeric field cleared by the user stays visually empty after rehydration instead of resurrecting its slim default.
+Numeric blank-state survives reload symmetrically. A field with no `defaultValues` entry and a numeric type starts blank-marked at construction; the persisted envelope includes the `blankPaths` set, so a numeric field cleared by the user stays visually empty after rehydration instead of resurrecting its slim default.
 
 ## Cross-tab semantics
 

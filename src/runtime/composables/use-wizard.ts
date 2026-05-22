@@ -4,15 +4,20 @@ import { useRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
+import { AttaformErrorCode } from '../core/error-codes'
 import type {
   AggregateError,
   AnyForm,
   FormStatus,
   WizardHistoryConfig,
   WizardNavOptions,
+  WizardOnError,
+  WizardOnSubmit,
   WizardOptions,
+  WizardSubmitContext,
   UseWizardReturnType,
 } from '../types/types-wizard'
+import type { OnInvalidSubmitPolicy, ValidationResponse } from '../types/types-api'
 
 /** Pending sentinel returned by `wizard.statuses[key]` when the form hasn't
  *  yet wired a FormStore (defensive — useWizard guards against this, but
@@ -40,6 +45,21 @@ type StatusSourceForm = {
     }>
   }
   readonly values: unknown
+}
+
+/** Subset of the form's public surface the wizard's submission walk
+ *  exercises. The runtime objects returned by `useForm` always satisfy
+ *  this shape; the loose typing keeps the wizard structural against
+ *  every adapter's `UseFormReturnType<...>`. */
+type SubmissionSourceForm = StatusSourceForm & {
+  activate(): Promise<void>
+  process(): Promise<ValidationResponse<unknown>>
+  applyInvalidSubmitPolicy(policy?: OnInvalidSubmitPolicy): void
+  reset(): void
+  readonly meta: StatusSourceForm['meta'] & {
+    readonly updatedAt: string | null
+  }
+  readonly hydrateError: { readonly message: string } | null | undefined
 }
 
 /**
@@ -371,18 +391,118 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     setCurrent(key, 'silent')
   })
 
-  function next(navOptions?: WizardNavOptions): void {
-    const idx = indexOf(current.value)
-    if (idx === formKeys.length - 1) {
+  // --- Phase 4: lifecycle state ------------------------------------------
+
+  const submitting = ref(false)
+  const submissionAttempts = ref(0)
+  const complete = ref(false)
+  // Watchers that flip `complete` back to `false` on any post-success
+  // edit to a walked-path form. Torn down when `complete` itself flips
+  // (or when `wizard.reset()` runs), so the wizard only pays the watch
+  // cost while it has a successful submission to invalidate.
+  let completeStopFns: Array<() => void> = []
+
+  function teardownCompleteWatchers(): void {
+    for (const stop of completeStopFns) stop()
+    completeStopFns = []
+  }
+
+  function markComplete(walkedPath: readonly AnyForm[]): void {
+    teardownCompleteWatchers()
+    // Snapshot each walked form's `meta.updatedAt` at success time;
+    // any post-success write bumps the timestamp, signalling an edit.
+    // Watching the boolean `meta.dirty` would be inert here because
+    // dirty is sticky-true after the first write — there's no
+    // transition to observe once the user has touched the form.
+    const snapshots = new Map<string, string | null>()
+    for (const form of walkedPath) {
+      const source = form as unknown as SubmissionSourceForm
+      snapshots.set(form.key, source.meta?.updatedAt ?? null)
+    }
+    complete.value = true
+    for (const form of walkedPath) {
+      const source = form as unknown as SubmissionSourceForm
+      const stopFn = watch(
+        () => source.meta?.updatedAt ?? null,
+        (nextValue) => {
+          if (nextValue !== snapshots.get(form.key) && complete.value === true) {
+            complete.value = false
+            teardownCompleteWatchers()
+          }
+        }
+      )
+      completeStopFns.push(stopFn)
+    }
+  }
+
+  const canAdvance = computed<boolean>(() => {
+    const activeForm = byKey.get(current.value)
+    if (activeForm === undefined) return false
+    const nextDecl = activeForm.next
+    if (nextDecl === undefined) return false
+    if (nextDecl.forms.length === 0) return false
+    return true
+  })
+
+  const canGoBack = computed<boolean>(() => formKeys.indexOf(current.value) > 0)
+
+  // --- Navigation --------------------------------------------------------
+
+  async function next(navOptions?: WizardNavOptions): Promise<void> {
+    if (submitting.value) {
       console.warn(
-        `[attaform] useWizard.next(): already on the last step ("${current.value}"). Disable the button at the end of the wizard.`
+        `[attaform] useWizard.next(): blocked while a submit is in flight. Wait for handleSubmit to settle, or call back/goTo from onError.`
       )
       return
     }
-    setCurrent(formKeys[idx + 1] as string, navOptions?.replace === true ? 'replace' : 'push')
+    const activeKey = current.value
+    const activeForm = byKey.get(activeKey) as unknown as SubmissionSourceForm | undefined
+    if (activeForm === undefined) return
+    const nextDecl = (activeForm as unknown as AnyForm).next
+    if (nextDecl === undefined) {
+      console.warn(
+        `[attaform] useWizard.next(): already on the last step ("${activeKey}"). Disable the button at the end of the wizard.`
+      )
+      return
+    }
+    // Activate first so async `defaultValues` factories settle before we
+    // ask the form to validate. Activation failure dev-warns and does
+    // not advance — the consumer can retry once the factory recovers.
+    try {
+      if (typeof activeForm.activate === 'function') {
+        await activeForm.activate()
+      }
+    } catch (err) {
+      console.warn(
+        `[attaform] useWizard.next(): activation of "${activeKey}" failed: ${
+          (err as Error)?.message ?? String(err)
+        }`
+      )
+      return
+    }
+    const result = await activeForm.process()
+    if (result.success !== true) {
+      // Invalid form blocks navigation. Fire the form's own
+      // `onInvalidSubmit` policy (focus / scroll / both / none) so the
+      // user gets the configured nudge without going through handleSubmit.
+      activeForm.applyInvalidSubmitPolicy()
+      return
+    }
+    const picked = nextDecl.pick(result.data)
+    if (picked === undefined) {
+      console.warn(
+        `[attaform] useWizard.next(): \`pick(parsed)\` returned undefined at "${activeKey}" — dynamic terminal reached.`
+      )
+      return
+    }
+    setCurrent(picked.key, navOptions?.replace === true ? 'replace' : 'push')
   }
 
   function back(navOptions?: WizardNavOptions): void {
+    if (submitting.value) {
+      console.warn(`[attaform] useWizard.back(): blocked while a submit is in flight.`)
+      return
+    }
     const idx = indexOf(current.value)
     if (idx === 0) {
       console.warn(
@@ -394,6 +514,10 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   }
 
   function goTo(key: string, navOptions?: WizardNavOptions): void {
+    if (submitting.value) {
+      console.warn(`[attaform] useWizard.goTo(): blocked while a submit is in flight.`)
+      return
+    }
     if (!seenKeys.has(key)) {
       console.warn(
         `[attaform] useWizard.goTo("${key}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}. Ignoring.`
@@ -401,6 +525,182 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
       return
     }
     setCurrent(key, navOptions?.replace === true ? 'replace' : 'push')
+  }
+
+  // --- handleSubmit ------------------------------------------------------
+
+  type Processed = ValidationResponse<unknown>
+
+  async function processForm(form: AnyForm, cache: Map<string, Processed>): Promise<Processed> {
+    const cached = cache.get(form.key)
+    if (cached !== undefined) return cached
+    const full = form as unknown as SubmissionSourceForm
+    let activationFailure: string | undefined
+    try {
+      if (typeof full.activate === 'function') await full.activate()
+    } catch (err) {
+      // Caller-visible throw from `activate()` (rare — the form runtime
+      // captures most factory failures internally, but this covers
+      // direct throws from synchronous activation paths).
+      activationFailure = (err as Error)?.message ?? String(err)
+    }
+    // Mirror the form runtime's internal capture: a function-form
+    // `defaultValues` factory throw lands on `form.hydrateError` rather
+    // than propagating out of `activate()`. Promote it to the wizard's
+    // aggregate channel with the dedicated `atta:activation-failed`
+    // code so consumers can branch on origin (vs. ordinary validation
+    // errors that ride field paths).
+    if (activationFailure === undefined && full.hydrateError != null) {
+      activationFailure = full.hydrateError.message
+    }
+    if (activationFailure !== undefined) {
+      const synthetic: Processed = {
+        success: false,
+        data: undefined,
+        errors: [
+          {
+            formKey: form.key,
+            path: [],
+            message: `Form '${form.key}' failed to activate: ${activationFailure}`,
+            code: AttaformErrorCode.ActivationFailed,
+          },
+        ],
+        formKey: form.key,
+      }
+      cache.set(form.key, synthetic)
+      return synthetic
+    }
+    const result = await full.process()
+    cache.set(form.key, result)
+    return result
+  }
+
+  type WalkResult = { readonly path: readonly AnyForm[]; readonly allValid: boolean }
+
+  async function walkSubgraph(form: AnyForm, cache: Map<string, Processed>): Promise<WalkResult> {
+    const result = await processForm(form, cache)
+    const isValid = result.success === true
+    const nextDecl = form.next
+    if (nextDecl === undefined) {
+      return { path: [form], allValid: isValid }
+    }
+    if (isValid) {
+      const picked = nextDecl.pick(result.data)
+      if (picked === undefined) {
+        return { path: [form], allValid: true }
+      }
+      const sub = await walkSubgraph(picked, cache)
+      return { path: [form, ...sub.path], allValid: sub.allValid }
+    }
+    // Invalid current + branching: walk ALL declared `forms` subgraphs in
+    // parallel so latency is bounded by the slowest branch, not the sum
+    // of all branches. The aggregate cache dedupes any form that
+    // appears in more than one subgraph.
+    if (nextDecl.forms.length > 0) {
+      await Promise.all(nextDecl.forms.map((branch) => walkSubgraph(branch, cache)))
+    }
+    return { path: [form], allValid: false }
+  }
+
+  function handleSubmit(
+    onSubmit: WizardOnSubmit,
+    onError?: WizardOnError
+  ): (event?: Event) => Promise<void> {
+    return async function submitHandler(event?: Event): Promise<void> {
+      if (event !== undefined && typeof (event as Event).preventDefault === 'function') {
+        event.preventDefault()
+      }
+      if (submitting.value) {
+        console.warn(
+          `[attaform] wizard.handleSubmit: re-entrant submit while a prior call is still in flight; resolving no-op.`
+        )
+        return
+      }
+      submitting.value = true
+      try {
+        const cache = new Map<string, Processed>()
+        const walk = await walkSubgraph(entry, cache)
+        // Aggregate errors and parsed values from the cache in BFS order
+        // (matching `forms`) so the error list and value record are
+        // stable regardless of branch interleaving.
+        const errors: AggregateError[] = []
+        const values: Record<string, unknown> = {}
+        for (const form of forms) {
+          const processed = cache.get(form.key)
+          if (processed === undefined) continue
+          if (processed.success === true) {
+            values[form.key] = processed.data
+            continue
+          }
+          if (processed.data !== undefined) values[form.key] = processed.data
+          for (const err of processed.errors) {
+            const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
+              formKey: err.formKey,
+              path: err.path,
+              message: err.message,
+            }
+            if (err.code !== undefined) entry.code = err.code
+            errors.push(entry)
+          }
+        }
+        // Bump each walked form's `meta.submissionAttempts` so
+        // `field.showErrors` reveals previously-hidden errors. The
+        // wizard mutates the store directly (it already reads
+        // `defaultsResolved` and `meta` off the registry); per-form
+        // `meta.submitting` is NOT flipped because the wizard never
+        // routes through each form's own `handleSubmit`.
+        for (const key of cache.keys()) {
+          const store = registry.forms.get(key)
+          if (store !== undefined) {
+            store.submissionAttempts.value += 1
+          }
+        }
+        submissionAttempts.value += 1
+        if (errors.length === 0) {
+          const ctx: WizardSubmitContext = {
+            values,
+            get: ((form: AnyForm) => values[form.key]) as WizardSubmitContext['get'],
+            path: walk.path,
+          }
+          await onSubmit(ctx)
+          markComplete(walk.path)
+        } else {
+          if (onError !== undefined) {
+            await onError(errors)
+          }
+          if (options.navigateToFirstError !== false) {
+            const firstFailedKey = errors[0]?.formKey
+            if (firstFailedKey !== undefined && seenKeys.has(firstFailedKey)) {
+              // Use the internal `setCurrent` so the navigation is not
+              // gated on `submitting` — that gate is for user-initiated
+              // navigation, not the wizard's own failure routing.
+              setCurrent(firstFailedKey, 'push')
+              const failedForm = byKey.get(firstFailedKey) as unknown as
+                | SubmissionSourceForm
+                | undefined
+              if (
+                failedForm !== undefined &&
+                typeof failedForm.applyInvalidSubmitPolicy === 'function'
+              ) {
+                failedForm.applyInvalidSubmitPolicy()
+              }
+            }
+          }
+        }
+      } finally {
+        submitting.value = false
+      }
+    }
+  }
+
+  function reset(): void {
+    teardownCompleteWatchers()
+    complete.value = false
+    submissionAttempts.value = 0
+    for (const form of forms) {
+      const full = form as unknown as SubmissionSourceForm
+      if (typeof full.reset === 'function') full.reset()
+    }
   }
 
   return {
@@ -412,6 +712,8 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     next,
     back,
     goTo,
+    handleSubmit,
+    reset,
     get current(): string | undefined {
       return current.value
     },
@@ -426,6 +728,21 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     },
     get progress(): number {
       return progress.value
+    },
+    get canAdvance(): boolean {
+      return canAdvance.value
+    },
+    get canGoBack(): boolean {
+      return canGoBack.value
+    },
+    get complete(): boolean {
+      return complete.value
+    },
+    get submitting(): boolean {
+      return submitting.value
+    },
+    get submissionAttempts(): number {
+      return submissionAttempts.value
     },
   }
 }

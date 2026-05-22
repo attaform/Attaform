@@ -67,7 +67,7 @@ describe('useWizard — popstate mid-flight safety', () => {
     expect(factoryCalls).toBe(0)
 
     // Activate B — factory starts (one call).
-    result.wizard.next()
+    await result.wizard.next()
     await nextTick()
     expect(factoryCalls).toBe(1)
     expect(result.b.hydrating).toBe(true)
@@ -119,13 +119,13 @@ describe('useWizard — popstate mid-flight safety', () => {
       return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
-    result.wizard.next()
+    await result.wizard.next()
     await nextTick()
     expect(factoryCalls).toBe(1)
     result.wizard.back()
-    result.wizard.next()
+    await result.wizard.next()
     result.wizard.back()
-    result.wizard.next()
+    await result.wizard.next()
     expect(factoryCalls).toBe(1)
   })
 })

@@ -21,7 +21,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * without re-deriving the form-by-key lookup themselves.
  */
 
-const schema = z.object({ email: z.string() })
+// Permissive schema so the validation gate on `wizard.next()` does not
+// block navigation in tests that only exercise the active-step triple.
+// Validation behavior has its own coverage in `wizard-handle-submit`.
+const schema = z.object({ email: z.string().optional() })
 
 function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
   const handle: { result?: R } = {}
@@ -44,7 +47,7 @@ describe('useWizard — activeForm + activeIndex', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('activeForm is the form whose key matches current', () => {
+  it('activeForm is the form whose key matches current', async () => {
     const { app, result } = mountWizardHarness(() => {
       const c = useForm({ schema, key: 'c' })
       const b = useForm({ schema, key: 'b', next: c })
@@ -53,7 +56,7 @@ describe('useWizard — activeForm + activeIndex', () => {
     })
     apps.push(app)
     expect(result.activeForm?.key).toBe('a')
-    result.next()
+    await result.next()
     expect(result.activeForm?.key).toBe('b')
     result.goTo('c')
     expect(result.activeForm?.key).toBe('c')
@@ -61,7 +64,7 @@ describe('useWizard — activeForm + activeIndex', () => {
     expect(result.activeForm?.key).toBe('b')
   })
 
-  it('activeIndex is the 0-based index of the active step', () => {
+  it('activeIndex is the 0-based index of the active step', async () => {
     const { app, result } = mountWizardHarness(() => {
       const c = useForm({ schema, key: 'c' })
       const b = useForm({ schema, key: 'b', next: c })
@@ -70,7 +73,7 @@ describe('useWizard — activeForm + activeIndex', () => {
     })
     apps.push(app)
     expect(result.activeIndex).toBe(0)
-    result.next()
+    await result.next()
     expect(result.activeIndex).toBe(1)
     result.goTo('c')
     expect(result.activeIndex).toBe(2)
@@ -78,7 +81,7 @@ describe('useWizard — activeForm + activeIndex', () => {
     expect(result.activeIndex).toBe(1)
   })
 
-  it('activeForm tracks the same form identity as the forms array entry', () => {
+  it('activeForm tracks the same form identity as the forms array entry', async () => {
     const { app, result } = mountWizardHarness(() => {
       const b = useForm({ schema, key: 'b' })
       const a = useForm({ schema, key: 'a', next: b })
@@ -86,7 +89,7 @@ describe('useWizard — activeForm + activeIndex', () => {
     })
     apps.push(app)
     expect(result.activeForm).toBe(result.allForms[0])
-    result.next()
+    await result.next()
     expect(result.activeForm).toBe(result.allForms[1])
   })
 })

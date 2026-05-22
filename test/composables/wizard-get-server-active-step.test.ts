@@ -98,7 +98,7 @@ describe('useWizard — getServerActiveStep', () => {
     expect(result.current).toBe('gs-prio-c')
   })
 
-  it('the chosen step is the current claim in the wizard registry', () => {
+  it('the chosen step is the current claim in the wizard registry', async () => {
     // The deferral lifecycle is driven by `wizardRegistry.claim(key,
     // isCurrent)`. If the getter's choice doesn't get the current
     // claim, its async factory would be deferred and never fire on
@@ -107,16 +107,16 @@ describe('useWizard — getServerActiveStep', () => {
     // following form in the array — proving the seeded step is the
     // active one in the registry's view.
     const { app, result } = mountHarness(() => {
-      const c = useForm({ schema: schemaC, key: 'gs-claim-c' })
-      const b = useForm({ schema: schemaB, key: 'gs-claim-b', next: c })
-      const a = useForm({ schema: schemaA, key: 'gs-claim-a', next: b })
+      const c = useForm({ schema: schemaC, key: 'gs-claim-c', defaultValues: { c: 'c' } })
+      const b = useForm({ schema: schemaB, key: 'gs-claim-b', defaultValues: { b: 'b' }, next: c })
+      const a = useForm({ schema: schemaA, key: 'gs-claim-a', defaultValues: { a: 'a' }, next: b })
       return useWizard(a, {
         getServerActiveStep: () => 'gs-claim-b',
       })
     })
     apps.push(app)
     expect(result.current).toBe('gs-claim-b')
-    result.next()
+    await result.next()
     expect(result.current).toBe('gs-claim-c')
     result.back()
     result.back()

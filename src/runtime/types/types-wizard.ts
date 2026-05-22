@@ -92,6 +92,46 @@ export type WizardNavOptions = {
 }
 
 /**
+ * Context object passed to the `onSubmit` callback registered via
+ * `wizard.handleSubmit(onSubmit, onError?)`. Composes three views of the
+ * walked runtime path so consumers can route submission data however
+ * suits the integration:
+ *
+ *  - `values` — loose-keyed aggregate of each walked form's parsed
+ *    output. The default for "POST everything to the backend" wiring.
+ *  - `get(form)` — typed accessor that reads the parsed output for a
+ *    specific form. Works with `injectForm`-resolved refs in
+ *    cross-component graphs, since the form ref carries its own
+ *    schema info regardless of where it came from.
+ *  - `path` — the ordered runtime path from entry to terminal, with
+ *    branching `pick(parsed)` callbacks resolved against the current
+ *    parsed values. Iterate this when a per-form callback (audit
+ *    log, sequential POST, etc.) needs the runtime order.
+ */
+export type WizardSubmitContext = {
+  readonly values: Record<string, unknown>
+  readonly get: <F extends AnyForm>(form: F) => F extends { readonly values: infer V } ? V : unknown
+  readonly path: readonly AnyForm[]
+}
+
+/**
+ * `onSubmit` callback registered via
+ * `wizard.handleSubmit(onSubmit, onError?)`. Fires once every form on
+ * the runtime path has parsed successfully. Sync or async; the
+ * returned promise gates `wizard.submitting`.
+ */
+export type WizardOnSubmit = (ctx: WizardSubmitContext) => void | Promise<void>
+
+/**
+ * Optional `onError` callback registered via
+ * `wizard.handleSubmit(onSubmit, onError?)`. Receives the aggregate
+ * error list — entries originate from per-form validation, activation
+ * failures (`atta:activation-failed`), and out-of-list `pick` returns.
+ * Sync or async; the returned promise gates `wizard.submitting`.
+ */
+export type WizardOnError = (errors: readonly AggregateError[]) => void | Promise<void>
+
+/**
  * Per-form summary surface — what `wizard.statuses[key]` exposes
  * (and what `defaultStatuses` seeds). Distinct from `form.meta`:
  * `FormStatus` is the cross-step rollup optimized for template
@@ -222,6 +262,19 @@ export type WizardOptions = {
    * falls through to URL `?step=<key>` and finally to `entry.key`.
    */
   readonly getServerActiveStep?: () => string | undefined
+  /**
+   * When `wizard.handleSubmit` finds errors, automatically
+   * `wizard.goTo(firstFailedKey)` and then call that form's
+   * `applyInvalidSubmitPolicy()` (focus / scroll per the form's own
+   * `onInvalidSubmit` configuration). Default `true`; pass `false`
+   * to keep the active step where the user left it and handle
+   * navigation manually in the `onError` callback.
+   *
+   * The first failed key is the BFS-ordered first form (from the
+   * wizard's reachable set) with a non-empty error list after the
+   * walk completes. Aggregation order matches `wizard.allForms`.
+   */
+  readonly navigateToFirstError?: boolean
 }
 
 /**
@@ -305,6 +358,39 @@ export type WizardWarning = {
  *                     (unactivated) forms contribute nothing.
  *   - `progress`    — normalised `valid_form_count / count` (or the
  *                     consumer's `progress` override).
+ *   - `canAdvance`  — `true` when the active form has a non-empty
+ *                     `next` declaration. Graph-structural; does not
+ *                     consult `pick(parsed)`, so dynamic terminals
+ *                     read as `canAdvance: true` until the runtime
+ *                     walker resolves the branch at submission.
+ *   - `canGoBack`   — `true` when `activeIndex > 0` (a prior step
+ *                     exists in BFS order). Mirrors the navigation
+ *                     surface `back()` operates over.
+ *   - `complete`    — `true` once `wizard.handleSubmit`'s `onSubmit`
+ *                     callback resolves without throwing. Flips back
+ *                     to `false` the first time any walked-path form
+ *                     becomes `meta.dirty` again (dirty-driven, not
+ *                     snapshot-driven). Cleared by `wizard.reset()`.
+ *   - `submitting`  — `true` while a `wizard.handleSubmit` call is in
+ *                     flight (covers the path walk AND the
+ *                     `onSubmit` / `onError` callback execution).
+ *                     Distinct from per-form `meta.submitting`, which
+ *                     stays `false` during the wizard walk because the
+ *                     wizard calls `form.process()` directly rather
+ *                     than each form's `handleSubmit`.
+ *   - `submissionAttempts` — count of `wizard.handleSubmit` invocations
+ *                     (success or failure). Useful for "show errors
+ *                     after first wizard attempt" UX gates.
+ *   - `handleSubmit` — wraps the consumer's submit logic with the
+ *                     full path-walk validation pipeline. Returns a
+ *                     submit handler suitable for
+ *                     `<form @submit.prevent="handler">` or imperative
+ *                     calls. See `WizardSubmitContext` for the
+ *                     `onSubmit` callback's argument shape.
+ *   - `reset`       — zeros wizard lifecycle (`complete`,
+ *                     `submitting`, `submissionAttempts`) and calls
+ *                     `form.reset()` on every reachable form. Returns
+ *                     the wizard to its construction state.
  */
 export type UseWizardReturnType = {
   readonly current: string | undefined
@@ -317,7 +403,17 @@ export type UseWizardReturnType = {
   readonly allValues: Record<string, unknown>
   readonly allErrors: readonly AggregateError[]
   readonly progress: number
-  readonly next: (options?: WizardNavOptions) => void
+  readonly canAdvance: boolean
+  readonly canGoBack: boolean
+  readonly complete: boolean
+  readonly submitting: boolean
+  readonly submissionAttempts: number
+  readonly next: (options?: WizardNavOptions) => Promise<void>
   readonly back: (options?: WizardNavOptions) => void
   readonly goTo: (key: string, options?: WizardNavOptions) => void
+  readonly handleSubmit: (
+    onSubmit: WizardOnSubmit,
+    onError?: WizardOnError
+  ) => (event?: Event) => Promise<void>
+  readonly reset: () => void
 }

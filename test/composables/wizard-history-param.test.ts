@@ -37,14 +37,14 @@ describe('useWizard — history param customization', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('writes to the custom param on next()', () => {
+  it('writes to the custom param on next()', async () => {
     const { app, result } = mountHarness(() => {
-      const b = useForm({ schema: schemaB, key: 'hp-write-b' })
-      const a = useForm({ schema: schemaA, key: 'hp-write-a', next: b })
+      const b = useForm({ schema: schemaB, key: 'hp-write-b', defaultValues: { b: 'b' } })
+      const a = useForm({ schema: schemaA, key: 'hp-write-a', defaultValues: { a: 'a' }, next: b })
       return useWizard(a, { history: { param: 'wiz' } })
     })
     apps.push(app)
-    result.next()
+    await result.next()
     const url = new URL(window.location.href)
     expect(url.searchParams.get('wiz')).toBe('hp-write-b')
     expect(url.searchParams.get('step')).toBeNull()

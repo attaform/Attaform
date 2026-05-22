@@ -25,7 +25,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * anomalies lives in `wizard-graph.test.ts`.
  */
 
-const schema = z.object({ email: z.string() })
+// Permissive schema so the validation gate on `wizard.next()` does not
+// block navigation in tests that only exercise the BFS-order walk.
+// Validation behavior has its own coverage in `wizard-handle-submit`.
+const schema = z.object({ email: z.string().optional() })
 
 function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
   const handle: { result?: R } = {}
@@ -62,7 +65,7 @@ describe('useWizard — basic navigation', () => {
     expect(result.current).toBe('a-1-a')
   })
 
-  it('next() advances and back() retreats', () => {
+  it('next() advances and back() retreats', async () => {
     const { app, result } = mountWizardHarness(() => {
       const c = useForm({ schema, key: 'a-2-c' })
       const b = useForm({ schema, key: 'a-2-b', next: c })
@@ -70,9 +73,9 @@ describe('useWizard — basic navigation', () => {
       return useWizard(a)
     })
     apps.push(app)
-    result.next()
+    await result.next()
     expect(result.current).toBe('a-2-b')
-    result.next()
+    await result.next()
     expect(result.current).toBe('a-2-c')
     result.back()
     expect(result.current).toBe('a-2-b')
@@ -92,7 +95,7 @@ describe('useWizard — basic navigation', () => {
     expect(result.current).toBe('a-3-a')
   })
 
-  it('next() at last step is a no-op and dev-warns', () => {
+  it('next() at last step is a no-op and dev-warns', async () => {
     const warnings: string[] = []
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warnings.push(args.map((a) => String(a)).join(' '))
@@ -103,9 +106,9 @@ describe('useWizard — basic navigation', () => {
       return useWizard(a)
     })
     apps.push(app)
-    result.next()
+    await result.next()
     expect(result.current).toBe('a-4-b')
-    result.next()
+    await result.next()
     expect(result.current).toBe('a-4-b')
     warnSpy.mockRestore()
     expect(warnings.some((w) => w.includes('useWizard.next'))).toBe(true)
@@ -160,7 +163,7 @@ describe('useWizard — basic navigation', () => {
     expect(result.activeForm?.key).toBe('a-7-only')
     expect(result.activeIndex).toBe(0)
     expect(result.allErrors).toEqual([])
-    expect(() => result.next()).not.toThrow()
+    expect(() => void result.next()).not.toThrow()
     expect(() => result.back()).not.toThrow()
     warnSpy.mockRestore()
     expect(warnings.some((w) => w.includes('single-step'))).toBe(true)

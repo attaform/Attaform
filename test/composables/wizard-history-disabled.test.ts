@@ -37,18 +37,18 @@ describe('useWizard — history disabled', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('history: false does not call pushState or replaceState on nav', () => {
+  it('history: false does not call pushState or replaceState on nav', async () => {
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     const { app, result } = mountHarness(() => {
-      const b = useForm({ schema: schemaB, key: 'hd-nav-b' })
-      const a = useForm({ schema: schemaA, key: 'hd-nav-a', next: b })
+      const b = useForm({ schema: schemaB, key: 'hd-nav-b', defaultValues: { b: 'b' } })
+      const a = useForm({ schema: schemaA, key: 'hd-nav-a', defaultValues: { a: 'a' }, next: b })
       return useWizard(a, { history: false })
     })
     apps.push(app)
     pushSpy.mockClear()
     replaceSpy.mockClear()
-    result.next()
+    await result.next()
     result.back()
     expect(pushSpy).not.toHaveBeenCalled()
     expect(replaceSpy).not.toHaveBeenCalled()
@@ -85,12 +85,12 @@ describe('useWizard — history disabled', () => {
 
   it('history: false ignores popstate (current does not change)', async () => {
     const { app, result } = mountHarness(() => {
-      const b = useForm({ schema: schemaB, key: 'hd-pop-b' })
-      const a = useForm({ schema: schemaA, key: 'hd-pop-a', next: b })
+      const b = useForm({ schema: schemaB, key: 'hd-pop-b', defaultValues: { b: 'b' } })
+      const a = useForm({ schema: schemaA, key: 'hd-pop-a', defaultValues: { a: 'a' }, next: b })
       return useWizard(a, { history: false })
     })
     apps.push(app)
-    result.next()
+    await result.next()
     expect(result.current).toBe('hd-pop-b')
     // Simulate a navigation event by manually replacing the URL and
     // dispatching popstate. With history: false the wizard isn't

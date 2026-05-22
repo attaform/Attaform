@@ -115,7 +115,12 @@ describe('useWizard — onStatusChange material-change firing', () => {
     let pending = false
     const { app, result } = mountHarness(() => {
       const b = useForm({ schema: reviewSchema, key: 'osc-block-b' })
-      const a = useForm({ schema: cargoSchema, key: 'osc-block-a', next: b })
+      const a = useForm({
+        schema: cargoSchema,
+        key: 'osc-block-a',
+        defaultValues: { weight: 5, description: 'box' },
+        next: b,
+      })
       return {
         wizard: useWizard(a, {
           onStatusChange: () =>
@@ -132,11 +137,11 @@ describe('useWizard — onStatusChange material-change firing', () => {
       }
     })
     apps.push(app)
-    result.a.setValue('description', 'box')
+    result.a.setValue('description', 'box-mutated')
     await nextTick()
     expect(pending).toBe(true)
     // Even with onStatusChange's promise still in-flight, nav is unblocked.
-    result.wizard.next()
+    await result.wizard.next()
     expect(result.wizard.current).toBe('osc-block-b')
   })
 

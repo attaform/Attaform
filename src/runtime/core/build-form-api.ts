@@ -861,6 +861,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     process: gated(process) as UseFormReturnType<Form, GetValueFormType>['process'],
     register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
+    // Normalized `next` declaration. `undefined` for terminal forms.
+    // Read by `useWizard` during graph construction and by the
+    // navigation / submission pipelines that consult `pick`.
+    next: state.next,
     // Auto-unwrapping views over the per-store async-defaults lifecycle
     // refs (see FormStore.hydrating / hydrateError). Reading either
     // activates the form — observing factory state implies use.

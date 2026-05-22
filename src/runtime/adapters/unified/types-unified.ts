@@ -29,6 +29,7 @@ import type {
   ValidateOnConfig,
 } from '../../types/types-api'
 import type { DefaultValuesInput, GenericForm } from '../../types/types-core'
+import type { AnyForm } from '../../types/types-wizard'
 
 type V4FormOf<S extends z.ZodObject> = z.input<S> extends GenericForm ? z.input<S> : never
 type V4OutOf<S extends z.ZodObject> = z.output<S> extends GenericForm ? z.output<S> : never
@@ -59,13 +60,18 @@ export type UseFormReturnV4<
 /**
  * Direct V4 configuration projection. Mirrors `UseFormReturnV4`.
  */
-export type UseFormConfigV4<Schema extends z.ZodObject, K extends FormKey = FormKey> = Omit<
+export type UseFormConfigV4<
+  Schema extends z.ZodObject,
+  K extends FormKey = FormKey,
+  Forms extends readonly AnyForm[] = readonly AnyForm[],
+> = Omit<
   UseFormConfiguration<
     V4FormOf<Schema>,
     V4OutOf<Schema>,
     AbstractSchema<V4FormOf<Schema>, V4OutOf<Schema>>,
     DefaultValuesInput<V4FormOf<Schema>>,
-    K
+    K,
+    Forms
   >,
   'schema' | 'validateOn' | 'debounceMs'
 > & { schema: Schema } & ValidateOnConfig
@@ -85,13 +91,15 @@ export type UseFormReturnV3<
 export type UseFormConfigV3<
   Schema extends zV3.ZodObject<zV3.ZodRawShape>,
   K extends FormKey = FormKey,
+  Forms extends readonly AnyForm[] = readonly AnyForm[],
 > = Omit<
   UseFormConfiguration<
     V3FormOf<Schema>,
     V3OutOf<Schema>,
     AbstractSchema<V3FormOf<Schema>, V3OutOf<Schema>>,
     DefaultValuesInput<V3FormOf<Schema>>,
-    K
+    K,
+    Forms
   >,
   'schema' | 'validateOn' | 'debounceMs'
 > & { schema: Schema } & ValidateOnConfig
@@ -119,14 +127,19 @@ export type UseFormReturn<Schema, K extends FormKey = FormKey> = Schema extends 
  * schema. Mirrors `UseFormReturn`'s dispatch — replaces
  * `Parameters<typeof useForm<Schema, K>>[0]` in test code.
  */
-export type UseFormConfig<Schema, K extends FormKey = FormKey> = Schema extends z.ZodObject
+export type UseFormConfig<
+  Schema,
+  K extends FormKey = FormKey,
+  Forms extends readonly AnyForm[] = readonly AnyForm[],
+> = Schema extends z.ZodObject
   ? Omit<
       UseFormConfiguration<
         V4FormOf<Schema>,
         V4OutOf<Schema>,
         AbstractSchema<V4FormOf<Schema>, V4OutOf<Schema>>,
         DefaultValuesInput<V4FormOf<Schema>>,
-        K
+        K,
+        Forms
       >,
       'schema' | 'validateOn' | 'debounceMs'
     > & { schema: Schema } & ValidateOnConfig
@@ -137,7 +150,8 @@ export type UseFormConfig<Schema, K extends FormKey = FormKey> = Schema extends 
           V3OutOf<Schema>,
           AbstractSchema<V3FormOf<Schema>, V3OutOf<Schema>>,
           DefaultValuesInput<V3FormOf<Schema>>,
-          K
+          K,
+          Forms
         >,
         'schema' | 'validateOn' | 'debounceMs'
       > & { schema: Schema } & ValidateOnConfig

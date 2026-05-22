@@ -24,6 +24,7 @@ import { extractSchemaFields } from '../core/extract-schema-fields'
 import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
 import { createHistoryModule, type HistoryModule } from '../core/history'
+import { normalizeNext } from '../core/normalize-next'
 import {
   buildPersistedPayload,
   cleanupOrphanKeys,
@@ -712,6 +713,13 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     ...(resolvedSegmentMatchesSensitive !== undefined
       ? { segmentMatchesSensitive: resolvedSegmentMatchesSensitive }
       : {}),
+    // Wizard graph declaration. Identity refs lift to a single-element
+    // `{ pick, forms }` tuple; branching inputs pass through with a
+    // runtime guard. `undefined` for terminal forms — same as omitting
+    // the option entirely. `next` is never plumbed through registry
+    // defaults (per-form only), so this read is direct from the
+    // configuration, not from `merged`.
+    ...(configuration.next !== undefined ? { next: normalizeNext(configuration.next) } : {}),
   }
   const state = createFormStore<F, G>(createOptions)
   // Storage type is FormStore<GenericForm>; the lookup above narrows

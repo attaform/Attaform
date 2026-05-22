@@ -40,6 +40,52 @@ export type FormKeyOf<F extends AnyForm> = F['key']
 export type KeysOf<Forms extends readonly AnyForm[]> = Forms[number]['key']
 
 /**
+ * Branching shape of `useForm({ next })`. The `forms` tuple lists every
+ * downstream form reachable from this step; `pick(parsed)` chooses one
+ * of them at navigation / submission time from the form's parsed
+ * output, or returns `undefined` to signal a dynamic terminal.
+ *
+ * Declare `forms` as a tuple (`[a, b] as const`) so TypeScript narrows
+ * `pick`'s return type to the literal union. Without `as const`, the
+ * tuple widens to `AnyForm[]` and narrowing collapses to `AnyForm`.
+ *
+ * `pick` is consulted only when the current form is valid; the walker
+ * may invoke it multiple times across navigation and submission, so
+ * the callback should be free of side effects.
+ */
+export type NextBranching<Parsed, Forms extends readonly AnyForm[]> = {
+  readonly pick: (parsed: Parsed) => Forms[number] | undefined
+  readonly forms: Forms
+}
+
+/**
+ * Public `useForm({ next })` option. Two shapes:
+ *
+ *  - `AnyForm` — identity reference; the form's runtime successor is
+ *    always the named form (linear flow).
+ *  - `NextBranching` — declared list of possible successors with a
+ *    `pick` selector that fires against the form's parsed output.
+ *
+ * `Parsed` is the schema's `z.output` shape (what `handleSubmit`
+ * receives). `Forms` is the literal tuple of declared successors when
+ * the consumer used `as const`, falling back to `AnyForm[]` otherwise.
+ */
+export type NextOption<Parsed = unknown, Forms extends readonly AnyForm[] = readonly AnyForm[]> =
+  | AnyForm
+  | NextBranching<Parsed, Forms>
+
+/**
+ * Internal normalized shape stored on `FormStore.next`. Identity refs
+ * are lifted into the `{ pick, forms }` shape so the wizard graph
+ * walker reads one uniform contract. `undefined` for terminal forms
+ * (no `next` option supplied).
+ */
+export type NormalizedNext = {
+  readonly pick: (parsed: unknown) => AnyForm | undefined
+  readonly forms: readonly AnyForm[]
+}
+
+/**
  * Per-call navigation options. `replace` reserved for PR 4 (browser
  * history); included now so the call shape is stable across wizard
  * versions.

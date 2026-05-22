@@ -8,7 +8,20 @@
   // Vite's `?raw` query and ship that string to @vue/repl. The same
   // source is both type-checked at build time AND served to users —
   // no extraction step, no drift.
+  //
+  // The shipment demo is also the *default* seed: the homepage REPL
+  // and the freeform `/play/blank` playground render it untouched.
+  // `/play/<slug>` pages override via the `initialSource` prop with
+  // an `apps/site/docs-demos/<slug>.vue` source string, so the same
+  // editor chrome reads from a different starting point per route.
   import shipmentDemoSource from '~/repl-demos/shipment-demo.vue?raw'
+
+  const props = withDefaults(
+    defineProps<{
+      initialSource?: string
+    }>(),
+    { initialSource: () => shipmentDemoSource }
+  )
 
   // Sizing + lifecycle (SSR skeleton, deferred mount, route-leave
   // guard) live on the parent `<DemoRepl>` shell. This component is
@@ -217,7 +230,37 @@
     dependencyVersion,
   })
 
-  store.setFiles({ 'src/App.vue': shipmentDemoSource }, 'src/App.vue')
+  // Seed a tsconfig alongside the demo source. @vue/repl ships its
+  // own default tsconfig but doesn't include the unused-locals /
+  // parameters checks, so a `const c = 1` in the playground only
+  // surfaces a hover hint — no inline strikethrough or squiggle.
+  // The fields below match @vue/repl's defaults; we add the two
+  // unused-identifier flags on top so Volar's TS service surfaces
+  // them as real diagnostics. `:show-tsconfig="false"` on the
+  // <Repl> prop above keeps this file out of the tab strip — it's
+  // configuration, not editable surface.
+  const replTsConfig = {
+    compilerOptions: {
+      allowJs: true,
+      checkJs: true,
+      jsx: 'Preserve',
+      target: 'ESNext',
+      module: 'ESNext',
+      moduleResolution: 'Bundler',
+      allowImportingTsExtensions: true,
+      noUnusedLocals: true,
+      noUnusedParameters: true,
+    },
+    vueCompilerOptions: { target: 3.4 },
+  }
+
+  store.setFiles(
+    {
+      'src/App.vue': props.initialSource,
+      'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
+    },
+    'src/App.vue'
+  )
 </script>
 
 <template>

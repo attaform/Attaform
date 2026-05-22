@@ -24,6 +24,10 @@
   const props = withDefaults(
     defineProps<{
       height?: string
+      // Overrides the editor's seed source. Forwarded to
+      // `<DemoReplEditor>`. Undefined means "use the default shipment
+      // demo" — the original homepage + freeform-playground behaviour.
+      initialSource?: string
     }>(),
     { height: '37.5rem' }
   )
@@ -97,7 +101,7 @@
     <!-- The real editor. `.client.vue` so it never appears in SSR
          markup; `v-if` defers its mount until two ticks past
          hydration, so its Sandbox iframe installs into a settled DOM. -->
-    <DemoReplEditor v-if="showEditor" />
+    <DemoReplEditor v-if="showEditor" :initial-source="props.initialSource" />
   </div>
 </template>
 

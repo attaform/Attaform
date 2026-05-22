@@ -30,6 +30,7 @@
 export { useForm } from './runtime/composables/use-form'
 export { injectForm } from './runtime/composables/use-form-context'
 export { useRegister } from './runtime/composables/use-register'
+export type { UseRegisterReturn } from './runtime/composables/use-register'
 export { useStepper } from './runtime/composables/use-stepper'
 export type {
   AggregateError,
@@ -44,6 +45,7 @@ export type {
   StepperStatusesProxy,
   UseStepperReturnType,
 } from './runtime/types/types-stepper'
+export { StepperLateRegistrationError } from './runtime/core/errors'
 export { zodAdapter } from './runtime/adapters/zod-v3'
 export { isZodSchemaType } from './runtime/adapters/zod-v3/helpers'
 export { AttaformErrorCode } from './runtime/core/error-codes'

@@ -13,6 +13,7 @@ build:  ## Build the dev image
 
 up: down  ## Stop any prior stack, regen the playground type bundle, start the dev container, and boot the docs site (http://localhost:3000)
 	docker compose up -d
+	docker compose exec -T attaform rm -rf /app/apps/site/node_modules/.cache/vite
 	docker compose exec attaform sh -c "cd apps/site && pnpm bundle:repl"
 	docker compose exec attaform pnpm dev
 

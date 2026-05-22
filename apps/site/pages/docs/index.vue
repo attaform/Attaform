@@ -71,7 +71,7 @@
           v-for="section in sections"
           :key="section.to"
           :to="section.to"
-          class="group flex flex-col gap-4 rounded-xl border bg-bg p-6 shadow-xs transition-[border-color,box-shadow,transform] duration-(--duration-base) ease-(--ease-out-quart) hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent-ring"
+          class="group flex flex-col gap-4 rounded-xl border bg-bg p-6 shadow-xs transition-[border-color,box-shadow] duration-(--duration-base) ease-(--ease-out-quart) hover:border-accent/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent-ring"
         >
           <div
             class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-soft text-accent-soft-fg"

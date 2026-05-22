@@ -357,6 +357,41 @@ export default defineNuxtConfig({
   experimental: {
     payloadExtraction: process.env.NODE_ENV === 'production',
   },
+  // 301 redirects for the pre-rebuild URL tree. The old docs lived
+  // under `/docs/api/*` and `/docs/recipes/*`; the new IA splits them
+  // by concept (`getting-started`, `reading-the-form`, `validation`,
+  // `persistence`, `devtools-and-debugging`, etc.). Specific routes
+  // win over wildcards in Nuxt's route specificity, so the catch-all
+  // globs land any not-individually-mapped URL on the docs spine.
+  //
+  // Phase 1 maps only the destinations whose new pages exist. The
+  // recipes/* and api/* catch-alls drop readers on /docs/getting-started/introduction
+  // — a real page they can read — rather than 404. Phase 2–4 will
+  // tighten these to specific per-recipe targets as the per-concept
+  // pages land.
+  routeRules: {
+    // Specific Phase 1 targets.
+    '/docs/why': {
+      redirect: { to: '/docs/getting-started/why-attaform', statusCode: 301 },
+    },
+    '/docs/quickstart': {
+      redirect: { to: '/docs/getting-started/quick-start', statusCode: 301 },
+    },
+    '/docs/troubleshooting': {
+      redirect: { to: '/docs/devtools-and-debugging/troubleshooting', statusCode: 301 },
+    },
+    '/docs/recipes/persistence': {
+      redirect: { to: '/docs/persistence/overview', statusCode: 301 },
+    },
+    // Catch-alls for the pre-rebuild subtrees. Specific routes above
+    // win over these globs.
+    '/docs/api/**': {
+      redirect: { to: '/docs/getting-started/introduction', statusCode: 301 },
+    },
+    '/docs/recipes/**': {
+      redirect: { to: '/docs/getting-started/introduction', statusCode: 301 },
+    },
+  },
   // Bind to all interfaces so the docker-compose port mapping
   // (3000:3000) reaches the dev server. Local-only dev still works —
   // 0.0.0.0 includes localhost.
@@ -386,6 +421,34 @@ export default defineNuxtConfig({
   // response) to the real VFS handler that runs after it. Dev-only via
   // devHandlers.
   nitro: {
+    // Mount the REPL pipeline's output (`apps/site/.repl-cache/`)
+    // at the `/lib/` URL prefix. This keeps the bundled REPL
+    // artifacts (runtime JS, worker copies, type declaration
+    // bundles, package manifests) out of `apps/site/public/` while
+    // continuing to serve them from the same URLs DemoRepl's import
+    // map and Volar callbacks expect.
+    //
+    // Why this matters: the type bundles re-emit `declare global {
+    // interface Window { [DEVTOOLS_WINDOW_KEY]?: ... } }` from
+    // attaform's runtime sources. Inside `public/`, those bundles
+    // landed in vue-tsc's project graph (`include: ["../**/*"]`)
+    // and collided with the runtime declaration in
+    // `src/runtime/core/devtools-shared.ts` (TS2717 "subsequent
+    // property declarations"). The collision only fired locally
+    // after a dev session populated the public bundle — CI builds
+    // run `typecheck` before `bundle:repl`, so the public-side file
+    // didn't exist yet. Moving the artifacts to `.repl-cache/`
+    // (outside `apps/site/**/*`) gets vue-tsc out of the picture
+    // entirely; Nitro's publicAssets pipeline doesn't apply the
+    // Nuxt project-tree ignore filters either, so `.d.ts` files
+    // ship straight through to `.output/public/lib/types/` on prod
+    // builds.
+    publicAssets: [
+      {
+        dir: resolve(monorepoRoot, 'apps/site/.repl-cache'),
+        baseURL: '/lib',
+      },
+    ],
     // Pure SSG. The `static` preset tells Nitro to emit only
     // prerendered HTML + assets — no serverless runtime, no Node
     // server. Vercel deploys the result as a CDN-only site (zero
@@ -406,15 +469,19 @@ export default defineNuxtConfig({
     // doc; `/play` and `/` round out the rest of the public
     // surface.
     //
-    // `failOnError: true` gates the build on prerender errors. A 500
-    // on any prerendered route (e.g. a Vue mustache leaking through
-    // a markdown code fence and binding to an undefined variable —
-    // see the post-mortem on the {{{ payload }}} ssr-hydration bug)
-    // exits the build non-zero so CI can red-flag it. The trade-off:
-    // typo'd internal links (a `[label](does-not-exist.md)` whose
-    // target the crawler can't render) ALSO fail the build — but
-    // those are real bugs too, and catching them in CI beats finding
-    // them in production from a user filing an issue.
+    // `failOnError: true` gates the build on prerender 500s — a Vue
+    // mustache leaking through a markdown code fence and binding to
+    // an undefined variable (see the post-mortem on the {{{ payload }}}
+    // ssr-hydration bug), an unhandled rejection inside an async
+    // setup, that class of bug. It does NOT fail the build on
+    // prerender 404s — `createError({ statusCode: 404 })` and
+    // `setResponseStatus(404)` both log a fatal-error line and let
+    // the prerender keep going. That's deliberate; 404 catching is
+    // nuxt-link-checker's job (see the `linkChecker:` block earlier
+    // in this file, where `failOnError: true` makes a single broken
+    // internal link exit the build non-zero). Together they cover
+    // both edge classes — 500s gated here, missing-target links
+    // gated by the checker.
     preset: 'static',
     // `static: true` is the SSG flag a few modules read to detect
     // "this build emits HTML at prerender time, no runtime server."
@@ -452,6 +519,63 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    // Source-resolve the workspace `attaform` package for the docs
+    // site's Vite environments. Without these aliases, every
+    // `import { useForm } from 'attaform/zod'` (and every other
+    // `attaform/*` subpath) resolves via the package's `exports`
+    // map to `dist/zod.mjs` — which, under the monorepo's
+    // `pnpm dev:prepare` flow, is an `unbuild --stub` jiti shim:
+    //
+    //   import { createJiti } from "../node_modules/.pnpm/jiti@2.6.1/.../jiti.mjs"
+    //   const jiti = createJiti(import.meta.url, { … })
+    //   const _module = await jiti.import("/app/src/zod.ts")
+    //   export const useForm = _module.useForm
+    //   …
+    //
+    // The shim works in Node (where jiti's `node:module` /
+    // `createRequire` runtime is real) but fails in the browser
+    // at the very first import: Vite serves the relative-path
+    // `lib/jiti.mjs`, runs its CJS-to-ESM lexer over webpack-bundled
+    // `dist/jiti.cjs`, and the missing `default` export trips a
+    // `SyntaxError` that propagates up through `MDCRenderer`'s
+    // `await resolveContentComponents(...)` — visible as every
+    // docs-page nav after the homepage hard-crashing client-side.
+    //
+    // Aliasing each subpath to the corresponding `src/*.ts` file
+    // routes the docs-demos and every other `attaform/*` consumer
+    // through Vite + @vitejs/plugin-vue's normal TS compilation
+    // path. No jiti hop, no CJS-to-ESM analyzer in the loop, and
+    // live-reload works exactly the same — Vite already watches
+    // `src/` because it's inside the dev server's `fs.allow` root.
+    //
+    // SSR-runtime caveats:
+    //
+    //   - `attaform/nuxt` is consumed by Nuxt's `modules:` array,
+    //     which Nuxt evaluates with its OWN jiti process before
+    //     Vite ever boots. That path doesn't go through Vite's
+    //     resolver, so it doesn't need an alias — Nuxt loads
+    //     `dist/nuxt.mjs` directly via jiti, which works fine in
+    //     the Node-side init context.
+    //
+    //   - `attaform/devtools-panel` resolves to a `.vue` file
+    //     via the package exports' `"default"` condition. The
+    //     consumer site never imports it from a `.ts` / `.vue`
+    //     file; the Nuxt DevTools overlay loads it directly. No
+    //     alias needed.
+    //
+    //   - `attaform/types` is types-only (no `import` condition
+    //     in the export map). Aliasing it would be a no-op at
+    //     runtime, so skip it.
+    resolve: {
+      alias: [
+        { find: /^attaform$/, replacement: resolve(monorepoRoot, 'src/index.ts') },
+        { find: /^attaform\/zod$/, replacement: resolve(monorepoRoot, 'src/zod.ts') },
+        { find: /^attaform\/zod-v3$/, replacement: resolve(monorepoRoot, 'src/zod-v3.ts') },
+        { find: /^attaform\/zod-v4$/, replacement: resolve(monorepoRoot, 'src/zod-v4.ts') },
+        { find: /^attaform\/vite$/, replacement: resolve(monorepoRoot, 'src/vite.ts') },
+        { find: /^attaform\/transforms$/, replacement: resolve(monorepoRoot, 'src/transforms.ts') },
+      ],
+    },
     // Mirror Nuxt's devServer.host into Vite's server.host so
     // @vitejs/devtools (which reads viteDevServer.config.server.host
     // directly when picking its WebSocket bind) lands on 0.0.0.0
@@ -491,29 +615,85 @@ export default defineNuxtConfig({
     // declaring the heavy site-only deps here makes the boot crawl
     // comprehensive, so first-paint requests resolve cleanly.
     optimizeDeps: {
-      include: ['lucide-vue-next'],
-      // Both @vue/repl entries are excluded from prebundling for two
-      // reasons that interlock:
+      // Hold every dev-server request until the dep crawl finishes
+      // its FULL scan — both the static pre-bundle pass and the
+      // runtime-discovery follow-up. Without this gate, Vite's
+      // default behavior is to start serving as soon as the static
+      // scan completes, then quietly re-bundle when new deps surface
+      // mid-session (e.g. a `.client.vue` file's imports that SSR
+      // skipped, a dynamic `import('shiki')` inside a deeply-nested
+      // component). Every re-bundle rotates `browserHash`, deletes
+      // the previous prebundle files, and 404s any in-flight asset
+      // fetch keyed to the old hash — visible as the "monaco-editor.js?v=<old>"
+      // 404 cascade documented in `make up`'s comment block.
       //
-      // 1. `@vue/repl/monaco-editor` references its bundled web
-      //    workers via `new URL("assets/<worker>.js", import.meta.url)`.
-      //    The worker chunks ship under
-      //    `node_modules/@vue/repl/dist/assets/`. Prebundling
-      //    relocates the entry to `node_modules/.cache/vite/...` but
-      //    doesn't copy the assets siblings, so the worker URL 404s.
+      // `holdUntilCrawlEnd: true` makes the boot deterministic at
+      // the cost of a slower cold start (the first request waits
+      // for the crawl to settle). The trade-off is exactly what we
+      // want in dev: race-free serves over fast first-paint. Vite
+      // 5.1 introduced this option; defaults vary by version and
+      // by the dev-server environment shape, so pinning it
+      // explicitly is the only way to guarantee the race window
+      // closes regardless of upstream changes.
+      holdUntilCrawlEnd: true,
+      // `@vue/repl` + `@vue/repl/monaco-editor` are prebundled
+      // together. The monaco-editor entry is a 7.2 MB minified bundle;
+      // serving it raw through `/_nuxt/@fs/...` runs it through Vite's
+      // plugin transform pipeline, where the per-plugin recursion on a
+      // file this large overflows the JS call stack and the server
+      // responds 404 (`Internal server error: Maximum call stack size
+      // exceeded` from `EnvironmentPluginContainer.transform`).
       //
-      // 2. If we prebundle `@vue/repl` but not `@vue/repl/monaco-editor`,
-      //    they end up resolving `vue` through different module graphs
-      //    (Vite's prebundled vue chunk vs. raw node_modules vue) — the
-      //    EditorContainer's `provide(propsKey, …)` and Monaco's
-      //    `inject(propsKey)` then use different InjectionKey symbols,
-      //    so Monaco's setup throws "injection Symbol(props) not
-      //    found" and falls back to a render-less component.
+      // Prebundling routes both entries through esbuild instead. Esbuild
+      // is C++ and handles large bundles without recursion; the output
+      // lands at `node_modules/.vite/deps/_vue_repl_*.js`, served as
+      // pre-processed static chunks with no further plugin chain.
       //
-      // Excluding both keeps both entries served from their real
-      // node_modules paths (assets/ neighbors resolve) and through the
-      // same resolver (single vue copy across the @vue/repl tree).
+      // Both entries are listed together for a second reason: if one
+      // prebundles and the other doesn't, they resolve `vue` through
+      // different module graphs (Vite's prebundled vue chunk vs. raw
+      // node_modules vue). The EditorContainer's `provide(propsKey, …)`
+      // and Monaco's `inject(propsKey)` then use different InjectionKey
+      // symbols and Monaco renders as a no-op. Pinning both into the
+      // same prebundle batch guarantees a single shared vue.
       //
+      // The previous concern about prebundling — `@vue/repl/monaco-editor`'s
+      // worker URLs (`new URL("assets/...", import.meta.url)`) not
+      // resolving against prebundled siblings — is moot. The Worker
+      // constructor monkey-patch in `components/demo/DemoReplEditor.client.vue`
+      // rewrites every `assets/(editor|vue).worker-*.js` URL to the
+      // static copies under `/lib/repl-workers/`, regardless of which
+      // path the worker URL was constructed against. Prebundling moves
+      // the entry, the worker URL changes too, the regex still matches.
+      include: [
+        'lucide-vue-next',
+        '@vue/repl',
+        '@vue/repl/monaco-editor',
+        // Discovered at runtime via `<DocsDemo>`'s dynamic `import('shiki')`
+        // for SSR-side code highlighting, and via the Zod-typed demo SFCs
+        // that ship through the docs-demos/*.vue glob.
+        'shiki',
+        'zod',
+        // `zod-v3` is npm-aliased to `zod@3.x` (see root package.json's
+        // `"zod-v3": "npm:zod@^3.24"`). It surfaces in the docs-site
+        // dep graph because `apps/site` aliases `attaform/zod` to the
+        // workspace `src/zod.ts`, whose unified adapter
+        // (`src/runtime/adapters/unified/use-form.ts`) statically
+        // imports both the v3 and v4 adapters so its runtime-dispatch
+        // can pick the right shape per schema. Without `zod-v3` in
+        // this list, Vite's boot crawl misses it; the first docs-demo
+        // mount discovers the dep mid-session, the optimizer rebundles,
+        // the browser hash flips, and any in-flight prebundled-dep
+        // request (e.g. shiki.js) 504s with "Outdated Optimize Dep".
+        // Pre-declaring it keeps the boot crawl comprehensive.
+        'zod-v3',
+        // `lodash-es` is a transitive of one of the @nuxtjs/seo
+        // sub-modules (the schema-org or sitemap chain). Same
+        // motivation: pre-declaring it here means the boot crawl
+        // catches it once, so a mid-session discovery doesn't
+        // re-trigger an Outdated-Optimize-Dep rebundle.
+        'lodash-es',
+      ],
       // The remark/rehype/unified cluster is excluded for a different
       // reason: @nuxtjs/mdc (transitive via @nuxt/content) pushes these
       // specifiers into Vite's `optimizeDeps.include` list via its own
@@ -532,8 +712,6 @@ export default defineNuxtConfig({
       // residual log noise; this `exclude` block prevents the actual
       // overflow on cold start.
       exclude: [
-        '@vue/repl',
-        '@vue/repl/monaco-editor',
         'remark-gfm',
         'remark-emoji',
         'remark-mdc',
@@ -584,22 +762,24 @@ export default defineNuxtConfig({
         delete mdc.highlight.transformers
       }
 
-      // Allow `.d.ts` / `.d.cts` / `.d.mts` files in public/ to ship
-      // in the static output. Nuxt's `@nuxt/schema` ships
+      // Allow `.d.ts` / `.d.cts` / `.d.mts` files in the REPL
+      // publicAssets directory (`.repl-cache/`, mounted at `/lib/`)
+      // to ship in the static output. Nuxt's `@nuxt/schema` ships
       // `**/*.d.{cts,mts,ts}` in the default `ignore` array on the
       // assumption that declaration files aren't meant for the
-      // browser; Nitro inherits this and applies it to the
-      // public-assets globby pass, stripping our REPL type bundles
+      // browser; Nitro inherits this and applies it to every
+      // publicAssets globby pass, stripping our REPL type bundles
       // from `.output/public/lib/types/`. Without those files, Volar
       // (via @vue/repl's `pkgFileTextUrl` callback) 404s on
-      // `attaform`/`attaform/zod`/`vue`/`zod` declaration fetches and
-      // intellisense degrades to "any" in production.
+      // `attaform`/`attaform/zod`/`vue`/`zod` declaration fetches
+      // and intellisense degrades to "any" in production.
       //
       // We strip the .d.ts ignore pattern from Nitro's options only.
       // Nuxt's own component / layout scanners read from
-      // `nuxt.options.ignore` directly (not `nitroConfig.ignore`), so
-      // their behaviour is unaffected — they keep skipping ambient
-      // `.d.ts` files outside `public/` exactly as before.
+      // `nuxt.options.ignore` directly (not `nitroConfig.ignore`),
+      // so their behaviour is unaffected — they keep skipping
+      // ambient `.d.ts` files outside the publicAssets pipeline
+      // exactly as before.
       const declRe = /\bd\.\{?(cts|mts|ts|c|m)/
       if (Array.isArray(nitroConfig.ignore)) {
         nitroConfig.ignore = nitroConfig.ignore.filter(

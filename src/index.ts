@@ -57,11 +57,10 @@ export type {
 } from './runtime/types/types-stepper'
 
 // Ambient bridge for components that wrap a single field and want to
-// re-bind v-register onto an inner native element. See the
-// `useRegister` section in `docs/api.md` for the wrapper-component
-// pattern; for compound components reaching multiple fields, prefer
-// `injectForm`.
+// re-bind v-register onto an inner native element. For wrappers that
+// bind multiple fields (compound forms), prefer `injectForm`.
 export { useRegister } from './runtime/composables/use-register'
+export type { UseRegisterReturn } from './runtime/composables/use-register'
 
 // The v-register directive (registered automatically by createAttaform,
 // but exported for advanced consumers who install directives themselves).
@@ -197,6 +196,7 @@ export {
   RegistryNotInstalledError,
   ReservedFormKeyError,
   SensitivePersistFieldError,
+  StepperLateRegistrationError,
   SubmitErrorHandlerError,
 } from './runtime/core/errors'
 

@@ -31,15 +31,15 @@
 
   const wizard = useWizard(account)
 
-  async function onFinish() {
-    toast.success(`Welcome ${profile.values.name || profile.values.city || 'aboard'}`, {
-      description: {
-        account: account.values,
-        profile: profile.values,
-        review: review.values,
-      },
-    })
-  }
+  const onFinish = wizard.handleSubmit(
+    async ({ values, get }) => {
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      toast.success(`Welcome ${get(profile).name || 'aboard'}`, { description: values })
+    },
+    () => {
+      toast.error('Submit blocked, check the errors above.')
+    }
+  )
 </script>
 
 <template>
@@ -106,27 +106,20 @@
     </form>
 
     <div class="actions">
-      <button
-        type="button"
-        class="ghost"
-        :disabled="wizard.activeIndex === 0"
-        @click="wizard.back()"
-      >
+      <button type="button" class="ghost" :disabled="!wizard.canGoBack" @click="wizard.back()">
         ← Back
       </button>
-      <span class="step-of">
-        Step {{ wizard.allForms.findIndex((f) => f.key === wizard.current) + 1 }} of
-        {{ wizard.count }}
-      </span>
-      <button
-        v-if="wizard.activeIndex !== wizard.count - 1"
-        type="button"
-        class="primary"
-        @click="wizard.next()"
-      >
+      <span class="step-of">Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}</span>
+      <button v-if="wizard.canAdvance" type="button" class="primary" @click="wizard.next()">
         Next →
       </button>
-      <button v-else type="button" class="primary" @click="onFinish">Finish</button>
+      <button v-else type="button" class="primary" :disabled="wizard.submitting" @click="onFinish">
+        {{ wizard.submitting ? 'Submitting…' : 'Finish' }}
+      </button>
+    </div>
+
+    <div v-if="wizard.complete" class="success-card" role="status">
+      ✓ Submission sent. Edit any field to revise.
     </div>
 
     <p class="hint">
@@ -292,5 +285,14 @@
     margin: 0;
     color: #6b7280;
     font-size: 0.75rem;
+  }
+  .success-card {
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.375rem;
+    background: #ecfdf5;
+    color: #047857;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border: 1px solid #a7f3d0;
   }
 </style>

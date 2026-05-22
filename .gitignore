@@ -26,6 +26,7 @@ pnpm-debug.log*
 # Generated dirs
 dist
 apps/site/.repl-cache
+apps/site/public/lib
 apps/site/public/_pagefind
 
 # TypeScript

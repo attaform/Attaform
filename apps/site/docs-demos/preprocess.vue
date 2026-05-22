@@ -1,31 +1,25 @@
 <script setup lang="ts">
-  import { ref } from 'vue'
+  import { computed, ref } from 'vue'
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
 
-  const formatPhone = (v: unknown): unknown => {
-    if (typeof v !== 'string') return v
-    const digits = v.replace(/\D/g, '')
-    return digits.length === 10
-      ? `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
-      : v
-  }
+  const normalize = (v: unknown): unknown => (typeof v === 'string' ? v.trim().toLowerCase() : v)
 
   const schema = z.object({
-    flag: z.boolean().default(true),
-    phone: z.preprocess(formatPhone, z.string()),
-    ratio: z.string().transform((v) => Number(v) / 100),
+    email: z.preprocess(normalize, z.email('Use the format you@domain.com')),
   })
 
   const form = useForm({
     schema,
-    defaultValues: { phone: '5551234567', ratio: '50' },
-    key: 'docs-demo-storage-shape',
+    key: 'docs-demo-preprocess',
+    validateOn: 'blur',
   })
 
+  const parsePreview = computed(() => normalize(form.values.email))
+
   const submittedShape = ref<unknown>(null)
-  const onSubmit = form.handleSubmit(async (values) => {
-    submittedShape.value = values
+  const onSubmit = form.handleSubmit((data) => {
+    submittedShape.value = data
   })
 </script>
 
@@ -33,38 +27,48 @@
   <div class="layout">
     <form @submit.prevent="onSubmit">
       <label>
-        flag (boolean)
-        <input v-register="form.register('flag')" type="checkbox" />
+        Email
+        <input
+          v-register="form.register('email')"
+          placeholder="  Ada@Example.COM "
+          autocomplete="off"
+          spellcheck="false"
+        />
       </label>
-      <label>
-        phone (raw in storage, formatted at submit)
-        <input v-register="form.register('phone')" />
-      </label>
-      <label>
-        ratio (string in storage, number at submit)
-        <input v-register="form.register('ratio')" />
-      </label>
-      <button type="submit">Submit to see the parsed shape</button>
+      <p v-if="form.fields.email.showErrors" class="error" role="alert">
+        {{ form.fields.email.firstError?.message }}
+      </p>
+      <p v-else class="hint">
+        Try stray whitespace or mixed case. Preprocess normalises before the email check runs;
+        storage keeps what you typed.
+      </p>
+
+      <button type="submit">Submit</button>
     </form>
 
     <section>
-      <h4>READ: <code>form.values</code></h4>
-      <p
-        >Concrete types after defaults resolve. Preprocess + transforms have NOT run; storage holds
-        raw input.</p
-      >
+      <h4>READ: <code>form.values.email</code></h4>
+      <p>Storage holds your raw input verbatim. Preprocess has not run yet.</p>
       <pre>{{
-        JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
+        form.values.email === '' || form.values.email === undefined
+          ? '(empty)'
+          : JSON.stringify(form.values.email)
       }}</pre>
     </section>
 
     <section>
+      <h4>PREVIEW: what preprocess returns</h4>
+      <p>
+        Recomputed live for the demo. The real call happens inside validation and submit; this is
+        the value they see.
+      </p>
+      <pre>{{ JSON.stringify(parsePreview) }}</pre>
+    </section>
+
+    <section v-if="submittedShape">
       <h4>SUBMIT: <code>handleSubmit</code> argument</h4>
-      <p>Post-parse output. <code>phone</code> is formatted, <code>ratio</code> is a number.</p>
-      <pre v-if="submittedShape">{{
-        JSON.stringify(submittedShape, (_, v) => (v === undefined ? '(undefined)' : v), 2)
-      }}</pre>
-      <pre v-else class="placeholder">Submit to populate</pre>
+      <p>Post-parse output. The trimmed, lowercased email is what your handler receives.</p>
+      <pre>{{ JSON.stringify(submittedShape, null, 2) }}</pre>
     </section>
   </div>
 </template>
@@ -92,7 +96,7 @@
     font-size: 0.8125rem;
     color: #374151;
   }
-  input[type='text'] {
+  input {
     padding: 0.5rem 0.625rem;
     border-radius: 0.375rem;
     border: 1px solid #d1d5db;
@@ -118,6 +122,17 @@
   button:hover {
     background: #1d4ed8;
   }
+  .error {
+    margin: 0;
+    color: #b91c1c;
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  .hint {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
   section {
     display: flex;
     flex-direction: column;
@@ -128,7 +143,7 @@
     font-size: 0.8125rem;
     font-weight: 600;
   }
-  p {
+  section p {
     margin: 0;
     font-size: 0.75rem;
     color: #6b7280;
@@ -143,16 +158,11 @@
     font-family: ui-monospace, monospace;
     overflow: auto;
   }
-  pre.placeholder {
-    background: #f3f4f6;
-    color: #9ca3af;
-    border: 1px dashed #d1d5db;
-    font-style: italic;
-  }
   code {
     font-family: ui-monospace, monospace;
     background: #f3f4f6;
     padding: 0.05rem 0.3rem;
     border-radius: 0.25rem;
+    font-size: 0.75rem;
   }
 </style>

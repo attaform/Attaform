@@ -7,6 +7,7 @@ import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { hydrateAttaformState, renderAttaformState } from '../../src/runtime/core/serialize'
 import { getRegistryFromApp } from '../../src/runtime/core/registry'
+import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
@@ -106,8 +107,190 @@ describe('async-defaults SSR + hydration', () => {
     expect(api).toBeDefined()
     if (api === undefined) return
     expect(clientCalls).toBe(0)
-    expect(api.isHydrating.value).toBe(false)
+    expect(api.isHydrating).toBe(false)
     expect(api.values.email).toBe('server@example.com')
     expect(api.values.name).toBe('Ada')
+  })
+})
+
+/**
+ * Server-side factory rejection contract.
+ *
+ * `runFactoryAndApply` swallows the rejection into `hydrateError` so
+ * `onServerPrefetch` never propagates it back to `renderToString`.
+ * SSR completes successfully; the serialised payload carries the
+ * schema's slim defaults plus a form-level `HydrationFailed`
+ * ValidationError in `schemaErrors`. `hydrateError` and the
+ * `meta.errors` entry share the same ValidationError shape so the
+ * client surfaces the failure identically regardless of mount path.
+ *
+ * Recovery: the consumer calls `form.rehydrate()` to re-fire the
+ * captured factory client-side. A successful retry clears the
+ * `HydrationFailed` entry; a repeat failure replaces it with the
+ * new error.
+ */
+describe('async-defaults SSR rejection path', () => {
+  it('rejected factory does not crash renderToString; surfaces error via hydrateError + schemaErrors', async () => {
+    const handle: { api?: UseFormReturnType<{ email: string; name: string }> } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useForm({
+          schema,
+          key: 'ssr-async-reject',
+          defaultValues: () => Promise.reject(new Error('upstream-down')),
+        }) as unknown as UseFormReturnType<{ email: string; name: string }>
+        return () => h('div')
+      },
+    })
+    const ssrApp = createSSRApp(App).use(createAttaform({ ssr: true }))
+
+    // SSR completes without throwing. The rejection is caught inside
+    // runFactoryAndApply, so onServerPrefetch returns a resolved
+    // Promise and the awaiter proceeds.
+    await renderToString(ssrApp)
+
+    const api = handle.api
+    expect(api).toBeDefined()
+    if (api === undefined) return
+
+    // Server-side state after the rejection settled: error captured,
+    // isHydrating released, form falls back to schema slim defaults.
+    expect(api.hydrateError?.code).toBe(AttaformErrorCode.HydrationFailed)
+    expect(api.hydrateError?.message).toBe('upstream-down')
+    expect(api.isHydrating).toBe(false)
+    expect(api.values.email).toBe('')
+    expect(api.values.name).toBe('')
+
+    // The same ValidationError surfaces via `meta.errors` (the standard
+    // form-error pipeline that rides the SSR wire payload). Identical
+    // shape to `hydrateError` so consumers can render from either.
+    const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
+    expect(hydrationErr).toBeDefined()
+    expect(hydrationErr?.message).toBe('upstream-down')
+    expect(hydrationErr?.path).toEqual([''])
+    expect(api.hydrateError).toEqual(hydrationErr)
+
+    // Payload serialises with the form-level error included.
+    const payload = renderAttaformState(ssrApp)
+    expect(payload.forms).toHaveLength(1)
+    const entry = payload.forms[0]
+    if (entry === undefined) return
+    expect(entry[1].form).toEqual({ email: '', name: '' })
+    expect(entry[1].schemaErrors.length).toBeGreaterThan(0)
+  })
+
+  it('client hydration after a server-side rejection: factory does NOT re-fire (current behavior)', async () => {
+    // Server: factory rejects, payload serialises slim defaults.
+    const ServerApp = defineComponent({
+      setup() {
+        useForm({
+          schema,
+          key: 'ssr-reject-client-noop',
+          defaultValues: () => Promise.reject(new Error('server-down')),
+        })
+        return () => h('div')
+      },
+    })
+    const ssrApp = createSSRApp(ServerApp).use(createAttaform({ ssr: true }))
+    await renderToString(ssrApp)
+    const payload = renderAttaformState(ssrApp)
+
+    // Client: same key, fresh factory that WOULD recover if it ran.
+    let clientCalls = 0
+    const clientHandle: { api?: UseFormReturnType<{ email: string; name: string }> } = {}
+    const ClientApp = defineComponent({
+      setup() {
+        clientHandle.api = useForm({
+          schema,
+          key: 'ssr-reject-client-noop',
+          defaultValues: () => {
+            clientCalls += 1
+            return Promise.resolve({ email: 'client-recovered@example.com', name: 'Hopper' })
+          },
+        }) as unknown as UseFormReturnType<{ email: string; name: string }>
+        return () => h('div')
+      },
+    })
+    const clientApp = createApp(ClientApp).use(createAttaform())
+    hydrateAttaformState(clientApp, payload)
+    clientApp.config.warnHandler = () => {}
+    clientApp.mount(document.createElement('div'))
+
+    const api = clientHandle.api
+    if (api === undefined) return
+
+    // Current contract: client trusts the payload (which the server
+    // hydration registry has flagged as "already resolved") and skips
+    // the factory. hydrateError stays null on the client because the
+    // raw error doesn't ride the payload. The server-side failure
+    // crosses the wire via the HydrationFailed entry in schemaErrors,
+    // surfacing through form.meta.errors — consumers render an error
+    // banner / retry button off this entry.
+    expect(clientCalls).toBe(0)
+    expect(api.isHydrating).toBe(false)
+    expect(api.hydrateError).toBeNull()
+    expect(api.values.email).toBe('')
+    expect(api.values.name).toBe('')
+    const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
+    expect(hydrationErr).toBeDefined()
+    expect(hydrationErr?.message).toBe('server-down')
+  })
+
+  it('client recovery: form.rehydrate() re-fires the factory and applies the new payload', async () => {
+    // Same server setup as the prior test.
+    const ServerApp = defineComponent({
+      setup() {
+        useForm({
+          schema,
+          key: 'ssr-reject-client-retry',
+          defaultValues: () => Promise.reject(new Error('server-down')),
+        })
+        return () => h('div')
+      },
+    })
+    const ssrApp = createSSRApp(ServerApp).use(createAttaform({ ssr: true }))
+    await renderToString(ssrApp)
+    const payload = renderAttaformState(ssrApp)
+
+    let clientCalls = 0
+    const clientHandle: { api?: UseFormReturnType<{ email: string; name: string }> } = {}
+    const ClientApp = defineComponent({
+      setup() {
+        clientHandle.api = useForm({
+          schema,
+          key: 'ssr-reject-client-retry',
+          defaultValues: () => {
+            clientCalls += 1
+            return Promise.resolve({ email: 'recovered@example.com', name: 'Hopper' })
+          },
+        }) as unknown as UseFormReturnType<{ email: string; name: string }>
+        return () => h('div')
+      },
+    })
+    const clientApp = createApp(ClientApp).use(createAttaform())
+    hydrateAttaformState(clientApp, payload)
+    clientApp.config.warnHandler = () => {}
+    clientApp.mount(document.createElement('div'))
+
+    const api = clientHandle.api
+    if (api === undefined) return
+
+    // Pre-recovery state: the HydrationFailed entry is on the surface
+    // from the SSR rejection (rides the wire via schemaErrors).
+    const preErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
+    expect(preErr).toBeDefined()
+
+    // Consumer-side recovery: call rehydrate() to re-fire the captured
+    // factory client-side. The form picks up the resolved values AND
+    // the HydrationFailed entry clears (runFactoryAndApply wipes any
+    // prior HydrationFailed at entry, only re-adds on rejection).
+    await api.rehydrate()
+    expect(clientCalls).toBe(1)
+    expect(api.hydrateError).toBeNull()
+    expect(api.isHydrating).toBe(false)
+    expect(api.values.email).toBe('recovered@example.com')
+    expect(api.values.name).toBe('Hopper')
+    const postErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
+    expect(postErr).toBeUndefined()
   })
 })

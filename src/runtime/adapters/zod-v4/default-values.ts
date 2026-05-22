@@ -14,6 +14,7 @@ import {
   getObjectShape,
   getTupleItems,
   getUnionOptions,
+  isCoercePrimitive,
   kindOf,
   unwrapInner,
   unwrapLazy,
@@ -23,6 +24,33 @@ import {
 } from './introspect'
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { getSlimSchema } from './strip'
+
+/**
+ * Walks transparent wrappers (`.optional()` / `.nullable()` / `.readonly()`
+ * / `.catch()`) until it hits a `ZodDefault` or a non-wrapper leaf. Used
+ * by the pipe branch to decide whether a preprocess-wrapped inner
+ * carries a consumer-declared default; if so, the walker walks the
+ * inner normally and honors that default, otherwise it returns
+ * `undefined` so the slot waits for `defaultValues` / `setValue`.
+ *
+ * Bounded loop matches the `unwrapToDiscriminatedUnion` pattern — a
+ * deeper wrapper stack is almost certainly a recursive cycle, not
+ * legitimate schema construction.
+ */
+function hasDeclaredDefaultInChain(schema: z.ZodType): boolean {
+  let current: z.ZodType | undefined = schema
+  for (let i = 0; i < 32; i++) {
+    if (current === undefined) return false
+    const k = kindOf(current)
+    if (k === 'default') return true
+    if (k === 'optional' || k === 'nullable' || k === 'readonly' || k === 'catch') {
+      current = unwrapInner(current)
+      continue
+    }
+    return false
+  }
+  return false
+}
 
 /**
  * Derive a default value for any Zod v4 schema. Mirrors v3's walker but
@@ -53,6 +81,15 @@ function defaultForKind(
   maxDepth: number,
   lazyDepth: number
 ): unknown {
+  // Schema-side input normalizers (`z.coerce.X()` as a coerce-flagged
+  // primitive; `z.preprocess(fn, _)` as a pipe-with-transform-on-in
+  // handled in the 'pipe' branch below) declare a write boundary the
+  // runtime cannot honestly synthesise a default for. Leave the slot
+  // `undefined` so the consumer's `defaultValues` or a later `setValue`
+  // owns what lands in storage. Without this, the walker fell through
+  // to the primitive's slim concrete (`''`, `0`, `false`, …) and
+  // claimed a value the consumer never supplied.
+  if (isCoercePrimitive(schema)) return undefined
   switch (kind) {
     case 'object': {
       const shape = getObjectShape(schema as z.ZodObject)
@@ -81,16 +118,30 @@ function defaultForKind(
     }
     case 'pipe': {
       // `z.preprocess(fn, inner)` desugars to a pipe whose `in` is a
-      // ZodTransform (the user-supplied `fn`) and whose `out` is the
-      // inner schema. The "real" schema we want to draw a default from
-      // is the side that ISN'T a transform — `out` for preprocess,
-      // `in` for `.transform()` (where the source schema is on the
-      // in side and the transform itself is on the out side). Falling
-      // through to the transform side returns `undefined` and breaks
-      // the storage invariant (blank-path synthesis would leave the
-      // slot at `undefined` instead of the inner-schema's falsy).
-      const out = unwrapPipeOut(schema)
+      // ZodTransform (the user-supplied `fn`); the input shape is
+      // genuinely unknown until the consumer writes. Two sub-cases:
+      //
+      //   - Inner schema carries a consumer-declared default
+      //     (`z.preprocess(fn, z.string().default('hello'))`): honor
+      //     it. The consumer wrote the default themselves, so storage
+      //     starts there.
+      //   - No declared default on the inner: leave the slot
+      //     `undefined` so `defaultValues` or a later `setValue` owns
+      //     what lands in storage. Synthesising the inner's slim
+      //     concrete (`''` / `0` / etc.) would claim a value the
+      //     consumer never supplied.
       const inn = unwrapPipeIn(schema)
+      if (inn !== undefined && kindOf(inn) === 'transform') {
+        const out = unwrapPipeOut(schema)
+        if (out !== undefined && hasDeclaredDefaultInChain(out)) {
+          return defaultForKind(kindOf(out), out, useDefault, maxDepth, lazyDepth)
+        }
+        return undefined
+      }
+      // `.transform(fn)` (transform on output) and generic / codec
+      // pipes still have a real source on the input side; peel to it
+      // for the source default.
+      const out = unwrapPipeOut(schema)
       const real =
         inn !== undefined && kindOf(inn) !== 'transform'
           ? inn
@@ -239,8 +290,11 @@ function defaultForKind(
  * Merge `override` into `base` recursively, preferring override leaves.
  *
  * Leaf semantics (anything not a plain `{}` record is a leaf):
- *   - `undefined` override → no-op (don't drop the base value)
  *   - `null` override → replaces base (a deliberate "clear this field" signal)
+ *   - `undefined` override at a key the consumer NAMED (`Object.keys`
+ *     returns it) → replaces base. The consumer asked for "this slot
+ *     starts undefined," which is a distinct signal from "no entry at
+ *     this key."
  *   - primitives, arrays, `Date`, `Map`, class instances → replace wholesale
  *
  * Only plain records on BOTH sides recurse. The previous implementation
@@ -260,13 +314,14 @@ export function mergeDeep(base: unknown, override: unknown): unknown {
   for (const key of Object.keys(override)) {
     const oVal = override[key]
     const bVal = base[key]
-    // Recurse only when BOTH sides are plain records; otherwise treat the
-    // override as a leaf. Preserves the historic quirk that an explicit
-    // `undefined` does NOT evict the base key (consumers who want to
-    // clear a field use `null`).
+    // Recurse only when BOTH sides are plain records; otherwise treat
+    // the override as a leaf. `Object.keys` returns OWN enumerable
+    // keys, so a key with an explicit `undefined` value lands here too
+    // — and the consumer's choice to name the path overrides the
+    // base's value, mirroring the way an explicit `null` would.
     if (isPlainRecord(oVal) && isPlainRecord(bVal)) {
       result[key] = mergeDeep(bVal, oVal)
-    } else if (oVal !== undefined) {
+    } else {
       result[key] = oVal
     }
   }
@@ -356,6 +411,21 @@ export function getDefaultValuesFromZodSchema<Form>(
       | string
       | number
     )[]
+    // Schema-side input normalizers (preprocess pipes, coerce-flagged
+    // primitives) are slim-stripped, so the slim-schema sees only the
+    // post-strip leaf and complains when storage is `undefined`. Look
+    // up the ORIGINAL schema at the path; if it's such a wrapper, the
+    // `undefined` is intentional under the no-write-mutation contract
+    // and we leave it alone.
+    const originalCandidate = getNestedZodSchemasAtPath(schema, pathSegments, maxRecursionDepth)[0]
+    if (originalCandidate !== undefined) {
+      if (isCoercePrimitive(originalCandidate)) continue
+      if (kindOf(originalCandidate) === 'pipe') {
+        const pipeIn = unwrapPipeIn(originalCandidate)
+        if (pipeIn !== undefined && kindOf(pipeIn) === 'transform') continue
+      }
+    }
+
     // Pass the structured path directly — joining with '.' would merge
     // a literal-dot key (`['profile.name']`) into two segments and
     // target the wrong sub-schema during fix-up.

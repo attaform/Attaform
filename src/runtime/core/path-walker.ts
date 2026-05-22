@@ -312,9 +312,13 @@ function mergeStructuralImpl(
     }
     let mutated = false
     const out: Record<string, unknown> = { ...consumer }
-    // Fill schema-default keys missing from consumer.
+    // Fill schema-default keys that are MISSING from consumer (key
+    // not present at all). An explicit `consumer[key] = undefined`
+    // means the consumer named the slot empty on purpose — distinct
+    // from omitting the key — and the schema default doesn't override
+    // it.
     for (const key of Object.keys(defaultValue)) {
-      if (!(key in consumer) || consumer[key] === undefined) {
+      if (!(key in consumer)) {
         const defAtKey = defaultValue[key]
         // Recurse so that filling produces a structurally-complete
         // sub-tree (covers nested-object defaults that themselves
@@ -328,12 +332,19 @@ function mergeStructuralImpl(
         }
       }
     }
-    // Recurse into consumer-supplied keys to catch nested gaps.
+    // Recurse into consumer-supplied keys to catch nested gaps. Skip
+    // keys whose consumer value is `undefined` — the spread above
+    // already kept them, and recursing would re-fill from the
+    // schema default (mergeStructuralImpl's leaf branch returns the
+    // default for an undefined consumer), erasing the consumer's
+    // explicit empty.
     for (const key of Object.keys(consumer)) {
+      const cVal = consumer[key]
+      if (cVal === undefined) continue
       scratch.push(key)
-      const merged = mergeStructuralImpl(schema, scratch, consumer[key], defaultValue[key])
+      const merged = mergeStructuralImpl(schema, scratch, cVal, defaultValue[key])
       scratch.pop()
-      if (merged !== consumer[key]) {
+      if (merged !== cVal) {
         out[key] = merged
         mutated = true
       }

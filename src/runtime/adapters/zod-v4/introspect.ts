@@ -82,6 +82,10 @@ interface ZodInternalShape {
     // shape internally — `z.preprocess(fn, inner)` desugars to a pipe
     // whose `def.in` is a ZodTransform with `def.transform = fn`).
     transform?: unknown
+    // `z.coerce.X()` in Zod v4 is a primitive schema (ZodString /
+    // ZodNumber / etc.) with `def.coerce === true`. It is NOT a pipe;
+    // the flag drives Zod's internal `safeParse` to cast the input.
+    coerce?: boolean
   }
 }
 
@@ -246,23 +250,20 @@ export function unwrapPipeIn(schema: z.ZodType): z.ZodType | undefined {
   return def?.in as z.ZodType | undefined
 }
 
+/**
+ * Detect `z.coerce.X()` — a primitive schema (ZodString / ZodNumber /
+ * etc.) carrying `def.coerce === true`. Zod v4 does NOT wrap coerce in
+ * a pipe; the flag drives `safeParse` to cast the input. Returns true
+ * for any schema whose def opted into coerce, regardless of kind.
+ */
+export function isCoercePrimitive(schema: z.ZodType): boolean {
+  return readDef(schema)?.coerce === true
+}
+
 /** Output side of a pipe — the inner schema in `z.preprocess(fn, inner)`. */
 export function unwrapPipeOut(schema: z.ZodType): z.ZodType | undefined {
   const def = readDef(schema)
   return def?.out as z.ZodType | undefined
-}
-
-/**
- * Extract the user-supplied preprocess function from a ZodTransform.
- * `z.preprocess(fn, inner)` desugars to `z.pipe(z.transform(fn), inner)`;
- * the transform's `def.transform` is the original `fn`. Returns
- * `undefined` for non-transform schemas.
- */
-export function readTransformFn(schema: z.ZodType): ((input: unknown) => unknown) | undefined {
-  const def = readDef(schema) as { transform?: unknown } | undefined
-  return typeof def?.transform === 'function'
-    ? (def.transform as (input: unknown) => unknown)
-    : undefined
 }
 
 /**
@@ -456,6 +457,97 @@ export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): 
     } catch {
       // Lazy schemas may throw on resolution before their referenced
       // schema is constructed; treat as no async refine and move on.
+    }
+  }
+
+  return false
+}
+
+/**
+ * True iff any `ZodTransform` in the schema tree wraps an async
+ * function. `z.preprocess(fn, inner)` desugars to a pipe whose
+ * `def.in` is a `ZodTransform` with `def.transform = fn`; an async
+ * `fn` makes the input side async-only, so a sync `safeParse` cannot
+ * run it cleanly. The function gets invoked synchronously, returns
+ * a Promise, and any throw / rejection inside it propagates as an
+ * unhandled rejection because nothing's listening.
+ *
+ * Distinct from `containsAsyncRefine`: that one walks
+ * `def.checks[].def.fn` (refinement predicates). This walks
+ * `def.transform` (the transform's payload). The two flags are OR'd
+ * by the adapter to drive `needsAsyncValidation()`, but the
+ * construction-time strict-mode pass treats them differently:
+ * async refines can be stripped and the parse retried; async
+ * transforms cannot, so the strict pass skips entirely and defers
+ * to the post-mount `safeParseAsync` pass.
+ */
+export function containsAsyncTransform(schema: z.ZodType, seen?: WeakSet<object>): boolean {
+  const visited = seen ?? new WeakSet<object>()
+  const candidate = schema as unknown
+  if (typeof candidate !== 'object' || candidate === null) return false
+  if (visited.has(candidate)) return false
+  visited.add(candidate)
+
+  const def = readDef(schema)
+  if (def === undefined) return false
+
+  if (
+    typeof def.transform === 'function' &&
+    (def.transform as { constructor: { name: string } }).constructor.name === 'AsyncFunction'
+  ) {
+    return true
+  }
+
+  if (def.innerType !== undefined && containsAsyncTransform(def.innerType as z.ZodType, visited)) {
+    return true
+  }
+  if (def.element !== undefined && containsAsyncTransform(def.element as z.ZodType, visited)) {
+    return true
+  }
+  if (def.in !== undefined && containsAsyncTransform(def.in as z.ZodType, visited)) {
+    return true
+  }
+  if (def.out !== undefined && containsAsyncTransform(def.out as z.ZodType, visited)) {
+    return true
+  }
+  if (def.left !== undefined && containsAsyncTransform(def.left as z.ZodType, visited)) {
+    return true
+  }
+  if (def.right !== undefined && containsAsyncTransform(def.right as z.ZodType, visited)) {
+    return true
+  }
+  if (def.keyType !== undefined && containsAsyncTransform(def.keyType as z.ZodType, visited)) {
+    return true
+  }
+  if (def.valueType !== undefined && containsAsyncTransform(def.valueType as z.ZodType, visited)) {
+    return true
+  }
+  if (def.shape !== undefined) {
+    for (const sub of Object.values(def.shape)) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.entries !== undefined) {
+    for (const sub of Object.values(def.entries)) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.options !== undefined) {
+    for (const sub of def.options) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.items !== undefined) {
+    for (const sub of def.items) {
+      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (typeof def.getter === 'function') {
+    try {
+      const inner = def.getter() as z.ZodType
+      if (containsAsyncTransform(inner, visited)) return true
+    } catch {
+      // Lazy schemas may throw on resolution; treat as no async transform.
     }
   }
 

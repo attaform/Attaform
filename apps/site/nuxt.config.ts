@@ -72,6 +72,52 @@ const fixViteAssetImportMetaUrlFilter: VitePlugin = {
   },
 }
 
+// `pages/play/[slug].vue` and `pages/play/index.vue` discover every
+// demo SFC via `import.meta.glob('../../docs-demos/*.vue', { eager: true })`.
+// The glob's key set is resolved once at module-eval time. When a
+// new SFC lands inside `docs-demos/` after the route module has
+// already compiled, Vite's default invalidation is best-effort: the
+// file watcher fires, but the route module's transform cache does
+// not always rerun before the next SSR render. The symptom is a
+// 404 from `/play/<new-slug>` while the inline `<DocsDemo>` embed
+// on the docs page resolves the same SFC cleanly (DocsDemo uses a
+// non-eager glob whose loaders are invoked lazily, so its key set
+// re-resolves at access time).
+//
+// This plugin watches `apps/site/docs-demos/` for `add` and `unlink`
+// events. On either, it invalidates both play-route modules in the
+// dev server's module graph and broadcasts a full reload, so the
+// next render sees the fresh glob keys. Modify events are left
+// alone — they invalidate the touched SFC via Vite's normal HMR
+// path, which the route module already proxies.
+const invalidatePlayRoutesOnDemoChange: VitePlugin = {
+  name: 'attaform:invalidate-play-routes-on-demo-add',
+  apply: 'serve',
+  configureServer(server) {
+    const siteRoot = dirname(fileURLToPath(import.meta.url))
+    const demosDir = resolve(siteRoot, 'docs-demos')
+    const playRoutes = [
+      resolve(siteRoot, 'pages/play/[slug].vue'),
+      resolve(siteRoot, 'pages/play/index.vue'),
+    ]
+    function invalidate(): void {
+      for (const route of playRoutes) {
+        const mods = server.moduleGraph.getModulesByFile(route)
+        if (mods == null) continue
+        for (const mod of mods) server.moduleGraph.invalidateModule(mod)
+      }
+      server.ws.send({ type: 'full-reload' })
+    }
+    function onFsEvent(path: string): void {
+      if (!path.startsWith(demosDir)) return
+      if (!path.endsWith('.vue')) return
+      invalidate()
+    }
+    server.watcher.on('add', onFsEvent)
+    server.watcher.on('unlink', onFsEvent)
+  },
+}
+
 // Two warning families fire on every build, are not ours to fix,
 // and add nothing actionable for a maintainer reading the logs:
 //
@@ -599,7 +645,7 @@ export default defineNuxtConfig({
     ],
   },
   vite: {
-    plugins: [tailwindcss(), fixViteAssetImportMetaUrlFilter],
+    plugins: [tailwindcss(), fixViteAssetImportMetaUrlFilter, invalidatePlayRoutesOnDemoChange],
     // Source-resolve the workspace `attaform` package for the docs
     // site's Vite environments. Without these aliases, every
     // `import { useForm } from 'attaform/zod'` (and every other

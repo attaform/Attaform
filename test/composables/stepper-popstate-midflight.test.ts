@@ -70,7 +70,7 @@ describe('useStepper — popstate mid-flight safety', () => {
     result.stepper.next()
     await nextTick()
     expect(factoryCalls).toBe(1)
-    expect(result.b.isHydrating.value).toBe(true)
+    expect(result.b.isHydrating).toBe(true)
 
     // Pop back to A via popstate (silent setCurrent).
     window.history.back()
@@ -83,9 +83,9 @@ describe('useStepper — popstate mid-flight safety', () => {
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       await nextTick()
-      if (!result.b.isHydrating.value) break
+      if (!result.b.isHydrating) break
     }
-    expect(result.b.isHydrating.value).toBe(false)
+    expect(result.b.isHydrating).toBe(false)
 
     // Pop forward to B — factory MUST NOT re-fire.
     window.history.forward()

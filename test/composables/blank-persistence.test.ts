@@ -161,7 +161,7 @@ describe('persistence — blank round-trips across mount', () => {
     // Poll until hydration lands the persisted blank mark — the
     // dynamic-imported adapter chain can outlast a fixed-time pump on
     // a contended runner.
-    await waitUntil(() => (captured?.blankPaths.value.includes('income') === true ? true : null))
+    await waitUntil(() => (captured?.blankPaths.value.has('income') === true ? true : null))
 
     if (captured === undefined) throw new Error('form not captured')
     const binding = captured.register('income')
@@ -280,7 +280,7 @@ describe('persistence — blank round-trips across mount', () => {
     await waitUntil(() => (captured?.values.income === 100 ? true : null))
 
     if (captured === undefined) throw new Error('form not captured')
-    expect(captured.blankPaths.value.length).toBe(0)
+    expect(captured.blankPaths.value.size).toBe(0)
     expect(captured.values.income).toBe(100)
   })
 })

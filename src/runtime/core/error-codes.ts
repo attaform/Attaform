@@ -46,6 +46,15 @@ export const AttaformErrorCode = {
   HydrationFailed: 'atta:hydration-failed',
   /** The supplied path didn't resolve to any node in the schema. */
   PathNotFound: 'atta:path-not-found',
+  /**
+   * A walked form's `activate()` (async `defaultValues` factory) threw
+   * during `wizard.handleSubmit`'s path walk. Surfaced as a synthetic
+   * `ValidationError` at the form-level path (`[]`) so the wizard's
+   * aggregate error pipeline can carry the failure alongside ordinary
+   * validation errors. The raw factory error remains on
+   * `form.hydrateError` for retry UX.
+   */
+  ActivationFailed: 'atta:activation-failed',
 } as const
 
 export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof AttaformErrorCode]

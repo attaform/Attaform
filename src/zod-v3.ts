@@ -32,18 +32,27 @@ export { injectForm } from './runtime/composables/use-form-context'
 export { useRegister } from './runtime/composables/use-register'
 export type { UseRegisterReturn } from './runtime/composables/use-register'
 export { useWizard } from './runtime/composables/use-wizard'
+export { injectWizard } from './runtime/composables/inject-wizard'
+export type { InjectWizardInput } from './runtime/composables/inject-wizard'
 export type {
   AggregateError,
   AnyForm,
-  FormKeyOf,
   FormStatus,
-  KeysOf,
-  Statuses,
+  NextBranching,
+  NextOption,
+  NormalizedNext,
+  WizardFlow,
   WizardHistoryConfig,
   WizardNavOptions,
+  WizardOnError,
+  WizardOnSubmit,
   WizardOptions,
   WizardStatusesProxy,
+  WizardSubmitContext,
   UseWizardReturnType,
+  WizardTreeNode,
+  WizardWarning,
+  WizardWarningKind,
 } from './runtime/types/types-wizard'
 export { zodAdapter } from './runtime/adapters/zod-v3'
 export { isZodSchemaType } from './runtime/adapters/zod-v3/helpers'

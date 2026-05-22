@@ -39,17 +39,18 @@ describe('useWizard — allValues', () => {
 
   it("exposes each form's values under its key", () => {
     const { app, result } = mountHarness(() => {
-      const cargo = useForm({
-        schema: cargoSchema,
-        key: 'av-cargo',
-        defaultValues: { weight: 5, description: 'box' },
-      })
       const review = useForm({
         schema: reviewSchema,
         key: 'av-review',
         defaultValues: { note: 'send it' },
       })
-      return useWizard([cargo, review], {})
+      const cargo = useForm({
+        schema: cargoSchema,
+        key: 'av-cargo',
+        defaultValues: { weight: 5, description: 'box' },
+        next: review,
+      })
+      return useWizard(cargo, {})
     })
     apps.push(app)
     const allValues = result.allValues as Record<string, Record<string, unknown>>
@@ -65,7 +66,7 @@ describe('useWizard — allValues', () => {
         key: 'av-live-cargo',
         defaultValues: { weight: 5, description: 'box' },
       })
-      return { wizard: useWizard([cargo], {}), cargo }
+      return { wizard: useWizard(cargo, {}), cargo }
     })
     apps.push(app)
     const allValues = result.wizard.allValues as Record<string, Record<string, unknown>>

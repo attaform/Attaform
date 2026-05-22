@@ -141,9 +141,10 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Multistep flows',
     links: [
       { title: 'useWizard', to: '/docs/multistep/use-wizard' },
+      { title: 'injectWizard', to: '/docs/multistep/inject-wizard' },
       { title: 'Statuses', to: '/docs/multistep/statuses' },
       { title: 'Browser history', to: '/docs/multistep/history' },
-      { title: 'SSR & the privacy invariant', to: '/docs/multistep/ssr' },
+      { title: 'SSR & render efficiency', to: '/docs/multistep/ssr' },
       { title: 'Aggregates', to: '/docs/multistep/aggregates' },
       { title: 'Lazy activation', to: '/docs/multistep/lazy-activation' },
       { title: 'Patterns', to: '/docs/multistep/patterns' },

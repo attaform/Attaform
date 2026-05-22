@@ -40,9 +40,9 @@ import { useForm, useWizard } from 'attaform/zod'
 const accountSchema = z.object({ email: z.email() })
 const profileSchema = z.object({ name: z.string().min(1) })
 
-const account = useForm({ schema: accountSchema, key: 'signup-account' })
 const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
-const wizard = useWizard([account, profile] as const)
+const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
+const wizard = useWizard(account)
 
 wizard.statuses // the whole proxy
 wizard.statuses() // { 'signup-account': FormStatus, 'signup-profile': FormStatus }
@@ -59,12 +59,12 @@ Reading `wizard.statuses['signup-profile'].valid` does NOT activate the `signup-
 
 ```vue
 <script setup lang="ts">
-  const wizard = useWizard([account, profile, review] as const)
+  const wizard = useWizard(account)
 </script>
 
 <template>
   <ol class="wizard-rail">
-    <li v-for="form in wizard.forms" :key="form.key">
+    <li v-for="form in wizard.allForms" :key="form.key">
       <span
         class="dot"
         :class="{
@@ -89,7 +89,7 @@ For resumable wizards (server-sent step status, draft-restore flows, e-commerce 
 ```ts
 import { useWizard } from 'attaform/zod'
 
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   defaultStatuses: {
     'signup-account': { valid: true, dirty: false, submitted: true, errorCount: 0 },
     'signup-profile': { valid: false, dirty: true, submitted: false, errorCount: 1 },
@@ -101,7 +101,7 @@ const wizard = useWizard([account, profile, review] as const, {
 Or a sync factory:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   defaultStatuses: () => buildStatusesFromDraft(draftStore.snapshot),
 })
 ```
@@ -109,7 +109,7 @@ const wizard = useWizard([account, profile, review] as const, {
 Or an async factory:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   defaultStatuses: async () => fetchSavedFlowStatuses(userId),
 })
 ```
@@ -127,7 +127,7 @@ Unknown keys in the seed object dev-warn and are ignored. Known keys still apply
 `onStatusChange` fires whenever a participating form's `valid`, `dirty`, `submitted`, or `errorCount` changes. The handler receives the new status and the form whose status changed:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const, {
+const wizard = useWizard(account, {
   onStatusChange: (status, form) => {
     analytics.track('wizard_step_status', {
       key: form.key,

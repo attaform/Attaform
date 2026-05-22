@@ -14,7 +14,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * consumer can render "Step Cargo > weight: weight required" and
  * link back to the offending field.
  *
- * Order: wizard.forms order, then form's internal error order.
+ * Order: wizard.allForms order, then form's internal error order.
  */
 
 const cargoSchema = z.object({
@@ -46,17 +46,18 @@ describe('useWizard — allErrors', () => {
 
   it('starts empty', () => {
     const { app, result } = mountHarness(() => {
-      const cargo = useForm({
-        schema: cargoSchema,
-        key: 'ae-empty-cargo',
-        defaultValues: { weight: 5, description: 'box' },
-      })
       const review = useForm({
         schema: reviewSchema,
         key: 'ae-empty-review',
         defaultValues: { note: 'send it' },
       })
-      return useWizard([cargo, review], {})
+      const cargo = useForm({
+        schema: cargoSchema,
+        key: 'ae-empty-cargo',
+        defaultValues: { weight: 5, description: 'box' },
+        next: review,
+      })
+      return useWizard(cargo, {})
     })
     apps.push(app)
     expect(result.allErrors).toEqual([])
@@ -64,9 +65,9 @@ describe('useWizard — allErrors', () => {
 
   it('flattens errors with formKey + path + message', async () => {
     const { app, result } = mountHarness(() => {
-      const cargo = useForm({ schema: cargoSchema, key: 'ae-fill-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'ae-fill-review' })
-      return { wizard: useWizard([cargo, review], {}), cargo, review }
+      const cargo = useForm({ schema: cargoSchema, key: 'ae-fill-cargo', next: review })
+      return { wizard: useWizard(cargo, {}), cargo, review }
     })
     apps.push(app)
     await result.cargo.validate()
@@ -85,9 +86,9 @@ describe('useWizard — allErrors', () => {
   it('orders errors by forms-array order, then by per-form order', async () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'ae-order-cargo' })
-      const review = useForm({ schema: reviewSchema, key: 'ae-order-review' })
       // Order: [review, cargo] so review errors come first.
-      return { wizard: useWizard([review, cargo], {}), cargo, review }
+      const review = useForm({ schema: reviewSchema, key: 'ae-order-review', next: cargo })
+      return { wizard: useWizard(review, {}), cargo, review }
     })
     apps.push(app)
     await result.cargo.validate()

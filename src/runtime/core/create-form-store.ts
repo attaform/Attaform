@@ -12,6 +12,7 @@ import type {
 } from '../types/types-api'
 import { resolveShouldShowErrors } from './should-show-errors'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
+import type { NormalizedNext } from '../types/types-wizard'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
@@ -214,6 +215,14 @@ export type OriginalsRecord = {
 
 export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly formKey: FormKey
+  /**
+   * Normalized `next` declaration from `useForm({ next })`. Identity
+   * refs lift to a single-element `{ pick, forms }` shape so the wizard
+   * graph walker reads one uniform contract. `undefined` for terminal
+   * forms (no `next` option supplied). Static for the FormStore's
+   * lifetime — `next` is not reactive and is not cleared by `reset()`.
+   */
+  readonly next: NormalizedNext | undefined
   readonly form: Ref<F>
   readonly fields: Map<PathKey, FieldRecord>
   readonly elements: Map<PathKey, ElementRecord>
@@ -324,7 +333,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   // don't prematurely flip submitting to false when the first completes.
   readonly submitting: Ref<boolean>
   readonly activeSubmissions: Ref<number>
-  readonly submitCount: Ref<number>
+  readonly submissionAttempts: Ref<number>
+  /**
+   * `true` once a `handleSubmit` callback resolved without throwing.
+   * Independent of `submissionAttempts` — a failed submit increments
+   * attempts but leaves `submitted` at `false`. Cleared by `reset()`
+   * alongside the rest of the submission surface.
+   */
+  readonly submitted: Ref<boolean>
   readonly submitError: Ref<unknown>
 
   /**
@@ -919,7 +935,7 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * fire the captured factory on the server. The wizard's negative
    * override — `registry.skipPrefetch(key)` for non-current steps —
    * flips this to `false` even when `enqueue()` has been called, so
-   * the privacy invariant for non-current steps survives a stray
+   * the render-efficiency skip for non-current steps survives a stray
    * `form.activate()` or a future transform mark on a skipped step.
    * Returns `true` for any form the wizard hasn't skipped, including
    * plain-value forms where the factory branch is skipped anyway.
@@ -930,6 +946,14 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
         shouldFire: () => boolean
       }
     | undefined
+  /**
+   * Normalized wizard-graph `next` declaration captured by
+   * `useAbstractForm` via `normalizeNext(configuration.next)`. Passed
+   * through to the FormStore at construction so the wizard graph
+   * walker can read it via `state.next`. Static — `next` is not
+   * re-resolved on reset and is not subject to registry defaults.
+   */
+  readonly next?: NormalizedNext | undefined
 }
 
 /**
@@ -1093,6 +1117,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const { formKey, schema, defaultValues, strict = true, hydration } = options
   const ssr = options.ssr === true
   const ssrPrefetch = options.ssrPrefetch
+  // Normalized wizard graph declaration. Captured once at construction
+  // — `next` is metadata about the form's role in a wizard graph, not
+  // reactive state. Stored verbatim so `useWizard` can walk identity
+  // refs and branching `{ pick, forms }` shapes through one contract.
+  const next = options.next
   const rememberVariants: boolean = options.rememberVariants !== false
   const fieldValidationMode: ValidateOn = options.validateOn ?? 'change'
   // Sanitise the debounce value before threading it into `setTimeout`.
@@ -1472,7 +1501,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // not just the first.
   const submitting = ref(false)
   const activeSubmissions = ref(0)
-  const submitCount = ref(0)
+  const submissionAttempts = ref(0)
+  const submitted = ref(false)
   const submitError = ref<unknown>(null)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
@@ -3061,7 +3091,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submissionGeneration.value += 1
     submitting.value = false
     activeSubmissions.value = 0
-    submitCount.value = 0
+    submissionAttempts.value = 0
+    submitted.value = false
     submitError.value = null
     // Drop any pending field-validation timers / in-flight runs. Writes
     // that reached the controller-aborted branch resolve to a no-op, so
@@ -3298,6 +3329,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   return {
     formKey,
+    next,
     form,
     fields,
     elements,
@@ -3310,7 +3342,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     shouldShowErrors: resolvedShouldShowErrors,
     submitting,
     activeSubmissions,
-    submitCount,
+    submissionAttempts,
+    submitted,
     submitError,
     hydrating,
     hydrateError,

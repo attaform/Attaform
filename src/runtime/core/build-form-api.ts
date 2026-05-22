@@ -42,7 +42,7 @@ import {
 } from './paths'
 import { PERSISTENCE_MODULE_KEY, type PersistenceModule } from './persistence'
 import { enforceSensitiveCheck } from './persistence/sensitive-names'
-import { buildProcessForm } from './process-form'
+import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
 import { isUnset } from './unset'
 import {
@@ -159,6 +159,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // property. Only pass the key when the consumer opted in.
   const processOptions =
     options.onInvalidSubmit !== undefined ? { onInvalidSubmit: options.onInvalidSubmit } : {}
+  const defaultInvalidSubmitPolicy: OnInvalidSubmitPolicy =
+    options.onInvalidSubmit ?? 'focus-first-error'
   const {
     validate: validateBuilt,
     validateAsync: validateAsyncBuilt,
@@ -476,7 +478,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   // --- Submission lifecycle ---
   const submitting = computed<boolean>(() => state.submitting.value)
-  const submitCount = computed<number>(() => state.submitCount.value)
+  const submissionAttempts = computed<number>(() => state.submissionAttempts.value)
+  const submitted = computed<boolean>(() => state.submitted.value)
   const submitError = computed<unknown>(() => state.submitError.value)
 
   // --- Validation lifecycle ---
@@ -565,24 +568,20 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // Thunk producing a fresh `FormMetaBase` snapshot on each call —
   // the omit'd-shape second argument to `state.shouldShowErrors`.
   // Reads run inside the field-state computed, so every reactive
-  // primitive touched here (submitCount, canUndo, ...) registers as
+  // primitive touched here (submissionAttempts, canUndo, ...) registers as
   // a dependency of that computed. Bypasses the cached field-state
   // accessor by calling `buildContainerFieldStateBase` directly —
   // going through the accessor would recurse through the root path's
   // own showErrors computation.
   const getFormMetaBase = (): FormMetaBase => {
     const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY)
-    const submitCount = state.submitCount.value
     return {
       ...rootBase,
       submitting: state.submitting.value,
-      submitCount,
+      submissionAttempts: state.submissionAttempts.value,
       submitError: state.submitError.value,
-      // Scalar mirrors over `errors.length` and `submitCount` — same
-      // values surfaced on `form.meta`. Available here so predicates
-      // (`shouldShowErrors`) can read them too.
       errorCount: rootBase.errors.length,
-      submitted: submitCount > 0,
+      submitted: state.submitted.value,
       instanceId: formInstanceId,
     }
   }
@@ -646,13 +645,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       meta: computed(() => rootFieldState.value.meta),
       // Lifecycle (form-level only — not on FieldState).
       submitting,
-      submitCount,
+      submissionAttempts,
       submitError,
-      // Scalar mirrors over the array / counter — meta is a single
-      // sticky surface for both templates and the upcoming
-      // `useWizard`'s `FormStatus`, so the projections live here.
+      // Scalar mirror over the array — meta is a single sticky surface
+      // for both templates and `useWizard`'s `FormStatus`, so the
+      // projection lives here.
       errorCount: computed(() => metaErrors.value.length),
-      submitted: computed(() => submitCount.value > 0),
+      submitted,
       // Per-`useForm()`-call identity. Stable for one mount; new on
       // re-mount; orthogonal to `form.key` (which is the user-supplied
       // shared identifier). Useful for devtools panels disambiguating
@@ -784,6 +783,15 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return true
   }
 
+  // Drives the same focus/scroll policy that `handleSubmit` runs after a
+  // failed submit, but exposed as a method so the wizard's failed-path
+  // navigation can invoke the failing form's own configured policy after
+  // a `goTo`. Defaults to the form's `onInvalidSubmit` option so the
+  // caller doesn't have to repeat the configured choice.
+  const applyInvalidSubmitPolicyPublic = (policy?: OnInvalidSubmitPolicy): void => {
+    applyInvalidSubmitPolicy(state, formInstanceId, policy ?? defaultInvalidSubmitPolicy)
+  }
+
   // --- Field arrays ---
   const fieldArrays = buildFieldArrayApi(state)
 
@@ -853,6 +861,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     process: gated(process) as UseFormReturnType<Form, GetValueFormType>['process'],
     register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
+    // Normalized `next` declaration. `undefined` for terminal forms.
+    // Read by `useWizard` during graph construction and by the
+    // navigation / submission pipelines that consult `pick`.
+    next: state.next,
     // Auto-unwrapping views over the per-store async-defaults lifecycle
     // refs (see FormStore.hydrating / hydrateError). Reading either
     // activates the form — observing factory state implies use.
@@ -904,6 +916,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     >['clearPersistedDraft'],
     focusFirstError: gated(focusFirstError),
     scrollToFirstError: gated(scrollToFirstError),
+    applyInvalidSubmitPolicy: gated(applyInvalidSubmitPolicyPublic),
     touch: gated(touch) as UseFormReturnType<Form, GetValueFormType>['touch'],
     get history() {
       void state.activate()

@@ -62,7 +62,7 @@
               valid: form.meta.valid,
               errorCount: form.meta.errorCount,
               submitting: form.meta.submitting,
-              submitCount: form.meta.submitCount,
+              submissionAttempts: form.meta.submissionAttempts,
               submitted: form.meta.submitted,
             },
             null,

@@ -15,10 +15,11 @@ import { waitUntil } from '../utils/form-harness'
  * factory is a hydration source, not a refresh hook — chain
  * `form.rehydrate()` to force a re-load).
  *
- * The motivating privacy story: a 25-step public-housing form where
- * Step 14 needs SSN. The wizard guarantees Step 14's factory only
- * runs once the user reaches Step 14 — even if the consumer wires
- * all forms in setup.
+ * The motivating render-efficiency story: a 25-step application form
+ * where Step 14 fetches an expensive enrollment record. The wizard
+ * guarantees Step 14's factory only runs once the user reaches
+ * Step 14, even if the consumer wires all forms in setup. A 25-step
+ * wizard pays for one step's data at a time.
  */
 
 const schemaA = z.object({ a: z.string() })
@@ -51,12 +52,12 @@ describe('useWizard — async-defaults activation lifecycle', () => {
     let bCalls = 0
     let cCalls = 0
     const { app, result } = mountHarness(() => {
-      const a = useForm({
-        schema: schemaA,
-        key: 'wizard-act-a',
+      const c = useForm({
+        schema: schemaC,
+        key: 'wizard-act-c',
         defaultValues: () => {
-          aCalls += 1
-          return Promise.resolve({ a: 'A' })
+          cCalls += 1
+          return Promise.resolve({ c: 'C' })
         },
       })
       const b = useForm({
@@ -66,16 +67,18 @@ describe('useWizard — async-defaults activation lifecycle', () => {
           bCalls += 1
           return Promise.resolve({ b: 'B' })
         },
+        next: c,
       })
-      const c = useForm({
-        schema: schemaC,
-        key: 'wizard-act-c',
+      const a = useForm({
+        schema: schemaA,
+        key: 'wizard-act-a',
         defaultValues: () => {
-          cCalls += 1
-          return Promise.resolve({ c: 'C' })
+          aCalls += 1
+          return Promise.resolve({ a: 'A' })
         },
+        next: b,
       })
-      return { wizard: useWizard([a, b, c], {}), a, b, c }
+      return { wizard: useWizard(a, {}), a, b, c }
     })
     apps.push(app)
     await waitUntil(() => (result.a.hydrating === false ? true : null))
@@ -91,7 +94,6 @@ describe('useWizard — async-defaults activation lifecycle', () => {
   it('fires the factory on first activation', async () => {
     let bCalls = 0
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'wizard-act-2-a' })
       const b = useForm({
         schema: schemaB,
         key: 'wizard-act-2-b',
@@ -100,7 +102,8 @@ describe('useWizard — async-defaults activation lifecycle', () => {
           return Promise.resolve({ b: 'B' })
         },
       })
-      return { wizard: useWizard([a, b], {}), a, b }
+      const a = useForm({ schema: schemaA, key: 'wizard-act-2-a', next: b })
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     await waitUntil(() => (result.a.hydrating === false ? true : null))
@@ -115,7 +118,6 @@ describe('useWizard — async-defaults activation lifecycle', () => {
   it('re-activation does NOT re-fire the factory', async () => {
     let bCalls = 0
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'wizard-react-a' })
       const b = useForm({
         schema: schemaB,
         key: 'wizard-react-b',
@@ -124,7 +126,8 @@ describe('useWizard — async-defaults activation lifecycle', () => {
           return Promise.resolve({ b: 'B' })
         },
       })
-      return { wizard: useWizard([a, b], {}), a, b }
+      const a = useForm({ schema: schemaA, key: 'wizard-react-a', next: b })
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     await waitUntil(() => (result.a.hydrating === false ? true : null))
@@ -140,7 +143,6 @@ describe('useWizard — async-defaults activation lifecycle', () => {
   it('form.rehydrate() re-fires the factory even from a deferred form', async () => {
     let bCalls = 0
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'wizard-rehyd-a' })
       const b = useForm({
         schema: schemaB,
         key: 'wizard-rehyd-b',
@@ -149,7 +151,8 @@ describe('useWizard — async-defaults activation lifecycle', () => {
           return Promise.resolve({ b: `B-${bCalls}` })
         },
       })
-      return { wizard: useWizard([a, b], {}), a, b }
+      const a = useForm({ schema: schemaA, key: 'wizard-rehyd-a', next: b })
+      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
     await waitUntil(() => (result.a.hydrating === false ? true : null))

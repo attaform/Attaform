@@ -1,23 +1,21 @@
 import { describe, expectTypeOf, it } from 'vitest'
-import { z } from 'zod'
-import { useForm } from '../../src/zod'
 import type {
   AggregateError,
   FormStatus,
-  Statuses,
   WizardStatusesProxy,
 } from '../../src/runtime/types/types-wizard'
 
 /**
- * Type-level checks for PR3's status surface. `FormStatus` is the
- * per-form summary derived from `form.meta`. `Statuses<Forms>` is the
- * keyed record used by `wizard.statuses` and by the
- * `defaultStatuses` seed option. `AggregateError` is the flattened
- * shape returned by `wizard.allErrors`. `WizardStatusesProxy` mirrors
- * the call-or-read pattern from `form.values` but at a single depth.
+ * Type-level checks for the wizard's status surface. `FormStatus` is
+ * the per-form summary derived from `form.meta`. `wizard.statuses` and
+ * the `defaultStatuses` seed option are loosely keyed
+ * (`Record<string, FormStatus>`) — cross-component graphs threaded
+ * through `injectWizard` lose lexical key knowledge, so the public
+ * surface settles on the loose shape. `AggregateError` is the
+ * flattened shape returned by `wizard.allErrors`. `WizardStatusesProxy`
+ * mirrors the call-or-read pattern from `form.values` but at a single
+ * depth.
  */
-
-const schema = z.object({ email: z.string() })
 
 describe('wizard status types', () => {
   it('FormStatus has valid / dirty / submitted / errorCount fields', () => {
@@ -27,19 +25,6 @@ describe('wizard status types', () => {
       readonly submitted: boolean
       readonly errorCount: number
     }>()
-  })
-
-  it('Statuses<Forms> is a keyed record over each form key', () => {
-    function _neverInvoked() {
-      const a = useForm({ schema, key: 'a' })
-      const b = useForm({ schema, key: 'b' })
-      const _forms = [a, b] as const
-      expectTypeOf<Statuses<typeof _forms>>().toEqualTypeOf<{
-        readonly a: FormStatus
-        readonly b: FormStatus
-      }>()
-    }
-    void _neverInvoked
   })
 
   it('AggregateError carries formKey / path / message / optional code', () => {
@@ -52,12 +37,12 @@ describe('wizard status types', () => {
   })
 
   it('WizardStatusesProxy carries both call and read surfaces', () => {
-    type StatusMap = { readonly a: FormStatus; readonly b: FormStatus }
+    type StatusMap = Record<string, FormStatus>
     type Proxy = WizardStatusesProxy<StatusMap>
     function _neverInvoked() {
       const proxy = ((..._args: unknown[]) => ({})) as Proxy
-      const status = proxy.a
-      expectTypeOf(status satisfies FormStatus).toMatchTypeOf<FormStatus>()
+      const _status = proxy['a']
+      expectTypeOf<typeof _status>().toMatchTypeOf<FormStatus | undefined>()
       const _fromCall = proxy('a')
       expectTypeOf<typeof _fromCall>().toMatchTypeOf<FormStatus | StatusMap>()
       const _all = proxy()

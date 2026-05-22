@@ -119,16 +119,16 @@ describe('useForm — reset()', () => {
   it('clears submission lifecycle (count, error, in-flight)', async () => {
     const { app, form } = harness()
     apps.push(app)
-    // Run a failing submit to populate submitCount + submitError.
+    // Run a failing submit to populate submissionAttempts + submitError.
     const handler = form.handleSubmit(async () => {
       throw new Error('boom')
     })
     await expect(handler()).rejects.toThrow('boom')
-    expect(form.meta.submitCount).toBe(1)
+    expect(form.meta.submissionAttempts).toBe(1)
     expect(form.meta.submitError).toBeInstanceOf(Error)
 
     form.reset()
-    expect(form.meta.submitCount).toBe(0)
+    expect(form.meta.submissionAttempts).toBe(0)
     expect(form.meta.submitError).toBeNull()
     expect(form.meta.submitting).toBe(false)
   })

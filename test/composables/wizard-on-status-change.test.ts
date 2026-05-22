@@ -46,7 +46,7 @@ describe('useWizard — onStatusChange material-change firing', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'osc-dirty-cargo' })
       return {
-        wizard: useWizard([cargo], {
+        wizard: useWizard(cargo, {
           onStatusChange: (status, form) => {
             calls.push({ formKey: form.key, status })
           },
@@ -68,7 +68,7 @@ describe('useWizard — onStatusChange material-change firing', () => {
     const { app, result } = mountHarness(() => {
       const cargo = useForm({ schema: cargoSchema, key: 'osc-err-cargo' })
       return {
-        wizard: useWizard([cargo], {
+        wizard: useWizard(cargo, {
           onStatusChange: (status) => {
             calls.push(status)
           },
@@ -93,7 +93,7 @@ describe('useWizard — onStatusChange material-change firing', () => {
         defaultValues: { weight: 5, description: 'box' },
       })
       return {
-        wizard: useWizard([cargo], {
+        wizard: useWizard(cargo, {
           onStatusChange: (status) => {
             calls.push(status)
           },
@@ -114,10 +114,15 @@ describe('useWizard — onStatusChange material-change firing', () => {
   it('does not block nav on an async return', async () => {
     let pending = false
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: cargoSchema, key: 'osc-block-a' })
       const b = useForm({ schema: reviewSchema, key: 'osc-block-b' })
+      const a = useForm({
+        schema: cargoSchema,
+        key: 'osc-block-a',
+        defaultValues: { weight: 5, description: 'box' },
+        next: b,
+      })
       return {
-        wizard: useWizard([a, b], {
+        wizard: useWizard(a, {
           onStatusChange: () =>
             new Promise<void>((resolve) => {
               pending = true
@@ -132,11 +137,11 @@ describe('useWizard — onStatusChange material-change firing', () => {
       }
     })
     apps.push(app)
-    result.a.setValue('description', 'box')
+    result.a.setValue('description', 'box-mutated')
     await nextTick()
     expect(pending).toBe(true)
     // Even with onStatusChange's promise still in-flight, nav is unblocked.
-    result.wizard.next()
+    await result.wizard.next()
     expect(result.wizard.current).toBe('osc-block-b')
   })
 
@@ -149,7 +154,7 @@ describe('useWizard — onStatusChange material-change firing', () => {
         defaultValues: { weight: 5, description: 'box' },
       })
       return {
-        wizard: useWizard([cargo], {
+        wizard: useWizard(cargo, {
           onStatusChange: () => {
             calls += 1
           },

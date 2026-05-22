@@ -44,7 +44,7 @@ That means `form.meta.showErrors` only fires for root-level (cross-field / objec
 
 After the filter, the default returns `true` when either:
 
-- The form has attempted at least one submit (`formMeta.submitCount > 0`), OR
+- The form has attempted at least one submit (`formMeta.submissionAttempts > 0`), OR
 - The field has been touched (sticky-true after the first blur) AND is not currently focused.
 
 The not-focused half hides transient errors while the user is actively editing the field; they reappear when the user blurs or moves to a sibling. The empty-required-field case is covered: `touched` flips on blur regardless of whether the value changed, so a user who visits an empty required field and moves on sees the error.

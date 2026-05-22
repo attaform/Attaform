@@ -64,7 +64,7 @@ Splitting them tells you instantly whether validation or your application code e
 The reactive bundle:
 
 - `submitting`
-- `submitCount`
+- `submissionAttempts`
 - `submitError`
 - `activeValidations`
 

@@ -1,6 +1,6 @@
 ---
 title: Aggregates
-description: wizard.allValues and wizard.allErrors expose cross-step values and a flat error list for review screens, summary panels, and final-submit aggregation. Dormant steps contribute nothing, so the privacy invariant survives a summary read.
+description: wizard.allValues and wizard.allErrors expose cross-step values and a flat error list for review screens, summary panels, and final-submit aggregation. Dormant steps contribute nothing, so a summary read stays cheap and the wizard's render-efficiency floor holds.
 metaRows:
   - label: Values
     value: 'wizard.allValues[key]'
@@ -31,11 +31,11 @@ const accountSchema = z.object({ email: z.email(), name: z.string().min(1) })
 const profileSchema = z.object({ city: z.string(), country: z.string() })
 const reviewSchema = z.object({ tos: z.literal(true) })
 
-const account = useForm({ schema: accountSchema, key: 'signup-account' })
-const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
 const review = useForm({ schema: reviewSchema, key: 'signup-review' })
+const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
+const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
 
-const wizard = useWizard([account, profile, review] as const)
+const wizard = useWizard(account)
 ```
 
 ```vue
@@ -77,7 +77,7 @@ type AggregateError = {
 }
 ```
 
-Sort order: wizard's `forms` order, then each form's internal error order. The shape is purpose-built for wizard-wide summary panels:
+Sort order: BFS order from the wizard's entry, then each form's internal error order. The shape is purpose-built for wizard-wide summary panels:
 
 ```vue
 <template>
@@ -101,14 +101,18 @@ A click on any summary row jumps the wizard to the step that produced the error.
 `wizard.allErrors` deliberately skips steps whose forms have not been activated. A non-current step with an async `defaultValues` factory does **not** fire on the server just because the consumer reads the summary list:
 
 ```ts
-const wizard = useWizard([account, profile, review] as const)
+const wizard = useWizard(account)
 // On the server, only account's factory has fired.
 // wizard.allErrors only includes errors from account, not profile or review.
 ```
 
-That keeps the [SSR privacy invariant](/docs/multistep/ssr#the-stated-invariant) intact. A summary panel rendered on the server reports the current step's errors without disturbing dormant steps.
+That keeps the [activation rule](/docs/multistep/ssr#the-activation-rule) in force. A summary panel rendered on the server reports the current step's errors without disturbing dormant steps, so a 40-step wizard still pays for one fetch per request.
 
 On the client, navigating to a step activates that step's factory and its errors join the aggregate naturally.
+
+## `FormStatus.submitted` is success-only
+
+Each step's `FormStatus` mirrors that form's `meta.submitted`, which flips `true` only after a `handleSubmit` callback resolves without throwing. Failed submits (validation failure or callback rejection) leave it `false`. For "the user has tried this step," read each form's `meta.submissionAttempts > 0` directly. The wizard-level "user clicked Finish" signal lives on `wizard.submissionAttempts` and `wizard.complete`; see [`useWizard`](/docs/multistep/use-wizard).
 
 ## Cross-reference
 

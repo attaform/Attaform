@@ -17,7 +17,7 @@ import type { FieldState, FormMeta, ShouldShowErrors, ValidationError } from '..
  * heuristic `shouldShowErrors(field, formMeta)` resolves through three
  * tiers:
  *   1. Library default: own-path-error filter, then
- *      `submitCount > 0 || (touched && !focused)`. Containers (intermediate
+ *      `submissionAttempts > 0 || (touched && !focused)`. Containers (intermediate
  *      AND root) only fire on errors at their own path; leaves always
  *      satisfy the filter when they have errors.
  *   2. `createAttaform({ defaults: { shouldShowErrors } })`.
@@ -76,7 +76,7 @@ type FormLike = {
     onSubmit: (data: unknown) => void | Promise<void>,
     onError?: (errors: readonly ValidationError[]) => void
   ) => () => Promise<void>
-  meta: { submitCount: number; submitting: boolean; showErrors: boolean }
+  meta: { submissionAttempts: number; submitting: boolean; showErrors: boolean }
   key: string
 }
 
@@ -97,7 +97,7 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
     }
 
     describe('default heuristic — leaf', () => {
-      it('errors present, untouched, submitCount=0 → showErrors === false', () => {
+      it('errors present, untouched, submissionAttempts=0 → showErrors === false', () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         expect(form.fields('email').errors.length).toBe(1)
@@ -132,16 +132,16 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         expect(form.fields('email').showErrors).toBe(true)
       })
 
-      it('errors present, untouched, submitCount=1 → showErrors === true', async () => {
+      it('errors present, untouched, submissionAttempts=1 → showErrors === true', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         await form.handleSubmit(() => {})()
         await nextTick()
-        expect(form.meta.submitCount).toBeGreaterThan(0)
+        expect(form.meta.submissionAttempts).toBeGreaterThan(0)
         expect(form.fields('email').showErrors).toBe(true)
       })
 
-      it('no errors, submitCount=10, touched and dirty → showErrors === false (errors-empty gate)', async () => {
+      it('no errors, submissionAttempts=10, touched and dirty → showErrors === false (errors-empty gate)', async () => {
         const form = makeForm()
         form.touch('email')
         form.setValue('email', 'x')
@@ -150,7 +150,7 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         }
         await nextTick()
         expect(form.fields('email').errors.length).toBe(0)
-        expect(form.meta.submitCount).toBe(10)
+        expect(form.meta.submissionAttempts).toBe(10)
         expect(form.fields('email').showErrors).toBe(false)
       })
     })
@@ -255,12 +255,12 @@ function describeOverrideTier(
       ])
     }
 
-    it('plugin-level override: custom predicate ignores submitCount', async () => {
+    it('plugin-level override: custom predicate ignores submissionAttempts', async () => {
       const form = makeForm((field) => field.touched === true, undefined)
       inject(form)
       await form.handleSubmit(() => {})()
       await nextTick()
-      expect(form.meta.submitCount).toBeGreaterThan(0)
+      expect(form.meta.submissionAttempts).toBeGreaterThan(0)
       // touched is still false (no DOM blur, no programmatic touch)
       expect(form.fields('email').showErrors).toBe(false)
       form.touch('email')
@@ -462,7 +462,7 @@ describe('shouldShowErrors — cross-cutting', () => {
     )
     form.setFieldErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
     // Special case path[0] === 'urgent' is false for 'email' — falls through
-    // to the default heuristic, which is false at this state (untouched, submitCount=0).
+    // to the default heuristic, which is false at this state (untouched, submissionAttempts=0).
     await nextTick()
     expect(form.fields('email').showErrors).toBe(false)
     // Trigger the default branch's true case.
@@ -480,7 +480,7 @@ describe('shouldShowErrors — cross-cutting', () => {
       path: ['x'],
     } as unknown as Omit<FieldState, 'showErrors' | 'firstError'>
     const baseMeta = {
-      submitCount: 0,
+      submissionAttempts: 0,
     } as unknown as Omit<FormMeta, 'showErrors' | 'firstError'>
 
     // No submit, not touched: false.
@@ -509,13 +509,16 @@ describe('shouldShowErrors — cross-cutting', () => {
     expect(
       defaultShouldShowErrors({ ...ownErrorField, validating: true }, {
         ...baseMeta,
-        submitCount: 1,
+        submissionAttempts: 1,
       } as typeof baseMeta)
     ).toBe(false)
 
     // After first submit attempt: true regardless of touched/focused.
     expect(
-      defaultShouldShowErrors(ownErrorField, { ...baseMeta, submitCount: 1 } as typeof baseMeta)
+      defaultShouldShowErrors(ownErrorField, {
+        ...baseMeta,
+        submissionAttempts: 1,
+      } as typeof baseMeta)
     ).toBe(true)
 
     // Post-submit aggression: focused + untouched + has-own-error still
@@ -524,13 +527,13 @@ describe('shouldShowErrors — cross-cutting', () => {
     expect(
       defaultShouldShowErrors({ ...ownErrorField, touched: false, focused: true }, {
         ...baseMeta,
-        submitCount: 1,
+        submissionAttempts: 1,
       } as typeof baseMeta)
     ).toBe(true)
     expect(
       defaultShouldShowErrors({ ...ownErrorField, touched: true, focused: true }, {
         ...baseMeta,
-        submitCount: 1,
+        submissionAttempts: 1,
       } as typeof baseMeta)
     ).toBe(true)
 
@@ -547,7 +550,7 @@ describe('shouldShowErrors — cross-cutting', () => {
     expect(
       defaultShouldShowErrors(containerOnlyDescendantErrors, {
         ...baseMeta,
-        submitCount: 1,
+        submissionAttempts: 1,
       } as typeof baseMeta)
     ).toBe(false)
   })
@@ -638,6 +641,6 @@ describe('shouldShowErrors — type-level guards', () => {
     // full IDE access to touched / dirty / errors / path / etc.
     expectTypeOf<Field['touched']>().toEqualTypeOf<boolean>()
     expectTypeOf<Field['dirty']>().toEqualTypeOf<boolean>()
-    expectTypeOf<Meta['submitCount']>().toEqualTypeOf<number>()
+    expectTypeOf<Meta['submissionAttempts']>().toEqualTypeOf<number>()
   })
 })

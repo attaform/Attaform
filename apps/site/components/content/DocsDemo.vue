@@ -24,9 +24,16 @@
   // here. Built from the current route so a reader who lands on
   // /docs/getting-started/quick-start and opens the playground sees
   // a back link that actually returns to that page.
+  //
+  // `/` is allowed inside query components per RFC 3986 §3.4, so we
+  // un-encode it after `encodeURIComponent` to keep the URL legible
+  // and avoid the link-checker's `no-uppercase-chars` warning on
+  // `%2F` escape sequences. Anything else that would actually break a
+  // query string (`&`, `=`, `+`, `#`, raw spaces, non-ASCII) stays
+  // encoded for future routes that might contain those characters.
   const route = useRoute()
   const playgroundLink = computed(
-    () => `/play/${props.slug}?from=${encodeURIComponent(route.path)}`
+    () => `/play/${props.slug}?from=${encodeURIComponent(route.path).replace(/%2F/gi, '/')}`
   )
 
   // Eager glob: every demo SFC is bundled into the docs chunk. With

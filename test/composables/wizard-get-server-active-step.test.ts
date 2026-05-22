@@ -47,10 +47,10 @@ describe('useWizard — getServerActiveStep', () => {
 
   it('a known key from the getter seeds initial current', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'gs-known-a' })
-      const b = useForm({ schema: schemaB, key: 'gs-known-b' })
       const c = useForm({ schema: schemaC, key: 'gs-known-c' })
-      return useWizard([a, b, c], {
+      const b = useForm({ schema: schemaB, key: 'gs-known-b', next: c })
+      const a = useForm({ schema: schemaA, key: 'gs-known-a', next: b })
+      return useWizard(a, {
         getServerActiveStep: () => 'gs-known-b',
       })
     })
@@ -60,16 +60,12 @@ describe('useWizard — getServerActiveStep', () => {
 
   it('an unknown key from the getter falls through to forms[0]', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'gs-unk-a' })
       const b = useForm({ schema: schemaB, key: 'gs-unk-b' })
-      // Cast to bypass the literal-narrow getter type — simulates a
-      // stale URL value reaching the getter. Runtime fallback should
-      // catch it.
-      return useWizard([a, b], {
-        getServerActiveStep: (() => 'gs-unk-zzz') as unknown as () =>
-          | 'gs-unk-a'
-          | 'gs-unk-b'
-          | undefined,
+      const a = useForm({ schema: schemaA, key: 'gs-unk-a', next: b })
+      // Simulates a stale URL value reaching the getter. Runtime
+      // fallback should catch it.
+      return useWizard(a, {
+        getServerActiveStep: () => 'gs-unk-zzz',
       })
     })
     apps.push(app)
@@ -78,9 +74,9 @@ describe('useWizard — getServerActiveStep', () => {
 
   it('undefined return falls through to URL/forms[0]', () => {
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'gs-undef-a' })
       const b = useForm({ schema: schemaB, key: 'gs-undef-b' })
-      return useWizard([a, b], {
+      const a = useForm({ schema: schemaA, key: 'gs-undef-a', next: b })
+      return useWizard(a, {
         getServerActiveStep: () => undefined,
       })
     })
@@ -91,10 +87,10 @@ describe('useWizard — getServerActiveStep', () => {
   it('getter takes priority over `?step=` URL param when both name known keys', () => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard?step=gs-prio-b')
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'gs-prio-a' })
-      const b = useForm({ schema: schemaB, key: 'gs-prio-b' })
       const c = useForm({ schema: schemaC, key: 'gs-prio-c' })
-      return useWizard([a, b, c], {
+      const b = useForm({ schema: schemaB, key: 'gs-prio-b', next: c })
+      const a = useForm({ schema: schemaA, key: 'gs-prio-a', next: b })
+      return useWizard(a, {
         getServerActiveStep: () => 'gs-prio-c',
       })
     })
@@ -102,7 +98,7 @@ describe('useWizard — getServerActiveStep', () => {
     expect(result.current).toBe('gs-prio-c')
   })
 
-  it('the chosen step is the current claim in the wizard registry', () => {
+  it('the chosen step is the current claim in the wizard registry', async () => {
     // The deferral lifecycle is driven by `wizardRegistry.claim(key,
     // isCurrent)`. If the getter's choice doesn't get the current
     // claim, its async factory would be deferred and never fire on
@@ -111,16 +107,16 @@ describe('useWizard — getServerActiveStep', () => {
     // following form in the array — proving the seeded step is the
     // active one in the registry's view.
     const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: schemaA, key: 'gs-claim-a' })
-      const b = useForm({ schema: schemaB, key: 'gs-claim-b' })
-      const c = useForm({ schema: schemaC, key: 'gs-claim-c' })
-      return useWizard([a, b, c], {
+      const c = useForm({ schema: schemaC, key: 'gs-claim-c', defaultValues: { c: 'c' } })
+      const b = useForm({ schema: schemaB, key: 'gs-claim-b', defaultValues: { b: 'b' }, next: c })
+      const a = useForm({ schema: schemaA, key: 'gs-claim-a', defaultValues: { a: 'a' }, next: b })
+      return useWizard(a, {
         getServerActiveStep: () => 'gs-claim-b',
       })
     })
     apps.push(app)
     expect(result.current).toBe('gs-claim-b')
-    result.next()
+    await result.next()
     expect(result.current).toBe('gs-claim-c')
     result.back()
     result.back()

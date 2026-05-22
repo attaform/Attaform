@@ -2,22 +2,6 @@
   import { useForm, useWizard } from 'attaform/zod'
   import { z } from 'zod'
 
-  const account = useForm({
-    schema: z.object({
-      email: z.email('Enter a valid email'),
-      password: z.string().min(8, 'At least 8 characters'),
-    }),
-    key: 'docs-demo-wizard-account',
-  })
-
-  const profile = useForm({
-    schema: z.object({
-      name: z.string().min(1, 'Name is required'),
-      city: z.string(),
-    }),
-    key: 'docs-demo-wizard-profile',
-  })
-
   const review = useForm({
     schema: z.object({
       newsletter: z.boolean(),
@@ -27,27 +11,45 @@
     key: 'docs-demo-wizard-review',
   })
 
-  const wizard = useWizard([account, profile, review] as const)
+  const profile = useForm({
+    schema: z.object({
+      name: z.string().min(1, 'Name is required'),
+      city: z.string(),
+    }),
+    key: 'docs-demo-wizard-profile',
+    next: review,
+  })
 
-  async function onFinish() {
-    toast.success(`Welcome ${profile.values.name || profile.values.city || 'aboard'}`, {
-      description: {
-        account: account.values,
-        profile: profile.values,
-        review: review.values,
-      },
-    })
-  }
+  const account = useForm({
+    schema: z.object({
+      email: z.email('Enter a valid email'),
+      password: z.string().min(8, 'At least 8 characters'),
+    }),
+    key: 'docs-demo-wizard-account',
+    next: profile,
+  })
+
+  const wizard = useWizard(account)
+
+  const onFinish = wizard.handleSubmit(
+    async ({ values, get }) => {
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      toast.success(`Welcome ${get(profile).name || 'aboard'}`, { description: values })
+    },
+    () => {
+      toast.error('Submit blocked, check the errors above.')
+    }
+  )
 </script>
 
 <template>
   <div class="wizard">
     <ol class="rail">
       <li
-        v-for="(form, i) in wizard.forms"
+        v-for="(form, i) in wizard.allForms"
         :key="form.key"
         :class="{
-          done: wizard.statuses[form.key].valid && wizard.current !== form.key,
+          done: wizard.statuses[form.key]?.valid === true && wizard.current !== form.key,
           current: wizard.current === form.key,
         }"
       >
@@ -104,27 +106,20 @@
     </form>
 
     <div class="actions">
-      <button
-        type="button"
-        class="ghost"
-        :disabled="wizard.current === wizard.forms[0].key"
-        @click="wizard.back()"
-      >
+      <button type="button" class="ghost" :disabled="!wizard.canGoBack" @click="wizard.back()">
         ← Back
       </button>
-      <span class="step-of">
-        Step {{ wizard.forms.findIndex((f) => f.key === wizard.current) + 1 }} of
-        {{ wizard.count }}
-      </span>
-      <button
-        v-if="wizard.current !== wizard.forms[wizard.forms.length - 1]!.key"
-        type="button"
-        class="primary"
-        @click="wizard.next()"
-      >
+      <span class="step-of">Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}</span>
+      <button v-if="wizard.canAdvance" type="button" class="primary" @click="wizard.next()">
         Next →
       </button>
-      <button v-else type="button" class="primary" @click="onFinish">Finish</button>
+      <button v-else type="button" class="primary" :disabled="wizard.submitting" @click="onFinish">
+        {{ wizard.submitting ? 'Submitting…' : 'Finish' }}
+      </button>
+    </div>
+
+    <div v-if="wizard.complete" class="success-card" role="status">
+      ✓ Submission sent. Edit any field to revise.
     </div>
 
     <p class="hint">
@@ -290,5 +285,14 @@
     margin: 0;
     color: #6b7280;
     font-size: 0.75rem;
+  }
+  .success-card {
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.375rem;
+    background: #ecfdf5;
+    color: #047857;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border: 1px solid #a7f3d0;
   }
 </style>

@@ -102,19 +102,30 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
     void _neverInvoked
   })
 
-  it('composes the four forms into a wizard with discriminated current/keys', () => {
+  it('composes the four forms into a wizard via bottom-up `next` declarations', () => {
     function _neverInvoked() {
-      const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
-      const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
-      const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
       const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
+      const serviceForm = useForm({
+        schema: serviceSchema,
+        key: 'service' as const,
+        next: reviewForm,
+      })
+      const cargoForm = useForm({
+        schema: cargoSchema,
+        key: 'cargo' as const,
+        next: serviceForm,
+      })
+      const refForm = useForm({
+        schema: referenceSchema,
+        key: 'reference' as const,
+        next: cargoForm,
+      })
 
-      const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
+      const wizard = useWizard(refForm)
 
-      expectTypeOf(wizard.current).toEqualTypeOf<
-        'reference' | 'cargo' | 'service' | 'review' | undefined
-      >()
+      expectTypeOf(wizard.current).toEqualTypeOf<string | undefined>()
       expectTypeOf(wizard.count).toEqualTypeOf<number>()
+      expectTypeOf(wizard.entry).toMatchTypeOf<{ readonly key: string }>()
     }
     void _neverInvoked
   })
@@ -155,18 +166,33 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
     void _neverInvoked
   })
 
-  it('exposes wizard.statuses with FormStatus typing per key', () => {
+  it('exposes wizard.statuses as a loose-keyed FormStatus record', () => {
     function _neverInvoked() {
-      const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
-      const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
-      const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
       const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
+      const serviceForm = useForm({
+        schema: serviceSchema,
+        key: 'service' as const,
+        next: reviewForm,
+      })
+      const cargoForm = useForm({
+        schema: cargoSchema,
+        key: 'cargo' as const,
+        next: serviceForm,
+      })
+      const refForm = useForm({
+        schema: referenceSchema,
+        key: 'reference' as const,
+        next: cargoForm,
+      })
 
-      const wizard = useWizard([refForm, cargoForm, serviceForm, reviewForm])
+      const wizard = useWizard(refForm)
 
-      expectTypeOf(wizard.statuses.reference).toEqualTypeOf<FormStatus>()
-      expectTypeOf(wizard.statuses.cargo.valid).toEqualTypeOf<boolean>()
-      expectTypeOf(wizard.statuses.service.errorCount).toEqualTypeOf<number>()
+      const _status = wizard.statuses['reference']
+      expectTypeOf<typeof _status>().toMatchTypeOf<FormStatus | undefined>()
+      const _valid = wizard.statuses['cargo']?.valid
+      expectTypeOf<typeof _valid>().toEqualTypeOf<boolean | undefined>()
+      const _errorCount = wizard.statuses['service']?.errorCount
+      expectTypeOf<typeof _errorCount>().toEqualTypeOf<number | undefined>()
     }
     void _neverInvoked
   })

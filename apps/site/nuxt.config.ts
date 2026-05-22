@@ -479,6 +479,9 @@ export default defineNuxtConfig({
     '/docs/troubleshooting': {
       redirect: { to: '/docs/devtools-and-debugging/troubleshooting', statusCode: 301 },
     },
+    '/docs/perf': {
+      redirect: { to: '/docs/server-and-ssr/performance', statusCode: 301 },
+    },
     '/docs/recipes/persistence': {
       redirect: { to: '/docs/persistence/overview', statusCode: 301 },
     },

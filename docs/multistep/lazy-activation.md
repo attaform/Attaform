@@ -114,14 +114,14 @@ Read each guard left-to-right:
 - "Not yet ready, fetch failed" produces the initial load error banner.
 - "Ready" reaches the main render. Inside it, `userForm.hydrating` flags any refresh-in-flight so a small spinner can hint without disrupting the form.
 
-## Privacy follows activation
+## Activation drives render efficiency
 
-A form that no one touches never fires its factory. That is the load-bearing property behind the [SSR privacy invariant](/docs/multistep/ssr#the-stated-invariant): a non-current step of a `useWizard` is not just "skipped on the server." It is genuinely dormant. No fetch fires. No PII fields leave the browser's network tab.
+A form that no one touches never fires its factory. That is the load-bearing property behind the [activation rule](/docs/multistep/ssr#the-activation-rule): a non-current step of a `useWizard` is not just "skipped on the server." It is genuinely dormant. No fetch fires, no network call leaves the server, no data lands in the rendered HTML for steps the user is not on. A 40-step wizard pays for one step's data per render.
 
 The lazy default is what makes `attaform/vite`'s compile-time `__ssrAccessed` injection meaningful. The transform's whole job is to mark forms whose template references prove "this consumer wants this fetched on the server." Without lazy-by-default, every form would fetch and the transform would have nothing to opt-in to.
 
 ## Cross-reference
 
-- [SSR & the privacy invariant](/docs/multistep/ssr) for the server-side implications.
+- [SSR & render efficiency](/docs/multistep/ssr) for the server-side implications.
 - [Statuses](/docs/multistep/statuses) for the read surface that does **not** activate (`wizard.statuses`).
 - [Defaults from the schema](/docs/schemas/defaults) for `rehydrate()` and the async-factory contract.

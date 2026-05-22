@@ -16,6 +16,17 @@ export type SchemaForFill = {
    * See `AbstractSchema.arrayShapeAtPath` for the full contract.
    */
   arrayShapeAtPath(path: Path): number | null | undefined
+  /**
+   * Slim primitive set at `path`. Used by `mergeStructural` to
+   * distinguish "consumer omitted this key from a partial" (fill from
+   * schema default) from "consumer explicitly wrote undefined into a
+   * path that admits undefined" (preserve undefined). Returns `null`
+   * when the adapter can't introspect — callers fall back to the
+   * legacy fill-with-default behavior.
+   * See `AbstractSchema.getSlimPrimitiveTypesAtPath` for the full
+   * contract.
+   */
+  getSlimPrimitiveTypesAtPath?: (path: Path) => ReadonlySet<string>
 }
 
 /**
@@ -256,7 +267,21 @@ function mergeStructuralImpl(
   // Consumer is missing — fall back to the schema default. When the
   // schema default itself is `undefined` (path doesn't exist in the
   // schema), the result is `undefined` and we don't fight it.
-  if (consumer === undefined) return defaultValue
+  //
+  // Exception: when the schema's slim primitive set at this path
+  // admits `undefined` (e.g. `.optional()`), an explicit consumer
+  // undefined IS the intended value — preserve it. Otherwise the
+  // directive's optional-clear write (the user emptied an
+  // `.optional()` input) would get substituted with whatever the
+  // structural wrappers' default resolves to (`null` for
+  // `.nullable().optional()`), defeating the schema-aware DOM-clear
+  // mapping.
+  if (consumer === undefined) {
+    if (schema.getSlimPrimitiveTypesAtPath?.(scratch).has('undefined') === true) {
+      return undefined
+    }
+    return defaultValue
+  }
 
   // Null wins: deliberate consumer signal. Schema-validation catches
   // null-vs-non-nullable; runtime doesn't override consumer intent.

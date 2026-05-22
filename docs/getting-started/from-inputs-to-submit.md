@@ -77,4 +77,4 @@ While `onSuccess` is running, `form.meta.submitting` is `true`. Use it to disabl
 ## Where to next
 
 - [`handleSubmit`](/docs/submitting/handle-submit): the full submit surface, including error handlers and event semantics.
-- [The form object](/docs/reading-the-form/the-form-object): every method and property `useForm` returns.
+- [The form](/docs/reading-the-form/the-form): every method and property `useForm` returns.

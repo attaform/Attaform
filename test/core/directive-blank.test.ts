@@ -57,6 +57,7 @@ function makeRegisterValue<T>(initial: T): {
     persistOptIns: createPersistOptInRegistry(),
     isSensitivePath: () => false,
     multiTab: true,
+    acceptsUndefined: false,
   }
   return { value, markBlank, setValue }
 }

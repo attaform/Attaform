@@ -17,9 +17,7 @@
     key: 'docs-demo-form.fields',
   })
 
-  const onSubmit = form.handleSubmit(() => {
-    /* surfacing meta isn't this demo's job */
-  })
+  const onSubmit = form.handleSubmit(() => {})
 
   const formatPath = (path: ReadonlyArray<string | number>) => JSON.stringify(path)
   const formatTime = (iso: string | null) =>

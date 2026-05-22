@@ -151,10 +151,9 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
   it('container-level refine error: read-surface coverage across every API', async () => {
     // A `.refine()` at a container path is a legitimate Zod pattern: the
     // resulting error's absolute path equals the container's own path.
-    // Three surfaces include it — flat aggregate and the two call-form
-    // entry points. Property-access materialization stays
-    // descendants-only by design; consumers read container-level errors
-    // through `form.errors(<container>)`.
+    // Four surfaces include it — the flat aggregate, both call-form
+    // entry points, and the property-access materialisation under the
+    // container's `''` sentinel slot.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
     const submit = api.handleSubmit(
@@ -179,13 +178,15 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
     const callStr = (api.errors as unknown as (p: string) => readonly ValidationError[])('address')
     expect(callStr.some(matchesRefine)).toBe(true)
 
-    // Surface 4: property-access materialization stays descendants-only.
-    // Container-level entries are intentionally not placed in the
-    // materialized tree — the call form is the canonical read.
+    // Surface 4: property-access materialisation under the container's
+    // `''` sentinel slot. Container-self errors land alongside any
+    // descendant leaf errors so consumers reading the tree see the
+    // refine without needing the call form.
     const stringified = JSON.parse(
       JSON.stringify((api.errors as unknown as Record<string, unknown>)['address'])
     ) as Record<string, unknown>
-    expect(Object.keys(stringified)).toEqual([])
+    const selfSlot = stringified[''] as ReadonlyArray<{ message: string }> | undefined
+    expect(selfSlot?.some((e) => matchesRefine(e as ValidationError))).toBe(true)
   })
 
   it('form-level errors surface at form.errors[""] (root self-slot)', async () => {

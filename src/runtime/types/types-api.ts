@@ -269,37 +269,24 @@ export type AbstractSchema<Form, GetValueFormType> = {
    */
   getEmptyValueAtPath(path: Path): unknown
   /**
-   * Give the schema a chance to normalize the consumer's write value
-   * before it lands in storage / hits the slim-primitive gate. Each
-   * schema library exposes this concept differently — Zod calls it
-   * `z.preprocess(fn, inner)`, Yup calls it `.transform()`, Valibot
-   * spells it `pipe(transform(fn), inner)` — but the shape is the
-   * same: "this input shape gets coerced into that storage shape at
-   * the boundary."
+   * Reports whether `path` resolves to (or descends through) a
+   * schema-side normalizer that runs at parse, not at the write
+   * boundary. In Zod v4 that's `z.preprocess(fn, inner)` and
+   * `z.coerce.X()` (both desugar to `ZodPipe<ZodTransform, inner>`);
+   * in Zod v3 it's `ZodEffects` with `_def.effect.type === 'preprocess'`.
    *
-   * Runs SYNCHRONOUSLY at the write boundary so storage holds the
-   * post-normalization shape. Without this, a schema like `notify:
-   * z.preprocess(v => v == null ? defaultVar : v, innerDU)` would
-   * let the consumer write `null` and lock storage into `null` —
-   * because the gate sees the raw input (which the preprocess wrapper
-   * accepts as `unknown`) and storage holds a shape no variant
-   * matches.
+   * Consulted by the slim-primitive write gate. When true at a path,
+   * the gate accepts the consumer's raw value verbatim and stops
+   * walking children — storage holds the user's input, and the
+   * normalizer fires during `safeParse` (handleSubmit / validate /
+   * validateAsync), not at `setValue` time.
    *
-   * Adapters MUST:
-   *   - Return `value` unchanged when no normalization is declared at
-   *     the path.
-   *   - Return `value` unchanged when the user's normalization fn
-   *     returns a `Promise` (async coercion can't run at write time —
-   *     validation handles it during parse).
-   *   - Let user-thrown errors propagate (the user wrote the fn; we
-   *     just tag the path in the wrapper error for diagnostics).
-   *
-   * Normalization runs when `path` equals the wrapper's exact
-   * location. Writes deeper than the wrapper bypass it (a wrapper
-   * over the whole subtree can't be invoked from a partial leaf
-   * write).
+   * Path-prefix semantic: returns true if ANY ancestor of `path`
+   * resolves to such a wrapper, so descendants under a preprocess-
+   * wrapped container also short-circuit the gate. Adapters cache
+   * the result by canonicalized path key.
    */
-  normalizeWriteValueAtPath(value: unknown, path: Path): unknown
+  isPreprocessOrCoerceLeaf(path: Path): boolean
   /**
    * Distinguish a tuple (fixed-length, position-typed) from an
    * unbounded array at `path`. The runtime calls this on every
@@ -2124,6 +2111,21 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   markBlank: () => boolean
+  /**
+   * `true` when the schema's slim primitive set at this path includes
+   * `'undefined'` — i.e. the leaf was declared `.optional()` (or as
+   * part of a union admitting `undefined`). Cached at register-time.
+   *
+   * Read by the directive's text-input listener to map a DOM clear
+   * (`el.value === ''`) onto `undefined` storage instead of `''`, so
+   * the `.optional()` "absent" semantic survives user interactions.
+   * Without this, a user who typed an invalid value into an optional
+   * field and then cleared it would be stuck with a permanent
+   * validation error (storage holds `''`, which is neither
+   * `undefined` nor a valid inner value).
+   * @internal
+   */
+  acceptsUndefined: boolean
 }>
 
 /**
@@ -2742,12 +2744,23 @@ export type FieldState<Value = unknown> = {
  * boundaries (array indices, record keys) re-introduce `| undefined`
  * via the structural index-signature channels.
  *
+ * Preprocess / coerce leaves (StorageShape = `unknown`) are
+ * statically known too — the IsUnknown filter keeps them on the
+ * non-optional branch instead of being swept into the dynamic
+ * `| undefined` arm by `undefined extends unknown`.
+ *
  * Implementation-detail surface — consumers reach for `FieldStateMap`
  * or `FormErrorsSurface` instead.
  */
+type IsUnknown<T> = IsAny<T> extends true ? false : unknown extends T ? true : false
+
 export interface LeafSchemeFor<T> {
   field: FieldState<T>
-  errors: undefined extends T ? readonly ValidationError[] | undefined : readonly ValidationError[]
+  errors: IsUnknown<T> extends true
+    ? readonly ValidationError[]
+    : undefined extends T
+      ? readonly ValidationError[] | undefined
+      : readonly ValidationError[]
 }
 
 /**
@@ -2782,20 +2795,43 @@ export type LeafWalker<
 > = [T] extends [string | number | boolean | bigint | symbol | null | undefined | Date | File]
   ? LeafSchemeFor<T>[Kind]
   : [T] extends [ReadonlyArray<infer U>]
-    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> }
+    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> } & ContainerSelfErrorsSlot<
+        T,
+        Kind
+      >
     : [T] extends [object]
       ? [IsUnion<T>] extends [true]
         ? StripOptional extends true
           ? {
               readonly [K in KeyofUnion<T>]-?: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            }
+            } & ContainerSelfErrorsSlot<T, Kind>
           : {
               readonly [K in KeyofUnion<T>]: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            }
+            } & ContainerSelfErrorsSlot<T, Kind>
         : StripOptional extends true
-          ? { readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional> }
-          : { readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional> }
+          ? {
+              readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional>
+            } & ContainerSelfErrorsSlot<T, Kind>
+          : {
+              readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
+            } & ContainerSelfErrorsSlot<T, Kind>
       : LeafSchemeFor<T>[Kind]
+
+/**
+ * Intersection augmenting every container in the `form.errors` walker
+ * with a `''` sentinel slot — the per-container home for cross-field
+ * refine errors, server-side container marks, and (at root) form-level
+ * errors. Gated on `Kind extends 'errors'` so `form.values` and
+ * `form.fields` surfaces stay untouched. Carve-out for schemas that
+ * legitimately declare a `''` field: the declared field type wins; at
+ * runtime the two collide harmlessly (errors at the literal leaf and
+ * any container-self errors share the slot via array concat).
+ */
+type ContainerSelfErrorsSlot<T, Kind> = Kind extends 'errors'
+  ? '' extends keyof T
+    ? unknown
+    : { readonly ['']: readonly ValidationError[] }
+  : unknown
 
 export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
 
@@ -3464,25 +3500,36 @@ export type UseFormReturnType<
    *
    * The form is fully usable while `isHydrating` is `true` — it holds
    * the schema's slim defaults. The flag exists so templates can show
-   * a spinner / dim the form while real data loads, e.g.
+   * a spinner / dim the form while real data loads:
    *
    * ```vue
    * <div :aria-busy="form.isHydrating">…</div>
    * ```
+   *
+   * Exposed as an auto-unwrapping `boolean` (no `.value`); reactivity
+   * is preserved via a getter that tracks the underlying ref at the
+   * access site, so `watch(() => form.isHydrating, …)` and template
+   * reads both fire on change.
    */
-  readonly isHydrating: Readonly<Ref<boolean>>
+  readonly isHydrating: boolean
 
   /**
-   * The error thrown or rejected by the most recent function-form
-   * `defaultValues` factory. `null` on construction, on successful
-   * resolution, and whenever no factory has fired. Updates with each
-   * `form.rehydrate()` call.
+   * The error from the most recent function-form `defaultValues` factory,
+   * normalized to a `ValidationError` (code `atta:hydration-failed`) so the
+   * shape matches every other surface in `form.errors` / `form.meta.errors`.
+   * `null` on construction, on successful resolution, and whenever no
+   * factory has fired. Updates with each `form.rehydrate()` call.
    *
-   * Distinct from `meta.submitError` so retry buttons and recovery
-   * UX can stay focused on the load-time failure without entangling
-   * the submit pipeline.
+   * Distinct from `meta.submitError` so retry buttons and recovery UX can
+   * stay focused on the load-time failure without entangling the submit
+   * pipeline. Read directly in templates and script (no `.value`);
+   * reactivity is preserved via a getter:
+   *
+   * ```vue
+   * <p v-if="form.hydrateError">{{ form.hydrateError.message }}</p>
+   * ```
    */
-  readonly hydrateError: Readonly<Ref<unknown | null>>
+  readonly hydrateError: ValidationError | null
 
   /**
    * Re-fire the captured `defaultValues` factory and re-apply its

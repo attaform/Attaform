@@ -9,7 +9,13 @@ import type {
 import { PERSISTENCE_KEY_PREFIX } from '../defaults'
 import { __DEV__ } from '../dev'
 import { isPlainRecord, setAtPath, getAtPath } from '../path-walker'
-import { segmentsForPathKey, type Path, type PathKey, type Segment } from '../paths'
+import {
+  pathKeyToDotted,
+  segmentsForPathKey,
+  type Path,
+  type PathKey,
+  type Segment,
+} from '../paths'
 
 /**
  * Public-ish handle returned by `wirePersistence`. Lives on
@@ -115,12 +121,13 @@ export type PersistedPayload<Form> = {
     readonly schemaErrors?: ReadonlyArray<readonly [string, ValidationError[]]>
     readonly userErrors?: ReadonlyArray<readonly [string, ValidationError[]]>
     /**
-     * Path keys that were in the form's `blankPaths` set at
-     * serialisation time. Optional — older v=2 envelopes don't carry it,
-     * and forms with no blank paths skip the field too.
-     * Replayed into the reactive Set on the next mount so an accidental
-     * refresh preserves the user's "displayed empty" state across
-     * sessions. Introduced in envelope v=3.
+     * Dotted public paths that were in the form's `blankPaths` set at
+     * serialisation time. Optional — forms with no blank paths skip
+     * the field. Replayed into the reactive Set on the next mount so
+     * an accidental refresh preserves the user's "displayed empty"
+     * state across sessions. Introduced in envelope v=3; the on-disk
+     * shape switched from canonical `PathKey` JSON to dotted strings
+     * in v=5.
      */
     readonly blankPaths?: ReadonlyArray<string>
   }
@@ -140,8 +147,13 @@ export type PersistedPayload<Form> = {
  * v=4: `ValidationError` gained a required `code` field. Persisted
  * `schemaErrors` / `userErrors` now include `code`; v=3 payloads are
  * dropped with a one-time dev-warn.
+ *
+ * v=5: `data.blankPaths` switched from canonical `PathKey` JSON
+ * strings (`'["profile","bio"]'`) to dotted public-path strings
+ * (`'profile.bio'`), matching the path notation everywhere else in
+ * the public API. v=4 payloads are dropped with a one-time dev-warn.
  */
-export const PERSISTED_ENVELOPE_VERSION = 4
+export const PERSISTED_ENVELOPE_VERSION = 5
 
 /**
  * `value` is expected to be a raw `PersistedPayload` (parsed JSON or
@@ -199,10 +211,19 @@ export function buildPersistedPayload<Form>(
   // The blank list is part of the form's restorable UI
   // state — its visibility doesn't depend on the `include` mode
   // (which only governs whether errors come along for the ride).
-  // Skip the field when the set is empty so v=3 round-trips with
+  // Skip the field when the set is empty so v=5 round-trips with
   // unchanged minimal payload size for forms that never go empty.
-  const transientList: ReadonlyArray<string> | undefined =
-    blankPaths !== undefined && blankPaths.size > 0 ? [...blankPaths] : undefined
+  // Convert PathKey → dotted at the I/O boundary so the on-disk
+  // shape matches the rest of the public path notation.
+  let transientList: ReadonlyArray<string> | undefined
+  if (blankPaths !== undefined && blankPaths.size > 0) {
+    const dotted: string[] = []
+    for (const key of blankPaths) {
+      const d = pathKeyToDotted(key as PathKey)
+      if (d !== null) dotted.push(d)
+    }
+    transientList = dotted.length > 0 ? dotted : undefined
+  }
 
   if (include === 'form') {
     if (transientList === undefined) return { v: PERSISTED_ENVELOPE_VERSION, data: { form } }

@@ -52,6 +52,7 @@ export type {
   NextBranching,
   NextOption,
   NormalizedNext,
+  WizardFlow,
   WizardNavOptions,
   WizardOnError,
   WizardOnSubmit,

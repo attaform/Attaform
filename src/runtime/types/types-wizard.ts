@@ -325,6 +325,41 @@ export type WizardWarning = {
 }
 
 /**
+ * Static + runtime introspection surface returned by `wizard.flow`.
+ * Composes three views of the wizard's reachable graph and one reactive
+ * runtime tracker, so consumers can render sitemaps, breadcrumb trails,
+ * diagnostic panels, and step-counter UIs from one cohesive namespace.
+ *
+ *  - `entry`     — the form passed to `useWizard(entry)`. Identity-equal
+ *                  to that argument; immutable for the wizard's
+ *                  lifetime.
+ *  - `tree`      — recursive `WizardTreeNode` view rooted at `entry`.
+ *                  Suitable for sitemap rendering via a recursive Vue
+ *                  component; convergent paths duplicate by design.
+ *  - `allForms`  — BFS-ordered, deduped list of reachable forms. The
+ *                  same list exposed at `wizard.allForms`; mirrored
+ *                  here so `wizard.flow` is the single hand-off when a
+ *                  caller wants the full picture.
+ *  - `visited`   — reactive runtime history. Push order matches the
+ *                  user's navigation sequence; `back()` does not pop the
+ *                  trail (it records the move forward into the
+ *                  previous step), so the array is the audit log, not
+ *                  the back-stack.
+ *  - `diagnose()` — frozen snapshot of construction-time graph
+ *                  warnings. Cycles throw at construction so they do
+ *                  not appear in this list; `empty-forms` and
+ *                  `single-step` do. Cheap call; consumers can hook
+ *                  the result into a dev-only warning panel.
+ */
+export type WizardFlow = {
+  readonly entry: AnyForm
+  readonly tree: WizardTreeNode
+  readonly allForms: readonly AnyForm[]
+  readonly visited: readonly FormKey[]
+  readonly diagnose: () => readonly WizardWarning[]
+}
+
+/**
  * Return shape of `useWizard(entry, options)`. Every reactive read is
  * a plain getter (no `.value`) — `wizard.current`, `wizard.progress`,
  * `wizard.allErrors` track inside `computed` / template effects
@@ -391,6 +426,13 @@ export type WizardWarning = {
  *                     `submitting`, `submissionAttempts`) and calls
  *                     `form.reset()` on every reachable form. Returns
  *                     the wizard to its construction state.
+ *   - `flow`        — introspection namespace bundling the static graph
+ *                     (`entry`, `tree`, `allForms`), runtime navigation
+ *                     history (`visited`), and the diagnostic warnings
+ *                     channel (`diagnose()`). The same data backs the
+ *                     top-level `entry` / `allForms` aliases — the
+ *                     namespace is the structured hand-off for sitemap
+ *                     and diagnostic UIs.
  */
 export type UseWizardReturnType = {
   readonly current: string | undefined
@@ -416,4 +458,5 @@ export type UseWizardReturnType = {
     onError?: WizardOnError
   ) => (event?: Event) => Promise<void>
   readonly reset: () => void
+  readonly flow: WizardFlow
 }

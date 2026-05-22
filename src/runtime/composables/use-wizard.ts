@@ -9,12 +9,14 @@ import type {
   AggregateError,
   AnyForm,
   FormStatus,
+  WizardFlow,
   WizardHistoryConfig,
   WizardNavOptions,
   WizardOnError,
   WizardOnSubmit,
   WizardOptions,
   WizardSubmitContext,
+  WizardWarning,
   UseWizardReturnType,
 } from '../types/types-wizard'
 import type { OnInvalidSubmitPolicy, ValidationResponse } from '../types/types-api'
@@ -127,6 +129,15 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     initialKey = entry.key
   }
   const current = ref<string>(initialKey)
+
+  // Runtime navigation audit log. Seeded with the initial step so the
+  // trail always starts somewhere, then appended in `setCurrent` on every
+  // distinct navigation (next / back / goTo / popstate). The setCurrent
+  // identity-guard already drops no-op writes, so consecutive duplicates
+  // never reach the push site. Append-only — back() does not pop the
+  // trail; the array is the audit log the consumer reads for breadcrumbs
+  // and tour-style "where you've been" UI.
+  const visited = ref<string[]>([initialKey])
 
   // Replace the URL so it always reflects the active step on mount —
   // idempotent when the URL already named the correct key.
@@ -355,6 +366,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     const priorKey = current.value
     if (priorKey === nextKey) return
     current.value = nextKey
+    visited.value.push(nextKey)
     // Kick the new step's activation. `activate()` is idempotent — if
     // the form is already resolved (sync defaults / hydrated payload /
     // earlier visit re-using state), this returns a resolved promise
@@ -697,11 +709,28 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     teardownCompleteWatchers()
     complete.value = false
     submissionAttempts.value = 0
+    visited.value = [current.value]
     for (const form of forms) {
       const full = form as unknown as SubmissionSourceForm
       if (typeof full.reset === 'function') full.reset()
     }
   }
+
+  // Construction-time warnings frozen at construction; runtime
+  // anomalies (out-of-forms pick returns) throw from `normalize-next`
+  // and are NOT collected here. Same array identity on every call so
+  // consumers can memoize / referentially compare.
+  const diagnose = (): readonly WizardWarning[] => graph.warnings
+
+  const flow: WizardFlow = Object.freeze({
+    entry,
+    tree: graph.tree,
+    allForms: forms,
+    get visited(): readonly string[] {
+      return visited.value
+    },
+    diagnose,
+  } as WizardFlow)
 
   return {
     entry,
@@ -714,6 +743,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
     goTo,
     handleSubmit,
     reset,
+    flow,
     get current(): string | undefined {
       return current.value
     },

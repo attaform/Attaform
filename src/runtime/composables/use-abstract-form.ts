@@ -258,11 +258,11 @@ export function useAbstractForm<
     existing ?? buildFreshState<Form, GetValueFormType>(key, resolvedSchema, merged, registry)
 
   // Wire function-form `defaultValues` once per FormStore. Sync inputs
-  // already applied at construction; async inputs settle the factory
-  // on a microtask so a synchronously-following `useStepper` claim has
-  // its chance to defer the firing (PR 2). Subsequent `useForm({ key })`
-  // calls that resolve to the same store observe the in-flight state
-  // via `state.isHydrating` rather than re-firing.
+  // already applied at construction; async inputs stay dormant until
+  // the first reactive interaction calls `state.activate()` through
+  // the public API surface. Subsequent `useForm({ key })` calls that
+  // resolve to the same store observe the in-flight state via
+  // `state.hydrating` rather than re-firing.
   if (existing !== undefined) {
     // Reusing a live store — its `defaultsResolved` already reflects
     // the first caller's effective state. Don't overwrite it.
@@ -280,49 +280,32 @@ export function useAbstractForm<
       // Server already resolved the factory; client just consumed the
       // payload at `buildFreshState`. Skip the re-fetch — and the
       // resolved payload IS the effective default state.
-      state.isHydrating.value = false
+      state.hydrating.value = false
       state.defaultsResolved.value = true
     } else if (registry.ssr) {
-      // Server side: run the factory inside `onServerPrefetch` so the
-      // framework's SSR awaiter waits for resolution before the
-      // payload is serialised. Resolved values bake into the
-      // hydration transfer state and the client never re-fetches.
-      // Stepper claims (synchronous, after this `useForm` call but
-      // before the prefetch flush) can mark this form deferred — in
-      // which case skip the server-side fetch entirely. The client
-      // will fire on activation.
-      state.isHydrating.value = true
+      // Server side: factory dispatch is coordinated through the
+      // registry's SSR prefetch queue. `onServerPrefetch` is registered
+      // unconditionally; it drains the queue by calling
+      // `state.activate()` only when this form's key is enqueued (and
+      // not skipped). The positive triggers that enqueue: explicit
+      // `form.activate()` in setup, the wizard's current-step
+      // auto-mark, the Phase 3 compile-time `__ssrAccessed` injection,
+      // or any gated reactive read during setup (which routes through
+      // `state.activate()`). A form that nobody touched stays dormant
+      // — the factory does not run, and the payload serialises the
+      // schema's slim defaults.
+      if (configuration.__ssrAccessed === true) {
+        registry.enqueuePrefetch(key)
+      }
       onServerPrefetch(() => {
-        state.factorySettleStarted.value = true
-        const handle = state.stepperHandle.value
-        if (handle !== undefined && handle.shouldDefer()) {
-          state.isHydrating.value = false
-          return
-        }
-        return state.rehydrate()
-      })
-    } else {
-      // CSR: microtask defer leaves a synchronously-following
-      // `useStepper` claim a frame to register a deferral before the
-      // factory fires. When a stepper has marked this form deferred,
-      // bail and register an activation callback that runs the factory
-      // once the step becomes current. Otherwise `state.rehydrate`
-      // handles the settle-and-apply cycle (same path as the
-      // imperative `form.rehydrate()`).
-      state.isHydrating.value = true
-      void Promise.resolve().then(() => {
-        state.factorySettleStarted.value = true
-        const handle = state.stepperHandle.value
-        if (handle !== undefined && handle.shouldDefer()) {
-          state.isHydrating.value = false
-          handle.registerActivation(() => {
-            void state.rehydrate()
-          })
-          return
-        }
-        return state.rehydrate()
+        if (!registry.shouldPrefetch(key)) return
+        return state.activate()
       })
     }
+    // CSR: factory stays dormant until the first reactive interaction
+    // calls `state.activate()` through the public API surface. The
+    // microtask defer that used to fire here is gone — lazy-by-default
+    // is the new contract.
   }
 
   // Ref-count this consumer. When the component's effect scope tears down,
@@ -700,6 +683,23 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       ? { debounceMs: (configuration as { debounceMs?: number }).debounceMs }
       : {}),
     ssr: registry.ssr,
+    // Server-only: bind the SSR prefetch coordination handles. `enqueue`
+    // records intent on every `state.activate()` so a wizard skip-list
+    // override or a future transform mark has a consistent set to diff
+    // against; `shouldFire` lets the activate path bail when the
+    // wizard explicitly skipped this key — even an explicit
+    // `form.activate()` defers to the wizard's privacy backstop on the
+    // server.
+    ...(registry.ssr
+      ? {
+          ssrPrefetch: {
+            enqueue: (): void => {
+              registry.enqueuePrefetch(key)
+            },
+            shouldFire: (): boolean => registry.shouldPrefetch(key),
+          },
+        }
+      : {}),
     ...(configuration.rememberVariants !== undefined
       ? { rememberVariants: configuration.rememberVariants }
       : {}),

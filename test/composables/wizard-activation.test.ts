@@ -1,0 +1,165 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from 'vitest'
+import { createApp, defineComponent, h, type App } from 'vue'
+import { z } from 'zod'
+import { useForm } from '../../src/zod'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
+import { createAttaform } from '../../src/runtime/core/plugin'
+import { waitUntil } from '../utils/form-harness'
+
+/**
+ * Activation-lifecycle contract for `useWizard`. A form's async
+ * `defaultValues` factory does NOT fire on mount when the form is
+ * claimed by a wizard as non-current. It fires on the first
+ * navigation into that step. Re-activation does NOT re-fire (a
+ * factory is a hydration source, not a refresh hook — chain
+ * `form.rehydrate()` to force a re-load).
+ *
+ * The motivating privacy story: a 25-step public-housing form where
+ * Step 14 needs SSN. The wizard guarantees Step 14's factory only
+ * runs once the user reaches Step 14 — even if the consumer wires
+ * all forms in setup.
+ */
+
+const schemaA = z.object({ a: z.string() })
+const schemaB = z.object({ b: z.string() })
+const schemaC = z.object({ c: z.string() })
+
+function mountHarness<R>(setup: () => R): { app: App; result: R } {
+  const handle: { result?: R } = {}
+  const App = defineComponent({
+    setup() {
+      handle.result = setup()
+      return () => h('div')
+    },
+  })
+  const app = createApp(App).use(createAttaform())
+  app.config.warnHandler = () => {}
+  app.config.errorHandler = () => {}
+  app.mount(document.createElement('div'))
+  return { app, result: handle.result as R }
+}
+
+describe('useWizard — async-defaults activation lifecycle', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('does not fire a non-current form factory on mount', async () => {
+    let aCalls = 0
+    let bCalls = 0
+    let cCalls = 0
+    const { app, result } = mountHarness(() => {
+      const a = useForm({
+        schema: schemaA,
+        key: 'wizard-act-a',
+        defaultValues: () => {
+          aCalls += 1
+          return Promise.resolve({ a: 'A' })
+        },
+      })
+      const b = useForm({
+        schema: schemaB,
+        key: 'wizard-act-b',
+        defaultValues: () => {
+          bCalls += 1
+          return Promise.resolve({ b: 'B' })
+        },
+      })
+      const c = useForm({
+        schema: schemaC,
+        key: 'wizard-act-c',
+        defaultValues: () => {
+          cCalls += 1
+          return Promise.resolve({ c: 'C' })
+        },
+      })
+      return { wizard: useWizard([a, b, c], {}), a, b, c }
+    })
+    apps.push(app)
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
+    expect(aCalls).toBe(1)
+    expect(bCalls).toBe(0)
+    expect(cCalls).toBe(0)
+    // Under lazy activation, reading `result.b.hydrating` would
+    // itself activate B's factory ("observing factory state implies
+    // use"). The call-count assertions above are the authoritative
+    // dormancy check.
+  })
+
+  it('fires the factory on first activation', async () => {
+    let bCalls = 0
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'wizard-act-2-a' })
+      const b = useForm({
+        schema: schemaB,
+        key: 'wizard-act-2-b',
+        defaultValues: () => {
+          bCalls += 1
+          return Promise.resolve({ b: 'B' })
+        },
+      })
+      return { wizard: useWizard([a, b], {}), a, b }
+    })
+    apps.push(app)
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
+    expect(bCalls).toBe(0)
+
+    result.wizard.next()
+    await waitUntil(() => (result.b.hydrating === false ? true : null))
+    expect(bCalls).toBe(1)
+    expect(result.b.values.b).toBe('B')
+  })
+
+  it('re-activation does NOT re-fire the factory', async () => {
+    let bCalls = 0
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'wizard-react-a' })
+      const b = useForm({
+        schema: schemaB,
+        key: 'wizard-react-b',
+        defaultValues: () => {
+          bCalls += 1
+          return Promise.resolve({ b: 'B' })
+        },
+      })
+      return { wizard: useWizard([a, b], {}), a, b }
+    })
+    apps.push(app)
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
+    result.wizard.next()
+    await waitUntil(() => (result.b.hydrating === false ? true : null))
+    expect(bCalls).toBe(1)
+    result.wizard.back()
+    result.wizard.next()
+    await Promise.resolve()
+    expect(bCalls).toBe(1)
+  })
+
+  it('form.rehydrate() re-fires the factory even from a deferred form', async () => {
+    let bCalls = 0
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'wizard-rehyd-a' })
+      const b = useForm({
+        schema: schemaB,
+        key: 'wizard-rehyd-b',
+        defaultValues: () => {
+          bCalls += 1
+          return Promise.resolve({ b: `B-${bCalls}` })
+        },
+      })
+      return { wizard: useWizard([a, b], {}), a, b }
+    })
+    apps.push(app)
+    await waitUntil(() => (result.a.hydrating === false ? true : null))
+    expect(bCalls).toBe(0)
+
+    await result.b.rehydrate()
+    expect(bCalls).toBe(1)
+    expect(result.b.values.b).toBe('B-1')
+
+    await result.b.rehydrate()
+    expect(bCalls).toBe(2)
+  })
+})

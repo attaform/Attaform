@@ -134,8 +134,19 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Undo & redo', to: '/docs/cross-cutting-state/undo-redo' },
       { title: 'Multi-tab sync', to: '/docs/cross-cutting-state/multi-tab-sync' },
       { title: 'injectForm', to: '/docs/cross-cutting-state/inject-form' },
-      { title: 'useStepper', to: '/docs/cross-cutting-state/use-stepper' },
       { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
+    ],
+  },
+  {
+    heading: 'Multistep flows',
+    links: [
+      { title: 'useWizard', to: '/docs/multistep/use-wizard' },
+      { title: 'Statuses', to: '/docs/multistep/statuses' },
+      { title: 'Browser history', to: '/docs/multistep/history' },
+      { title: 'SSR & the privacy invariant', to: '/docs/multistep/ssr' },
+      { title: 'Aggregates', to: '/docs/multistep/aggregates' },
+      { title: 'Lazy activation', to: '/docs/multistep/lazy-activation' },
+      { title: 'Patterns', to: '/docs/multistep/patterns' },
     ],
   },
   {

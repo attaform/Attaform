@@ -1,0 +1,517 @@
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type ComputedRef } from 'vue'
+import { useRegistry } from '../core/registry'
+import { resolveTrichotomy } from '../core/resolve-default-values'
+import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
+import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
+import type {
+  AggregateError,
+  AllValues,
+  AnyForm,
+  FormStatus,
+  KeysOf,
+  Statuses,
+  WizardHistoryConfig,
+  WizardNavOptions,
+  WizardOptions,
+  UseWizardReturnType,
+} from '../types/types-wizard'
+
+/** Pending sentinel returned by `wizard.statuses[key]` when the form hasn't
+ *  yet wired a FormStore (defensive — useWizard guards against this, but
+ *  the snapshot fallback keeps templates from crashing). */
+const PENDING_STATUS: FormStatus = {
+  valid: false,
+  dirty: false,
+  submitted: false,
+  errorCount: 0,
+}
+
+/** Shape we read off each participating form at runtime. Loosely typed
+ *  against `AnyForm` (which only requires `key`) — the runtime objects
+ *  returned by `useForm` always satisfy this richer shape. */
+type StatusSourceForm = {
+  readonly meta: {
+    readonly valid: boolean
+    readonly dirty: boolean
+    readonly submitted: boolean
+    readonly errorCount: number
+    readonly errors: ReadonlyArray<{
+      readonly path: ReadonlyArray<string | number>
+      readonly message: string
+      readonly code?: string
+    }>
+  }
+  readonly values: unknown
+}
+
+/**
+ * Multistep-form orchestrator. Composes existing `useForm` instances
+ * into a wizard with navigation, status aggregation, browser history,
+ * and lazy activation (so a step's async `defaultValues` factory only
+ * fires once the step becomes current).
+ *
+ * Degradation behavior — the wizard never throws on construction or
+ * navigation. Malformed inputs surface as dev warns + sensible
+ * fallbacks so a third-party library wired into a consumer's
+ * checkout or signup wizard can't crash the app:
+ *   - Empty forms array          → no-op wizard handle (current
+ *                                   undefined, count 0, navigation
+ *                                   methods warn + no-op).
+ *   - Form with `key: ''`        → filtered out, warn for each.
+ *   - Duplicate keys             → keep the first occurrence, drop
+ *                                   the rest, warn for each.
+ *   - `defaultStatuses` with an
+ *     unknown key                → ignore that entry, warn.
+ *   - `goTo(unknownKey)`         → silent no-op + warn (matches the
+ *                                   already-existing `next`/`back`
+ *                                   past-bounds behavior).
+ *
+ * Each form gets a ref-count via `registry.trackConsumer(key)`. This
+ * pins the FormStore for the wizard's lifetime — so a step's state
+ * survives even when its component is unmounted between visits
+ * (v-if pattern). The ref is released on `onScopeDispose`.
+ */
+export function useWizard<Forms extends readonly AnyForm[]>(
+  inputForms: Forms,
+  options: WizardOptions<Forms> = {}
+): UseWizardReturnType<Forms> {
+  // Filter the input to the wizard's participating set. Empty-key and
+  // duplicate-key forms are dropped (with a dev warn) rather than
+  // throwing — a third-party library should not crash a consumer's
+  // app for shapes that are clearly a mistake.
+  const seenKeys = new Set<string>()
+  const filteredList: AnyForm[] = []
+  let droppedEmptyKey = 0
+  const droppedDuplicate: string[] = []
+  for (const form of inputForms) {
+    if (form.key === '') {
+      droppedEmptyKey += 1
+      continue
+    }
+    if (seenKeys.has(form.key)) {
+      droppedDuplicate.push(form.key)
+      continue
+    }
+    seenKeys.add(form.key)
+    filteredList.push(form)
+  }
+  if (droppedEmptyKey > 0) {
+    console.warn(
+      `[attaform] useWizard: ${droppedEmptyKey} form(s) had an empty key and were filtered out. Each step needs a non-empty key.`
+    )
+  }
+  if (droppedDuplicate.length > 0) {
+    console.warn(
+      `[attaform] useWizard: duplicate form keys filtered out (kept the first occurrence of each): ${droppedDuplicate.map((k) => `"${k}"`).join(', ')}.`
+    )
+  }
+  if (inputForms.length === 0) {
+    console.warn(
+      '[attaform] useWizard called with an empty forms array. Returning a no-op wizard handle.'
+    )
+  }
+  const forms = filteredList as unknown as Forms
+
+  const formKeys = filteredList.map((form) => form.key)
+
+  // Resolve history config. `history` omitted → default on with the
+  // standard `step` param. `history: true` → same defaults. `false` →
+  // primitive replaced with a no-op (no DOM access, no popstate
+  // subscription).
+  const historyOption = options.history
+  const historyConfig: Required<WizardHistoryConfig> = {
+    enabled: historyOption !== false,
+    param:
+      typeof historyOption === 'object' && historyOption !== null
+        ? (historyOption.param ?? 'step')
+        : 'step',
+  }
+  const wizardHistory = historyConfig.enabled
+    ? createWizardHistory(historyConfig.param)
+    : NOOP_WIZARD_HISTORY
+  // Resolve initial step. Priority: `getServerActiveStep()` (SSR
+  // source of truth, returned identically on client) → URL
+  // `?step=<key>` (reload preservation when no getter is wired) →
+  // `forms[0]` fallback. Unknown keys at any level fall through so a
+  // stale link can't crash construction. When no forms participate
+  // (`useWizard([])`), `initialKey` stays `undefined` and the wizard
+  // surfaces as a no-op handle.
+  const fromGetter = options.getServerActiveStep?.()
+  const fromUrl = wizardHistory.read()
+  let initialKey: KeysOf<Forms> | undefined
+  if (formKeys.length === 0) {
+    initialKey = undefined
+  } else if (fromGetter !== undefined && formKeys.includes(fromGetter as string)) {
+    initialKey = fromGetter as KeysOf<Forms>
+  } else if (fromUrl !== undefined && formKeys.includes(fromUrl)) {
+    initialKey = fromUrl as KeysOf<Forms>
+  } else {
+    initialKey = formKeys[0] as KeysOf<Forms>
+  }
+  const current = ref<KeysOf<Forms> | undefined>(initialKey)
+
+  // Replace the URL so it always reflects the active step on mount —
+  // idempotent when the URL already named the correct key. Skipped
+  // for the no-op (empty forms) case so we don't write garbage.
+  if (initialKey !== undefined) {
+    wizardHistory.replace(initialKey as string)
+  }
+
+  const registry = useRegistry()
+
+  // SSR prefetch coordination — the wizard's privacy contract for
+  // non-current steps. On the server, enqueue the initial step (so its
+  // factory runs inside the form's `onServerPrefetch` hook) and
+  // explicitly skip every other step (so a transform mark or stray
+  // `form.activate()` on a non-current step cannot leak that step's
+  // factory). The client path goes through the per-form `activate()`
+  // calls below — `skipPrefetch` is a no-op there since `shouldPrefetch`
+  // is only read by the SSR drain.
+  if (registry.ssr) {
+    for (const key of formKeys) {
+      if (key === initialKey) {
+        registry.enqueuePrefetch(key)
+      } else {
+        registry.skipPrefetch(key)
+      }
+    }
+  }
+
+  // Activate the initial step's form synchronously. On the client this
+  // fires the captured async factory immediately; on the server it
+  // routes through `state.activate()` which both records the enqueue
+  // intent and (via `onServerPrefetch`) drains the queue with the
+  // actual factory call. Other steps stay dormant until navigation
+  // activates them. No-op when the wizard has no forms.
+  if (initialKey !== undefined) {
+    const initialIdx = formKeys.indexOf(initialKey as string)
+    if (initialIdx !== -1) {
+      const initialForm = forms[initialIdx] as unknown as { activate?: () => Promise<void> }
+      if (typeof initialForm.activate === 'function') {
+        void initialForm.activate()
+      }
+    }
+  }
+
+  // Resolve `defaultStatuses` (the trichotomy mirror). Sync values
+  // apply immediately at construction; async factories register and
+  // populate `seedRef` on resolution. While the async seed is
+  // pending, the status falls back to the pending sentinel.
+  const seedRef = ref<Statuses<Forms> | undefined>(undefined)
+  const seedInput = options.defaultStatuses as
+    | Statuses<Forms>
+    | (() => Statuses<Forms>)
+    | (() => Promise<Statuses<Forms>>)
+    | undefined
+  if (seedInput !== undefined) {
+    const resolved = resolveTrichotomy(seedInput)
+    if (resolved.kind === 'sync') {
+      seedRef.value = resolved.value
+    } else {
+      const eager = resolved.factory()
+      if (eager instanceof Promise) {
+        void eager.then((value) => {
+          seedRef.value = value as Statuses<Forms>
+        })
+      } else {
+        seedRef.value = eager as Statuses<Forms>
+      }
+    }
+  }
+  // Filter unknown seed keys with a dev warn. Likely a typo on the
+  // consumer's side; the wizard ignores the entry and keeps the rest.
+  if (seedRef.value !== undefined) {
+    const unknownSeedKeys: string[] = []
+    const seedMap = seedRef.value as Record<string, FormStatus>
+    for (const seedKey of Object.keys(seedMap)) {
+      if (!seenKeys.has(seedKey)) unknownSeedKeys.push(seedKey)
+    }
+    if (unknownSeedKeys.length > 0) {
+      console.warn(
+        `[attaform] useWizard.defaultStatuses: ignoring unknown key(s) ${unknownSeedKeys
+          .map((k) => `"${k}"`)
+          .join(', ')}. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
+      )
+      const cleaned: Record<string, FormStatus> = {}
+      for (const seedKey of Object.keys(seedMap)) {
+        if (seenKeys.has(seedKey)) cleaned[seedKey] = seedMap[seedKey] as FormStatus
+      }
+      seedRef.value = cleaned as Statuses<Forms>
+    }
+  }
+
+  // Build per-form FormStatus computeds — each tracks its participating
+  // form's `meta` reactively. Resolution priority:
+  //   1. store.defaultsResolved === true → derive from form.meta
+  //   2. else seed value for this key → frozen seed
+  //   3. else → pending sentinel
+  // `defaultsResolved` is the right gate (not `hydrating`) because
+  // dormant lazy forms have `hydrating: false` BEFORE activation —
+  // the factory hasn't fired, so meta is the trivial pending shape
+  // rather than real data.
+  const statusComputeds: Record<string, ComputedRef<FormStatus>> = {}
+  for (let i = 0; i < forms.length; i += 1) {
+    const form = forms[i] as AnyForm
+    const source = form as unknown as StatusSourceForm
+    const key = form.key
+    statusComputeds[key] = computed<FormStatus>(() => {
+      const store = registry.forms.get(key)
+      const resolved = store?.defaultsResolved.value === true
+      const meta = source.meta
+      if (resolved && meta !== undefined && meta !== null) {
+        return {
+          valid: meta.valid,
+          dirty: meta.dirty,
+          submitted: meta.submitted,
+          errorCount: meta.errorCount,
+        }
+      }
+      const seedMap = seedRef.value as Record<string, FormStatus> | undefined
+      if (seedMap !== undefined && Object.hasOwn(seedMap, key)) {
+        return seedMap[key] as FormStatus
+      }
+      return PENDING_STATUS
+    })
+  }
+  const statuses = buildWizardStatusesProxy<Statuses<Forms>>(
+    statusComputeds as Record<keyof Statuses<Forms>, ComputedRef<FormStatus>>
+  )
+
+  // `onStatusChange` handler captured once for both the per-form
+  // material-change watch AND the synthetic nav-away invocation in
+  // `setCurrent` below.
+  const statusChangeHandler = options.onStatusChange
+
+  // Wire per-form material-change watches. Fires only when the
+  // 4-scalar tuple (\`valid\`, \`dirty\`, \`submitted\`,
+  // \`errorCount\`) actually moves; identical writes don't re-fire.
+  // Async returns are fire-and-forget — navigation is never gated on
+  // the handler's promise. A separate \`onBeforeLeave\` (future) would
+  // cover nav-blocking guards.
+  if (statusChangeHandler !== undefined) {
+    for (let i = 0; i < forms.length; i += 1) {
+      const form = forms[i] as AnyForm
+      const key = form.key
+      const statusComputed = statusComputeds[key]
+      if (statusComputed === undefined) continue
+      watch(statusComputed, (next, prev) => {
+        if (
+          prev !== undefined &&
+          prev.valid === next.valid &&
+          prev.dirty === next.dirty &&
+          prev.submitted === next.submitted &&
+          prev.errorCount === next.errorCount
+        ) {
+          return
+        }
+        void statusChangeHandler(next, form as unknown as Forms[number])
+      })
+    }
+  }
+
+  if (getCurrentScope() !== undefined) {
+    const releases: Array<() => void> = []
+    for (const key of formKeys) {
+      releases.push(registry.trackConsumer(key))
+    }
+    onScopeDispose(() => {
+      for (const release of releases) release()
+      wizardHistory.dispose()
+    })
+  }
+
+  function indexOf(key: string): number {
+    return formKeys.indexOf(key)
+  }
+
+  // Cross-form aggregates. `allValues` exposes each form's existing
+  // values proxy under its key — read-only by way of the proxies'
+  // own traps. `allErrors` is a computed flat list ordered by forms
+  // array, then per-form order.
+  const allValuesObject: Record<string, unknown> = {}
+  for (let i = 0; i < forms.length; i += 1) {
+    const form = forms[i] as AnyForm
+    const source = form as unknown as StatusSourceForm
+    Object.defineProperty(allValuesObject, form.key, {
+      enumerable: true,
+      configurable: false,
+      get: () => source.values,
+    })
+  }
+  const allValues = allValuesObject as AllValues<Forms>
+
+  // Progress — default `valid_count / total` (normalised) or override.
+  // Wrapped in a computed so reactivity follows the underlying
+  // statuses (default) or whatever reactive sources the override
+  // touches.
+  const progressOverride = options.progress
+  const progress = computed<number>(() => {
+    if (progressOverride !== undefined) {
+      return progressOverride(forms)
+    }
+    if (forms.length === 0) return 0
+    let valid = 0
+    for (let i = 0; i < forms.length; i += 1) {
+      const form = forms[i] as AnyForm
+      const status = statusComputeds[form.key]?.value
+      if (status?.valid === true) valid += 1
+    }
+    return valid / forms.length
+  })
+
+  const allErrors = computed<readonly AggregateError[]>(() => {
+    const flat: AggregateError[] = []
+    for (let i = 0; i < forms.length; i += 1) {
+      const form = forms[i] as AnyForm
+      const store = registry.forms.get(form.key)
+      if (store?.defaultsResolved.value !== true) continue
+      const source = form as unknown as StatusSourceForm
+      const errors = source.meta?.errors
+      if (errors === undefined) continue
+      for (const error of errors) {
+        const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
+          formKey: form.key,
+          path: error.path,
+          message: error.message,
+        }
+        if (error.code !== undefined) entry.code = error.code
+        flat.push(entry)
+      }
+    }
+    return flat
+  })
+
+  /**
+   * Internal navigation. `historyMode` controls how the change is
+   * reflected in `window.history`:
+   *   - `'push'` (default for nav calls) — new history entry.
+   *   - `'replace'` — overwrite the current entry (for
+   *     `goTo({ replace: true })`).
+   *   - `'silent'` — no write. Used by the popstate handler: the
+   *     browser has already moved the entry, writing again would
+   *     double-record.
+   */
+  function setCurrent(
+    nextKey: KeysOf<Forms>,
+    historyMode: 'push' | 'replace' | 'silent' = 'push'
+  ): void {
+    const priorKey = current.value as KeysOf<Forms>
+    if (priorKey === nextKey) return
+    current.value = nextKey
+    // Kick the new step's activation. `activate()` is idempotent — if
+    // the form is already resolved (sync defaults / hydrated payload /
+    // earlier visit re-using state), this returns a resolved promise
+    // and nothing re-fires. On the server, `setCurrent` is uncommon
+    // (initial step resolution wires the SSR queue at construction);
+    // on the client this is the primary firing site for async-defaults
+    // factories on navigation.
+    const nextIdx = formKeys.indexOf(nextKey as string)
+    if (nextIdx !== -1) {
+      const nextForm = forms[nextIdx] as unknown as { activate?: () => Promise<void> }
+      if (typeof nextForm.activate === 'function') {
+        void nextForm.activate()
+      }
+    }
+    if (historyMode === 'push') wizardHistory.push(nextKey as string)
+    else if (historyMode === 'replace') wizardHistory.replace(nextKey as string)
+    // Synthetic nav-away invocation. `onStatusChange` fires for the
+    // form being left, regardless of whether anything materially
+    // changed — useful for autosave-on-step-leave patterns.
+    if (statusChangeHandler !== undefined) {
+      const priorIdx = formKeys.indexOf(priorKey as string)
+      if (priorIdx !== -1) {
+        const priorForm = forms[priorIdx] as AnyForm
+        const priorStatus = statusComputeds[priorKey as string]?.value
+        if (priorStatus !== undefined) {
+          void statusChangeHandler(priorStatus, priorForm as unknown as Forms[number])
+        }
+      }
+    }
+  }
+
+  // Browser back/forward → restore current from URL. The handler is a
+  // no-op when the URL no longer names a known key (consumer linked
+  // outside the wizard, or popped past the original entry).
+  wizardHistory.subscribe((key) => {
+    if (key === undefined) return
+    if (!seenKeys.has(key)) return
+    setCurrent(key as KeysOf<Forms>, 'silent')
+  })
+
+  function next(navOptions?: WizardNavOptions): void {
+    if (formKeys.length === 0) {
+      console.warn('[attaform] useWizard.next(): no forms in this wizard. Ignoring.')
+      return
+    }
+    const idx = indexOf(current.value as string)
+    if (idx === formKeys.length - 1) {
+      console.warn(
+        `[attaform] useWizard.next(): already on the last step ("${current.value as string}"). Disable the button at the end of the wizard.`
+      )
+      return
+    }
+    setCurrent(
+      formKeys[idx + 1] as KeysOf<Forms>,
+      navOptions?.replace === true ? 'replace' : 'push'
+    )
+  }
+
+  function back(navOptions?: WizardNavOptions): void {
+    if (formKeys.length === 0) {
+      console.warn('[attaform] useWizard.back(): no forms in this wizard. Ignoring.')
+      return
+    }
+    const idx = indexOf(current.value as string)
+    if (idx === 0) {
+      console.warn(
+        `[attaform] useWizard.back(): already on the first step ("${current.value as string}"). Disable the button at the start of the wizard.`
+      )
+      return
+    }
+    setCurrent(
+      formKeys[idx - 1] as KeysOf<Forms>,
+      navOptions?.replace === true ? 'replace' : 'push'
+    )
+  }
+
+  function goTo(key: KeysOf<Forms>, navOptions?: WizardNavOptions): void {
+    if (!seenKeys.has(key as string)) {
+      console.warn(
+        `[attaform] useWizard.goTo("${String(key)}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}. Ignoring.`
+      )
+      return
+    }
+    setCurrent(key, navOptions?.replace === true ? 'replace' : 'push')
+  }
+
+  return {
+    forms,
+    count: forms.length,
+    statuses,
+    allValues,
+    next,
+    back,
+    goTo,
+    get current(): KeysOf<Forms> | undefined {
+      return current.value as KeysOf<Forms> | undefined
+    },
+    get activeForm(): Forms[number] | undefined {
+      const key = current.value
+      if (key === undefined) return undefined
+      const idx = formKeys.indexOf(key as string)
+      if (idx === -1) return undefined
+      return forms[idx] as Forms[number]
+    },
+    get activeIndex(): number {
+      const key = current.value
+      if (key === undefined) return -1
+      return formKeys.indexOf(key as string)
+    },
+    get allErrors(): readonly AggregateError[] {
+      return allErrors.value
+    },
+    get progress(): number {
+      return progress.value
+    },
+  } as UseWizardReturnType<Forms>
+}

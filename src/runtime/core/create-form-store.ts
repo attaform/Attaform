@@ -333,7 +333,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * `useForm({ key })` call that resolves to this store — the second
    * caller sees the first caller's hydration state.
    */
-  readonly isHydrating: Ref<boolean>
+  readonly hydrating: Ref<boolean>
   /**
    * Error from the most recent function-form `defaultValues` factory.
    * Normalized to a `ValidationError` (code `atta:hydration-failed`) so the
@@ -348,41 +348,43 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly defaultValuesFactory: Ref<(() => unknown | Promise<unknown>) | undefined>
   /**
-   * `true` once `useAbstractForm`'s settle path has started running
-   * the captured factory (CSR microtask body or
-   * `onServerPrefetch`'s SSR body). Read by `useStepper`'s
-   * late-registration guard: if a stepper-claimed form has settled
-   * before the claim arrived, the defer-claim contract can't honor
-   * the privacy guarantee and we throw `StepperLateRegistrationError`.
-   */
-  readonly factorySettleStarted: Ref<boolean>
-  /**
    * `true` once the form's effective defaults have been applied —
    * sync `defaultValues` at construction, or async factory whose
-   * settle completed. Stays `false` for deferred (stepper-claimed,
-   * non-current) forms until they activate. Read by `useStepper` to
-   * decide whether seed status or live meta should surface.
+   * settle completed. Stays `false` for dormant lazy forms until they
+   * activate. Read by `useWizard` to decide whether seed status or
+   * live meta should surface.
    */
   readonly defaultsResolved: Ref<boolean>
   /**
-   * Bridge populated by `useStepper` when this form participates in a
-   * stepper. `useAbstractForm.settle` consults `shouldDefer()` before
-   * firing the captured async-defaults factory: if `true`, settle
-   * bails and registers an activation callback that fires the factory
-   * once the step becomes current. `undefined` when the form is
-   * standalone — no defer-claim, factory fires normally.
+   * `true` once the captured async factory has been kicked off (set
+   * synchronously by `activate()`, before the factory itself resolves).
+   * Distinct from `defaultsResolved`, which only flips after the factory
+   * settles. The pair lets the API surface tell "we've started" apart
+   * from "we're done."
    */
-  readonly stepperHandle: Ref<
-    | {
-        shouldDefer: () => boolean
-        registerActivation: (callback: () => void) => void
-      }
-    | undefined
-  >
+  readonly activated: Ref<boolean>
+  /**
+   * In-flight activation promise. Concurrent callers (cross-component
+   * SSR consumers, recursive factory reads, parallel `activate()`
+   * calls) receive the same promise, ensuring the factory runs once
+   * even under contention.
+   */
+  readonly activationPromise: Ref<Promise<void> | undefined>
+  /**
+   * Idempotent activation entrypoint. Fires the captured function-form
+   * `defaultValues` factory on first call and stores the in-flight
+   * promise. Subsequent calls return the same promise until the factory
+   * settles; thereafter calls return `Promise.resolve()`. Plain-value
+   * forms (no factory captured) always return a resolved promise. The
+   * public API surface routes all reactive interactions (getters and
+   * methods, except `key`) through this entrypoint so the form
+   * activates on first use.
+   */
+  activate(): Promise<void>
   /**
    * Re-fire the captured function-form `defaultValues` factory. Throws
    * synchronously when no factory was captured (plain-value form).
-   * Resolves after `isHydrating` flips back to `false`; consumers can
+   * Resolves after `hydrating` flips back to `false`; consumers can
    * `await form.rehydrate()` to gate UI on the fresh load.
    *
    * Does NOT touch dirty / touched / submit state — chain
@@ -828,10 +830,11 @@ export type FormStoreHydration = {
   readonly userErrors: ReadonlyArray<readonly [string, unknown]>
   readonly fields: ReadonlyArray<readonly [string, unknown]>
   /**
-   * Dotted public paths that were in the form's `blankPaths` set at
+   * Path keys that were in the form's `blankPaths` set at
    * SSR time. Replayed into the reactive Set on the client so the
    * "displayed empty" state survives the round-trip. Optional —
-   * missing means "no blank paths".
+   * pre-v3 envelopes don't carry it; missing means "no transient-
+   * empty paths".
    */
   readonly blankPaths?: ReadonlyArray<string>
 }
@@ -857,11 +860,12 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
   readonly debounceMs?: number | undefined
   readonly ssr?: boolean | undefined
   /**
-   * Dotted public paths to seed the `blankPaths` set with at
-   * construction. Only consulted when `hydration` is undefined —
-   * hydration data is authoritative when present (its own
-   * `blankPaths` field takes precedence). Used by
-   * `useAbstractForm`'s `unset`-symbol pre-pass.
+   * Path keys to seed the `blankPaths` set with at construction.
+   * Only consulted when `hydration` is undefined — hydration data is
+   * authoritative when present (its own `blankPaths` field
+   * takes precedence). Used by `useAbstractForm`'s `unset`-symbol pre-
+   * pass (commit 7 wires the producer); commit 2 plumbs the channel
+   * through with no callers yet.
    */
   readonly initialBlankPaths?: ReadonlyArray<string> | undefined
   /**
@@ -902,6 +906,30 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * when omitted, the library-default closure is used.
    */
   readonly segmentMatchesSensitive?: ((segment: Segment) => boolean) | undefined
+  /**
+   * SSR prefetch coordination, bound at `buildFreshState` time. Omitted
+   * on the client where the queue is never read.
+   *
+   * `enqueue()` records this form's key on the registry's prefetch set
+   * so any activation path (explicit `form.activate()`, gated reads
+   * through the public surface, recursive factory reads) signals
+   * intent to the SSR drain.
+   *
+   * `shouldFire()` returns whether `state.activate()` should actually
+   * fire the captured factory on the server. The wizard's negative
+   * override — `registry.skipPrefetch(key)` for non-current steps —
+   * flips this to `false` even when `enqueue()` has been called, so
+   * the privacy invariant for non-current steps survives a stray
+   * `form.activate()` or a future transform mark on a skipped step.
+   * Returns `true` for any form the wizard hasn't skipped, including
+   * plain-value forms where the factory branch is skipped anyway.
+   */
+  readonly ssrPrefetch?:
+    | {
+        enqueue: () => void
+        shouldFire: () => boolean
+      }
+    | undefined
 }
 
 /**
@@ -1064,6 +1092,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 ): FormStore<F, G> {
   const { formKey, schema, defaultValues, strict = true, hydration } = options
   const ssr = options.ssr === true
+  const ssrPrefetch = options.ssrPrefetch
   const rememberVariants: boolean = options.rememberVariants !== false
   const fieldValidationMode: ValidateOn = options.validateOn ?? 'change'
   // Sanitise the debounce value before threading it into `setTimeout`.
@@ -1328,15 +1357,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     hydration?.blankPaths ?? options.initialBlankPaths ?? []
   const blankPaths = reactive(new Set<PathKey>()) as Set<PathKey>
   const originalBlankPaths = new Set<PathKey>()
-  // Hydration / construction-time seeds carry dotted public paths
-  // (`'profile.bio'`) — convert each through `canonicalizePath` to
-  // the opaque `PathKey` used as the Set's actual key. The same
-  // conversion handles SSR snapshots and persistence payloads, which
-  // both land in this list via the `hydration` parameter.
   for (const raw of initialTransientList) {
-    const key = canonicalizePath(raw).key
-    blankPaths.add(key)
-    originalBlankPaths.add(key)
+    blankPaths.add(raw as PathKey)
+    originalBlankPaths.add(raw as PathKey)
   }
 
   // Per-form variant memory. On a discriminated-union switch the
@@ -1455,29 +1478,24 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const activeValidations = ref(0)
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
   // first call for this key: `defaultValuesFactory` captures the
-  // function-form input, `isHydrating` flips true until settle
+  // function-form input, `hydrating` flips true until settle
   // completes. Plain-value forms leave the refs at their zero state.
-  const isHydrating = ref(false)
+  const hydrating = ref(false)
   const hydrateError = ref<ValidationError | null>(null)
   const defaultValuesFactory = ref<(() => unknown | Promise<unknown>) | undefined>(undefined)
-  // Flipped to `true` once `useAbstractForm`'s settle microtask body
-  // starts running (CSR) or `onServerPrefetch` invokes the body
-  // (SSR). Read by `useStepper`'s late-registration guard.
-  const factorySettleStarted = ref(false)
   // `true` once the form's effective defaults have been applied —
   // either a sync `defaultValues` at construction, or an async
-  // factory whose settle completed. Stays `false` for deferred
-  // (stepper-claimed, non-current) forms until they activate. Read by
-  // `useStepper` to decide whether to surface seed status vs. live
-  // meta.
+  // factory whose settle completed. Stays `false` for dormant lazy
+  // forms until they activate. Read by `useWizard` to decide whether
+  // to surface seed status vs. live meta.
   const defaultsResolved = ref(false)
-  const stepperHandle = ref<
-    | {
-        shouldDefer: () => boolean
-        registerActivation: (callback: () => void) => void
-      }
-    | undefined
-  >(undefined)
+  // Lazy-activation state. `activated` flips `true` the moment the
+  // captured async factory has been kicked off (synchronously, before
+  // it resolves). `activationPromise` holds the in-flight settle so
+  // concurrent callers (cross-component SSR consumers, recursive
+  // factory reads) share a single fetch.
+  const activated = ref(false)
+  const activationPromise = ref<Promise<void> | undefined>(undefined)
   // Initial-validity gate. See `FormStore.firstValidationDone` JSDoc.
   // Only ASYNC-validating strict schemas need the gate: sync schemas
   // either surface refinement errors at construction (slim parse
@@ -2743,7 +2761,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // --- Rehydrate ---
   // Imperative re-fire of the captured function-form `defaultValues`
   // factory. Lives on the store so every consumer of the shared key
-  // sees one source of truth for `isHydrating`. Mirrors the
+  // sees one source of truth for `hydrating`. Mirrors the
   // construction-time settle path: factory result merges over the
   // current values via `mergeSparseHydration`, applies through
   // `applyFormReplacement({ hydration: true })` (history-module aware),
@@ -2761,11 +2779,56 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         '[attaform] form.rehydrate(): no defaultValues factory was captured. Configure useForm({ defaultValues: () => ... }) to enable rehydrate.'
       )
     }
-    return runFactoryAndApply(factory)
+    return fireFactory(factory)
+  }
+
+  // Shared kickoff path for `activate` and `rehydrate`. Both fire the
+  // captured factory, mark the form `activated`, and publish the
+  // in-flight promise so concurrent `activate()` calls join rather
+  // than double-fire. The promise self-clears on settle so a
+  // subsequent refetch can publish a fresh one.
+  function fireFactory(factory: () => unknown | Promise<unknown>): Promise<void> {
+    activated.value = true
+    const promise = runFactoryAndApply(factory)
+    activationPromise.value = promise
+    void promise.finally(() => {
+      if (activationPromise.value === promise) activationPromise.value = undefined
+    })
+    return promise
+  }
+
+  // Idempotent activation. The new lazy-by-default model fires the
+  // captured function-form `defaultValues` factory only via this
+  // entrypoint — public getters/methods on the form API surface call
+  // through to it so the first reactive interaction triggers the
+  // factory. Concurrent callers share the in-flight promise so two
+  // SSR consumers reading the same store await the same fetch. A
+  // previously-rejected attempt leaves `activated === true` and
+  // `defaultsResolved === false`; subsequent `activate()` calls are
+  // no-ops so reading `form.hydrateError` doesn't replay the failure.
+  // `form.rehydrate()` is the explicit replay primitive.
+  function activate(): Promise<void> {
+    // SSR coordination — enqueue intent first so the diff against any
+    // wizard skip / transform mark is consistent across resolved /
+    // dormant / mid-activation states. Then consult `shouldFire`: when
+    // a wizard skipped this key, the backstop wins even over an
+    // explicit consumer `form.activate()` call. The closure is bound
+    // to the registry at construction time and is absent on the
+    // client where the queue is never read.
+    if (ssrPrefetch !== undefined) {
+      ssrPrefetch.enqueue()
+      if (!ssrPrefetch.shouldFire()) return Promise.resolve()
+    }
+    if (defaultsResolved.value === true) return Promise.resolve()
+    if (activationPromise.value !== undefined) return activationPromise.value
+    if (activated.value === true) return Promise.resolve()
+    const factory = defaultValuesFactory.value
+    if (factory === undefined) return Promise.resolve()
+    return fireFactory(factory)
   }
 
   async function runFactoryAndApply(factory: () => unknown | Promise<unknown>): Promise<void> {
-    isHydrating.value = true
+    hydrating.value = true
     // Stale-while-revalidate: keep any prior `HydrationFailed` entry
     // visible until the new attempt settles. Same contract field
     // errors follow under `field.validating === true` — the surface
@@ -2805,7 +2868,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       clearHydrationFailedEntry()
       hydrateError.value = appendHydrationFailedEntry(error)
     } finally {
-      isHydrating.value = false
+      hydrating.value = false
     }
   }
 
@@ -2957,7 +3020,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // `validateAtPath` throws on schemas with always-running async
     // refines and falls through to async-only). The window between
     // `reset()` returning and the re-queued async pass landing reads
-    // `valid: true` for every container — the docs-site stepper
+    // `valid: true` for every container — the docs-site wizard
     // demo's step titles turn green for ~600ms-1.5s. Restoring the
     // gate keeps containers `valid: false` throughout that window.
     firstValidationDone.value = !strict || schema.needsAsyncValidation?.() !== true
@@ -3249,13 +3312,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     activeSubmissions,
     submitCount,
     submitError,
-    isHydrating,
+    hydrating,
     hydrateError,
     defaultValuesFactory,
-    factorySettleStarted,
     defaultsResolved,
-    stepperHandle,
+    activated,
+    activationPromise,
     rehydrate,
+    activate,
     submissionGeneration,
     activeValidations,
     firstValidationDone,

@@ -582,7 +582,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // values surfaced on `form.meta`. Available here so predicates
       // (`shouldShowErrors`) can read them too.
       errorCount: rootBase.errors.length,
-      isSubmitted: submitCount > 0,
+      submitted: submitCount > 0,
       instanceId: formInstanceId,
     }
   }
@@ -650,9 +650,9 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       submitError,
       // Scalar mirrors over the array / counter — meta is a single
       // sticky surface for both templates and the upcoming
-      // `useStepper`'s `FormStatus`, so the projections live here.
+      // `useWizard`'s `FormStatus`, so the projections live here.
       errorCount: computed(() => metaErrors.value.length),
-      isSubmitted: computed(() => submitCount.value > 0),
+      submitted: computed(() => submitCount.value > 0),
       // Per-`useForm()`-call identity. Stable for one mount; new on
       // re-mount; orthogonal to `form.key` (which is the user-supplied
       // shared identifier). Useful for devtools panels disambiguating
@@ -818,61 +818,107 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // for downstream `===` checks and Vue's render diff.
   const fieldStateProxy = buildFieldStateProxy(state, getFormMetaBase, fieldStateAccessorOptions)
 
+  // Lazy-activation gate: every public method routes through `activate`
+  // so the first reactive interaction kicks the captured factory. The
+  // activation promise is intentionally ignored — recursive activates,
+  // factory rejections, and SSR awaiting are coordinated on `state`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function gated<F extends (...args: any[]) => any>(fn: F): F {
+    return ((...args: Parameters<F>) => {
+      void state.activate()
+      return fn(...args)
+    }) as F
+  }
+
   return {
-    handleSubmit,
-    // `values` is the callable readonly Proxy. Each `get` trap reads
-    // through `inner.value` (a `computed(() => readonly(form.value))`)
-    // so reactivity tracking propagates at the call site. Identity-
-    // stable across whole-form swaps (the inner readonly proxy
-    // re-keys; the outer callable proxy stays the same instance).
-    values: valuesProxy as unknown as UseFormReturnType<Form, GetValueFormType>['values'],
-    fields: fieldStateProxy as unknown as UseFormReturnType<Form, GetValueFormType>['fields'],
-    setValue: setValueImpl as UseFormReturnType<Form, GetValueFormType>['setValue'],
-    validate: validate as UseFormReturnType<Form, GetValueFormType>['validate'],
-    validateAsync: validateAsync as UseFormReturnType<Form, GetValueFormType>['validateAsync'],
-    process: process as UseFormReturnType<Form, GetValueFormType>['process'],
-    register: register as UseFormReturnType<Form, GetValueFormType>['register'],
+    handleSubmit: gated(handleSubmit),
+    // Callable readonly Proxies (`values`, `fields`, `errors`) and the
+    // reactive containers (`meta`, `history`, `blankPaths`) are exposed
+    // through getters so reading them activates the form on first
+    // touch. Each underlying object is identity-stable across reads.
+    get values(): UseFormReturnType<Form, GetValueFormType>['values'] {
+      void state.activate()
+      return valuesProxy as unknown as UseFormReturnType<Form, GetValueFormType>['values']
+    },
+    get fields(): UseFormReturnType<Form, GetValueFormType>['fields'] {
+      void state.activate()
+      return fieldStateProxy as unknown as UseFormReturnType<Form, GetValueFormType>['fields']
+    },
+    setValue: gated(setValueImpl) as UseFormReturnType<Form, GetValueFormType>['setValue'],
+    validate: gated(validate) as UseFormReturnType<Form, GetValueFormType>['validate'],
+    validateAsync: gated(validateAsync) as UseFormReturnType<
+      Form,
+      GetValueFormType
+    >['validateAsync'],
+    process: gated(process) as UseFormReturnType<Form, GetValueFormType>['process'],
+    register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
     // Auto-unwrapping views over the per-store async-defaults lifecycle
-    // refs (see FormStore.isHydrating / hydrateError). Getters preserve
-    // reactivity at the access site: an effect that reads `form.isHydrating`
-    // tracks `state.isHydrating.value`, so writes flow through normally.
-    // Templates can read `form.isHydrating` without `.value`; plain-value
-    // forms hold these at their zero state for the form's lifetime.
-    get isHydrating(): boolean {
-      return state.isHydrating.value
+    // refs (see FormStore.hydrating / hydrateError). Reading either
+    // activates the form — observing factory state implies use.
+    get hydrating(): boolean {
+      void state.activate()
+      return state.hydrating.value
     },
     get hydrateError(): ValidationError | null {
+      void state.activate()
       return state.hydrateError.value
     },
+    // Orthogonal to `hydrating` and `hydrateError`: `ready` flips true
+    // once defaults are applied (sync at construction or async factory
+    // resolved successfully). One-way latch — stays true through later
+    // refetches even when those refetches fail, so stale-while-
+    // revalidate UIs keep rendering the prior values while
+    // `hydrateError` surfaces the refresh failure.
+    get ready(): boolean {
+      void state.activate()
+      return state.defaultsResolved.value
+    },
+    // `rehydrate` and `activate` are themselves activation entry points
+    // — they fire the factory by design. Wrapping them with `gated`
+    // would double-fire (`state.activate()` plus the underlying call),
+    // so they call `state` directly.
     rehydrate: () => state.rehydrate(),
-    errors: errorsProxy as unknown as FormErrorsSurface<Form>,
-    toRef: pathToRef as UseFormReturnType<Form, GetValueFormType>['toRef'],
-    setFieldErrors,
-    addFieldErrors,
-    clearFieldErrors,
-    setFormErrors,
-    clearFormErrors,
-    meta: formMeta,
-    reset: reset as UseFormReturnType<Form, GetValueFormType>['reset'],
-    resetField: resetField as UseFormReturnType<Form, GetValueFormType>['resetField'],
-    clear: clear as UseFormReturnType<Form, GetValueFormType>['clear'],
-    persist: persist as UseFormReturnType<Form, GetValueFormType>['persist'],
-    clearPersistedDraft: clearPersistedDraft as UseFormReturnType<
+    activate: () => state.activate(),
+    get errors(): FormErrorsSurface<Form> {
+      void state.activate()
+      return errorsProxy as unknown as FormErrorsSurface<Form>
+    },
+    toRef: gated(pathToRef) as UseFormReturnType<Form, GetValueFormType>['toRef'],
+    setFieldErrors: gated(setFieldErrors),
+    addFieldErrors: gated(addFieldErrors),
+    clearFieldErrors: gated(clearFieldErrors),
+    setFormErrors: gated(setFormErrors),
+    clearFormErrors: gated(clearFormErrors),
+    get meta() {
+      void state.activate()
+      return formMeta
+    },
+    reset: gated(reset) as UseFormReturnType<Form, GetValueFormType>['reset'],
+    resetField: gated(resetField) as UseFormReturnType<Form, GetValueFormType>['resetField'],
+    clear: gated(clear) as UseFormReturnType<Form, GetValueFormType>['clear'],
+    persist: gated(persist) as UseFormReturnType<Form, GetValueFormType>['persist'],
+    clearPersistedDraft: gated(clearPersistedDraft) as UseFormReturnType<
       Form,
       GetValueFormType
     >['clearPersistedDraft'],
-    focusFirstError,
-    scrollToFirstError,
-    touch: touch as UseFormReturnType<Form, GetValueFormType>['touch'],
-    history: formHistory,
-    append: fieldArrays.append as UseFormReturnType<Form, GetValueFormType>['append'],
-    prepend: fieldArrays.prepend as UseFormReturnType<Form, GetValueFormType>['prepend'],
-    insert: fieldArrays.insert as UseFormReturnType<Form, GetValueFormType>['insert'],
-    remove: fieldArrays.remove as UseFormReturnType<Form, GetValueFormType>['remove'],
-    swap: fieldArrays.swap as UseFormReturnType<Form, GetValueFormType>['swap'],
-    move: fieldArrays.move as UseFormReturnType<Form, GetValueFormType>['move'],
-    replace: fieldArrays.replace as UseFormReturnType<Form, GetValueFormType>['replace'],
-    blankPaths: blankPathsView,
+    focusFirstError: gated(focusFirstError),
+    scrollToFirstError: gated(scrollToFirstError),
+    touch: gated(touch) as UseFormReturnType<Form, GetValueFormType>['touch'],
+    get history() {
+      void state.activate()
+      return formHistory
+    },
+    append: gated(fieldArrays.append) as UseFormReturnType<Form, GetValueFormType>['append'],
+    prepend: gated(fieldArrays.prepend) as UseFormReturnType<Form, GetValueFormType>['prepend'],
+    insert: gated(fieldArrays.insert) as UseFormReturnType<Form, GetValueFormType>['insert'],
+    remove: gated(fieldArrays.remove) as UseFormReturnType<Form, GetValueFormType>['remove'],
+    swap: gated(fieldArrays.swap) as UseFormReturnType<Form, GetValueFormType>['swap'],
+    move: gated(fieldArrays.move) as UseFormReturnType<Form, GetValueFormType>['move'],
+    replace: gated(fieldArrays.replace) as UseFormReturnType<Form, GetValueFormType>['replace'],
+    get blankPaths() {
+      void state.activate()
+      return blankPathsView
+    },
   }
 }

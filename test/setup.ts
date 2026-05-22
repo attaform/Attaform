@@ -20,6 +20,16 @@ import { resetInsecureContextWarnDedup } from '../src/runtime/core/insecure-cont
  * false` to verify the noop path) override the stub locally via
  * `Object.defineProperty(window, 'isSecureContext', { value: false })`
  * and restore in their own `afterEach`.
+ *
+ * Note on `localStorage` / `sessionStorage`: Node 25 ships native
+ * `localStorage` on by default. Without `--localstorage-file=<path>`,
+ * the global lands as a non-functional shell, and jsdom does not
+ * forcibly re-install its own Storage afterward — so unqualified
+ * `localStorage` reads in tests hit Node's shell instead of jsdom's
+ * real Storage. The package.json `test` scripts pass
+ * `NODE_OPTIONS=--no-experimental-webstorage` to disable Node's
+ * built-in storage, leaving jsdom free to take the global slot.
+ * No polyfill is needed here as a result.
  */
 
 if (typeof window !== 'undefined') {
@@ -41,7 +51,7 @@ afterEach(() => {
 })
 
 // Reset `window.location` to the jsdom default before each test so
-// stepper history tests can't leak `?step=<key>` into the next test's
+// wizard history tests can't leak `?step=<key>` into the next test's
 // initial-seed read. The default `http://localhost:3000/` matches
 // jsdom's origin so `history.replaceState` won't trip a SecurityError.
 beforeEach(() => {
@@ -50,7 +60,7 @@ beforeEach(() => {
       window.history.replaceState(null, '', 'http://localhost:3000/')
     } catch {
       // jsdom origin policy may reject in unusual configs; the local
-      // beforeEach in stepper tests handles their cases explicitly.
+      // beforeEach in wizard tests handles their cases explicitly.
     }
   }
 })

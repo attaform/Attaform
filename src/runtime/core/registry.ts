@@ -88,6 +88,30 @@ export type AttaformRegistry = {
    */
   readonly trackConsumer: (key: FormKey) => () => void
   /**
+   * Mark a form as eligible for SSR prefetch. The form's
+   * `onServerPrefetch` hook consults `shouldPrefetch(key)` and runs the
+   * captured `defaultValues` factory only when this set contains the
+   * key (and the skip set does not). Set by `form.activate()`,
+   * `useWizard`'s current-step auto-mark, and the future Vite transform.
+   * @internal
+   */
+  readonly enqueuePrefetch: (key: FormKey) => void
+  /**
+   * Mark a form as ineligible for SSR prefetch. Overrides `enqueuePrefetch`.
+   * Used by `useWizard` to keep non-current steps dormant on the
+   * server even when a transform mark or stray `activate()` would
+   * otherwise enqueue them — the wizard's "user isn't on this step"
+   * signal wins.
+   * @internal
+   */
+  readonly skipPrefetch: (key: FormKey) => void
+  /**
+   * Whether `key`'s SSR prefetch should run. Returns `true` iff the key
+   * is enqueued AND not skipped.
+   * @internal
+   */
+  readonly shouldPrefetch: (key: FormKey) => boolean
+  /**
    * Wait for all pending persistence writes across every live form
    * to settle. Useful for SSR shutdown and integration tests that
    * need a deterministic teardown.
@@ -263,7 +287,34 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
     await Promise.allSettled(states.map((state) => state.awaitPendingWrites()))
   }
 
-  return { forms, pendingHydration, ssr, defaults, trackConsumer, shutdown }
+  // SSR prefetch coordination. Plain (non-reactive) Sets — the read
+  // path is `onServerPrefetch` callbacks, which fire imperatively after
+  // setup, not from inside a reactive effect. A new registry is
+  // created per SSR request (createAttaform() call), so cross-request
+  // state cannot leak.
+  const prefetchEnqueued = new Set<FormKey>()
+  const prefetchSkipped = new Set<FormKey>()
+  function enqueuePrefetch(key: FormKey): void {
+    prefetchEnqueued.add(key)
+  }
+  function skipPrefetch(key: FormKey): void {
+    prefetchSkipped.add(key)
+  }
+  function shouldPrefetch(key: FormKey): boolean {
+    return prefetchEnqueued.has(key) && !prefetchSkipped.has(key)
+  }
+
+  return {
+    forms,
+    pendingHydration,
+    ssr,
+    defaults,
+    trackConsumer,
+    enqueuePrefetch,
+    skipPrefetch,
+    shouldPrefetch,
+    shutdown,
+  }
 }
 
 /**

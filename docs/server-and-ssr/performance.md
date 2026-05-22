@@ -55,11 +55,11 @@ Sub-500-leaf forms don't surface in profiling.
 
 ## Sizing guidance
 
-| Scale              | Guidance                                                                                                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ≤ 500 leaves       | Default. No tuning needed.                                                                                                                                                           |
-| 500 – 5,000 leaves | Still fine. Watch out for templates that render every leaf's `form.fields.<path>.dirty` in a hot scope.                                                                              |
-| 5,000+ leaves      | Consider splitting into sub-forms with distinct `key`s, composed via [`injectForm`](/docs/cross-cutting-state/inject-form) or [`useStepper`](/docs/cross-cutting-state/use-stepper). |
+| Scale              | Guidance                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ≤ 500 leaves       | Default. No tuning needed.                                                                                                                                               |
+| 500 – 5,000 leaves | Still fine. Watch out for templates that render every leaf's `form.fields.<path>.dirty` in a hot scope.                                                                  |
+| 5,000+ leaves      | Consider splitting into sub-forms with distinct `key`s, composed via [`injectForm`](/docs/cross-cutting-state/inject-form) or [`useWizard`](/docs/multistep/use-wizard). |
 
 ## Array helpers are O(N)
 

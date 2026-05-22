@@ -115,7 +115,7 @@
     font-size: 0.75rem;
     color: #6b7280;
   }
-  input[type='text'] {
+  input {
     width: 100%;
     padding: 0.375rem 0.5rem;
     border-radius: 0.375rem;

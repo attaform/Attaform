@@ -1,4 +1,11 @@
-import { getCurrentInstance, getCurrentScope, inject, onScopeDispose, useId } from 'vue'
+import {
+  getCurrentInstance,
+  getCurrentScope,
+  inject,
+  onScopeDispose,
+  onServerPrefetch,
+  useId,
+} from 'vue'
 import { buildFormApi } from '../core/build-form-api'
 import type { FormStore } from '../core/create-form-store'
 import { __DEV__ } from '../core/dev'
@@ -19,11 +26,37 @@ import { ambientProvideHistory } from './use-abstract-form'
 let injectedInstanceCounter = 0
 
 /**
+ * Options accepted by `injectForm` when passing an object instead of
+ * a bare key string. `__ssrAccessed: true` is set by the Phase 3
+ * `attaform-vite` transform on descendant calls whose template reads
+ * the injected form's reactive state — it tells the runtime to
+ * enqueue the form for SSR prefetch and register the descendant's
+ * `onServerPrefetch` hook. Consumers may set it manually as the
+ * escape hatch when the transform isn't installed or doesn't see
+ * the reference.
+ */
+export type InjectFormInput = {
+  readonly key?: FormKey
+  /**
+   * Set by the Vite transform when this `injectForm` call site sits in
+   * a component whose template / script reads the form's reactive
+   * state. On the server, this enqueues the form for SSR prefetch and
+   * wires `onServerPrefetch` so the descendant awaits the activation
+   * promise before its render emits HTML.
+   *
+   * @internal Transform-emitted. Manual use is the documented escape
+   * hatch when the transform can't reach the reference (dynamic
+   * property access, untransformed bundlers).
+   */
+  readonly __ssrAccessed?: boolean
+}
+
+/**
  * Access an existing form from a descendant component without passing
  * it through props. Counterpart to `useForm` — `useForm` creates and
  * provides; `injectForm` looks up via Vue's inject mechanism.
  *
- * Two ways to call it:
+ * Three ways to call it:
  *
  * ```ts
  * // Reach the nearest ancestor's anonymous useForm() call.
@@ -31,6 +64,11 @@ let injectedInstanceCounter = 0
  *
  * // Reach a specific form by its key — works from anywhere in the app.
  * const cart = injectForm<CartShape>('cart')
+ *
+ * // Options form. The Vite transform emits this with `__ssrAccessed: true`
+ * // when the descendant's template / script reads the form's reactive
+ * // state, so the descendant participates in SSR prefetch coordination.
+ * const cart = injectForm<CartShape>({ key: 'cart', __ssrAccessed: true })
  * ```
  *
  * Resolution rules (no-key form):
@@ -59,8 +97,17 @@ let injectedInstanceCounter = 0
  * consumer unmounts, the form is cleaned up automatically.
  */
 export function injectForm<Form extends GenericForm, GetValueFormType extends GenericForm = Form>(
-  key?: FormKey
+  input?: FormKey | InjectFormInput
 ): UseFormReturnType<Form, GetValueFormType> | null {
+  // Normalise the call shape. The string-form (`injectForm('cart')`)
+  // is the dominant pattern and stays the documented shortcut; the
+  // object form is the surface the Phase 3 Vite transform emits when
+  // the descendant's reactive state reads the form. Both shapes
+  // resolve to the same downstream lookup.
+  const key: FormKey | undefined = typeof input === 'string' ? input : input?.key
+  const ssrAccessed: boolean =
+    typeof input === 'object' && input !== null ? input.__ssrAccessed === true : false
+
   // Lazy-install: if no `useForm` ancestor and no explicit
   // `createAttaform()`, the registry is missing. Auto-install here so
   // `injectForm` collapses to its existing "no form for that key" /
@@ -81,6 +128,18 @@ export function injectForm<Form extends GenericForm, GetValueFormType extends Ge
   if (getCurrentScope() !== undefined) {
     const releaseConsumer = registry.trackConsumer(state.formKey)
     onScopeDispose(releaseConsumer)
+  }
+
+  // SSR coordination — only on the server, only when the transform (or
+  // a manual consumer) signalled that this descendant reads the form's
+  // reactive state. The descendant enqueues the key on the registry's
+  // prefetch set and registers its own `onServerPrefetch` hook so Vue
+  // awaits the activation promise before the descendant's render
+  // serialises. Multiple descendants with the same key share the
+  // single in-flight promise courtesy of `state.activate()`.
+  if (registry.ssr && ssrAccessed) {
+    registry.enqueuePrefetch(state.formKey)
+    onServerPrefetch(() => state.activate())
   }
 
   // Pull the cached history module (if the owning `useForm` wired it)

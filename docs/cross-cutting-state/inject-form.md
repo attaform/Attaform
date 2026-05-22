@@ -172,4 +172,4 @@ For optional consumers (a floating panel that should hide when the form isn't mo
 
 - [`useRegister` for custom components](/docs/binding-inputs/use-register) — the single-field child binding alternative.
 - [Undo & redo](/docs/cross-cutting-state/undo-redo) — `injectForm` makes "Undo" buttons in distant components effortless.
-- [Multi-step flows (`useStepper`)](/docs/cross-cutting-state/use-stepper) — orchestrates multiple `useForm` instances, not single-form access.
+- [Multistep flows (`useWizard`)](/docs/multistep/use-wizard) — orchestrates multiple `useForm` instances, not single-form access.

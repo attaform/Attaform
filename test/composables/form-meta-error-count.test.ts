@@ -12,8 +12,8 @@ import { waitUntil } from '../utils/form-harness'
  * `form.meta.errorCount` is a scalar mirror of `form.meta.errors.length`,
  * exposed as a top-level meta field so consumers can read it in
  * templates and `watch(form.meta, ...)` without indexing an array. PR 3
- * (`useStepper`) consumes this through `FormStatus`; PR 1 ships it as a
- * standalone meta extension so the friction is fixed for non-stepper
+ * (`useWizard`) consumes this through `FormStatus`; PR 1 ships it as a
+ * standalone meta extension so the friction is fixed for non-wizard
  * forms too.
  *
  * Contract: `errorCount === errors.length` across every reactive

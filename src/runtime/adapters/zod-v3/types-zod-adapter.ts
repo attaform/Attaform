@@ -33,7 +33,7 @@ export type UseFormConfigurationWithZod<
   // See `UseFormConfiguration.defaultValues` for the trichotomy
   // semantics. Plain value resolves at construction; sync/async
   // function defers (function-form factories surface via
-  // `form.isHydrating` / `form.hydrateError`).
+  // `form.hydrating` / `form.hydrateError`).
   defaultValues?: DefaultValues | (() => DefaultValues) | (() => Promise<DefaultValues>)
   strict?: boolean
   onInvalidSubmit?: OnInvalidSubmitPolicy

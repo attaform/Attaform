@@ -8,9 +8,9 @@ import type { FormKey } from '../../src'
 
 /**
  * Type-level test for `form.key` literal preservation through the
- * `useForm` overloads. Threading `K extends FormKey` lets the stepper
+ * `useForm` overloads. Threading `K extends FormKey` lets the wizard
  * (and any other consumer) discriminate on the literal — `goTo('signup')`
- * autocompletes the known keys, `stepper.statuses.signup` resolves to
+ * autocompletes the known keys, `wizard.statuses.signup` resolves to
  * the matching form.
  *
  * Three entry points each get the same treatment:

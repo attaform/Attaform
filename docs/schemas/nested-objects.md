@@ -147,7 +147,7 @@ Subtree-scoping keeps "Save section" / "Validate this step" wizard patterns chea
 If a schema reaches four or five levels deep and feels unwieldy, two patterns to consider:
 
 - **Flatten the schema.** `address.line1` could become `addressLine1` if the grouping was structural rather than semantic. The binding code stays the same shape.
-- **Split into sub-forms.** Two `useForm` calls with separate keys, composed via [`injectForm`](/docs/cross-cutting-state/inject-form) or [`useStepper`](/docs/cross-cutting-state/use-stepper). Per-form persistence, history, and validation; one parent component coordinating.
+- **Split into sub-forms.** Two `useForm` calls with separate keys, composed via [`injectForm`](/docs/cross-cutting-state/inject-form) or [`useWizard`](/docs/multistep/use-wizard). Per-form persistence, history, and validation; one parent component coordinating.
 
 Both are escape hatches; the proxy doesn't have a depth limit, and the type inference holds at every level. But deeply-nested schemas often signal a structural-vs.-semantic mismatch worth a second look.
 

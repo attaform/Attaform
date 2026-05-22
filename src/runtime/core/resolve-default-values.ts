@@ -1,7 +1,7 @@
 /**
  * Generic classifier for the `T | (() => T) | (() => Promise<T>)`
  * trichotomy used by `useForm({ defaultValues })` and (in PR 3)
- * `useStepper({ defaultStatuses })`.
+ * `useWizard({ defaultStatuses })`.
  *
  * Plain values (including `undefined` and `null`) resolve immediately
  * at construction — there's nothing to defer, the literal already

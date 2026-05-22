@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { Repl, useStore } from '@vue/repl'
+  import { File, Repl, useStore } from '@vue/repl'
   import MonacoEditor from '@vue/repl/monaco-editor'
   import '@vue/repl/style.css'
   import { toast } from 'vue-sonner'
@@ -547,6 +547,54 @@ interface ToastApi {
  */
 declare const toast: ToastApi
 `
+  // In-place diff of `store.files` against an incoming seed map. Used
+  // by the dev-only HMR re-seed below; not called on first mount (the
+  // initial seed still goes through @vue/repl's `setFiles` so mainFile,
+  // built-in import map, and initial compile errors all land normally).
+  //
+  // Modified files mutate `.code` on the existing File instance so
+  // Monaco's bound model keeps its view state (cursor, scroll, undo
+  // history) and Volar reuses its per-file LSP cache. Added files are
+  // assigned directly to `store.files[name]` to bypass `addFile`'s
+  // `setActive` side-effect (we never want HMR to steal the active
+  // tab). Removed files skip the built-in `deleteFile` so neither the
+  // native `confirm()` nor our custom delete-dialog fires.
+  //
+  // The active tab survives unless the new seed removed it; in that
+  // case we re-point at mainFile BEFORE the delete so the compile
+  // dispatcher never sees `activeFile.value === undefined`.
+  function reseedFiles(
+    store: ReturnType<typeof useStore>,
+    newFiles: Record<string, string>,
+    protectedFilenames: ReadonlySet<string>
+  ): void {
+    const prevActiveFilename = store.activeFile.filename
+    const currentFilenames = Object.keys(store.files)
+
+    for (const [name, code] of Object.entries(newFiles)) {
+      if (protectedFilenames.has(name)) continue
+      const existing = store.files[name]
+      if (existing === undefined) {
+        store.files[name] = new File(name, code)
+      } else if (existing.code !== code) {
+        existing.code = code
+      }
+    }
+
+    const activeWillBeRemoved =
+      !protectedFilenames.has(prevActiveFilename) && newFiles[prevActiveFilename] === undefined
+    if (activeWillBeRemoved) {
+      store.setActive(store.mainFile)
+    }
+
+    for (const name of currentFilenames) {
+      if (protectedFilenames.has(name)) continue
+      if (newFiles[name] === undefined) {
+        delete store.files[name]
+      }
+    }
+  }
+
   // Seed the store. `initialFiles` (a multi-file map) wins over
   // `initialSource` (the single-file shorthand). Both routes always
   // augment with `src/playground-globals.d.ts` (the toast ambient
@@ -558,10 +606,51 @@ declare const toast: ToastApi
     'src/playground-globals.d.ts': TOAST_AMBIENT_DTS,
     'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
   }
+  // Flips true once the initial async setFiles has landed. Guards the
+  // dev-only re-seed below from racing the bootstrap (the comment near
+  // TOAST_AMBIENT_DTS above documents how interleaved mutations get
+  // discarded by an in-flight setFiles overwrite).
+  const initialSeedReady = ref(false)
   void store.setFiles(seedFiles, 'src/App.vue').then(() => {
     const dts = store.files['src/playground-globals.d.ts']
     if (dts) dts.hidden = true
+    initialSeedReady.value = true
   })
+
+  // Dev-only HMR-driven re-seed.
+  //
+  // `setFiles` replaces `store.files` wholesale, which is what we want
+  // on first mount but destroys Monaco's model identity on every
+  // subsequent call (cursor, scroll, undo history, view state all
+  // reset; Volar's per-file LSP cache invalidates). Vite HMR propagates
+  // edits to `apps/site/docs-demos/<slug>.vue` all the way down to the
+  // `initialFiles` prop here, so we re-bind by diffing instead:
+  // mutating `.code` on existing File instances, adding / removing only
+  // what changed. Monaco binds its model to the File instance, so the
+  // mutation path keeps the editing context intact.
+  //
+  // Gated on `import.meta.dev` because the same reactivity would let a
+  // future runtime prop change (e.g. a route-param-driven slug) wipe a
+  // reader's in-REPL edits. Production behaviour stays seed-once.
+  if (import.meta.dev) {
+    const PROTECTED_FILENAMES: ReadonlySet<string> = new Set([
+      'src/playground-globals.d.ts',
+      'tsconfig.json',
+      'import-map.json',
+    ])
+    watch(
+      () => {
+        if (props.initialFiles !== undefined) return props.initialFiles
+        if (props.initialSource !== undefined) return { 'src/App.vue': props.initialSource }
+        return undefined
+      },
+      (next) => {
+        if (!initialSeedReady.value || next === undefined) return
+        reseedFiles(store, next, PROTECTED_FILENAMES)
+      },
+      { deep: true }
+    )
+  }
 
   // Replace @vue/repl's native `confirm(...)` prompt on file deletion
   // with a styled modal. The store's `deleteFile` (defined in

@@ -15,7 +15,7 @@ import { waitUntil } from '../utils/form-harness'
  * background sync indicates fresh server data, etc.).
  *
  * Contract:
- *  - Returns a promise that resolves AFTER `isHydrating` flips back to
+ *  - Returns a promise that resolves AFTER `hydrating` flips back to
  *    `false`.
  *  - Re-fires the captured factory each call (so consumers don't have
  *    to maintain their own loader).
@@ -70,7 +70,7 @@ describe('form.rehydrate', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(calls).toBe(1)
     expect(api.values.email).toBe('first@example.com')
 
@@ -80,7 +80,7 @@ describe('form.rehydrate', () => {
     expect(api.values.name).toBe('Hopper')
   })
 
-  it('resolves only after isHydrating flips back to false', async () => {
+  it('resolves only after hydrating flips back to false', async () => {
     let resolveFactory!: (value: Defaults) => void
     let calls = 0
     const factory = (): Promise<Defaults> => {
@@ -92,13 +92,13 @@ describe('form.rehydrate', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
 
     const promise = api.rehydrate()
-    expect(api.isHydrating).toBe(true)
+    expect(api.hydrating).toBe(true)
     resolveFactory({ email: 'second@example.com', name: 'Hopper' })
     await promise
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.values.email).toBe('second@example.com')
   })
 
@@ -117,14 +117,14 @@ describe('form.rehydrate', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.hydrateError).toBeNull()
 
     await api.rehydrate()
     expect(api.hydrateError).not.toBeNull()
     expect(api.hydrateError?.code).toBe('atta:hydration-failed')
     expect(api.hydrateError?.message).toBe('rehydrate failed')
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
   })
 
   it('preserves the prior hydrateError while the retry is in flight (SWR)', async () => {
@@ -146,13 +146,13 @@ describe('form.rehydrate', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    await waitUntil(() => (api.isHydrating === false ? true : null))
+    await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.hydrateError?.message).toBe('first-attempt failed')
 
     // Kick off the retry but don't await — the factory hangs on
     // `resolveSecond` so we can inspect the in-flight state.
     const inFlight = api.rehydrate()
-    expect(api.isHydrating).toBe(true)
+    expect(api.hydrating).toBe(true)
     // SWR: the prior error survives the in-flight window.
     expect(api.hydrateError?.message).toBe('first-attempt failed')
     const formLevel = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']

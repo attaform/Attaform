@@ -514,10 +514,10 @@ describe('DU hardening — undo across an invalid intermediate', () => {
     // write. The pre-write state is `{channel:'email', address:'kept@x.io'}`,
     // i.e. a valid variant.
     const notify = api.values.notify as AnyNotify
-    const isValid =
+    const valid =
       (notify.channel === 'email' && typeof notify.address === 'string') ||
       (notify.channel === 'sms' && typeof notify.number === 'string')
-    expect(isValid).toBe(true)
+    expect(valid).toBe(true)
   })
 })
 
@@ -573,11 +573,11 @@ describe('DU hardening — invalid discriminator at an array element', () => {
     // outcomes; what matters is no mixed shape.
     const e0 = api.values.events[0] as AnyEvent
     const isStub = Object.keys(e0).length === 1 && e0.type === 'unknown'
-    const isValid =
+    const valid =
       isStub ||
       (e0.type === 'click' && typeof e0.x === 'string' && !('value' in e0)) ||
       (e0.type === 'text' && typeof e0.value === 'string' && !('x' in e0))
-    expect(isValid).toBe(true)
+    expect(valid).toBe(true)
   })
 })
 

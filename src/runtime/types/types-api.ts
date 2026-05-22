@@ -1063,7 +1063,7 @@ export type UseFormConfiguration<
    * throw `ReservedFormKeyError` if passed.
    *
    * When passed as a string literal, the literal is preserved on
-   * `form.key` so `useStepper` and other consumers can discriminate
+   * `form.key` so `useWizard` and other consumers can discriminate
    * against the union of known keys at compile time.
    */
   key?: K
@@ -1089,8 +1089,8 @@ export type UseFormConfiguration<
    * defaultValues: () => buildDraft()
    *
    * // Async function — form starts with the schema's slim defaults
-   * // and `form.isHydrating` flips true while the promise is
-   * // in flight; on resolve the values apply and `isHydrating` flips
+   * // and `form.hydrating` flips true while the promise is
+   * // in flight; on resolve the values apply and `hydrating` flips
    * // false. Under SSR the factory fires via `onServerPrefetch` so
    * // the resolved payload bakes into hydration transfer state and
    * // the client never re-fetches.
@@ -1326,6 +1326,21 @@ export type UseFormConfiguration<
    * channel would be solo by construction.
    */
   multiTab?: boolean
+  /**
+   * @internal
+   * SSR prefetch mark — set by the `attaform/vite` compile-time
+   * transform on `useForm` calls whose surrounding SFC template (or a
+   * computed feeding it) reads the form's reactive state. The flag
+   * enqueues the form on the registry's SSR prefetch queue so an
+   * async `defaultValues` factory runs inside `onServerPrefetch` and
+   * the resolved payload bakes into the hydration transfer state.
+   *
+   * Consumers do not write this directly — `form.activate()` is the
+   * documented escape hatch when the transform's static analysis
+   * can't see a reference (cross-module sharing, dynamic property
+   * access, headless contexts).
+   */
+  __ssrAccessed?: boolean
 }
 
 /**
@@ -3167,7 +3182,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * Monotonically non-decreasing over the form's lifetime — once
    * flipped, it stays `true` even after `form.reset()`.
    */
-  readonly isSubmitted: boolean
+  readonly submitted: boolean
 
   /**
    * Per-`useForm()`-call identity. Stable for the lifetime of one
@@ -3514,20 +3529,21 @@ export type UseFormReturnType<
    * its promise settles). `false` otherwise, including when
    * `defaultValues` is a plain value.
    *
-   * The form is fully usable while `isHydrating` is `true` — it holds
+   * The form is fully usable while `hydrating` is `true` — it holds
    * the schema's slim defaults. The flag exists so templates can show
    * a spinner / dim the form while real data loads:
    *
    * ```vue
-   * <div :aria-busy="form.isHydrating">…</div>
+   * <div :aria-busy="form.hydrating">…</div>
    * ```
    *
    * Exposed as an auto-unwrapping `boolean` (no `.value`); reactivity
    * is preserved via a getter that tracks the underlying ref at the
-   * access site, so `watch(() => form.isHydrating, …)` and template
-   * reads both fire on change.
+   * access site, so `watch(() => form.hydrating, …)` and template
+   * reads both fire on change. Reading this property activates the
+   * form's factory under the lazy-by-default rule.
    */
-  readonly isHydrating: boolean
+  readonly hydrating: boolean
 
   /**
    * The error from the most recent function-form `defaultValues` factory,
@@ -3548,17 +3564,53 @@ export type UseFormReturnType<
   readonly hydrateError: ValidationError | null
 
   /**
+   * `true` once the form's defaults have been applied — either a plain
+   * `defaultValues` value at construction or an async factory whose
+   * settle completed successfully. Stays `false` for dormant lazy
+   * forms (factory not yet activated) and for failed activations
+   * (`hydrateError` set). Once `true`, stays `true` through refetches
+   * so stale-while-revalidate UIs can keep rendering the prior values
+   * while a `rehydrate()` is in flight.
+   *
+   * Composes with `hydrating` and `hydrateError`:
+   *
+   * ```vue
+   * <Spinner v-if="!form.ready && form.hydrating" />
+   * <ErrorBanner v-if="!form.ready && form.hydrateError" :error="form.hydrateError" />
+   * <form v-if="form.ready">…</form>
+   * ```
+   *
+   * Exposed as a reactive `boolean` (no `.value`). Reading it activates
+   * the factory under the lazy-by-default rule — observing readiness
+   * implies use.
+   */
+  readonly ready: boolean
+
+  /**
    * Re-fire the captured `defaultValues` factory and re-apply its
    * payload over the current form values. Useful when the upstream
    * source changes (the user picks a different draft, a background
    * sync indicates fresh server data, etc.).
    *
-   * Resolves after `isHydrating` flips back to `false`. Throws
+   * Resolves after `hydrating` flips back to `false`. Throws
    * synchronously when the form was constructed with a plain-value
    * `defaultValues` (nothing to re-fire). Does NOT clear dirty /
    * touched / submit state — chain `form.reset()` for that.
    */
   rehydrate(): Promise<void>
+
+  /**
+   * Idempotent activation. Forms are lazy-by-default: a function-form
+   * `defaultValues` factory fires on the first reactive interaction
+   * (reading `form.values`, calling `form.setValue`, etc.). Call
+   * `form.activate()` to kick the factory explicitly — typically from
+   * `setup` so SSR's `onServerPrefetch` hook awaits the resolution
+   * before the page renders. Subsequent calls return the in-flight
+   * promise until the factory settles, after which they resolve
+   * immediately. Plain-value forms (no factory captured) always
+   * return a resolved promise.
+   */
+  activate(): Promise<void>
 
   // --- Reactive field-error API ---
 
@@ -3904,24 +3956,25 @@ export type UseFormReturnType<
     value: ArrayItem<Form, Path>
   ) => void
   /**
-   * Read-only view of the form's blank paths as dotted public-path
-   * strings — the same notation passed to `register` / `setValue` /
-   * `errors`. Reactive: Vue 3.5 tracks iteration + length, so the
-   * computed re-fires whenever membership changes.
+   * Read-only view of the form's blank path set. Each entry
+   * is a canonical `PathKey` (the `JSON.stringify(segments)` form
+   * `canonicalizePath` produces). The set is reactive — Vue 3.5
+   * tracks `.has()` / `for..of` / size accesses, so consumers can
+   * drive conditional UI off it directly:
    *
    * ```ts
    * watchEffect(() => {
-   *   if (form.blankPaths.value.length > 0) {
-   *     console.warn('unanswered fields:', form.blankPaths.value)
+   *   if (form.blankPaths.value.size > 0) {
+   *     console.warn('unanswered fields:', [...form.blankPaths.value])
    *   }
    * })
    * ```
    *
-   * For per-path checks, use `form.fields.<path>.blank` instead of
-   * scanning the array. Writes happen through
-   * `setValue(path, unset)`, `markBlank()` on a register binding,
-   * and the directive's input listener on numeric clear. The array
-   * is `Object.freeze`-d — mutating it throws.
+   * For per-path access, use `form.fields.<path>.blank`.
+   * Writes happen through `setValue(path, unset)`,
+   * `markBlank()` on a register binding, and the directive's
+   * input listener on numeric clear. Mutating the snapshot returned
+   * here does nothing — it's `Object.freeze`-d.
    */
-  blankPaths: ComputedRef<ReadonlyArray<string>>
+  blankPaths: ComputedRef<ReadonlySet<string>>
 }

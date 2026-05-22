@@ -53,8 +53,8 @@
           <tr>
             <th>submitting</th>
             <td>{{ form.meta.submitting }}</td>
-            <th>isSubmitted</th>
-            <td>{{ form.meta.isSubmitted }}</td>
+            <th>submitted</th>
+            <td>{{ form.meta.submitted }}</td>
           </tr>
           <tr>
             <th>submitCount</th>

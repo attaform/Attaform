@@ -31,7 +31,7 @@ describe('async-defaults SSR + hydration', () => {
     let calls = 0
     const App = defineComponent({
       setup() {
-        useForm({
+        const form = useForm({
           schema,
           key: 'ssr-async-defaults',
           defaultValues: () => {
@@ -39,6 +39,11 @@ describe('async-defaults SSR + hydration', () => {
             return Promise.resolve({ email: 'server@example.com', name: 'Ada' })
           },
         })
+        // Lazy-by-default: opt the form into SSR prefetch so the
+        // factory runs inside onServerPrefetch. Without an explicit
+        // activate (or a wizard auto-mark) the form stays dormant on
+        // the server and the payload carries the schema's slim defaults.
+        void (form as { activate: () => Promise<void> }).activate()
         return () => h('div')
       },
     })
@@ -63,7 +68,7 @@ describe('async-defaults SSR + hydration', () => {
     let serverCalls = 0
     const ServerApp = defineComponent({
       setup() {
-        useForm({
+        const form = useForm({
           schema,
           key: 'ssr-async-no-refire',
           defaultValues: () => {
@@ -71,6 +76,7 @@ describe('async-defaults SSR + hydration', () => {
             return Promise.resolve({ email: 'server@example.com', name: 'Ada' })
           },
         })
+        void (form as { activate: () => Promise<void> }).activate()
         return () => h('div')
       },
     })
@@ -107,7 +113,7 @@ describe('async-defaults SSR + hydration', () => {
     expect(api).toBeDefined()
     if (api === undefined) return
     expect(clientCalls).toBe(0)
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.values.email).toBe('server@example.com')
     expect(api.values.name).toBe('Ada')
   })
@@ -139,6 +145,7 @@ describe('async-defaults SSR rejection path', () => {
           key: 'ssr-async-reject',
           defaultValues: () => Promise.reject(new Error('upstream-down')),
         }) as unknown as UseFormReturnType<{ email: string; name: string }>
+        void handle.api.activate()
         return () => h('div')
       },
     })
@@ -154,10 +161,10 @@ describe('async-defaults SSR rejection path', () => {
     if (api === undefined) return
 
     // Server-side state after the rejection settled: error captured,
-    // isHydrating released, form falls back to schema slim defaults.
+    // hydrating released, form falls back to schema slim defaults.
     expect(api.hydrateError?.code).toBe(AttaformErrorCode.HydrationFailed)
     expect(api.hydrateError?.message).toBe('upstream-down')
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.values.email).toBe('')
     expect(api.values.name).toBe('')
 
@@ -183,11 +190,12 @@ describe('async-defaults SSR rejection path', () => {
     // Server: factory rejects, payload serialises slim defaults.
     const ServerApp = defineComponent({
       setup() {
-        useForm({
+        const form = useForm({
           schema,
           key: 'ssr-reject-client-noop',
           defaultValues: () => Promise.reject(new Error('server-down')),
         })
+        void (form as { activate: () => Promise<void> }).activate()
         return () => h('div')
       },
     })
@@ -227,7 +235,7 @@ describe('async-defaults SSR rejection path', () => {
     // surfacing through form.meta.errors — consumers render an error
     // banner / retry button off this entry.
     expect(clientCalls).toBe(0)
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.hydrateError).toBeNull()
     expect(api.values.email).toBe('')
     expect(api.values.name).toBe('')
@@ -240,11 +248,12 @@ describe('async-defaults SSR rejection path', () => {
     // Same server setup as the prior test.
     const ServerApp = defineComponent({
       setup() {
-        useForm({
+        const form = useForm({
           schema,
           key: 'ssr-reject-client-retry',
           defaultValues: () => Promise.reject(new Error('server-down')),
         })
+        void (form as { activate: () => Promise<void> }).activate()
         return () => h('div')
       },
     })
@@ -287,7 +296,7 @@ describe('async-defaults SSR rejection path', () => {
     await api.rehydrate()
     expect(clientCalls).toBe(1)
     expect(api.hydrateError).toBeNull()
-    expect(api.isHydrating).toBe(false)
+    expect(api.hydrating).toBe(false)
     expect(api.values.email).toBe('recovered@example.com')
     expect(api.values.name).toBe('Hopper')
     const postErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)

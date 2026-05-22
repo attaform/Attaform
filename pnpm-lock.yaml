@@ -11,6 +11,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      magic-string:
+        specifier: ^0.30.21
+        version: 0.30.21
     devDependencies:
       '@commitlint/cli':
         specifier: ^21.0.1
@@ -70,6 +74,9 @@ importers:
         specifier: ^4.1.5
         version: 4.1.6(vitest@4.1.6)
       '@vue/compiler-core':
+        specifier: ^3.5.33
+        version: 3.5.34
+      '@vue/compiler-sfc':
         specifier: ^3.5.33
         version: 3.5.34
       '@vue/devtools-api':

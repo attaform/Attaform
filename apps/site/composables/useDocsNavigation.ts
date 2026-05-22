@@ -36,7 +36,16 @@ export const docsNavigation: DocsSection[] = [
   // 404-bound URLs.
   {
     heading: 'Schemas',
-    links: [{ title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' }],
+    links: [
+      { title: 'The schema contract', to: '/docs/schemas/contract' },
+      { title: 'Defaults from the schema', to: '/docs/schemas/defaults' },
+      { title: 'How values are stored', to: '/docs/schemas/storage-shape' },
+      { title: 'Optional, nullable, defaulted', to: '/docs/schemas/optional-nullable' },
+      { title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' },
+      { title: 'Arrays & tuples', to: '/docs/schemas/arrays-and-tuples' },
+      { title: 'Records & maps', to: '/docs/schemas/records' },
+      { title: 'Nested objects', to: '/docs/schemas/nested-objects' },
+    ],
   },
   {
     heading: 'Reading the form',
@@ -84,6 +93,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Async refinements', to: '/docs/validation/async-refinements' },
       { title: 'The validation lifecycle', to: '/docs/validation/lifecycle' },
       { title: 'Showing errors at the right time', to: '/docs/validation/showing-errors' },
+      { title: 'The blank field-state bit', to: '/docs/validation/blank' },
     ],
   },
   {
@@ -115,7 +125,15 @@ export const docsNavigation: DocsSection[] = [
       { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
     ],
   },
-  { heading: 'Server & SSR', links: [] },
+  {
+    heading: 'Server & SSR',
+    links: [
+      { title: 'SSR hydration — Nuxt', to: '/docs/server-and-ssr/ssr-nuxt' },
+      { title: 'SSR hydration — bare Vue', to: '/docs/server-and-ssr/ssr-bare-vue' },
+      { title: 'Parsing API errors', to: '/docs/server-and-ssr/parse-api-errors' },
+      { title: 'Performance', to: '/docs/server-and-ssr/performance' },
+    ],
+  },
   {
     heading: 'DevTools & debugging',
     links: [
@@ -124,7 +142,15 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Troubleshooting', to: '/docs/devtools-and-debugging/troubleshooting' },
     ],
   },
-  { heading: 'Reference', links: [] },
+  {
+    heading: 'Reference',
+    links: [
+      { title: 'Types reference', to: '/docs/reference/types' },
+      { title: 'Errors reference', to: '/docs/reference/errors' },
+      { title: 'Custom schema adapters', to: '/docs/reference/custom-adapters' },
+      { title: 'Entry-point reference', to: '/docs/reference/entry-points' },
+    ],
+  },
 ]
 
 // All links in canonical reading order. Used by the pager (prev/next)

@@ -40,7 +40,7 @@ export type InjectWizardInput = {
  *
  * Resolution rules (keyed form): registry lookup by string key,
  * independent of component-tree position. The wizard must have been
- * constructed with `useWizard(entry, { key })` to be reachable.
+ * constructed with `useWizard(entryForm, { key })` to be reachable.
  *
  * Returns `null` when no matching wizard exists (no ambient ancestor,
  * or the named key isn't registered). A dev-mode warning points at the

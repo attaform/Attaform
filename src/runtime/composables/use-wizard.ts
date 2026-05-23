@@ -77,7 +77,7 @@ type SubmissionSourceForm = StatusSourceForm & {
 
 /**
  * Multistep-form orchestrator. Walks the static graph declared by
- * `useForm({ next })` declarations starting from `entry`, composing
+ * `useForm({ next })` declarations starting from `entryForm`, composing
  * the reachable forms into a wizard with navigation, status aggregation,
  * browser history, and lazy activation (so a step's async
  * `defaultValues` factory only fires once the step becomes current).
@@ -90,16 +90,16 @@ type SubmissionSourceForm = StatusSourceForm & {
  *    upstream paths shows up once in `allForms`.
  *  - Cycles throw `WizardCycleError` at construction; consumers who want
  *    intentional revisits use `wizard.goTo(key)`.
- *  - Single-step wizards (entry has no `next`) are valid; a one-time
- *    dev-warn notes the navigation surface is degenerate.
+ *  - Single-step wizards (the entry form has no `next`) are valid; a
+ *    one-time dev-warn notes the navigation surface is degenerate.
  *
  * Each reachable form gets a ref-count via `registry.trackConsumer(key)`.
  * This pins the FormStore for the wizard's lifetime — so a step's state
  * survives even when its component is unmounted between visits
  * (v-if pattern). The ref is released on `onScopeDispose`.
  */
-export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizardReturnType {
-  const graph = buildWizardGraph(entry)
+export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseWizardReturnType {
+  const graph = buildWizardGraph(entryForm)
   const forms = graph.allForms
   const byKey = graph.byKey
   const formKeys = forms.map((form) => form.key)
@@ -127,8 +127,8 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   // Resolve initial step. Priority: `getServerActiveStep()` (SSR
   // source of truth, returned identically on client) → URL
   // `?step=<key>` (reload preservation when no getter is wired) →
-  // `entry.key` fallback. Unknown keys at any level fall through so a
-  // stale link can't crash construction.
+  // the entry form's `key` fallback. Unknown keys at any level fall
+  // through so a stale link can't crash construction.
   const fromGetter = options.getServerActiveStep?.()
   const fromUrl = wizardHistory.read()
   let initialKey: string
@@ -137,7 +137,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   } else if (fromUrl !== undefined && seenKeys.has(fromUrl)) {
     initialKey = fromUrl
   } else {
-    initialKey = entry.key
+    initialKey = entryForm.key
   }
   const current = ref<string>(initialKey)
 
@@ -642,7 +642,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
       submitting.value = true
       try {
         const cache = new Map<string, Processed>()
-        const walk = await walkSubgraph(entry, cache)
+        const walk = await walkSubgraph(entryForm, cache)
         // Aggregate errors and parsed values from the cache in BFS order
         // (matching `forms`) so the error list and value record are
         // stable regardless of branch interleaving.
@@ -734,7 +734,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   const diagnose = (): readonly WizardWarning[] => graph.warnings
 
   const flow: WizardFlow = Object.freeze({
-    entry,
+    entryForm,
     tree: graph.tree,
     allForms: forms,
     get visited(): readonly string[] {
@@ -746,7 +746,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   const wizardKey = options.key
   const handle: UseWizardReturnType = {
     key: wizardKey,
-    entry,
+    entryForm,
     allForms: forms,
     count: forms.length,
     statuses,

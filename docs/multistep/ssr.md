@@ -7,7 +7,7 @@ metaRows:
   - label: Wizard skip-list
     value: overrides every other mark for non-current steps
   - label: Active step source
-    value: 'getServerActiveStep | URL ?step | flow.entry'
+    value: 'getServerActiveStep | URL ?step | flow.entryForm'
     kind: code
 ---
 
@@ -130,9 +130,9 @@ The wizard consults `getServerActiveStep()` **before** deciding which form's fac
 
 1. `getServerActiveStep()` returns a known key. The wizard marks that form.
 2. Returns `undefined` and the request URL carries `?step=<key>` (matched against `history.param`). The wizard marks that form.
-3. Otherwise the wizard marks `flow.entry` (the entry form passed to `useWizard`).
+3. Otherwise the wizard marks `flow.entryForm` (the entry form passed to `useWizard`).
 
-The getter runs on both server and client. The consumer's route source must be available on both. Returning a key that doesn't appear in the reachable graph dev-warns and falls back to `flow.entry`.
+The getter runs on both server and client. The consumer's route source must be available on both. Returning a key that doesn't appear in the reachable graph dev-warns and falls back to `flow.entryForm`.
 
 ## Letting the framework own slow factories
 

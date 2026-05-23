@@ -77,7 +77,7 @@ type AggregateError = {
 }
 ```
 
-Sort order: BFS order from the wizard's entry, then each form's internal error order. The shape is purpose-built for wizard-wide summary panels:
+Sort order: BFS order from the wizard's entry form, then each form's internal error order. The shape is purpose-built for wizard-wide summary panels:
 
 ```vue
 <template>

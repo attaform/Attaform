@@ -73,7 +73,7 @@ export type AttaformRegistry = {
   readonly forms: Map<FormKey, FormStore<GenericForm>>
   /**
    * Live wizards keyed by the consumer-supplied `key` option. Populated
-   * by `useWizard(entry, { key })`; consulted by `injectWizard(key)` to
+   * by `useWizard(entryForm, { key })`; consulted by `injectWizard(key)` to
    * resolve cross-component wizard handles. Anonymous wizards (no
    * `key`) do NOT register here — they're reachable only via ambient
    * provide/inject.

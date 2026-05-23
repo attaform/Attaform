@@ -39,7 +39,7 @@ export class WizardCycleError extends AttaformError {
 
 /**
  * Static description of the wizard's reachable graph. Produced once
- * at `useWizard(entry)` construction; immutable for the wizard's
+ * at `useWizard(entryForm)` construction; immutable for the wizard's
  * lifetime (the graph topology is declared in code, not data).
  *
  *  - `entry` — the input form. Identity-equal to the argument.

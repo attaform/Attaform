@@ -8,8 +8,8 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * `wizard.flow` — Phase 5 introspection surface. Composes the static
- * graph (`entry`, `tree`, `allForms`) with the runtime navigation log
- * (`visited`) and the diagnostic warnings channel (`diagnose()`).
+ * graph (`entryForm`, `tree`, `allForms`) with the runtime navigation
+ * log (`visited`) and the diagnostic warnings channel (`diagnose()`).
  *
  * Static-graph coverage (tree shape for linear / branching / convergent
  * graphs, BFS ordering, dedupe) lives in `wizard-graph.test.ts` against
@@ -51,7 +51,7 @@ describe('wizard.flow — static graph view', () => {
       return { wizard, a }
     })
     apps.push(app)
-    expect(result.wizard.flow.entry).toBe(result.a)
+    expect(result.wizard.flow.entryForm).toBe(result.a)
   })
 
   it('exposes allForms BFS-ordered, deduped across convergent paths', () => {

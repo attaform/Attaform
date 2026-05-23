@@ -125,7 +125,7 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
 
       expectTypeOf(wizard.current).toEqualTypeOf<string | undefined>()
       expectTypeOf(wizard.count).toEqualTypeOf<number>()
-      expectTypeOf(wizard.entry).toMatchTypeOf<{ readonly key: string }>()
+      expectTypeOf(wizard.entryForm).toMatchTypeOf<{ readonly key: string }>()
     }
     void _neverInvoked
   })

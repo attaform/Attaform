@@ -2,7 +2,9 @@ import {
   computed,
   getCurrentInstance,
   getCurrentScope,
+  inject,
   nextTick,
+  onMounted,
   onScopeDispose,
   provide,
   ref,
@@ -11,7 +13,11 @@ import {
 } from 'vue'
 import { buildWizardGraph, WizardCycleError } from '../core/wizard-graph'
 import { __DEV__ } from '../core/dev'
-import { kAttaformAncestorWizard, useRegistry } from '../core/registry'
+import {
+  kAttaformAncestorWizard,
+  kAttaformWizardActiveStepResolver,
+  useRegistry,
+} from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
@@ -125,22 +131,71 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
   const wizardHistory = historyConfig.enabled
     ? createWizardHistory(historyConfig.param)
     : NOOP_WIZARD_HISTORY
-  // Resolve initial step. Priority: `getServerActiveStep()` (SSR
-  // source of truth, returned identically on client) → URL
-  // `?step=<key>` (reload preservation when no getter is wired) →
-  // the entry form's `key` fallback. Unknown keys at any level fall
-  // through so a stale link can't crash construction.
-  const fromGetter = options.getServerActiveStep?.()
-  const fromUrl = wizardHistory.read()
+  // Resolve initial step. Priority for the first-render key:
+  //   1. `options.getServerActiveStep()` — the explicit consumer hook,
+  //      called on both server and client so both sides compute the
+  //      same key.
+  //   2. The injected `kAttaformWizardActiveStepResolver` — installed
+  //      by the `attaform/nuxt` runtime plugin from `useRoute()`, so
+  //      Nuxt apps get the framework-agnostic equivalent for free.
+  //   3. The entry form's `key` fallback.
+  //
+  // The URL is deliberately NOT consulted here. `wizardHistory.read()`
+  // returns a value on the client and `undefined` on the server (the
+  // no-op SSR handle), and bridging that gap is the load-bearing source
+  // of the deep-link hydration mismatch cascade — server renders entry
+  // while client renders the URL's step, and Vue's hydration walks a
+  // wall of warnings. Instead, the URL is read once on mount (below)
+  // and reconciled via a direct ref update when it names a step the
+  // initial resolution didn't pick. Consumers who DO supply an
+  // explicit getter (or use `attaform/nuxt`'s auto-bridge) get
+  // zero-flicker server rendering for deep links; framework-agnostic
+  // consumers see a brief entry frame before the post-mount restore.
+  const explicitGetter = options.getServerActiveStep
+  const injectedResolver = inject(kAttaformWizardActiveStepResolver, null)
+  const fromGetter =
+    explicitGetter !== undefined
+      ? explicitGetter()
+      : injectedResolver !== null
+        ? injectedResolver(historyConfig.param)
+        : undefined
   let initialKey: string
   if (fromGetter !== undefined && seenKeys.has(fromGetter)) {
     initialKey = fromGetter
-  } else if (fromUrl !== undefined && seenKeys.has(fromUrl)) {
-    initialKey = fromUrl
   } else {
     initialKey = entryForm.key
   }
   const current = ref<string>(initialKey)
+
+  // Post-hydration URL restore. Only runs on the client (`onMounted`
+  // is a no-op during SSR). When the deep-link URL names a known step
+  // that the initial resolution didn't already pick, the wizard reaches
+  // that step via a direct ref update — no `setCurrent` call, because
+  // the entry frame was a hydration-time wash rather than a user
+  // navigation: `visited` gets clamped to the restored step,
+  // `onStatusChange` doesn't fire a phantom entry→restore transition,
+  // and the URL itself stays as the deep-link wrote it (no history
+  // push or replace). The form for the restored step is activated to
+  // match what `setCurrent`'s navigation path would do.
+  const urlValueAtSetup = wizardHistory.read()
+  const willRestoreFromUrl =
+    fromGetter === undefined &&
+    urlValueAtSetup !== undefined &&
+    seenKeys.has(urlValueAtSetup) &&
+    urlValueAtSetup !== initialKey
+  if (willRestoreFromUrl) {
+    const restoredKey = urlValueAtSetup
+    onMounted(() => {
+      current.value = restoredKey
+      visited.value = [restoredKey]
+      const restoredForm = byKey.get(restoredKey) as unknown as
+        | { activate?: () => Promise<void> }
+        | undefined
+      if (restoredForm !== undefined && typeof restoredForm.activate === 'function') {
+        void restoredForm.activate()
+      }
+    })
+  }
 
   // Runtime navigation audit log. Seeded with the initial step so the
   // trail always starts somewhere, then appended in `setCurrent` on every
@@ -152,8 +207,15 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
   const visited = ref<string[]>([initialKey])
 
   // Replace the URL so it always reflects the active step on mount —
-  // idempotent when the URL already named the correct key.
-  wizardHistory.replace(initialKey)
+  // idempotent when the URL already named the correct key. Skipped
+  // when the post-hydration URL restore is scheduled: overwriting the
+  // deep-link with `initialKey` now would defeat the restore (the
+  // mount-time read would see the entry key we just wrote instead of
+  // the user's deep link), so we leave the URL as the deep link wrote
+  // it and let the restore reconcile internal state in place.
+  if (!willRestoreFromUrl) {
+    wizardHistory.replace(initialKey)
+  }
 
   const registry = useRegistry()
 

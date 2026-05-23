@@ -8,10 +8,10 @@
  * for directive lifecycle hooks, so the same plugin works on both sides
  * without a stub.
  */
-import { defineNuxtPlugin, useRuntimeConfig } from 'nuxt/app'
+import { defineNuxtPlugin, useRoute, useRuntimeConfig } from 'nuxt/app'
 import { DEVTOOLS_WINDOW_KEY } from '../core/devtools-shared'
 import { createAttaform } from '../core/plugin'
-import { getRegistryFromApp } from '../core/registry'
+import { getRegistryFromApp, kAttaformWizardActiveStepResolver } from '../core/registry'
 import { hydrateAttaformState, renderAttaformState } from '../core/serialize'
 import type { SerializedAttaformState } from '../core/serialize'
 import type { AttaformDefaults } from '../types/types-api'
@@ -35,6 +35,23 @@ export default defineNuxtPlugin({
     const { defaults, version } = config.attaform
 
     nuxtApp.vueApp.use(createAttaform({ ssr: isServer, defaults }))
+
+    // Bridge `useWizard`'s active-step resolution to the Nuxt route so
+    // deep-links hydrate without flicker. On the server, `useRoute()`
+    // reads the incoming request URL; on the client, it reads the live
+    // route — so server and client compute the same initial step and
+    // Vue's hydration walks a matching tree. Without this bridge, the
+    // wizard would fall back to its `entryForm.key` on the server while
+    // the client reads the URL, producing the deep-link mismatch
+    // cascade. Consumers can still pass `options.getServerActiveStep`
+    // explicitly to override; this just removes the boilerplate for the
+    // common case.
+    nuxtApp.vueApp.provide(kAttaformWizardActiveStepResolver, (param) => {
+      const value = useRoute().query[param]
+      if (typeof value === 'string') return value
+      if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+      return undefined
+    })
 
     if (isServer) {
       // After the app renders, capture every FormStore into the Nuxt payload

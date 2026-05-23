@@ -173,6 +173,25 @@ export const kAttaformAncestorWizard: InjectionKey<UseWizardReturnType> = Symbol
 )
 
 /**
+ * Optional framework-aware resolver for the wizard's active step. The
+ * `attaform/nuxt` runtime plugin provides this so `useWizard` can read
+ * the current step from `useRoute().query[<historyParam>]` without the
+ * wizard core importing any framework router. Bare-Vue consumers wire
+ * `options.getServerActiveStep` explicitly instead, or let the
+ * post-hydration URL restore in `useWizard` handle the deep-link case.
+ *
+ * Shape: a single function that receives the wizard's configured
+ * `history.param` (default `'step'`) and returns the matching query
+ * value or `undefined`. Called once during `useWizard()` construction,
+ * after any explicit `options.getServerActiveStep` is consulted.
+ */
+export type WizardActiveStepResolver = (param: string) => string | undefined
+
+export const kAttaformWizardActiveStepResolver: InjectionKey<WizardActiveStepResolver> = Symbol.for(
+  'attaform:wizard-active-step-resolver'
+)
+
+/**
  * Provides the current form's FormStore to descendants. Installed by
  * `useAbstractForm` after it resolves the state, so any nested component
  * can call `injectForm()` without prop-threading the form API.

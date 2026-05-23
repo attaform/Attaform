@@ -2,6 +2,7 @@ import {
   computed,
   getCurrentInstance,
   getCurrentScope,
+  nextTick,
   onScopeDispose,
   provide,
   ref,
@@ -698,6 +699,16 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
               // gated on `submitting` — that gate is for user-initiated
               // navigation, not the wizard's own failure routing.
               setCurrent(firstFailedKey, 'push')
+              // Wait for Vue to flush the render cycle so the failed
+              // step's form mounts before we focus. Consumers commonly
+              // template the wizard with `v-if="wizard.current === ..."`
+              // per step, so the failed form's inputs aren't in the DOM
+              // until after this tick; without the wait, the policy
+              // call would walk an empty registration set and silently
+              // no-op. One `nextTick` covers Vue's render-then-mount
+              // flush including the `v-register` directive's mounted
+              // hook, which is where field elements register.
+              await nextTick()
               const failedForm = byKey.get(firstFailedKey) as unknown as
                 | SubmissionSourceForm
                 | undefined

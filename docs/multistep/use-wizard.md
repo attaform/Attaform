@@ -241,7 +241,7 @@ type WizardSubmitContext = {
 4. For a branching `next` with the current form **valid**, `pick(parsed)` chooses one branch and the walk recurses on it.
 5. For a branching `next` with the current form **invalid**, every declared `forms` subgraph is walked in parallel (`Promise.all`), so prerequisites for every reachable path surface at once without serial latency.
 6. Builds `ctx = { values, get, path }` from the runtime path and either calls `onSubmit(ctx)` (all forms valid) or `onError(errors)` (any invalid). On success, `wizard.complete = true`.
-7. On failure with `navigateToFirstError: true` (the default), the wizard calls `goTo(firstFailedKey)` then `firstFailedForm.applyInvalidSubmitPolicy()`. The DOM swap lands before the focus call.
+7. On failure with `navigateToFirstError: true` (the default), the wizard calls `goTo(firstFailedKey)`, awaits one `nextTick` so the failed step's form mounts (the common `v-if="wizard.current === ..."` template pattern means its inputs only exist after the render flush), then calls `firstFailedForm.applyInvalidSubmitPolicy()`. The focus or scroll lands on the first error field.
 8. Always: `wizard.submissionAttempts` increments and `wizard.submitting` returns to `false`.
 
 `wizard.complete` flips back to `false` the first time any walked-path form's `meta.dirty` flips `true`. Editing after a successful submit reads as "ready to submit again."

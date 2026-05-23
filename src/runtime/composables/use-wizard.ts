@@ -566,6 +566,15 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
       )
       return
     }
+    // Bump departAttempts before validation runs so the depart arm of
+    // `defaultShouldShowErrors` is already true by the time the
+    // invalid-submit policy focuses the first error field. Bumping
+    // here also covers the successful-next path: a clean departure
+    // still records an attempt so revisits show prior errors if any.
+    const activeStore = registry.forms.get(activeKey)
+    if (activeStore !== undefined) {
+      activeStore.departAttempts.value += 1
+    }
     const result = await activeForm.process()
     if (result.success !== true) {
       // Invalid form blocks navigation. Fire the form's own
@@ -596,6 +605,13 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
       )
       return
     }
+    // Record the departure before navigating. A user who deep-links to
+    // a mid-flow step then presses Back has engaged with the current
+    // form via the wizard, so its errors should reveal on revisit.
+    const activeStore = registry.forms.get(current.value)
+    if (activeStore !== undefined) {
+      activeStore.departAttempts.value += 1
+    }
     setCurrent(formKeys[idx - 1] as string, navOptions?.replace === true ? 'replace' : 'push')
   }
 
@@ -609,6 +625,14 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
         `[attaform] useWizard.goTo("${key}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}. Ignoring.`
       )
       return
+    }
+    // Record the departure only when the target differs from current;
+    // a same-key goTo is a no-op and should not move the counter.
+    if (key !== current.value) {
+      const activeStore = registry.forms.get(current.value)
+      if (activeStore !== undefined) {
+        activeStore.departAttempts.value += 1
+      }
     }
     setCurrent(key, navOptions?.replace === true ? 'replace' : 'push')
   }

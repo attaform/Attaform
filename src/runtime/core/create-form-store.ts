@@ -344,6 +344,18 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly submitted: Ref<boolean>
   readonly submitError: Ref<unknown>
 
+  // --- wizard navigation lifecycle ---
+  // Bumped by `useWizard` each time wizard navigation (`next`, `back`,
+  // `goTo`) actually departs this form. Cleared by `reset()` alongside
+  // the submission lifecycle. Drives the depart arm of
+  // `defaultShouldShowErrors`: once wizard navigation has left this
+  // form, any errors on the form reveal regardless of touched / blurred
+  // state. Distinct from `submissionAttempts` (which counts
+  // `handleSubmit` passes only) so submission accounting stays
+  // unambiguous; distinct from `form.validate()`, which is a read-only
+  // primitive that never bumps any counter.
+  readonly departAttempts: Ref<number>
+
   /**
    * `true` while a function-form `defaultValues` factory is in flight.
    * Stays `false` for plain-value `defaultValues`. Shared across every
@@ -1519,6 +1531,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const submissionAttempts = ref(0)
   const submitted = ref(false)
   const submitError = ref<unknown>(null)
+  // Counts wizard departures from this form. Bumped by `useWizard`
+  // when `next` / `back` / `goTo` actually leaves this form; zeroed by
+  // `reset()` below. Drives the depart arm of `defaultShouldShowErrors`.
+  const departAttempts = ref(0)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
@@ -3109,6 +3125,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submissionAttempts.value = 0
     submitted.value = false
     submitError.value = null
+    departAttempts.value = 0
     // Drop any pending field-validation timers / in-flight runs. Writes
     // that reached the controller-aborted branch resolve to a no-op, so
     // the error store stays clean after the reset clears it above.
@@ -3360,6 +3377,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submissionAttempts,
     submitted,
     submitError,
+    departAttempts,
     hydrating,
     hydrateError,
     defaultValuesFactory,

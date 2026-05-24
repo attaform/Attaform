@@ -21,7 +21,7 @@ describe('defer()', () => {
   it('preserves the consumer-provided resolver for the compiler to call later', () => {
     const resolver = () => 'shipping-review'
     const marker = defer(resolver)
-    expect((marker as { resolve: typeof resolver }).resolve).toBe(resolver)
+    expect(marker.resolve).toBe(resolver)
   })
 
   it('does NOT invoke the resolver at construction', () => {

@@ -48,18 +48,32 @@
   })
 
   const pricingUS = useForm({
-    schema: z.object({ tier: z.enum(['basic', 'pro', 'enterprise']) }),
-    defaultValues: { tier: 'basic' },
+    schema: z.object({
+      zipCode: z.string().regex(/^\d{5}$/, 'Enter a 5-digit ZIP'),
+      state: z.enum(['CA', 'NY', 'TX', 'WA', 'IL']),
+      tier: z.enum(['basic', 'pro', 'enterprise']),
+    }),
+    defaultValues: { zipCode: '', state: 'CA', tier: 'basic' },
     key: 'docs-demo-slots-pricing-us',
   })
   const pricingEU = useForm({
-    schema: z.object({ tier: z.enum(['basic', 'pro', 'enterprise']) }),
-    defaultValues: { tier: 'basic' },
+    schema: z.object({
+      vatId: z
+        .string()
+        .regex(/^[A-Z]{2}[A-Z0-9]{8,12}$/, 'Enter a valid EU VAT ID (e.g. DE123456789)'),
+      countryCode: z.enum(['DE', 'FR', 'IT', 'ES', 'NL']),
+      tier: z.enum(['basic', 'pro', 'enterprise']),
+    }),
+    defaultValues: { vatId: '', countryCode: 'DE', tier: 'basic' },
     key: 'docs-demo-slots-pricing-eu',
   })
   const pricingAPAC = useForm({
-    schema: z.object({ tier: z.enum(['basic', 'pro', 'enterprise']) }),
-    defaultValues: { tier: 'basic' },
+    schema: z.object({
+      gstNumber: z.string().regex(/^[A-Z0-9]{8,15}$/, 'Enter your GST number'),
+      country: z.enum(['JP', 'AU', 'SG', 'IN']),
+      tier: z.enum(['basic', 'pro', 'enterprise']),
+    }),
+    defaultValues: { gstNumber: '', country: 'JP', tier: 'basic' },
     key: 'docs-demo-slots-pricing-apac',
   })
 
@@ -270,36 +284,38 @@
       </p>
     </form>
 
-    <form
-      v-else-if="
-        wizard.currentStep === 'docs-demo-slots-pricing-us' ||
-        wizard.currentStep === 'docs-demo-slots-pricing-eu' ||
-        wizard.currentStep === 'docs-demo-slots-pricing-apac'
-      "
-      @submit.prevent
-    >
+    <form v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-us'" @submit.prevent>
+      <p class="muted">
+        Sales tax determined by ZIP. The schema below is specific to the US pricing form.
+      </p>
+      <label>
+        <span>ZIP code <span class="required" aria-hidden="true">*</span></span>
+        <input
+          v-register="pricingUS.register('zipCode')"
+          inputmode="numeric"
+          maxlength="5"
+          placeholder="94110"
+        />
+        <em v-if="pricingUS.fields.zipCode.showErrors">{{
+          pricingUS.fields.zipCode.firstError?.message
+        }}</em>
+      </label>
+      <label>
+        State
+        <select v-register="pricingUS.register('state')">
+          <option value="CA">California</option>
+          <option value="NY">New York</option>
+          <option value="TX">Texas</option>
+          <option value="WA">Washington</option>
+          <option value="IL">Illinois</option>
+        </select>
+      </label>
       <label>
         Tier
-        <select
-          v-if="wizard.currentStep === 'docs-demo-slots-pricing-us'"
-          v-register="pricingUS.register('tier')"
-        >
-          <option value="basic">Basic</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
-        </select>
-        <select
-          v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-eu'"
-          v-register="pricingEU.register('tier')"
-        >
-          <option value="basic">Basic (incl. VAT)</option>
-          <option value="pro">Pro (incl. VAT)</option>
-          <option value="enterprise">Enterprise (incl. VAT)</option>
-        </select>
-        <select v-else v-register="pricingAPAC.register('tier')">
-          <option value="basic">Basic (USD)</option>
-          <option value="pro">Pro (USD)</option>
-          <option value="enterprise">Enterprise (USD)</option>
+        <select v-register="pricingUS.register('tier')">
+          <option value="basic">Basic ($19/mo)</option>
+          <option value="pro">Pro ($49/mo)</option>
+          <option value="enterprise">Enterprise ($199/mo)</option>
         </select>
       </label>
       <div class="lazy-probe" role="status">
@@ -316,6 +332,98 @@
           Change the region and the counter bumps because <code>lazy()</code> tracks the resolver's
           reactive reads. Toggle unrelated fields (role, party size) and it stays put. Reset clears
           every lazy cache at once.
+        </p>
+      </div>
+    </form>
+
+    <form v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-eu'" @submit.prevent>
+      <p class="muted">
+        EU customers fill out a VAT registration number. The schema is structurally different from
+        the US form.
+      </p>
+      <label>
+        <span>EU VAT ID <span class="required" aria-hidden="true">*</span></span>
+        <input v-register="pricingEU.register('vatId')" placeholder="DE123456789" />
+        <em v-if="pricingEU.fields.vatId.showErrors">{{
+          pricingEU.fields.vatId.firstError?.message
+        }}</em>
+      </label>
+      <label>
+        Country
+        <select v-register="pricingEU.register('countryCode')">
+          <option value="DE">Germany</option>
+          <option value="FR">France</option>
+          <option value="IT">Italy</option>
+          <option value="ES">Spain</option>
+          <option value="NL">Netherlands</option>
+        </select>
+      </label>
+      <label>
+        Tier
+        <select v-register="pricingEU.register('tier')">
+          <option value="basic">Basic (€18/mo, incl. VAT)</option>
+          <option value="pro">Pro (€45/mo, incl. VAT)</option>
+          <option value="enterprise">Enterprise (€180/mo, incl. VAT)</option>
+        </select>
+      </label>
+      <div class="lazy-probe" role="status">
+        <strong>Lazy probe</strong>
+        <dl>
+          <dt>Resolutions</dt>
+          <dd>{{ lazyResolutions }}</dd>
+          <dt>Resolved region</dt>
+          <dd>{{ lazyResolvedRegion ?? '—' }}</dd>
+          <dt>Resolved at</dt>
+          <dd>{{ formatTime(lazyResolvedAt) }}</dd>
+        </dl>
+        <p class="muted">
+          Each region's form has its own schema. The lazy resolver re-fires when the region changes;
+          reset clears every lazy cache at once.
+        </p>
+      </div>
+    </form>
+
+    <form v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-apac'" @submit.prevent>
+      <p class="muted">
+        APAC customers register with a GST number. Tiers price in USD; the schema is again distinct.
+      </p>
+      <label>
+        <span>GST number <span class="required" aria-hidden="true">*</span></span>
+        <input v-register="pricingAPAC.register('gstNumber')" placeholder="29ABCDE1234F1Z5" />
+        <em v-if="pricingAPAC.fields.gstNumber.showErrors">{{
+          pricingAPAC.fields.gstNumber.firstError?.message
+        }}</em>
+      </label>
+      <label>
+        Country
+        <select v-register="pricingAPAC.register('country')">
+          <option value="JP">Japan</option>
+          <option value="AU">Australia</option>
+          <option value="SG">Singapore</option>
+          <option value="IN">India</option>
+        </select>
+      </label>
+      <label>
+        Tier
+        <select v-register="pricingAPAC.register('tier')">
+          <option value="basic">Basic ($19/mo USD)</option>
+          <option value="pro">Pro ($49/mo USD)</option>
+          <option value="enterprise">Enterprise ($199/mo USD)</option>
+        </select>
+      </label>
+      <div class="lazy-probe" role="status">
+        <strong>Lazy probe</strong>
+        <dl>
+          <dt>Resolutions</dt>
+          <dd>{{ lazyResolutions }}</dd>
+          <dt>Resolved region</dt>
+          <dd>{{ lazyResolvedRegion ?? '—' }}</dd>
+          <dt>Resolved at</dt>
+          <dd>{{ formatTime(lazyResolvedAt) }}</dd>
+        </dl>
+        <p class="muted">
+          Switching regions builds the right schema. The probe shows the lazy resolver re-firing on
+          dep changes, and reset clears every lazy cache at once.
         </p>
       </div>
     </form>

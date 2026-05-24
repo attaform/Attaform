@@ -139,7 +139,24 @@ When the user toggles `needsId` off, the middle slot drops. `wizard.count` falls
 
 ## Lazy slots (`lazy()`)
 
-Wrap a function slot in `lazy((ctx) => ...)` to give that position its own memoized cache: the resolver fires once on the first compile pass and the result holds until one of the resolver's own tracked reactive reads changes. Right shape for resolvers that are expensive enough that re-firing on every wizard re-compile would punish the user — async-derived forms, schema-by-customer-type builders, network-backed factories.
+### What problem `lazy()` solves
+
+Plain function slots re-evaluate whenever the wizard's compiled list re-evaluates, which happens any time _any_ slot's reactive reads move. That's perfect for the common case: cheap branches on live values reading `ctx.forms.<key>.values.<path>` and returning a form or a string. The wizard re-compiles, the function slot runs again, no harm done.
+
+The pattern stops scaling when a resolver is expensive enough that running it on every wizard mutation produces visible thrash. A fetch that pulls a region-specific schema. A factory that derives a heavy validator. A branch that builds a tenant-specific form layout from server-side defaults. Plain function slots re-fire that resolver every time the user toggles _any_ field anywhere in the wizard, because every field edit re-triggers the compiled list.
+
+`lazy()` is the opt-in cache for those resolvers. Each lazy slot gets its own memoized `computed`: the resolver fires once on the first compile pass, and the result holds until one of the resolver's _own_ tracked reactive reads changes. Reads elsewhere in the wizard (other slots' deps, navigation churn, sibling form mutations) leave the cache intact. It's the same opt-in memoization Vue's `computed` gives you anywhere else, applied at the slot level.
+
+```ts
+// Plain function slot: re-fires every time the compiled list re-evaluates,
+// which includes unrelated form edits elsewhere in the wizard.
+;(ctx) => fetchPricingFor(ctx.forms.account.values.region)
+
+// Lazy slot: re-fires only when `region` actually changes.
+lazy((ctx) => fetchPricingFor(ctx.forms.account.values.region))
+```
+
+### How it works
 
 ```ts
 import { useForm, useWizard, lazy } from 'attaform/zod'
@@ -153,7 +170,7 @@ const wizard = useWizard({
 })
 ```
 
-The `buildShippingFormForRegion(...)` call fires on the first compile pass. When the user later edits `region`, the resolver re-fires because `region` is one of its tracked reactive reads — the rail swaps to the freshly-built form. Changes to _unrelated_ wizard state (a different form's field, another slot's branch) leave the cache untouched. `wizard.reset()` bumps an internal epoch so every lazy resolver re-fires on the next compile pass, regardless of whether any tracked read moved; that's what makes a reset a true reboot.
+The `buildShippingFormForRegion(...)` call fires on the first compile pass. When the user later edits `region`, the resolver re-fires because `region` is one of its tracked reactive reads, and the rail swaps to the freshly-built form. Changes to _unrelated_ wizard state (a different form's field, another slot's branch) leave the cache untouched. `wizard.reset()` bumps an internal epoch so every lazy resolver re-fires on the next compile pass, regardless of whether any tracked read moved; that's what makes a reset a true reboot.
 
 ```ts
 // One-shot resolution: read the snapshot outside the resolver so the

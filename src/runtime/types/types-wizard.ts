@@ -5,8 +5,8 @@
  * resolves to a participating form: an existing `useForm` reference, a
  * bare string key (desugared to a noop form so affordance steps
  * participate uniformly), an eagerly-evaluated function slot for
- * runtime branching, or a `defer()`-wrapped function slot whose
- * resolution sticks across re-evaluations.
+ * runtime branching, or a `lazy()`-wrapped function slot that caches
+ * its resolution and re-fires only on its own tracked deps.
  *
  * The wizard surface is loosely keyed (`Record<FormKey, …>`).
  * Cross-component flows threaded through `injectWizard` lose lexical
@@ -126,26 +126,27 @@ export type WizardCtx = {
 }
 
 /**
- * Internal phantom brand for `DeferMarker`. The runtime brand symbol
- * lives in `core/wizard-defer.ts`; this declaration keeps the marker
+ * Internal phantom brand for `LazyMarker`. The runtime brand symbol
+ * lives in `core/wizard-lazy.ts`; this declaration keeps the marker
  * type unforgeable without circular module imports.
  */
-declare const _deferBrand: unique symbol
+declare const _lazyBrand: unique symbol
 
 /**
- * Brand-typed marker returned by `defer((ctx) => …)`. Wrapping a
- * function slot in `defer()` opts that slot into sticky resolution:
- * the slot resolves once on the first compile pass and the result
- * sticks across subsequent re-evaluations, so heavy or one-shot
- * lookups (network-backed factories, expensive derivations) do not
- * fire repeatedly.
+ * Brand-typed marker returned by `lazy((ctx) => …)`. Wrapping a
+ * function slot in `lazy()` gives that slot its own memoization cache:
+ * the resolver fires once on the first compile pass, and the result
+ * stays cached until one of the resolver's own tracked reactive reads
+ * changes (or `wizard.reset()` invalidates the cache). Heavy or
+ * one-shot lookups (network-backed factories, expensive derivations)
+ * do not re-fire because an unrelated slot's deps changed.
  *
- * Construct via the `defer()` helper exported from the same entry as
+ * Construct via the `lazy()` helper exported from the same entry as
  * `useWizard`. The marker is opaque at the type level; consumers do
  * not assemble it directly.
  */
-export type DeferMarker<Ctx = WizardCtx> = {
-  readonly [_deferBrand]: true
+export type LazyMarker<Ctx = WizardCtx> = {
+  readonly [_lazyBrand]: true
   readonly resolve: (ctx: Ctx) => AnyForm | string | undefined
 }
 
@@ -161,13 +162,13 @@ export type DeferMarker<Ctx = WizardCtx> = {
  *  - function          — eager slot, re-evaluates reactively. Returns
  *                        one of the above, or `undefined` to drop the
  *                        slot from the compiled list.
- *  - `DeferMarker`     — sticky function slot (see `defer`).
+ *  - `LazyMarker`      — memoized function slot (see `lazy`).
  */
 export type StepSlot<Ctx = WizardCtx> =
   | AnyForm
   | string
   | ((ctx: Ctx) => AnyForm | string | undefined)
-  | DeferMarker<Ctx>
+  | LazyMarker<Ctx>
 
 /**
  * Shape returned by the `restore` callback. Carries the active step's
@@ -320,7 +321,7 @@ export type WizardOptions = {
 /**
  * Predicate: is the steps tuple statically guaranteed to compile to a
  * non-empty list? A tuple passes when (a) it's not the empty array
- * literal and (b) it carries no function or `defer()` slot — those
+ * literal and (b) it carries no function or `lazy()` slot — those
  * slot kinds can resolve to `undefined` at runtime and drop the
  * compiled position. Form slots and bare-string affordance slots
  * always preserve their position; a tuple made of only those kinds is
@@ -333,7 +334,7 @@ export type WizardOptions = {
 export type StaticallyNonEmpty<S> = S extends readonly []
   ? false
   : S extends readonly (infer Item)[]
-    ? Item extends DeferMarker | ((...args: unknown[]) => unknown)
+    ? Item extends LazyMarker | ((...args: unknown[]) => unknown)
       ? false
       : true
     : false
@@ -356,7 +357,7 @@ export type ActiveFormOf<S> = StaticallyNonEmpty<S> extends true ? AnyForm : Any
  *    the concrete form handle type — so drilling
  *    `wizard.forms.shipping.values.address` carries the schema-derived
  *    field types through.
- *  - **Function / `defer()` slot**: contributes nothing to the static
+ *  - **Function / `lazy()` slot**: contributes nothing to the static
  *    map. Runtime-resolved forms are still reachable via the
  *    catch-all index signature on `WizardForms` (typed as `AnyForm`).
  *
@@ -397,7 +398,7 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  * Parameterized by the steps tuple `S` so active-position fields
  * (`currentStep`, `activeForm`) narrow to non-undefined for the common
  * case (all positional Form / string slots) and stay as honest unions
- * when a function or `defer()` slot can drop the compiled position at
+ * when a function or `lazy()` slot can drop the compiled position at
  * runtime. The `const` type parameter on `useWizard` preserves literal
  * tuple types without consumer-side `as const`, so the narrowing
  * happens automatically from the call site.
@@ -405,7 +406,7 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *  - `currentStep` — key of the active step. Narrows to `string` when
  *                    the steps tuple is statically guaranteed to
  *                    compile to a non-empty list (all positional
- *                    Form / string slots, no function or `defer()`
+ *                    Form / string slots, no function or `lazy()`
  *                    slots). Otherwise reads as `string | undefined`
  *                    so the degenerate case (empty list at runtime)
  *                    surfaces honestly.

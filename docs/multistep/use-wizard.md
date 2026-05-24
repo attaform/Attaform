@@ -1,6 +1,6 @@
 ---
 title: useWizard
-description: useWizard takes an ordered list of step slots and produces a reactive wizard. Forms gather data, bare string keys mark affordance steps (intros, terms, review surfaces), function slots branch on live values, and defer() opts heavy slots into sticky lazy resolution. Universal handleSubmit, namespaced aggregates, automatic URL sync.
+description: useWizard takes an ordered list of step slots and produces a reactive wizard. Forms gather data, bare string keys mark affordance steps (intros, terms, review surfaces), function slots branch on live values, and lazy() memoizes heavy slots by their own tracked reactive reads. Universal handleSubmit, namespaced aggregates, automatic URL sync.
 metaRows:
   - label: Category
     value: Composable
@@ -8,7 +8,7 @@ metaRows:
     value: 'useWizard({ steps, ... })'
     kind: code
   - label: Step slots
-    value: 'Form · string · function · defer()'
+    value: 'Form · string · function · lazy()'
     kind: code
   - label: Aggregates
     value: 'allValues · allErrors · forms · statuses'
@@ -66,14 +66,14 @@ Affordance steps are a first-class building block, not an edge case. Onboarding 
 Each entry in `steps` is a **slot**. Four slot kinds compose the list:
 
 ```ts
-import { useForm, useWizard, defer } from 'attaform/zod'
+import { useForm, useWizard, lazy } from 'attaform/zod'
 
 const wizard = useWizard({
   steps: [
     shipping, // form slot
     'shipping-review', // affordance slot
     (ctx) => (ctx.forms.contact.values.kind === 'business' ? billing : payment), // function slot
-    defer((ctx) => fetchSummaryForm(ctx)), // sticky lazy slot
+    lazy((ctx) => fetchSummaryForm(ctx)), // memoized lazy slot
   ],
 })
 ```
@@ -81,7 +81,7 @@ const wizard = useWizard({
 - **Form slot**: a form built with `useForm`. The wizard surfaces it as-is.
 - **Affordance slot**: a bare string. Becomes the step's key; the wizard generates a noop form under it.
 - **Function slot**: `(ctx) => Form | string | undefined`. Re-evaluates reactively as `ctx.forms.<key>.values` mutate. The picked result replaces the slot's compiled step. Returning `undefined` drops the slot.
-- **Deferred slot**: `defer((ctx) => ...)`. Resolves once on the first compile pass and sticks across re-evaluations. Right shape for one-shot resolutions or expensive lookups.
+- **Lazy slot**: `lazy((ctx) => ...)`. Memoized by the resolver's tracked reactive reads. Re-fires on dep change or `wizard.reset()`. Right shape for resolvers expensive enough that thrash matters.
 
 See [Step slots](/docs/multistep/step-slots) for the full slot reference, including the `ctx` shape and the rules around reactive re-evaluation.
 
@@ -198,7 +198,7 @@ A wizard wired into a signup or checkout never crashes the surrounding app for s
 
 ## Where to next
 
-- [Step slots](/docs/multistep/step-slots) for the full slot reference (form, string, function, defer).
+- [Step slots](/docs/multistep/step-slots) for the full slot reference (form, string, function, lazy).
 - [`injectWizard`](/docs/multistep/inject-wizard) for cross-component access to the wizard handle.
 - [Statuses](/docs/multistep/statuses) for the per-step rollup, `defaultStatuses`, `complete`, and `done`.
 - [Aggregates](/docs/multistep/aggregates) for `allValues`, `allErrors`, and `forms`.

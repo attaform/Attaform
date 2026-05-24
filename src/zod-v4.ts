@@ -40,13 +40,13 @@ export type { UseRegisterReturn } from './runtime/composables/use-register'
 export { useWizard } from './runtime/composables/use-wizard'
 export { injectWizard } from './runtime/composables/inject-wizard'
 export type { InjectWizardInput } from './runtime/composables/inject-wizard'
-export { defer } from './runtime/core/wizard-defer'
+export { lazy } from './runtime/core/wizard-lazy'
 export type {
   AggregateError,
   AnyForm,
   CompiledStep,
-  DeferMarker,
   FormStatus,
+  LazyMarker,
   StepSlot,
   UseWizardReturnType,
   WizardCtx,

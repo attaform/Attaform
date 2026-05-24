@@ -1,11 +1,11 @@
 ---
 title: Step slots
-description: Slots are the entries that fill useWizard's steps array. Four kinds compose the list freely. Form slots gather data, string slots mark affordance screens, function slots branch on live values, and defer() opts heavy slots into sticky lazy resolution. Each slot compiles into the same uniform { key, form } shape so navigation, status aggregation, and submission read uniformly across the whole flow.
+description: Slots are the entries that fill useWizard's steps array. Four kinds compose the list freely. Form slots gather data, string slots mark affordance screens, function slots branch on live values, and lazy() gives heavy slots their own memoized cache that re-fires only on its tracked reactive reads. Each slot compiles into the same uniform { key, form } shape so navigation, status aggregation, and submission read uniformly across the whole flow.
 metaRows:
   - label: Category
     value: Concept
   - label: Slot kinds
-    value: Form · string · function · defer()
+    value: Form · string · function · lazy()
     kind: code
   - label: Compiled shape
     value: '{ key, form }'
@@ -17,14 +17,14 @@ metaRows:
 
 # Step slots
 
-> Slots are the entries that fill `useWizard({ steps })`. A flow's shape lives entirely in the array: forms for collection screens, bare strings for affordance screens, functions for runtime branching, and `defer()` for sticky one-shot resolution. Each slot compiles into a uniform `{ key, form }` step, so the navigation, status, and submission machinery never has to special-case a kind.
+> Slots are the entries that fill `useWizard({ steps })`. A flow's shape lives entirely in the array: forms for collection screens, bare strings for affordance screens, functions for runtime branching, and `lazy()` for memoized resolution that re-fires only on its own tracked reactive reads. Each slot compiles into a uniform `{ key, form }` step, so the navigation, status, and submission machinery never has to special-case a kind.
 
 ::docs-meta-table
 ::
 
-The previous page ([`useWizard`](/docs/multistep/use-wizard)) introduced slots at a glance. This page is the deep dive: what each slot kind brings, the `ctx` shape that function and `defer()` slots receive, and the rules around drop, dedup, and re-evaluation.
+The previous page ([`useWizard`](/docs/multistep/use-wizard)) introduced slots at a glance. This page is the deep dive: what each slot kind brings, the `ctx` shape that function and `lazy()` slots receive, and the rules around drop, dedup, and re-evaluation.
 
-The demo below stitches all four kinds into one flow: a `'welcome'` string, a single attendee form, a function slot that branches by role (and returns a bare string for the no-extras path), another function slot that drops when traveling solo, a `defer()` resolver for the regional pricing form, and a `'review'` string at the end.
+The demo below stitches all four kinds into one flow: a `'welcome'` string, a single attendee form, a function slot that branches by role (and returns a bare string for the no-extras path), another function slot that drops when traveling solo, a `lazy()` resolver for the regional pricing form, and a `'review'` string at the end.
 
 ::docs-demo{slug="step-slots" label="Slots Demo"}
 ::
@@ -32,7 +32,7 @@ The demo below stitches all four kinds into one flow: a `'welcome'` string, a si
 ## The four kinds at a glance
 
 ```ts
-import { useForm, useWizard, defer } from 'attaform/zod'
+import { useForm, useWizard, lazy } from 'attaform/zod'
 
 const shipping = useForm({ schema: shippingSchema, key: 'shipping' })
 const business = useForm({ schema: businessSchema, key: 'business' })
@@ -43,7 +43,7 @@ const wizard = useWizard({
     'welcome', // affordance slot (string)
     shipping, // form slot
     (ctx) => (ctx.forms.shipping.values.kind === 'business' ? business : consumer), // function slot
-    defer((ctx) => fetchSummaryFormFor(ctx)), // sticky lazy slot
+    lazy((ctx) => fetchSummaryFormFor(ctx)), // memoized lazy slot
     'congrats', // affordance slot
   ],
 })
@@ -121,7 +121,7 @@ When the user picks `'business'` on the account step, the branching slot resolve
 
 ### Reactive re-evaluation
 
-Function slots evaluate on every read of their reactive dependencies. Keep slot bodies cheap: a branch on `ctx.forms.<key>.values.<path>` is fine; a `fetch(...)` is not (slot evaluation is synchronous, and re-evaluating an expensive lookup on every keystroke punishes the user). Reach for [`defer()`](#deferred-slots-defer) when the resolution is heavy or one-shot.
+Function slots re-evaluate whenever the wizard's compiled list re-evaluates, which includes the case where _another_ slot's deps changed. Keep slot bodies cheap: a branch on `ctx.forms.<key>.values.<path>` is fine; a `fetch(...)` is not (slot evaluation is synchronous, and re-evaluating an expensive lookup on every keystroke punishes the user). Reach for [`lazy()`](#lazy-slots-lazy) when the resolver is heavy and should only re-fire on its own tracked reads.
 
 ### Dropping a slot keeps navigation honest
 
@@ -137,37 +137,44 @@ const wizard = useWizard({
 
 When the user toggles `needsId` off, the middle slot drops. `wizard.count` falls from 3 to 2; `wizard.activeIndex` and `wizard.currentStep` re-anchor; navigation buttons reflect the new positions.
 
-## Deferred slots (`defer()`)
+## Lazy slots (`lazy()`)
 
-Wrap a function slot in `defer((ctx) => ...)` to opt that specific position into sticky resolution: the slot resolves once on the first compile pass and the result sticks across subsequent re-evaluations. Right shape for expensive lookups, async-derived forms, or branches that should commit on first resolution rather than thrash.
+Wrap a function slot in `lazy((ctx) => ...)` to give that position its own memoized cache: the resolver fires once on the first compile pass and the result holds until one of the resolver's own tracked reactive reads changes. Right shape for resolvers that are expensive enough that re-firing on every wizard re-compile would punish the user — async-derived forms, schema-by-customer-type builders, network-backed factories.
 
 ```ts
-import { useForm, useWizard, defer } from 'attaform/zod'
+import { useForm, useWizard, lazy } from 'attaform/zod'
 
 const wizard = useWizard({
   steps: [
     account,
-    defer((ctx) => buildShippingFormForRegion(ctx.forms.account.values.region)),
+    lazy((ctx) => buildShippingFormForRegion(ctx.forms.account.values.region)),
     confirm,
   ],
 })
 ```
 
-The `buildShippingFormForRegion(...)` call fires once on the first compile pass and never again. If the user later edits `region`, the deferred slot does NOT re-evaluate; the original resolution stays committed across navigation. The one event that does re-fire `defer()` resolvers is `wizard.reset()`, which clears the sticky cache so a wizard reboot truly resolves from scratch, including the expensive one-shot lookups.
+The `buildShippingFormForRegion(...)` call fires on the first compile pass. When the user later edits `region`, the resolver re-fires because `region` is one of its tracked reactive reads — the rail swaps to the freshly-built form. Changes to _unrelated_ wizard state (a different form's field, another slot's branch) leave the cache untouched. `wizard.reset()` bumps an internal epoch so every lazy resolver re-fires on the next compile pass, regardless of whether any tracked read moved; that's what makes a reset a true reboot.
+
+```ts
+// One-shot resolution: read the snapshot outside the resolver so the
+// closure has no reactive deps. Then `lazy()` only re-fires on reset.
+const initialRegion = account.values.region
+lazy(() => buildShippingFormForRegion(initialRegion))
+```
 
 ### Resolution semantics
 
-| Return           | Behavior                                                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| An `AnyForm` ref | The form sticks at that position. Subsequent reads reuse it.                                                                       |
-| A `string` key   | Resolves to a noop affordance step under that key, building one on the fly if needed. The result sticks across re-evaluations.     |
-| `undefined`      | The slot drops. `reset()` clears the sticky cache so the resolver re-fires on the next compile pass; otherwise the drop is sticky. |
+| Return           | Behavior                                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An `AnyForm` ref | The form caches at that position. Subsequent reads reuse it until a tracked dep changes or `reset()` invalidates the cache.                             |
+| A `string` key   | Resolves to a noop affordance step under that key, building one on the fly if needed. Result caches under the same dep-tracking rules as a form return. |
+| `undefined`      | The slot drops from the compiled list. The drop caches; a tracked dep change or `reset()` re-fires the resolver.                                        |
 
-Use `defer()` when the resolution is expensive enough that thrash matters. For everyday branching on live values, plain function slots are simpler and more reactive.
+Use `lazy()` when the resolution is expensive enough that thrash matters. For everyday branching on live values, plain function slots are simpler — they re-evaluate freely with the compiled list, and the wizard pays no cache-bookkeeping cost.
 
 ## The `ctx` surface
 
-Function slots and `defer()` resolvers each receive a single `ctx` argument:
+Function slots and `lazy()` resolvers each receive a single `ctx` argument:
 
 ```ts
 type WizardCtx = {
@@ -223,8 +230,8 @@ A few rules govern how the source slot list compiles down to the final step list
 
 - **Duplicate keys.** Two slots producing the same step key (string slot vs form ref, or two functions returning the same form): first occurrence wins. Later duplicates dev-warn and drop. Keeps `wizard.steps` linearly addressable.
 - **`undefined` from a function slot.** The slot drops; subsequent reads of `wizard.steps` reflect the shortened list. Re-running the slot (a reactive read changed) can reintroduce the position.
-- **`undefined` from a `defer()` slot.** The slot drops. `reset()` clears the sticky cache so the resolver re-fires on the next compile pass; if it returns `undefined` again, the slot drops again.
-- **Function or `defer()` slot returns a new string key.** The wizard builds a noop affordance step on the fly under that key and threads it into the compiled list, the statuses surface, and the rail. The same key returned by a later slot reuses the same noop (first-build wins). No pre-declaration anywhere in `steps` is required.
+- **`undefined` from a `lazy()` slot.** The slot drops. The drop caches; a tracked-dep change or `reset()` re-fires the resolver, and if it returns `undefined` again, the slot drops again.
+- **Function or `lazy()` slot returns a new string key.** The wizard builds a noop affordance step on the fly under that key and threads it into the compiled list, the statuses surface, and the rail. The same key returned by a later slot reuses the same noop (first-build wins). No pre-declaration anywhere in `steps` is required.
 - **Empty compiled list.** If every slot drops at runtime, `wizard.currentStep` reads as `undefined`, navigation refuses with a dev-warn, and the surrounding app keeps rendering. See [Degenerate inputs](/docs/multistep/use-wizard#degenerate-inputs).
 
 ## Where to next
@@ -233,4 +240,4 @@ A few rules govern how the source slot list compiles down to the final step list
 - [Statuses](/docs/multistep/statuses) for the per-step rollup that drives a rail.
 - [Aggregates](/docs/multistep/aggregates) for `wizard.allValues`, `wizard.allErrors`, and `wizard.forms`.
 - [handleSubmit](/docs/multistep/handle-submit) for the universal submission pipeline that handles every slot kind uniformly.
-- [Patterns](/docs/multistep/patterns) for branching, review surfaces, and lazy heavy slots.
+- [Patterns](/docs/multistep/patterns) for branching, review surfaces, and lazy heavy slots in real flows.

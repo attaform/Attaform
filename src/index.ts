@@ -49,13 +49,13 @@ export { injectForm } from './runtime/composables/use-form-context'
 export { useWizard } from './runtime/composables/use-wizard'
 export { injectWizard } from './runtime/composables/inject-wizard'
 export type { InjectWizardInput } from './runtime/composables/inject-wizard'
-export { defer } from './runtime/core/wizard-defer'
+export { lazy } from './runtime/core/wizard-lazy'
 export type {
   AnyForm,
   AggregateError,
   CompiledStep,
-  DeferMarker,
   FormStatus,
+  LazyMarker,
   StepSlot,
   UseWizardReturnType,
   WizardCtx,

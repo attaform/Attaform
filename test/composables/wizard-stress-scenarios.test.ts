@@ -5,13 +5,13 @@ import { createApp, createSSRApp, defineComponent, h, nextTick, ref, type App } 
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
-import { defer } from '../../src/runtime/core/wizard-defer'
+import { lazy } from '../../src/runtime/core/wizard-lazy'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Stress-scenario coverage for the v2 wizard. Each describe block
  * targets a specific composition probe from the plan's S5-S31
- * register — function-slot branching, deferred slot deep-links,
+ * register — function-slot branching, lazy slot deep-links,
  * ghost forms, SSR mixed-slot hydration, special-character step
  * keys, and the no-router fallback path. Each scenario exercises
  * an interaction that the focused per-feature files don't catch
@@ -196,13 +196,13 @@ describe('S4 — mixed wizard with review surfaces', () => {
   })
 })
 
-describe('S6 — deep-link restore to a deferred slot resolves on navigation-land', () => {
+describe('S6 — deep-link restore to a lazy slot resolves on navigation-land', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('a deferred slot resolves at construction (lazy-sticky) and the deep-link lands on it', () => {
+  it('a lazy slot resolves at construction (memoized) and the deep-link lands on it', () => {
     let resolverCalls = 0
     const { app, result } = mountHarness(() => {
       const intro = useForm({
@@ -222,7 +222,7 @@ describe('S6 — deep-link restore to a deferred slot resolves on navigation-lan
       return useWizard({
         steps: [
           intro,
-          defer(() => {
+          lazy(() => {
             resolverCalls += 1
             return fetched
           }),
@@ -233,13 +233,13 @@ describe('S6 — deep-link restore to a deferred slot resolves on navigation-lan
       })
     })
     apps.push(app)
-    // The deferred slot resolved on the first compile pass so the
+    // The lazy slot resolved on the first compile pass so the
     // deep-link to its key succeeded.
     expect(result.currentStep).toBe('s6-fetched')
     expect(resolverCalls).toBe(1)
   })
 
-  it('wizard.reset() clears sticky defer cache, resolver re-fires on next compile pass', async () => {
+  it('wizard.reset() clears every lazy slot cache, resolvers re-fire on next compile pass', async () => {
     let resolverCalls = 0
     const { app, result } = mountHarness(() => {
       const intro = useForm({ schema: z.object({}), key: 's6-reset-intro' })
@@ -256,7 +256,7 @@ describe('S6 — deep-link restore to a deferred slot resolves on navigation-lan
       return useWizard({
         steps: [
           intro,
-          defer(() => {
+          lazy(() => {
             resolverCalls += 1
             return fetched
           }),
@@ -267,10 +267,10 @@ describe('S6 — deep-link restore to a deferred slot resolves on navigation-lan
       })
     })
     apps.push(app)
-    // First compile pass resolved the defer slot.
+    // First compile pass resolved the lazy slot.
     expect(resolverCalls).toBe(1)
     expect(result.count).toBe(3)
-    // Reset clears the sticky cache; next compile pass re-invokes the
+    // Reset bumps the lazy epoch; next compile pass re-invokes the
     // resolver. A true reboot returns the wizard to first-compile
     // state, including expensive one-shot lookups.
     result.reset()
@@ -306,7 +306,7 @@ describe('S10 — function slot returns undefined drops the slot', () => {
   })
 })
 
-describe('S10b — function / defer slot returns an undeclared string key', () => {
+describe('S10b — function / lazy slot returns an undeclared string key', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -373,7 +373,7 @@ describe('S10b — function / defer slot returns an undeclared string key', () =
     expect(secondHandle).toBe(firstHandle)
   })
 
-  it('a defer slot returning an undeclared string sticks across navigation', async () => {
+  it('a lazy slot returning an undeclared string holds across navigation', async () => {
     let resolverCalls = 0
     const { app, result } = mountHarness(() => {
       const entry = useForm({ schema: z.object({}), key: 's10b-3-entry' })
@@ -381,7 +381,7 @@ describe('S10b — function / defer slot returns an undeclared string key', () =
       return useWizard({
         steps: [
           entry,
-          defer(() => {
+          lazy(() => {
             resolverCalls += 1
             return 's10b-3-survey'
           }),
@@ -401,7 +401,8 @@ describe('S10b — function / defer slot returns an undeclared string key', () =
     await result.next()
     await result.next()
     expect(result.currentStep).toBe('s10b-3-final')
-    // Sticky: resolver did not re-fire during navigation.
+    // The resolver reads no reactive state, so navigation alone does
+    // not invalidate the memoized cache.
     expect(resolverCalls).toBe(1)
   })
 })
@@ -592,11 +593,11 @@ describe('S31 — full slot-kind mix under aggressive state churn', () => {
       key: 's31-pricing-apac',
     })
 
-    // Drive the defer with an external signal so a wizard.reset() can
-    // demonstrate that the resolver re-fires against live state, not
-    // just against form defaults.
+    // Drive the lazy slot with an external signal so we can observe
+    // both the dep-driven re-fire and the reset-driven re-fire from
+    // the same probe.
     const regionMode = ref<'us' | 'eu' | 'apac'>('us')
-    const probe = { deferCalls: 0, lastResolvedRegion: null as string | null }
+    const probe = { resolverCalls: 0, lastResolvedRegion: null as string | null }
 
     const wizard = useWizard({
       steps: [
@@ -609,8 +610,8 @@ describe('S31 — full slot-kind mix under aggressive state churn', () => {
               ? sponsor
               : 'no-extras',
         () => (attendee.values.partySize > 1 ? companions : undefined),
-        defer(() => {
-          probe.deferCalls += 1
+        lazy(() => {
+          probe.resolverCalls += 1
           probe.lastResolvedRegion = regionMode.value
           return regionMode.value === 'us'
             ? pricingUS
@@ -727,44 +728,50 @@ describe('S31 — full slot-kind mix under aggressive state churn', () => {
     expect(wizard.forms['s31-companions']).toBe(forms.companions)
   })
 
-  it('defer stays sticky when its driving signal changes; reset clears the cache and re-fires with current state', async () => {
+  it('a lazy slot re-fires when its tracked deps change; unrelated slot churn does not invalidate it', async () => {
     const { app, result } = mountHarness(() => buildSlotMix())
     apps.push(app)
     const { wizard, forms, regionMode, probe } = result
 
-    expect(probe.deferCalls).toBe(1)
+    expect(probe.resolverCalls).toBe(1)
     expect(probe.lastResolvedRegion).toBe('us')
     expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
 
     regionMode.value = 'eu'
     await nextTick()
-    // Sticky: the resolver does NOT re-fire on signal change.
-    expect(probe.deferCalls).toBe(1)
-    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
-    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-pricing-eu')
+    // Reading the steps list flushes the compiled-list computed,
+    // which reads each lazy slot's `.value` and re-fires resolvers
+    // whose tracked deps changed (here: regionMode).
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-pricing-us')
+    expect(probe.resolverCalls).toBe(2)
+    expect(probe.lastResolvedRegion).toBe('eu')
 
-    // Other slot kinds still respond to live state — role swaps remain
-    // reactive even while defer is glued.
+    // Unrelated churn elsewhere in the wizard does NOT re-fire this
+    // resolver — that's what distinguishes a `lazy()` slot from a
+    // plain function slot. Role swap re-evaluates the role function
+    // slot but leaves the lazy pricing slot cached.
     forms.attendee.setValue('role', 'speaker')
     await nextTick()
     expect(wizard.steps.map((s) => s.key)).toContain('s31-speaker')
-    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+    expect(probe.resolverCalls).toBe(2)
 
+    // Reset bumps the lazy epoch — all lazy resolvers re-fire on the
+    // next compile pass regardless of whether their tracked deps moved.
     wizard.reset()
     await nextTick()
-    // Defer re-fired against the live regionMode value.
-    expect(probe.deferCalls).toBe(2)
-    expect(probe.lastResolvedRegion).toBe('eu')
     expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
-    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-pricing-us')
+    expect(probe.resolverCalls).toBe(3)
+    expect(probe.lastResolvedRegion).toBe('eu')
     // reset() also reset the attendee form, role back to default.
     expect(forms.attendee.values.role).toBe('attendee')
 
-    // A second region flip after reset is still sticky-blocked.
+    // A subsequent regionMode flip still re-fires the resolver.
     regionMode.value = 'apac'
     await nextTick()
-    expect(probe.deferCalls).toBe(2)
-    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-apac')
+    expect(probe.resolverCalls).toBe(4)
   })
 
   it('handleSubmit on the final step validates and aggregates across the currently-live mix', async () => {

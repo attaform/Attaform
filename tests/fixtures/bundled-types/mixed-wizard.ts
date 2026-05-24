@@ -7,7 +7,7 @@
  *
  * Surfaces under test:
  *   - StepSlot variants: form, string (affordance), function slot,
- *     `defer()`-wrapped lazy-sticky slot.
+ *     `lazy()`-wrapped memoized slot.
  *   - WizardCtx inside function slots: `ctx.forms.<key>.values.<path>`
  *     reads stay loose-typed (per the deliberate looseness on
  *     `WizardCtxForm`), and `ctx.currentKey` narrows to `FormKey`.
@@ -28,7 +28,7 @@
  */
 import { z } from 'zod'
 import { useForm } from '../../../dist/zod-v4'
-import { useWizard, defer } from '../../../dist/index'
+import { useWizard, lazy } from '../../../dist/index'
 
 const loginSchema = z.object({
   email: z.string(),
@@ -63,9 +63,10 @@ function _neverInvoked() {
         const liveEmail: unknown = ctx.forms.login?.values.email
         return liveEmail && at !== 'welcome' ? profile : 'maintenance'
       },
-      defer((ctx) => {
-        // Sticky lazy slot — same WizardCtx surface as eager function
-        // slots; resolution caches after the first navigation-land.
+      lazy((ctx) => {
+        // Memoized lazy slot. Same WizardCtx surface as eager function
+        // slots; the resolver re-fires only when its tracked reactive
+        // reads change (or `wizard.reset()` invalidates the cache).
         void ctx.currentKey
         return confirm
       }),

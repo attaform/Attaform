@@ -8,8 +8,6 @@ import {
   onScopeDispose,
   provide,
   ref,
-  shallowRef,
-  triggerRef,
   useId,
   watch,
   type ComputedRef,
@@ -24,7 +22,7 @@ import {
   useRegistry,
 } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
-import { isDeferMarker } from '../core/wizard-defer'
+import { isLazyMarker } from '../core/wizard-lazy'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildNoopWizardSchema } from '../core/wizard-noop-schema'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
@@ -35,8 +33,8 @@ import type {
   AnyForm,
   CompiledStep,
   CurrentStepOf,
-  DeferMarker,
   FormStatus,
+  LazyMarker,
   StepSlot,
   UseWizardReturnType,
   WizardCtx,
@@ -107,8 +105,8 @@ type SubmissionSourceForm = StatusSourceForm & {
  * Each slot resolves to a participating form: an existing `useForm`
  * reference, a bare string key (desugared to a noop form so affordance
  * steps participate uniformly), an eagerly-evaluated function slot for
- * runtime branching, or a `defer()`-wrapped function slot whose
- * resolution sticks across re-evaluations.
+ * runtime branching, or a `lazy()`-wrapped function slot that caches
+ * its resolution and re-fires only on its own tracked deps.
  *
  * The wizard's surface is read-only from the consumer's side:
  * navigation (`next` / `back` / `goTo`) walks positional indices,
@@ -140,7 +138,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // by `buildNoopWizardSchema`. Synthesis runs at setup time so the
   // forms are registered in the registry (status + ref-counting +
   // consumer eviction all flow through the same paths as real forms).
-  // Function and defer slots may also return string keys at runtime,
+  // Function and lazy slots may also return string keys at runtime,
   // including ones not declared at the top level. Those go through
   // `getOrBuildNoop` below, which constructs a noop on the fly inside
   // a wizard-scoped `effectScope` so consumer cleanup, registry
@@ -216,19 +214,25 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Reactive plumbing for the slot compiler --------------------------
   //
-  // `stickyDefers` caches the resolved form for each deferred slot at
-  // its index in `rawSteps`. Once a `defer((ctx) => …)` slot resolves
-  // (or explicitly drops via `undefined`), subsequent reactive reads
-  // reuse the cached result without re-invoking the resolver. The
-  // wizard treats `defer()` slots as eager-but-sticky in this build:
-  // they resolve on first compile-pass evaluation and never re-resolve
-  // until `wizard.reset()` clears the cache.
+  // Each `lazy()` slot gets its own Vue computed. The resolver fires
+  // eagerly on the first compile pass and the result memoizes. The
+  // cache invalidates only when one of the resolver's own tracked
+  // reactive reads changes (Vue handles dep tracking) — an unrelated
+  // slot re-evaluating does not re-fire this one. `wizard.reset()`
+  // bumps `lazyEpoch` so every lazy computed re-fires on the next
+  // compile pass.
   //
-  // Wrapped in `shallowRef` so internal mutations during slot
-  // resolution don't notify subscribers (no re-eval loop in
-  // `compiledSteps`), while `reset()` can call `triggerRef` to force
-  // a one-shot invalidation.
-  const stickyDefers = shallowRef(new Map<number, AnyForm | null>())
+  // The computed caches the resolver's *raw* return (form / string /
+  // undefined). String → noop conversion happens outside the computed
+  // so noop-construction reactivity doesn't leak into the lazy slot's
+  // dep set (otherwise the form registry's initialization writes
+  // would invalidate the cache on the very first compile pass).
+  //
+  // The map is keyed by slot index in `rawSteps`; population happens
+  // eagerly below so cross-test mounts get fresh per-index closures.
+  const lazyEpoch = ref(0)
+  type LazyResult = AnyForm | string | undefined
+  const lazyComputeds = new Map<number, ComputedRef<LazyResult>>()
 
   // `activeKey` is the canonical source of truth for the active step.
   // Initialized below from `restore` (or the first compiled slot's key).
@@ -289,17 +293,19 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (typeof slot === 'string') {
       // Top-level string slots are pre-built into `noopForms` at
       // construction. The lazy builder hits the cache; the unified
-      // path keeps function/defer string returns consistent with
+      // path keeps function/lazy string returns consistent with
       // top-level string slots.
       return getOrBuildNoop(slot)
     }
-    if (isDeferMarker(slot)) {
-      const cached = stickyDefers.value.get(index)
-      if (cached !== undefined) return cached === null ? undefined : cached
-      const result = (slot as DeferMarker).resolve(ctx)
-      const form = resolveSlotResult(result)
-      stickyDefers.value.set(index, form ?? null)
-      return form
+    if (isLazyMarker(slot)) {
+      // Lazy slots flow through their own per-slot computed. Reading
+      // `.value` here memoizes by the resolver's tracked reactive
+      // reads; other slots re-evaluating around it do not re-fire
+      // this one. String → noop conversion runs out here so the
+      // resolver's dep set stays clean of noop-construction side
+      // effects.
+      const c = lazyComputeds.get(index)
+      return c === undefined ? undefined : resolveSlotResult(c.value)
     }
     if (typeof slot === 'function') {
       const result = (slot as (ctx: WizardCtx) => AnyForm | string | undefined)(ctx)
@@ -312,7 +318,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function resolveSlotResult(result: AnyForm | string | undefined): AnyForm | undefined {
     if (result === undefined) return undefined
     if (typeof result === 'string') {
-      // Function and defer slot string returns build a noop on first
+      // Function and lazy slot string returns build a noop on first
       // reference. Subsequent returns of the same string hit the
       // cache. Authors don't have to pre-declare affordance keys
       // anywhere; the wizard handles new keys uniformly.
@@ -321,13 +327,42 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return result
   }
 
+  // Eagerly populate one computed per lazy slot. Each computed
+  // subscribes to `lazyEpoch` so `reset()` can invalidate every cache
+  // in one move, and to whatever reactive reads its own resolver makes
+  // (Vue's standard dep tracking). The closure over `idx` and `marker`
+  // pins this computed to a specific slot in `rawSteps`.
+  //
+  // The ctx object is built inline with `currentKey` as a getter so
+  // the resolver only establishes an `activeKey` dep when it actually
+  // reads `ctx.currentKey` — reading the wizard's wider `slotCtx`
+  // computed would thread activeKey through every lazy slot's deps
+  // and re-fire on navigation regardless of the resolver's intent.
+  const lazyCtx: WizardCtx = {
+    forms: slotForms,
+    get currentKey() {
+      return activeKey.value === '' ? undefined : activeKey.value
+    },
+  }
+  for (let i = 0; i < rawSteps.length; i++) {
+    const slot = rawSteps[i]
+    if (isLazyMarker(slot)) {
+      const idx = i
+      const marker = slot as LazyMarker
+      lazyComputeds.set(
+        idx,
+        computed(() => {
+          void lazyEpoch.value
+          return marker.resolve(lazyCtx)
+        })
+      )
+    }
+  }
+
   // The compiled step list. Function slots re-evaluate on every read
-  // of their reactive deps; sticky defer slots resolve once and stick;
-  // string slots cache their noop forms.
+  // of their reactive deps; lazy slots run through their own memoized
+  // computed; string slots cache their noop forms.
   const compiledSteps = computed<readonly CompiledStep[]>(() => {
-    // Subscribe to defer-cache invalidation so `reset()` re-fires
-    // sticky resolvers on the next compile pass.
-    void stickyDefers.value
     const ctx = slotCtx.value
     const out: CompiledStep[] = []
     const seen = new Set<FormKey>()
@@ -1047,15 +1082,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function reset(): void {
     submissionAttempts.value = 0
     done.value = false
-    // Clear sticky defer resolutions so the next compile pass re-fires
-    // each `defer()` resolver. Without this, a reset that's meant to
-    // return the wizard to first-compile state would keep stale lazy
-    // resolutions glued in place (a wizard reboot should be a true
-    // reboot, including expensive one-shot lookups). `triggerRef` is
-    // what notifies `compiledSteps` to re-evaluate; mutating the Map
-    // alone wouldn't fire a shallowRef subscription.
-    stickyDefers.value.clear()
-    triggerRef(stickyDefers)
+    // Bump the lazy epoch so every `lazy()` slot's memoized computed
+    // re-fires on the next compile pass. Without this, expensive
+    // one-shot lookups would stay glued to their first resolution
+    // across a wizard reboot — and `reset()` is meant to be a true
+    // reboot, not a soft rewind.
+    lazyEpoch.value += 1
     for (const step of compiledSteps.value) {
       const full = step.form as unknown as SubmissionSourceForm
       if (typeof full.reset === 'function') full.reset()
@@ -1091,7 +1123,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // cast through `CurrentStepOf<S>` / `ActiveFormOf<S>`. The cast is
   // sound: when `S` passes the static-safety predicate, the compiled
   // step list is guaranteed non-empty (only Form and string slots
-  // preserve their positions; function / defer slots are precluded by
+  // preserve their positions; function / lazy slots are precluded by
   // the predicate), so the getters never observe the degenerate
   // `undefined` branch in that case.
   const handle: UseWizardReturnType<S> = {

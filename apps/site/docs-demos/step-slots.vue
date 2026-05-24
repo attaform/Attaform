@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { useForm, useWizard, defer } from 'attaform/zod'
+  import { useForm, useWizard, lazy } from 'attaform/zod'
   import { z } from 'zod'
 
   const attendee = useForm({
@@ -63,9 +63,9 @@
     key: 'docs-demo-slots-pricing-apac',
   })
 
-  const deferResolutions = ref(0)
-  const deferredRegion = ref<string | null>(null)
-  const deferredAt = ref<number | null>(null)
+  const lazyResolutions = ref(0)
+  const lazyResolvedRegion = ref<string | null>(null)
+  const lazyResolvedAt = ref<number | null>(null)
 
   const wizard = useWizard({
     steps: [
@@ -78,10 +78,10 @@
             ? sponsor
             : 'no-extras',
       () => (attendee.values.partySize > 1 ? companions : undefined),
-      defer(() => {
-        deferResolutions.value += 1
-        deferredRegion.value = attendee.values.region
-        deferredAt.value = Date.now()
+      lazy(() => {
+        lazyResolutions.value += 1
+        lazyResolvedRegion.value = attendee.values.region
+        lazyResolvedAt.value = Date.now()
         return attendee.values.region === 'us'
           ? pricingUS
           : attendee.values.region === 'eu'
@@ -105,9 +105,9 @@
 
   function resetEverything(): void {
     wizard.reset()
-    deferResolutions.value = 0
-    deferredRegion.value = null
-    deferredAt.value = null
+    lazyResolutions.value = 0
+    lazyResolvedRegion.value = null
+    lazyResolvedAt.value = null
   }
 
   const labels: Record<string, string> = {
@@ -160,8 +160,8 @@
       <h3>Welcome aboard</h3>
       <p>
         This wizard exercises all four slot kinds: an affordance string here, a form coming up next,
-        a function slot that branches by role, and a <code>defer()</code> resolver that sticks
-        across navigation.
+        a function slot that branches by role, and a <code>lazy()</code> resolver that memoizes by
+        its tracked reactive reads.
       </p>
       <p class="muted">No data is collected on this step.</p>
     </div>
@@ -302,19 +302,20 @@
           <option value="enterprise">Enterprise (USD)</option>
         </select>
       </label>
-      <div class="defer-probe" role="status">
-        <strong>Defer probe</strong>
+      <div class="lazy-probe" role="status">
+        <strong>Lazy probe</strong>
         <dl>
           <dt>Resolutions</dt>
-          <dd>{{ deferResolutions }}</dd>
+          <dd>{{ lazyResolutions }}</dd>
           <dt>Resolved region</dt>
-          <dd>{{ deferredRegion ?? '—' }}</dd>
+          <dd>{{ lazyResolvedRegion ?? '—' }}</dd>
           <dt>Resolved at</dt>
-          <dd>{{ formatTime(deferredAt) }}</dd>
+          <dd>{{ formatTime(lazyResolvedAt) }}</dd>
         </dl>
         <p class="muted">
-          Go back, change the region, return: the count stays put because <code>defer()</code>
-          sticks. Reset the wizard to clear the cache and watch it climb.
+          Change the region and the counter bumps because <code>lazy()</code> tracks the resolver's
+          reactive reads. Toggle unrelated fields (role, party size) and it stays put. Reset clears
+          every lazy cache at once.
         </p>
       </div>
     </form>
@@ -496,7 +497,7 @@
     color: #6b7280;
     font-size: 0.8125rem;
   }
-  .defer-probe {
+  .lazy-probe {
     padding: 0.625rem 0.75rem;
     background: #fffbeb;
     border: 1px solid #fde68a;
@@ -504,28 +505,28 @@
     font-size: 0.8125rem;
     color: #78350f;
   }
-  .defer-probe strong {
+  .lazy-probe strong {
     display: block;
     font-weight: 600;
     margin-bottom: 0.25rem;
   }
-  .defer-probe dl {
+  .lazy-probe dl {
     display: grid;
     grid-template-columns: max-content 1fr;
     column-gap: 0.5rem;
     row-gap: 0.125rem;
     margin: 0.25rem 0 0.375rem;
   }
-  .defer-probe dt {
+  .lazy-probe dt {
     color: #92400e;
     font-weight: 500;
   }
-  .defer-probe dd {
+  .lazy-probe dd {
     margin: 0;
     font-family: ui-monospace, monospace;
     color: #78350f;
   }
-  .defer-probe .muted {
+  .lazy-probe .muted {
     color: #92400e;
     margin: 0;
   }

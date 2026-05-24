@@ -31,18 +31,25 @@ import type { ShouldShowErrors, ShouldShowErrorsConfig } from '../types/types-ap
  *    container's `showErrors` too. The error returns the moment the
  *    new verdict lands and `validating` flips back to false.
  *
- * 3. **Post-submit override.** Once `formMeta.submissionAttempts > 0` OR
- *    `formMeta.departAttempts > 0` the heuristic surfaces every own-path
- *    error unconditionally (subject only to the two gates above). The
- *    `submissionAttempts` arm fires when the consumer ran `handleSubmit`:
- *    they asked the form to commit, transient mid-edit hiding is no
- *    longer appropriate. The `departAttempts` arm fires when wizard
- *    navigation (`wizard.next`, `wizard.back`, `wizard.goTo`) actually
- *    left this form: the user pressed onward (or moved off the step
- *    entirely), so the form should reveal whatever was blocking them
- *    when they come back. Both arms deliberately cover focused,
- *    pristine, and untouched fields, so the next paint after the user
- *    tried to progress lights up every problem the validator found.
+ * 3. **Post-submit override.** Once `formMeta.submissionAttempts > 0`
+ *    the heuristic surfaces every own-path error unconditionally on
+ *    the field axis (subject only to the two gates above). The
+ *    counter covers two distinct gestures:
+ *
+ *    - `form.handleSubmit` directly, or `wizard.handleSubmit` at an
+ *      intermediate step. The user asked this specific form to
+ *      commit; transient mid-edit hiding is no longer appropriate.
+ *
+ *    - `wizard.handleSubmit` at the final step. The wizard validates
+ *      every form in parallel and bumps each one's `submissionAttempts`,
+ *      so a `Finish`-button submission reveals errors across the
+ *      whole multistep flow at once. That's the review-surface UX:
+ *      by the time the user tries to commit the wizard, every
+ *      blocking error lights up regardless of which step it lives on.
+ *
+ *    The arm deliberately covers focused, pristine, and untouched
+ *    fields, so the next paint after the user tried to progress lights
+ *    up every problem the validator found.
  *
  * 4. **Pre-submit timing gate.** Before the first submit attempt,
  *    show once the user has touched the field (sticky-true after the
@@ -80,7 +87,6 @@ export const defaultShouldShowErrors: ShouldShowErrors = (field, formMeta) => {
   if (!hasOwnError) return false
   if (field.validating === true) return false
   if (formMeta.submissionAttempts > 0) return true
-  if (formMeta.departAttempts > 0) return true
   return field.touched === true && field.focused !== true
 }
 

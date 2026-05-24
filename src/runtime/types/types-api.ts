@@ -23,7 +23,6 @@ import type {
   ValueOfUnion,
   WriteShape,
 } from './types-core'
-import type { AnyForm, NextOption, NormalizedNext } from './types-wizard'
 
 /**
  * Identifier for a form. A `FormKey` is the string passed via
@@ -1031,7 +1030,6 @@ export type UseFormConfiguration<
   Schema extends AbstractSchema<Form, GetValueFormType>,
   DefaultValues extends DefaultValuesInput<Form>,
   K extends FormKey = FormKey,
-  Forms extends readonly AnyForm[] = readonly AnyForm[],
 > = {
   /**
    * The schema describing the form's shape and validation rules.
@@ -1328,29 +1326,6 @@ export type UseFormConfiguration<
    * channel would be solo by construction.
    */
   multiTab?: boolean
-  /**
-   * Declares this form's downstream neighbor(s) in a wizard graph.
-   * Two shapes:
-   *
-   *   - `AnyForm` — identity reference; the form's runtime successor
-   *     is always the named form (linear flow).
-   *   - `{ pick, forms }` — declared list of possible successors with
-   *     a `pick` selector. `pick(parsed)` runs against the form's
-   *     `z.output` shape (the same shape `handleSubmit` receives) and
-   *     returns one of `forms`, or `undefined` for a dynamic terminal.
-   *
-   * Declare `forms` with `as const` so TypeScript narrows `pick`'s
-   * return type to the literal union. Without `as const`, the tuple
-   * widens to `AnyForm[]` and narrowing collapses.
-   *
-   * Omit `next` to mark this form as a terminal step. The walker
-   * treats any form whose `next` is undefined as a wizard endpoint.
-   *
-   * Read at `useWizard(entryForm)` construction time and at every
-   * navigation / submission consultation. `pick` should be free of
-   * side effects — the walker may invoke it multiple times.
-   */
-  next?: NextOption<GetValueFormType, Forms>
   /**
    * @internal
    * SSR prefetch mark — set by the `attaform/vite` compile-time
@@ -3184,10 +3159,13 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * same-key `goTo`, or a `next()` blocked by failed activation leave
    * the counter at its prior value.
    *
-   * Drives the depart arm of `defaultShouldShowErrors`: once wizard
-   * navigation has left this form, any errors on the form reveal
-   * regardless of touched / blurred state. Useful for the "the user
-   * tried to advance past this step, so show what blocked them" UX.
+   * Pure introspection counter — useful for "this form has been
+   * visited and left" UX (analytics, prior-step badges, layered
+   * `shouldShowErrors` predicates) but does NOT drive the library's
+   * default `shouldShowErrors` heuristic. The reveal-on-submit story
+   * runs entirely through `submissionAttempts`, which
+   * `wizard.handleSubmit` bumps on the active form at intermediate
+   * steps and on every form at the final step.
    *
    * Distinct from `submissionAttempts`, which counts `handleSubmit`
    * passes only — wizard departures and form submissions are tracked
@@ -3608,22 +3586,6 @@ export type UseFormReturnType<
    * back to `FormKey` when omitted (auto-generated id).
    */
   key: K
-
-  /**
-   * Normalized `next` declaration captured from
-   * `useForm({ next })`. Identity refs lift to a single-element
-   * `{ pick, forms }` tuple so the wizard graph walker reads one
-   * uniform shape; branching inputs pass through with a runtime guard
-   * that throws `OutOfFormsListError` on out-of-list `pick` returns.
-   *
-   * `undefined` when `next` was omitted — the form is a terminal step
-   * in any wizard graph that reaches it.
-   *
-   * Read by `useWizard(entryForm)` during the construction-time graph
-   * walk and by the navigation / submission pipelines that consult
-   * `pick`. Consumers do not normally read this directly.
-   */
-  readonly next: NormalizedNext | undefined
 
   // --- Async-defaults lifecycle ---
 

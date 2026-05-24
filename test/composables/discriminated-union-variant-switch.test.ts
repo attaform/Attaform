@@ -364,6 +364,357 @@ describe('discriminated-union variant switch — wrapped DU', () => {
   })
 })
 
+describe('discriminated-union variant switch — array <-> non-array path', () => {
+  // One variant carries `payload` as an array of records; the other
+  // doesn't carry `payload` at all. The container proxy at
+  // `form.fields.payload` mounts an Array target the first time it's
+  // read (driven by `isArrayContainer`), and the proxy is cached
+  // per-segments key. Variant switches that remove `payload` from
+  // the active variant — or restore it from variant memory — need
+  // the cached proxy to keep agreeing with the live shape: live
+  // indices when the array is present, zero-length when it's not,
+  // never claiming to be an array when the path now holds something
+  // else entirely.
+
+  const arrayOrSingleSchema = z.object({
+    body: z.discriminatedUnion('mode', [
+      z.object({
+        mode: z.literal('list'),
+        payload: z.array(z.object({ value: z.string() })),
+      }),
+      z.object({ mode: z.literal('single'), text: z.string() }),
+    ]),
+  })
+
+  type ArrayOrSingleApi = Omit<
+    UseFormReturnType<z.output<typeof arrayOrSingleSchema>>,
+    'setValue' | 'append' | 'remove'
+  > & {
+    setValue: (path: string, value: unknown) => boolean
+    append: (path: string, item: unknown) => void
+    remove: (path: string, idx: number) => void
+    values: { body: { mode: string } & Record<string, unknown> }
+  }
+
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  function mount(): ArrayOrSingleApi {
+    const handle: { api?: ArrayOrSingleApi } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useForm({
+          schema: arrayOrSingleSchema,
+          key: `du-array-vs-single-${Math.random().toString(36).slice(2)}`,
+          defaultValues: { body: { mode: 'list', payload: [] } },
+        }) as unknown as ArrayOrSingleApi
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    return handle.api as ArrayOrSingleApi
+  }
+
+  it('field-proxy at the array path enumerates the live entries while the variant is active', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    api.append('body.payload', { value: 'second' })
+    await nextTick()
+    const fieldsAtPayload = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(fieldsAtPayload)).toBe(true)
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+    expect((fieldsAtPayload as unknown as { length: number }).length).toBe(2)
+  })
+
+  it('after switching away from the array variant, the field proxy reports zero entries', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    api.append('body.payload', { value: 'second' })
+    await nextTick()
+    const fieldsAtPayload = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    // Warm the cache as the array variant.
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+
+    api.setValue('body.mode', 'single')
+    await nextTick()
+    expect(api.values.body.mode).toBe('single')
+    expect(api.values.body['payload']).toBeUndefined()
+
+    // The held reference still points at the Array-target proxy
+    // from before the switch (proxy targets are immutable), but
+    // liveKeysAtPath reads `state.form.value` on every enumeration
+    // so the emitted set tracks reality — `Object.keys` / `length`
+    // drop to zero, and v-for renders no stale rows from the
+    // previous variant.
+    expect(Object.keys(fieldsAtPayload as object)).toEqual([])
+    expect((fieldsAtPayload as unknown as { length: number }).length).toBe(0)
+  })
+
+  it('a fresh read after the switch returns a non-array-targeted proxy (Array.isArray flips)', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    await nextTick()
+    // Warm the cache as the array variant.
+    const stale = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(stale)).toBe(true)
+
+    api.setValue('body.mode', 'single')
+    await nextTick()
+
+    // The container cache keys off (segments, shape). With the
+    // live value now `undefined`, the next fresh read produces a
+    // function-target proxy — `Array.isArray` reports the truth.
+    const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(fresh)).toBe(false)
+    expect(fresh).not.toBe(stale)
+
+    // Held-reference contract: the proxy target is immutable, so
+    // the OLD reference still reports as an array. Documented as
+    // a caveat for consumers who cache proxy references across
+    // variant switches (template `v-for` always re-reads through
+    // `form.fields.<path>` and gets the fresh proxy).
+    expect(Array.isArray(stale)).toBe(true)
+  })
+
+  it('a function-target held reference reports live length and keys after a flip into the array variant', async () => {
+    const api = mount()
+    // Move to the variant where `payload` doesn't exist BEFORE the
+    // first read, so the cached proxy at this path is minted with
+    // a function target (no array shape yet).
+    api.setValue('body.mode', 'single')
+    await nextTick()
+
+    const heldFn = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(heldFn)).toBe(false)
+    expect(typeof heldFn).toBe('function')
+
+    // Flip into the list variant and add items.
+    api.setValue('body.mode', 'list')
+    await nextTick()
+    api.append('body.payload', { value: 'a' })
+    api.append('body.payload', { value: 'b' })
+    await nextTick()
+
+    // Trap-implemented dimensions track live state on the held
+    // reference — `length` interception consults the live shape
+    // (not just the cached one), so a function-target proxy held
+    // across a flip into an array still reports the live count
+    // instead of descending into a phantom child path.
+    expect((heldFn as { length: number }).length).toBe(2)
+    expect(Object.keys(heldFn as object)).toEqual(['0', '1'])
+
+    // Inherent caveat: host-level checks read internal slots off
+    // the original target, which proxy traps cannot rewrite. The
+    // held function-target reference stays `typeof === 'function'`
+    // and never passes `Array.isArray` even though the live shape
+    // is now an array. Fresh reads through `form.fields.<path>`
+    // produce an array-targeted proxy that does pass the host check.
+    expect(Array.isArray(heldFn)).toBe(false)
+    expect(typeof heldFn).toBe('function')
+
+    const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(fresh)).toBe(true)
+    expect(fresh).not.toBe(heldFn)
+    expect(Object.keys(fresh as object)).toEqual(['0', '1'])
+  })
+
+  it('switching back into the array variant restores enumeration of the restored items', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    api.append('body.payload', { value: 'second' })
+    await nextTick()
+    const fieldsAtPayload = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+
+    api.setValue('body.mode', 'single')
+    await nextTick()
+    expect(Object.keys(fieldsAtPayload as object)).toEqual([])
+
+    // Variant memory restores the prior `payload` entries; the
+    // SAME cached proxy must reflect them again.
+    api.setValue('body.mode', 'list')
+    await nextTick()
+    expect(Array.isArray((api.values.body as { payload?: unknown }).payload)).toBe(true)
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+  })
+})
+
+describe('z.union (non-discriminated) — array-vs-object shape collision at the same path', () => {
+  // Zod's `z.union` allows the same key to be array-shaped in one
+  // branch and record-shaped in another. The form value at that
+  // path can flip between shapes via `setValue`. The cached
+  // container proxy needs to follow: a fresh read after the flip
+  // must return a proxy whose target matches the new shape, so
+  // `Array.isArray` and `v-for` agree with reality.
+  const unionSchema = z.object({
+    payload: z.union([z.array(z.object({ value: z.string() })), z.record(z.string(), z.string())]),
+  })
+
+  type UnionApi = Omit<UseFormReturnType<z.output<typeof unionSchema>>, 'setValue' | 'append'> & {
+    setValue: (path: string, value: unknown) => boolean
+    append: (path: string, item: unknown) => void
+    values: { payload: unknown }
+  }
+
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  function mount(initial: 'array' | 'object'): UnionApi {
+    const handle: { api?: UnionApi } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useForm({
+          schema: unionSchema,
+          key: `union-shape-${Math.random().toString(36).slice(2)}`,
+          defaultValues: { payload: initial === 'array' ? [] : ({} as Record<string, string>) },
+        }) as unknown as UnionApi
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    return handle.api as UnionApi
+  }
+
+  it('Array.isArray tracks the live shape across the array-to-record flip on fresh reads', async () => {
+    const api = mount('array')
+    api.append('payload', { value: 'first' })
+    await nextTick()
+
+    const arrayProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(arrayProxy)).toBe(true)
+    expect(Object.keys(arrayProxy as object)).toEqual(['0'])
+
+    // Force-flip the live shape to an object.
+    api.setValue('payload', { red: 'r', green: 'g' })
+    await nextTick()
+    expect(api.values.payload).toEqual({ red: 'r', green: 'g' })
+
+    const objectProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(objectProxy)).toBe(false)
+    expect(objectProxy).not.toBe(arrayProxy)
+    expect(Object.keys(objectProxy as object).sort()).toEqual(['green', 'red'])
+  })
+
+  it('a held Array-target reference tracks live record keys after a flip to object shape', async () => {
+    const api = mount('array')
+    api.append('payload', { value: 'first' })
+    api.append('payload', { value: 'second' })
+    await nextTick()
+
+    const heldArr = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(heldArr)).toBe(true)
+    expect((heldArr as { length: number }).length).toBe(2)
+    expect(Object.keys(heldArr as object)).toEqual(['0', '1'])
+
+    // Force-flip the live shape to a record.
+    api.setValue('payload', { red: 'r', green: 'g', blue: 'b' })
+    await nextTick()
+
+    // The held Array-target proxy retraps `length` and `ownKeys` on
+    // every read, so the live record keys surface through the
+    // held reference. The length reports the live key count
+    // regardless of whether the underlying shape is array or
+    // record — both flow through `liveKeysAtPath`.
+    expect((heldArr as { length: number }).length).toBe(3)
+    expect(Object.keys(heldArr as object).sort()).toEqual(['blue', 'green', 'red'])
+
+    // Inherent caveat: the cached Array target is locked, so the
+    // host-level `Array.isArray` check stays true even though the
+    // live shape is now a record. Fresh reads through
+    // `form.fields.<path>` produce a function-target proxy that
+    // reports the truth.
+    expect(Array.isArray(heldArr)).toBe(true)
+    const fresh = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(fresh)).toBe(false)
+    expect(fresh).not.toBe(heldArr)
+  })
+
+  it('Array.isArray tracks the live shape across the record-to-array flip on fresh reads', async () => {
+    const api = mount('object')
+    api.setValue('payload', { red: 'r' })
+    await nextTick()
+    const objectProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(objectProxy)).toBe(false)
+
+    api.setValue('payload', [{ value: 'a' }, { value: 'b' }])
+    await nextTick()
+    const arrayProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(arrayProxy)).toBe(true)
+    expect(Object.keys(arrayProxy as object)).toEqual(['0', '1'])
+    expect(arrayProxy).not.toBe(objectProxy)
+  })
+})
+
+describe('surface proxy — per-consumer cache isolation', () => {
+  // Two `useForm` calls with the same key share the underlying form
+  // store (the registry de-dupes by key), but each call gets its own
+  // `buildFormApi` and therefore its own container cache. This pins
+  // that contract: independent proxies, shared live state.
+  const apps: App[] = []
+  const sharedSchema = z.object({ posts: z.array(z.object({ title: z.string() })) })
+  type SharedApi = Omit<UseFormReturnType<z.output<typeof sharedSchema>>, 'append'> & {
+    append: (path: string, item: unknown) => void
+  }
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  function mount(): { a: SharedApi; b: SharedApi } {
+    const handle: { a?: SharedApi; b?: SharedApi } = {}
+    const App = defineComponent({
+      setup() {
+        handle.a = useForm({
+          schema: sharedSchema,
+          key: 'shared-isolation',
+          defaultValues: { posts: [] },
+        }) as unknown as SharedApi
+        handle.b = useForm({
+          schema: sharedSchema,
+          key: 'shared-isolation',
+          defaultValues: { posts: [] },
+        }) as unknown as SharedApi
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    return { a: handle.a as SharedApi, b: handle.b as SharedApi }
+  }
+
+  it('two consumers of the same form key see the same live state through independent proxies', async () => {
+    const { a, b } = mount()
+    a.append('posts', { title: 'first' })
+    a.append('posts', { title: 'second' })
+    await nextTick()
+
+    const fieldsAFromA = (a.fields as unknown as { posts: unknown }).posts
+    const fieldsAFromB = (b.fields as unknown as { posts: unknown }).posts
+
+    // Independent proxy identities (per-consumer caches).
+    expect(fieldsAFromA).not.toBe(fieldsAFromB)
+
+    // Shared live state through both proxies.
+    expect(Object.keys(fieldsAFromA as object)).toEqual(['0', '1'])
+    expect(Object.keys(fieldsAFromB as object)).toEqual(['0', '1'])
+
+    // Writes through consumer B propagate to consumer A's proxy
+    // because the underlying form store is shared by key.
+    b.append('posts', { title: 'third' })
+    await nextTick()
+    expect(Object.keys(fieldsAFromA as object)).toEqual(['0', '1', '2'])
+    expect(Object.keys(fieldsAFromB as object)).toEqual(['0', '1', '2'])
+  })
+})
+
 describe('discriminated-union variant switch — DU inside an array', () => {
   const arraySchema = z.object({
     events: z.array(

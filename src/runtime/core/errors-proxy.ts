@@ -124,7 +124,52 @@ export function buildErrorsProxy<F extends GenericForm>(
     // working — the call-form just extends that semantic to
     // containers and dynamic paths.
     resolveCallTarget: (path) => aggregateErrorsAt(state, path),
+    // Mirror `form.fields` enumeration: `Object.keys(form.errors.items)`
+    // and `v-for="(errs, idx) in form.errors.items"` walk the live
+    // array indices / object keys at the path. Iteration yields the
+    // descended sub-proxies (one per live key), so consumers can
+    // `form.errors.items[idx]` straight from the entry.
+    containerOwnKeys: (segments) => liveKeysAtPath(state, segments),
+    isArrayContainer: (segments) => isArrayPath(state, segments),
   })
+}
+
+/**
+ * Live keys for the form data at a container path. Powers
+ * iteration over the errors surface (`Object.keys(form.errors.items)`,
+ * `v-for` over per-index error arrays). Reads happen inside the
+ * consumer's active effect so `state.form.value` is tracked.
+ */
+function liveKeysAtPath<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: readonly Segment[]
+): readonly string[] {
+  const value = getAtPath(state.form.value, segments)
+  if (value === null || value === undefined) return []
+  if (Array.isArray(value)) {
+    const keys = new Array<string>(value.length)
+    for (let i = 0; i < value.length; i += 1) keys[i] = String(i)
+    return keys
+  }
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>)
+  return []
+}
+
+/**
+ * Whether the path resolves to an array container RIGHT NOW. Live
+ * form value is the source of truth so discriminated-union variant
+ * switches that swap shape at the same path produce a freshly-
+ * targeted container proxy on the next read. The container cache
+ * keys off this predicate (see `containerProxyAt` in
+ * surface-proxy.ts), so a shape flip surfaces a freshly-targeted
+ * proxy on the next read through `form.errors.X`.
+ */
+function isArrayPath<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: readonly Segment[]
+): boolean {
+  if (segments.length === 0) return false
+  return Array.isArray(getAtPath(state.form.value, segments))
 }
 
 /**

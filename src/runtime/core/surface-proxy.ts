@@ -123,6 +123,35 @@ export type SurfaceOptions<TLeaf> = {
    * "non-leaf → container sub-proxy" routing.
    */
   readonly isTerminalAt?: (segs: readonly Segment[]) => boolean
+  /**
+   * Live keys for the container at `segments`. Drives `ownKeys` and
+   * `getOwnPropertyDescriptor` so `Object.keys(form.fields.items)` /
+   * `v-for="(item, idx) in form.fields.items"` enumerate the array
+   * indices (or object keys) the underlying form data currently
+   * holds. Reads happen inside the consumer's active effect, so Vue
+   * tracks `state.form.value` and re-enumerates on append / remove.
+   *
+   * Omit to keep the container non-enumerable (`Object.keys` returns
+   * `[]`). Surfaces that don't need iteration can leave this out;
+   * downstream stringification still goes through `materializeContainer`
+   * / `toJSON`.
+   */
+  readonly containerOwnKeys?: (segments: readonly Segment[]) => readonly string[]
+  /**
+   * Reports whether the container at `segments` is array-shaped. When
+   * true, the container proxy is built atop an Array target so
+   * `Array.isArray(proxy) === true` and Vue's `renderList` enters the
+   * indexed array branch (`for (let i = 0; i < source.length; i++)`).
+   * Without this, `v-for` over a function-target proxy never reaches
+   * the Object.keys path either — Vue's `isObject` check requires
+   * `typeof === 'object'`, which is false for function targets.
+   *
+   * Omit (or return false) to fall back to the function target, which
+   * preserves the callable form (`form.fields(path)`) — apply traps
+   * only fire on function targets, so this option deliberately scopes
+   * to paths where the callable form is unused.
+   */
+  readonly isArrayContainer?: (segments: readonly Segment[]) => boolean
 }
 
 /**
@@ -174,7 +203,38 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
   }
 
   function containerProxyAt(segments: readonly Segment[]): SurfaceProxy {
-    const cacheKey = JSON.stringify(segments)
+    // Shape goes into the cache key so a variant switch that swaps
+    // the live shape at this path produces a freshly-targeted proxy
+    // on the next read. Without shape in the key, the first
+    // observation pinned the target type forever and fresh reads
+    // through `form.fields.<path>` after the switch got back a
+    // stale-shape claim from the cache (`Array.isArray` returning
+    // true when the path no longer holds an array, etc.). Cyclic
+    // flips reuse the same cached proxy — Array variant → object
+    // variant → Array variant returns the original Array proxy on
+    // the flip-back, preserving referential stability across closed
+    // round-trips.
+    //
+    // Held-reference contract. Consumers who cache a proxy reference
+    // (`const p = form.fields.payload`) across a variant switch see
+    // the original target on the held reference — proxy targets are
+    // immutable in JS, no trap can rewrite them. Operations that
+    // route through `get` / `ownKeys` / `getOwnPropertyDescriptor`
+    // re-evaluate live state on every call, so `p.length`,
+    // `Object.keys(p)`, `Object.entries(p)`, descent (`p[i]` /
+    // `p.field`), `JSON.stringify(p)`, and `String(p)` all track the
+    // current shape on the held reference. The host-level checks
+    // `Array.isArray(p)`, `typeof p`, `p instanceof Array`, and
+    // `Object.prototype.toString.call(p)` read internal slots off
+    // the target itself — they remain pinned to whichever target
+    // shape was chosen when the held reference was minted. Template
+    // reads always re-fetch through `form.fields.<path>` and get a
+    // freshly-targeted proxy that matches the live shape, so this
+    // caveat only surfaces for consumers who explicitly cache field
+    // proxies in setup scripts and rely on `Array.isArray` / typeof
+    // to discriminate shape on the held value.
+    const isArrayLike = opts.isArrayContainer?.(segments) === true
+    const cacheKey = `${JSON.stringify(segments)}+${isArrayLike ? 'A' : 'O'}`
     const existing = containerCache.get(cacheKey)
     if (existing !== undefined) return existing
 
@@ -203,12 +263,17 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
     const containerToPrimitive = (hint: string): string | number =>
       hint === 'number' ? NaN : containerToString()
 
-    // Arrow-function target (so `typeof proxy === 'function'` and `apply`
-    // fires). Arrow functions have no `prototype` property, which avoids
-    // the "ownKeys trap must include 'prototype'" Proxy invariant — `length`
-    // and `name` ARE present but configurable=true, so we can omit them
-    // from ownKeys safely.
-    const target = (() => {}) as unknown as SurfaceProxy
+    // Target shape: Array for array-shaped paths so `Array.isArray(proxy)`
+    // is true and Vue's `renderList` takes its indexed-array branch
+    // (reads `source.length` and `source[i]`, both intercepted by our
+    // get trap). Function otherwise so `proxy()` / `proxy(path)` apply
+    // traps fire — Apply only triggers on `typeof target === 'function'`.
+    // The trade is per-path: array containers lose the callable form
+    // (rarely used at array paths, where `form.fields('items')` is the
+    // alternative spelling) in exchange for natural `v-for` iteration.
+    const target = isArrayLike
+      ? ([] as unknown as SurfaceProxy)
+      : ((() => {}) as unknown as SurfaceProxy)
     const proxy = new Proxy(target, {
       apply(_, __, args: unknown[]): unknown {
         // proxy() returns the call-target at THIS path (so
@@ -233,11 +298,49 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
           return Reflect.get(target, key)
         }
         if (typeof key !== 'string') return undefined
+        // Vue 3 reactivity sigils. Vue probes these as STRING keys
+        // (`__v_isReactive`, `__v_isReadonly`, etc.) when it
+        // encounters an object inside a render or watch effect; if we
+        // let them descend through `descendOrTerminate`, every probe
+        // creates a phantom child proxy whose construction (via
+        // `isArrayContainer` → live-value read through Vue's reactive
+        // form ref) re-enters Vue's reactivity machinery and
+        // eventually recurses back through the same probe path.
+        // Opting out via `__v_skip` tells Vue to treat the proxy as
+        // opaque; the underlying reactive reads in `containerOwnKeys`
+        // / `isArrayContainer` still do the dependency tracking, so
+        // Vue's render effect picks up changes the proper way.
+        if (key === '__v_skip') return true
+        if (
+          key === '__v_isReactive' ||
+          key === '__v_isReadonly' ||
+          key === '__v_isShallow' ||
+          key === '__v_isRef' ||
+          key === '__v_raw'
+        ) {
+          return undefined
+        }
         // `toJSON`: containers serialise to `{}`. The function-target
         // Proxy is `typeof === 'function'`, which JSON.stringify normally
         // omits — `toJSON` short-circuits that path. Consumers who want
         // structural data use `form.values.<container>` instead.
         if (key === 'toJSON') return containerToJSON
+        // Array-shaped containers: `length` is what Vue's `renderList`
+        // and any native array-iteration code reads to drive the loop.
+        // Without this branch, `length` would descend into a phantom
+        // child path and return another sub-proxy. The live count
+        // comes from `containerOwnKeys` so reactive enumeration and
+        // length agree.
+        //
+        // The gate is `cached isArrayLike OR live isArrayContainer`
+        // so a function-target proxy held across a variant flip into
+        // an array also reports the live length — the proxy target is
+        // frozen at construction, but the get trap re-evaluates shape
+        // on every read, so `held.length` tracks reality even when the
+        // held reference was minted at a non-array moment.
+        if (key === 'length' && (isArrayLike || opts.isArrayContainer?.(segments) === true)) {
+          return opts.containerOwnKeys === undefined ? 0 : opts.containerOwnKeys(segments).length
+        }
         const childSegs = [...segments, keyToSegment(key)]
         // Direct method-call coercion (`proxy.toString()` /
         // `proxy.valueOf()`): without intercepting these names, the
@@ -264,11 +367,49 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // concern (read returns the deep proxy or terminal as usual).
         return true
       },
-      // Containers are descend-only — `JSON.stringify(form.fields.address)`
-      // returns `{}` (no leaf keys to enumerate). Consumers who want
-      // structural data use `form.values.<container>` instead.
-      ownKeys: () => [],
-      getOwnPropertyDescriptor: () => undefined,
+      // Live enumeration. When the surface provides `containerOwnKeys`,
+      // `Object.keys(proxy)` / `Object.entries(proxy)` /
+      // `v-for="(child, key) in proxy"` reflect whichever keys the
+      // underlying form data currently holds at this path: array
+      // indices (`'0'`, `'1'`, …) when the live value is an array,
+      // object keys when it's a record. `getOwnPropertyDescriptor`
+      // descends to the per-key sub-proxy so iteration yields the
+      // same objects dot-access would. Without `containerOwnKeys`,
+      // the container stays non-enumerable for callers that don't
+      // need iteration — `JSON.stringify` still serialises through
+      // the `toJSON` trap above either way.
+      ownKeys: () => {
+        const liveKeys = opts.containerOwnKeys === undefined ? [] : opts.containerOwnKeys(segments)
+        // Array targets carry a non-configurable `length` own
+        // property. The Proxy invariant requires ownKeys to include
+        // every non-configurable target own property — omitting
+        // `length` throws `'ownKeys' on proxy: trap result did not
+        // include 'length'`. The key is non-enumerable on Arrays, so
+        // `Object.keys` filters it back out and the visible iteration
+        // set stays as the live indices alone.
+        if (isArrayLike) return ['length', ...liveKeys]
+        return [...liveKeys]
+      },
+      getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+        if (typeof key !== 'string') return undefined
+        // Array length descriptor: writable + non-enumerable +
+        // non-configurable, matching Array.prototype.length so the
+        // Proxy invariant is satisfied. Value is the live count.
+        if (isArrayLike && key === 'length') {
+          const length =
+            opts.containerOwnKeys === undefined ? 0 : opts.containerOwnKeys(segments).length
+          return { configurable: false, enumerable: false, value: length, writable: true }
+        }
+        if (opts.containerOwnKeys === undefined) return undefined
+        const liveKeys = opts.containerOwnKeys(segments)
+        if (!liveKeys.includes(key)) return undefined
+        return {
+          configurable: true,
+          enumerable: true,
+          value: descendOrTerminate([...segments, keyToSegment(key)]),
+          writable: false,
+        }
+      },
       // Block writes at the proxy boundary. Mutations go through
       // `setValue`, the directive, or the field-array helpers.
       set: () => false,

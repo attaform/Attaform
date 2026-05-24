@@ -7,14 +7,11 @@ import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Regression guard: the defer-claim hookup must NOT intercept
- * sync `defaultValues` on the active step (or any step). Sync
- * values resolve at `buildFreshState` — before any microtask
- * flush — so they are already in `form.values` by the time
- * `useWizard` claims keys. The claim is a no-op for sync forms.
- *
- * Without this guard, refactoring the trichotomy branch later could
- * accidentally route sync paths through the deferral signal.
+ * Regression guard: under eager activation, sync `defaultValues` on
+ * every step (current and non-current) must be visible immediately
+ * at construction. Sync values resolve at `buildFreshState` — before
+ * any microtask flush — so they are already in `form.values` by the
+ * time `useWizard` initialises.
  */
 
 const schemaA = z.object({ a: z.string() })
@@ -35,7 +32,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — active form with sync defaults', () => {
+describe('useWizard — sync defaults across all steps', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -43,14 +40,13 @@ describe('useWizard — active form with sync defaults', () => {
 
   it('sync defaults on step 0 are visible at construction', () => {
     const { app, result } = mountHarness(() => {
-      const b = useForm({ schema: schemaB, key: 'wizard-sync-b' })
       const a = useForm({
         schema: schemaA,
         key: 'wizard-sync-a',
         defaultValues: { a: 'A-sync' },
-        next: b,
       })
-      return { wizard: useWizard(a, {}), a, b }
+      const b = useForm({ schema: schemaB, key: 'wizard-sync-b' })
+      return { wizard: useWizard({ steps: [a, b], restore: false, persist: false }), a, b }
     })
     apps.push(app)
     expect(result.a.values.a).toBe('A-sync')
@@ -59,13 +55,13 @@ describe('useWizard — active form with sync defaults', () => {
 
   it('sync defaults on a non-current step are visible at construction', () => {
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'wizard-sync-2-a' })
       const b = useForm({
         schema: schemaB,
         key: 'wizard-sync-2-b',
         defaultValues: { b: 'B-sync' },
       })
-      const a = useForm({ schema: schemaA, key: 'wizard-sync-2-a', next: b })
-      return { wizard: useWizard(a, {}), a, b }
+      return { wizard: useWizard({ steps: [a, b], restore: false, persist: false }), a, b }
     })
     apps.push(app)
     expect(result.b.values.b).toBe('B-sync')

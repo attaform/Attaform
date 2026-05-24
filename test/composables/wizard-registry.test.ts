@@ -11,13 +11,14 @@ import type { UseWizardReturnType } from '../../src/runtime/types/types-wizard'
 /**
  * `useWizard({ key })` registration + lifecycle. The registry hook
  * mirrors `useForm`'s shared-store mechanics:
- *   - keyed wizards land in `registry.wizards` for cross-component lookup
+ *   - keyed wizards land in `registry.wizards` for cross-component
+ *     lookup
  *   - anonymous wizards stay off the registry entirely
  *   - duplicate keys are first-wins-silently with a dev-warn on the
  *     second registration
- *   - consumer ref-counting keeps the handle alive until every consumer
- *     (the originating useWizard scope + any injectWizard descendants)
- *     has unmounted
+ *   - consumer ref-counting keeps the handle alive until every
+ *     consumer (the originating useWizard scope + any injectWizard
+ *     descendants) has unmounted
  *
  * `injectWizard` behaviour gets its own test file
  * (`inject-wizard.test.ts`). This file exercises the registry-side of
@@ -54,9 +55,9 @@ describe('useWizard({ key }) — registry registration', () => {
 
   it('exposes wizard.key when options.key is provided', () => {
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema, key: 'r-1-a' })
       const b = useForm({ schema, key: 'r-1-b' })
-      const a = useForm({ schema, key: 'r-1-a', next: b })
-      return useWizard(a, { key: 'r-1-wiz' })
+      return useWizard({ steps: [a, b], key: 'r-1-wiz', restore: false, persist: false })
     })
     apps.push(app)
     expect(result.key).toBe('r-1-wiz')
@@ -65,7 +66,7 @@ describe('useWizard({ key }) — registry registration', () => {
   it('leaves wizard.key undefined when options.key is omitted', () => {
     const { app, result } = mountHarness(() => {
       const only = useForm({ schema, key: 'r-2-only' })
-      return useWizard(only)
+      return useWizard({ steps: [only], restore: false, persist: false })
     })
     apps.push(app)
     expect(result.key).toBeUndefined()
@@ -74,7 +75,7 @@ describe('useWizard({ key }) — registry registration', () => {
   it('keyed wizard registers under registry.wizards', () => {
     const { app, result } = mountHarness(() => {
       const only = useForm({ schema, key: 'r-3-only' })
-      return useWizard(only, { key: 'r-3-wiz' })
+      return useWizard({ steps: [only], key: 'r-3-wiz', restore: false, persist: false })
     })
     apps.push(app)
     const registry = registryOf(app)
@@ -84,7 +85,7 @@ describe('useWizard({ key }) — registry registration', () => {
   it('anonymous wizard does NOT enter registry.wizards', () => {
     const { app } = mountHarness(() => {
       const only = useForm({ schema, key: 'r-4-only' })
-      return useWizard(only)
+      return useWizard({ steps: [only], restore: false, persist: false })
     })
     apps.push(app)
     const registry = registryOf(app)
@@ -107,8 +108,8 @@ describe('useWizard({ key }) — duplicate-key registration', () => {
     const { app, result } = mountHarness(() => {
       const a1 = useForm({ schema, key: 'dup-1-a' })
       const a2 = useForm({ schema, key: 'dup-1-b' })
-      const first = useWizard(a1, { key: 'dup-wiz' })
-      const second = useWizard(a2, { key: 'dup-wiz' })
+      const first = useWizard({ steps: [a1], key: 'dup-wiz', restore: false, persist: false })
+      const second = useWizard({ steps: [a2], key: 'dup-wiz', restore: false, persist: false })
       return { first, second }
     })
     apps.push(app)
@@ -132,7 +133,7 @@ describe('useWizard({ key }) — consumer ref-counting + eviction', () => {
     const Root = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'lt-1-only' })
-        useWizard(only, { key: 'lifetime-wiz' })
+        useWizard({ steps: [only], key: 'lifetime-wiz', restore: false, persist: false })
         return () => h('div')
       },
     })
@@ -155,17 +156,25 @@ describe('useWizard({ key }) — cross-app isolation', () => {
   it('two unrelated apps with the same wizard key are isolated', () => {
     const harnessA = mountHarness(() => {
       const only = useForm({ schema, key: 'iso-a-only' })
-      return useWizard(only, { key: 'shared-wiz-key' })
+      return useWizard({
+        steps: [only],
+        key: 'shared-wiz-key',
+        restore: false,
+        persist: false,
+      })
     })
     const harnessB = mountHarness(() => {
       const only = useForm({ schema, key: 'iso-b-only' })
-      return useWizard(only, { key: 'shared-wiz-key' })
+      return useWizard({
+        steps: [only],
+        key: 'shared-wiz-key',
+        restore: false,
+        persist: false,
+      })
     })
     try {
       const registryA = registryOf(harnessA.app)
       const registryB = registryOf(harnessB.app)
-      // Same key, but each app has its own registry — handles are
-      // distinct, no cross-pollination.
       const handleA = registryA.wizards.get('shared-wiz-key') as UseWizardReturnType
       const handleB = registryB.wizards.get('shared-wiz-key') as UseWizardReturnType
       expect(handleA).toBe(harnessA.result)

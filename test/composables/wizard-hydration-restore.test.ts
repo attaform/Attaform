@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { renderToString } from '@vue/server-renderer'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, createSSRApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
@@ -12,28 +12,27 @@ import {
 } from '../../src/runtime/core/registry'
 
 /**
- * Deep-link hydration safety. Without these guards, a wizard that
- * deep-links to a non-entry step would render `entryForm.key` on the
- * server (no `window.location`) while reading the URL on the client,
- * cascading every node inside the wizard into a hydration mismatch.
+ * Deep-link hydration safety. Without a coordinated source of truth
+ * for the active step, a wizard that deep-links to a non-entry step
+ * would render the first step on the server (no `window.location`)
+ * and the URL-named step on the client, cascading every node inside
+ * the wizard into a hydration mismatch.
  *
- * Two paths close the gap:
+ * v2 closes the gap two ways:
  *
  *  - The `attaform/nuxt` runtime plugin provides a
- *    `kAttaformWizardActiveStepResolver` that reads `useRoute()`.
- *    Server and client compute the same initial step, hydration walks
- *    a matching tree, and the deep-link renders correctly with zero
- *    flicker (Path A — auto-bridge).
+ *    `kAttaformWizardActiveStepResolver` that reads the active step
+ *    from `useRoute()`. The wizard's default `restore` consumes the
+ *    inject at construction, so server and client compute the same
+ *    initial step and the deep-link renders correctly with zero flicker.
  *
- *  - For framework-agnostic SSR setups with no resolver, the wizard
- *    initial-renders the entry form on both sides and reconciles to
- *    the URL key in a post-mount `onMounted` hook. Hydration matches,
- *    but the user sees a one-frame entry flash before the restore
- *    takes effect (Path D — post-hydration restore).
+ *  - A consumer wiring their own `restore` lambda owns SSR coordination
+ *    explicitly: returning the same step on both sides keeps hydration
+ *    quiet; returning a client-only value accepts the mismatch.
  *
- * The standing tests below probe both paths plus the pre-restore
- * preservation of the deep-link URL and the SSR-to-client hydration
- * walk against a real Vue server-renderer pass.
+ * Garbage step keys (URL pointing at a step that has since been
+ * removed) dev-warn and fall back to the first compiled step in
+ * either path, matching the locked plan decision.
  */
 
 const schemaA = z.object({ a: z.string() })
@@ -63,7 +62,7 @@ function mountWithResolver<R>(
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — injected active-step resolver (Path A)', () => {
+describe('useWizard — injected active-step resolver (Nuxt path)', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)
@@ -72,80 +71,71 @@ describe('useWizard — injected active-step resolver (Path A)', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('seeds initial current from the resolver when no explicit getter is wired', () => {
+  it('seeds initial currentStep from the resolver before the URL is consulted', () => {
     const { app, result } = mountWithResolver(
       () => {
+        const a = useForm({ schema: schemaA, key: 'inj-1-a' })
+        const b = useForm({ schema: schemaB, key: 'inj-1-b' })
         const c = useForm({ schema: schemaC, key: 'inj-1-c' })
-        const b = useForm({ schema: schemaB, key: 'inj-1-b', next: c })
-        const a = useForm({ schema: schemaA, key: 'inj-1-a', next: b })
-        return useWizard(a)
+        return useWizard({ steps: [a, b, c] })
       },
       (param) => (param === 'step' ? 'inj-1-b' : undefined)
     )
     apps.push(app)
-    expect(result.current).toBe('inj-1-b')
+    expect(result.currentStep).toBe('inj-1-b')
   })
 
-  it('passes the configured history.param to the resolver', () => {
-    const resolverCalls: string[] = []
+  it('an unknown key from the resolver dev-warns and falls through to the first step', () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
     const { app, result } = mountWithResolver(
       () => {
+        const a = useForm({ schema: schemaA, key: 'inj-2-a' })
         const b = useForm({ schema: schemaB, key: 'inj-2-b' })
-        const a = useForm({ schema: schemaA, key: 'inj-2-a', next: b })
-        return useWizard(a, { history: { param: 'wiz' } })
+        return useWizard({ steps: [a, b] })
       },
-      (param) => {
-        resolverCalls.push(param)
-        return param === 'wiz' ? 'inj-2-b' : undefined
-      }
+      () => 'inj-2-zzz'
     )
     apps.push(app)
-    expect(resolverCalls).toEqual(['wiz'])
-    expect(result.current).toBe('inj-2-b')
+    warnSpy.mockRestore()
+    expect(result.currentStep).toBe('inj-2-a')
+    expect(warnings.some((w) => w.includes('inj-2-zzz'))).toBe(true)
   })
 
-  it('explicit getServerActiveStep wins over the injected resolver', () => {
+  it('undefined from the resolver falls through to the URL, then to the first step', () => {
     const { app, result } = mountWithResolver(
       () => {
-        const c = useForm({ schema: schemaC, key: 'inj-3-c' })
-        const b = useForm({ schema: schemaB, key: 'inj-3-b', next: c })
-        const a = useForm({ schema: schemaA, key: 'inj-3-a', next: b })
-        return useWizard(a, { getServerActiveStep: () => 'inj-3-c' })
-      },
-      () => 'inj-3-b'
-    )
-    apps.push(app)
-    expect(result.current).toBe('inj-3-c')
-  })
-
-  it('falls back to entry when both explicit getter and resolver return undefined', () => {
-    const { app, result } = mountWithResolver(
-      () => {
-        const b = useForm({ schema: schemaB, key: 'inj-4-b' })
-        const a = useForm({ schema: schemaA, key: 'inj-4-a', next: b })
-        return useWizard(a, { getServerActiveStep: () => undefined })
+        const a = useForm({ schema: schemaA, key: 'inj-3-a' })
+        const b = useForm({ schema: schemaB, key: 'inj-3-b' })
+        return useWizard({ steps: [a, b] })
       },
       () => undefined
     )
     apps.push(app)
-    expect(result.current).toBe('inj-4-a')
+    expect(result.currentStep).toBe('inj-3-a')
   })
 
-  it('an unknown key from the resolver falls through to entry', () => {
+  it('an explicit restore lambda overrides the injected resolver', () => {
     const { app, result } = mountWithResolver(
       () => {
-        const b = useForm({ schema: schemaB, key: 'inj-5-b' })
-        const a = useForm({ schema: schemaA, key: 'inj-5-a', next: b })
-        return useWizard(a)
+        const a = useForm({ schema: schemaA, key: 'inj-4-a' })
+        const b = useForm({ schema: schemaB, key: 'inj-4-b' })
+        const c = useForm({ schema: schemaC, key: 'inj-4-c' })
+        return useWizard({
+          steps: [a, b, c],
+          restore: () => ({ step: 'inj-4-c' }),
+        })
       },
-      () => 'inj-5-unknown'
+      () => 'inj-4-b'
     )
     apps.push(app)
-    expect(result.current).toBe('inj-5-a')
+    expect(result.currentStep).toBe('inj-4-c')
   })
 })
 
-describe('useWizard — post-hydration URL restore (Path D)', () => {
+describe('useWizard — explicit restore lambda', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)
@@ -155,73 +145,62 @@ describe('useWizard — post-hydration URL restore (Path D)', () => {
     window.history.replaceState(null, '', ORIGINAL_URL)
   })
 
-  it('reconciles current to the URL key in onMounted when no resolver is wired', () => {
-    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=pmr-1-b`)
+  it('reads `?step=<key>` from the URL via the default restore when no lambda is supplied', () => {
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=exp-1-b`)
     const { app, result } = mountWithResolver(() => {
-      const c = useForm({ schema: schemaC, key: 'pmr-1-c' })
-      const b = useForm({ schema: schemaB, key: 'pmr-1-b', next: c })
-      const a = useForm({ schema: schemaA, key: 'pmr-1-a', next: b })
-      return useWizard(a)
+      const a = useForm({ schema: schemaA, key: 'exp-1-a' })
+      const b = useForm({ schema: schemaB, key: 'exp-1-b' })
+      const c = useForm({ schema: schemaC, key: 'exp-1-c' })
+      return useWizard({ steps: [a, b, c] })
     }, null)
     apps.push(app)
-    // Synchronous mount in jsdom fires onMounted before mount returns;
-    // by the time we read `current`, the restore has settled.
-    expect(result.current).toBe('pmr-1-b')
+    expect(result.currentStep).toBe('exp-1-b')
   })
 
-  it('clamps visited to the restored step (no phantom entry visit)', () => {
-    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=pmr-2-b`)
+  it('seeds visited with only the restored step (no phantom entry visit)', () => {
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=exp-2-b`)
     const { app, result } = mountWithResolver(() => {
-      const c = useForm({ schema: schemaC, key: 'pmr-2-c' })
-      const b = useForm({ schema: schemaB, key: 'pmr-2-b', next: c })
-      const a = useForm({ schema: schemaA, key: 'pmr-2-a', next: b })
-      return useWizard(a)
+      const a = useForm({ schema: schemaA, key: 'exp-2-a' })
+      const b = useForm({ schema: schemaB, key: 'exp-2-b' })
+      const c = useForm({ schema: schemaC, key: 'exp-2-c' })
+      return useWizard({ steps: [a, b, c] })
     }, null)
     apps.push(app)
-    expect(result.flow.visited).toEqual(['pmr-2-b'])
+    expect(result.visited).toEqual(['exp-2-b'])
   })
 
-  it('preserves the deep-link URL during setup (does NOT overwrite with entry)', () => {
-    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=pmr-3-b`)
+  it('preserves the deep-link URL through setup without re-writing it', () => {
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=exp-3-b`)
     const { app } = mountWithResolver(() => {
-      const c = useForm({ schema: schemaC, key: 'pmr-3-c' })
-      const b = useForm({ schema: schemaB, key: 'pmr-3-b', next: c })
-      const a = useForm({ schema: schemaA, key: 'pmr-3-a', next: b })
-      return useWizard(a)
+      const a = useForm({ schema: schemaA, key: 'exp-3-a' })
+      const b = useForm({ schema: schemaB, key: 'exp-3-b' })
+      const c = useForm({ schema: schemaC, key: 'exp-3-c' })
+      return useWizard({ steps: [a, b, c] })
     }, null)
     apps.push(app)
-    // The deep-link URL is preserved through setup; the entry-key
-    // write-back that fires for non-deep-link mounts is skipped here.
-    expect(new URL(window.location.href).searchParams.get('step')).toBe('pmr-3-b')
+    expect(new URL(window.location.href).searchParams.get('step')).toBe('exp-3-b')
   })
 
-  it('does not redirect when URL key matches the explicit getter', () => {
-    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=pmr-4-c`)
+  it('falls back to the first step when the URL names an unknown key', () => {
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=exp-4-nope`)
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
     const { app, result } = mountWithResolver(() => {
-      const c = useForm({ schema: schemaC, key: 'pmr-4-c' })
-      const b = useForm({ schema: schemaB, key: 'pmr-4-b', next: c })
-      const a = useForm({ schema: schemaA, key: 'pmr-4-a', next: b })
-      return useWizard(a, { getServerActiveStep: () => 'pmr-4-c' })
+      const a = useForm({ schema: schemaA, key: 'exp-4-a' })
+      const b = useForm({ schema: schemaB, key: 'exp-4-b' })
+      return useWizard({ steps: [a, b] })
     }, null)
     apps.push(app)
-    expect(result.current).toBe('pmr-4-c')
-    expect(result.flow.visited).toEqual(['pmr-4-c'])
-  })
-
-  it('falls through to entry when URL key is unknown', () => {
-    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=pmr-5-nope`)
-    const { app, result } = mountWithResolver(() => {
-      const b = useForm({ schema: schemaB, key: 'pmr-5-b' })
-      const a = useForm({ schema: schemaA, key: 'pmr-5-a', next: b })
-      return useWizard(a)
-    }, null)
-    apps.push(app)
-    expect(result.current).toBe('pmr-5-a')
-    expect(result.flow.visited).toEqual(['pmr-5-a'])
+    warnSpy.mockRestore()
+    expect(result.currentStep).toBe('exp-4-a')
+    expect(result.visited).toEqual(['exp-4-a'])
+    expect(warnings.some((w) => w.includes('exp-4-nope'))).toBe(true)
   })
 })
 
-describe('useWizard — SSR-to-client hydration safety', () => {
+describe('useWizard — SSR-to-client hydration through the resolver', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)
@@ -231,41 +210,41 @@ describe('useWizard — SSR-to-client hydration safety', () => {
     window.history.replaceState(null, '', ORIGINAL_URL)
   })
 
-  it('hydrates an SSR-rendered entry against a deep-link URL with no mismatch warnings', async () => {
+  it('hydrates an SSR-rendered deep-link with no mismatch warnings when the resolver is provided', async () => {
+    const targetStep = 'hyd-b'
+    const resolver: WizardActiveStepResolver = (param) =>
+      param === 'step' ? targetStep : undefined
+
     const WizardSfc = defineComponent({
       setup() {
+        const a = useForm({ schema: schemaA, key: 'hyd-a' })
         const b = useForm({ schema: schemaB, key: 'hyd-b' })
-        const a = useForm({ schema: schemaA, key: 'hyd-a', next: b })
-        const wizard = useWizard(a)
+        const wizard = useWizard({ steps: [a, b] })
         return () =>
           h(
             'div',
-            { class: wizard.current === 'hyd-a' ? 'on-a' : 'on-b' },
-            `step:${wizard.current}`
+            { class: wizard.currentStep === 'hyd-a' ? 'on-a' : 'on-b' },
+            `step:${wizard.currentStep}`
           )
       },
     })
 
-    // Server-side render. No `window`; the wizard falls back to entry.
+    // Server-side render with the resolver wired — picks 'hyd-b'.
     const ssrApp = createSSRApp(WizardSfc).use(createAttaform({ ssr: true }))
+    ssrApp.provide(kAttaformWizardActiveStepResolver, resolver)
     const ssrHtml = await renderToString(ssrApp)
-    expect(ssrHtml).toContain('on-a')
-    expect(ssrHtml).toContain('step:hyd-a')
+    expect(ssrHtml).toContain('on-b')
+    expect(ssrHtml).toContain('step:hyd-b')
 
-    // Stage the SSR HTML in a host element, then point the URL at a
-    // non-entry step so the client wizard's restore path fires.
+    // Stage the SSR HTML; point the URL at the same deep-link key.
     const host = document.createElement('div')
     host.innerHTML = ssrHtml
     document.body.appendChild(host)
-    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=hyd-b`)
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=${targetStep}`)
 
-    // Capture every Vue warning surfaced during hydration. Hydration
-    // mismatches are emitted via `app.config.warnHandler` (or fall back
-    // to `console.warn` when no handler is set) — installing a handler
-    // lets us assert against the captured stream rather than scraping
-    // jsdom's console.
     const warnings: string[] = []
     const clientApp = createSSRApp(WizardSfc).use(createAttaform({ ssr: false }))
+    clientApp.provide(kAttaformWizardActiveStepResolver, resolver)
     clientApp.config.warnHandler = (msg) => {
       warnings.push(msg)
     }
@@ -275,9 +254,6 @@ describe('useWizard — SSR-to-client hydration safety', () => {
     const hydrationWarnings = warnings.filter((msg) => /hydration|mismatch/i.test(msg))
     expect(hydrationWarnings).toEqual([])
 
-    // The restore's reactive write fires in `onMounted` but Vue
-    // batches the re-render into a microtask, so flush before
-    // inspecting the DOM.
     await nextTick()
     expect(host.querySelector('.on-b')).not.toBeNull()
     expect(host.textContent).toContain('step:hyd-b')

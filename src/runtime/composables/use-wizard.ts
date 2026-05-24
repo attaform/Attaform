@@ -4,44 +4,51 @@ import {
   getCurrentScope,
   inject,
   nextTick,
-  onMounted,
   onScopeDispose,
   provide,
   ref,
   watch,
   type ComputedRef,
 } from 'vue'
-import { buildWizardGraph, WizardCycleError } from '../core/wizard-graph'
 import { __DEV__ } from '../core/dev'
+import { AttaformErrorCode } from '../core/error-codes'
 import {
   kAttaformAncestorWizard,
   kAttaformWizardActiveStepResolver,
   useRegistry,
 } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
+import { isDeferMarker } from '../core/wizard-defer'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
+import { buildNoopWizardSchema } from '../core/wizard-noop-schema'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
-import { AttaformErrorCode } from '../core/error-codes'
+import { useAbstractForm } from './use-abstract-form'
 import type {
   AggregateError,
   AnyForm,
+  CompiledStep,
+  DeferMarker,
   FormStatus,
-  WizardValue,
-  WizardFlow,
-  WizardHistoryConfig,
-  WizardNavOptions,
+  StepSlot,
+  UseWizardReturnType,
+  WizardCtx,
+  WizardCtxForm,
   WizardOnError,
   WizardOnSubmit,
   WizardOptions,
+  WizardPersistFn,
+  WizardRestoreFn,
+  WizardRestoreState,
   WizardSubmitContext,
-  WizardWarning,
-  UseWizardReturnType,
 } from '../types/types-wizard'
-import type { OnInvalidSubmitPolicy, ValidationResponse } from '../types/types-api'
+import type { FormKey, OnInvalidSubmitPolicy, ValidationResponse } from '../types/types-api'
 
-/** Pending sentinel returned by `wizard.statuses[key]` when the form hasn't
- *  yet wired a FormStore (defensive — useWizard guards against this, but
- *  the snapshot fallback keeps templates from crashing). */
+/** Default URL search param when the consumer doesn't supply a custom
+ *  `restore` / `persist` pair. */
+const DEFAULT_STEP_PARAM = 'step'
+
+/** Fallback status surfaced for forms whose async defaults haven't yet
+ *  settled (and no `defaultStatuses` seed covers the key). */
 const PENDING_STATUS: FormStatus = {
   valid: false,
   dirty: false,
@@ -49,9 +56,18 @@ const PENDING_STATUS: FormStatus = {
   errorCount: 0,
 }
 
-/** Shape we read off each participating form at runtime. Loosely typed
- *  against `AnyForm` (which only requires `key` + optional `next`) — the
- *  runtime objects returned by `useForm` always satisfy this richer shape. */
+/** Status surfaced for noop forms (string-slot affordance steps). Noops
+ *  carry no schema, no fields, and no error surface — they are always
+ *  trivially valid, so the wizard's progress and complete computeds can
+ *  treat string slots as "done by being there." */
+const NOOP_VALID_STATUS: FormStatus = {
+  valid: true,
+  dirty: false,
+  submitted: false,
+  errorCount: 0,
+}
+
+/** Subset of the form's surface the wizard reads for status + values. */
 type StatusSourceForm = {
   readonly meta: {
     readonly valid: boolean
@@ -63,197 +79,298 @@ type StatusSourceForm = {
       readonly message: string
       readonly code?: string
     }>
+    readonly updatedAt: string | null
   }
   readonly values: unknown
 }
 
-/** Subset of the form's public surface the wizard's submission walk
- *  exercises. The runtime objects returned by `useForm` always satisfy
- *  this shape; the loose typing keeps the wizard structural against
- *  every adapter's `UseFormReturnType<...>`. */
+/** Subset of the form's surface the wizard's submission walk exercises. */
 type SubmissionSourceForm = StatusSourceForm & {
   activate(): Promise<void>
   process(): Promise<ValidationResponse<unknown>>
   applyInvalidSubmitPolicy(policy?: OnInvalidSubmitPolicy): void
   reset(): void
-  readonly meta: StatusSourceForm['meta'] & {
-    readonly updatedAt: string | null
-  }
   readonly hydrateError: { readonly message: string } | null | undefined
 }
 
 /**
- * Multistep-form orchestrator. Walks the static graph declared by
- * `useForm({ next })` declarations starting from `entryForm`, composing
- * the reachable forms into a wizard with navigation, status aggregation,
- * browser history, and lazy activation (so a step's async
- * `defaultValues` factory only fires once the step becomes current).
+ * Multistep-form orchestrator built around an ordered list of step slots.
+ * Each slot resolves to a participating form: an existing `useForm`
+ * reference, a bare string key (desugared to a noop form so affordance
+ * steps participate uniformly), an eagerly-evaluated function slot for
+ * runtime branching, or a `defer()`-wrapped function slot whose
+ * resolution sticks across re-evaluations.
  *
- * Graph discovery rules:
- *  - The entry form's `next` field (identity ref or `{ pick, forms }`)
- *    declares its downstream neighbor(s); the walker BFS's from there
- *    through every reachable form.
- *  - Convergent paths are deduped by key — a form reached via multiple
- *    upstream paths shows up once in `allForms`.
- *  - Cycles throw `WizardCycleError` at construction; consumers who want
- *    intentional revisits use `wizard.goTo(key)`.
- *  - Single-step wizards (the entry form has no `next`) are valid; a
- *    one-time dev-warn notes the navigation surface is degenerate.
- *
- * Each reachable form gets a ref-count via `registry.trackConsumer(key)`.
- * This pins the FormStore for the wizard's lifetime — so a step's state
- * survives even when its component is unmounted between visits
- * (v-if pattern). The ref is released on `onScopeDispose`.
+ * The wizard's surface is read-only from the consumer's side:
+ * navigation (`next` / `back` / `goTo`) walks positional indices,
+ * `handleSubmit` validates the active form on intermediate steps and
+ * the whole wizard on the final step, and URL synchronization rides on
+ * `restore` / `persist` callbacks that default to `?step=<key>`.
  */
-export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseWizardReturnType {
-  const graph = buildWizardGraph(entryForm)
-  const forms = graph.allForms
-  const byKey = graph.byKey
-  const formKeys = forms.map((form) => form.key)
-  const seenKeys = new Set(formKeys)
-
-  for (const warning of graph.warnings) {
-    console.warn(warning.message)
-  }
-
-  // Resolve history config. `history` omitted → default on with the
-  // standard `step` param. `history: true` → same defaults. `false` →
-  // primitive replaced with a no-op (no DOM access, no popstate
-  // subscription).
-  const historyOption = options.history
-  const historyConfig: Required<WizardHistoryConfig> = {
-    enabled: historyOption !== false,
-    param:
-      typeof historyOption === 'object' && historyOption !== null
-        ? (historyOption.param ?? 'step')
-        : 'step',
-  }
-  const wizardHistory = historyConfig.enabled
-    ? createWizardHistory(historyConfig.param)
-    : NOOP_WIZARD_HISTORY
-  // Resolve initial step. Priority for the first-render key:
-  //   1. `options.getServerActiveStep()` — the explicit consumer hook,
-  //      called on both server and client so both sides compute the
-  //      same key.
-  //   2. The injected `kAttaformWizardActiveStepResolver` — installed
-  //      by the `attaform/nuxt` runtime plugin from `useRoute()`, so
-  //      Nuxt apps get the framework-agnostic equivalent for free.
-  //   3. The entry form's `key` fallback.
-  //
-  // The URL is deliberately NOT consulted here. `wizardHistory.read()`
-  // returns a value on the client and `undefined` on the server (the
-  // no-op SSR handle), and bridging that gap is the load-bearing source
-  // of the deep-link hydration mismatch cascade — server renders entry
-  // while client renders the URL's step, and Vue's hydration walks a
-  // wall of warnings. Instead, the URL is read once on mount (below)
-  // and reconciled via a direct ref update when it names a step the
-  // initial resolution didn't pick. Consumers who DO supply an
-  // explicit getter (or use `attaform/nuxt`'s auto-bridge) get
-  // zero-flicker server rendering for deep links; framework-agnostic
-  // consumers see a brief entry frame before the post-mount restore.
-  const explicitGetter = options.getServerActiveStep
-  const injectedResolver = inject(kAttaformWizardActiveStepResolver, null)
-  const fromGetter =
-    explicitGetter !== undefined
-      ? explicitGetter()
-      : injectedResolver !== null
-        ? injectedResolver(historyConfig.param)
-        : undefined
-  let initialKey: string
-  if (fromGetter !== undefined && seenKeys.has(fromGetter)) {
-    initialKey = fromGetter
-  } else {
-    initialKey = entryForm.key
-  }
-  const current = ref<string>(initialKey)
-
-  // Post-hydration URL restore. Only runs on the client (`onMounted`
-  // is a no-op during SSR). When the deep-link URL names a known step
-  // that the initial resolution didn't already pick, the wizard reaches
-  // that step via a direct ref update — no `setCurrent` call, because
-  // the entry frame was a hydration-time wash rather than a user
-  // navigation: `visited` gets clamped to the restored step,
-  // `onStatusChange` doesn't fire a phantom entry→restore transition,
-  // and the URL itself stays as the deep-link wrote it (no history
-  // push or replace). The form for the restored step is activated to
-  // match what `setCurrent`'s navigation path would do.
-  const urlValueAtSetup = wizardHistory.read()
-  const willRestoreFromUrl =
-    fromGetter === undefined &&
-    urlValueAtSetup !== undefined &&
-    seenKeys.has(urlValueAtSetup) &&
-    urlValueAtSetup !== initialKey
-  if (willRestoreFromUrl) {
-    const restoredKey = urlValueAtSetup
-    onMounted(() => {
-      current.value = restoredKey
-      visited.value = [restoredKey]
-      const restoredForm = byKey.get(restoredKey) as unknown as
-        | { activate?: () => Promise<void> }
-        | undefined
-      if (restoredForm !== undefined && typeof restoredForm.activate === 'function') {
-        void restoredForm.activate()
-      }
-    })
-  }
-
-  // Runtime navigation audit log. Seeded with the initial step so the
-  // trail always starts somewhere, then appended in `setCurrent` on every
-  // distinct navigation (next / back / goTo / popstate). The setCurrent
-  // identity-guard already drops no-op writes, so consecutive duplicates
-  // never reach the push site. Append-only — back() does not pop the
-  // trail; the array is the audit log the consumer reads for breadcrumbs
-  // and tour-style "where you've been" UI.
-  const visited = ref<string[]>([initialKey])
-
-  // Replace the URL so it always reflects the active step on mount —
-  // idempotent when the URL already named the correct key. Skipped
-  // when the post-hydration URL restore is scheduled: overwriting the
-  // deep-link with `initialKey` now would defeat the restore (the
-  // mount-time read would see the entry key we just wrote instead of
-  // the user's deep link), so we leave the URL as the deep link wrote
-  // it and let the restore reconcile internal state in place.
-  if (!willRestoreFromUrl) {
-    wizardHistory.replace(initialKey)
+export function useWizard(options: WizardOptions): UseWizardReturnType {
+  const rawSteps = options.steps
+  if (!Array.isArray(rawSteps) || rawSteps.length === 0) {
+    throw new Error('[attaform] useWizard({ steps }): expected a non-empty array of step slots.')
   }
 
   const registry = useRegistry()
 
-  // SSR prefetch coordination — the wizard's activation gate for
-  // non-current steps. On the server, enqueue the initial step (so its
-  // factory runs inside the form's `onServerPrefetch` hook) and
-  // explicitly skip every other step (so a transform mark or stray
-  // `form.activate()` on a non-current step cannot leak that step's
-  // factory). The client path goes through the per-form `activate()`
-  // calls below — `skipPrefetch` is a no-op there since `shouldPrefetch`
-  // is only read by the SSR drain.
-  if (registry.ssr) {
-    for (const key of formKeys) {
-      if (key === initialKey) {
-        registry.enqueuePrefetch(key)
-      } else {
-        registry.skipPrefetch(key)
-      }
+  // --- Noop-form synthesis for top-level string slots -------------------
+  //
+  // String slots desugar to a wizard-owned `useAbstractForm` call backed
+  // by `buildNoopWizardSchema`. Synthesis runs at setup time so the
+  // forms are registered in the registry (status + ref-counting +
+  // consumer eviction all flow through the same paths as real forms).
+  // Function slots may return any of these same keys; runtime lookups
+  // use the cache built here.
+  const noopForms = new Map<string, AnyForm>()
+  for (const slot of rawSteps) {
+    if (typeof slot !== 'string') continue
+    if (noopForms.has(slot)) continue
+    const noop = useAbstractForm({
+      schema: buildNoopWizardSchema(slot),
+      key: slot,
+    }) as unknown as AnyForm
+    noopForms.set(slot, noop)
+  }
+
+  // --- Static slot inventory -------------------------------------------
+  //
+  // Collect every form referenced by a top-level slot. This is the
+  // initial consumer-tracking set; function slots add to it lazily as
+  // they resolve.
+  const trackedKeys = new Set<FormKey>()
+  function trackOnce(form: AnyForm): void {
+    if (trackedKeys.has(form.key)) return
+    trackedKeys.add(form.key)
+    if (getCurrentScope() !== undefined) {
+      const release = registry.trackConsumer(form.key)
+      onScopeDispose(release)
+    }
+  }
+  for (const slot of rawSteps) {
+    if (typeof slot === 'string') {
+      const noop = noopForms.get(slot)
+      if (noop !== undefined) trackOnce(noop)
+    } else if (isAnyForm(slot)) {
+      trackOnce(slot)
     }
   }
 
-  // Activate the initial step's form synchronously. On the client this
-  // fires the captured async factory immediately; on the server it
-  // routes through `state.activate()` which both records the enqueue
-  // intent and (via `onServerPrefetch`) drains the queue with the
-  // actual factory call. Other steps stay dormant until navigation
-  // activates them.
-  const initialForm = byKey.get(initialKey) as unknown as
-    | { activate?: () => Promise<void> }
-    | undefined
-  if (initialForm !== undefined && typeof initialForm.activate === 'function') {
-    void initialForm.activate()
+  // --- Reactive plumbing for the slot compiler --------------------------
+  //
+  // `stickyDefers` caches the resolved form for each deferred slot at
+  // its index in `rawSteps`. Once a `defer((ctx) => …)` slot resolves
+  // (or explicitly drops via `undefined`), subsequent reactive reads
+  // reuse the cached result without re-invoking the resolver. The
+  // wizard treats `defer()` slots as eager-but-sticky in this build:
+  // they resolve on first compile-pass evaluation and never re-resolve.
+  const stickyDefers = new Map<number, AnyForm | null>()
+
+  // `activeKey` is the canonical source of truth for the active step.
+  // Initialized below from `restore` (or the first compiled slot's key).
+  // Declared early so the slot compiler's `ctx.currentKey` reads it.
+  const activeKey = ref<string>('')
+
+  // Static accumulator of forms reachable through top-level slots. The
+  // slot context's `forms` projection reads from this Map so function
+  // slots can branch on a stable lookup surface (`ctx.forms.account`)
+  // without forcing the slot context to depend on the compiled step
+  // list — that dependency would close a reactive cycle through the
+  // slot compiler.
+  const formsAccumulator = new Map<FormKey, AnyForm>()
+  for (const slot of rawSteps) {
+    if (typeof slot === 'string') {
+      const noop = noopForms.get(slot)
+      if (noop !== undefined) formsAccumulator.set(noop.key, noop)
+    } else if (isAnyForm(slot)) {
+      formsAccumulator.set(slot.key, slot)
+    }
   }
 
-  // Resolve `defaultStatuses` (the trichotomy mirror). Sync values
-  // apply immediately at construction; async factories register and
-  // populate `seedRef` on resolution. While the async seed is
-  // pending, the status falls back to the pending sentinel.
+  // Slot resolution context shape — projected to consumers as the
+  // single argument of function slots. Values are loose-typed because
+  // the wizard does not generically thread each step's schema through
+  // `ctx.forms`; consumers reach back to their original form refs for
+  // typed access.
+  const slotForms = new Proxy({} as Record<FormKey, WizardCtxForm>, {
+    get(_, key: string | symbol): WizardCtxForm | undefined {
+      if (typeof key !== 'string') return undefined
+      return formsAccumulator.get(key) as WizardCtxForm | undefined
+    },
+    has(_, key: string | symbol): boolean {
+      if (typeof key !== 'string') return false
+      return formsAccumulator.has(key)
+    },
+    ownKeys(): ArrayLike<string | symbol> {
+      return [...formsAccumulator.keys()]
+    },
+    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsAccumulator.get(key)
+      if (form === undefined) return undefined
+      return { configurable: true, enumerable: true, writable: false, value: form }
+    },
+  })
+  const slotCtx = computed<WizardCtx>(() => ({
+    forms: slotForms,
+    currentKey: activeKey.value === '' ? undefined : activeKey.value,
+  }))
+
+  /**
+   * Resolve a single raw slot to a participating form, or `undefined`
+   * to drop that slot from the compiled list. Hoisted to a free
+   * function so the steps computed stays readable.
+   */
+  function resolveSlot(slot: StepSlot, index: number, ctx: WizardCtx): AnyForm | undefined {
+    if (typeof slot === 'string') {
+      const noop = noopForms.get(slot)
+      if (noop === undefined && __DEV__) {
+        console.warn(
+          `[attaform] useWizard: function slot returned key "${slot}" which is not declared as a top-level string slot or registered form. Skipping.`
+        )
+      }
+      return noop
+    }
+    if (isDeferMarker(slot)) {
+      const cached = stickyDefers.get(index)
+      if (cached !== undefined) return cached === null ? undefined : cached
+      const result = (slot as DeferMarker).resolve(ctx)
+      const form = resolveSlotResult(result)
+      stickyDefers.set(index, form ?? null)
+      return form
+    }
+    if (typeof slot === 'function') {
+      const result = (slot as (ctx: WizardCtx) => AnyForm | string | undefined)(ctx)
+      return resolveSlotResult(result)
+    }
+    if (isAnyForm(slot)) return slot
+    return undefined
+  }
+
+  function resolveSlotResult(result: AnyForm | string | undefined): AnyForm | undefined {
+    if (result === undefined) return undefined
+    if (typeof result === 'string') {
+      const noop = noopForms.get(result)
+      if (noop === undefined && __DEV__) {
+        console.warn(
+          `[attaform] useWizard: function slot returned key "${result}" which is not declared as a top-level string slot or registered form. Skipping.`
+        )
+      }
+      return noop
+    }
+    return result
+  }
+
+  // The compiled step list. Function slots re-evaluate on every read
+  // of their reactive deps; sticky defer slots resolve once and stick;
+  // string slots cache their noop forms.
+  const compiledSteps = computed<readonly CompiledStep[]>(() => {
+    const ctx = slotCtx.value
+    const out: CompiledStep[] = []
+    const seen = new Set<FormKey>()
+    for (let i = 0; i < rawSteps.length; i++) {
+      const slot = rawSteps[i] as StepSlot
+      const form = resolveSlot(slot, i, ctx)
+      if (form === undefined) continue
+      if (seen.has(form.key)) {
+        if (__DEV__) {
+          console.warn(
+            `[attaform] useWizard: step "${form.key}" appears in more than one slot. The wizard treats the first occurrence as canonical and drops later duplicates.`
+          )
+        }
+        continue
+      }
+      seen.add(form.key)
+      trackOnce(form)
+      out.push({ key: form.key, form })
+    }
+    return out
+  })
+
+  // --- Active-step state ------------------------------------------------
+
+  const activeIndex = computed<number>(() => {
+    const key = activeKey.value
+    if (key === '') return -1
+    const list = compiledSteps.value
+    for (let i = 0; i < list.length; i++) {
+      if ((list[i] as CompiledStep).key === key) return i
+    }
+    return -1
+  })
+
+  const currentStep = computed<FormKey>(() => {
+    const key = activeKey.value
+    if (key !== '') return key
+    const first = compiledSteps.value[0]
+    return first === undefined ? '' : first.key
+  })
+
+  const activeForm = computed<AnyForm>(() => {
+    const list = compiledSteps.value
+    const idx = activeIndex.value
+    if (idx >= 0 && idx < list.length) {
+      return (list[idx] as CompiledStep).form
+    }
+    const first = list[0]
+    if (first === undefined) {
+      throw new Error('[attaform] useWizard: compiled step list is empty.')
+    }
+    return first.form
+  })
+
+  const isFinalStep = computed<boolean>(() => {
+    const list = compiledSteps.value
+    const idx = activeIndex.value
+    return list.length > 0 && idx === list.length - 1
+  })
+
+  const count = computed<number>(() => compiledSteps.value.length)
+
+  // --- Forms record + namespaced aggregates -----------------------------
+
+  const formsRecord = computed<Readonly<Record<FormKey, AnyForm>>>(() => {
+    const out: Record<FormKey, AnyForm> = {}
+    for (const step of compiledSteps.value) out[step.key] = step.form
+    return out
+  })
+
+  const allValues = computed<Readonly<Record<FormKey, unknown>>>(() => {
+    const out: Record<FormKey, unknown> = {}
+    for (const step of compiledSteps.value) {
+      const source = step.form as unknown as StatusSourceForm
+      out[step.key] = source.values
+    }
+    return out
+  })
+
+  const allErrors = computed<Readonly<Record<FormKey, readonly AggregateError[]>>>(() => {
+    const out: Record<FormKey, readonly AggregateError[]> = {}
+    for (const step of compiledSteps.value) {
+      const source = step.form as unknown as StatusSourceForm
+      const list: AggregateError[] = []
+      const store = registry.forms.get(step.key)
+      const resolved = store?.defaultsResolved.value === true
+      if (resolved) {
+        const errors = source.meta?.errors ?? []
+        for (const err of errors) {
+          const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
+            formKey: step.key,
+            path: err.path,
+            message: err.message,
+          }
+          if (err.code !== undefined) entry.code = err.code
+          list.push(entry)
+        }
+      }
+      out[step.key] = list
+    }
+    return out
+  })
+
+  // --- Statuses proxy + seed --------------------------------------------
+
   const seedRef = ref<Record<string, FormStatus> | undefined>(undefined)
   const seedInput = options.defaultStatuses
   if (seedInput !== undefined) {
@@ -271,400 +388,429 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
       }
     }
   }
-  // Filter unknown seed keys with a dev warn. Likely a typo on the
-  // consumer's side; the wizard ignores the entry and keeps the rest.
-  if (seedRef.value !== undefined) {
-    const unknownSeedKeys: string[] = []
-    const seedMap = seedRef.value
-    for (const seedKey of Object.keys(seedMap)) {
-      if (!seenKeys.has(seedKey)) unknownSeedKeys.push(seedKey)
-    }
-    if (unknownSeedKeys.length > 0) {
-      console.warn(
-        `[attaform] useWizard.defaultStatuses: ignoring unknown key(s) ${unknownSeedKeys
-          .map((k) => `"${k}"`)
-          .join(', ')}. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}.`
-      )
-      const cleaned: Record<string, FormStatus> = {}
-      for (const seedKey of Object.keys(seedMap)) {
-        if (seenKeys.has(seedKey)) cleaned[seedKey] = seedMap[seedKey] as FormStatus
-      }
-      seedRef.value = cleaned
-    }
-  }
 
-  // Build per-form FormStatus computeds — each tracks its participating
-  // form's `meta` reactively. Resolution priority:
-  //   1. store.defaultsResolved === true → derive from form.meta
-  //   2. else seed value for this key → frozen seed
-  //   3. else → pending sentinel
-  // `defaultsResolved` is the right gate (not `hydrating`) because
-  // dormant lazy forms have `hydrating: false` BEFORE activation —
-  // the factory hasn't fired, so meta is the trivial pending shape
-  // rather than real data.
-  const statusComputeds: Record<string, ComputedRef<FormStatus>> = {}
-  for (const form of forms) {
+  // Per-step status computeds, lazily extended as new step keys appear
+  // through function-slot resolution. A keyed cache keeps each form's
+  // computed identity stable across re-evaluations of `compiledSteps`.
+  const statusCache = new Map<FormKey, ComputedRef<FormStatus>>()
+
+  function statusFor(form: AnyForm): ComputedRef<FormStatus> {
+    const cached = statusCache.get(form.key)
+    if (cached !== undefined) return cached
     const source = form as unknown as StatusSourceForm
-    const key = form.key
-    statusComputeds[key] = computed<FormStatus>(() => {
-      const store = registry.forms.get(key)
+    const computedStatus = computed<FormStatus>(() => {
+      const store = registry.forms.get(form.key)
       const resolved = store?.defaultsResolved.value === true
-      const meta = source.meta
-      if (resolved && meta !== undefined && meta !== null) {
-        return {
-          valid: meta.valid,
-          dirty: meta.dirty,
-          submitted: meta.submitted,
-          errorCount: meta.errorCount,
+      if (resolved) {
+        const meta = source.meta
+        if (meta !== undefined && meta !== null) {
+          return {
+            valid: meta.valid,
+            dirty: meta.dirty,
+            submitted: meta.submitted,
+            errorCount: meta.errorCount,
+          }
         }
       }
+      // Noop forms surface as always-valid even before their (trivial)
+      // schema settle has registered — noop schemas resolve synchronously
+      // so this branch is mostly defensive, but it keeps the
+      // status surface stable for string-slot keys at t=0.
+      if (noopForms.has(form.key)) return NOOP_VALID_STATUS
       const seedMap = seedRef.value
-      if (seedMap !== undefined && Object.hasOwn(seedMap, key)) {
-        return seedMap[key] as FormStatus
+      if (seedMap !== undefined && Object.hasOwn(seedMap, form.key)) {
+        return seedMap[form.key] as FormStatus
       }
       return PENDING_STATUS
     })
+    statusCache.set(form.key, computedStatus)
+    return computedStatus
   }
-  const statuses = buildWizardStatusesProxy<Record<string, FormStatus>>(statusComputeds)
 
-  // `onStatusChange` handler captured once for both the per-form
-  // material-change watch AND the synthetic nav-away invocation in
-  // `setCurrent` below.
-  const statusChangeHandler = options.onStatusChange
+  // Wrap the cache in a Proxy so `wizard.statuses` reads each key's
+  // computed lazily, including keys that only appeared via function-slot
+  // resolution. The underlying statuses-proxy expects a static record;
+  // we feed it a live one whose `get` delegates to `statusFor`.
+  const statusesRecord = new Proxy({} as Record<FormKey, ComputedRef<FormStatus>>, {
+    get(_, key: string | symbol): ComputedRef<FormStatus> | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsRecord.value[key]
+      if (form === undefined) {
+        // Honor seeded keys for forms not yet visible in the compiled
+        // list (e.g. ghost forms behind a function-slot that hasn't
+        // resolved to them yet) so consumers can read a stable status
+        // surface for keys they know about.
+        const cached = statusCache.get(key)
+        if (cached !== undefined) return cached
+        return undefined
+      }
+      return statusFor(form)
+    },
+    ownKeys(): ArrayLike<string | symbol> {
+      return Object.keys(formsRecord.value)
+    },
+    has(_, key: string | symbol): boolean {
+      if (typeof key !== 'string') return false
+      return formsRecord.value[key] !== undefined
+    },
+    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsRecord.value[key]
+      if (form === undefined) return undefined
+      return {
+        configurable: true,
+        enumerable: true,
+        writable: false,
+        value: statusFor(form),
+      }
+    },
+  })
 
-  // Wire per-form material-change watches. Fires only when the
-  // 4-scalar tuple (`valid`, `dirty`, `submitted`, `errorCount`)
-  // actually moves; identical writes don't re-fire. Async returns are
-  // fire-and-forget — navigation is never gated on the handler's
-  // promise.
-  if (statusChangeHandler !== undefined) {
-    for (const form of forms) {
-      const key = form.key
-      const statusComputed = statusComputeds[key]
-      if (statusComputed === undefined) continue
-      watch(statusComputed, (next, prev) => {
-        if (
-          prev !== undefined &&
-          prev.valid === next.valid &&
-          prev.dirty === next.dirty &&
-          prev.submitted === next.submitted &&
-          prev.errorCount === next.errorCount
-        ) {
-          return
-        }
-        void statusChangeHandler(next, form)
-      })
+  const statuses = buildWizardStatusesProxy<Record<string, FormStatus>>(statusesRecord)
+
+  // Dev-warn on seed keys that match no compiled step (initial pass).
+  if (__DEV__ && seedRef.value !== undefined) {
+    const seedMap = seedRef.value
+    const known = new Set(compiledSteps.value.map((s) => s.key))
+    const unknown: string[] = []
+    for (const key of Object.keys(seedMap)) {
+      if (!known.has(key)) unknown.push(key)
+    }
+    if (unknown.length > 0) {
+      console.warn(
+        `[attaform] useWizard.defaultStatuses: seed contains unknown key(s) ${unknown
+          .map((k) => `"${k}"`)
+          .join(', ')}. Known step keys: ${[...known].map((k) => `"${k}"`).join(', ')}.`
+      )
     }
   }
 
-  if (getCurrentScope() !== undefined) {
-    const releases: Array<() => void> = []
-    for (const key of formKeys) {
-      releases.push(registry.trackConsumer(key))
-    }
-    onScopeDispose(() => {
-      for (const release of releases) release()
-      wizardHistory.dispose()
-    })
-  }
+  // --- Progress + complete (forward-looking) ---------------------------
 
-  function indexOf(key: string): number {
-    return formKeys.indexOf(key)
-  }
-
-  // Cross-form aggregates. `allValues` exposes each form's existing
-  // values proxy under its key — read-only by way of the proxies'
-  // own traps. `allErrors` is a computed flat list ordered by BFS
-  // walk, then per-form order.
-  const allValuesObject: Record<string, unknown> = {}
-  for (const form of forms) {
-    const source = form as unknown as StatusSourceForm
-    Object.defineProperty(allValuesObject, form.key, {
-      enumerable: true,
-      configurable: false,
-      get: () => source.values,
-    })
-  }
-  const allValues = allValuesObject
-
-  // Progress — default `valid_count / total` (normalised) or override.
-  // Wrapped in a computed so reactivity follows the underlying
-  // statuses (default) or whatever reactive sources the override
-  // touches.
   const progressOverride = options.progress
   const progress = computed<number>(() => {
     if (progressOverride !== undefined) {
-      return progressOverride(forms)
+      return progressOverride(compiledSteps.value)
     }
-    if (forms.length === 0) return 0
+    const list = compiledSteps.value
+    if (list.length === 0) return 0
     let valid = 0
-    for (const form of forms) {
-      const status = statusComputeds[form.key]?.value
-      if (status?.valid === true) valid += 1
+    for (const step of list) {
+      const status = statusFor(step.form).value
+      if (status.valid === true) valid += 1
     }
-    return valid / forms.length
+    return valid / list.length
   })
 
-  const allErrors = computed<readonly AggregateError[]>(() => {
-    const flat: AggregateError[] = []
-    for (const form of forms) {
-      const store = registry.forms.get(form.key)
-      if (store?.defaultsResolved.value !== true) continue
-      const source = form as unknown as StatusSourceForm
-      const errors = source.meta?.errors
-      if (errors === undefined) continue
-      for (const error of errors) {
-        const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
-          formKey: form.key,
-          path: error.path,
-          message: error.message,
-        }
-        if (error.code !== undefined) entry.code = error.code
-        flat.push(entry)
-      }
+  const complete = computed<boolean>(() => {
+    if (!isFinalStep.value) return false
+    for (const step of compiledSteps.value) {
+      if (statusFor(step.form).value.valid !== true) return false
     }
-    return flat
-  })
-
-  /**
-   * Internal navigation. `historyMode` controls how the change is
-   * reflected in `window.history`:
-   *   - `'push'` (default for nav calls) — new history entry.
-   *   - `'replace'` — overwrite the current entry (for
-   *     `goTo({ replace: true })`).
-   *   - `'silent'` — no write. Used by the popstate handler: the
-   *     browser has already moved the entry, writing again would
-   *     double-record.
-   */
-  function setCurrent(nextKey: string, historyMode: 'push' | 'replace' | 'silent' = 'push'): void {
-    const priorKey = current.value
-    if (priorKey === nextKey) return
-    current.value = nextKey
-    visited.value.push(nextKey)
-    // Kick the new step's activation. `activate()` is idempotent — if
-    // the form is already resolved (sync defaults / hydrated payload /
-    // earlier visit re-using state), this returns a resolved promise
-    // and nothing re-fires. On the server, `setCurrent` is uncommon
-    // (initial step resolution wires the SSR queue at construction);
-    // on the client this is the primary firing site for async-defaults
-    // factories on navigation.
-    const nextForm = byKey.get(nextKey) as unknown as { activate?: () => Promise<void> } | undefined
-    if (nextForm !== undefined && typeof nextForm.activate === 'function') {
-      void nextForm.activate()
-    }
-    if (historyMode === 'push') wizardHistory.push(nextKey)
-    else if (historyMode === 'replace') wizardHistory.replace(nextKey)
-    // Synthetic nav-away invocation. `onStatusChange` fires for the
-    // form being left, regardless of whether anything materially
-    // changed — useful for autosave-on-step-leave patterns.
-    if (statusChangeHandler !== undefined) {
-      const priorForm = byKey.get(priorKey)
-      if (priorForm !== undefined) {
-        const priorStatus = statusComputeds[priorKey]?.value
-        if (priorStatus !== undefined) {
-          void statusChangeHandler(priorStatus, priorForm)
-        }
-      }
-    }
-  }
-
-  // Browser back/forward → restore current from URL. The handler is a
-  // no-op when the URL no longer names a known key (consumer linked
-  // outside the wizard, or popped past the original entry).
-  wizardHistory.subscribe((key) => {
-    if (key === undefined) return
-    if (!seenKeys.has(key)) return
-    setCurrent(key, 'silent')
-  })
-
-  // --- Phase 4: lifecycle state ------------------------------------------
-
-  const submitting = ref(false)
-  const submissionAttempts = ref(0)
-  const complete = ref(false)
-  // Watchers that flip `complete` back to `false` on any post-success
-  // edit to a walked-path form. Torn down when `complete` itself flips
-  // (or when `wizard.reset()` runs), so the wizard only pays the watch
-  // cost while it has a successful submission to invalidate.
-  let completeStopFns: Array<() => void> = []
-
-  function teardownCompleteWatchers(): void {
-    for (const stop of completeStopFns) stop()
-    completeStopFns = []
-  }
-
-  function markComplete(walkedPath: readonly AnyForm[]): void {
-    teardownCompleteWatchers()
-    // Snapshot each walked form's `meta.updatedAt` at success time;
-    // any post-success write bumps the timestamp, signalling an edit.
-    // Watching the boolean `meta.dirty` would be inert here because
-    // dirty is sticky-true after the first write — there's no
-    // transition to observe once the user has touched the form.
-    const snapshots = new Map<string, string | null>()
-    for (const form of walkedPath) {
-      const source = form as unknown as SubmissionSourceForm
-      snapshots.set(form.key, source.meta?.updatedAt ?? null)
-    }
-    complete.value = true
-    for (const form of walkedPath) {
-      const source = form as unknown as SubmissionSourceForm
-      const stopFn = watch(
-        () => source.meta?.updatedAt ?? null,
-        (nextValue) => {
-          if (nextValue !== snapshots.get(form.key) && complete.value === true) {
-            complete.value = false
-            teardownCompleteWatchers()
-          }
-        }
-      )
-      completeStopFns.push(stopFn)
-    }
-  }
-
-  const canAdvance = computed<boolean>(() => {
-    const activeForm = byKey.get(current.value)
-    if (activeForm === undefined) return false
-    const nextDecl = activeForm.next
-    if (nextDecl === undefined) return false
-    if (nextDecl.forms.length === 0) return false
     return true
   })
 
-  const canGoBack = computed<boolean>(() => formKeys.indexOf(current.value) > 0)
+  // --- Navigation positional helpers ------------------------------------
 
-  // --- Navigation --------------------------------------------------------
+  const canAdvance = computed<boolean>(() => activeIndex.value < count.value - 1)
+  const canGoBack = computed<boolean>(() => activeIndex.value > 0)
 
-  async function next(navOptions?: WizardNavOptions): Promise<void> {
-    if (submitting.value) {
-      console.warn(
-        `[attaform] useWizard.next(): blocked while a submit is in flight. Wait for handleSubmit to settle, or call back/goTo from onError.`
-      )
-      return
+  const visited = ref<FormKey[]>([])
+
+  // --- URL / restore wiring --------------------------------------------
+  //
+  // Default restore reads the first non-undefined value among:
+  //   1. injected Nuxt-side resolver (`?step=<key>` via useRoute() in
+  //      the Nuxt module's runtime plugin), then
+  //   2. window.location's search param mirrored through a reactive
+  //      ref that updates on popstate.
+  //
+  // Default persist writes back to the URL via `wizard-history.ts`.
+  // The historyHandle is created only when the consumer has not
+  // disabled `restore`/`persist`, so embed contexts that opt out (or
+  // pass custom handlers) never touch the DOM History API.
+  const wantsDefaultUrlSync = options.restore !== false || options.persist !== false
+  const historyHandle = wantsDefaultUrlSync
+    ? createWizardHistory(DEFAULT_STEP_PARAM)
+    : NOOP_WIZARD_HISTORY
+  const injectedResolver = inject(kAttaformWizardActiveStepResolver, null)
+
+  // Reactive URL mirror — `historyHandle.subscribe` fires the callback
+  // on popstate. Initial value resolves to whatever the URL holds at
+  // setup time (server's URL during SSR via the resolver, or the
+  // window URL on the client).
+  const urlMirror = ref<string | undefined>(undefined)
+  const initialUrlValue =
+    injectedResolver !== null ? injectedResolver(DEFAULT_STEP_PARAM) : historyHandle.read()
+  urlMirror.value = initialUrlValue
+  historyHandle.subscribe((value) => {
+    urlMirror.value = value
+  })
+
+  const restoreCallback: WizardRestoreFn | undefined =
+    options.restore === false
+      ? undefined
+      : options.restore !== undefined
+        ? options.restore
+        : (): WizardRestoreState | undefined => {
+            const value = urlMirror.value
+            return value === undefined ? undefined : { step: value }
+          }
+
+  const persistCallback: WizardPersistFn | undefined =
+    options.persist === false
+      ? undefined
+      : options.persist !== undefined
+        ? options.persist
+        : (state: WizardRestoreState): void => {
+            if (state.step === undefined) return
+            historyHandle.replace(state.step)
+          }
+
+  // --- Initial active key resolution ------------------------------------
+
+  function isCompiledKey(key: string): boolean {
+    const list = compiledSteps.value
+    for (const step of list) if (step.key === key) return true
+    return false
+  }
+
+  function firstKey(): FormKey {
+    const first = compiledSteps.value[0]
+    if (first === undefined) {
+      throw new Error('[attaform] useWizard: compiled step list is empty.')
     }
-    const activeKey = current.value
-    const activeForm = byKey.get(activeKey) as unknown as SubmissionSourceForm | undefined
-    if (activeForm === undefined) return
-    const nextDecl = (activeForm as unknown as AnyForm).next
-    if (nextDecl === undefined) {
+    return first.key
+  }
+
+  let initialKey: FormKey
+  const restoredAtSetup = restoreCallback?.()
+  const restoredStep = restoredAtSetup?.step
+  if (restoredStep !== undefined && isCompiledKey(restoredStep)) {
+    initialKey = restoredStep
+  } else {
+    if (
+      __DEV__ &&
+      restoredStep !== undefined &&
+      restoredStep !== '' &&
+      !isCompiledKey(restoredStep)
+    ) {
       console.warn(
-        `[attaform] useWizard.next(): already on the last step ("${activeKey}"). Disable the button at the end of the wizard.`
+        `[attaform] useWizard: restore() yielded step "${restoredStep}" which is not in the compiled step list. Falling back to the first step.`
       )
-      return
     }
-    // Activate first so async `defaultValues` factories settle before we
-    // ask the form to validate. Activation failure dev-warns and does
-    // not advance — the consumer can retry once the factory recovers.
-    try {
-      if (typeof activeForm.activate === 'function') {
-        await activeForm.activate()
+    initialKey = firstKey()
+  }
+  activeKey.value = initialKey
+  visited.value = [initialKey]
+
+  // --- SSR prefetch coordination ---------------------------------------
+  //
+  // On the server, mark the initial step's form for prefetch (so its
+  // async `defaultValues` resolves inside `onServerPrefetch`) and
+  // explicitly skip every other compiled step so a stray transform mark
+  // can't fire a non-current step's factory.
+  if (registry.ssr) {
+    for (const step of compiledSteps.value) {
+      if (step.key === initialKey) {
+        registry.enqueuePrefetch(step.key)
+      } else {
+        registry.skipPrefetch(step.key)
       }
-    } catch (err) {
-      console.warn(
-        `[attaform] useWizard.next(): activation of "${activeKey}" failed: ${
-          (err as Error)?.message ?? String(err)
-        }`
-      )
-      return
     }
-    // Bump departAttempts before validation runs so the depart arm of
-    // `defaultShouldShowErrors` is already true by the time the
-    // invalid-submit policy focuses the first error field. Bumping
-    // here also covers the successful-next path: a clean departure
-    // still records an attempt so revisits show prior errors if any.
-    const activeStore = registry.forms.get(activeKey)
-    if (activeStore !== undefined) {
-      activeStore.departAttempts.value += 1
-    }
-    const result = await activeForm.process()
-    if (result.success !== true) {
-      // Invalid form blocks navigation. Fire the form's own
-      // `onInvalidSubmit` policy (focus / scroll / both / none) so the
-      // user gets the configured nudge without going through handleSubmit.
-      activeForm.applyInvalidSubmitPolicy()
-      return
-    }
-    const picked = nextDecl.pick(result.data)
-    if (picked === undefined) {
-      console.warn(
-        `[attaform] useWizard.next(): \`pick(parsed)\` returned undefined at "${activeKey}" — dynamic terminal reached.`
-      )
-      return
-    }
-    setCurrent(picked.key, navOptions?.replace === true ? 'replace' : 'push')
   }
 
-  function back(navOptions?: WizardNavOptions): void {
-    if (submitting.value) {
-      console.warn(`[attaform] useWizard.back(): blocked while a submit is in flight.`)
-      return
+  // Activate every compiled step's form on the client. Idempotent —
+  // `activate()` returns a resolved promise when the form has no
+  // async work, and the registry's per-store hydration latch holds
+  // the factory single-shot across repeat calls. SSR keeps the
+  // prefetch coordination above (only the initial step's factory
+  // resolves inside `onServerPrefetch`); eager-activate-all is a
+  // client-side contract.
+  if (!registry.ssr) {
+    for (const step of compiledSteps.value) {
+      const source = step.form as unknown as SubmissionSourceForm
+      if (typeof source.activate === 'function') void source.activate()
     }
-    const idx = indexOf(current.value)
-    if (idx === 0) {
-      console.warn(
-        `[attaform] useWizard.back(): already on the first step ("${current.value}"). Disable the button at the start of the wizard.`
-      )
-      return
-    }
-    // Record the departure before navigating. A user who deep-links to
-    // a mid-flow step then presses Back has engaged with the current
-    // form via the wizard, so its errors should reveal on revisit.
-    const activeStore = registry.forms.get(current.value)
-    if (activeStore !== undefined) {
-      activeStore.departAttempts.value += 1
-    }
-    setCurrent(formKeys[idx - 1] as string, navOptions?.replace === true ? 'replace' : 'push')
   }
 
-  function goTo(key: string, navOptions?: WizardNavOptions): void {
-    if (submitting.value) {
-      console.warn(`[attaform] useWizard.goTo(): blocked while a submit is in flight.`)
-      return
+  // --- Reactive restore / persist watchers -----------------------------
+  //
+  // Loop break: the restore side watches what the `restore` lambda
+  // returns (the lambda's tracked reads decide the dep set), and only
+  // applies when that value moves AND differs from the active step.
+  // The persist side diffs against `lastPersisted`. We deliberately
+  // do not read `activeKey` inside the restore watch's getter — that
+  // would re-fire the restore on every internal navigation and revert
+  // it before the persist write reaches `urlMirror` on its own pass.
+  let lastPersisted: string | undefined = initialUrlValue
+  if (restoreCallback !== undefined) {
+    watch(
+      () => restoreCallback()?.step,
+      (step) => {
+        if (step === undefined) return
+        if (!isCompiledKey(step)) {
+          if (__DEV__) {
+            console.warn(
+              `[attaform] useWizard: restore() yielded step "${step}" which is not in the compiled step list. Ignoring.`
+            )
+          }
+          return
+        }
+        if (step === activeKey.value) return
+        activeKey.value = step
+        if (!visited.value.includes(step)) visited.value.push(step)
+      }
+    )
+  }
+  if (persistCallback !== undefined) {
+    watch(
+      () => activeKey.value,
+      (next) => {
+        if (next === lastPersisted) return
+        lastPersisted = next
+        persistCallback({ step: next })
+        // Keep the URL mirror in sync so the default restore lambda
+        // sees the persisted value on its next read. The restore watch
+        // diffs the new mirror value against `activeKey` and bails out
+        // when they agree, closing the loop in one round.
+        urlMirror.value = next
+      }
+    )
+    // Replace the URL once at construction so a fresh load reflects the
+    // active step (idempotent when the URL already named the correct
+    // key — the diff in the watcher handles steady-state).
+    if (initialKey !== initialUrlValue && initialUrlValue === undefined) {
+      lastPersisted = initialKey
+      persistCallback({ step: initialKey })
+      urlMirror.value = initialKey
     }
-    if (!seenKeys.has(key)) {
-      console.warn(
-        `[attaform] useWizard.goTo("${key}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}. Ignoring.`
-      )
-      return
+  }
+
+  // --- Lifecycle state --------------------------------------------------
+
+  const submitting = ref(false)
+  const submissionAttempts = ref(0)
+
+  // --- Navigation internals --------------------------------------------
+
+  function activateForm(form: AnyForm): void {
+    const source = form as unknown as SubmissionSourceForm
+    if (typeof source.activate === 'function') {
+      void source.activate()
     }
-    // Record the departure only when the target differs from current;
-    // a same-key goTo is a no-op and should not move the counter.
-    if (key !== current.value) {
-      const activeStore = registry.forms.get(current.value)
-      if (activeStore !== undefined) {
-        activeStore.departAttempts.value += 1
+  }
+
+  function moveTo(key: FormKey, options?: { silent?: boolean }): void {
+    if (activeKey.value === key) return
+    activeKey.value = key
+    if (!visited.value.includes(key)) visited.value.push(key)
+    if (options?.silent === true) {
+      lastPersisted = key
+    }
+    const list = compiledSteps.value
+    for (const step of list) {
+      if (step.key === key) {
+        activateForm(step.form)
+        return
       }
     }
-    setCurrent(key, navOptions?.replace === true ? 'replace' : 'push')
   }
 
-  // --- handleSubmit ------------------------------------------------------
+  function recordDeparture(key: FormKey): void {
+    const store = registry.forms.get(key)
+    if (store !== undefined) store.departAttempts.value += 1
+  }
 
-  type Processed = ValidationResponse<unknown>
+  async function next(): Promise<void> {
+    if (submitting.value) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] wizard.next(): blocked while a submit is in flight. Wait for handleSubmit to settle.`
+        )
+      }
+      return
+    }
+    const idx = activeIndex.value
+    const list = compiledSteps.value
+    if (idx < 0 || idx >= list.length - 1) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] wizard.next(): already on the final step ("${activeKey.value}"). Use wizard.handleSubmit() to submit.`
+        )
+      }
+      return
+    }
+    recordDeparture(activeKey.value)
+    const target = list[idx + 1] as CompiledStep
+    moveTo(target.key)
+  }
 
-  async function processForm(form: AnyForm, cache: Map<string, Processed>): Promise<Processed> {
-    const cached = cache.get(form.key)
-    if (cached !== undefined) return cached
+  function back(): void {
+    if (submitting.value) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.back(): blocked while a submit is in flight.`)
+      }
+      return
+    }
+    const idx = activeIndex.value
+    if (idx <= 0) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.back(): already on the first step ("${activeKey.value}").`)
+      }
+      return
+    }
+    recordDeparture(activeKey.value)
+    const target = compiledSteps.value[idx - 1] as CompiledStep
+    moveTo(target.key)
+  }
+
+  function goTo(key: string): void {
+    if (submitting.value) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.goTo(): blocked while a submit is in flight.`)
+      }
+      return
+    }
+    if (!isCompiledKey(key)) {
+      if (__DEV__) {
+        const known = compiledSteps.value.map((s) => `"${s.key}"`).join(', ')
+        console.warn(`[attaform] wizard.goTo("${key}"): unknown step key. Known keys: ${known}.`)
+      }
+      return
+    }
+    if (key !== activeKey.value) recordDeparture(activeKey.value)
+    moveTo(key)
+  }
+
+  // --- handleSubmit -----------------------------------------------------
+
+  function buildSubmitContext(
+    valuesMap: Record<FormKey, unknown>,
+    currentKey: FormKey,
+    isFinal: boolean
+  ): WizardSubmitContext {
+    return {
+      values: valuesMap,
+      get: ((form: AnyForm) => valuesMap[form.key]) as WizardSubmitContext['get'],
+      currentKey,
+      isFinal,
+    }
+  }
+
+  async function processOne(form: AnyForm): Promise<ValidationResponse<unknown>> {
     const full = form as unknown as SubmissionSourceForm
     let activationFailure: string | undefined
     try {
       if (typeof full.activate === 'function') await full.activate()
     } catch (err) {
-      // Caller-visible throw from `activate()` (rare — the form runtime
-      // captures most factory failures internally, but this covers
-      // direct throws from synchronous activation paths).
       activationFailure = (err as Error)?.message ?? String(err)
     }
-    // Mirror the form runtime's internal capture: a function-form
-    // `defaultValues` factory throw lands on `form.hydrateError` rather
-    // than propagating out of `activate()`. Promote it to the wizard's
-    // aggregate channel with the dedicated `atta:activation-failed`
-    // code so consumers can branch on origin (vs. ordinary validation
-    // errors that ride field paths).
     if (activationFailure === undefined && full.hydrateError != null) {
       activationFailure = full.hydrateError.message
     }
     if (activationFailure !== undefined) {
-      const synthetic: Processed = {
+      return {
         success: false,
         data: undefined,
         errors: [
@@ -677,39 +823,28 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
         ],
         formKey: form.key,
       }
-      cache.set(form.key, synthetic)
-      return synthetic
     }
-    const result = await full.process()
-    cache.set(form.key, result)
-    return result
+    return full.process()
   }
 
-  type WalkResult = { readonly path: readonly AnyForm[]; readonly allValid: boolean }
-
-  async function walkSubgraph(form: AnyForm, cache: Map<string, Processed>): Promise<WalkResult> {
-    const result = await processForm(form, cache)
-    const isValid = result.success === true
-    const nextDecl = form.next
-    if (nextDecl === undefined) {
-      return { path: [form], allValid: isValid }
-    }
-    if (isValid) {
-      const picked = nextDecl.pick(result.data)
-      if (picked === undefined) {
-        return { path: [form], allValid: true }
+  function collectErrors(
+    results: ReadonlyMap<FormKey, ValidationResponse<unknown>>
+  ): AggregateError[] {
+    const out: AggregateError[] = []
+    for (const step of compiledSteps.value) {
+      const processed = results.get(step.key)
+      if (processed === undefined || processed.success === true) continue
+      for (const err of processed.errors) {
+        const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
+          formKey: err.formKey,
+          path: err.path,
+          message: err.message,
+        }
+        if (err.code !== undefined) entry.code = err.code
+        out.push(entry)
       }
-      const sub = await walkSubgraph(picked, cache)
-      return { path: [form, ...sub.path], allValid: sub.allValid }
     }
-    // Invalid current + branching: walk ALL declared `forms` subgraphs in
-    // parallel so latency is bounded by the slowest branch, not the sum
-    // of all branches. The aggregate cache dedupes any form that
-    // appears in more than one subgraph.
-    if (nextDecl.forms.length > 0) {
-      await Promise.all(nextDecl.forms.map((branch) => walkSubgraph(branch, cache)))
-    }
-    return { path: [form], allValid: false }
+    return out
   }
 
   function handleSubmit(
@@ -721,81 +856,79 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
         event.preventDefault()
       }
       if (submitting.value) {
-        console.warn(
-          `[attaform] wizard.handleSubmit: re-entrant submit while a prior call is still in flight; resolving no-op.`
-        )
+        if (__DEV__) {
+          console.warn(
+            `[attaform] wizard.handleSubmit: re-entrant submit while a prior call is still in flight; resolving no-op.`
+          )
+        }
         return
       }
       submitting.value = true
       try {
-        const cache = new Map<string, Processed>()
-        const walk = await walkSubgraph(entryForm, cache)
-        // Aggregate errors and parsed values from the cache in BFS order
-        // (matching `forms`) so the error list and value record are
-        // stable regardless of branch interleaving.
-        const errors: AggregateError[] = []
-        const values: Record<string, WizardValue> = {}
-        for (const form of forms) {
-          const processed = cache.get(form.key)
-          if (processed === undefined) continue
-          if (processed.success === true) {
-            values[form.key] = processed.data as WizardValue
-            continue
-          }
-          if (processed.data !== undefined) values[form.key] = processed.data as WizardValue
-          for (const err of processed.errors) {
-            const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
-              formKey: err.formKey,
-              path: err.path,
-              message: err.message,
-            }
-            if (err.code !== undefined) entry.code = err.code
-            errors.push(entry)
-          }
+        const currentKey = activeKey.value
+        const final = isFinalStep.value
+        const list = compiledSteps.value
+        const results = new Map<FormKey, ValidationResponse<unknown>>()
+
+        if (final) {
+          // Final-step submission: validate every step. Run in parallel
+          // so latency is bounded by the slowest form rather than the
+          // sum of all forms.
+          await Promise.all(
+            list.map(async (step) => {
+              const result = await processOne(step.form)
+              results.set(step.key, result)
+            })
+          )
+        } else {
+          // Intermediate submission: validate the active form only and
+          // advance on success.
+          const active = activeForm.value
+          const result = await processOne(active)
+          results.set(active.key, result)
         }
-        // Bump each walked form's `meta.submissionAttempts` so
-        // `field.showErrors` reveals previously-hidden errors. The
-        // wizard mutates the store directly (it already reads
-        // `defaultsResolved` and `meta` off the registry); per-form
-        // `meta.submitting` is NOT flipped because the wizard never
-        // routes through each form's own `handleSubmit`.
-        for (const key of cache.keys()) {
+
+        // Bump per-form submissionAttempts for every form we just
+        // processed (noops included — accounting-distinct counters per
+        // [[feedback-api-name-hygiene]]). The wizard-level counter
+        // always bumps once per invocation.
+        for (const key of results.keys()) {
           const store = registry.forms.get(key)
-          if (store !== undefined) {
-            store.submissionAttempts.value += 1
-          }
+          if (store !== undefined) store.submissionAttempts.value += 1
         }
         submissionAttempts.value += 1
+
+        const errors = collectErrors(results)
         if (errors.length === 0) {
-          const ctx: WizardSubmitContext = {
-            values,
-            get: ((form: AnyForm) => values[form.key]) as WizardSubmitContext['get'],
-            path: walk.path,
+          const valuesMap: Record<FormKey, unknown> = {}
+          for (const step of list) {
+            const processed = results.get(step.key)
+            if (processed !== undefined && processed.success === true) {
+              valuesMap[step.key] = processed.data
+            } else {
+              const source = step.form as unknown as StatusSourceForm
+              valuesMap[step.key] = source.values
+            }
           }
+          const ctx = buildSubmitContext(valuesMap, currentKey, final)
           await onSubmit(ctx)
-          markComplete(walk.path)
-        } else {
-          if (onError !== undefined) {
-            await onError(errors)
+          if (!final) {
+            // Intermediate success → record departure + advance to next
+            // step. Mirrors the navigation arm so the URL and visited
+            // trail stay coherent.
+            recordDeparture(currentKey)
+            const idx = activeIndex.value
+            const target = list[idx + 1]
+            if (target !== undefined) moveTo(target.key)
           }
-          if (options.navigateToFirstError !== false) {
+        } else {
+          if (onError !== undefined) await onError(errors)
+          if (options.focusFirstError !== false) {
             const firstFailedKey = errors[0]?.formKey
-            if (firstFailedKey !== undefined && seenKeys.has(firstFailedKey)) {
-              // Use the internal `setCurrent` so the navigation is not
-              // gated on `submitting` — that gate is for user-initiated
-              // navigation, not the wizard's own failure routing.
-              setCurrent(firstFailedKey, 'push')
-              // Wait for Vue to flush the render cycle so the failed
-              // step's form mounts before we focus. Consumers commonly
-              // template the wizard with `v-if="wizard.current === ..."`
-              // per step, so the failed form's inputs aren't in the DOM
-              // until after this tick; without the wait, the policy
-              // call would walk an empty registration set and silently
-              // no-op. One `nextTick` covers Vue's render-then-mount
-              // flush including the `v-register` directive's mounted
-              // hook, which is where field elements register.
+            if (firstFailedKey !== undefined && isCompiledKey(firstFailedKey)) {
+              moveTo(firstFailedKey)
               await nextTick()
-              const failedForm = byKey.get(firstFailedKey) as unknown as
+              const failedForm = formsRecord.value[firstFailedKey] as unknown as
                 | SubmissionSourceForm
                 | undefined
               if (
@@ -813,57 +946,69 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
     }
   }
 
+  // --- Reset ------------------------------------------------------------
+
   function reset(): void {
-    teardownCompleteWatchers()
-    complete.value = false
     submissionAttempts.value = 0
-    visited.value = [current.value]
-    for (const form of forms) {
-      const full = form as unknown as SubmissionSourceForm
+    for (const step of compiledSteps.value) {
+      const full = step.form as unknown as SubmissionSourceForm
       if (typeof full.reset === 'function') full.reset()
+    }
+    const firstStep = compiledSteps.value[0]
+    if (firstStep !== undefined) {
+      activeKey.value = firstStep.key
+      visited.value = [firstStep.key]
+      if (persistCallback !== undefined) {
+        lastPersisted = firstStep.key
+        persistCallback({ step: firstStep.key })
+      }
     }
   }
 
-  // Construction-time warnings frozen at construction; runtime
-  // anomalies (out-of-forms pick returns) throw from `normalize-next`
-  // and are NOT collected here. Same array identity on every call so
-  // consumers can memoize / referentially compare.
-  const diagnose = (): readonly WizardWarning[] => graph.warnings
+  // --- Lifecycle hooks --------------------------------------------------
 
-  const flow: WizardFlow = Object.freeze({
-    entryForm,
-    tree: graph.tree,
-    allForms: forms,
-    get visited(): readonly string[] {
-      return visited.value
-    },
-    diagnose,
-  } as WizardFlow)
+  if (getCurrentScope() !== undefined) {
+    onScopeDispose(() => {
+      historyHandle.dispose()
+    })
+  }
+
+  // --- Handle assembly --------------------------------------------------
 
   const wizardKey = options.key
   const handle: UseWizardReturnType = {
     key: wizardKey,
-    entryForm,
-    allForms: forms,
-    count: forms.length,
-    statuses,
-    allValues,
     next,
     back,
     goTo,
     handleSubmit,
     reset,
-    flow,
-    get current(): string | undefined {
-      return current.value
+    get currentStep(): FormKey {
+      return currentStep.value
     },
-    get activeForm(): AnyForm | undefined {
-      return byKey.get(current.value)
+    get activeForm(): AnyForm {
+      return activeForm.value
     },
     get activeIndex(): number {
-      return formKeys.indexOf(current.value)
+      return activeIndex.value
     },
-    get allErrors(): readonly AggregateError[] {
+    get isFinalStep(): boolean {
+      return isFinalStep.value
+    },
+    get steps(): ReadonlyArray<CompiledStep> {
+      return compiledSteps.value
+    },
+    get forms(): Readonly<Record<FormKey, AnyForm>> {
+      return formsRecord.value
+    },
+    get count(): number {
+      return count.value
+    },
+    statuses,
+    get allValues(): Readonly<Record<FormKey, unknown>> {
+      return allValues.value
+    },
+    get allErrors(): Readonly<Record<FormKey, readonly AggregateError[]>> {
       return allErrors.value
     },
     get progress(): number {
@@ -884,13 +1029,12 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
     get submissionAttempts(): number {
       return submissionAttempts.value
     },
+    get visited(): readonly FormKey[] {
+      return visited.value
+    },
   }
 
-  // Register the handle under `options.key` so descendants can reach it
-  // via `injectWizard(key)`. First-wins-silently: a duplicate key
-  // (modal + main rendering the same wizard, HMR fast-refresh, etc.)
-  // keeps the live handle and dev-warns on the second registration so
-  // accidental collisions surface but the runtime stays predictable.
+  // Registry registration + ambient provide --------------------------
   if (wizardKey !== undefined) {
     const existing = registry.wizards.get(wizardKey)
     if (existing === undefined) {
@@ -906,10 +1050,6 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
     }
   }
 
-  // Ambient provide so descendants can call `injectWizard()` (no key)
-  // and resolve the nearest wizard above them. Mirrors `useForm`'s
-  // `kFormContext` provide. Fires for both keyed and anonymous wizards
-  // — the ambient slot is independent of the registry path.
   if (getCurrentInstance() !== null) {
     provide(kAttaformAncestorWizard, handle)
   }
@@ -917,4 +1057,12 @@ export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseW
   return handle
 }
 
-export { WizardCycleError }
+/** Best-effort discriminator for the `AnyForm` arm of `StepSlot`. Forms
+ *  returned by `useForm` always carry a string `key` — checking that
+ *  (and ruling out the other arms structurally) keeps `resolveSlot`
+ *  readable without forcing every slot through a `typeof` cascade. */
+function isAnyForm(value: unknown): value is AnyForm {
+  if (value === null || typeof value !== 'object') return false
+  if (typeof (value as { key?: unknown }).key !== 'string') return false
+  return true
+}

@@ -9,21 +9,16 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * `useWizard` exposes the current step as a triple:
  *
- *   - `current`     — the active step's key (or `undefined` if no forms)
- *   - `activeForm`  — the active step's form handle (or `undefined`)
- *   - `activeIndex` — the active step's 0-based index (or `-1`)
+ *   - `currentStep` — the active step's key. Always defined (steps list
+ *                     is non-empty by construction).
+ *   - `activeForm`  — the active step's form handle. Always defined
+ *                     (noop forms cover string slots).
+ *   - `activeIndex` — the active step's 0-based index.
  *
  * `activeForm` and `activeIndex` are derived getters — they update
- * synchronously when `goTo` / `next` / `back` flips `current`.
- *
- * These exist so a consumer can write
- *   `wizard.activeForm?.handleSubmit(...)`
- * without re-deriving the form-by-key lookup themselves.
+ * synchronously when `goTo` / `next` / `back` flips `currentStep`.
  */
 
-// Permissive schema so the validation gate on `wizard.next()` does not
-// block navigation in tests that only exercise the active-step triple.
-// Validation behavior has its own coverage in `wizard-handle-submit`.
 const schema = z.object({ email: z.string().optional() })
 
 function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
@@ -47,29 +42,29 @@ describe('useWizard — activeForm + activeIndex', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('activeForm is the form whose key matches current', async () => {
+  it('activeForm is the form whose key matches currentStep', async () => {
     const { app, result } = mountWizardHarness(() => {
+      const a = useForm({ schema, key: 'a' })
+      const b = useForm({ schema, key: 'b' })
       const c = useForm({ schema, key: 'c' })
-      const b = useForm({ schema, key: 'b', next: c })
-      const a = useForm({ schema, key: 'a', next: b })
-      return useWizard(a)
+      return useWizard({ steps: [a, b, c], restore: false, persist: false })
     })
     apps.push(app)
-    expect(result.activeForm?.key).toBe('a')
+    expect(result.activeForm.key).toBe('a')
     await result.next()
-    expect(result.activeForm?.key).toBe('b')
+    expect(result.activeForm.key).toBe('b')
     result.goTo('c')
-    expect(result.activeForm?.key).toBe('c')
+    expect(result.activeForm.key).toBe('c')
     result.back()
-    expect(result.activeForm?.key).toBe('b')
+    expect(result.activeForm.key).toBe('b')
   })
 
   it('activeIndex is the 0-based index of the active step', async () => {
     const { app, result } = mountWizardHarness(() => {
+      const a = useForm({ schema, key: 'a' })
+      const b = useForm({ schema, key: 'b' })
       const c = useForm({ schema, key: 'c' })
-      const b = useForm({ schema, key: 'b', next: c })
-      const a = useForm({ schema, key: 'a', next: b })
-      return useWizard(a)
+      return useWizard({ steps: [a, b, c], restore: false, persist: false })
     })
     apps.push(app)
     expect(result.activeIndex).toBe(0)
@@ -81,15 +76,28 @@ describe('useWizard — activeForm + activeIndex', () => {
     expect(result.activeIndex).toBe(1)
   })
 
-  it('activeForm tracks the same form identity as the forms array entry', async () => {
+  it('activeForm tracks the same form identity as the steps[i].form entry', async () => {
     const { app, result } = mountWizardHarness(() => {
+      const a = useForm({ schema, key: 'a' })
       const b = useForm({ schema, key: 'b' })
-      const a = useForm({ schema, key: 'a', next: b })
-      return useWizard(a)
+      return useWizard({ steps: [a, b], restore: false, persist: false })
     })
     apps.push(app)
-    expect(result.activeForm).toBe(result.allForms[0])
+    expect(result.activeForm).toBe(result.steps[0]?.form)
     await result.next()
-    expect(result.activeForm).toBe(result.allForms[1])
+    expect(result.activeForm).toBe(result.steps[1]?.form)
+  })
+
+  it('activeForm tracks string-slot noop forms', () => {
+    const { app, result } = mountWizardHarness(() => {
+      const a = useForm({ schema, key: 'a' })
+      return useWizard({ steps: ['intro', a], restore: false, persist: false })
+    })
+    apps.push(app)
+    expect(result.activeForm.key).toBe('intro')
+    result.goTo('a')
+    expect(result.activeForm.key).toBe('a')
+    result.goTo('intro')
+    expect(result.activeForm.key).toBe('intro')
   })
 })

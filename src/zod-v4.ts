@@ -40,25 +40,25 @@ export type { UseRegisterReturn } from './runtime/composables/use-register'
 export { useWizard } from './runtime/composables/use-wizard'
 export { injectWizard } from './runtime/composables/inject-wizard'
 export type { InjectWizardInput } from './runtime/composables/inject-wizard'
+export { defer } from './runtime/core/wizard-defer'
 export type {
   AggregateError,
   AnyForm,
+  CompiledStep,
+  DeferMarker,
   FormStatus,
-  NextBranching,
-  NextOption,
-  NormalizedNext,
-  WizardFlow,
-  WizardHistoryConfig,
-  WizardNavOptions,
+  StepSlot,
+  UseWizardReturnType,
+  WizardCtx,
+  WizardCtxForm,
   WizardOnError,
   WizardOnSubmit,
   WizardOptions,
+  WizardPersistFn,
+  WizardRestoreFn,
+  WizardRestoreState,
   WizardStatusesProxy,
   WizardSubmitContext,
-  UseWizardReturnType,
-  WizardTreeNode,
-  WizardWarning,
-  WizardWarningKind,
 } from './runtime/types/types-wizard'
 export { AttaformErrorCode } from './runtime/core/error-codes'
 export { unset, isUnset } from './runtime/core/unset'

@@ -49,22 +49,25 @@ export { injectForm } from './runtime/composables/use-form-context'
 export { useWizard } from './runtime/composables/use-wizard'
 export { injectWizard } from './runtime/composables/inject-wizard'
 export type { InjectWizardInput } from './runtime/composables/inject-wizard'
+export { defer } from './runtime/core/wizard-defer'
 export type {
   AnyForm,
-  NextBranching,
-  NextOption,
-  NormalizedNext,
-  WizardFlow,
-  WizardNavOptions,
+  AggregateError,
+  CompiledStep,
+  DeferMarker,
+  FormStatus,
+  StepSlot,
+  UseWizardReturnType,
+  WizardCtx,
+  WizardCtxForm,
   WizardOnError,
   WizardOnSubmit,
   WizardOptions,
+  WizardPersistFn,
+  WizardRestoreFn,
+  WizardRestoreState,
+  WizardStatusesProxy,
   WizardSubmitContext,
-  WizardValue,
-  UseWizardReturnType,
-  WizardTreeNode,
-  WizardWarning,
-  WizardWarningKind,
 } from './runtime/types/types-wizard'
 
 // Ambient bridge for components that wrap a single field and want to

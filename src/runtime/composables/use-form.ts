@@ -8,7 +8,6 @@ import type {
   UseFormConfiguration,
 } from '../types/types-api'
 import type { DefaultValuesInput, GenericForm } from '../types/types-core'
-import type { AnyForm } from '../types/types-wizard'
 import type {
   UnwrapZodObject,
   UseFormConfigurationWithZod,
@@ -33,15 +32,13 @@ export function useForm<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,
   K extends FormKey = FormKey,
-  Forms extends readonly AnyForm[] = readonly AnyForm[],
 >(
   configuration: UseFormConfiguration<
     Form,
     GetValueFormType,
     AbstractSchema<Form, GetValueFormType>,
     DefaultValuesInput<Form>,
-    K,
-    Forms
+    K
   >
 ): UseFormReturnType<Form, GetValueFormType, Form, K>
 /**
@@ -74,13 +71,11 @@ export function useForm<
     ? z.output<UnwrapZodObject<Schema>>
     : never,
   K extends FormKey = FormKey,
-  Forms extends readonly AnyForm[] = readonly AnyForm[],
 >(
   configuration: UseFormConfigurationWithZod<
     Schema,
     DefaultValuesInput<z.input<UnwrapZodObject<Schema>>>,
-    K,
-    Forms
+    K
   >
 ): UseFormReturnType<
   z.input<UnwrapZodObject<Schema>>,

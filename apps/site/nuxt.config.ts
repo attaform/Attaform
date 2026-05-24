@@ -247,6 +247,31 @@ export default defineNuxtConfig({
   // Google at build time, but a build-time failure there is loud
   // and fixable — not a user-facing 500.
   modules: [attaformModule, '@nuxt/content', '@nuxtjs/color-mode', '@nuxtjs/seo'],
+  // Source-alias attaform subpath imports for vue-tsc as well, not
+  // just Vite and Nitro. Without a tsconfig-level alias, vue-tsc
+  // resolves `attaform`, `attaform/zod`, etc. through the package
+  // `exports` map to `dist/*.d.mts`. The generated
+  // `.nuxt/types/plugins.d.ts` references the runtime plugin via a
+  // relative `../../../../src/runtime/plugins/attaform` path (Nuxt
+  // resolves the addPlugin src against the workspace), so src also
+  // enters the project graph. Result: TWO `pathKeyBrand: unique
+  // symbol` declarations — one inside dist's bundled .d.ts, one
+  // inside src's paths.ts — and TS treats them as distinct nominal
+  // brands. The `v-register` directive's expected payload type
+  // (from the merged GlobalDirectives augmentations) ends up
+  // checking dist-branded values against src-branded slots, and
+  // shipment-demo's checkbox `register('termsAccepted')` calls
+  // light up red. Aliasing in tsconfig collapses every consumer
+  // import back to src, giving the project a single PathKey
+  // identity and matching the runtime aliases below.
+  alias: {
+    attaform: resolve(monorepoRoot, 'src/index.ts'),
+    'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
+    'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
+    'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),
+    'attaform/vite': resolve(monorepoRoot, 'src/vite.ts'),
+    'attaform/transforms': resolve(monorepoRoot, 'src/transforms.ts'),
+  },
   // @nuxtjs/seo is the umbrella that wires sitemap.xml + robots.txt +
   // per-page canonical links + nuxt-og-image (per-route social cards)
   // + nuxt-schema-org (JSON-LD) + nuxt-link-checker behind one module.

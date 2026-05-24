@@ -8,9 +8,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * `wizard.progress` is a normalised [0, 1] indicator. Default
- * implementation is `valid_form_count / count`. Consumers can pass
- * a custom \`progress(forms)\` for weighted progress, skip-aware
- * progress, etc.
+ * implementation is `valid_step_count / count` and forward-looking:
+ * noop forms backing string slots count as always-valid. Consumers
+ * can pass a custom `progress(steps)` for weighted progress,
+ * skip-aware progress, etc.
  */
 
 const okSchema = z.object({ value: z.string() })
@@ -39,9 +40,9 @@ describe('useWizard — progress', () => {
 
   it('default is 0 when no forms are valid', () => {
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: reqSchema, key: 'pg-default-a' })
       const b = useForm({ schema: reqSchema, key: 'pg-default-b' })
-      const a = useForm({ schema: reqSchema, key: 'pg-default-a', next: b })
-      return useWizard(a, {})
+      return useWizard({ steps: [a, b], restore: false, persist: false })
     })
     apps.push(app)
     expect(result.progress).toBe(0)
@@ -49,14 +50,17 @@ describe('useWizard — progress', () => {
 
   it('default tracks valid_count / total_count', async () => {
     const { app, result } = mountHarness(() => {
-      const b = useForm({ schema: reqSchema, key: 'pg-half-b' })
       const a = useForm({
         schema: okSchema,
         key: 'pg-half-a',
         defaultValues: { value: 'ready' },
-        next: b,
       })
-      return { wizard: useWizard(a, {}), a, b }
+      const b = useForm({ schema: reqSchema, key: 'pg-half-b' })
+      return {
+        wizard: useWizard({ steps: [a, b], restore: false, persist: false }),
+        a,
+        b,
+      }
     })
     apps.push(app)
     await result.a.validate()
@@ -68,12 +72,28 @@ describe('useWizard — progress', () => {
     expect(result.wizard.progress).toBeCloseTo(0.5, 5)
   })
 
-  it('override receives forms tuple and is the source of truth', () => {
+  it('noop forms count as always-valid (forward-looking)', () => {
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: reqSchema, key: 'pg-noop-a' })
+      return useWizard({
+        steps: ['pg-noop-intro', a, 'pg-noop-thanks'],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    expect(result.progress).toBeCloseTo(2 / 3, 5)
+  })
+
+  it('override receives steps tuple and is the source of truth', () => {
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: okSchema, key: 'pg-over-a' })
       const b = useForm({ schema: okSchema, key: 'pg-over-b' })
-      const a = useForm({ schema: okSchema, key: 'pg-over-a', next: b })
-      return useWizard(a, {
-        progress: (forms) => forms.length / 100,
+      return useWizard({
+        steps: [a, b],
+        restore: false,
+        persist: false,
+        progress: (steps) => steps.length / 100,
       })
     })
     apps.push(app)
@@ -82,18 +102,20 @@ describe('useWizard — progress', () => {
 
   it('override is reactive — re-evaluates when underlying statuses change', async () => {
     const { app, result } = mountHarness(() => {
-      const b = useForm({ schema: reqSchema, key: 'pg-reactive-b' })
       const a = useForm({
         schema: okSchema,
         key: 'pg-reactive-a',
         defaultValues: { value: 'ready' },
-        next: b,
       })
+      const b = useForm({ schema: reqSchema, key: 'pg-reactive-b' })
       return {
-        wizard: useWizard(a, {
-          progress: (forms) =>
-            forms.filter((f) => {
-              const meta = (f as unknown as { meta: { valid: boolean } }).meta
+        wizard: useWizard({
+          steps: [a, b],
+          restore: false,
+          persist: false,
+          progress: (steps) =>
+            steps.filter((s) => {
+              const meta = (s.form as unknown as { meta?: { valid: boolean } }).meta
               return meta?.valid === true
             }).length,
         }),

@@ -258,6 +258,104 @@ describe('useForm — field array helpers', () => {
       const rows = host.querySelectorAll('[data-row]')
       expect(rows.length).toBe(2)
     })
+
+    it('form.fields.<arrayPath>.length reports the live count', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      form.append('posts', { title: 'first', views: 1 })
+      form.append('posts', { title: 'second', views: 2 })
+      form.append('posts', { title: 'third', views: 3 })
+      const fieldsAtPosts = form.fields.posts as unknown as { length: number }
+      expect(fieldsAtPosts.length).toBe(3)
+      form.remove('posts', 0)
+      expect(fieldsAtPosts.length).toBe(2)
+    })
+
+    it('Array.isArray reports true on field proxies at array paths', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      expect(Array.isArray(form.fields.posts)).toBe(true)
+      // Object containers stay function-targeted so the callable form
+      // (`form.fields('address')` style) keeps working at non-array paths.
+      const probe = harness({ tags: ['a'] })
+      apps.push(probe.app)
+      expect(Array.isArray(probe.form.fields)).toBe(false)
+    })
+
+    it('for...of and spread iterate descended sub-proxies', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      form.append('posts', { title: 'first', views: 1 })
+      form.append('posts', { title: 'second', views: 2 })
+      const spread = [...(form.fields.posts as unknown as Iterable<unknown>)]
+      expect(spread).toHaveLength(2)
+      const collected: unknown[] = []
+      for (const item of form.fields.posts as unknown as Iterable<unknown>) collected.push(item)
+      expect(collected).toHaveLength(2)
+      // Each yielded entry is a descended container proxy — identity
+      // matches dot-access, the same guarantee Object.entries gives.
+      const directAtZero = (form.fields.posts as unknown as Record<string, unknown>)['0']
+      expect(spread[0]).toBe(directAtZero)
+    })
+
+    it('Array.from materialises the live indices', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      form.append('posts', { title: 'first', views: 1 })
+      form.append('posts', { title: 'second', views: 2 })
+      const arr = Array.from(form.fields.posts as unknown as ArrayLike<unknown>)
+      expect(arr).toHaveLength(2)
+    })
+
+    it('Array.prototype.map walks the live indices through the proxy', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      form.append('posts', { title: 'first', views: 1 })
+      form.append('posts', { title: 'second', views: 2 })
+      // `.map` reads `this.length` and `this[i]` through the proxy's
+      // get trap; both intercepts are live, so the callback fires
+      // once per appended entry. Bare-Array call form mirrors what
+      // Vue's render and many user helpers do internally.
+      const mapped = Array.prototype.map.call(
+        form.fields.posts as unknown as unknown[],
+        (_item, idx) => idx
+      )
+      expect(mapped).toEqual([0, 1])
+    })
+  })
+
+  describe('field-proxy iteration over an object container', () => {
+    it('Object.keys returns the live object keys', () => {
+      type Profile = { user: { name: string; city: string } }
+      const profileHarness = (initial?: Partial<Profile>) => {
+        let captured!: UseFormReturnType<Profile>
+        const Probe = defineComponent({
+          setup() {
+            captured = useForm<Profile>({
+              schema: fakeSchema<Profile>({
+                user: { name: '', city: '' },
+                ...initial,
+              }),
+              key: `obj-${Math.random().toString(36).slice(2)}`,
+            })
+            return () => h('div')
+          },
+        })
+        const app = createApp(Probe)
+        attachRegistryToApp(app, createRegistry())
+        app.mount(document.createElement('div'))
+        return { app, form: captured }
+      }
+      const { app, form } = profileHarness()
+      apps.push(app)
+      expect(Object.keys(form.fields.user).sort()).toEqual(['city', 'name'])
+      // Object containers keep their function target so the callable
+      // aggregate (`form.fields.user()`) still resolves the FieldState
+      // for the whole object — regression guard against accidentally
+      // widening the Array-target switch to objects.
+      const aggregate = (form.fields.user as unknown as () => unknown)()
+      expect(aggregate).toBeDefined()
+    })
   })
 
   it('mutations trigger reactivity (form.values sees the update)', () => {

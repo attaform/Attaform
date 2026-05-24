@@ -252,6 +252,29 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
     })
   })
 
+  it('iteration over form.errors.<arrayPath> reflects the live array indices', () => {
+    const schema = z.object({
+      items: z.array(z.object({ sku: z.string().min(1, 'sku required') })),
+    })
+    const form = mount(schema, { items: [] })
+    form.append('items', { sku: '' })
+    form.append('items', { sku: '' })
+    form.append('items', { sku: '' })
+    // Same enumeration contract as `form.fields.<arrayPath>`: the
+    // live indices walk the underlying array, regardless of which
+    // ones actually carry errors at the moment. Consumers that
+    // render a per-index error summary via
+    // `v-for="(_, idx) in form.errors.items"` need every index to
+    // be reachable so they can call `form.errors(['items', idx])`
+    // (or descend further) and decide whether to render anything
+    // at that row.
+    expect(Object.keys(form.errors.items)).toEqual(['0', '1', '2'])
+    expect(Array.isArray(form.errors.items)).toBe(true)
+    expect((form.errors.items as unknown as { length: number }).length).toBe(3)
+    form.remove('items', 1)
+    expect(Object.keys(form.errors.items)).toEqual(['0', '1'])
+  })
+
   it('call form returns the flat self+descendants aggregate (regression)', () => {
     const schema = z.object({
       profile: z.object({ bio: z.string() }),

@@ -1,6 +1,6 @@
 ---
 title: injectWizard
-description: Reach a useWizard handle from any descendant component. Ambient resolution for the nearest ancestor wizard, keyed resolution for distant ones. Returns the same reactive handle that useWizard exposes; mutations on one are observable on the other.
+description: Reach a useWizard handle from any descendant component. Ambient resolution for the parent's own wizard, keyed resolution for distant ones. Returns the same reactive wizard that useWizard exposes; mutations on one are observable on the other.
 metaRows:
   - label: Category
     value: Composable
@@ -8,36 +8,41 @@ metaRows:
     value: 'injectWizard(input?: string | { key? }) => UseWizardReturnType | null'
     kind: code
   - label: Ambient mode
-    value: useWizard(entryForm) without key
+    value: useWizard({ steps })
     kind: code
   - label: Explicit mode
-    value: useWizard(entryForm, { key })
+    value: useWizard({ steps, key })
     kind: code
 ---
 
 # `injectWizard`
 
-> Reach a registered wizard from any descendant component. Ambient resolution for the parent's own wizard, keyed resolution for distant ones, and a single `null` on miss instead of a thrown error so floating panels and sidebar widgets stay robust to mount-order quirks.
+> Reach a registered wizard from any descendant component. Ambient resolution for the parent's own wizard, keyed resolution for distant ones, and a single `null` on miss instead of a thrown error so floating panels, sticky nav rails, and sidebar widgets stay robust to mount-order quirks.
 
 ::docs-meta-table
 ::
 
-`useWizard` creates and provides the wizard handle; `injectWizard` looks it up. The two compose the way `useForm` and [`injectForm`](/docs/cross-cutting-state/inject-form) do, scaled up to the wizard handle so a sticky progress indicator, a floating finish button, or a deep-tree review summary can reach the wizard without prop-threading.
+`useWizard` creates and provides the wizard handle; `injectWizard` looks it up. The two compose the way `useForm` and [`injectForm`](/docs/cross-cutting-state/inject-form) do, scaled up to the wizard handle so a progress rail, a floating finish button, or a deep-tree review summary can reach the wizard without prop-threading.
 
 ## The common case, ambient resolution
 
-Parent owns the wizard (no `key`):
+The parent owns the wizard (no `key`):
 
 ```vue
-<!-- SignupWizard.vue -->
+<!-- CheckoutWizard.vue -->
 <script setup lang="ts">
   import { useForm, useWizard } from 'attaform/zod'
+  import { z } from 'zod'
 
-  const review = useForm({ schema: reviewSchema, key: 'signup-review' })
-  const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
-  const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
+  const shippingSchema = z.object({ address: z.string(), city: z.string() })
+  const paymentSchema = z.object({ cardNumber: z.string(), cvv: z.string() })
 
-  const wizard = useWizard(account)
+  const shipping = useForm({ schema: shippingSchema, key: 'shipping' })
+  const payment = useForm({ schema: paymentSchema, key: 'payment' })
+
+  const wizard = useWizard({
+    steps: ['welcome', shipping, payment, 'final-review'],
+  })
 </script>
 
 <template>
@@ -60,26 +65,32 @@ Any descendant grabs the same wizard:
 <template>
   <ol v-if="wizard">
     <li
-      v-for="(form, i) in wizard.allForms"
-      :key="form.key"
-      :class="{ done: wizard.statuses[form.key]?.valid, current: wizard.current === form.key }"
+      v-for="(step, i) in wizard.steps"
+      :key="step.key"
+      :class="{
+        done: wizard.statuses[step.key]?.valid,
+        current: wizard.currentStep === step.key,
+      }"
     >
-      <button type="button" @click="wizard.goTo(form.key)">Step {{ i + 1 }}</button>
+      <button type="button" @click="wizard.goTo(step.key)">Step {{ i + 1 }}</button>
     </li>
   </ol>
 </template>
 ```
 
-The rail reads `wizard.current`, `wizard.statuses`, and `wizard.allForms` exactly the way the parent does. Same reactive surface, same identity. Edits in the parent propagate to the child without a roundtrip.
+The rail reads `wizard.currentStep`, `wizard.statuses`, and `wizard.steps` exactly the way the parent does. Same reactive surface, same identity. Updates in the parent propagate to the child without a roundtrip.
 
 ## Reaching a wizard that isn't an ancestor
 
 Sticky finish buttons, sidebar status widgets, or any component in a different branch of the tree look up the wizard by `key`:
 
 ```vue
-<!-- SignupWizard.vue -->
+<!-- CheckoutWizard.vue -->
 <script setup lang="ts">
-  const wizard = useWizard(account, { key: 'signup-wizard' })
+  const wizard = useWizard({
+    steps: ['welcome', shipping, payment, 'final-review'],
+    key: 'checkout-wizard',
+  })
 </script>
 ```
 
@@ -88,55 +99,77 @@ Sticky finish buttons, sidebar status widgets, or any component in a different b
 <script setup lang="ts">
   import { injectWizard } from 'attaform/zod'
 
-  const wizard = injectWizard('signup-wizard')
+  const wizard = injectWizard('checkout-wizard')
 
   const finish = wizard?.handleSubmit(async (ctx) => {
-    await api.signup(ctx.values)
+    if (!ctx.isFinal) return
+    await api.checkout(ctx.values)
   })
 </script>
 
 <template>
-  <button v-if="wizard" :disabled="!wizard.canAdvance" @click="finish">Finish signup</button>
+  <button v-if="wizard" :disabled="!wizard.complete" @click="finish">Finish</button>
 </template>
 ```
 
-Pass the same `key` the parent passed to `useWizard(entryForm, { key: 'signup-wizard' })`. The handle returned is identity-equal to the parent's, so `wizard.handleSubmit` wired from a floating button runs the same submission pipeline the parent would.
+Pass the same `key` the parent passed to `useWizard({ key: 'checkout-wizard' })`. The handle returned is identity-equal to the parent's, so `wizard.handleSubmit` wired from a floating button runs the same submission pipeline the parent's Finish button would.
 
-`injectWizard` accepts an object form too: `injectWizard({ key: 'signup-wizard' })`. The positional and object forms are equivalent; pick whichever spreads better into the surrounding setup.
+`injectWizard` accepts an object form too: `injectWizard({ key: 'checkout-wizard' })`. The positional and object forms are equivalent; pick whichever spreads better into the surrounding setup.
 
 ## Do I need to pass a `key` to `useWizard`?
 
 The two resolution modes are cleanly split:
 
-- **Anonymous (no `key`) → ambient access.** `useWizard(entryForm)` fills the parent's ambient slot. Any descendant's `injectWizard()` (no key) resolves to it; closest ancestor wins when nested.
-- **Keyed (`key: 'x'`) → ambient AND explicit access.** `useWizard(entryForm, { key: 'x' })` fills the ambient slot AND registers the wizard under `'x'`. Descendants reach it via `injectWizard()` (closest ancestor) OR `injectWizard('x')` (registry lookup, works from anywhere in the app).
+- **Anonymous (no `key`) reaches ambient.** `useWizard({ steps })` fills the parent's ambient slot. Any descendant's `injectWizard()` (no key) resolves to it; closest ancestor wins when nested.
+- **Keyed (`key: 'x'`) reaches explicit access only.** `useWizard({ steps, key: 'x' })` registers the wizard under `'x'` but does NOT fill the ambient slot. Descendants reach it via `injectWizard('x')`, not via the no-key form.
 
 Skip `key` for single-component wizards (an in-page checkout, a modal flow). Supply one when you want cross-tree lookup, a stable identifier for DevTools, or a sticky finish button rendered far from the step container.
+
+### Gotcha: multiple anonymous `useWizard` in one component
+
+Vue's `provide` / `inject` is last-write-wins per component. If a parent calls `useWizard` twice without keys, the second overwrites the first in the ambient slot, and descendants using `injectWizard()` only see the second.
+
+```ts
+// Parent component
+const checkout = useWizard({ steps: [shipping, payment] }) // ambient → checkout
+const cancel = useWizard({ steps: [reasons, confirm] }) // ambient → cancel (overwrites checkout)
+// Descendants' injectWizard() reads cancel. checkout is unreachable via ambient.
+```
+
+Attaform emits a dev-mode `console.warn` lazily, when (and only when) a descendant actually consumes the ambient slot via `injectWizard()` with no key. The warning lists each anonymous `useWizard()` call by source frame so you can navigate to the offending sites.
+
+**Fix:** give each wizard a key (which removes them from the ambient slot entirely) and look them up explicitly:
+
+```ts
+useWizard({ steps: [shipping, payment], key: 'checkout' })
+useWizard({ steps: [reasons, confirm], key: 'cancel' })
+// Descendants:
+const checkout = injectWizard('checkout')
+const cancel = injectWizard('cancel')
+```
+
+Mixing modes is fine. Keyed wizards don't interfere with an ambient sibling. A parent with three keyed wizards plus one anonymous wizard produces no warning; the descendant's `injectWizard()` unambiguously resolves to the (only) anonymous one.
 
 ## When resolution fails
 
 `injectWizard` returns `null` rather than throwing, so descendants are robust to mount-order quirks (a sidebar widget that renders before the wizard's parent setup runs, a conditional wizard ancestor, dynamic imports). Two cases produce `null`:
 
 - **No ambient wizard.** `injectWizard()` called from a tree with no ancestor `useWizard` and no key. Dev mode logs a one-shot `console.warn` naming the missing ambient context.
-- **Key not registered.** `injectWizard('signup-wizard')` called when nothing is registered under that key. Dev mode logs the unresolved key alongside any keys that ARE registered, so a typo surfaces at a glance.
+- **Key not registered.** `injectWizard('checkout-wizard')` called when nothing is registered under that key. Dev mode logs the unresolved key alongside any keys that ARE registered, so a typo surfaces at a glance.
 
-For the common case where the wizard is guaranteed to exist (it's set up in the same SFC tree), assert non-null at the call site:
-
-```ts
-const wizard = injectWizard('signup-wizard')!
-```
-
-For optional consumers (a floating panel that should hide when the wizard isn't mounted), guard the return:
+Guard the return so the consumer disappears cleanly when the wizard isn't mounted:
 
 ```vue
 <script setup lang="ts">
-  const wizard = injectWizard('signup-wizard')
+  import { injectWizard } from 'attaform/zod'
+
+  const wizard = injectWizard('checkout-wizard')
 </script>
 
 <template>
-  <aside v-if="wizard" class="wizard-status"
-    >Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}</aside
-  >
+  <aside v-if="wizard" class="wizard-status">
+    Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}
+  </aside>
 </template>
 ```
 
@@ -146,13 +179,13 @@ Both resolution modes ref-count the wizard handle in the registry. In practice:
 
 - The wizard survives until every component that reached it unmounts.
 - Cleanup is automatic; no explicit dispose call from the consumer.
-- A wizard accessed only by `injectWizard(key)` stays alive as long as at least one consumer is mounted, even if the original `useWizard` owner unmounted first.
+- A wizard accessed only by `injectWizard(key)` stays alive as long as at least one consumer is mounted, even if the parent `useWizard` owner unmounted first.
 
 Hot-module reload reuses the existing handle when the parent SFC re-mounts (deferred-eviction-cancel within the same microtask). Child `injectWizard` consumers see the same wizard reactive surface they had before, not a freshly created one. Useful for stepping through the live demo on `localhost:3000` without losing the rail's pre-filled state every save.
 
 ## Duplicate keys
 
-Two calls to `useWizard(entryForm, { key: 'signup-wizard' })` in the same app: the first wins, the second is silently dropped, and a dev-warn names the dropped registration. This mirrors `useForm`'s shared-key behavior and keeps the registry deterministic during HMR transitions or accidental double-setup.
+Two calls to `useWizard({ steps, key: 'checkout-wizard' })` in the same app: the first wizard stays in the registry under that key, the second call dev-warns and the registry entry is left untouched. Any `injectWizard('checkout-wizard')` resolves to the original. The dev-warn names the colliding key so the accidental duplicate setup surfaces at a glance.
 
 ## SSR isolation
 
@@ -161,5 +194,6 @@ The wizard registry lives on the per-request `AttaformRegistry` instance created
 ## Where to next
 
 - [`useWizard`](/docs/multistep/use-wizard) for the construction signature and the wizard's full reactive surface.
+- [Statuses](/docs/multistep/statuses) for the per-step rollup that drives a progress rail's classes.
+- [Step slots](/docs/multistep/step-slots) for the slot kinds that fill the `steps` list.
 - [`injectForm`](/docs/cross-cutting-state/inject-form) for single-form sharing across a tree.
-- [SSR & render efficiency](/docs/multistep/ssr) for the per-request registry contract and the activation rule.

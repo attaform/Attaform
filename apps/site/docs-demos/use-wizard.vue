@@ -35,8 +35,8 @@
       await new Promise((resolve) => setTimeout(resolve, 400))
       toast.success(`Welcome ${ctx.get(profile).name || 'aboard'}`, { description: ctx.values })
     },
-    () => {
-      toast.error('Submit blocked, check the errors above.')
+    (errors) => {
+      toast.error('Submit blocked, check the errors above.', { description: errors })
     }
   )
 </script>
@@ -114,7 +114,7 @@
         type="button"
         class="primary"
         :disabled="wizard.submitting"
-        @click="onSubmit"
+        @click="wizard.next()"
       >
         Next →
       </button>

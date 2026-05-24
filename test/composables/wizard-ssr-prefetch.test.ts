@@ -6,23 +6,24 @@ import { z } from 'zod'
 import { useForm, useWizard } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { renderAttaformState } from '../../src/runtime/core/serialize'
-import type { UseFormReturnType } from '../../src/runtime/types/types-api'
+import {
+  kAttaformWizardActiveStepResolver,
+  type WizardActiveStepResolver,
+} from '../../src/runtime/core/registry'
 
 /**
- * Wizard SSR prefetch — Phase 2 contract.
+ * Wizard SSR prefetch — the v2 contract.
  *
- * The wizard composes existing `useForm` instances into a multistep
- * flow. On the server, the wizard synchronously enqueues the current
- * step (so its factory fires inside `onServerPrefetch`) and explicitly
- * skips every other participating step (so a stray `form.activate()`
- * or a future transform-injected `__ssrAccessed` mark on a non-current
- * step cannot bypass the wizard's intent — `skipPrefetch` wins over
- * `enqueuePrefetch` inside `shouldPrefetch`).
+ * On the server, the wizard enqueues the initial step's form for
+ * prefetch (so its async `defaultValues` resolves inside
+ * `onServerPrefetch`) and explicitly skips every other compiled step.
+ * `skipPrefetch` wins over `enqueuePrefetch` inside
+ * `shouldPrefetch`, so a stray `form.activate()` on a non-initial
+ * step cannot bypass the wizard's intent.
  *
- * Render-efficiency invariant under test: a three-step wizard with
- * an expensive async factory on each step must fetch only the current
- * step on the server, regardless of where the consumer points
- * `activate()` calls. A 40-step wizard saves 39 fetches per request.
+ * Eager-activate-all is a CLIENT contract; SSR keeps the
+ * initial-only floor. A 40-step wizard saves 39 fetches per server
+ * render.
  */
 
 const accountSchema = z.object({ ssn: z.string(), email: z.string() })
@@ -30,18 +31,18 @@ const profileSchema = z.object({ idNumber: z.string(), name: z.string() })
 const reviewSchema = z.object({ household: z.string(), ack: z.string() })
 
 describe('wizard SSR prefetch', () => {
-  it('only the current step factory fires on the server', async () => {
+  it('only the initial step factory fires on the server', async () => {
     let accountCalls = 0
     let profileCalls = 0
     let reviewCalls = 0
     const App = defineComponent({
       setup() {
-        const review = useForm({
-          schema: reviewSchema,
-          key: 'wizard-ssr-review',
+        const account = useForm({
+          schema: accountSchema,
+          key: 'wizard-ssr-account',
           defaultValues: () => {
-            reviewCalls += 1
-            return Promise.resolve({ household: '4', ack: 'yes' })
+            accountCalls += 1
+            return Promise.resolve({ ssn: '000-00-0000', email: 'a@example.com' })
           },
         })
         const profile = useForm({
@@ -51,18 +52,16 @@ describe('wizard SSR prefetch', () => {
             profileCalls += 1
             return Promise.resolve({ idNumber: 'P-123', name: 'Ada' })
           },
-          next: review,
         })
-        const account = useForm({
-          schema: accountSchema,
-          key: 'wizard-ssr-account',
+        const review = useForm({
+          schema: reviewSchema,
+          key: 'wizard-ssr-review',
           defaultValues: () => {
-            accountCalls += 1
-            return Promise.resolve({ ssn: '000-00-0000', email: 'a@example.com' })
+            reviewCalls += 1
+            return Promise.resolve({ household: '4', ack: 'yes' })
           },
-          next: profile,
         })
-        useWizard(account)
+        useWizard({ steps: [account, profile, review] })
         return () => h('div')
       },
     })
@@ -71,7 +70,9 @@ describe('wizard SSR prefetch', () => {
     expect(accountCalls).toBe(1)
     expect(profileCalls).toBe(0)
     expect(reviewCalls).toBe(0)
-    // Only the current step's resolved values ride the payload.
+
+    // Only the initial step's resolved values ride the payload; the
+    // non-initial steps surface their schema defaults (empty strings).
     const payload = renderAttaformState(ssrApp)
     const accountEntry = payload.forms.find(([k]) => k === 'wizard-ssr-account')
     const profileEntry = payload.forms.find(([k]) => k === 'wizard-ssr-profile')
@@ -81,15 +82,15 @@ describe('wizard SSR prefetch', () => {
     expect(reviewEntry?.[1].form).toEqual({ household: '', ack: '' })
   })
 
-  it('wizard skipPrefetch overrides an explicit form.activate() on a non-current step', async () => {
-    // The wizard's "user is not on this step" signal must defeat any
-    // other positive trigger — even a consumer who explicitly calls
-    // `activate()` on a non-current step does not cause its factory
-    // to fire on the server. This is the render-efficiency floor:
-    // the wizard's skip-list overrides every positive mark.
+  it('wizard skipPrefetch overrides an explicit form.activate() on a non-initial step', async () => {
     let leakedCalls = 0
     const App = defineComponent({
       setup() {
+        const a = useForm({
+          schema: accountSchema,
+          key: 'wizard-skip-a',
+          defaultValues: () => Promise.resolve({ ssn: '', email: '' }),
+        })
         const b = useForm({
           schema: profileSchema,
           key: 'wizard-skip-b',
@@ -97,17 +98,11 @@ describe('wizard SSR prefetch', () => {
             leakedCalls += 1
             return Promise.resolve({ idNumber: 'LEAKED', name: 'LEAKED' })
           },
-        }) as unknown as UseFormReturnType<{ idNumber: string; name: string }>
-        const a = useForm({
-          schema: accountSchema,
-          key: 'wizard-skip-a',
-          defaultValues: () => Promise.resolve({ ssn: '', email: '' }),
-          next: b,
         })
-        useWizard(a)
-        // Stray activate() on the non-current step. Should be a no-op
+        useWizard({ steps: [a, b] })
+        // Stray activate() on the non-initial step. Must be a no-op
         // on the server thanks to the wizard's skipPrefetch.
-        void b.activate()
+        void (b as unknown as { activate?: () => Promise<void> }).activate?.()
         return () => h('div')
       },
     })
@@ -116,35 +111,69 @@ describe('wizard SSR prefetch', () => {
     expect(leakedCalls).toBe(0)
   })
 
-  it('getServerActiveStep — the chosen step is the one that fires', async () => {
+  it('restore lambda — the chosen step is the one whose factory fires', async () => {
     let aCalls = 0
     let bCalls = 0
     const App = defineComponent({
       setup() {
+        const a = useForm({
+          schema: accountSchema,
+          key: 'wizard-restore-a',
+          defaultValues: () => {
+            aCalls += 1
+            return Promise.resolve({ ssn: 'A', email: 'A' })
+          },
+        })
         const b = useForm({
           schema: profileSchema,
-          key: 'wizard-getter-b',
+          key: 'wizard-restore-b',
           defaultValues: () => {
             bCalls += 1
             return Promise.resolve({ idNumber: 'B', name: 'B' })
           },
         })
-        const a = useForm({
-          schema: accountSchema,
-          key: 'wizard-getter-a',
-          defaultValues: () => {
-            aCalls += 1
-            return Promise.resolve({ ssn: 'A', email: 'A' })
-          },
-          next: b,
-        })
-        useWizard(a, {
-          getServerActiveStep: () => 'wizard-getter-b',
+        useWizard({
+          steps: [a, b],
+          restore: () => ({ step: 'wizard-restore-b' }),
         })
         return () => h('div')
       },
     })
     const ssrApp = createSSRApp(App).use(createAttaform({ ssr: true }))
+    await renderToString(ssrApp)
+    expect(aCalls).toBe(0)
+    expect(bCalls).toBe(1)
+  })
+
+  it('injected resolver — the resolver-chosen step prefetches on the server', async () => {
+    let aCalls = 0
+    let bCalls = 0
+    const resolver: WizardActiveStepResolver = (param) =>
+      param === 'step' ? 'wizard-inj-b' : undefined
+    const App = defineComponent({
+      setup() {
+        const a = useForm({
+          schema: accountSchema,
+          key: 'wizard-inj-a',
+          defaultValues: () => {
+            aCalls += 1
+            return Promise.resolve({ ssn: 'A', email: 'A' })
+          },
+        })
+        const b = useForm({
+          schema: profileSchema,
+          key: 'wizard-inj-b',
+          defaultValues: () => {
+            bCalls += 1
+            return Promise.resolve({ idNumber: 'B', name: 'B' })
+          },
+        })
+        useWizard({ steps: [a, b] })
+        return () => h('div')
+      },
+    })
+    const ssrApp = createSSRApp(App).use(createAttaform({ ssr: true }))
+    ssrApp.provide(kAttaformWizardActiveStepResolver, resolver)
     await renderToString(ssrApp)
     expect(aCalls).toBe(0)
     expect(bCalls).toBe(1)

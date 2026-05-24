@@ -322,18 +322,34 @@
   })
 
   // ─── Forms ──────────────────────────────────────────────────────
-  // Declared bottom-up: terminals first, entry last. Each form's `next`
-  // points at the form declared above. `useWizard(refForm)` walks the
-  // chain to discover every reachable step.
-  const reviewForm = useForm({
-    schema: reviewSchema,
-    key: 'review',
-    persist: { storage: 'local', key: 'attaform:shipment.review' },
+  // Each form owns its own schema, history, and persistence. Sequence
+  // ownership lives on the wizard's `steps` list further down — forms
+  // stay decoupled from flow shape so any one is reusable elsewhere.
+  const refForm = useForm({
+    schema: referenceSchema,
+    key: 'reference',
+    persist: { storage: 'local', key: 'attaform:shipment.reference' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
-      acknowledgements: [],
+      reference: 'SHP-100001',
+      pickup: { country: 'US' },
+      delivery: { country: 'US' },
+      useSameDeliveryAddress: false,
+    },
+  })
+
+  const cargoForm = useForm({
+    schema: cargoSchema,
+    key: 'cargo',
+    persist: { storage: 'local', key: 'attaform:shipment.cargo' },
+    history: { max: 50 },
+    validateOn: 'change',
+    debounceMs: 200,
+    defaultValues: {
+      items: [],
+      details: { type: 'dry', fragile: false },
     },
   })
 
@@ -354,44 +370,26 @@
       // from "intentionally empty". Watch serviceForm.fields.notes.blank.
       notes: unset,
     },
-    next: reviewForm,
   })
 
-  const cargoForm = useForm({
-    schema: cargoSchema,
-    key: 'cargo',
-    persist: { storage: 'local', key: 'attaform:shipment.cargo' },
+  const reviewForm = useForm({
+    schema: reviewSchema,
+    key: 'review',
+    persist: { storage: 'local', key: 'attaform:shipment.review' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
-      items: [],
-      details: { type: 'dry', fragile: false },
+      acknowledgements: [],
     },
-    next: serviceForm,
   })
 
-  const refForm = useForm({
-    schema: referenceSchema,
-    key: 'reference',
-    persist: { storage: 'local', key: 'attaform:shipment.reference' },
-    history: { max: 50 },
-    validateOn: 'change',
-    debounceMs: 200,
-    defaultValues: {
-      reference: 'SHP-100001',
-      pickup: { country: 'US' },
-      delivery: { country: 'US' },
-      useSameDeliveryAddress: false,
-    },
-    next: cargoForm,
+  // Compose the four into a wizard. The list determines navigation
+  // order; `useWizard` derives statuses from each form's meta and
+  // threads the active step through `?step=<key>` via window.history.
+  const wizard = useWizard({
+    steps: [refForm, cargoForm, serviceForm, reviewForm],
   })
-
-  // Compose the four into a wizard. `useWizard` walks the entry's
-  // `next` chain to enumerate every step, derives statuses from each
-  // form's meta, and threads the active step through browser
-  // back/forward via window.history.
-  const wizard = useWizard(refForm)
 
   // ─── Pickup → delivery live mirror ───────────────────────────────
   // While the flag is on, copy pickup → delivery via the whole-form
@@ -429,7 +427,7 @@
   } as const
 
   // ─── Error summary (review step) ────────────────────────────────
-  // `wizard.allErrors` is the flat aggregate across all four forms.
+  // `wizard.allErrors` is the namespaced aggregate keyed by step key.
   // Group by formKey × top-level path so each section renders a tidy
   // panel. Each row jumps to the owning step via `wizard.goTo`.
   type ErrorGroup = {
@@ -452,26 +450,32 @@
     }
   }
 
+  const totalErrors = computed(() =>
+    Object.values(wizard.allErrors).reduce((sum, arr) => sum + arr.length, 0)
+  )
+
   const groupedErrors = computed(() => {
     const groups = new Map<string, ErrorGroup>()
-    for (const e of wizard.allErrors) {
-      const formKey = e.formKey as FormKey
-      const root = String(e.path[0] ?? '(root)')
-      const key = `${formKey}:${root}`
-      let group = groups.get(key)
-      if (!group) {
-        const rootLabel = safeLabelAtPath(formKey, [root]) ?? root
-        group = {
-          formKey,
-          stepTitle: STEP_TITLES[formKey],
-          rootKey: root,
-          rootLabel,
-          items: [],
+    for (const [k, errs] of Object.entries(wizard.allErrors)) {
+      const formKey = k as FormKey
+      for (const e of errs) {
+        const root = String(e.path[0] ?? '(root)')
+        const groupKey = `${formKey}:${root}`
+        let group = groups.get(groupKey)
+        if (!group) {
+          const rootLabel = safeLabelAtPath(formKey, [root]) ?? root
+          group = {
+            formKey,
+            stepTitle: STEP_TITLES[formKey],
+            rootKey: root,
+            rootLabel,
+            items: [],
+          }
+          groups.set(groupKey, group)
         }
-        groups.set(key, group)
+        const leaf = e.path.length > 1 ? safeLabelAtPath(formKey, e.path) : null
+        group.items.push({ leafLabel: leaf, message: e.message, path: e.path })
       }
-      const leaf = e.path.length > 1 ? safeLabelAtPath(formKey, e.path) : null
-      group.items.push({ leafLabel: leaf, message: e.message, path: e.path })
     }
     return [...groups.values()]
   })
@@ -550,45 +554,34 @@
   )
 
   // ─── Submit ──────────────────────────────────────────────────────
-  // `handleSubmit` on the review form awaits every async refinement
-  // (postal lookups, SKU checks, capacity, signature). Before
-  // surfacing success we re-check the prior three forms' statuses —
-  // the user can edit upstream steps after reaching review, so the
-  // wizard.statuses gate is what catches "looks valid but pickup
-  // dropped invalid after the user came back here".
+  // `wizard.handleSubmit` validates the active form on intermediate
+  // steps (advances on success) and every form on the final step
+  // (awaits each async refinement: postal lookups, SKU checks,
+  // capacity, signature). On the final step we read each form's
+  // typed values via `ctx.get(form)` to assemble the booking payload.
   const submitError = ref<string | null>(null)
-  const onSubmit = reviewForm.handleSubmit(
-    (review) => {
-      const upstreamValid =
-        wizard.statuses['reference']!.valid &&
-        wizard.statuses['cargo']!.valid &&
-        wizard.statuses['service']!.valid
-      if (!upstreamValid) {
-        submitError.value =
-          'One or more earlier steps need fixes. Use the summary below to jump to the offending field.'
-        return
-      }
+  const onSubmit = wizard.handleSubmit(
+    (ctx) => {
       submitError.value = null
+      if (!ctx.isFinal) return
       const payload = {
-        reference: refForm.values(),
-        cargo: cargoForm.values(),
-        service: serviceForm.values(),
-        review,
+        reference: ctx.get(refForm),
+        cargo: ctx.get(cargoForm),
+        service: ctx.get(serviceForm),
+        review: ctx.get(reviewForm),
       }
       toast.success(`Booked: ${payload.reference.reference}`, { description: payload })
       resetAll()
     },
     () => {
-      submitError.value = 'Please fix the highlighted fields on this step before booking.'
+      submitError.value = wizard.isFinalStep
+        ? 'One or more steps need fixes. Use the summary below to jump to the offending field.'
+        : 'Please fix the highlighted fields on this step before continuing.'
     }
   )
 
   function resetAll() {
-    refForm.reset()
-    cargoForm.reset()
-    serviceForm.reset()
-    reviewForm.reset()
-    wizard.goTo('reference')
+    wizard.reset()
     submitError.value = null
   }
 
@@ -635,14 +628,12 @@
   // to the actual form-handle union so the template can reach
   // `history.canUndo` / `history.undo()` statically.
   type WizardForm = typeof refForm | typeof cargoForm | typeof serviceForm | typeof reviewForm
-  const activeForm = computed(() => wizard.activeForm as WizardForm | undefined)
-  const canGoNext = computed(() => {
-    const key = wizard.current
-    if (key === undefined) return false
-    return wizard.statuses[key]?.valid === true
-  })
+  const activeForm = computed(() => wizard.activeForm as WizardForm)
+  const canGoNext = computed(() => wizard.statuses[wizard.currentStep]?.valid === true)
   const isAnyValidating = computed(() =>
-    wizard.allForms.some((f) => (f as unknown as { meta: { validating: boolean } }).meta.validating)
+    wizard.steps.some(
+      (s) => (s.form as unknown as { meta: { validating: boolean } }).meta.validating
+    )
   )
 
   // Acknowledgement multi-checkbox helper — read / write the array via
@@ -669,24 +660,24 @@
       <!-- ─── Wizard ─── -->
       <nav class="wizard" aria-label="Form progress">
         <button
-          v-for="(form, idx) in wizard.allForms"
-          :key="form.key"
+          v-for="(step, idx) in wizard.steps"
+          :key="step.key"
           type="button"
           class="step"
           :class="{
-            active: wizard.current === form.key,
-            done: wizard.statuses[form.key]?.valid === true,
+            active: wizard.currentStep === step.key,
+            done: wizard.statuses[step.key]?.valid === true,
           }"
-          :aria-current="wizard.current === form.key ? 'step' : undefined"
-          @click="wizard.goTo(form.key as FormKey)"
+          :aria-current="wizard.currentStep === step.key ? 'step' : undefined"
+          @click="wizard.goTo(step.key)"
         >
           <span class="step-num">{{ idx + 1 }}</span>
-          <span class="step-title">{{ STEP_TITLES[form.key as FormKey] }}</span>
+          <span class="step-title">{{ STEP_TITLES[step.key as FormKey] }}</span>
         </button>
       </nav>
 
       <!-- ─── Step 1: addresses ─── -->
-      <section v-if="wizard.current === 'reference'" class="step-body">
+      <section v-if="wizard.currentStep === 'reference'" class="step-body">
         <div class="field" :class="fieldClasses(refForm.fields.reference)">
           <label for="reference">{{ refForm.fields.reference.label }}</label>
           <small v-if="refForm.fields.reference.description" class="help">
@@ -788,7 +779,7 @@
       </section>
 
       <!-- ─── Step 2: cargo ─── -->
-      <section v-else-if="wizard.current === 'cargo'" class="step-body">
+      <section v-else-if="wizard.currentStep === 'cargo'" class="step-body">
         <div class="variant-picker">
           <label>Cargo class</label>
           <div class="chip-row">
@@ -956,7 +947,7 @@
       </section>
 
       <!-- ─── Step 3: service & insurance ─── -->
-      <section v-else-if="wizard.current === 'service'" class="step-body">
+      <section v-else-if="wizard.currentStep === 'service'" class="step-body">
         <div class="variant-picker">
           <label>Service mode</label>
           <div class="chip-row">
@@ -1086,7 +1077,7 @@
       </section>
 
       <!-- ─── Step 4: review ─── -->
-      <section v-else-if="wizard.current === 'review'" class="step-body review">
+      <section v-else-if="wizard.currentStep === 'review'" class="step-body review">
         <h3>Review your manifest</h3>
         <p class="muted">Everything looks accurate? Sign and book below.</p>
         <pre>{{
@@ -1109,9 +1100,8 @@
             <span class="errors-summary-icon" aria-hidden="true">⚠</span>
             <div>
               <h3 class="errors-summary-title">
-                {{ wizard.allErrors.length }}
-                {{ wizard.allErrors.length === 1 ? 'item' : 'items' }} on the manifest before it
-                ships.
+                {{ totalErrors }}
+                {{ totalErrors === 1 ? 'item' : 'items' }} on the manifest before it ships.
               </h3>
               <p class="errors-summary-hint">Tap any line to jump to the field.</p>
             </div>
@@ -1203,7 +1193,7 @@
         </div>
         <div class="nav-right">
           <button
-            v-if="wizard.current !== 'reference'"
+            v-if="wizard.currentStep !== 'reference'"
             type="button"
             class="secondary"
             @click="wizard.back()"
@@ -1211,22 +1201,17 @@
             Back
           </button>
           <button
-            v-if="wizard.current !== 'review'"
+            v-if="wizard.currentStep !== 'review'"
             type="button"
             class="primary"
-            :disabled="!canGoNext"
+            :disabled="!canGoNext || wizard.submitting"
             @click="wizard.next()"
           >
             Next
             <span v-if="isAnyValidating" class="badge">…</span>
           </button>
-          <button
-            v-else
-            type="submit"
-            class="primary"
-            :disabled="reviewForm.meta.submitting || !reviewForm.meta.valid"
-          >
-            {{ reviewForm.meta.submitting ? 'Booking…' : 'Book shipment' }}
+          <button v-else type="submit" class="primary" :disabled="wizard.submitting">
+            {{ wizard.submitting ? 'Booking…' : 'Book shipment' }}
           </button>
         </div>
       </div>

@@ -204,7 +204,7 @@ describe('defaultShouldShowErrors reveals on the depart arm', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('after a forward depart, every error field reports showErrors=true even when never touched', async () => {
+  it('forward depart from an untouched form leaves errors hidden (touched gate)', async () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: strictSchema, key: 'show-1-a' })
       const b = useForm({ schema: permissiveSchema, key: 'show-1-b' })
@@ -212,38 +212,82 @@ describe('defaultShouldShowErrors reveals on the depart arm', () => {
       return { a, wizard }
     })
     apps.push(app)
-    expect(result.a.fields.email.touched).toBe(false)
-    expect(result.a.fields.password.touched).toBe(false)
+    expect(result.a.meta.touched).toBe(false)
     expect(result.a.fields.email.showErrors).toBe(false)
     expect(result.a.fields.password.showErrors).toBe(false)
+    await result.wizard.next()
+    expect(result.a.meta.departAttempts).toBe(1)
+    expect(result.a.meta.touched).toBe(false)
+    expect(result.a.fields.email.showErrors).toBe(false)
+    expect(result.a.fields.password.showErrors).toBe(false)
+  })
+
+  it('forward depart from a touched form reveals every own-path error — including untouched siblings', async () => {
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: strictSchema, key: 'show-2-a' })
+      const b = useForm({ schema: permissiveSchema, key: 'show-2-b' })
+      const wizard = useWizard({ steps: [a, b], restore: false, persist: false })
+      return { a, wizard }
+    })
+    apps.push(app)
+    result.a.touch(['email'])
+    expect(result.a.fields.email.touched).toBe(true)
+    expect(result.a.fields.password.touched).toBe(false)
+    expect(result.a.meta.touched).toBe(true)
     await result.wizard.next()
     expect(result.a.meta.departAttempts).toBe(1)
     expect(result.a.fields.email.showErrors).toBe(true)
     expect(result.a.fields.password.showErrors).toBe(true)
   })
 
-  it('after wizard.back() leaves an invalid step, its errors reveal on the way back', async () => {
+  it('wizard.back() from a touched invalid step reveals every error — including untouched siblings', async () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({
         schema: strictSchema,
-        key: 'show-2-a',
+        key: 'show-3-a',
         defaultValues: { email: 'a@a.com', password: 'longenough' },
       })
-      const b = useForm({ schema: strictSchema, key: 'show-2-b' })
+      const b = useForm({ schema: strictSchema, key: 'show-3-b' })
       const wizard = useWizard({
         steps: [a, b],
-        restore: () => ({ step: 'show-2-b' }),
+        restore: () => ({ step: 'show-3-b' }),
         persist: false,
       })
       return { a, b, wizard }
     })
     apps.push(app)
-    expect(result.wizard.currentStep).toBe('show-2-b')
-    expect(result.b.fields.email.showErrors).toBe(false)
+    expect(result.wizard.currentStep).toBe('show-3-b')
+    result.b.touch(['email'])
+    expect(result.b.fields.password.touched).toBe(false)
+    expect(result.b.fields.password.showErrors).toBe(false)
     result.wizard.back()
     expect(result.b.meta.departAttempts).toBe(1)
     expect(result.b.fields.email.showErrors).toBe(true)
     expect(result.b.fields.password.showErrors).toBe(true)
+  })
+
+  it('wizard.back() from an untouched step leaves its errors hidden', async () => {
+    const { app, result } = mountHarness(() => {
+      const a = useForm({
+        schema: strictSchema,
+        key: 'show-4-a',
+        defaultValues: { email: 'a@a.com', password: 'longenough' },
+      })
+      const b = useForm({ schema: strictSchema, key: 'show-4-b' })
+      const wizard = useWizard({
+        steps: [a, b],
+        restore: () => ({ step: 'show-4-b' }),
+        persist: false,
+      })
+      return { b, wizard }
+    })
+    apps.push(app)
+    expect(result.wizard.currentStep).toBe('show-4-b')
+    expect(result.b.meta.touched).toBe(false)
+    result.wizard.back()
+    expect(result.b.meta.departAttempts).toBe(1)
+    expect(result.b.fields.email.showErrors).toBe(false)
+    expect(result.b.fields.password.showErrors).toBe(false)
   })
 })
 

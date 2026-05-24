@@ -364,6 +364,117 @@ describe('discriminated-union variant switch — wrapped DU', () => {
   })
 })
 
+describe('discriminated-union variant switch — array <-> non-array path', () => {
+  // One variant carries `payload` as an array of records; the other
+  // doesn't carry `payload` at all. The container proxy at
+  // `form.fields.payload` mounts an Array target the first time it's
+  // read (driven by `isArrayContainer`), and the proxy is cached
+  // per-segments key. Variant switches that remove `payload` from
+  // the active variant — or restore it from variant memory — need
+  // the cached proxy to keep agreeing with the live shape: live
+  // indices when the array is present, zero-length when it's not,
+  // never claiming to be an array when the path now holds something
+  // else entirely.
+
+  const arrayOrSingleSchema = z.object({
+    body: z.discriminatedUnion('mode', [
+      z.object({
+        mode: z.literal('list'),
+        payload: z.array(z.object({ value: z.string() })),
+      }),
+      z.object({ mode: z.literal('single'), text: z.string() }),
+    ]),
+  })
+
+  type ArrayOrSingleApi = Omit<
+    UseFormReturnType<z.output<typeof arrayOrSingleSchema>>,
+    'setValue' | 'append' | 'remove'
+  > & {
+    setValue: (path: string, value: unknown) => boolean
+    append: (path: string, item: unknown) => void
+    remove: (path: string, idx: number) => void
+    values: { body: { mode: string } & Record<string, unknown> }
+  }
+
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  function mount(): ArrayOrSingleApi {
+    const handle: { api?: ArrayOrSingleApi } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useForm({
+          schema: arrayOrSingleSchema,
+          key: `du-array-vs-single-${Math.random().toString(36).slice(2)}`,
+          defaultValues: { body: { mode: 'list', payload: [] } },
+        }) as unknown as ArrayOrSingleApi
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    return handle.api as ArrayOrSingleApi
+  }
+
+  it('field-proxy at the array path enumerates the live entries while the variant is active', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    api.append('body.payload', { value: 'second' })
+    await nextTick()
+    const fieldsAtPayload = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(fieldsAtPayload)).toBe(true)
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+    expect((fieldsAtPayload as unknown as { length: number }).length).toBe(2)
+  })
+
+  it('after switching away from the array variant, the field proxy reports zero entries', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    api.append('body.payload', { value: 'second' })
+    await nextTick()
+    const fieldsAtPayload = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    // Warm the cache as the array variant.
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+
+    api.setValue('body.mode', 'single')
+    await nextTick()
+    expect(api.values.body.mode).toBe('single')
+    expect(api.values.body['payload']).toBeUndefined()
+
+    // The cached proxy may still report `Array.isArray === true` —
+    // the target was fixed at construction. The contract this probe
+    // pins is the EMITTED iteration set: liveKeysAtPath reads the
+    // current form value, sees `undefined`, and returns []. So
+    // `Object.keys` / `length` MUST drop to zero, meaning v-for
+    // renders no stale rows from the previous variant.
+    expect(Object.keys(fieldsAtPayload as object)).toEqual([])
+    expect((fieldsAtPayload as unknown as { length: number }).length).toBe(0)
+  })
+
+  it('switching back into the array variant restores enumeration of the restored items', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    api.append('body.payload', { value: 'second' })
+    await nextTick()
+    const fieldsAtPayload = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+
+    api.setValue('body.mode', 'single')
+    await nextTick()
+    expect(Object.keys(fieldsAtPayload as object)).toEqual([])
+
+    // Variant memory restores the prior `payload` entries; the
+    // SAME cached proxy must reflect them again.
+    api.setValue('body.mode', 'list')
+    await nextTick()
+    expect(Array.isArray((api.values.body as { payload?: unknown }).payload)).toBe(true)
+    expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+  })
+})
+
 describe('discriminated-union variant switch — DU inside an array', () => {
   const arraySchema = z.object({
     events: z.array(

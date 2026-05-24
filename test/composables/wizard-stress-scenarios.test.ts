@@ -540,3 +540,307 @@ describe('S26 — step keys with special characters round-trip through ?step=', 
     expect(new URL(window.location.href).searchParams.get('step')).toBe(specialKey)
   })
 })
+
+describe('S31 — full slot-kind mix under aggressive state churn', () => {
+  const apps: App[] = []
+  beforeEach(() => {
+    window.history.replaceState(null, '', 'http://localhost:3000/wizard')
+  })
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+    window.history.replaceState(null, '', 'http://localhost:3000/wizard')
+  })
+
+  function buildSlotMix() {
+    const attendee = useForm({
+      schema: z.object({
+        name: z.string().min(1),
+        role: z.enum(['attendee', 'speaker', 'sponsor']),
+        partySize: z.number().int().min(1).max(20),
+      }),
+      defaultValues: { name: 'Avery', role: 'attendee', partySize: 1 },
+      key: 's31-attendee',
+    })
+    const speaker = useForm({
+      schema: z.object({ talkTitle: z.string().min(3) }),
+      defaultValues: { talkTitle: 'Effective Form Design' },
+      key: 's31-speaker',
+    })
+    const sponsor = useForm({
+      schema: z.object({ companyName: z.string().min(1) }),
+      defaultValues: { companyName: 'Acme' },
+      key: 's31-sponsor',
+    })
+    const companions = useForm({
+      schema: z.object({ list: z.string().min(1) }),
+      defaultValues: { list: 'Riley' },
+      key: 's31-companions',
+    })
+    const pricingUS = useForm({
+      schema: z.object({ tier: z.enum(['basic', 'pro']) }),
+      defaultValues: { tier: 'basic' },
+      key: 's31-pricing-us',
+    })
+    const pricingEU = useForm({
+      schema: z.object({ tier: z.enum(['basic', 'pro']) }),
+      defaultValues: { tier: 'basic' },
+      key: 's31-pricing-eu',
+    })
+    const pricingAPAC = useForm({
+      schema: z.object({ tier: z.enum(['basic', 'pro']) }),
+      defaultValues: { tier: 'basic' },
+      key: 's31-pricing-apac',
+    })
+
+    // Drive the defer with an external signal so a wizard.reset() can
+    // demonstrate that the resolver re-fires against live state, not
+    // just against form defaults.
+    const regionMode = ref<'us' | 'eu' | 'apac'>('us')
+    const probe = { deferCalls: 0, lastResolvedRegion: null as string | null }
+
+    const wizard = useWizard({
+      steps: [
+        'welcome',
+        attendee,
+        () =>
+          attendee.values.role === 'speaker'
+            ? speaker
+            : attendee.values.role === 'sponsor'
+              ? sponsor
+              : 'no-extras',
+        () => (attendee.values.partySize > 1 ? companions : undefined),
+        defer(() => {
+          probe.deferCalls += 1
+          probe.lastResolvedRegion = regionMode.value
+          return regionMode.value === 'us'
+            ? pricingUS
+            : regionMode.value === 'eu'
+              ? pricingEU
+              : pricingAPAC
+        }),
+        'review',
+      ],
+      restore: false,
+      persist: false,
+    })
+
+    return {
+      wizard,
+      forms: { attendee, speaker, sponsor, companions, pricingUS, pricingEU, pricingAPAC },
+      regionMode,
+      probe,
+    }
+  }
+
+  it('role rotation cycles between speaker form, sponsor form, and a lazy noop affordance', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-pricing-us',
+      'review',
+    ])
+
+    forms.attendee.setValue('role', 'speaker')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      's31-speaker',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-speaker']).toBe(forms.speaker)
+
+    forms.attendee.setValue('role', 'sponsor')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      's31-sponsor',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-sponsor']).toBe(forms.sponsor)
+    expect(wizard.forms['s31-speaker']).toBeUndefined()
+
+    forms.attendee.setValue('role', 'attendee')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-pricing-us',
+      'review',
+    ])
+    // Lazy noop identity is preserved across re-resolutions: a later
+    // re-evaluation that returns the same string hits the same cached
+    // noop form.
+    const firstNoop = wizard.forms['no-extras']
+    forms.attendee.setValue('role', 'speaker')
+    await nextTick()
+    forms.attendee.setValue('role', 'attendee')
+    await nextTick()
+    expect(wizard.forms['no-extras']).toBe(firstNoop)
+  })
+
+  it('party-size toggle drops and reintroduces the companions step without losing surrounding state', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
+    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-companions')
+
+    forms.attendee.setValue('partySize', 3)
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-companions',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-companions']).toBe(forms.companions)
+
+    forms.attendee.setValue('partySize', 1)
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-companions']).toBeUndefined()
+
+    // Toggling back up reintroduces the SAME form ref the consumer
+    // originally created. Identity preservation matters for callers
+    // that hold references (e.g. ambient `injectForm('companions')`).
+    forms.attendee.setValue('partySize', 5)
+    await nextTick()
+    expect(wizard.forms['s31-companions']).toBe(forms.companions)
+  })
+
+  it('defer stays sticky when its driving signal changes; reset clears the cache and re-fires with current state', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms, regionMode, probe } = result
+
+    expect(probe.deferCalls).toBe(1)
+    expect(probe.lastResolvedRegion).toBe('us')
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
+
+    regionMode.value = 'eu'
+    await nextTick()
+    // Sticky: the resolver does NOT re-fire on signal change.
+    expect(probe.deferCalls).toBe(1)
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
+    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-pricing-eu')
+
+    // Other slot kinds still respond to live state — role swaps remain
+    // reactive even while defer is glued.
+    forms.attendee.setValue('role', 'speaker')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-speaker')
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
+
+    wizard.reset()
+    await nextTick()
+    // Defer re-fired against the live regionMode value.
+    expect(probe.deferCalls).toBe(2)
+    expect(probe.lastResolvedRegion).toBe('eu')
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-pricing-us')
+    // reset() also reset the attendee form, role back to default.
+    expect(forms.attendee.values.role).toBe('attendee')
+
+    // A second region flip after reset is still sticky-blocked.
+    regionMode.value = 'apac'
+    await nextTick()
+    expect(probe.deferCalls).toBe(2)
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+  })
+
+  it('handleSubmit on the final step validates and aggregates across the currently-live mix', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    forms.attendee.setValue('role', 'speaker')
+    forms.attendee.setValue('partySize', 2)
+    await nextTick()
+
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      's31-speaker',
+      's31-companions',
+      's31-pricing-us',
+      'review',
+    ])
+
+    wizard.goTo('review')
+    await nextTick()
+    expect(wizard.currentStep).toBe('review')
+    expect(wizard.isFinalStep).toBe(true)
+
+    const seen: unknown[] = []
+    const onSubmit = wizard.handleSubmit(
+      ({ values, isFinal }) => {
+        if (isFinal) seen.push(values)
+      },
+      () => {
+        seen.push('error')
+      }
+    )
+    await onSubmit()
+    expect(seen).toHaveLength(1)
+    const submitted = seen[0] as Record<string, unknown>
+    expect(submitted).toHaveProperty('s31-attendee')
+    expect(submitted).toHaveProperty('s31-speaker')
+    expect(submitted).toHaveProperty('s31-companions')
+    expect(submitted).toHaveProperty('s31-pricing-us')
+    // Dropped forms must not leak into the aggregate.
+    expect(submitted).not.toHaveProperty('s31-sponsor')
+    expect(submitted).not.toHaveProperty('s31-pricing-eu')
+    expect(wizard.done).toBe(true)
+  })
+
+  it('concurrent role + party-size churn within a single tick converges on a coherent compiled list', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    // Fire a rapid sequence of mutations before letting Vue flush.
+    forms.attendee.setValue('role', 'speaker')
+    forms.attendee.setValue('partySize', 4)
+    forms.attendee.setValue('role', 'sponsor')
+    forms.attendee.setValue('partySize', 1)
+    forms.attendee.setValue('role', 'attendee')
+    forms.attendee.setValue('partySize', 3)
+    await nextTick()
+
+    // Final state: role=attendee → no-extras, partySize>1 → companions.
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-companions',
+      's31-pricing-us',
+      'review',
+    ])
+    // No duplicate keys, no orphan entries.
+    const keys = wizard.steps.map((s) => s.key)
+    expect(new Set(keys).size).toBe(keys.length)
+    // Forms record mirrors the compiled list.
+    expect(Object.keys(wizard.forms).sort()).toEqual(
+      ['welcome', 's31-attendee', 'no-extras', 's31-companions', 's31-pricing-us', 'review'].sort()
+    )
+  })
+})

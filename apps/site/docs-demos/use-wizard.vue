@@ -65,14 +65,14 @@
 
     <form v-if="wizard.currentStep === 'docs-demo-wizard-account'" @submit.prevent>
       <label>
-        Email <span class="required" aria-hidden="true">*</span>
+        <span>Email <span class="required" aria-hidden="true">*</span></span>
         <input v-register="account.register('email')" autocomplete="email" />
         <em v-if="account.fields.email.showErrors">{{
           account.fields.email.firstError?.message
         }}</em>
       </label>
       <label>
-        Password <span class="required" aria-hidden="true">*</span>
+        <span>Password <span class="required" aria-hidden="true">*</span></span>
         <input v-register="account.register('password')" type="password" autocomplete="off" />
         <em v-if="account.fields.password.showErrors">{{
           account.fields.password.firstError?.message
@@ -82,7 +82,7 @@
 
     <form v-else-if="wizard.currentStep === 'docs-demo-wizard-profile'" @submit.prevent>
       <label>
-        Name <span class="required" aria-hidden="true">*</span>
+        <span>Name <span class="required" aria-hidden="true">*</span></span>
         <input v-register="profile.register('name')" />
         <em v-if="profile.fields.name.showErrors">{{ profile.fields.name.firstError?.message }}</em>
       </label>

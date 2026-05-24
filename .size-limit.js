@@ -189,15 +189,21 @@ export default [
     //     the el.type pre-patch timing window
     // Measured at 38.78 KB.
     //
-    // Raised 40 → 44 KB on the wizard composition branch (#221):
-    //   - useWizard(entry) + graph walker (wizard-graph.ts) +
-    //     handleSubmit pipeline + complete / submissionAttempts /
-    //     canAdvance state + reset, all in the shared core chunk
-    //   - injectWizard composable + ambient provide/inject
-    //   - registry wizard map alongside the forms map
-    //   - form.applyInvalidSubmitPolicy public extraction
-    //   - meta.submissionAttempts rename + dedicated submitted ref
-    // Measured at 42.6 KB.
+    // Raised 40 → 44 KB on the wizard composition branch (#221), which
+    // shipped the v1 entry-form + graph-walker architecture
+    // (useWizard(entry), wizard-graph.ts, normalize-next.ts) along with
+    // the handleSubmit pipeline, completeness / submissionAttempts /
+    // canAdvance state, reset, injectWizard composable, registry wizard
+    // map, applyInvalidSubmitPolicy extraction, and the submissionAttempts
+    // rename. Measured at 42.6 KB.
+    //
+    // v2 wizard rewrite (feat/wizard-v2): the graph machinery dropped
+    // and steps became a positional list compiled at construction; the
+    // surface gained string + function + defer() slots, universal
+    // handleSubmit, namespaced allValues / allErrors / forms, and
+    // restore / persist URL-sync callbacks. Net-net the budget held
+    // — the new surfaces roughly offset the deleted graph code — so
+    // the 44 KB ceiling stayed. Re-measure if the limit binds in CI.
     limit: '44 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,

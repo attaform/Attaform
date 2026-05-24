@@ -41,11 +41,10 @@ export default defineNuxtPlugin({
     // reads the incoming request URL; on the client, it reads the live
     // route — so server and client compute the same initial step and
     // Vue's hydration walks a matching tree. Without this bridge, the
-    // wizard would fall back to its `entryForm.key` on the server while
-    // the client reads the URL, producing the deep-link mismatch
-    // cascade. Consumers can still pass `options.getServerActiveStep`
-    // explicitly to override; this just removes the boilerplate for the
-    // common case.
+    // wizard would fall back to its first step on the server while the
+    // client reads the URL, producing the deep-link mismatch cascade.
+    // Consumers can still pass `options.restore` explicitly to override;
+    // this just removes the boilerplate for the common case.
     nuxtApp.vueApp.provide(kAttaformWizardActiveStepResolver, (param) => {
       const value = useRoute().query[param]
       if (typeof value === 'string') return value

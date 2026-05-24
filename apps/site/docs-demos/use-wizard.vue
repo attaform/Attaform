@@ -213,6 +213,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.625rem;
+    min-height: 12rem;
   }
   label {
     display: flex;

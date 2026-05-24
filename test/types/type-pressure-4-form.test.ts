@@ -102,30 +102,19 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
     void _neverInvoked
   })
 
-  it('composes the four forms into a wizard via bottom-up `next` declarations', () => {
+  it('composes the four forms into a wizard via positional steps', () => {
     function _neverInvoked() {
+      const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
+      const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
+      const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
       const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
-      const serviceForm = useForm({
-        schema: serviceSchema,
-        key: 'service' as const,
-        next: reviewForm,
-      })
-      const cargoForm = useForm({
-        schema: cargoSchema,
-        key: 'cargo' as const,
-        next: serviceForm,
-      })
-      const refForm = useForm({
-        schema: referenceSchema,
-        key: 'reference' as const,
-        next: cargoForm,
-      })
 
-      const wizard = useWizard(refForm)
+      const wizard = useWizard({ steps: [refForm, cargoForm, serviceForm, reviewForm] })
 
-      expectTypeOf(wizard.current).toEqualTypeOf<string | undefined>()
+      expectTypeOf(wizard.currentStep).toEqualTypeOf<string>()
       expectTypeOf(wizard.count).toEqualTypeOf<number>()
-      expectTypeOf(wizard.entryForm).toMatchTypeOf<{ readonly key: string }>()
+      expectTypeOf(wizard.isFinalStep).toEqualTypeOf<boolean>()
+      expectTypeOf(wizard.steps[0]?.form).toMatchTypeOf<{ readonly key: string } | undefined>()
     }
     void _neverInvoked
   })
@@ -168,24 +157,12 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
 
   it('exposes wizard.statuses as a loose-keyed FormStatus record', () => {
     function _neverInvoked() {
+      const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
+      const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
+      const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
       const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
-      const serviceForm = useForm({
-        schema: serviceSchema,
-        key: 'service' as const,
-        next: reviewForm,
-      })
-      const cargoForm = useForm({
-        schema: cargoSchema,
-        key: 'cargo' as const,
-        next: serviceForm,
-      })
-      const refForm = useForm({
-        schema: referenceSchema,
-        key: 'reference' as const,
-        next: cargoForm,
-      })
 
-      const wizard = useWizard(refForm)
+      const wizard = useWizard({ steps: [refForm, cargoForm, serviceForm, reviewForm] })
 
       const _status = wizard.statuses['reference']
       expectTypeOf<typeof _status>().toMatchTypeOf<FormStatus | undefined>()
@@ -205,6 +182,37 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
           Array<{ sku: string; quantity: number; weightKg: number }>
         >()
         expectTypeOf(data.declaredValueUsd).toEqualTypeOf<number>()
+      })
+    }
+    void _neverInvoked
+  })
+
+  it('wizard.allValues is a namespaced record keyed by step key', () => {
+    function _neverInvoked() {
+      const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
+      const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
+
+      const wizard = useWizard({ steps: [refForm, cargoForm] })
+      expectTypeOf(wizard.allValues).toMatchTypeOf<Readonly<Record<string, unknown>>>()
+      // `ctx.get(form)` in `wizard.handleSubmit` is where typed per-form
+      // values flow back; allValues itself stays loose-keyed since
+      // step keys are string at the wizard's read surface.
+    }
+    void _neverInvoked
+  })
+
+  it('wizard.handleSubmit ctx.get returns the form-typed values', () => {
+    function _neverInvoked() {
+      const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
+      const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
+      const wizard = useWizard({ steps: [cargoForm, reviewForm] })
+      wizard.handleSubmit((ctx) => {
+        const cargoValues = ctx.get(cargoForm)
+        expectTypeOf(cargoValues.declaredValueUsd).toEqualTypeOf<number>()
+        const reviewValues = ctx.get(reviewForm)
+        expectTypeOf(reviewValues.termsAccepted).toEqualTypeOf<boolean>()
+        expectTypeOf(ctx.currentKey).toEqualTypeOf<string>()
+        expectTypeOf(ctx.isFinal).toEqualTypeOf<boolean>()
       })
     }
     void _neverInvoked

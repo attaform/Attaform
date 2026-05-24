@@ -180,8 +180,8 @@ describe('useWizard — basic navigation', () => {
     expect(result.steps.map((s) => s.key)).toEqual(['a-8-intro', 'a-8-a', 'a-8-thanks'])
     expect(result.currentStep).toBe('a-8-intro')
     expect(result.activeForm.key).toBe('a-8-intro')
-    expect(result.statuses['a-8-intro'].valid).toBe(true)
-    expect(result.statuses['a-8-thanks'].valid).toBe(true)
+    expect(result.statuses['a-8-intro']?.valid).toBe(true)
+    expect(result.statuses['a-8-thanks']?.valid).toBe(true)
   })
 
   it('wizard.forms[key] is indexable by step key', () => {

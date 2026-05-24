@@ -59,7 +59,7 @@ describe('useWizard — popstate mid-flight safety', () => {
       return {
         wizard: useWizard({
           steps: [a, b],
-          restore: () => ({ step: restoreRef.value }),
+          restore: () => (restoreRef.value === undefined ? undefined : { step: restoreRef.value }),
           persist: false,
         }),
         a,
@@ -117,7 +117,7 @@ describe('useWizard — popstate mid-flight safety', () => {
       })
       return useWizard({
         steps: [a, b],
-        restore: () => ({ step: restoreRef.value }),
+        restore: () => (restoreRef.value === undefined ? undefined : { step: restoreRef.value }),
         persist: false,
       })
     })

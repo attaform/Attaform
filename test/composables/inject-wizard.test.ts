@@ -19,8 +19,8 @@ import type { UseWizardReturnType } from '../../src/runtime/types/types-wizard'
  * Returns `null` (NOT throws) on any miss, matching `injectForm`.
  *
  * The wizard test harness mounts an SFC tree (Parent → Child) so the
- * provide/inject + registry interplay is exercised end-to-end, just as
- * the production usage will run.
+ * provide/inject + registry interplay is exercised end-to-end, just
+ * as the production usage will run.
  */
 
 const schema = z.object({ email: z.string().optional() })
@@ -52,7 +52,12 @@ describe('injectWizard — keyed resolution', () => {
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'inj-1-only' })
-        shared.parent = useWizard(only, { key: 'inj-1-wiz' })
+        shared.parent = useWizard({
+          steps: [only],
+          key: 'inj-1-wiz',
+          restore: false,
+          persist: false,
+        })
         return () => h(Child)
       },
     })
@@ -81,10 +86,15 @@ describe('injectWizard — keyed resolution', () => {
     })
     const Parent = defineComponent({
       setup() {
+        const a = useForm({ schema, key: 'inj-2-a' })
+        const b = useForm({ schema, key: 'inj-2-b' })
         const c = useForm({ schema, key: 'inj-2-c' })
-        const b = useForm({ schema, key: 'inj-2-b', next: c })
-        const a = useForm({ schema, key: 'inj-2-a', next: b })
-        shared.parent = useWizard(a, { key: 'inj-2-wiz' })
+        shared.parent = useWizard({
+          steps: [a, b, c],
+          key: 'inj-2-wiz',
+          restore: false,
+          persist: false,
+        })
         return () => h(Child)
       },
     })
@@ -94,9 +104,9 @@ describe('injectWizard — keyed resolution', () => {
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    expect(shared.child?.current).toBe('inj-2-a')
+    expect(shared.child?.currentStep).toBe('inj-2-a')
     await shared.parent?.next()
-    expect(shared.child?.current).toBe('inj-2-b')
+    expect(shared.child?.currentStep).toBe('inj-2-b')
   })
 
   it('accepts an object form: injectWizard({ key })', () => {
@@ -111,7 +121,7 @@ describe('injectWizard — keyed resolution', () => {
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'inj-3-only' })
-        useWizard(only, { key: 'inj-3-wiz' })
+        useWizard({ steps: [only], key: 'inj-3-wiz', restore: false, persist: false })
         return () => h(Child)
       },
     })
@@ -146,7 +156,7 @@ describe('injectWizard — ambient resolution', () => {
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'amb-1-only' })
-        shared.parent = useWizard(only)
+        shared.parent = useWizard({ steps: [only], restore: false, persist: false })
         return () => h(Child)
       },
     })
@@ -173,7 +183,12 @@ describe('injectWizard — ambient resolution', () => {
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'amb-2-only' })
-        shared.parent = useWizard(only, { key: 'amb-2-wiz' })
+        shared.parent = useWizard({
+          steps: [only],
+          key: 'amb-2-wiz',
+          restore: false,
+          persist: false,
+        })
         return () => h(Child)
       },
     })
@@ -200,7 +215,7 @@ describe('injectWizard — ambient resolution', () => {
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'amb-3-only' })
-        shared.parent = useWizard(only)
+        shared.parent = useWizard({ steps: [only], restore: false, persist: false })
         return () => h(Child)
       },
     })
@@ -240,7 +255,7 @@ describe('injectWizard — miss modes (null + dev warn)', () => {
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'miss-1-only' })
-        useWizard(only, { key: 'miss-1-wiz' })
+        useWizard({ steps: [only], key: 'miss-1-wiz', restore: false, persist: false })
         return () => h(Child)
       },
     })
@@ -320,14 +335,14 @@ describe('injectWizard — sibling isolation', () => {
     const BranchA = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'sib-a-only' })
-        shared.parentA = useWizard(only)
+        shared.parentA = useWizard({ steps: [only], restore: false, persist: false })
         return () => h(ChildA)
       },
     })
     const BranchB = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'sib-b-only' })
-        shared.parentB = useWizard(only)
+        shared.parentB = useWizard({ steps: [only], restore: false, persist: false })
         return () => h(ChildB)
       },
     })
@@ -350,19 +365,13 @@ describe('injectWizard — sibling isolation', () => {
 
 describe('injectWizard — consumer ref-counting (keyed)', () => {
   it('keeps the handle in the registry while a keyed child consumer is mounted', async () => {
-    const ParentRef: { app?: App; childApp?: App } = {}
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'lt-2-only' })
-        useWizard(only, { key: 'lt-2-wiz' })
+        useWizard({ steps: [only], key: 'lt-2-wiz', restore: false, persist: false })
         return () => h('div')
       },
     })
-    // A separate app simulates a child component that grabbed the
-    // wizard via the registry across SFC trees. The registry lives on
-    // the app, so for this test we mount the Parent app and observe
-    // its registry directly across an injectWizard call from within
-    // the same setup tree.
     const Child = defineComponent({
       setup() {
         injectWizard('lt-2-wiz')
@@ -378,7 +387,6 @@ describe('injectWizard — consumer ref-counting (keyed)', () => {
     const app = createApp(Root).use(createAttaform())
     app.config.warnHandler = () => {}
     app.mount(document.createElement('div'))
-    ParentRef.app = app
 
     const registry = registryOf(app)
     expect(registry.wizards.has('lt-2-wiz')).toBe(true)

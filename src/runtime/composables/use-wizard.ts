@@ -621,11 +621,18 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     }
   }
 
-  // Activate the initial step's form. Idempotent — `activate()`
-  // returns a resolved promise when the form has no async work.
-  const initialFormForActivate = activeForm.value as unknown as SubmissionSourceForm
-  if (typeof initialFormForActivate.activate === 'function') {
-    void initialFormForActivate.activate()
+  // Activate every compiled step's form on the client. Idempotent —
+  // `activate()` returns a resolved promise when the form has no
+  // async work, and the registry's per-store hydration latch holds
+  // the factory single-shot across repeat calls. SSR keeps the
+  // prefetch coordination above (only the initial step's factory
+  // resolves inside `onServerPrefetch`); eager-activate-all is a
+  // client-side contract.
+  if (!registry.ssr) {
+    for (const step of compiledSteps.value) {
+      const source = step.form as unknown as SubmissionSourceForm
+      if (typeof source.activate === 'function') void source.activate()
+    }
   }
 
   // --- Reactive restore / persist watchers -----------------------------

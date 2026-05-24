@@ -1,24 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Mid-flight popstate safety. The wizard registry's one-shot
- * activation contract must hold even when the user pops back-and-
- * forth between steps while a step's async factory is in flight:
- *
- *   1. Activate step B → factory starts firing (once).
- *   2. Pop back to A before B's factory resolves.
- *   3. Factory eventually resolves; values apply to B's form.
- *   4. Pop forward to B again — factory MUST NOT re-fire.
- *
- * `pendingActivations.delete(nextKey)` in `markCurrent` is what
- * enforces step 4; this probe locks that contract from the consumer
- * surface so a future refactor can't reintroduce double-firing.
+ * Mid-flight popstate safety. The wizard's one-shot activation contract
+ * must hold even when external state (URL, custom restore signal) flips
+ * back-and-forth between steps while a step's async factory is still
+ * pending. Under eager activation every factory fires once at
+ * construction; this probe confirms a popstate-driven re-restore does
+ * not re-trigger an in-flight factory.
  */
 
 const schemaA = z.object({ a: z.string() })
@@ -45,13 +39,15 @@ describe('useWizard — popstate mid-flight safety', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('async factory fires exactly once across back-and-forth popstate', async () => {
+  it('async factory fires exactly once even under back-and-forth restore signals', async () => {
     let factoryCalls = 0
     let resolveFactory: ((value: { b: string }) => void) | undefined
     const factoryPromise = new Promise<{ b: string }>((resolve) => {
       resolveFactory = resolve
     })
+    const restoreRef = ref<string | undefined>(undefined)
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'mf-a', defaultValues: { a: 'a-set' } })
       const b = useForm({
         schema: schemaB,
         key: 'mf-b',
@@ -60,24 +56,33 @@ describe('useWizard — popstate mid-flight safety', () => {
           return factoryPromise
         },
       })
-      const a = useForm({ schema: schemaA, key: 'mf-a', defaultValues: { a: 'a-set' }, next: b })
-      return { wizard: useWizard(a, {}), a, b }
+      return {
+        wizard: useWizard({
+          steps: [a, b],
+          restore: () => ({ step: restoreRef.value }),
+          persist: false,
+        }),
+        a,
+        b,
+      }
     })
     apps.push(app)
-    expect(factoryCalls).toBe(0)
-
-    // Activate B — factory starts (one call).
-    await result.wizard.next()
-    await nextTick()
+    for (let i = 0; i < 16; i += 1) {
+      await Promise.resolve()
+      await nextTick()
+      if (factoryCalls > 0) break
+    }
     expect(factoryCalls).toBe(1)
     expect(result.b.hydrating).toBe(true)
 
-    // Pop back to A via popstate (silent setCurrent).
-    window.history.back()
-    await new Promise((r) => setTimeout(r, 20))
-    expect(result.wizard.current).toBe('mf-a')
+    restoreRef.value = 'mf-b'
+    await nextTick()
+    expect(result.wizard.currentStep).toBe('mf-b')
 
-    // Resolve the factory; values apply to B even though it's not current.
+    restoreRef.value = 'mf-a'
+    await nextTick()
+    expect(result.wizard.currentStep).toBe('mf-a')
+
     resolveFactory!({ b: 'fetched' })
     await factoryPromise
     for (let i = 0; i < 16; i += 1) {
@@ -87,21 +92,21 @@ describe('useWizard — popstate mid-flight safety', () => {
     }
     expect(result.b.hydrating).toBe(false)
 
-    // Pop forward to B — factory MUST NOT re-fire.
-    window.history.forward()
-    await new Promise((r) => setTimeout(r, 20))
-    expect(result.wizard.current).toBe('mf-b')
+    restoreRef.value = 'mf-b'
+    await nextTick()
+    expect(result.wizard.currentStep).toBe('mf-b')
     expect(factoryCalls).toBe(1)
   })
 
-  it('does not deref unresolved factory when popping past it', async () => {
+  it('rapid restore flips do not re-fire an unresolved factory', async () => {
     let factoryCalls = 0
     const factoryPromise = new Promise<{ b: string }>(() => {
-      // Never resolves — we want to prove popping doesn't affect the
-      // factory's promise state. The form stays in `hydrating: true`
+      // Never resolves — proves the factory holds in `hydrating: true`
       // throughout this probe.
     })
-    const { app, result } = mountHarness(() => {
+    const restoreRef = ref<string | undefined>(undefined)
+    const { app } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'mf-deref-a', defaultValues: { a: 'a' } })
       const b = useForm({
         schema: schemaB,
         key: 'mf-deref-b',
@@ -110,22 +115,23 @@ describe('useWizard — popstate mid-flight safety', () => {
           return factoryPromise
         },
       })
-      const a = useForm({
-        schema: schemaA,
-        key: 'mf-deref-a',
-        defaultValues: { a: 'a' },
-        next: b,
+      return useWizard({
+        steps: [a, b],
+        restore: () => ({ step: restoreRef.value }),
+        persist: false,
       })
-      return { wizard: useWizard(a, {}), a, b }
     })
     apps.push(app)
-    await result.wizard.next()
-    await nextTick()
+    for (let i = 0; i < 16; i += 1) {
+      await Promise.resolve()
+      await nextTick()
+      if (factoryCalls > 0) break
+    }
     expect(factoryCalls).toBe(1)
-    result.wizard.back()
-    await result.wizard.next()
-    result.wizard.back()
-    await result.wizard.next()
+    for (const key of ['mf-deref-b', 'mf-deref-a', 'mf-deref-b', 'mf-deref-a']) {
+      restoreRef.value = key
+      await nextTick()
+    }
     expect(factoryCalls).toBe(1)
   })
 })

@@ -7,7 +7,6 @@ import type {
   PersistConfig,
   ValidateOnConfig,
 } from '../../types/types-api'
-import type { AnyForm, NextOption } from '../../types/types-wizard'
 
 /**
  * Configuration object for the Zod v3 `useForm` overload. Same
@@ -18,7 +17,6 @@ export type UseFormConfigurationWithZod<
   Schema extends z.ZodType<unknown>,
   DefaultValues,
   K extends FormKey = FormKey,
-  Forms extends readonly AnyForm[] = readonly AnyForm[],
 > = ValidateOnConfig & {
   /** A Zod v3 `ZodObject` schema (or one wrapped in `.optional()` / `.nullable()` / `.default()` / `.refine()`). */
   schema: Schema extends z.ZodType<unknown>
@@ -43,11 +41,6 @@ export type UseFormConfigurationWithZod<
   history?: HistoryConfig
   rememberVariants?: boolean
   coerce?: boolean | CoercionRegistry
-  // Wizard graph declaration. Typed by the schema's `z.output` shape
-  // (what `handleSubmit` receives) and the declared `forms` tuple
-  // (use `as const` for narrowing). See `UseFormConfiguration.next`
-  // in the schema-agnostic types for the full contract.
-  next?: NextOption<z.output<Schema>, Forms>
 }
 
 /**

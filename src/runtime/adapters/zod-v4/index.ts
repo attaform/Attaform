@@ -15,7 +15,6 @@ import type {
   UseFormConfiguration,
 } from '../../types/types-api'
 import type { DefaultValuesInput, FlatPath, GenericForm, NestedType } from '../../types/types-core'
-import type { AnyForm } from '../../types/types-wizard'
 import { zodV4Adapter } from './adapter'
 import type { StorageShape } from './types-storage-shape'
 
@@ -106,19 +105,14 @@ type OutOf<Schema extends z.ZodObject> =
 type ReadOf<Schema extends z.ZodObject> =
   StorageShape<Schema> extends GenericForm ? StorageShape<Schema> : never
 
-export function useForm<
-  Schema extends z.ZodObject,
-  K extends FormKey = FormKey,
-  Forms extends readonly AnyForm[] = readonly AnyForm[],
->(
+export function useForm<Schema extends z.ZodObject, K extends FormKey = FormKey>(
   configuration: Omit<
     UseFormConfiguration<
       FormOf<Schema>,
       OutOf<Schema>,
       AbstractSchema<FormOf<Schema>, OutOf<Schema>>,
       DefaultValuesInput<FormOf<Schema>>,
-      K,
-      Forms
+      K
     >,
     'schema' | 'validateOn' | 'debounceMs'
   > & { schema: Schema } & ValidateOnConfig

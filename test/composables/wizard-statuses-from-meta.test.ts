@@ -39,11 +39,11 @@ describe('useWizard — statuses derived from form.meta', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('starts with valid:false / dirty:false / errorCount:0 for empty forms', () => {
+  it('starts with dirty:false / submitted:false for empty forms', () => {
     const { app, result } = mountHarness(() => {
+      const cargo = useForm({ schema: cargoSchema, key: 'st-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-review' })
-      const cargo = useForm({ schema: cargoSchema, key: 'st-cargo', next: review })
-      return useWizard(cargo, {})
+      return useWizard({ steps: [cargo, review], restore: false, persist: false })
     })
     apps.push(app)
     expect(result.statuses['st-cargo']!.dirty).toBe(false)
@@ -53,9 +53,13 @@ describe('useWizard — statuses derived from form.meta', () => {
 
   it('flips dirty when a form value changes', async () => {
     const { app, result } = mountHarness(() => {
+      const cargo = useForm({ schema: cargoSchema, key: 'st-dirty-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-dirty-review' })
-      const cargo = useForm({ schema: cargoSchema, key: 'st-dirty-cargo', next: review })
-      return { wizard: useWizard(cargo, {}), cargo, review }
+      return {
+        wizard: useWizard({ steps: [cargo, review], restore: false, persist: false }),
+        cargo,
+        review,
+      }
     })
     apps.push(app)
     expect(result.wizard.statuses['st-dirty-cargo']!.dirty).toBe(false)
@@ -67,9 +71,13 @@ describe('useWizard — statuses derived from form.meta', () => {
 
   it('errorCount reflects form.meta.errorCount', async () => {
     const { app, result } = mountHarness(() => {
+      const cargo = useForm({ schema: cargoSchema, key: 'st-err-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'st-err-review' })
-      const cargo = useForm({ schema: cargoSchema, key: 'st-err-cargo', next: review })
-      return { wizard: useWizard(cargo, {}), cargo, review }
+      return {
+        wizard: useWizard({ steps: [cargo, review], restore: false, persist: false }),
+        cargo,
+        review,
+      }
     })
     apps.push(app)
     result.cargo.setValue('description', '')
@@ -81,14 +89,17 @@ describe('useWizard — statuses derived from form.meta', () => {
 
   it('valid flips true once errors clear', async () => {
     const { app, result } = mountHarness(() => {
-      const review = useForm({ schema: reviewSchema, key: 'st-clear-review' })
       const cargo = useForm({
         schema: cargoSchema,
         key: 'st-clear-cargo',
         defaultValues: { weight: 5, description: 'box' },
-        next: review,
       })
-      return { wizard: useWizard(cargo, {}), cargo, review }
+      const review = useForm({ schema: reviewSchema, key: 'st-clear-review' })
+      return {
+        wizard: useWizard({ steps: [cargo, review], restore: false, persist: false }),
+        cargo,
+        review,
+      }
     })
     apps.push(app)
     await result.cargo.validate()
@@ -109,7 +120,10 @@ describe('useWizard — statuses derived from form.meta', () => {
         key: 'st-call-cargo',
         defaultValues: { weight: 5, description: 'box' },
       })
-      return { wizard: useWizard(cargo, {}), cargo }
+      return {
+        wizard: useWizard({ steps: [cargo], restore: false, persist: false }),
+        cargo,
+      }
     })
     apps.push(app)
     await result.cargo.validate()

@@ -49,19 +49,32 @@ export { injectForm } from './runtime/composables/use-form-context'
 export { useWizard } from './runtime/composables/use-wizard'
 export { injectWizard } from './runtime/composables/inject-wizard'
 export type { InjectWizardInput } from './runtime/composables/inject-wizard'
+export { defer } from './runtime/core/wizard-defer'
 export type {
   AnyForm,
+  CompiledStep,
+  DeferMarker,
   NextBranching,
   NextOption,
   NormalizedNext,
+  StepSlot,
+  WizardCtx,
+  WizardCtxForm,
   WizardFlow,
   WizardNavOptions,
   WizardOnError,
   WizardOnSubmit,
+  WizardOnSubmitV2,
   WizardOptions,
+  WizardOptionsV2,
+  WizardPersistFn,
+  WizardRestoreFn,
+  WizardRestoreState,
   WizardSubmitContext,
+  WizardSubmitContextV2,
   WizardValue,
   UseWizardReturnType,
+  UseWizardReturnTypeV2,
   WizardTreeNode,
   WizardWarning,
   WizardWarningKind,

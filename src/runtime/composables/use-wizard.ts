@@ -37,6 +37,7 @@ import type {
   UseWizardReturnType,
   WizardCtx,
   WizardCtxForm,
+  WizardForms,
   WizardOnError,
   WizardOnSubmit,
   WizardOptions,
@@ -1058,8 +1059,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     get steps(): ReadonlyArray<CompiledStep> {
       return compiledSteps.value
     },
-    get forms(): Readonly<Record<FormKey, AnyForm>> {
-      return formsRecord.value
+    get forms(): WizardForms<S> {
+      return formsRecord.value as unknown as WizardForms<S>
     },
     get count(): number {
       return count.value

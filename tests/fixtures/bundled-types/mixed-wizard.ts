@@ -100,9 +100,25 @@ function _neverInvoked() {
   const aggregateErrors: Readonly<Record<string, readonly unknown[]>> = wizard.allErrors
   void [aggregateValues, aggregateErrors]
 
-  // `forms.<key>` returns the full form handle.
+  // `forms.<key>` returns the full form handle, typed concretely for
+  // statically-known slot keys. Drilling stays type-safe through the
+  // schema-derived value shape.
   const loginHandleViaWizard = wizard.forms.login
-  void loginHandleViaWizard
+  const loginEmailViaWizard: string = loginHandleViaWizard.values.email
+  const loginPasswordViaWizard: string = loginHandleViaWizard.values.password
+  void [loginHandleViaWizard, loginEmailViaWizard, loginPasswordViaWizard]
+
+  // Affordance step slots (string slots) resolve to AnyForm — the noop
+  // form is opaque at the type level, so consumers don't get a fields
+  // surface to drill, which matches the no-data-collection intent.
+  const welcomeNoop = wizard.forms.welcome
+  void welcomeNoop
+
+  // A non-static key (e.g. a key resolved by a function slot at
+  // runtime) reads as AnyForm via the catch-all index signature on
+  // WizardForms<S>.
+  const dynamicLookup = wizard.forms['some-runtime-key']
+  void dynamicLookup
 
   // Navigation handles.
   void wizard.next

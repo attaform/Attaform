@@ -345,6 +345,50 @@ export type CurrentStepOf<S> = StaticallyNonEmpty<S> extends true ? FormKey : Fo
 export type ActiveFormOf<S> = StaticallyNonEmpty<S> extends true ? AnyForm : AnyForm | undefined
 
 /**
+ * Recursive tuple walk that builds the static portion of
+ * `wizard.forms`. Each step slot contributes to the record:
+ *
+ *  - **String slot** (`'review'`): the literal becomes the record key
+ *    and the value is `AnyForm` (the noop form synthesized for the
+ *    affordance position is opaque at the type level).
+ *  - **Form slot** (a `useForm` reference with a literal `key` field):
+ *    the form's own `key` becomes the record key, and the value is
+ *    the concrete form handle type — so drilling
+ *    `wizard.forms.shipping.values.address` carries the schema-derived
+ *    field types through.
+ *  - **Function / `defer()` slot**: contributes nothing to the static
+ *    map. Runtime-resolved forms are still reachable via the
+ *    catch-all index signature on `WizardForms` (typed as `AnyForm`).
+ *
+ * Recursion is bounded by the tuple length; real-world wizards land
+ * well below the TS instantiation budget.
+ */
+export type FormsRecordOf<S> = S extends readonly [
+  infer First,
+  ...infer Rest extends ReadonlyArray<StepSlot>,
+]
+  ? (First extends string
+      ? { readonly [P in First]: AnyForm }
+      : First extends { readonly key: infer K extends string }
+        ? { readonly [P in K]: First }
+        : unknown) &
+      FormsRecordOf<Rest>
+  : unknown
+
+/**
+ * `wizard.forms` typed view. Combines the static per-step type map
+ * with a catch-all `Record<FormKey, AnyForm>` fallback so:
+ *
+ *   - Statically known slot keys → concrete form type via `FormsRecordOf`
+ *   - Any other string key → `AnyForm` via the index signature
+ *
+ * The intersection collapses to the concrete form for statically
+ * known keys (because the concrete form type extends `AnyForm`) and
+ * to `AnyForm` for unknown keys.
+ */
+export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm>>
+
+/**
  * Return shape of `useWizard({ steps, … })`. Every reactive read is a
  * plain getter (no `.value`) — `wizard.currentStep`, `wizard.progress`,
  * `wizard.allValues` track inside `computed` / template effects
@@ -426,7 +470,7 @@ export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArra
   readonly activeIndex: number
   readonly isFinalStep: boolean
   readonly steps: ReadonlyArray<CompiledStep>
-  readonly forms: Readonly<Record<FormKey, AnyForm>>
+  readonly forms: WizardForms<S>
   readonly count: number
   readonly statuses: WizardStatusesProxy<Record<string, FormStatus>>
   readonly allValues: Readonly<Record<FormKey, unknown>>

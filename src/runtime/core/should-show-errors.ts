@@ -31,26 +31,25 @@ import type { ShouldShowErrors, ShouldShowErrorsConfig } from '../types/types-ap
  *    container's `showErrors` too. The error returns the moment the
  *    new verdict lands and `validating` flips back to false.
  *
- * 3. **Post-submit override.** Two arms both surface every own-path
- *    error unconditionally on the field axis (subject only to the two
- *    gates above):
+ * 3. **Post-submit override.** Once `formMeta.submissionAttempts > 0`
+ *    the heuristic surfaces every own-path error unconditionally on
+ *    the field axis (subject only to the two gates above). The
+ *    counter covers two distinct gestures:
  *
- *    The `submissionAttempts` arm fires when the consumer ran
- *    `handleSubmit`: they asked the form to commit, so transient
- *    mid-edit hiding is no longer appropriate. Covers focused,
- *    pristine, and untouched fields alike.
+ *    - `form.handleSubmit` directly, or `wizard.handleSubmit` at an
+ *      intermediate step. The user asked this specific form to
+ *      commit; transient mid-edit hiding is no longer appropriate.
  *
- *    The `departAttempts` arm fires when wizard navigation
- *    (`wizard.next`, `wizard.back`, `wizard.goTo`) actually left this
- *    form AND the user has interacted with at least one field on it
- *    (`formMeta.touched === true`). The touched gate guards against
- *    lateral exploration: a rail-click across an untouched form and
- *    back shouldn't surface errors the user never triggered. Once
- *    they engage with a field (focus + blur is enough), departing the
- *    form reveals every error on the next visit — including
- *    never-touched siblings. Covers the review-surface UX cleanly:
- *    by the time the user reaches a later step, every prior touched
- *    step lights up.
+ *    - `wizard.handleSubmit` at the final step. The wizard validates
+ *      every form in parallel and bumps each one's `submissionAttempts`,
+ *      so a `Finish`-button submission reveals errors across the
+ *      whole multistep flow at once. That's the review-surface UX:
+ *      by the time the user tries to commit the wizard, every
+ *      blocking error lights up regardless of which step it lives on.
+ *
+ *    The arm deliberately covers focused, pristine, and untouched
+ *    fields, so the next paint after the user tried to progress lights
+ *    up every problem the validator found.
  *
  * 4. **Pre-submit timing gate.** Before the first submit attempt,
  *    show once the user has touched the field (sticky-true after the
@@ -88,7 +87,6 @@ export const defaultShouldShowErrors: ShouldShowErrors = (field, formMeta) => {
   if (!hasOwnError) return false
   if (field.validating === true) return false
   if (formMeta.submissionAttempts > 0) return true
-  if (formMeta.departAttempts > 0 && formMeta.touched === true) return true
   return field.touched === true && field.focused !== true
 }
 

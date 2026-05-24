@@ -3159,12 +3159,13 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * same-key `goTo`, or a `next()` blocked by failed activation leave
    * the counter at its prior value.
    *
-   * Drives the depart arm of `defaultShouldShowErrors`, gated by
-   * `form.meta.touched`: once wizard navigation has left a form the
-   * user actually engaged with, every own-path error reveals on the
-   * next visit, including untouched siblings. The touched gate keeps
-   * lateral exploration (a rail-click across an untouched form and
-   * back) from surfacing errors the user never triggered.
+   * Pure introspection counter — useful for "this form has been
+   * visited and left" UX (analytics, prior-step badges, layered
+   * `shouldShowErrors` predicates) but does NOT drive the library's
+   * default `shouldShowErrors` heuristic. The reveal-on-submit story
+   * runs entirely through `submissionAttempts`, which
+   * `wizard.handleSubmit` bumps on the active form at intermediate
+   * steps and on every form at the final step.
    *
    * Distinct from `submissionAttempts`, which counts `handleSubmit`
    * passes only — wizard departures and form submissions are tracked

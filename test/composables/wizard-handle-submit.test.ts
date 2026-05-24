@@ -342,6 +342,51 @@ describe('useWizard — handleSubmit on the final step', () => {
     )
     expect(activationError).toBeDefined()
   })
+
+  it('final-step submission bumps submissionAttempts on every form and reveals errors across the wizard', async () => {
+    const { app, result } = mountHarness(() => {
+      const account = useForm({ schema: accountSchema, key: 'hs-show-account' })
+      const profile = useForm({ schema: profileSchema, key: 'hs-show-profile' })
+      const review = useForm({
+        schema: reviewSchema,
+        key: 'hs-show-review',
+        defaultValues: { tos: false as unknown as true },
+      })
+      return {
+        account,
+        profile,
+        review,
+        wizard: useWizard({
+          steps: [account, profile, review],
+          restore: () => ({ step: 'hs-show-review' }),
+          persist: false,
+          focusFirstError: false,
+        }),
+      }
+    })
+    apps.push(app)
+    expect(result.wizard.currentStep).toBe('hs-show-review')
+    expect(result.account.meta.submissionAttempts).toBe(0)
+    expect(result.profile.meta.submissionAttempts).toBe(0)
+    expect(result.review.meta.submissionAttempts).toBe(0)
+    expect(result.account.fields.email.showErrors).toBe(false)
+    expect(result.profile.fields.name.showErrors).toBe(false)
+    expect(result.review.fields.tos.showErrors).toBe(false)
+
+    const onSubmit = vi.fn()
+    const onError = vi.fn()
+    await result.wizard.handleSubmit(onSubmit, onError)()
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(result.account.meta.submissionAttempts).toBe(1)
+    expect(result.profile.meta.submissionAttempts).toBe(1)
+    expect(result.review.meta.submissionAttempts).toBe(1)
+    expect(result.account.fields.email.showErrors).toBe(true)
+    expect(result.account.fields.password.showErrors).toBe(true)
+    expect(result.profile.fields.name.showErrors).toBe(true)
+    expect(result.review.fields.tos.showErrors).toBe(true)
+  })
 })
 
 describe('useWizard — handleSubmit lifecycle signals', () => {

@@ -7,8 +7,7 @@ import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `form.meta.departAttempts` + wizard navigation reveal contract under
- * the v2 list-based wizard:
+ * `form.meta.departAttempts` accounting under the v2 list-based wizard:
  *
  *  - The counter lives on `form.meta` alongside `submissionAttempts`,
  *    type-visible to consumers; both surface on the readonly meta
@@ -24,11 +23,12 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *    forms (intermediate → active only; final → all). Wizard
  *    navigation moves departAttempts. `form.validate()` moves
  *    neither.
- *  - The depart arm of `defaultShouldShowErrors` reveals every error
- *    on a form once it has been departed — the user-facing payoff
- *    that motivated the change.
  *  - `form.reset()` zeros departAttempts alongside the rest of the
  *    submission lifecycle.
+ *
+ * The counter is pure introspection; the default `shouldShowErrors`
+ * heuristic does NOT consult it. Reveal-on-submit flows entirely
+ * through `submissionAttempts`, covered by `wizard-handle-submit`.
  */
 
 const strictSchema = z.object({
@@ -195,99 +195,6 @@ describe('departAttempts and submissionAttempts stay accounting-distinct', () =>
     await nextTick()
     expect(result.a.meta.submissionAttempts).toBe(0)
     expect(result.a.meta.departAttempts).toBe(0)
-  })
-})
-
-describe('defaultShouldShowErrors reveals on the depart arm', () => {
-  const apps: App[] = []
-  afterEach(() => {
-    while (apps.length > 0) apps.pop()?.unmount()
-  })
-
-  it('forward depart from an untouched form leaves errors hidden (touched gate)', async () => {
-    const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: strictSchema, key: 'show-1-a' })
-      const b = useForm({ schema: permissiveSchema, key: 'show-1-b' })
-      const wizard = useWizard({ steps: [a, b], restore: false, persist: false })
-      return { a, wizard }
-    })
-    apps.push(app)
-    expect(result.a.meta.touched).toBe(false)
-    expect(result.a.fields.email.showErrors).toBe(false)
-    expect(result.a.fields.password.showErrors).toBe(false)
-    await result.wizard.next()
-    expect(result.a.meta.departAttempts).toBe(1)
-    expect(result.a.meta.touched).toBe(false)
-    expect(result.a.fields.email.showErrors).toBe(false)
-    expect(result.a.fields.password.showErrors).toBe(false)
-  })
-
-  it('forward depart from a touched form reveals every own-path error — including untouched siblings', async () => {
-    const { app, result } = mountHarness(() => {
-      const a = useForm({ schema: strictSchema, key: 'show-2-a' })
-      const b = useForm({ schema: permissiveSchema, key: 'show-2-b' })
-      const wizard = useWizard({ steps: [a, b], restore: false, persist: false })
-      return { a, wizard }
-    })
-    apps.push(app)
-    result.a.touch(['email'])
-    expect(result.a.fields.email.touched).toBe(true)
-    expect(result.a.fields.password.touched).toBe(false)
-    expect(result.a.meta.touched).toBe(true)
-    await result.wizard.next()
-    expect(result.a.meta.departAttempts).toBe(1)
-    expect(result.a.fields.email.showErrors).toBe(true)
-    expect(result.a.fields.password.showErrors).toBe(true)
-  })
-
-  it('wizard.back() from a touched invalid step reveals every error — including untouched siblings', async () => {
-    const { app, result } = mountHarness(() => {
-      const a = useForm({
-        schema: strictSchema,
-        key: 'show-3-a',
-        defaultValues: { email: 'a@a.com', password: 'longenough' },
-      })
-      const b = useForm({ schema: strictSchema, key: 'show-3-b' })
-      const wizard = useWizard({
-        steps: [a, b],
-        restore: () => ({ step: 'show-3-b' }),
-        persist: false,
-      })
-      return { a, b, wizard }
-    })
-    apps.push(app)
-    expect(result.wizard.currentStep).toBe('show-3-b')
-    result.b.touch(['email'])
-    expect(result.b.fields.password.touched).toBe(false)
-    expect(result.b.fields.password.showErrors).toBe(false)
-    result.wizard.back()
-    expect(result.b.meta.departAttempts).toBe(1)
-    expect(result.b.fields.email.showErrors).toBe(true)
-    expect(result.b.fields.password.showErrors).toBe(true)
-  })
-
-  it('wizard.back() from an untouched step leaves its errors hidden', async () => {
-    const { app, result } = mountHarness(() => {
-      const a = useForm({
-        schema: strictSchema,
-        key: 'show-4-a',
-        defaultValues: { email: 'a@a.com', password: 'longenough' },
-      })
-      const b = useForm({ schema: strictSchema, key: 'show-4-b' })
-      const wizard = useWizard({
-        steps: [a, b],
-        restore: () => ({ step: 'show-4-b' }),
-        persist: false,
-      })
-      return { b, wizard }
-    })
-    apps.push(app)
-    expect(result.wizard.currentStep).toBe('show-4-b')
-    expect(result.b.meta.touched).toBe(false)
-    result.wizard.back()
-    expect(result.b.meta.departAttempts).toBe(1)
-    expect(result.b.fields.email.showErrors).toBe(false)
-    expect(result.b.fields.password.showErrors).toBe(false)
   })
 })
 

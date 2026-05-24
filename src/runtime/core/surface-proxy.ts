@@ -203,17 +203,36 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
   }
 
   function containerProxyAt(segments: readonly Segment[]): SurfaceProxy {
-    // Shape goes into the cache key so a discriminated-union variant
-    // switch that swaps the live shape at this path produces a
-    // freshly-targeted proxy on the next read. Without this, the
-    // first observation pinned the target type forever and consumers
-    // who fresh-read `form.fields.X` after the switch got back a
-    // stale shape-claim from the cache (`Array.isArray` returning
-    // true when the path no longer holds an array, etc.). Consumers
-    // who hold a proxy reference across the switch still see the
-    // stale shape on the held reference — the proxy target is
-    // immutable — but template reads (which always re-fetch through
-    // `form.fields.<path>`) snap to the right shape.
+    // Shape goes into the cache key so a variant switch that swaps
+    // the live shape at this path produces a freshly-targeted proxy
+    // on the next read. Without shape in the key, the first
+    // observation pinned the target type forever and fresh reads
+    // through `form.fields.<path>` after the switch got back a
+    // stale-shape claim from the cache (`Array.isArray` returning
+    // true when the path no longer holds an array, etc.). Cyclic
+    // flips reuse the same cached proxy — Array variant → object
+    // variant → Array variant returns the original Array proxy on
+    // the flip-back, preserving referential stability across closed
+    // round-trips.
+    //
+    // Held-reference contract. Consumers who cache a proxy reference
+    // (`const p = form.fields.payload`) across a variant switch see
+    // the original target on the held reference — proxy targets are
+    // immutable in JS, no trap can rewrite them. Operations that
+    // route through `get` / `ownKeys` / `getOwnPropertyDescriptor`
+    // re-evaluate live state on every call, so `p.length`,
+    // `Object.keys(p)`, `Object.entries(p)`, descent (`p[i]` /
+    // `p.field`), `JSON.stringify(p)`, and `String(p)` all track the
+    // current shape on the held reference. The host-level checks
+    // `Array.isArray(p)`, `typeof p`, `p instanceof Array`, and
+    // `Object.prototype.toString.call(p)` read internal slots off
+    // the target itself — they remain pinned to whichever target
+    // shape was chosen when the held reference was minted. Template
+    // reads always re-fetch through `form.fields.<path>` and get a
+    // freshly-targeted proxy that matches the live shape, so this
+    // caveat only surfaces for consumers who explicitly cache field
+    // proxies in setup scripts and rely on `Array.isArray` / typeof
+    // to discriminate shape on the held value.
     const isArrayLike = opts.isArrayContainer?.(segments) === true
     const cacheKey = `${JSON.stringify(segments)}+${isArrayLike ? 'A' : 'O'}`
     const existing = containerCache.get(cacheKey)
@@ -312,7 +331,14 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // child path and return another sub-proxy. The live count
         // comes from `containerOwnKeys` so reactive enumeration and
         // length agree.
-        if (isArrayLike && key === 'length') {
+        //
+        // The gate is `cached isArrayLike OR live isArrayContainer`
+        // so a function-target proxy held across a variant flip into
+        // an array also reports the live length — the proxy target is
+        // frozen at construction, but the get trap re-evaluates shape
+        // on every read, so `held.length` tracks reality even when the
+        // held reference was minted at a non-array moment.
+        if (key === 'length' && (isArrayLike || opts.isArrayContainer?.(segments) === true)) {
           return opts.containerOwnKeys === undefined ? 0 : opts.containerOwnKeys(segments).length
         }
         const childSegs = [...segments, keyToSegment(key)]

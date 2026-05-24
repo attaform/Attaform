@@ -480,6 +480,48 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     expect(Array.isArray(stale)).toBe(true)
   })
 
+  it('a function-target held reference reports live length and keys after a flip into the array variant', async () => {
+    const api = mount()
+    // Move to the variant where `payload` doesn't exist BEFORE the
+    // first read, so the cached proxy at this path is minted with
+    // a function target (no array shape yet).
+    api.setValue('body.mode', 'single')
+    await nextTick()
+
+    const heldFn = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(heldFn)).toBe(false)
+    expect(typeof heldFn).toBe('function')
+
+    // Flip into the list variant and add items.
+    api.setValue('body.mode', 'list')
+    await nextTick()
+    api.append('body.payload', { value: 'a' })
+    api.append('body.payload', { value: 'b' })
+    await nextTick()
+
+    // Trap-implemented dimensions track live state on the held
+    // reference — `length` interception consults the live shape
+    // (not just the cached one), so a function-target proxy held
+    // across a flip into an array still reports the live count
+    // instead of descending into a phantom child path.
+    expect((heldFn as { length: number }).length).toBe(2)
+    expect(Object.keys(heldFn as object)).toEqual(['0', '1'])
+
+    // Inherent caveat: host-level checks read internal slots off
+    // the original target, which proxy traps cannot rewrite. The
+    // held function-target reference stays `typeof === 'function'`
+    // and never passes `Array.isArray` even though the live shape
+    // is now an array. Fresh reads through `form.fields.<path>`
+    // produce an array-targeted proxy that does pass the host check.
+    expect(Array.isArray(heldFn)).toBe(false)
+    expect(typeof heldFn).toBe('function')
+
+    const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(fresh)).toBe(true)
+    expect(fresh).not.toBe(heldFn)
+    expect(Object.keys(fresh as object)).toEqual(['0', '1'])
+  })
+
   it('switching back into the array variant restores enumeration of the restored items', async () => {
     const api = mount()
     api.append('body.payload', { value: 'first' })
@@ -559,6 +601,40 @@ describe('z.union (non-discriminated) — array-vs-object shape collision at the
     expect(Array.isArray(objectProxy)).toBe(false)
     expect(objectProxy).not.toBe(arrayProxy)
     expect(Object.keys(objectProxy as object).sort()).toEqual(['green', 'red'])
+  })
+
+  it('a held Array-target reference tracks live record keys after a flip to object shape', async () => {
+    const api = mount('array')
+    api.append('payload', { value: 'first' })
+    api.append('payload', { value: 'second' })
+    await nextTick()
+
+    const heldArr = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(heldArr)).toBe(true)
+    expect((heldArr as { length: number }).length).toBe(2)
+    expect(Object.keys(heldArr as object)).toEqual(['0', '1'])
+
+    // Force-flip the live shape to a record.
+    api.setValue('payload', { red: 'r', green: 'g', blue: 'b' })
+    await nextTick()
+
+    // The held Array-target proxy retraps `length` and `ownKeys` on
+    // every read, so the live record keys surface through the
+    // held reference. The length reports the live key count
+    // regardless of whether the underlying shape is array or
+    // record — both flow through `liveKeysAtPath`.
+    expect((heldArr as { length: number }).length).toBe(3)
+    expect(Object.keys(heldArr as object).sort()).toEqual(['blue', 'green', 'red'])
+
+    // Inherent caveat: the cached Array target is locked, so the
+    // host-level `Array.isArray` check stays true even though the
+    // live shape is now a record. Fresh reads through
+    // `form.fields.<path>` produce a function-target proxy that
+    // reports the truth.
+    expect(Array.isArray(heldArr)).toBe(true)
+    const fresh = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(fresh)).toBe(false)
+    expect(fresh).not.toBe(heldArr)
   })
 
   it('Array.isArray tracks the live shape across the record-to-array flip on fresh reads', async () => {

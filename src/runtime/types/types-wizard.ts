@@ -517,3 +517,322 @@ export type UseWizardReturnType = {
   readonly reset: () => void
   readonly flow: WizardFlow
 }
+
+// ============================================================================
+// v2 types — list-based steps with eager function-slot evaluation.
+//
+// These types live alongside the v1 surface during the parallel-implementation
+// phase. Unit 5 of the v2 refactor renames the `V2`-suffixed types to drop the
+// suffix and deletes the v1 forms above. Until then, `useWizardV2` (parallel
+// implementation) consumes these types directly.
+// ============================================================================
+
+/**
+ * One compiled position in the wizard's flow. The wizard surface exposes
+ * an ordered array of these as `wizard.steps`, plus a `wizard.forms`
+ * record keyed by `step.key` for direct lookup.
+ *
+ * String slots in the source `steps` array desugar to noop forms
+ * (`useForm({ schema: z.object({}), key })`) before compilation, so every
+ * compiled step carries a `form` regardless of source kind.
+ */
+export type CompiledStep = {
+  readonly key: FormKey
+  readonly form: AnyForm
+}
+
+/**
+ * Shape of a participating form as seen from inside a function slot's
+ * `ctx.forms[key]` lookup. Adds `values` to the structural `AnyForm`
+ * minimum so routing decisions can read live form state.
+ *
+ * Values are typed loose because the wizard does not generically thread
+ * each step's schema through `ctx.forms`. For typed access inside slot
+ * bodies, close over the original form ref instead of routing through
+ * `ctx.forms`.
+ */
+export type WizardCtxForm = AnyForm & {
+  readonly values: Readonly<Record<string, unknown>>
+}
+
+/**
+ * Context object passed to function slots in the `steps` array. The
+ * `forms` record holds every form resolved so far (eager pass), the
+ * `currentKey` reflects the live wizard step, and `activeIndex` is the
+ * 0-based position of the active step in the compiled list.
+ *
+ * Function slots re-evaluate reactively when their reads change.
+ * Effectful slot bodies should be avoided; routing decisions live here.
+ */
+export type WizardCtx = {
+  readonly forms: Readonly<Record<FormKey, WizardCtxForm>>
+  readonly currentKey: FormKey | undefined
+  readonly activeIndex: number
+}
+
+/**
+ * Internal phantom brand for `DeferMarker`. The runtime brand symbol
+ * lives in `core/wizard-defer.ts`; this declaration keeps the marker
+ * type unforgeable without circular module imports.
+ */
+declare const _deferBrand: unique symbol
+
+/**
+ * Brand-typed marker returned by `defer((ctx) => …)`. Wrapping a function
+ * slot in `defer()` opts that specific slot into lazy-sticky resolution:
+ * the slot stays unresolved until navigation lands on its position for
+ * the first time, then its resolution sticks across subsequent
+ * departures and returns.
+ *
+ * Construct via the `defer()` helper exported from the same entry as
+ * `useWizard`. The marker is opaque at the type level; consumers do not
+ * assemble it directly.
+ */
+export type DeferMarker<Ctx = WizardCtx> = {
+  readonly [_deferBrand]: true
+  readonly resolve: (ctx: Ctx) => AnyForm | string | undefined
+}
+
+/**
+ * One position in the source `useWizard({ steps })` array. Each slot
+ * resolves to a compiled `{ key, form }` step at construction (or on
+ * first navigation-land for `defer()`-wrapped slots).
+ *
+ *  - `AnyForm`         — a form declared via `useForm`. Surfaced
+ *                        as-is. The wizard does not own its lifecycle.
+ *  - `string`          — bare key; the wizard generates a noop form
+ *                        (`z.object({})`) under the hood so the external
+ *                        surface stays uniform. Used for affordance steps
+ *                        (intros, T&C, congratulations, review surfaces).
+ *  - function          — eager slot, re-evaluates reactively. Returns
+ *                        one of the above, or `undefined` to drop the
+ *                        slot from the compiled list.
+ *  - `DeferMarker`     — lazy-sticky function slot (see `defer`).
+ */
+export type StepSlot<Ctx = WizardCtx> =
+  | AnyForm
+  | string
+  | ((ctx: Ctx) => AnyForm | string | undefined)
+  | DeferMarker<Ctx>
+
+/**
+ * Shape returned by the `restore` callback. Currently only carries the
+ * active step's key; intentionally open-ended (object form) so future
+ * additions land without a callback-signature break.
+ */
+export type WizardRestoreState = {
+  readonly step?: FormKey
+}
+
+/**
+ * `restore` callback signature. Invoked at construction and watched
+ * reactively via `watchEffect` so external state changes (browser
+ * back/forward, cross-tab events, route changes) re-apply through the
+ * wizard. Returning `undefined` falls through to the first step.
+ */
+export type WizardRestoreFn = () => WizardRestoreState | undefined
+
+/**
+ * `persist` callback signature. Invoked whenever `wizard.currentStep`
+ * changes (and diffs against the last persisted value to break the
+ * restore-persist loop).
+ */
+export type WizardPersistFn = (state: WizardRestoreState) => void
+
+/**
+ * Submit context passed to the `onSubmit` callback registered via
+ * `wizard.handleSubmit(onSubmit, onError?)`. Same shape on every step;
+ * `isFinal` distinguishes intermediate vs final calls.
+ *
+ *  - `values` — namespaced aggregate keyed by form key, mirroring
+ *               `wizard.allValues`. Reflects parsed output for every
+ *               form whose validation has settled; noops contribute
+ *               an empty record.
+ *  - `get(form)` — typed accessor that reads the parsed output for a
+ *               specific form ref. Works across cross-component graphs
+ *               (the form ref carries its schema info).
+ *  - `currentKey` — key of the step that fired this submission.
+ *  - `isFinal`   — `true` when `currentKey` is the last position in
+ *               `wizard.steps`. Intermediate calls validate the active
+ *               form only and advance; final calls validate every form
+ *               and stay on the terminal step.
+ */
+export type WizardSubmitContextV2 = {
+  readonly values: Readonly<Record<FormKey, unknown>>
+  readonly get: <F extends AnyForm>(form: F) => F extends { readonly values: infer V } ? V : unknown
+  readonly currentKey: FormKey
+  readonly isFinal: boolean
+}
+
+/**
+ * `onSubmit` callback registered via the v2 `wizard.handleSubmit`. Sync
+ * or async; the returned promise gates `wizard.submitting`.
+ */
+export type WizardOnSubmitV2 = (ctx: WizardSubmitContextV2) => void | Promise<void>
+
+/**
+ * Options for `useWizard({ steps, … })`. Steps are the only required
+ * field; the rest mirror v1 behavior where preserved, or are new
+ * additions for the list-based design.
+ */
+export type WizardOptionsV2 = {
+  /**
+   * Ordered list of slots that compile into the wizard's positional
+   * step list. See `StepSlot` for the per-slot shape contract.
+   */
+  readonly steps: ReadonlyArray<StepSlot>
+  /**
+   * Identifier used to register the wizard handle in the per-app
+   * registry. Descendant components call `injectWizard(key)` to reach
+   * the same wizard without prop-threading. Anonymous wizards (option
+   * omitted) skip the registry and are reachable only via ambient
+   * `injectWizard()` from descendants of the parent that called
+   * `useWizard`.
+   *
+   * Duplicate-key registration is first-wins-silently (dev-warn on the
+   * second registration) to mirror `useForm`'s shared-key behavior.
+   */
+  readonly key?: string
+  /**
+   * Seed status payload used while a form is pre-resolved (async
+   * `defaultValues` in flight, or wizard-deferred non-current). Mirrors
+   * `defaultValues`' trichotomy: plain object, sync factory, or async
+   * factory.
+   *
+   * Status resolution priority per form:
+   *   1. `store.defaultsResolved === true` → derive from `form.meta`
+   *   2. else seed value for this key → frozen seed
+   *   3. else → pending sentinel
+   *
+   * Unknown keys in the seed object are dropped with a dev-warn so a
+   * stale resume payload cannot crash construction. Noop forms use a
+   * built-in always-valid default.
+   */
+  readonly defaultStatuses?:
+    | Record<string, FormStatus>
+    | (() => Record<string, FormStatus>)
+    | (() => Promise<Record<string, FormStatus>>)
+  /**
+   * Optional progress override. When omitted, the wizard exposes
+   * `progress` as `valid_step_count / count` (normalised to `[0, 1]`).
+   * When provided, the returned number is used as-is — the consumer is
+   * responsible for any normalisation.
+   *
+   * The override is invoked inside a Vue `computed` so it must be
+   * synchronous and may only read reactive sources.
+   */
+  readonly progress?: (steps: ReadonlyArray<CompiledStep>) => number
+  /**
+   * When `wizard.handleSubmit` finds errors, automatically focus the
+   * first failing form (`wizard.goTo(firstFailedKey)` and then call
+   * that form's `applyInvalidSubmitPolicy()` per its own
+   * `onInvalidSubmit` configuration). Default `true`; pass `false` to
+   * keep the active step where the user left it and handle navigation
+   * manually in the `onError` callback.
+   *
+   * Renamed from v1's `navigateToFirstError` to match the useForm-level
+   * method of the same name.
+   */
+  readonly focusFirstError?: boolean
+  /**
+   * Source of truth for the active step. Invoked at construction and
+   * re-evaluated reactively via `watchEffect`. Default callback reads
+   * `?step=<key>` via `useRoute()`; pass `false` to disable URL sync,
+   * or provide a custom callback for non-router persistence
+   * (localStorage, broadcast channel, etc.).
+   */
+  readonly restore?: WizardRestoreFn | false
+  /**
+   * Destination for the active step. Invoked whenever `currentStep`
+   * changes, with a diff check to break the restore-persist loop.
+   * Default callback writes `?step=<key>` via `useRouter().replace`;
+   * pass `false` to disable persistence, or provide a custom callback
+   * to scope the param name or write to alternate storage.
+   */
+  readonly persist?: WizardPersistFn | false
+}
+
+/**
+ * Return shape of `useWizard({ steps, … })`. Every reactive read is a
+ * plain getter (no `.value`) — `wizard.currentStep`, `wizard.progress`,
+ * `wizard.allValues` track inside `computed` / template effects
+ * directly.
+ *
+ *  - `currentStep` — key of the active step. Always defined (the steps
+ *                    array is non-empty by construction).
+ *  - `activeForm`  — the active step's form handle. Always defined
+ *                    (noop forms cover string slots).
+ *  - `activeIndex` — 0-based position of the active step.
+ *  - `isFinalStep` — `true` when `currentStep === steps[count - 1].key`.
+ *  - `steps`       — ordered list of compiled `{ key, form }` slots.
+ *  - `forms`       — record indexable by step key; the value is the
+ *                    full form handle resolved for that slot (the
+ *                    consumer's own form for slot forms, the wizard's
+ *                    generated noop for string slots).
+ *  - `count`       — `steps.length`.
+ *  - `statuses`    — callable readonly proxy over the per-key
+ *                    `FormStatus` record. Noop-form keys always read
+ *                    as default-valid.
+ *  - `allValues`   — namespaced aggregate of each form's values, keyed
+ *                    by step key.
+ *  - `allErrors`   — namespaced aggregate of each form's validation
+ *                    errors, keyed by step key. Noop forms map to an
+ *                    empty list.
+ *  - `progress`    — normalised step-validity ratio (or the consumer's
+ *                    `progress` override). Forward-looking: noops count
+ *                    as always-valid.
+ *  - `canAdvance`  — `true` when `activeIndex < count - 1`. Pure
+ *                    positional check; navigation never gates on
+ *                    validity.
+ *  - `canGoBack`   — `true` when `activeIndex > 0`.
+ *  - `complete`    — `isFinalStep && every step's form is valid`.
+ *                    Forward-looking; no dirty tracking under eager
+ *                    activation.
+ *  - `submitting`  — `true` while a `wizard.handleSubmit` call is in
+ *                    flight. Global re-entrance guard: every
+ *                    navigation method also refuses while this is on.
+ *  - `submissionAttempts` — count of `wizard.handleSubmit` invocations
+ *                    (success or failure). Always bumps, including on
+ *                    noop-form steps.
+ *  - `visited`     — append-only breadcrumb of navigated step keys.
+ *                    `back()` does not pop; the trail is the audit log,
+ *                    not the back-stack.
+ *  - `next/back/goTo` — pure navigation. Refuses while `submitting`.
+ *  - `handleSubmit(onSubmit, onError?)` — universal across all steps.
+ *                    Intermediate calls validate the active form; final
+ *                    calls validate every form. Returns an event
+ *                    handler suitable for `<form @submit>` or
+ *                    imperative use.
+ *  - `reset()`     — zeros wizard lifecycle (`complete`, `submitting`,
+ *                    `submissionAttempts`, `visited`), resets every
+ *                    form, returns `currentStep` to `steps[0].key`, and
+ *                    invokes `persist` with the cleared state.
+ */
+export type UseWizardReturnTypeV2 = {
+  readonly key: string | undefined
+  readonly currentStep: FormKey
+  readonly activeForm: AnyForm
+  readonly activeIndex: number
+  readonly isFinalStep: boolean
+  readonly steps: ReadonlyArray<CompiledStep>
+  readonly forms: Readonly<Record<FormKey, AnyForm>>
+  readonly count: number
+  readonly statuses: WizardStatusesProxy<Record<string, FormStatus>>
+  readonly allValues: Readonly<Record<FormKey, unknown>>
+  readonly allErrors: Readonly<Record<FormKey, readonly AggregateError[]>>
+  readonly progress: number
+  readonly canAdvance: boolean
+  readonly canGoBack: boolean
+  readonly complete: boolean
+  readonly submitting: boolean
+  readonly submissionAttempts: number
+  readonly visited: readonly FormKey[]
+  readonly next: (options?: WizardNavOptions) => Promise<void>
+  readonly back: (options?: WizardNavOptions) => void
+  readonly goTo: (key: string, options?: WizardNavOptions) => void
+  readonly handleSubmit: (
+    onSubmit: WizardOnSubmitV2,
+    onError?: WizardOnError
+  ) => (event?: Event) => Promise<void>
+  readonly reset: () => void
+}

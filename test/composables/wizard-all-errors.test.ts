@@ -7,14 +7,12 @@ import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `wizard.allErrors` flattens each form's errors into one ordered
- * list — useful for a wizard-wide error summary screen.
+ * `wizard.allErrors` exposes each form's validation errors under its
+ * step key. Shape: `Record<FormKey, readonly AggregateError[]>`.
  *
- * Each entry carries `{ formKey, path, message, code? }` so the
- * consumer can render "Step Cargo > weight: weight required" and
- * link back to the offending field.
- *
- * Order: wizard.allForms order, then form's internal error order.
+ * Each entry carries `{ formKey, path, message, code? }` so a wizard-
+ * wide summary screen can render "Step Cargo > weight: weight required"
+ * and link back to the offending field.
  */
 
 const cargoSchema = z.object({
@@ -44,61 +42,68 @@ describe('useWizard — allErrors', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('starts empty', () => {
+  it('starts as a record of empty lists', () => {
     const { app, result } = mountHarness(() => {
+      const cargo = useForm({
+        schema: cargoSchema,
+        key: 'ae-empty-cargo',
+        defaultValues: { weight: 5, description: 'box' },
+      })
       const review = useForm({
         schema: reviewSchema,
         key: 'ae-empty-review',
         defaultValues: { note: 'send it' },
       })
-      const cargo = useForm({
-        schema: cargoSchema,
-        key: 'ae-empty-cargo',
-        defaultValues: { weight: 5, description: 'box' },
-        next: review,
-      })
-      return useWizard(cargo, {})
+      return useWizard({ steps: [cargo, review], restore: false, persist: false })
     })
     apps.push(app)
-    expect(result.allErrors).toEqual([])
+    expect(result.allErrors['ae-empty-cargo']).toEqual([])
+    expect(result.allErrors['ae-empty-review']).toEqual([])
   })
 
-  it('flattens errors with formKey + path + message', async () => {
+  it("namespaces each form's errors under its step key", async () => {
     const { app, result } = mountHarness(() => {
+      const cargo = useForm({ schema: cargoSchema, key: 'ae-fill-cargo' })
       const review = useForm({ schema: reviewSchema, key: 'ae-fill-review' })
-      const cargo = useForm({ schema: cargoSchema, key: 'ae-fill-cargo', next: review })
-      return { wizard: useWizard(cargo, {}), cargo, review }
+      return {
+        wizard: useWizard({ steps: [cargo, review], restore: false, persist: false }),
+        cargo,
+        review,
+      }
     })
     apps.push(app)
     await result.cargo.validate()
     await result.review.validate()
-    const errors = result.wizard.allErrors
-    expect(errors.length).toBeGreaterThan(0)
-    const cargoErrors = errors.filter((e) => e.formKey === 'ae-fill-cargo')
-    const reviewErrors = errors.filter((e) => e.formKey === 'ae-fill-review')
+    const cargoErrors = result.wizard.allErrors['ae-fill-cargo'] ?? []
+    const reviewErrors = result.wizard.allErrors['ae-fill-review'] ?? []
     expect(cargoErrors.length).toBeGreaterThan(0)
     expect(reviewErrors.length).toBeGreaterThan(0)
     const weightError = cargoErrors.find((e) => e.path.includes('weight'))
     expect(weightError).toBeDefined()
+    expect(weightError!.formKey).toBe('ae-fill-cargo')
     expect(weightError!.message).toMatch(/weight/i)
   })
 
-  it('orders errors by forms-array order, then by per-form order', async () => {
+  it('lists noop-form step keys with empty error arrays', () => {
     const { app, result } = mountHarness(() => {
-      const cargo = useForm({ schema: cargoSchema, key: 'ae-order-cargo' })
-      // Order: [review, cargo] so review errors come first.
-      const review = useForm({ schema: reviewSchema, key: 'ae-order-review', next: cargo })
-      return { wizard: useWizard(review, {}), cargo, review }
+      const cargo = useForm({
+        schema: cargoSchema,
+        key: 'ae-mixed-cargo',
+        defaultValues: { weight: 5, description: 'box' },
+      })
+      return useWizard({
+        steps: ['ae-intro', cargo, 'ae-thanks'],
+        restore: false,
+        persist: false,
+      })
     })
     apps.push(app)
-    await result.cargo.validate()
-    await result.review.validate()
-    const errors = result.wizard.allErrors
-    if (errors.length >= 2) {
-      const firstFormKey = errors[0]!.formKey
-      const lastFormKey = errors[errors.length - 1]!.formKey
-      expect(firstFormKey).toBe('ae-order-review')
-      expect(lastFormKey).toBe('ae-order-cargo')
-    }
+    expect(Object.keys(result.allErrors).sort()).toEqual([
+      'ae-intro',
+      'ae-mixed-cargo',
+      'ae-thanks',
+    ])
+    expect(result.allErrors['ae-intro']).toEqual([])
+    expect(result.allErrors['ae-thanks']).toEqual([])
   })
 })

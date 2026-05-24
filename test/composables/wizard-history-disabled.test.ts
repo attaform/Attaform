@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
@@ -7,11 +7,17 @@ import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `history: false` opts out of `window.history` integration entirely.
- * Useful for embedded wizards where the host shell already owns the
- * URL, or for wizard instances rendered inside dialogs / drawers
- * where a fresh history entry per step would be surprising.
+ * `restore: false` + `persist: false` fully decouple the wizard from
+ * the URL. Useful for embedded wizards where the host shell already
+ * owns the URL, or for wizard instances rendered inside dialogs and
+ * drawers where a fresh history entry per step would be surprising.
+ *
+ * Setting either side to `false` independently is also valid:
+ *   - `persist: false` alone — read external state, do not write back.
+ *   - `restore: false` alone — write internal state out, do not seed.
  */
+
+const ORIGINAL_URL = 'http://localhost:3000/wizard'
 
 const schemaA = z.object({ a: z.string() })
 const schemaB = z.object({ b: z.string() })
@@ -31,19 +37,25 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — history disabled', () => {
+describe('useWizard — restore: false + persist: false', () => {
   const apps: App[] = []
-  afterEach(() => {
-    while (apps.length > 0) apps.pop()?.unmount()
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', ORIGINAL_URL)
   })
 
-  it('history: false does not call pushState or replaceState on nav', async () => {
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+    window.history.replaceState(null, '', ORIGINAL_URL)
+  })
+
+  it('navigation does not write to window.history when persist is off', async () => {
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'hd-nav-a', defaultValues: { a: 'a' } })
       const b = useForm({ schema: schemaB, key: 'hd-nav-b', defaultValues: { b: 'b' } })
-      const a = useForm({ schema: schemaA, key: 'hd-nav-a', defaultValues: { a: 'a' }, next: b })
-      return useWizard(a, { history: false })
+      return useWizard({ steps: [a, b], restore: false, persist: false })
     })
     apps.push(app)
     pushSpy.mockClear()
@@ -56,48 +68,72 @@ describe('useWizard — history disabled', () => {
     replaceSpy.mockRestore()
   })
 
-  it('history: false does not seed initial step from `?step=<key>`', () => {
-    window.history.replaceState(null, '', 'http://localhost:3000/wizard?step=hd-seed-b')
+  it('initial step does not seed from `?step=<key>` when restore is off', () => {
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=hd-seed-b`)
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'hd-seed-a' })
       const b = useForm({ schema: schemaB, key: 'hd-seed-b' })
-      const a = useForm({ schema: schemaA, key: 'hd-seed-a', next: b })
-      return useWizard(a, { history: false })
+      return useWizard({ steps: [a, b], restore: false, persist: false })
     })
     apps.push(app)
-    expect(result.current).toBe('hd-seed-a')
+    expect(result.currentStep).toBe('hd-seed-a')
   })
 
-  it('history: false leaves the URL untouched on mount', () => {
-    window.history.replaceState(null, '', 'http://localhost:3000/wizard?other=stay')
-    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+  it('URL is untouched on mount and on navigation', async () => {
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?other=stay`)
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'hd-url-a' })
       const b = useForm({ schema: schemaB, key: 'hd-url-b' })
-      const a = useForm({ schema: schemaA, key: 'hd-url-a', next: b })
-      return useWizard(a, { history: false })
+      return useWizard({ steps: [a, b], restore: false, persist: false })
     })
     apps.push(app)
-    expect(replaceSpy).not.toHaveBeenCalled()
     expect(new URL(window.location.href).searchParams.get('step')).toBeNull()
     expect(new URL(window.location.href).searchParams.get('other')).toBe('stay')
-    expect(result.current).toBe('hd-url-a')
-    replaceSpy.mockRestore()
+    await result.next()
+    const url = new URL(window.location.href)
+    expect(url.searchParams.get('step')).toBeNull()
+    expect(url.searchParams.get('other')).toBe('stay')
+    expect(result.currentStep).toBe('hd-url-b')
   })
 
-  it('history: false ignores popstate (current does not change)', async () => {
+  it('popstate does not move the wizard when restore is off', async () => {
     const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'hd-pop-a', defaultValues: { a: 'a' } })
       const b = useForm({ schema: schemaB, key: 'hd-pop-b', defaultValues: { b: 'b' } })
-      const a = useForm({ schema: schemaA, key: 'hd-pop-a', defaultValues: { a: 'a' }, next: b })
-      return useWizard(a, { history: false })
+      return useWizard({ steps: [a, b], restore: false, persist: false })
     })
     apps.push(app)
     await result.next()
-    expect(result.current).toBe('hd-pop-b')
-    // Simulate a navigation event by manually replacing the URL and
-    // dispatching popstate. With history: false the wizard isn't
-    // listening, so `current` should stay put.
-    window.history.replaceState(null, '', 'http://localhost:3000/wizard?step=hd-pop-a')
+    expect(result.currentStep).toBe('hd-pop-b')
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=hd-pop-a`)
     window.dispatchEvent(new PopStateEvent('popstate'))
     await new Promise((r) => setTimeout(r, 10))
-    expect(result.current).toBe('hd-pop-b')
+    expect(result.currentStep).toBe('hd-pop-b')
+  })
+
+  it('persist: false alone still applies external restore reads', () => {
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=hd-mixed-b`)
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'hd-mixed-a' })
+      const b = useForm({ schema: schemaB, key: 'hd-mixed-b' })
+      return useWizard({ steps: [a, b], persist: false })
+    })
+    apps.push(app)
+    expect(result.currentStep).toBe('hd-mixed-b')
+    expect(replaceSpy).not.toHaveBeenCalled()
+    replaceSpy.mockRestore()
+  })
+
+  it('restore: false alone still writes the URL on navigation', async () => {
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'hd-write-a' })
+      const b = useForm({ schema: schemaB, key: 'hd-write-b' })
+      return useWizard({ steps: [a, b], restore: false })
+    })
+    apps.push(app)
+    await result.next()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(new URL(window.location.href).searchParams.get('step')).toBe('hd-write-b')
   })
 })

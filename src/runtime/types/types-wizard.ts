@@ -323,10 +323,14 @@ export type WizardOptions = {
  * `wizard.allValues` track inside `computed` / template effects
  * directly.
  *
- *  - `currentStep` — key of the active step. Always defined (the steps
- *                    array is non-empty by construction).
- *  - `activeForm`  — the active step's form handle. Always defined
- *                    (noop forms cover string slots).
+ *  - `currentStep` — key of the active step. Reads as `undefined` only
+ *                    in the degenerate case (`steps` empty at
+ *                    construction, or every function slot resolved to
+ *                    `undefined` and the compiled list is empty).
+ *  - `activeForm`  — the active step's form handle. Reads as
+ *                    `undefined` under the same degenerate conditions
+ *                    as `currentStep`. Noop forms cover string slots in
+ *                    the normal path.
  *  - `activeIndex` — 0-based position of the active step.
  *  - `isFinalStep` — `true` when `currentStep === steps[count - 1].key`.
  *  - `steps`       — ordered list of compiled `{ key, form }` slots.
@@ -380,8 +384,8 @@ export type WizardOptions = {
  */
 export type UseWizardReturnType = {
   readonly key: string
-  readonly currentStep: FormKey
-  readonly activeForm: AnyForm
+  readonly currentStep: FormKey | undefined
+  readonly activeForm: AnyForm | undefined
   readonly activeIndex: number
   readonly isFinalStep: boolean
   readonly steps: ReadonlyArray<CompiledStep>

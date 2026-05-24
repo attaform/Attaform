@@ -111,7 +111,7 @@ function _neverInvoked() {
   wizard.goTo('welcome')
 
   // Other v2 surface fields.
-  const at: string = wizard.currentStep
+  const at: string | undefined = wizard.currentStep
   const idx: number = wizard.activeIndex
   const finalStep: boolean = wizard.isFinalStep
   const stepCount: number = wizard.count

@@ -110,9 +110,17 @@ type SubmissionSourceForm = StatusSourceForm & {
  * `restore` / `persist` callbacks that default to `?step=<key>`.
  */
 export function useWizard(options: WizardOptions): UseWizardReturnType {
-  const rawSteps = options.steps
-  if (!Array.isArray(rawSteps) || rawSteps.length === 0) {
-    throw new Error('[attaform] useWizard({ steps }): expected a non-empty array of step slots.')
+  // Defensive coercion: a misshapen `steps` (non-array, undefined, empty)
+  // never crashes the surrounding app. Dev-warn surfaces the
+  // misconfiguration; runtime continues with an empty list and the
+  // wizard reads as degenerate (`currentStep === undefined`,
+  // navigation refuses, `handleSubmit` no-ops). The "wizard wired into
+  // a checkout never crashes" promise sits on this branch.
+  const rawSteps: ReadonlyArray<StepSlot> = Array.isArray(options.steps) ? options.steps : []
+  if (rawSteps.length === 0 && __DEV__) {
+    console.error(
+      '[attaform] useWizard({ steps }): expected a non-empty array of step slots. Continuing with an empty step list — wizard.currentStep reads as undefined, navigation refuses, handleSubmit no-ops.'
+    )
   }
 
   const registry = useRegistry()
@@ -302,24 +310,21 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     return -1
   })
 
-  const currentStep = computed<FormKey>(() => {
+  const currentStep = computed<FormKey | undefined>(() => {
     const key = activeKey.value
     if (key !== '') return key
     const first = compiledSteps.value[0]
-    return first === undefined ? '' : first.key
+    return first === undefined ? undefined : first.key
   })
 
-  const activeForm = computed<AnyForm>(() => {
+  const activeForm = computed<AnyForm | undefined>(() => {
     const list = compiledSteps.value
     const idx = activeIndex.value
     if (idx >= 0 && idx < list.length) {
       return (list[idx] as CompiledStep).form
     }
     const first = list[0]
-    if (first === undefined) {
-      throw new Error('[attaform] useWizard: compiled step list is empty.')
-    }
-    return first.form
+    return first === undefined ? undefined : first.form
   })
 
   const isFinalStep = computed<boolean>(() => {
@@ -577,15 +582,12 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     return false
   }
 
-  function firstKey(): FormKey {
+  function firstKey(): FormKey | undefined {
     const first = compiledSteps.value[0]
-    if (first === undefined) {
-      throw new Error('[attaform] useWizard: compiled step list is empty.')
-    }
-    return first.key
+    return first === undefined ? undefined : first.key
   }
 
-  let initialKey: FormKey
+  let initialKey: FormKey | undefined
   const restoredAtSetup = restoreCallback?.()
   const restoredStep = restoredAtSetup?.step
   if (restoredStep !== undefined && isCompiledKey(restoredStep)) {
@@ -603,8 +605,14 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     }
     initialKey = firstKey()
   }
-  activeKey.value = initialKey
-  visited.value = [initialKey]
+  if (initialKey !== undefined) {
+    activeKey.value = initialKey
+    visited.value = [initialKey]
+  }
+  // Degenerate path (`initialKey === undefined`): activeKey stays `''`,
+  // visited stays `[]`, and downstream getters surface `undefined`
+  // accordingly. The wizard handle is still constructable; the
+  // surrounding app keeps rendering.
 
   // --- SSR prefetch coordination ---------------------------------------
   //
@@ -681,8 +689,14 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     )
     // Replace the URL once at construction so a fresh load reflects the
     // active step (idempotent when the URL already named the correct
-    // key — the diff in the watcher handles steady-state).
-    if (initialKey !== initialUrlValue && initialUrlValue === undefined) {
+    // key — the diff in the watcher handles steady-state). The
+    // `initialKey !== undefined` guard short-circuits the degenerate
+    // path: with an empty steps list there's no step to persist.
+    if (
+      initialKey !== undefined &&
+      initialKey !== initialUrlValue &&
+      initialUrlValue === undefined
+    ) {
       lastPersisted = initialKey
       persistCallback({ step: initialKey })
       urlMirror.value = initialKey
@@ -740,8 +754,14 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
       }
       return
     }
-    const idx = activeIndex.value
     const list = compiledSteps.value
+    if (list.length === 0) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.next(): wizard has no compiled steps; no-op.`)
+      }
+      return
+    }
+    const idx = activeIndex.value
     if (idx < 0 || idx >= list.length - 1) {
       if (__DEV__) {
         console.warn(
@@ -759,6 +779,12 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     if (submitting.value) {
       if (__DEV__) {
         console.warn(`[attaform] wizard.back(): blocked while a submit is in flight.`)
+      }
+      return
+    }
+    if (compiledSteps.value.length === 0) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.back(): wizard has no compiled steps; no-op.`)
       }
       return
     }
@@ -864,6 +890,12 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
       if (event !== undefined && typeof (event as Event).preventDefault === 'function') {
         event.preventDefault()
       }
+      if (compiledSteps.value.length === 0) {
+        if (__DEV__) {
+          console.warn(`[attaform] wizard.handleSubmit: wizard has no compiled steps; no-op.`)
+        }
+        return
+      }
       if (submitting.value) {
         if (__DEV__) {
           console.warn(
@@ -891,8 +923,9 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
           )
         } else {
           // Intermediate submission: validate the active form only and
-          // advance on success.
-          const active = activeForm.value
+          // advance on success. The empty-list short-circuit above
+          // guarantees `activeForm.value` is defined here.
+          const active = activeForm.value as AnyForm
           const result = await processOne(active)
           results.set(active.key, result)
         }
@@ -996,10 +1029,10 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     goTo,
     handleSubmit,
     reset,
-    get currentStep(): FormKey {
+    get currentStep(): FormKey | undefined {
       return currentStep.value
     },
-    get activeForm(): AnyForm {
+    get activeForm(): AnyForm | undefined {
       return activeForm.value
     },
     get activeIndex(): number {

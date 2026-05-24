@@ -234,6 +234,30 @@ describe('useForm — field array helpers', () => {
       form.remove('posts', 1)
       expect(Object.keys(form.fields.posts)).toEqual(['0', '1'])
     })
+
+    it('Vue v-for over form.fields.<arrayPath> renders one node per live index', async () => {
+      let captured!: UseFormReturnType<BlogForm>
+      const host = document.createElement('div')
+      const Probe = defineComponent({
+        setup() {
+          captured = useForm<BlogForm>({
+            schema: fakeSchema<BlogForm>({ ...defaults, posts: [] }),
+            key: `fa-vfor-${Math.random().toString(36).slice(2)}`,
+          })
+          return { fields: captured.fields }
+        },
+        template: `<ul><li v-for="(_, idx) in fields.posts" :key="idx" data-row>{{ idx }}</li></ul>`,
+      })
+      const app = createApp(Probe)
+      attachRegistryToApp(app, createRegistry())
+      app.mount(host)
+      apps.push(app)
+      captured.append('posts', { title: 'first', views: 1 })
+      captured.append('posts', { title: 'second', views: 2 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const rows = host.querySelectorAll('[data-row]')
+      expect(rows.length).toBe(2)
+    })
   })
 
   it('mutations trigger reactivity (form.values sees the update)', () => {

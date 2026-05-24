@@ -130,6 +130,7 @@ export function buildErrorsProxy<F extends GenericForm>(
     // descended sub-proxies (one per live key), so consumers can
     // `form.errors.items[idx]` straight from the entry.
     containerOwnKeys: (segments) => liveKeysAtPath(state, segments),
+    isArrayContainer: (segments) => isArrayPath(state, segments),
   })
 }
 
@@ -152,6 +153,23 @@ function liveKeysAtPath<F extends GenericForm>(
   }
   if (typeof value === 'object') return Object.keys(value as Record<string, unknown>)
   return []
+}
+
+/**
+ * Whether the path resolves to an array container. Lets the surface
+ * proxy mount an Array target at that path so `Array.isArray(proxy)`
+ * reports true and Vue's `renderList` takes the indexed-array
+ * branch. Schema-first; falls back to a live-value check when the
+ * adapter doesn't model array shapes.
+ */
+function isArrayPath<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: readonly Segment[]
+): boolean {
+  if (segments.length === 0) return false
+  const shape = state.schema.arrayShapeAtPath(segments as Path)
+  if (shape !== undefined) return true
+  return Array.isArray(getAtPath(state.form.value, segments))
 }
 
 /**

@@ -164,6 +164,7 @@ export function buildFieldStateProxy<F extends GenericForm>(
     materializeContainer: (segments) => materializeFields(state, segments, snapshotFieldStateAt),
     resolveCallTarget: (path) => fieldStateTerminalAt(path),
     containerOwnKeys: (segments) => liveKeysAtPath(state, segments),
+    isArrayContainer: (segments) => isArrayPath(state, segments),
   })
 }
 
@@ -187,6 +188,24 @@ function liveKeysAtPath<F extends GenericForm>(
   }
   if (typeof value === 'object') return Object.keys(value as Record<string, unknown>)
   return []
+}
+
+/**
+ * Whether the path resolves to an array container. Schema-first so
+ * empty arrays still report correctly (Zod adapters return
+ * `null`/`number` from `arrayShapeAtPath` for any array schema, even
+ * before the form holds any items). Falls back to a live-value check
+ * for adapters that don't model array shapes (the test fake schema,
+ * primarily).
+ */
+function isArrayPath<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: readonly Segment[]
+): boolean {
+  if (segments.length === 0) return false
+  const shape = state.schema.arrayShapeAtPath(segments as Path)
+  if (shape !== undefined) return true
+  return Array.isArray(getAtPath(state.form.value, segments))
 }
 
 /**

@@ -248,12 +248,17 @@ export type WizardOptions = {
    * Identifier used to register the wizard handle in the per-app
    * registry. Descendant components call `injectWizard(key)` to reach
    * the same wizard without prop-threading. Anonymous wizards (option
-   * omitted) skip the registry and are reachable only via ambient
-   * `injectWizard()` from descendants of the parent that called
-   * `useWizard`.
+   * omitted) get a synthetic `__atta:anon-wizard:<id>` key resolved
+   * via `useId()` so SSR-rendered and client-hydrated trees agree on
+   * the same registry entry; the synthetic key is opaque and
+   * descendants reach an anonymous wizard via ambient `injectWizard()`
+   * rather than by key.
    *
    * Duplicate-key registration is first-wins-silently (dev-warn on the
    * second registration) to mirror `useForm`'s shared-key behavior.
+   * The dev-warn fires only for explicit keys — two anonymous wizards
+   * are guaranteed distinct synthetic keys, so the warning never
+   * misfires on independent anonymous wizards on the same page.
    */
   readonly key?: string
   /**
@@ -374,7 +379,7 @@ export type WizardOptions = {
  *                    `persist` with the cleared state.
  */
 export type UseWizardReturnType = {
-  readonly key: string | undefined
+  readonly key: string
   readonly currentStep: FormKey
   readonly activeForm: AnyForm
   readonly activeIndex: number

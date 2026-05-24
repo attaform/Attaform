@@ -63,13 +63,14 @@ describe('useWizard({ key }) — registry registration', () => {
     expect(result.key).toBe('r-1-wiz')
   })
 
-  it('leaves wizard.key undefined when options.key is omitted', () => {
+  it('resolves wizard.key to a synthetic SSR-stable key when options.key is omitted', () => {
     const { app, result } = mountHarness(() => {
       const only = useForm({ schema, key: 'r-2-only' })
       return useWizard({ steps: [only], restore: false, persist: false })
     })
     apps.push(app)
-    expect(result.key).toBeUndefined()
+    expect(typeof result.key).toBe('string')
+    expect(result.key.startsWith('__atta:anon-wizard:')).toBe(true)
   })
 
   it('keyed wizard registers under registry.wizards', () => {
@@ -82,14 +83,18 @@ describe('useWizard({ key }) — registry registration', () => {
     expect(registry.wizards.get('r-3-wiz')).toBe(result)
   })
 
-  it('anonymous wizard does NOT enter registry.wizards', () => {
-    const { app } = mountHarness(() => {
+  it('anonymous wizard registers under a synthetic SSR-stable key', () => {
+    const { app, result } = mountHarness(() => {
       const only = useForm({ schema, key: 'r-4-only' })
       return useWizard({ steps: [only], restore: false, persist: false })
     })
     apps.push(app)
     const registry = registryOf(app)
-    expect(registry.wizards.size).toBe(0)
+    // The synthetic key lives inside the reserved `__atta:anon-wizard:`
+    // namespace so consumer keys never collide with it.
+    expect(registry.wizards.size).toBe(1)
+    expect(result.key.startsWith('__atta:anon-wizard:')).toBe(true)
+    expect(registry.wizards.get(result.key)).toBe(result)
   })
 })
 

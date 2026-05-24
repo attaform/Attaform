@@ -7,10 +7,12 @@ import {
   onScopeDispose,
   provide,
   ref,
+  useId,
   watch,
   type ComputedRef,
 } from 'vue'
 import { __DEV__ } from '../core/dev'
+import { ANONYMOUS_WIZARD_KEY_PREFIX } from '../core/defaults'
 import { AttaformErrorCode } from '../core/error-codes'
 import {
   kAttaformAncestorWizard,
@@ -985,7 +987,8 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   // --- Handle assembly --------------------------------------------------
 
-  const wizardKey = options.key
+  const explicitKey = options.key
+  const wizardKey = resolveWizardKey(explicitKey)
   const handle: UseWizardReturnType = {
     key: wizardKey,
     next,
@@ -1048,19 +1051,25 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
   }
 
   // Registry registration + ambient provide --------------------------
-  if (wizardKey !== undefined) {
-    const existing = registry.wizards.get(wizardKey)
-    if (existing === undefined) {
-      registry.wizards.set(wizardKey, handle)
-    } else if (__DEV__) {
-      console.warn(
-        `[attaform] useWizard({ key: "${wizardKey}" }): a wizard with this key is already registered. Keeping the existing handle. Pass a unique key to each useWizard call, or share the original handle via injectWizard("${wizardKey}").`
-      )
-    }
-    if (getCurrentScope() !== undefined) {
-      const releaseWizard = registry.trackWizardConsumer(wizardKey)
-      onScopeDispose(releaseWizard)
-    }
+  //
+  // Every wizard (explicit or synthetic key) lands in the registry so
+  // SSR hydration, DevTools labels, and the consumer-counted lifetime
+  // story all work uniformly. The explicit-collision warning fires
+  // only when the consumer chose the colliding key — two synthetic
+  // keys can't collide (each setup-context `useId()` call returns a
+  // tree-position-stable distinct id; outside setup the module-local
+  // counter increments).
+  const existing = registry.wizards.get(wizardKey)
+  if (existing === undefined) {
+    registry.wizards.set(wizardKey, handle)
+  } else if (__DEV__ && explicitKey !== undefined) {
+    console.warn(
+      `[attaform] useWizard({ key: "${wizardKey}" }): a wizard with this key is already registered. Keeping the existing handle. Pass a unique key to each useWizard call, or share the original handle via injectWizard("${wizardKey}").`
+    )
+  }
+  if (getCurrentScope() !== undefined) {
+    const releaseWizard = registry.trackWizardConsumer(wizardKey)
+    onScopeDispose(releaseWizard)
   }
 
   if (getCurrentInstance() !== null) {
@@ -1068,6 +1077,32 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
   }
 
   return handle
+}
+
+/**
+ * Module-local counter for the "no Vue instance in scope" fallback
+ * (tests, raw composable calls outside setup). Collisions with
+ * consumer-supplied keys are impossible because the synthetic prefix
+ * lives inside the reserved `__atta:` namespace and consumer keys
+ * starting with `__atta:` are rejected by `useAbstractForm`. Inside
+ * setup the wizard reaches for `useId()` instead, which is
+ * SSR-stable across the server / hydration boundary.
+ */
+let anonWizardCounter = 0
+
+/**
+ * Resolve `options.key` into a concrete wizard key. Explicit keys
+ * pass through; empty / nullish keys are allocated under the
+ * `__atta:anon-wizard:` prefix. Mirrors `resolveFormKey` in
+ * `use-abstract-form.ts` so anonymous wizards get the same SSR
+ * hydration story anonymous forms do.
+ */
+function resolveWizardKey(key: string | undefined): string {
+  if (key !== undefined && key !== null && key !== '') return key
+  if (getCurrentInstance() !== null) {
+    return `${ANONYMOUS_WIZARD_KEY_PREFIX}${useId()}`
+  }
+  return `${ANONYMOUS_WIZARD_KEY_PREFIX}${anonWizardCounter++}`
 }
 
 /** Best-effort discriminator for the `AnyForm` arm of `StepSlot`. Forms

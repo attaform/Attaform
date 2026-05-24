@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 /**
- * Bundled-types regression gate. Verifies that the fixture in
- * `tests/fixtures/bundled-types/` typechecks against the published
+ * Bundled-types regression gate. Verifies that every fixture under
+ * `tests/fixtures/bundled-types/*.ts` typechecks against the published
  * `.d.ts` shape — the artifact a real consumer sees through
- * `attaform/zod-v4` and `attaform`.
+ * `attaform/zod-v4` and `attaform`. The fixture tsconfig globs the
+ * directory, so adding a new `.ts` next to the existing ones brings it
+ * under the gate without any wiring changes here.
  *
- * This script is the acceptance test for the depth-efficiency
- * refactor: a 4-form `useWizard` pattern with discriminated unions,
- * nested objects, arrays, and tuples must not trip TS2589 ("Type
- * instantiation is excessively deep") under the bundled `.d.ts`.
+ * Acceptance tests carried by the fixtures:
+ *   - `4-form-wizard.ts` — depth-efficiency regression. A 4-form
+ *     `useWizard` pattern with discriminated unions, nested objects,
+ *     arrays, and tuples must not trip TS2589 ("Type instantiation is
+ *     excessively deep") under the bundled `.d.ts`.
+ *   - `mixed-wizard.ts` — v2 surface regression. String / function /
+ *     `defer()` step slots, the universal `wizard.handleSubmit` context,
+ *     and the namespaced aggregation surfaces (`wizard.allValues`,
+ *     `wizard.allErrors`, `wizard.forms.<key>`) must compile against the
+ *     bundled `.d.ts` without surface-shape drift between src and dist.
  *
  * Usage:
  *   pnpm check:bundled-types
@@ -49,15 +57,20 @@ if (!distIsRealBundle()) {
   run('pnpm prepack')
 }
 
-console.log('[check-bundled-types] typechecking 4-form-wizard fixture against bundled .d.ts')
+console.log('[check-bundled-types] typechecking bundled-types fixtures against bundled .d.ts')
 try {
   run(`pnpm exec tsc --project "${fixtureTsConfig}"`)
-  console.log('[check-bundled-types] ok — bundled types support the 4-form pattern')
+  console.log('[check-bundled-types] ok — bundled-types fixtures compile cleanly')
 } catch {
-  console.error('[check-bundled-types] FAILED — bundled types do not compile the 4-form pattern.')
+  console.error('[check-bundled-types] FAILED — a bundled-types fixture did not compile.')
   console.error(
-    '  This means the depth-efficiency refactor has regressed. Audit DefaultValuesInput,'
+    '  Depth-efficiency regression suspects: DefaultValuesInput, LeafWalker,'
   )
-  console.error('  LeafWalker, internal-helper exports, and WriteShape for the cause.')
+  console.error(
+    '  internal-helper exports, WriteShape. Surface-shape drift suspects: any'
+  )
+  console.error(
+    '  recent change to public types that did not propagate through unbuild to dist.'
+  )
   process.exit(1)
 }

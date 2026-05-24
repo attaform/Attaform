@@ -1,16 +1,22 @@
 /**
- * Bundled-types regression fixture. Imports from `dist/*` (the
- * published artifact shape) — NOT from `src/*`. This mirrors what a
- * real consumer sees through `attaform/zod-v4` and `attaform`. The
- * fixture compiles under `vue-tsc` via `scripts/check-bundled-types.mjs`
- * and is the acceptance test for the type-system depth-efficiency
- * refactor: if vue-tsc reports TS2589 ("Type instantiation is
- * excessively deep") here, the refactor has regressed.
+ * Bundled-types depth-pressure regression fixture. Imports from
+ * `dist/*` (the published artifact shape) — NOT from `src/*`. This
+ * mirrors what a real consumer sees through `attaform/zod-v4` and
+ * `attaform`. The fixture compiles under `vue-tsc` via
+ * `scripts/check-bundled-types.mjs` and is the acceptance test for
+ * the type-system depth-efficiency refactor: if vue-tsc reports
+ * TS2589 ("Type instantiation is excessively deep") here, the
+ * refactor has regressed.
  *
  * Scenario: a 4-form multistep wizard with the same compounding
  * pressure profile as the shipment-demo restructure (nested objects,
- * arrays of objects, tuples, discriminated unions). 4 useForm calls
- * + useWizard composition in a single scope.
+ * arrays of objects, tuples, discriminated unions). Four `useForm`
+ * calls composed via `useWizard({ steps })` in a single scope.
+ *
+ * Companion fixture `mixed-wizard.ts` covers the v2-specific surfaces
+ * (string / function / defer slots, namespaced aggregation, the
+ * universal handleSubmit context) — this file stays narrowly focused
+ * on instantiation depth so a regression there isolates cleanly.
  *
  * The fixture is never executed at runtime — `_neverInvoked` shapes
  * the call-site inference so the typechecker exercises each surface
@@ -86,15 +92,14 @@ const reviewSchema = z.object({
 })
 
 function _neverInvoked() {
-  // Bottom-up declaration: terminal form first, then each predecessor
-  // references its successor via `next:`. The wizard walks the graph
-  // from the entry to discover every reachable step.
+  const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
+  const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const })
+  const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const })
   const reviewForm = useForm({ schema: reviewSchema, key: 'review' as const })
-  const serviceForm = useForm({ schema: serviceSchema, key: 'service' as const, next: reviewForm })
-  const cargoForm = useForm({ schema: cargoSchema, key: 'cargo' as const, next: serviceForm })
-  const refForm = useForm({ schema: referenceSchema, key: 'reference' as const, next: cargoForm })
 
-  const wizard = useWizard(refForm)
+  const wizard = useWizard({
+    steps: [refForm, cargoForm, serviceForm, reviewForm],
+  })
 
   refForm.setValue('shipperRef', 'TRACK-001')
   cargoForm.setValue('items.0.sku', 'X')
@@ -105,7 +110,7 @@ function _neverInvoked() {
 
   const refValid: boolean = wizard.statuses.reference.valid
   const cargoErr: number = wizard.statuses.cargo.errorCount
-  const current: string | undefined = wizard.current
+  const current: string = wizard.currentStep
 
   cargoForm.handleSubmit((data) => {
     const items: Array<{ sku: string; quantity: number; weightKg: number }> = data.items

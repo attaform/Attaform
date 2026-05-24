@@ -7,6 +7,8 @@ import {
   onScopeDispose,
   provide,
   ref,
+  shallowRef,
+  triggerRef,
   useId,
   watch,
   type ComputedRef,
@@ -180,8 +182,14 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // (or explicitly drops via `undefined`), subsequent reactive reads
   // reuse the cached result without re-invoking the resolver. The
   // wizard treats `defer()` slots as eager-but-sticky in this build:
-  // they resolve on first compile-pass evaluation and never re-resolve.
-  const stickyDefers = new Map<number, AnyForm | null>()
+  // they resolve on first compile-pass evaluation and never re-resolve
+  // until `wizard.reset()` clears the cache.
+  //
+  // Wrapped in `shallowRef` so internal mutations during slot
+  // resolution don't notify subscribers (no re-eval loop in
+  // `compiledSteps`), while `reset()` can call `triggerRef` to force
+  // a one-shot invalidation.
+  const stickyDefers = shallowRef(new Map<number, AnyForm | null>())
 
   // `activeKey` is the canonical source of truth for the active step.
   // Initialized below from `restore` (or the first compiled slot's key).
@@ -249,11 +257,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return noop
     }
     if (isDeferMarker(slot)) {
-      const cached = stickyDefers.get(index)
+      const cached = stickyDefers.value.get(index)
       if (cached !== undefined) return cached === null ? undefined : cached
       const result = (slot as DeferMarker).resolve(ctx)
       const form = resolveSlotResult(result)
-      stickyDefers.set(index, form ?? null)
+      stickyDefers.value.set(index, form ?? null)
       return form
     }
     if (typeof slot === 'function') {
@@ -282,6 +290,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // of their reactive deps; sticky defer slots resolve once and stick;
   // string slots cache their noop forms.
   const compiledSteps = computed<readonly CompiledStep[]>(() => {
+    // Subscribe to defer-cache invalidation so `reset()` re-fires
+    // sticky resolvers on the next compile pass.
+    void stickyDefers.value
     const ctx = slotCtx.value
     const out: CompiledStep[] = []
     const seen = new Set<FormKey>()
@@ -1001,6 +1012,15 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function reset(): void {
     submissionAttempts.value = 0
     done.value = false
+    // Clear sticky defer resolutions so the next compile pass re-fires
+    // each `defer()` resolver. Without this, a reset that's meant to
+    // return the wizard to first-compile state would keep stale lazy
+    // resolutions glued in place (a wizard reboot should be a true
+    // reboot, including expensive one-shot lookups). `triggerRef` is
+    // what notifies `compiledSteps` to re-evaluate; mutating the Map
+    // alone wouldn't fire a shallowRef subscription.
+    stickyDefers.value.clear()
+    triggerRef(stickyDefers)
     for (const step of compiledSteps.value) {
       const full = step.form as unknown as SubmissionSourceForm
       if (typeof full.reset === 'function') full.reset()

@@ -238,6 +238,46 @@ describe('S6 — deep-link restore to a deferred slot resolves on navigation-lan
     expect(result.currentStep).toBe('s6-fetched')
     expect(resolverCalls).toBe(1)
   })
+
+  it('wizard.reset() clears sticky defer cache, resolver re-fires on next compile pass', async () => {
+    let resolverCalls = 0
+    const { app, result } = mountHarness(() => {
+      const intro = useForm({ schema: z.object({}), key: 's6-reset-intro' })
+      const fetched = useForm({
+        schema: z.object({ x: z.string() }),
+        key: 's6-reset-fetched',
+        defaultValues: { x: 'hello' },
+      })
+      const final = useForm({
+        schema: z.object({ ack: z.boolean() }),
+        key: 's6-reset-final',
+        defaultValues: { ack: false },
+      })
+      return useWizard({
+        steps: [
+          intro,
+          defer(() => {
+            resolverCalls += 1
+            return fetched
+          }),
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    // First compile pass resolved the defer slot.
+    expect(resolverCalls).toBe(1)
+    expect(result.count).toBe(3)
+    // Reset clears the sticky cache; next compile pass re-invokes the
+    // resolver. A true reboot returns the wizard to first-compile
+    // state, including expensive one-shot lookups.
+    result.reset()
+    await nextTick()
+    expect(resolverCalls).toBe(2)
+    expect(result.count).toBe(3)
+  })
 })
 
 describe('S10 — function slot returns undefined drops the slot', () => {

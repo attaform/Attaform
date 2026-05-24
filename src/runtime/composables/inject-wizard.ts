@@ -4,6 +4,7 @@ import { captureUserCallSite } from '../core/dev-stack-trace'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kAttaformAncestorWizard, useRegistry } from '../core/registry'
 import type { UseWizardReturnType } from '../types/types-wizard'
+import { ambientWizardProvideHistory } from './use-wizard'
 
 /**
  * Options accepted by `injectWizard` when passing an object instead of
@@ -35,12 +36,13 @@ export type InjectWizardInput = {
  *
  * Resolution rules (no-key form):
  *  - Closest ambient ancestor wins via `provide(kAttaformAncestorWizard)`.
- *  - Both keyed and anonymous `useWizard()` calls fill the ambient slot,
- *    so a descendant of a keyed wizard can use either pattern.
+ *  - Only anonymous (no-`key`) `useWizard()` calls fill the ambient
+ *    slot. Descendants of a keyed wizard must address it explicitly
+ *    via `injectWizard('the-key')`. Mirrors `useForm`'s ambient gate.
  *
  * Resolution rules (keyed form): registry lookup by string key,
  * independent of component-tree position. The wizard must have been
- * constructed with `useWizard(entryForm, { key })` to be reachable.
+ * constructed with `useWizard({ steps, key })` to be reachable.
  *
  * Returns `null` when no matching wizard exists (no ambient ancestor,
  * or the named key isn't registered). A dev-mode warning points at the
@@ -94,6 +96,7 @@ export function injectWizard(input?: string | InjectWizardInput): UseWizardRetur
     warnMiss('no ambient wizard context', registry.ssr)
     return null
   }
+  warnIfAmbientWizardProviderHadDuplicates()
   return ambient
 }
 
@@ -116,4 +119,38 @@ function warnMiss(detail: string, ssr: boolean, hint?: string): void {
   if (hint !== undefined) parts.push(hint)
   if (frame !== undefined) parts.push(frame)
   console.warn(parts.join(' '))
+}
+
+/**
+ * Walk up from the current component to the nearest ancestor that
+ * registered an anonymous-wizard ambient provide. If that ancestor
+ * recorded more than one anonymous `useWizard()` call, a descendant
+ * reaching for the ambient slot only sees the last one, so warn once
+ * per consumer that genuinely collides. Mirrors
+ * `warnIfAmbientProviderHadDuplicates` on the form side. Keyed
+ * `useWizard()` calls do not appear here, since they do not fill the
+ * ambient slot.
+ */
+function warnIfAmbientWizardProviderHadDuplicates(): void {
+  if (!__DEV__ || ambientWizardProvideHistory === null) return
+  let ancestor = getCurrentInstance()?.parent ?? null
+  while (ancestor !== null) {
+    const history = ambientWizardProvideHistory.get(ancestor as unknown as object)
+    if (history !== undefined) {
+      if (history.length > 1) {
+        const lines = history.map((entry) => `  - ${entry.source ?? '<unknown location>'}`)
+        console.warn(
+          '[attaform] injectWizard() (no key) resolved against ' +
+            'an ancestor with multiple anonymous useWizard() calls; descendants ' +
+            'only see the last-provided wizard. Anonymous useWizard() calls were:\n' +
+            lines.join('\n') +
+            '\nFix: pass a key to each call (e.g. useWizard({ steps, key: "x" })) ' +
+            'and reach them via injectWizard("x"), or split the wizards ' +
+            'across separate components.'
+        )
+      }
+      return
+    }
+    ancestor = ancestor.parent
+  }
 }

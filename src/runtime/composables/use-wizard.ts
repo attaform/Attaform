@@ -13,6 +13,7 @@ import {
 } from 'vue'
 import { __DEV__ } from '../core/dev'
 import { ANONYMOUS_WIZARD_KEY_PREFIX } from '../core/defaults'
+import { captureUserCallSite } from '../core/dev-stack-trace'
 import { AttaformErrorCode } from '../core/error-codes'
 import {
   kAttaformAncestorWizard,
@@ -24,7 +25,7 @@ import { isDeferMarker } from '../core/wizard-defer'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildNoopWizardSchema } from '../core/wizard-noop-schema'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
-import { useAbstractForm } from './use-abstract-form'
+import { useAbstractForm, type AmbientProvideEntry } from './use-abstract-form'
 import type {
   ActiveFormOf,
   AggregateError,
@@ -1120,7 +1121,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     onScopeDispose(releaseWizard)
   }
 
-  if (getCurrentInstance() !== null) {
+  // Anonymous wizards fill the ambient slot for descendant
+  // `injectWizard()` calls; keyed wizards stay registry-only, so
+  // explicit / ambient resolution stays disjoint (mirrors `useForm`).
+  if (getCurrentInstance() !== null && explicitKey === undefined) {
+    recordAmbientWizardProvide(registry.ssr)
     provide(kAttaformAncestorWizard, handle)
   }
 
@@ -1137,6 +1142,35 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
  * SSR-stable across the server / hydration boundary.
  */
 let anonWizardCounter = 0
+
+/**
+ * Tracks which parent Vue component instances have already run an
+ * anonymous-wizard ambient provide. Dev-only; `null` in production so
+ * the WeakMap allocation tree-shakes out. Exported so `injectWizard()`
+ * (no key) can walk the parent chain and warn lazily when a single
+ * parent registered more than one anonymous `useWizard()`, since Vue's
+ * `provide` is last-write-wins. Mirrors `ambientProvideHistory` on the
+ * form side.
+ */
+export const ambientWizardProvideHistory: WeakMap<object, AmbientProvideEntry[]> | null = __DEV__
+  ? new WeakMap<object, AmbientProvideEntry[]>()
+  : null
+
+function recordAmbientWizardProvide(ssr: boolean): void {
+  if (!__DEV__ || ssr || ambientWizardProvideHistory === null) return
+  const instance = getCurrentInstance()
+  if (instance === null) return
+  const instanceKey = instance as unknown as object
+  const entry: AmbientProvideEntry = {
+    source: captureUserCallSite(),
+  }
+  const existing = ambientWizardProvideHistory.get(instanceKey)
+  if (existing === undefined) {
+    ambientWizardProvideHistory.set(instanceKey, [entry])
+    return
+  }
+  existing.push(entry)
+}
 
 /**
  * Resolve `options.key` into a concrete wizard key. Explicit keys

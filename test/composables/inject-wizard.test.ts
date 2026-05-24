@@ -168,11 +168,12 @@ describe('injectWizard — ambient resolution', () => {
     expect(shared.child).toBe(shared.parent)
   })
 
-  it('reaches the nearest ancestor wizard via ambient even when the parent is keyed', () => {
-    const shared: {
-      parent?: UseWizardReturnType
-      child?: UseWizardReturnType | null
-    } = {}
+  it('returns null when the only ancestor wizard is keyed (mirrors injectForm)', () => {
+    // A keyed `useWizard` does NOT fill the ambient slot. Descendants
+    // must address it explicitly via `injectWizard('the-key')`, the
+    // same rule `useForm` follows for anonymous-only ambient access.
+    const shared: { child?: UseWizardReturnType | null } = {}
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
     const Child = defineComponent({
       setup() {
@@ -183,7 +184,7 @@ describe('injectWizard — ambient resolution', () => {
     const Parent = defineComponent({
       setup() {
         const only = useForm({ schema, key: 'amb-2-only' })
-        shared.parent = useWizard({
+        useWizard({
           steps: [only],
           key: 'amb-2-wiz',
           restore: false,
@@ -197,7 +198,14 @@ describe('injectWizard — ambient resolution', () => {
     app.config.warnHandler = () => {}
     app.mount(document.createElement('div'))
     apps.push(app)
-    expect(shared.child).toBe(shared.parent)
+
+    expect(shared.child).toBeNull()
+    const calls = warnSpy.mock.calls.filter((args: readonly unknown[]) =>
+      String(args[0] ?? '').includes(WARN_MARKER)
+    )
+    expect(calls.length).toBeGreaterThan(0)
+    expect(String(calls[0]?.[0] ?? '')).toMatch(/no ambient wizard context/)
+    warnSpy.mockRestore()
   })
 
   it('object form with undefined key falls through to ambient lookup', () => {
@@ -394,5 +402,99 @@ describe('injectWizard — consumer ref-counting (keyed)', () => {
     app.unmount()
     await Promise.resolve()
     expect(registry.wizards.has('lt-2-wiz')).toBe(false)
+  })
+})
+
+describe('injectWizard — multi-ambient detection', () => {
+  const apps: App[] = []
+  let warnSpy: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+    warnSpy.mockRestore()
+  })
+
+  it('stays quiet when a parent calls useWizard twice but no descendant consumes ambient', () => {
+    // Two anonymous useWizard calls + no keyless injectWizard consumer
+    // = no warn. Authors who deliberately set up two wizards in one
+    // component shouldn't be nagged when no descendant collides.
+    const App = defineComponent({
+      setup() {
+        const a = useForm({ schema, key: 'ma-1-a' })
+        const b = useForm({ schema, key: 'ma-1-b' })
+        useWizard({ steps: [a], restore: false, persist: false })
+        useWizard({ steps: [b], restore: false, persist: false })
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.config.warnHandler = () => {}
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    const collisionWarns = warnSpy.mock.calls.filter((args: readonly unknown[]) =>
+      String(args[0] ?? '').includes('injectWizard() (no key)')
+    )
+    expect(collisionWarns.length).toBe(0)
+  })
+
+  it('warns when a descendant reaches for ambient against a duplicate-provide parent', () => {
+    const Child = defineComponent({
+      setup() {
+        injectWizard()
+        return () => h('span', 'child')
+      },
+    })
+    const App = defineComponent({
+      setup() {
+        const a = useForm({ schema, key: 'ma-2-a' })
+        const b = useForm({ schema, key: 'ma-2-b' })
+        useWizard({ steps: [a], restore: false, persist: false })
+        useWizard({ steps: [b], restore: false, persist: false })
+        return () => h('div', [h(Child)])
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.config.warnHandler = () => {}
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    const collisionWarns = warnSpy.mock.calls.filter((args: readonly unknown[]) =>
+      String(args[0] ?? '').includes('injectWizard() (no key)')
+    )
+    expect(collisionWarns.length).toBe(1)
+    const message = String(collisionWarns[0]?.[0] ?? '')
+    expect(message).toContain('multiple anonymous useWizard() calls')
+    expect(message).toContain('only see the last-provided wizard')
+  })
+
+  it('stays quiet when one of the two wizards is keyed (keyed never fills ambient)', () => {
+    // Keyed useWizard does not fill the ambient slot, so it cannot
+    // collide with an anonymous sibling on the ambient axis. A
+    // descendant injectWizard() sees the only anonymous wizard and
+    // no collision warn fires.
+    const Child = defineComponent({
+      setup() {
+        injectWizard()
+        return () => h('span', 'child')
+      },
+    })
+    const App = defineComponent({
+      setup() {
+        const a = useForm({ schema, key: 'ma-3-a' })
+        const b = useForm({ schema, key: 'ma-3-b' })
+        useWizard({ steps: [a], key: 'ma-3-named', restore: false, persist: false })
+        useWizard({ steps: [b], restore: false, persist: false })
+        return () => h('div', [h(Child)])
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.config.warnHandler = () => {}
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    const collisionWarns = warnSpy.mock.calls.filter((args: readonly unknown[]) =>
+      String(args[0] ?? '').includes('injectWizard() (no key)')
+    )
+    expect(collisionWarns.length).toBe(0)
   })
 })

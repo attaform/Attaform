@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
@@ -505,5 +505,128 @@ describe('useWizard — handleSubmit + lifecycle signals', () => {
     expect(failedKeys.has('hs-13-b')).toBe(true)
     // Parallel: total elapsed under 150ms (well below the 50ms * 2 = 100ms sequential floor + slack).
     expect(elapsed).toBeLessThan(150)
+  })
+})
+
+/**
+ * Standing regression for the v-if step-swap focus race: `goTo()`
+ * updates `wizard.current` synchronously, but the failed step's form
+ * doesn't mount until Vue's next render flush. The wizard awaits one
+ * `nextTick` before firing `applyInvalidSubmitPolicy()` so the focus
+ * call lands on a registered, connected input rather than walking an
+ * empty registration set. Without the wait, `getFirstErrorElement`
+ * returns `null` and the focus policy silently no-ops.
+ */
+describe('useWizard — navigateToFirstError lands focus through v-if step swap', () => {
+  const apps: App[] = []
+  let focusSpy: ReturnType<typeof vi.spyOn>
+  let offsetParentDescriptor: PropertyDescriptor | undefined
+
+  beforeEach(() => {
+    focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+    offsetParentDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent')
+    // jsdom returns `null` for `offsetParent`; `getFirstErrorElement`
+    // uses that to filter `display:none` ancestors. Force a truthy
+    // value for connected elements so the visibility check passes.
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.isConnected ? document.body : null
+      },
+    })
+  })
+
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+    focusSpy.mockRestore()
+    if (offsetParentDescriptor !== undefined) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetParent', offsetParentDescriptor)
+    } else {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>)['offsetParent']
+    }
+  })
+
+  it("focuses the failed step's first error field after the step mounts", async () => {
+    const handle: {
+      wizard?: ReturnType<typeof useWizard>
+    } = {}
+
+    const App = defineComponent({
+      setup() {
+        const review = useForm({
+          schema: reviewSchema,
+          key: 'vif-review',
+          defaultValues: { tos: true as const },
+        })
+        const profile = useForm({
+          schema: profileSchema,
+          // `name` is required; blank default trips validation when the
+          // wizard walks profile during handleSubmit.
+          key: 'vif-profile',
+          defaultValues: { city: 'Cambridge' },
+          next: review,
+        })
+        const account = useForm({
+          schema: accountSchema,
+          key: 'vif-account',
+          defaultValues: { email: 'a@b.c', password: 'passw0rd' },
+          next: profile,
+        })
+        const wizard = useWizard(account)
+        handle.wizard = wizard
+
+        return () => {
+          if (wizard.current === 'vif-account') {
+            const reg = account.register('email')
+            return h('form', [
+              h('input', {
+                ref: (el: unknown) => {
+                  if (el instanceof HTMLInputElement) reg.registerElement(el)
+                },
+                'data-field': 'account-email',
+              }),
+            ])
+          }
+          if (wizard.current === 'vif-profile') {
+            const reg = profile.register('name')
+            return h('form', [
+              h('input', {
+                ref: (el: unknown) => {
+                  if (el instanceof HTMLInputElement) reg.registerElement(el)
+                },
+                'data-field': 'profile-name',
+              }),
+            ])
+          }
+          return h('div')
+        }
+      },
+    })
+
+    const app = createApp(App).use(createAttaform())
+    app.config.warnHandler = () => {}
+    app.config.errorHandler = () => {}
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    apps.push(app)
+
+    // Pre-condition: only the account input is in the DOM — the
+    // profile step's form isn't rendered until current flips.
+    expect(document.querySelector('[data-field="account-email"]')).not.toBeNull()
+    expect(document.querySelector('[data-field="profile-name"]')).toBeNull()
+
+    await handle.wizard!.handleSubmit(vi.fn(), vi.fn())()
+
+    // The wizard navigated past account (valid) to profile (invalid).
+    expect(handle.wizard!.current).toBe('vif-profile')
+    const target = document.querySelector('[data-field="profile-name"]') as HTMLInputElement | null
+    expect(target).not.toBeNull()
+    // `.focus()` was called on the now-mounted profile input — proves
+    // the nextTick wait gave the v-if'd form time to mount and register
+    // its inputs before the policy ran.
+    expect(focusSpy).toHaveBeenCalled()
+    const focused = focusSpy.mock.instances as HTMLElement[]
+    expect(focused[focused.length - 1]).toBe(target)
   })
 })

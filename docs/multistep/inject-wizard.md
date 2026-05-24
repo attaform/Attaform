@@ -8,10 +8,10 @@ metaRows:
     value: 'injectWizard(input?: string | { key? }) => UseWizardReturnType | null'
     kind: code
   - label: Ambient mode
-    value: useWizard(entry) without key
+    value: useWizard(entryForm) without key
     kind: code
   - label: Explicit mode
-    value: useWizard(entry, { key })
+    value: useWizard(entryForm, { key })
     kind: code
 ---
 
@@ -100,7 +100,7 @@ Sticky finish buttons, sidebar status widgets, or any component in a different b
 </template>
 ```
 
-Pass the same `key` the parent passed to `useWizard(entry, { key: 'signup-wizard' })`. The handle returned is identity-equal to the parent's, so `wizard.handleSubmit` wired from a floating button runs the same submission pipeline the parent would.
+Pass the same `key` the parent passed to `useWizard(entryForm, { key: 'signup-wizard' })`. The handle returned is identity-equal to the parent's, so `wizard.handleSubmit` wired from a floating button runs the same submission pipeline the parent would.
 
 `injectWizard` accepts an object form too: `injectWizard({ key: 'signup-wizard' })`. The positional and object forms are equivalent; pick whichever spreads better into the surrounding setup.
 
@@ -108,8 +108,8 @@ Pass the same `key` the parent passed to `useWizard(entry, { key: 'signup-wizard
 
 The two resolution modes are cleanly split:
 
-- **Anonymous (no `key`) → ambient access.** `useWizard(entry)` fills the parent's ambient slot. Any descendant's `injectWizard()` (no key) resolves to it; closest ancestor wins when nested.
-- **Keyed (`key: 'x'`) → ambient AND explicit access.** `useWizard(entry, { key: 'x' })` fills the ambient slot AND registers the wizard under `'x'`. Descendants reach it via `injectWizard()` (closest ancestor) OR `injectWizard('x')` (registry lookup, works from anywhere in the app).
+- **Anonymous (no `key`) → ambient access.** `useWizard(entryForm)` fills the parent's ambient slot. Any descendant's `injectWizard()` (no key) resolves to it; closest ancestor wins when nested.
+- **Keyed (`key: 'x'`) → ambient AND explicit access.** `useWizard(entryForm, { key: 'x' })` fills the ambient slot AND registers the wizard under `'x'`. Descendants reach it via `injectWizard()` (closest ancestor) OR `injectWizard('x')` (registry lookup, works from anywhere in the app).
 
 Skip `key` for single-component wizards (an in-page checkout, a modal flow). Supply one when you want cross-tree lookup, a stable identifier for DevTools, or a sticky finish button rendered far from the step container.
 
@@ -152,7 +152,7 @@ Hot-module reload reuses the existing handle when the parent SFC re-mounts (defe
 
 ## Duplicate keys
 
-Two calls to `useWizard(entry, { key: 'signup-wizard' })` in the same app: the first wins, the second is silently dropped, and a dev-warn names the dropped registration. This mirrors `useForm`'s shared-key behavior and keeps the registry deterministic during HMR transitions or accidental double-setup.
+Two calls to `useWizard(entryForm, { key: 'signup-wizard' })` in the same app: the first wins, the second is silently dropped, and a dev-warn names the dropped registration. This mirrors `useForm`'s shared-key behavior and keeps the registry deterministic during HMR transitions or accidental double-setup.
 
 ## SSR isolation
 

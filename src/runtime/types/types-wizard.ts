@@ -2,8 +2,8 @@
  * Public types for `useWizard` — the multistep-form orchestrator.
  *
  * Forms self-describe their downstream neighbor(s) via `useForm({ next })`,
- * and `useWizard(entry)` walks the declared graph from the entry form to
- * discover every reachable step. Navigation, status aggregation, and
+ * and `useWizard(entryForm)` walks the declared graph from the entry form
+ * to discover every reachable step. Navigation, status aggregation, and
  * activation lifecycle layer on top of that graph view.
  *
  * The wizard surface is loosely keyed (`Record<string, FormStatus>` /
@@ -24,9 +24,9 @@ import type { FormKey } from './types-api'
  * at runtime and exposes the original form objects untouched.
  *
  * `next` is the graph-position declaration (see `useForm({ next })`).
- * Forms self-describe their successor(s), and `useWizard(entry)` walks
- * the graph from there. The field is optional: a form without `next`
- * is a terminal.
+ * Forms self-describe their successor(s), and `useWizard(entryForm)`
+ * walks the graph from there. The field is optional: a form without
+ * `next` is a terminal.
  *
  * `UseFormReturnType<...>` satisfies this shape because its `key`
  * field is `readonly key: K extends FormKey` and its `next` field is
@@ -234,10 +234,10 @@ export type WizardHistoryConfig = {
 }
 
 /**
- * Options for `useWizard(entry, options)`. Loosely keyed because the
- * wizard's reachable graph is discovered at construction from the
- * entry's `next` declarations; the option types are framework-facing
- * and cannot pre-commit to the literal-union of reachable keys.
+ * Options for `useWizard(entryForm, options)`. Loosely keyed because
+ * the wizard's reachable graph is discovered at construction from the
+ * entry form's `next` declarations; the option types are framework-
+ * facing and cannot pre-commit to the literal-union of reachable keys.
  */
 export type WizardOptions = {
   /**
@@ -310,7 +310,8 @@ export type WizardOptions = {
    * server-side and non-active steps stay deferred.
    *
    * The getter runs on both server and client; returning `undefined`
-   * falls through to URL `?step=<key>` and finally to `entry.key`.
+   * falls through to URL `?step=<key>` and finally to the entry form's
+   * `key`.
    */
   readonly getServerActiveStep?: () => string | undefined
   /**
@@ -348,7 +349,7 @@ export type WizardTreeNode = {
  * `diagnose()` channel.
  *
  *  - `cycle` — a form's chain leads back to itself. Hard error at
- *    `useWizard(entry)` construction (thrown, not warned).
+ *    `useWizard(entryForm)` construction (thrown, not warned).
  *  - `missing-terminal` — every path from entry should reach a terminal
  *    (`next` omitted, or empty branching). In a finite acyclic graph
  *    this is equivalent to `cycle`; surfaced for completeness.
@@ -381,12 +382,12 @@ export type WizardWarning = {
  * runtime tracker, so consumers can render sitemaps, breadcrumb trails,
  * diagnostic panels, and step-counter UIs from one cohesive namespace.
  *
- *  - `entry`     — the form passed to `useWizard(entry)`. Identity-equal
- *                  to that argument; immutable for the wizard's
+ *  - `entryForm` — the form passed to `useWizard(entryForm)`. Identity-
+ *                  equal to that argument; immutable for the wizard's
  *                  lifetime.
- *  - `tree`      — recursive `WizardTreeNode` view rooted at `entry`.
- *                  Suitable for sitemap rendering via a recursive Vue
- *                  component; convergent paths duplicate by design.
+ *  - `tree`      — recursive `WizardTreeNode` view rooted at the entry
+ *                  form. Suitable for sitemap rendering via a recursive
+ *                  Vue component; convergent paths duplicate by design.
  *  - `allForms`  — BFS-ordered, deduped list of reachable forms. The
  *                  same list exposed at `wizard.allForms`; mirrored
  *                  here so `wizard.flow` is the single hand-off when a
@@ -403,7 +404,7 @@ export type WizardWarning = {
  *                  the result into a dev-only warning panel.
  */
 export type WizardFlow = {
-  readonly entry: AnyForm
+  readonly entryForm: AnyForm
   readonly tree: WizardTreeNode
   readonly allForms: readonly AnyForm[]
   readonly visited: readonly FormKey[]
@@ -411,12 +412,11 @@ export type WizardFlow = {
 }
 
 /**
- * Return shape of `useWizard(entry, options)`. Every reactive read is
- * a plain getter (no `.value`) — `wizard.current`, `wizard.progress`,
+ * Return shape of `useWizard(entryForm, options)`. Every reactive read
+ * is a plain getter (no `.value`) — `wizard.current`, `wizard.progress`,
  * `wizard.allErrors` track inside `computed` / template effects
- * directly. This matches the rest of the library (form.values,
- * form.meta, etc.) and keeps the consumer surface free of `.value`
- * plumbing.
+ * directly. This matches the rest of Attaform (form.values, form.meta,
+ * etc.) and keeps the consumer surface free of `.value` plumbing.
  *
  *   - `current`     — the active step's key (or `undefined` for a
  *                     degenerate wizard).
@@ -425,8 +425,8 @@ export type WizardFlow = {
  *                     `undefined` when `current` is `undefined`.
  *   - `activeIndex` — 0-based BFS-ordered index of the active step;
  *                     `-1` when `current` is `undefined`.
- *   - `entry`       — the entry form, identity-equal to the argument
- *                     passed to `useWizard(entry)`.
+ *   - `entryForm`   — the entry form, identity-equal to the argument
+ *                     passed to `useWizard(entryForm)`.
  *   - `allForms`    — BFS-ordered, deduped list of forms reachable
  *                     from the entry. Use this for sitemaps, step
  *                     counters, and "step N of M" displays.
@@ -478,12 +478,12 @@ export type WizardFlow = {
  *                     `form.reset()` on every reachable form. Returns
  *                     the wizard to its construction state.
  *   - `flow`        — introspection namespace bundling the static graph
- *                     (`entry`, `tree`, `allForms`), runtime navigation
- *                     history (`visited`), and the diagnostic warnings
- *                     channel (`diagnose()`). The same data backs the
- *                     top-level `entry` / `allForms` aliases — the
- *                     namespace is the structured hand-off for sitemap
- *                     and diagnostic UIs.
+ *                     (`entryForm`, `tree`, `allForms`), runtime
+ *                     navigation history (`visited`), and the diagnostic
+ *                     warnings channel (`diagnose()`). The same data
+ *                     backs the top-level `entryForm` / `allForms`
+ *                     aliases — the namespace is the structured hand-off
+ *                     for sitemap and diagnostic UIs.
  */
 export type UseWizardReturnType = {
   /**
@@ -495,7 +495,7 @@ export type UseWizardReturnType = {
   readonly current: string | undefined
   readonly activeForm: AnyForm | undefined
   readonly activeIndex: number
-  readonly entry: AnyForm
+  readonly entryForm: AnyForm
   readonly allForms: readonly AnyForm[]
   readonly count: number
   readonly statuses: WizardStatusesProxy<Record<string, FormStatus>>

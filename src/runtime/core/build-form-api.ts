@@ -458,6 +458,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const submitted = computed<boolean>(() => state.submitted.value)
   const submitError = computed<unknown>(() => state.submitError.value)
 
+  // --- Wizard departure lifecycle ---
+  // `useWizard` bumps `state.departAttempts` whenever navigation
+  // (`next` / `back` / `goTo`) actually departs this form. The
+  // computed mirror surfaces on `form.meta.departAttempts` for
+  // templates and the depart arm of `defaultShouldShowErrors`.
+  const departAttempts = computed<number>(() => state.departAttempts.value)
+
   // --- Validation lifecycle ---
   const validating = computed<boolean>(() => state.activeValidations.value > 0)
   // `valid` is "we've validated at least once AND no errors AND not
@@ -555,6 +562,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       ...rootBase,
       submitting: state.submitting.value,
       submissionAttempts: state.submissionAttempts.value,
+      departAttempts: state.departAttempts.value,
       submitError: state.submitError.value,
       errorCount: rootBase.errors.length,
       submitted: state.submitted.value,
@@ -622,6 +630,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // Lifecycle (form-level only — not on FieldState).
       submitting,
       submissionAttempts,
+      departAttempts,
       submitError,
       // Scalar mirror over the array — meta is a single sticky surface
       // for both templates and `useWizard`'s `FormStatus`, so the

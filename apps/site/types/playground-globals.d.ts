@@ -62,8 +62,14 @@ declare global {
     /**
      * Secondary text below the title. Same JSON-formatting rules as
      * the message: strings render as-is, objects and arrays pretty-print.
+     * Wider than the message type so form-values aggregates (whose
+     * leaves recurse through a nominally distinct alias like
+     * `WizardValue`) pass through without coercion. TypeScript does not
+     * recurse across named-type boundaries when matching unions, so the
+     * explicit Record / Array branches admit structurally-compatible
+     * payloads even when their leaves are not literally `ToastBody`.
      */
-    description?: ToastBody
+    description?: ToastBody | Readonly<Record<string, unknown>> | readonly unknown[]
   }
 
   /**

@@ -3178,6 +3178,28 @@ export type FormMeta<F = unknown> = FieldState<F> & {
   readonly submissionAttempts: number
 
   /**
+   * How many times wizard navigation (`wizard.next`, `wizard.back`,
+   * `wizard.goTo`) has actually departed this form. Bumped on real
+   * departures only: no-ops like `back()` from the first step, a
+   * same-key `goTo`, or a `next()` blocked by failed activation leave
+   * the counter at its prior value.
+   *
+   * Drives the depart arm of `defaultShouldShowErrors`: once wizard
+   * navigation has left this form, any errors on the form reveal
+   * regardless of touched / blurred state. Useful for the "the user
+   * tried to advance past this step, so show what blocked them" UX.
+   *
+   * Distinct from `submissionAttempts`, which counts `handleSubmit`
+   * passes only — wizard departures and form submissions are tracked
+   * separately so consumers can introspect each cleanly. Distinct
+   * from `form.validate()`, which is a read-only inspection primitive
+   * that never bumps any counter.
+   *
+   * Cleared by `form.reset()`.
+   */
+  readonly departAttempts: number
+
+  /**
    * The error thrown or rejected by the most recent submit callback
    * (or its `onError` handler). Cleared to `null` at the start of
    * each new submission attempt; stays `null` on success.

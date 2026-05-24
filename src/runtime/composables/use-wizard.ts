@@ -2,6 +2,9 @@ import {
   computed,
   getCurrentInstance,
   getCurrentScope,
+  inject,
+  nextTick,
+  onMounted,
   onScopeDispose,
   provide,
   ref,
@@ -10,7 +13,11 @@ import {
 } from 'vue'
 import { buildWizardGraph, WizardCycleError } from '../core/wizard-graph'
 import { __DEV__ } from '../core/dev'
-import { kAttaformAncestorWizard, useRegistry } from '../core/registry'
+import {
+  kAttaformAncestorWizard,
+  kAttaformWizardActiveStepResolver,
+  useRegistry,
+} from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
@@ -77,7 +84,7 @@ type SubmissionSourceForm = StatusSourceForm & {
 
 /**
  * Multistep-form orchestrator. Walks the static graph declared by
- * `useForm({ next })` declarations starting from `entry`, composing
+ * `useForm({ next })` declarations starting from `entryForm`, composing
  * the reachable forms into a wizard with navigation, status aggregation,
  * browser history, and lazy activation (so a step's async
  * `defaultValues` factory only fires once the step becomes current).
@@ -90,16 +97,16 @@ type SubmissionSourceForm = StatusSourceForm & {
  *    upstream paths shows up once in `allForms`.
  *  - Cycles throw `WizardCycleError` at construction; consumers who want
  *    intentional revisits use `wizard.goTo(key)`.
- *  - Single-step wizards (entry has no `next`) are valid; a one-time
- *    dev-warn notes the navigation surface is degenerate.
+ *  - Single-step wizards (the entry form has no `next`) are valid; a
+ *    one-time dev-warn notes the navigation surface is degenerate.
  *
  * Each reachable form gets a ref-count via `registry.trackConsumer(key)`.
  * This pins the FormStore for the wizard's lifetime — so a step's state
  * survives even when its component is unmounted between visits
  * (v-if pattern). The ref is released on `onScopeDispose`.
  */
-export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizardReturnType {
-  const graph = buildWizardGraph(entry)
+export function useWizard(entryForm: AnyForm, options: WizardOptions = {}): UseWizardReturnType {
+  const graph = buildWizardGraph(entryForm)
   const forms = graph.allForms
   const byKey = graph.byKey
   const formKeys = forms.map((form) => form.key)
@@ -124,22 +131,71 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   const wizardHistory = historyConfig.enabled
     ? createWizardHistory(historyConfig.param)
     : NOOP_WIZARD_HISTORY
-  // Resolve initial step. Priority: `getServerActiveStep()` (SSR
-  // source of truth, returned identically on client) → URL
-  // `?step=<key>` (reload preservation when no getter is wired) →
-  // `entry.key` fallback. Unknown keys at any level fall through so a
-  // stale link can't crash construction.
-  const fromGetter = options.getServerActiveStep?.()
-  const fromUrl = wizardHistory.read()
+  // Resolve initial step. Priority for the first-render key:
+  //   1. `options.getServerActiveStep()` — the explicit consumer hook,
+  //      called on both server and client so both sides compute the
+  //      same key.
+  //   2. The injected `kAttaformWizardActiveStepResolver` — installed
+  //      by the `attaform/nuxt` runtime plugin from `useRoute()`, so
+  //      Nuxt apps get the framework-agnostic equivalent for free.
+  //   3. The entry form's `key` fallback.
+  //
+  // The URL is deliberately NOT consulted here. `wizardHistory.read()`
+  // returns a value on the client and `undefined` on the server (the
+  // no-op SSR handle), and bridging that gap is the load-bearing source
+  // of the deep-link hydration mismatch cascade — server renders entry
+  // while client renders the URL's step, and Vue's hydration walks a
+  // wall of warnings. Instead, the URL is read once on mount (below)
+  // and reconciled via a direct ref update when it names a step the
+  // initial resolution didn't pick. Consumers who DO supply an
+  // explicit getter (or use `attaform/nuxt`'s auto-bridge) get
+  // zero-flicker server rendering for deep links; framework-agnostic
+  // consumers see a brief entry frame before the post-mount restore.
+  const explicitGetter = options.getServerActiveStep
+  const injectedResolver = inject(kAttaformWizardActiveStepResolver, null)
+  const fromGetter =
+    explicitGetter !== undefined
+      ? explicitGetter()
+      : injectedResolver !== null
+        ? injectedResolver(historyConfig.param)
+        : undefined
   let initialKey: string
   if (fromGetter !== undefined && seenKeys.has(fromGetter)) {
     initialKey = fromGetter
-  } else if (fromUrl !== undefined && seenKeys.has(fromUrl)) {
-    initialKey = fromUrl
   } else {
-    initialKey = entry.key
+    initialKey = entryForm.key
   }
   const current = ref<string>(initialKey)
+
+  // Post-hydration URL restore. Only runs on the client (`onMounted`
+  // is a no-op during SSR). When the deep-link URL names a known step
+  // that the initial resolution didn't already pick, the wizard reaches
+  // that step via a direct ref update — no `setCurrent` call, because
+  // the entry frame was a hydration-time wash rather than a user
+  // navigation: `visited` gets clamped to the restored step,
+  // `onStatusChange` doesn't fire a phantom entry→restore transition,
+  // and the URL itself stays as the deep-link wrote it (no history
+  // push or replace). The form for the restored step is activated to
+  // match what `setCurrent`'s navigation path would do.
+  const urlValueAtSetup = wizardHistory.read()
+  const willRestoreFromUrl =
+    fromGetter === undefined &&
+    urlValueAtSetup !== undefined &&
+    seenKeys.has(urlValueAtSetup) &&
+    urlValueAtSetup !== initialKey
+  if (willRestoreFromUrl) {
+    const restoredKey = urlValueAtSetup
+    onMounted(() => {
+      current.value = restoredKey
+      visited.value = [restoredKey]
+      const restoredForm = byKey.get(restoredKey) as unknown as
+        | { activate?: () => Promise<void> }
+        | undefined
+      if (restoredForm !== undefined && typeof restoredForm.activate === 'function') {
+        void restoredForm.activate()
+      }
+    })
+  }
 
   // Runtime navigation audit log. Seeded with the initial step so the
   // trail always starts somewhere, then appended in `setCurrent` on every
@@ -151,8 +207,15 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   const visited = ref<string[]>([initialKey])
 
   // Replace the URL so it always reflects the active step on mount —
-  // idempotent when the URL already named the correct key.
-  wizardHistory.replace(initialKey)
+  // idempotent when the URL already named the correct key. Skipped
+  // when the post-hydration URL restore is scheduled: overwriting the
+  // deep-link with `initialKey` now would defeat the restore (the
+  // mount-time read would see the entry key we just wrote instead of
+  // the user's deep link), so we leave the URL as the deep link wrote
+  // it and let the restore reconcile internal state in place.
+  if (!willRestoreFromUrl) {
+    wizardHistory.replace(initialKey)
+  }
 
   const registry = useRegistry()
 
@@ -503,6 +566,15 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
       )
       return
     }
+    // Bump departAttempts before validation runs so the depart arm of
+    // `defaultShouldShowErrors` is already true by the time the
+    // invalid-submit policy focuses the first error field. Bumping
+    // here also covers the successful-next path: a clean departure
+    // still records an attempt so revisits show prior errors if any.
+    const activeStore = registry.forms.get(activeKey)
+    if (activeStore !== undefined) {
+      activeStore.departAttempts.value += 1
+    }
     const result = await activeForm.process()
     if (result.success !== true) {
       // Invalid form blocks navigation. Fire the form's own
@@ -533,6 +605,13 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
       )
       return
     }
+    // Record the departure before navigating. A user who deep-links to
+    // a mid-flow step then presses Back has engaged with the current
+    // form via the wizard, so its errors should reveal on revisit.
+    const activeStore = registry.forms.get(current.value)
+    if (activeStore !== undefined) {
+      activeStore.departAttempts.value += 1
+    }
     setCurrent(formKeys[idx - 1] as string, navOptions?.replace === true ? 'replace' : 'push')
   }
 
@@ -546,6 +625,14 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
         `[attaform] useWizard.goTo("${key}"): unknown step key. Known keys: ${formKeys.map((k) => `"${k}"`).join(', ')}. Ignoring.`
       )
       return
+    }
+    // Record the departure only when the target differs from current;
+    // a same-key goTo is a no-op and should not move the counter.
+    if (key !== current.value) {
+      const activeStore = registry.forms.get(current.value)
+      if (activeStore !== undefined) {
+        activeStore.departAttempts.value += 1
+      }
     }
     setCurrent(key, navOptions?.replace === true ? 'replace' : 'push')
   }
@@ -642,7 +729,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
       submitting.value = true
       try {
         const cache = new Map<string, Processed>()
-        const walk = await walkSubgraph(entry, cache)
+        const walk = await walkSubgraph(entryForm, cache)
         // Aggregate errors and parsed values from the cache in BFS order
         // (matching `forms`) so the error list and value record are
         // stable regardless of branch interleaving.
@@ -698,6 +785,16 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
               // gated on `submitting` — that gate is for user-initiated
               // navigation, not the wizard's own failure routing.
               setCurrent(firstFailedKey, 'push')
+              // Wait for Vue to flush the render cycle so the failed
+              // step's form mounts before we focus. Consumers commonly
+              // template the wizard with `v-if="wizard.current === ..."`
+              // per step, so the failed form's inputs aren't in the DOM
+              // until after this tick; without the wait, the policy
+              // call would walk an empty registration set and silently
+              // no-op. One `nextTick` covers Vue's render-then-mount
+              // flush including the `v-register` directive's mounted
+              // hook, which is where field elements register.
+              await nextTick()
               const failedForm = byKey.get(firstFailedKey) as unknown as
                 | SubmissionSourceForm
                 | undefined
@@ -734,7 +831,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   const diagnose = (): readonly WizardWarning[] => graph.warnings
 
   const flow: WizardFlow = Object.freeze({
-    entry,
+    entryForm,
     tree: graph.tree,
     allForms: forms,
     get visited(): readonly string[] {
@@ -746,7 +843,7 @@ export function useWizard(entry: AnyForm, options: WizardOptions = {}): UseWizar
   const wizardKey = options.key
   const handle: UseWizardReturnType = {
     key: wizardKey,
-    entry,
+    entryForm,
     allForms: forms,
     count: forms.length,
     statuses,

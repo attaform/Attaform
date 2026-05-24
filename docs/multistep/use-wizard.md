@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Composable
   - label: Signature
-    value: 'useWizard(entry, options?)'
+    value: 'useWizard(entryForm, options?)'
     kind: code
   - label: Graph source
     value: 'useForm({ next })' per step
@@ -17,12 +17,12 @@ metaRows:
 
 # useWizard
 
-> Compose a graph of `useForm` calls into a reactive wizard. Each form declares its successor via `useForm({ next })`, and `useWizard(entry)` walks the graph from there to discover every reachable step, drive navigation, aggregate status, and validate the runtime path on submit.
+> Compose a graph of `useForm` calls into a reactive wizard. Each form declares its successor via `useForm({ next })`, and `useWizard(entryForm)` walks the graph from there to discover every reachable step, drive navigation, aggregate status, and validate the runtime path on submit.
 
 ::docs-meta-table
 ::
 
-Three small `useForm` calls (account, profile, review) feed into one `useWizard`. Each form names its successor with `next:`, so the wizard rebuilds the chain from a single entry. The progress bar reflects `wizard.progress`, the rail highlights `wizard.current`, and each step's form keeps its own schema and reactive surface. Tap **Next** / **Back** to walk the chain; the **Finish** button fires on the last step.
+Three small forms chain via `next:` declarations: `account` → `profile` → `review`. `useWizard(account)` walks the chain from the entry form and discovers every reachable step. The progress bar reflects `wizard.progress`, the rail highlights `wizard.current`, and each step keeps its own schema and reactive surface. Tap **Next** / **Back** to walk the chain; the **Finish** button fires on the last step.
 
 ::docs-demo{slug="use-wizard" label="Wizard Demo"}
 ::
@@ -92,7 +92,7 @@ type UseWizardReturnType = {
   readonly current: string | undefined
   readonly activeForm: AnyForm | undefined
   readonly activeIndex: number
-  readonly entry: AnyForm
+  readonly entryForm: AnyForm
   readonly allForms: readonly AnyForm[]
   readonly count: number
 
@@ -124,28 +124,28 @@ type UseWizardReturnType = {
 }
 ```
 
-| Member                   | What it is                                                                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `key`                    | The wizard's identifier for [`injectWizard`](/docs/multistep/inject-wizard). `undefined` when no `key` is passed in options.           |
-| `current`                | The active step's key (or `undefined` for a degenerate wizard). Reactive via a getter, so templates branch on it directly.             |
-| `activeForm`             | The active step's form handle, identity-equal to the matching entry in `allForms`. `undefined` when `current` is `undefined`.          |
-| `activeIndex`            | Zero-based index of the active step within `allForms` (BFS order). `-1` when `current` is `undefined`.                                 |
-| `entry`                  | The form passed to `useWizard(entry)`. Identity-equal to the argument; immutable for the wizard's lifetime.                            |
-| `allForms`               | BFS-ordered, deduped list of every form reachable from `entry`. Iterate it for a rail, sitemap, or "Step N of M" label.                |
-| `count`                  | `allForms.length`.                                                                                                                     |
-| `canAdvance`             | `true` when the active form has a non-empty `next` declaration. Graph-structural; reflects the static graph, not the validation state. |
-| `canGoBack`              | `true` when a prior step exists in BFS order (`activeIndex > 0`).                                                                      |
-| `complete`               | `true` once `wizard.handleSubmit`'s callback resolves without throwing. Flips back to `false` when any walked-path form becomes dirty. |
-| `submitting`             | `true` while a `wizard.handleSubmit` call is in flight (path walk + callback).                                                         |
-| `submissionAttempts`     | Count of `wizard.handleSubmit` invocations (success or failure).                                                                       |
-| `statuses`               | Drillable proxy of `FormStatus` per step (`valid`, `dirty`, `submitted`, `errorCount`).                                                |
-| `allValues`              | Drillable record of every step's `values` keyed by form key.                                                                           |
-| `allErrors`              | Cross-step `AggregateError[]` for a wizard-wide summary. Dormant (unactivated) steps contribute nothing.                               |
-| `progress`               | Fraction in `[0, 1]`. Count of valid forms divided by total, or the consumer's `progress` override.                                    |
-| `next` / `back` / `goTo` | Navigation. `next()` is async because it validates the current step before advancing.                                                  |
-| `handleSubmit`           | Returns a submit handler that walks the runtime path, validates every form along the way, then calls the consumer's `onSubmit`.        |
-| `reset`                  | Zeros wizard lifecycle and calls `form.reset()` on every reachable form.                                                               |
-| `flow`                   | Introspection namespace: `entry`, `tree`, `allForms`, `visited`, `diagnose()`. The structured hand-off for sitemaps and diagnostics.   |
+| Member                   | What it is                                                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                    | The wizard's identifier for [`injectWizard`](/docs/multistep/inject-wizard). `undefined` when no `key` is passed in options.             |
+| `current`                | The active step's key (or `undefined` for a degenerate wizard). Reactive via a getter, so templates branch on it directly.               |
+| `activeForm`             | The active step's form handle, identity-equal to the matching entry in `allForms`. `undefined` when `current` is `undefined`.            |
+| `activeIndex`            | Zero-based index of the active step within `allForms` (BFS order). `-1` when `current` is `undefined`.                                   |
+| `entryForm`              | The form passed to `useWizard(entryForm)`. Identity-equal to the argument; immutable for the wizard's lifetime.                          |
+| `allForms`               | BFS-ordered, deduped list of every form reachable from the entry form. Iterate it for a rail, sitemap, or "Step N of M" label.           |
+| `count`                  | `allForms.length`.                                                                                                                       |
+| `canAdvance`             | `true` when the active form has a non-empty `next` declaration. Graph-structural; reflects the static graph, not the validation state.   |
+| `canGoBack`              | `true` when a prior step exists in BFS order (`activeIndex > 0`).                                                                        |
+| `complete`               | `true` once `wizard.handleSubmit`'s callback resolves without throwing. Flips back to `false` when any walked-path form becomes dirty.   |
+| `submitting`             | `true` while a `wizard.handleSubmit` call is in flight (path walk + callback).                                                           |
+| `submissionAttempts`     | Count of `wizard.handleSubmit` invocations (success or failure).                                                                         |
+| `statuses`               | Drillable proxy of `FormStatus` per step (`valid`, `dirty`, `submitted`, `errorCount`).                                                  |
+| `allValues`              | Drillable record of every step's `values` keyed by form key.                                                                             |
+| `allErrors`              | Cross-step `AggregateError[]` for a wizard-wide summary. Dormant (unactivated) steps contribute nothing.                                 |
+| `progress`               | Fraction in `[0, 1]`. Count of valid forms divided by total, or the consumer's `progress` override.                                      |
+| `next` / `back` / `goTo` | Navigation. `next()` is async because it validates the current step before advancing.                                                    |
+| `handleSubmit`           | Returns a submit handler that walks the runtime path, validates every form along the way, then calls the consumer's `onSubmit`.          |
+| `reset`                  | Zeros wizard lifecycle and calls `form.reset()` on every reachable form.                                                                 |
+| `flow`                   | Introspection namespace: `entryForm`, `tree`, `allForms`, `visited`, `diagnose()`. The structured hand-off for sitemaps and diagnostics. |
 
 Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` stay reactive inside templates and `computed` blocks directly, matching the rest of Attaform (`form.values`, `form.meta`, etc.).
 
@@ -185,7 +185,7 @@ The wizard never throws on navigation. Wired into someone's checkout, Attaform b
 
 ## Submission with `handleSubmit`
 
-`wizard.handleSubmit(onSubmit, onError?)` returns a submit handler. On invocation it walks the runtime path from `entry`, validates each form along the way, then calls `onSubmit` with the aggregated context:
+`wizard.handleSubmit(onSubmit, onError?)` returns a submit handler. On invocation it walks the runtime path from the entry form, validates each form along the way, then calls `onSubmit` with the aggregated context:
 
 ```vue
 <script setup lang="ts">
@@ -231,17 +231,17 @@ type WizardSubmitContext = {
 
 - `ctx.values` is the loose-keyed aggregate of every walked form's parsed output. Use it for "POST everything to the backend" wiring.
 - `ctx.get(formRef)` returns the form's parsed output, typed by its schema. Works across the wizard's reachable set and also with forms reached through [`injectForm`](/docs/cross-cutting-state/inject-form), since the form ref carries its own schema info.
-- `ctx.path` is the ordered runtime path from `entry` to terminal, with branching `pick(parsed)` callbacks resolved against the current parsed values. Iterate it for per-form audit logs or sequential POSTs.
+- `ctx.path` is the ordered runtime path from the entry form to terminal, with branching `pick(parsed)` callbacks resolved against the current parsed values. Iterate it for per-form audit logs or sequential POSTs.
 
 ### What `handleSubmit` actually does
 
 1. Sets `wizard.submitting = true`. Per-form `meta.submitting` does NOT flip during the walk; subscribe to `wizard.submitting` for wizard-scoped submitting state.
-2. Walks the path starting from `entry`. For each form: activates (await async `defaultValues`), then validates. Activation failure surfaces as a synthetic `ValidationError` with `code: 'atta:activation-failed'` and the walk continues so every problem reaches the consumer.
+2. Walks the path starting from the entry form. For each form: activates (await async `defaultValues`), then validates. Activation failure surfaces as a synthetic `ValidationError` with `code: 'atta:activation-failed'` and the walk continues so every problem reaches the consumer.
 3. For a single-target `next`, the walk is sequential: errors aggregate and the walk continues to terminal even when an upstream form is invalid.
 4. For a branching `next` with the current form **valid**, `pick(parsed)` chooses one branch and the walk recurses on it.
 5. For a branching `next` with the current form **invalid**, every declared `forms` subgraph is walked in parallel (`Promise.all`), so prerequisites for every reachable path surface at once without serial latency.
 6. Builds `ctx = { values, get, path }` from the runtime path and either calls `onSubmit(ctx)` (all forms valid) or `onError(errors)` (any invalid). On success, `wizard.complete = true`.
-7. On failure with `navigateToFirstError: true` (the default), the wizard calls `goTo(firstFailedKey)` then `firstFailedForm.applyInvalidSubmitPolicy()`. The DOM swap lands before the focus call.
+7. On failure with `navigateToFirstError: true` (the default), the wizard calls `goTo(firstFailedKey)`, awaits one `nextTick` so the failed step's form mounts (the common `v-if="wizard.current === ..."` template pattern means its inputs only exist after the render flush), then calls `firstFailedForm.applyInvalidSubmitPolicy()`. The focus or scroll lands on the first error field.
 8. Always: `wizard.submissionAttempts` increments and `wizard.submitting` returns to `false`.
 
 `wizard.complete` flips back to `false` the first time any walked-path form's `meta.dirty` flips `true`. Editing after a successful submit reads as "ready to submit again."
@@ -283,9 +283,9 @@ Steps that have not been activated contribute nothing to `allErrors`. That keeps
 
 ## Static analysis at construction
 
-`useWizard(entry)` walks the reachable graph BFS-first and surfaces structural anomalies up front:
+`useWizard(entryForm)` walks the reachable graph BFS-first and surfaces structural anomalies up front:
 
-- **Cycle.** A form whose chain leads back to itself throws at `useWizard(entry)` construction. Consumers who want intentional re-entry use `wizard.goTo()` rather than declaring a cycle.
+- **Cycle.** A form whose chain leads back to itself throws at `useWizard(entryForm)` construction. Consumers who want intentional re-entry use `wizard.goTo()` rather than declaring a cycle.
 - **Missing terminal.** Every path from entry should reach a terminal (no `next`, or branching with an empty `forms` array). Hard error if no terminal is reachable.
 - **Unreachable form.** A form constructed in scope that no chain from entry reaches. Dev-warn.
 - **Empty `forms` in branching `next`.** Dev-warn; treated as a terminal.
@@ -320,7 +320,7 @@ Conditions that would otherwise crash the surrounding app dev-warn and degrade:
 - **A form with `key: ''`.** Filtered out of the participating set; dev-warn names the dropped count.
 - **Duplicate keys in the reachable graph.** First occurrence wins; dev-warn lists the dropped keys.
 - **`defaultStatuses` with an unknown key.** The unknown entry is ignored; the known entries still apply.
-- **`getServerActiveStep` returning a key not in the reachable set.** Dev-warn; the wizard falls back to `entry.key`.
+- **`getServerActiveStep` returning a key not in the reachable set.** Dev-warn; the wizard falls back to the entry form's `key`.
 
 A wizard wired into someone's signup or checkout never crashes the surrounding app for shapes that are clearly a mistake.
 

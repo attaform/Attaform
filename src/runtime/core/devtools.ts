@@ -248,6 +248,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
     payload.state['Aggregates'] = [
       { key: 'submitting', value: state.submitting.value },
       { key: 'submissionAttempts', value: state.submissionAttempts.value },
+      { key: 'departAttempts', value: state.departAttempts.value },
       { key: 'submitError', value: state.submitError.value },
       { key: 'activeValidations', value: state.activeValidations.value },
     ]

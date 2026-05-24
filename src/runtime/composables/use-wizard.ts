@@ -8,7 +8,6 @@ import {
   provide,
   ref,
   watch,
-  watchEffect,
   type ComputedRef,
 } from 'vue'
 import { __DEV__ } from '../core/dev'
@@ -637,28 +636,32 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   // --- Reactive restore / persist watchers -----------------------------
   //
-  // Loop break: diff against the live `activeKey` before applying a
-  // restore, and diff against `lastPersisted` before persisting. Each
-  // side only acts when the value actually moved, so the watchEffect
-  // → watcher chain settles in one round.
+  // Loop break: the restore side watches what the `restore` lambda
+  // returns (the lambda's tracked reads decide the dep set), and only
+  // applies when that value moves AND differs from the active step.
+  // The persist side diffs against `lastPersisted`. We deliberately
+  // do not read `activeKey` inside the restore watch's getter — that
+  // would re-fire the restore on every internal navigation and revert
+  // it before the persist write reaches `urlMirror` on its own pass.
   let lastPersisted: string | undefined = initialUrlValue
   if (restoreCallback !== undefined) {
-    watchEffect(() => {
-      const state = restoreCallback()
-      const step = state?.step
-      if (step === undefined) return
-      if (!isCompiledKey(step)) {
-        if (__DEV__) {
-          console.warn(
-            `[attaform] useWizard: restore() yielded step "${step}" which is not in the compiled step list. Ignoring.`
-          )
+    watch(
+      () => restoreCallback()?.step,
+      (step) => {
+        if (step === undefined) return
+        if (!isCompiledKey(step)) {
+          if (__DEV__) {
+            console.warn(
+              `[attaform] useWizard: restore() yielded step "${step}" which is not in the compiled step list. Ignoring.`
+            )
+          }
+          return
         }
-        return
+        if (step === activeKey.value) return
+        activeKey.value = step
+        if (!visited.value.includes(step)) visited.value.push(step)
       }
-      if (step === activeKey.value) return
-      activeKey.value = step
-      if (!visited.value.includes(step)) visited.value.push(step)
-    })
+    )
   }
   if (persistCallback !== undefined) {
     watch(
@@ -667,6 +670,11 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
         if (next === lastPersisted) return
         lastPersisted = next
         persistCallback({ step: next })
+        // Keep the URL mirror in sync so the default restore lambda
+        // sees the persisted value on its next read. The restore watch
+        // diffs the new mirror value against `activeKey` and bails out
+        // when they agree, closing the loop in one round.
+        urlMirror.value = next
       }
     )
     // Replace the URL once at construction so a fresh load reflects the
@@ -675,6 +683,7 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     if (initialKey !== initialUrlValue && initialUrlValue === undefined) {
       lastPersisted = initialKey
       persistCallback({ step: initialKey })
+      urlMirror.value = initialKey
     }
   }
 

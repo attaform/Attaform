@@ -203,7 +203,19 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
   }
 
   function containerProxyAt(segments: readonly Segment[]): SurfaceProxy {
-    const cacheKey = JSON.stringify(segments)
+    // Shape goes into the cache key so a discriminated-union variant
+    // switch that swaps the live shape at this path produces a
+    // freshly-targeted proxy on the next read. Without this, the
+    // first observation pinned the target type forever and consumers
+    // who fresh-read `form.fields.X` after the switch got back a
+    // stale shape-claim from the cache (`Array.isArray` returning
+    // true when the path no longer holds an array, etc.). Consumers
+    // who hold a proxy reference across the switch still see the
+    // stale shape on the held reference — the proxy target is
+    // immutable — but template reads (which always re-fetch through
+    // `form.fields.<path>`) snap to the right shape.
+    const isArrayLike = opts.isArrayContainer?.(segments) === true
+    const cacheKey = `${JSON.stringify(segments)}+${isArrayLike ? 'A' : 'O'}`
     const existing = containerCache.get(cacheKey)
     if (existing !== undefined) return existing
 
@@ -240,7 +252,6 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
     // The trade is per-path: array containers lose the callable form
     // (rarely used at array paths, where `form.fields('items')` is the
     // alternative spelling) in exchange for natural `v-for` iteration.
-    const isArrayLike = opts.isArrayContainer?.(segments) === true
     const target = isArrayLike
       ? ([] as unknown as SurfaceProxy)
       : ((() => {}) as unknown as SurfaceProxy)

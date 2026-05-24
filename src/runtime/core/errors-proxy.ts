@@ -156,19 +156,19 @@ function liveKeysAtPath<F extends GenericForm>(
 }
 
 /**
- * Whether the path resolves to an array container. Lets the surface
- * proxy mount an Array target at that path so `Array.isArray(proxy)`
- * reports true and Vue's `renderList` takes the indexed-array
- * branch. Schema-first; falls back to a live-value check when the
- * adapter doesn't model array shapes.
+ * Whether the path resolves to an array container RIGHT NOW. Live
+ * form value is the source of truth so discriminated-union variant
+ * switches that swap shape at the same path produce a freshly-
+ * targeted container proxy on the next read. The container cache
+ * keys off this predicate (see `containerProxyAt` in
+ * surface-proxy.ts), so a shape flip surfaces a freshly-targeted
+ * proxy on the next read through `form.errors.X`.
  */
 function isArrayPath<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: readonly Segment[]
 ): boolean {
   if (segments.length === 0) return false
-  const shape = state.schema.arrayShapeAtPath(segments as Path)
-  if (shape !== undefined) return true
   return Array.isArray(getAtPath(state.form.value, segments))
 }
 

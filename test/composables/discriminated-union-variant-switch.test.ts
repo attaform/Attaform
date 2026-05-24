@@ -444,14 +444,40 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     expect(api.values.body.mode).toBe('single')
     expect(api.values.body['payload']).toBeUndefined()
 
-    // The cached proxy may still report `Array.isArray === true` —
-    // the target was fixed at construction. The contract this probe
-    // pins is the EMITTED iteration set: liveKeysAtPath reads the
-    // current form value, sees `undefined`, and returns []. So
-    // `Object.keys` / `length` MUST drop to zero, meaning v-for
-    // renders no stale rows from the previous variant.
+    // The held reference still points at the Array-target proxy
+    // from before the switch (proxy targets are immutable), but
+    // liveKeysAtPath reads `state.form.value` on every enumeration
+    // so the emitted set tracks reality — `Object.keys` / `length`
+    // drop to zero, and v-for renders no stale rows from the
+    // previous variant.
     expect(Object.keys(fieldsAtPayload as object)).toEqual([])
     expect((fieldsAtPayload as unknown as { length: number }).length).toBe(0)
+  })
+
+  it('a fresh read after the switch returns a non-array-targeted proxy (Array.isArray flips)', async () => {
+    const api = mount()
+    api.append('body.payload', { value: 'first' })
+    await nextTick()
+    // Warm the cache as the array variant.
+    const stale = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(stale)).toBe(true)
+
+    api.setValue('body.mode', 'single')
+    await nextTick()
+
+    // The container cache keys off (segments, shape). With the
+    // live value now `undefined`, the next fresh read produces a
+    // function-target proxy — `Array.isArray` reports the truth.
+    const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(fresh)).toBe(false)
+    expect(fresh).not.toBe(stale)
+
+    // Held-reference contract: the proxy target is immutable, so
+    // the OLD reference still reports as an array. Documented as
+    // a caveat for consumers who cache proxy references across
+    // variant switches (template `v-for` always re-reads through
+    // `form.fields.<path>` and gets the fresh proxy).
+    expect(Array.isArray(stale)).toBe(true)
   })
 
   it('switching back into the array variant restores enumeration of the restored items', async () => {
@@ -472,6 +498,144 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     await nextTick()
     expect(Array.isArray((api.values.body as { payload?: unknown }).payload)).toBe(true)
     expect(Object.keys(fieldsAtPayload as object)).toEqual(['0', '1'])
+  })
+})
+
+describe('z.union (non-discriminated) — array-vs-object shape collision at the same path', () => {
+  // Zod's `z.union` allows the same key to be array-shaped in one
+  // branch and record-shaped in another. The form value at that
+  // path can flip between shapes via `setValue`. The cached
+  // container proxy needs to follow: a fresh read after the flip
+  // must return a proxy whose target matches the new shape, so
+  // `Array.isArray` and `v-for` agree with reality.
+  const unionSchema = z.object({
+    payload: z.union([z.array(z.object({ value: z.string() })), z.record(z.string(), z.string())]),
+  })
+
+  type UnionApi = Omit<UseFormReturnType<z.output<typeof unionSchema>>, 'setValue' | 'append'> & {
+    setValue: (path: string, value: unknown) => boolean
+    append: (path: string, item: unknown) => void
+    values: { payload: unknown }
+  }
+
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  function mount(initial: 'array' | 'object'): UnionApi {
+    const handle: { api?: UnionApi } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useForm({
+          schema: unionSchema,
+          key: `union-shape-${Math.random().toString(36).slice(2)}`,
+          defaultValues: { payload: initial === 'array' ? [] : ({} as Record<string, string>) },
+        }) as unknown as UnionApi
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    return handle.api as UnionApi
+  }
+
+  it('Array.isArray tracks the live shape across the array-to-record flip on fresh reads', async () => {
+    const api = mount('array')
+    api.append('payload', { value: 'first' })
+    await nextTick()
+
+    const arrayProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(arrayProxy)).toBe(true)
+    expect(Object.keys(arrayProxy as object)).toEqual(['0'])
+
+    // Force-flip the live shape to an object.
+    api.setValue('payload', { red: 'r', green: 'g' })
+    await nextTick()
+    expect(api.values.payload).toEqual({ red: 'r', green: 'g' })
+
+    const objectProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(objectProxy)).toBe(false)
+    expect(objectProxy).not.toBe(arrayProxy)
+    expect(Object.keys(objectProxy as object).sort()).toEqual(['green', 'red'])
+  })
+
+  it('Array.isArray tracks the live shape across the record-to-array flip on fresh reads', async () => {
+    const api = mount('object')
+    api.setValue('payload', { red: 'r' })
+    await nextTick()
+    const objectProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(objectProxy)).toBe(false)
+
+    api.setValue('payload', [{ value: 'a' }, { value: 'b' }])
+    await nextTick()
+    const arrayProxy = (api.fields as unknown as { payload: unknown }).payload
+    expect(Array.isArray(arrayProxy)).toBe(true)
+    expect(Object.keys(arrayProxy as object)).toEqual(['0', '1'])
+    expect(arrayProxy).not.toBe(objectProxy)
+  })
+})
+
+describe('surface proxy — per-consumer cache isolation', () => {
+  // Two `useForm` calls with the same key share the underlying form
+  // store (the registry de-dupes by key), but each call gets its own
+  // `buildFormApi` and therefore its own container cache. This pins
+  // that contract: independent proxies, shared live state.
+  const apps: App[] = []
+  const sharedSchema = z.object({ posts: z.array(z.object({ title: z.string() })) })
+  type SharedApi = Omit<UseFormReturnType<z.output<typeof sharedSchema>>, 'append'> & {
+    append: (path: string, item: unknown) => void
+  }
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  function mount(): { a: SharedApi; b: SharedApi } {
+    const handle: { a?: SharedApi; b?: SharedApi } = {}
+    const App = defineComponent({
+      setup() {
+        handle.a = useForm({
+          schema: sharedSchema,
+          key: 'shared-isolation',
+          defaultValues: { posts: [] },
+        }) as unknown as SharedApi
+        handle.b = useForm({
+          schema: sharedSchema,
+          key: 'shared-isolation',
+          defaultValues: { posts: [] },
+        }) as unknown as SharedApi
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    return { a: handle.a as SharedApi, b: handle.b as SharedApi }
+  }
+
+  it('two consumers of the same form key see the same live state through independent proxies', async () => {
+    const { a, b } = mount()
+    a.append('posts', { title: 'first' })
+    a.append('posts', { title: 'second' })
+    await nextTick()
+
+    const fieldsAFromA = (a.fields as unknown as { posts: unknown }).posts
+    const fieldsAFromB = (b.fields as unknown as { posts: unknown }).posts
+
+    // Independent proxy identities (per-consumer caches).
+    expect(fieldsAFromA).not.toBe(fieldsAFromB)
+
+    // Shared live state through both proxies.
+    expect(Object.keys(fieldsAFromA as object)).toEqual(['0', '1'])
+    expect(Object.keys(fieldsAFromB as object)).toEqual(['0', '1'])
+
+    // Writes through consumer B propagate to consumer A's proxy
+    // because the underlying form store is shared by key.
+    b.append('posts', { title: 'third' })
+    await nextTick()
+    expect(Object.keys(fieldsAFromA as object)).toEqual(['0', '1', '2'])
+    expect(Object.keys(fieldsAFromB as object)).toEqual(['0', '1', '2'])
   })
 })
 

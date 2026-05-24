@@ -191,20 +191,21 @@ function liveKeysAtPath<F extends GenericForm>(
 }
 
 /**
- * Whether the path resolves to an array container. Schema-first so
- * empty arrays still report correctly (Zod adapters return
- * `null`/`number` from `arrayShapeAtPath` for any array schema, even
- * before the form holds any items). Falls back to a live-value check
- * for adapters that don't model array shapes (the test fake schema,
- * primarily).
+ * Whether the path resolves to an array container RIGHT NOW. The
+ * live form value is the source of truth here — a discriminated
+ * union variant switch can swap the path between array-shaped and
+ * something else, and the proxy's reported shape needs to track
+ * what the consumer can actually see, not what the schema's loosest
+ * variant could permit. The container cache keys off this same
+ * predicate (see `containerProxyAt` in surface-proxy.ts), so a
+ * shape flip surfaces a freshly-targeted proxy on the next read
+ * through `form.fields.X`.
  */
 function isArrayPath<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: readonly Segment[]
 ): boolean {
   if (segments.length === 0) return false
-  const shape = state.schema.arrayShapeAtPath(segments as Path)
-  if (shape !== undefined) return true
   return Array.isArray(getAtPath(state.form.value, segments))
 }
 

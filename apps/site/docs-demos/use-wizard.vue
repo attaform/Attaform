@@ -65,14 +65,14 @@
 
     <form v-if="wizard.currentStep === 'docs-demo-wizard-account'" @submit.prevent>
       <label>
-        Email
+        Email <span class="required" aria-hidden="true">*</span>
         <input v-register="account.register('email')" autocomplete="email" />
         <em v-if="account.fields.email.showErrors">{{
           account.fields.email.firstError?.message
         }}</em>
       </label>
       <label>
-        Password
+        Password <span class="required" aria-hidden="true">*</span>
         <input v-register="account.register('password')" type="password" autocomplete="off" />
         <em v-if="account.fields.password.showErrors">{{
           account.fields.password.firstError?.message
@@ -82,7 +82,7 @@
 
     <form v-else-if="wizard.currentStep === 'docs-demo-wizard-profile'" @submit.prevent>
       <label>
-        Name
+        Name <span class="required" aria-hidden="true">*</span>
         <input v-register="profile.register('name')" />
         <em v-if="profile.fields.name.showErrors">{{ profile.fields.name.firstError?.message }}</em>
       </label>
@@ -99,7 +99,7 @@
       </label>
       <label class="checkbox">
         <input v-register="review.register('tos')" type="checkbox" />
-        Accept the terms of service
+        Accept the terms of service <span class="required" aria-hidden="true">*</span>
         <em v-if="review.fields.tos.showErrors">{{ review.fields.tos.firstError?.message }}</em>
       </label>
     </form>
@@ -243,6 +243,11 @@
     font-size: 0.8125rem;
     font-style: normal;
     font-weight: 400;
+  }
+  .required {
+    color: #dc2626;
+    font-weight: 600;
+    margin-left: 0.125rem;
   }
   .actions {
     display: flex;

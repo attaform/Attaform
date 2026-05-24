@@ -26,9 +26,11 @@ import { buildNoopWizardSchema } from '../core/wizard-noop-schema'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
 import { useAbstractForm } from './use-abstract-form'
 import type {
+  ActiveFormOf,
   AggregateError,
   AnyForm,
   CompiledStep,
+  CurrentStepOf,
   DeferMarker,
   FormStatus,
   StepSlot,
@@ -109,7 +111,9 @@ type SubmissionSourceForm = StatusSourceForm & {
  * the whole wizard on the final step, and URL synchronization rides on
  * `restore` / `persist` callbacks that default to `?step=<key>`.
  */
-export function useWizard(options: WizardOptions): UseWizardReturnType {
+export function useWizard<const S extends ReadonlyArray<StepSlot>>(
+  options: WizardOptions & { readonly steps: S }
+): UseWizardReturnType<S> {
   // Defensive coercion: a misshapen `steps` (non-array, undefined, empty)
   // never crashes the surrounding app. Dev-warn surfaces the
   // misconfiguration; runtime continues with an empty list and the
@@ -1022,18 +1026,28 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   const explicitKey = options.key
   const wizardKey = resolveWizardKey(explicitKey)
-  const handle: UseWizardReturnType = {
+  // The handle's parameterized return type narrows `currentStep` /
+  // `activeForm` to non-undefined when the steps tuple is statically
+  // safe (see `StaticallyNonEmpty` in types-wizard.ts). The runtime
+  // can't observe the tuple shape, so the active-position getters
+  // cast through `CurrentStepOf<S>` / `ActiveFormOf<S>`. The cast is
+  // sound: when `S` passes the static-safety predicate, the compiled
+  // step list is guaranteed non-empty (only Form and string slots
+  // preserve their positions; function / defer slots are precluded by
+  // the predicate), so the getters never observe the degenerate
+  // `undefined` branch in that case.
+  const handle: UseWizardReturnType<S> = {
     key: wizardKey,
     next,
     back,
     goTo,
     handleSubmit,
     reset,
-    get currentStep(): FormKey | undefined {
-      return currentStep.value
+    get currentStep(): CurrentStepOf<S> {
+      return currentStep.value as CurrentStepOf<S>
     },
-    get activeForm(): AnyForm | undefined {
-      return activeForm.value
+    get activeForm(): ActiveFormOf<S> {
+      return activeForm.value as ActiveFormOf<S>
     },
     get activeIndex(): number {
       return activeIndex.value

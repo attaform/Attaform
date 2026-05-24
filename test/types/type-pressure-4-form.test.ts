@@ -111,7 +111,7 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
 
       const wizard = useWizard({ steps: [refForm, cargoForm, serviceForm, reviewForm] })
 
-      expectTypeOf(wizard.currentStep).toEqualTypeOf<string | undefined>()
+      expectTypeOf(wizard.currentStep).toEqualTypeOf<string>()
       expectTypeOf(wizard.count).toEqualTypeOf<number>()
       expectTypeOf(wizard.isFinalStep).toEqualTypeOf<boolean>()
       expectTypeOf(wizard.steps[0]?.form).toMatchTypeOf<{ readonly key: string } | undefined>()

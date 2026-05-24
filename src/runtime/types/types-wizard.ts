@@ -318,18 +318,55 @@ export type WizardOptions = {
 }
 
 /**
+ * Predicate: is the steps tuple statically guaranteed to compile to a
+ * non-empty list? A tuple passes when (a) it's not the empty array
+ * literal and (b) it carries no function or `defer()` slot — those
+ * slot kinds can resolve to `undefined` at runtime and drop the
+ * compiled position. Form slots and bare-string affordance slots
+ * always preserve their position; a tuple made of only those kinds is
+ * statically safe.
+ *
+ * Used to narrow `currentStep` / `activeForm` to their non-`undefined`
+ * shapes in the common-case wizard, while keeping the honest union
+ * everywhere a runtime drop is reachable.
+ */
+export type StaticallyNonEmpty<S> = S extends readonly []
+  ? false
+  : S extends readonly (infer Item)[]
+    ? Item extends DeferMarker | ((...args: unknown[]) => unknown)
+      ? false
+      : true
+    : false
+
+/** Active step's key, narrowed to `string` when `S` is statically safe. */
+export type CurrentStepOf<S> = StaticallyNonEmpty<S> extends true ? FormKey : FormKey | undefined
+
+/** Active step's form handle, narrowed to `AnyForm` when `S` is statically safe. */
+export type ActiveFormOf<S> = StaticallyNonEmpty<S> extends true ? AnyForm : AnyForm | undefined
+
+/**
  * Return shape of `useWizard({ steps, … })`. Every reactive read is a
  * plain getter (no `.value`) — `wizard.currentStep`, `wizard.progress`,
  * `wizard.allValues` track inside `computed` / template effects
  * directly.
  *
- *  - `currentStep` — key of the active step. Reads as `undefined` only
- *                    in the degenerate case (`steps` empty at
- *                    construction, or every function slot resolved to
- *                    `undefined` and the compiled list is empty).
- *  - `activeForm`  — the active step's form handle. Reads as
- *                    `undefined` under the same degenerate conditions
- *                    as `currentStep`. Noop forms cover string slots in
+ * Parameterized by the steps tuple `S` so active-position fields
+ * (`currentStep`, `activeForm`) narrow to non-undefined for the common
+ * case (all positional Form / string slots) and stay as honest unions
+ * when a function or `defer()` slot can drop the compiled position at
+ * runtime. The `const` type parameter on `useWizard` preserves literal
+ * tuple types without consumer-side `as const`, so the narrowing
+ * happens automatically from the call site.
+ *
+ *  - `currentStep` — key of the active step. Narrows to `string` when
+ *                    the steps tuple is statically guaranteed to
+ *                    compile to a non-empty list (all positional
+ *                    Form / string slots, no function or `defer()`
+ *                    slots). Otherwise reads as `string | undefined`
+ *                    so the degenerate case (empty list at runtime)
+ *                    surfaces honestly.
+ *  - `activeForm`  — the active step's form handle. Same narrowing as
+ *                    `currentStep`. Noop forms cover string slots in
  *                    the normal path.
  *  - `activeIndex` — 0-based position of the active step.
  *  - `isFinalStep` — `true` when `currentStep === steps[count - 1].key`.
@@ -382,10 +419,10 @@ export type WizardOptions = {
  *                    `currentStep` to `steps[0].key`, and invokes
  *                    `persist` with the cleared state.
  */
-export type UseWizardReturnType = {
+export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArray<StepSlot>> = {
   readonly key: string
-  readonly currentStep: FormKey | undefined
-  readonly activeForm: AnyForm | undefined
+  readonly currentStep: CurrentStepOf<S>
+  readonly activeForm: ActiveFormOf<S>
   readonly activeIndex: number
   readonly isFinalStep: boolean
   readonly steps: ReadonlyArray<CompiledStep>

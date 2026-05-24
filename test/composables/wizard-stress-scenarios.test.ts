@@ -306,6 +306,106 @@ describe('S10 — function slot returns undefined drops the slot', () => {
   })
 })
 
+describe('S10b — function / defer slot returns an undeclared string key', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('builds a noop on the fly and surfaces the step uniformly', async () => {
+    const showAffordance = ref(false)
+    const { app, result } = mountHarness(() => {
+      const entry = useForm({ schema: z.object({}), key: 's10b-entry' })
+      const final = useForm({ schema: z.object({}), key: 's10b-final' })
+      return useWizard({
+        steps: [
+          entry,
+          // 's10b-maintenance' is NOT declared as a top-level string slot.
+          // The wizard builds a noop on first reference and treats it
+          // like any other affordance step.
+          () => (showAffordance.value ? 's10b-maintenance' : undefined),
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    expect(result.steps.map((s) => s.key)).toEqual(['s10b-entry', 's10b-final'])
+    showAffordance.value = true
+    await nextTick()
+    expect(result.steps.map((s) => s.key)).toEqual(['s10b-entry', 's10b-maintenance', 's10b-final'])
+    expect(result.statuses['s10b-maintenance']?.valid).toBe(true)
+    expect(result.allErrors['s10b-maintenance']).toEqual([])
+    result.goTo('s10b-maintenance')
+    expect(result.currentStep).toBe('s10b-maintenance')
+  })
+
+  it('reuses the same noop across re-evaluations (no duplicate builds)', async () => {
+    const tick = ref(0)
+    const { app, result } = mountHarness(() => {
+      const entry = useForm({ schema: z.object({}), key: 's10b-2-entry' })
+      const final = useForm({ schema: z.object({}), key: 's10b-2-final' })
+      return useWizard({
+        steps: [
+          entry,
+          () => {
+            // Read a reactive value so the slot re-evaluates whenever
+            // tick mutates. The string return stays the same.
+            void tick.value
+            return 's10b-2-stub'
+          },
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    const firstHandle = result.forms['s10b-2-stub']
+    expect(firstHandle).toBeDefined()
+    tick.value = 1
+    await nextTick()
+    tick.value = 2
+    await nextTick()
+    const secondHandle = result.forms['s10b-2-stub']
+    // Identity preserved: the noop is built once and cached.
+    expect(secondHandle).toBe(firstHandle)
+  })
+
+  it('a defer slot returning an undeclared string sticks across navigation', async () => {
+    let resolverCalls = 0
+    const { app, result } = mountHarness(() => {
+      const entry = useForm({ schema: z.object({}), key: 's10b-3-entry' })
+      const final = useForm({ schema: z.object({}), key: 's10b-3-final' })
+      return useWizard({
+        steps: [
+          entry,
+          defer(() => {
+            resolverCalls += 1
+            return 's10b-3-survey'
+          }),
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    expect(resolverCalls).toBe(1)
+    expect(result.steps.map((s) => s.key)).toEqual([
+      's10b-3-entry',
+      's10b-3-survey',
+      's10b-3-final',
+    ])
+    await result.next()
+    await result.next()
+    expect(result.currentStep).toBe('s10b-3-final')
+    // Sticky: resolver did not re-fire during navigation.
+    expect(resolverCalls).toBe(1)
+  })
+})
+
 describe('S11 — function slot returns a ghost form (not statically listed)', () => {
   const apps: App[] = []
   afterEach(() => {

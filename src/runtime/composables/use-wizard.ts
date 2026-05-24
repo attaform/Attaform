@@ -1,5 +1,6 @@
 import {
   computed,
+  effectScope,
   getCurrentInstance,
   getCurrentScope,
   inject,
@@ -139,9 +140,20 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // by `buildNoopWizardSchema`. Synthesis runs at setup time so the
   // forms are registered in the registry (status + ref-counting +
   // consumer eviction all flow through the same paths as real forms).
-  // Function slots may return any of these same keys; runtime lookups
-  // use the cache built here.
+  // Function and defer slots may also return string keys at runtime,
+  // including ones not declared at the top level. Those go through
+  // `getOrBuildNoop` below, which constructs a noop on the fly inside
+  // a wizard-scoped `effectScope` so consumer cleanup, registry
+  // presence, and the rest of the FormStore surface stay identical to
+  // an eagerly-built noop.
   const noopForms = new Map<string, AnyForm>()
+  // Wizard-private scope for lazily-built noops. Building inside this
+  // scope lets `useAbstractForm` register its `onScopeDispose` hook
+  // against the wizard's lifetime, not against whatever component
+  // happens to be active when the function slot first returned an
+  // undeclared key. Stopped when the wizard's own setup scope tears
+  // down.
+  const lazyNoopScope = effectScope(true)
   for (const slot of rawSteps) {
     if (typeof slot !== 'string') continue
     if (noopForms.has(slot)) continue
@@ -150,6 +162,33 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       key: slot,
     }) as unknown as AnyForm
     noopForms.set(slot, noop)
+  }
+
+  function getOrBuildNoop(key: string): AnyForm {
+    const existing = noopForms.get(key)
+    if (existing !== undefined) return existing
+    const noop = lazyNoopScope.run(
+      () =>
+        useAbstractForm(
+          {
+            schema: buildNoopWizardSchema(key),
+            key,
+          },
+          { registry }
+        ) as unknown as AnyForm
+    )
+    if (noop === undefined) {
+      // `lazyNoopScope.run` only returns `undefined` if the scope has
+      // already been stopped, which only happens at wizard teardown.
+      // Reaching this branch means the wizard is mid-disposal; return
+      // a structurally-empty stand-in so the caller's compile pass
+      // completes without crashing.
+      const stub: AnyForm = { key }
+      return stub
+    }
+    noopForms.set(key, noop)
+    formsAccumulator.set(key, noop)
+    return noop
   }
 
   // --- Static slot inventory -------------------------------------------
@@ -248,13 +287,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
    */
   function resolveSlot(slot: StepSlot, index: number, ctx: WizardCtx): AnyForm | undefined {
     if (typeof slot === 'string') {
-      const noop = noopForms.get(slot)
-      if (noop === undefined && __DEV__) {
-        console.warn(
-          `[attaform] useWizard: function slot returned key "${slot}" which is not declared as a top-level string slot or registered form. Skipping.`
-        )
-      }
-      return noop
+      // Top-level string slots are pre-built into `noopForms` at
+      // construction. The lazy builder hits the cache; the unified
+      // path keeps function/defer string returns consistent with
+      // top-level string slots.
+      return getOrBuildNoop(slot)
     }
     if (isDeferMarker(slot)) {
       const cached = stickyDefers.value.get(index)
@@ -275,13 +312,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function resolveSlotResult(result: AnyForm | string | undefined): AnyForm | undefined {
     if (result === undefined) return undefined
     if (typeof result === 'string') {
-      const noop = noopForms.get(result)
-      if (noop === undefined && __DEV__) {
-        console.warn(
-          `[attaform] useWizard: function slot returned key "${result}" which is not declared as a top-level string slot or registered form. Skipping.`
-        )
-      }
-      return noop
+      // Function and defer slot string returns build a noop on first
+      // reference. Subsequent returns of the same string hit the
+      // cache. Authors don't have to pre-declare affordance keys
+      // anywhere; the wizard handles new keys uniformly.
+      return getOrBuildNoop(result)
     }
     return result
   }
@@ -1041,6 +1076,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   if (getCurrentScope() !== undefined) {
     onScopeDispose(() => {
       historyHandle.dispose()
+      lazyNoopScope.stop()
     })
   }
 

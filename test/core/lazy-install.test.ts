@@ -98,7 +98,10 @@ describe('injectForm — lazy install', () => {
     warn.mockRestore()
   })
 
-  it('returns null with a dev warning when called for an ambient form with no ancestor', () => {
+  it('returns null silently when called for an ambient form with no ancestor', () => {
+    // Ambient injectForm() is opportunistic: a component library reading
+    // the ambient slot in arbitrary trees should not spam consumers'
+    // consoles when no parent provided a form. Keyed misses still warn.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     let resolved: unknown = 'not-set'
     const { app } = mountWithSetup(() => {
@@ -107,7 +110,10 @@ describe('injectForm — lazy install', () => {
 
     expect(resolved).toBeNull()
     expect(app._attaform).toBeDefined()
-    expect(warn).toHaveBeenCalled()
+    const injectFormWarns = warn.mock.calls.filter((args) =>
+      String(args[0] ?? '').includes('[attaform] injectForm')
+    )
+    expect(injectFormWarns).toHaveLength(0)
     warn.mockRestore()
   })
 })

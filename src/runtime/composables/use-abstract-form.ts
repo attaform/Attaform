@@ -50,7 +50,7 @@ import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-conte
 import { canonicalizePath, coerceToPathKey, type Path, type PathKey } from '../core/paths'
 import { deleteAtPath, getAtPath, setAtPath, isPlainRecord } from '../core/path-walker'
 import { ensureAttaformInstalled } from '../core/plugin'
-import { kFormContext, kFormInstanceId, useRegistry } from '../core/registry'
+import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
 import { resolveShouldShowErrors } from '../core/should-show-errors'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { walkUnsetSentinels } from '../core/unset-walker'
@@ -100,7 +100,17 @@ export function useAbstractForm<
     AbstractSchema<Form, GetValueFormType>,
     DefaultValuesInput<Form>,
     K
-  >
+  >,
+  /**
+   * Internal escape hatch for callers that already hold a registry
+   * reference and need to construct a form outside Vue's setup context
+   * (e.g. the wizard's lazy noop builder, which runs inside a
+   * `computed` re-eval). Passing this skips the strict `useRegistry()`
+   * call; everything else (FormStore allocation, registry presence,
+   * consumer ref-counting via `onScopeDispose`) goes through the same
+   * path eager calls follow. Not part of the public surface.
+   */
+  options?: { readonly registry?: AttaformRegistry }
 ): UseFormReturnType<Form, GetValueFormType, ReadForm, K> {
   // Foot-gun guard: catches `useForm()` (no args), `useForm(null)`,
   // `useForm(rawSchema)` (any schema-like object passed as the first
@@ -129,7 +139,7 @@ export function useAbstractForm<
   // only ever fires when an instance is available.
   const instance = getCurrentInstance()
   if (instance !== null) ensureAttaformInstalled(instance.appContext.app)
-  const registry = useRegistry()
+  const registry = options?.registry ?? useRegistry()
 
   // Materialise the `defaultValues` trichotomy (`T | (() => T) |
   // (() => Promise<T>)`) before the merge — downstream consumers

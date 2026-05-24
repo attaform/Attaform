@@ -194,6 +194,48 @@ describe('useForm — field array helpers', () => {
     })
   })
 
+  describe('field-proxy enumeration over an array container', () => {
+    it('exposes appended indices as own keys on form.fields.<arrayPath>', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      form.append('posts', { title: 'first', views: 1 })
+      form.append('posts', { title: 'second', views: 2 })
+      // The template pattern `v-for="(item, idx) in form.fields.posts"`
+      // reads ownKeys to drive iteration; without indices in the key
+      // set, Vue renders zero rows even though the underlying array
+      // has entries.
+      expect(Object.keys(form.fields.posts)).toEqual(['0', '1'])
+    })
+
+    it('Object.entries yields one descended sub-proxy per live index', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      form.append('posts', { title: 'first', views: 1 })
+      form.append('posts', { title: 'second', views: 2 })
+      const entries = Object.entries(form.fields.posts)
+      expect(entries).toHaveLength(2)
+      expect(entries.map(([k]) => k)).toEqual(['0', '1'])
+      // Each entry value is a descended surface proxy (callable
+      // function target). Identity matches dot-access to confirm the
+      // descriptor returns the same proxy `form.fields.posts[idx]`
+      // would yield — the load-bearing guarantee for v-for templates
+      // that read `item.title.errors`, `item.sku.validating`, etc.
+      const directAtZero = (form.fields.posts as unknown as Record<string, unknown>)['0']
+      expect(entries[0]?.[1]).toBe(directAtZero)
+      expect(typeof entries[0]?.[1]).toBe('function')
+    })
+
+    it('removed indices drop from the enumerated key set', () => {
+      const { app, form } = harness({ posts: [] })
+      apps.push(app)
+      form.append('posts', { title: 'a', views: 1 })
+      form.append('posts', { title: 'b', views: 2 })
+      form.append('posts', { title: 'c', views: 3 })
+      form.remove('posts', 1)
+      expect(Object.keys(form.fields.posts)).toEqual(['0', '1'])
+    })
+  })
+
   it('mutations trigger reactivity (form.values sees the update)', () => {
     const { app, form } = harness({ tags: ['a'] })
     apps.push(app)

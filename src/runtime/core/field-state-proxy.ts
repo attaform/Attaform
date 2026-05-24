@@ -163,7 +163,30 @@ export function buildFieldStateProxy<F extends GenericForm>(
     readLeafKey: (computed, key) => (computed.value as Record<string, unknown>)[key],
     materializeContainer: (segments) => materializeFields(state, segments, snapshotFieldStateAt),
     resolveCallTarget: (path) => fieldStateTerminalAt(path),
+    containerOwnKeys: (segments) => liveKeysAtPath(state, segments),
   })
+}
+
+/**
+ * Live keys for the form data at a container path. Powers
+ * `Object.keys(form.fields.items)` and `v-for` iteration over array
+ * field proxies. The read happens inside the consumer's active
+ * effect so `state.form.value` is tracked: appending or removing
+ * items re-enumerates on the next render.
+ */
+function liveKeysAtPath<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: readonly Segment[]
+): readonly string[] {
+  const value = getAtPath(state.form.value, segments)
+  if (value === null || value === undefined) return []
+  if (Array.isArray(value)) {
+    const keys = new Array<string>(value.length)
+    for (let i = 0; i < value.length; i += 1) keys[i] = String(i)
+    return keys
+  }
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>)
+  return []
 }
 
 /**

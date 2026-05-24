@@ -123,6 +123,20 @@ export type SurfaceOptions<TLeaf> = {
    * "non-leaf → container sub-proxy" routing.
    */
   readonly isTerminalAt?: (segs: readonly Segment[]) => boolean
+  /**
+   * Live keys for the container at `segments`. Drives `ownKeys` and
+   * `getOwnPropertyDescriptor` so `Object.keys(form.fields.items)` /
+   * `v-for="(item, idx) in form.fields.items"` enumerate the array
+   * indices (or object keys) the underlying form data currently
+   * holds. Reads happen inside the consumer's active effect, so Vue
+   * tracks `state.form.value` and re-enumerates on append / remove.
+   *
+   * Omit to keep the container non-enumerable (`Object.keys` returns
+   * `[]`). Surfaces that don't need iteration can leave this out;
+   * downstream stringification still goes through `materializeContainer`
+   * / `toJSON`.
+   */
+  readonly containerOwnKeys?: (segments: readonly Segment[]) => readonly string[]
 }
 
 /**
@@ -264,11 +278,30 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // concern (read returns the deep proxy or terminal as usual).
         return true
       },
-      // Containers are descend-only — `JSON.stringify(form.fields.address)`
-      // returns `{}` (no leaf keys to enumerate). Consumers who want
-      // structural data use `form.values.<container>` instead.
-      ownKeys: () => [],
-      getOwnPropertyDescriptor: () => undefined,
+      // Live enumeration. When the surface provides `containerOwnKeys`,
+      // `Object.keys(proxy)` / `Object.entries(proxy)` /
+      // `v-for="(child, key) in proxy"` reflect whichever keys the
+      // underlying form data currently holds at this path: array
+      // indices (`'0'`, `'1'`, …) when the live value is an array,
+      // object keys when it's a record. `getOwnPropertyDescriptor`
+      // descends to the per-key sub-proxy so iteration yields the
+      // same objects dot-access would. Without `containerOwnKeys`,
+      // the container stays non-enumerable for callers that don't
+      // need iteration — `JSON.stringify` still serialises through
+      // the `toJSON` trap above either way.
+      ownKeys: () =>
+        opts.containerOwnKeys === undefined ? [] : [...opts.containerOwnKeys(segments)],
+      getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+        if (typeof key !== 'string' || opts.containerOwnKeys === undefined) return undefined
+        const liveKeys = opts.containerOwnKeys(segments)
+        if (!liveKeys.includes(key)) return undefined
+        return {
+          configurable: true,
+          enumerable: true,
+          value: descendOrTerminate([...segments, keyToSegment(key)]),
+          writable: false,
+        }
+      },
       // Block writes at the proxy boundary. Mutations go through
       // `setValue`, the directive, or the field-array helpers.
       set: () => false,

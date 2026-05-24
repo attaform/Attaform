@@ -344,8 +344,15 @@ export type WizardOptions = {
  *                    validity.
  *  - `canGoBack`   — `true` when `activeIndex > 0`.
  *  - `complete`    — `isFinalStep && every step's form is valid`.
- *                    Forward-looking; no dirty tracking under eager
- *                    activation.
+ *                    Forward-looking; reactive to current form
+ *                    validity. Gates "Finish button enable" style UI.
+ *  - `done`        — monotonic latch: flips `true` the first time a
+ *                    final-step `handleSubmit` resolves without
+ *                    throwing, and stays `true` through subsequent
+ *                    edits or invalidations. Only `reset()` flips it
+ *                    back. Gates "show success card" style UI that
+ *                    should reflect submission history rather than
+ *                    current validity.
  *  - `submitting`  — `true` while a `wizard.handleSubmit` call is in
  *                    flight. Global re-entrance guard: every
  *                    navigation method also refuses while this is on.
@@ -382,6 +389,7 @@ export type UseWizardReturnType = {
   readonly canAdvance: boolean
   readonly canGoBack: boolean
   readonly complete: boolean
+  readonly done: boolean
   readonly submitting: boolean
   readonly submissionAttempts: number
   readonly visited: readonly FormKey[]

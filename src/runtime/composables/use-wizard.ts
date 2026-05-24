@@ -691,6 +691,13 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   const submitting = ref(false)
   const submissionAttempts = ref(0)
+  // Monotonic latch: flips true the first time a final-step
+  // `handleSubmit` resolves without throwing, and stays true through
+  // subsequent edits or invalidations. Only `reset()` flips it back
+  // (a new run starts a new history). Distinct accounting from
+  // `complete`, which is forward-looking and reactive to current form
+  // validity.
+  const done = ref(false)
 
   // --- Navigation internals --------------------------------------------
 
@@ -912,7 +919,9 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
           }
           const ctx = buildSubmitContext(valuesMap, currentKey, final)
           await onSubmit(ctx)
-          if (!final) {
+          if (final) {
+            done.value = true
+          } else {
             // Intermediate success → record departure + advance to next
             // step. Mirrors the navigation arm so the URL and visited
             // trail stay coherent.
@@ -950,6 +959,7 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   function reset(): void {
     submissionAttempts.value = 0
+    done.value = false
     for (const step of compiledSteps.value) {
       const full = step.form as unknown as SubmissionSourceForm
       if (typeof full.reset === 'function') full.reset()
@@ -1022,6 +1032,9 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     },
     get complete(): boolean {
       return complete.value
+    },
+    get done(): boolean {
+      return done.value
     },
     get submitting(): boolean {
       return submitting.value

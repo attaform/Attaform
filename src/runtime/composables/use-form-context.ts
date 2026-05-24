@@ -181,10 +181,12 @@ export function injectForm<Form extends GenericForm, GetValueFormType extends Ge
  * when no key was passed). Returns `null` on miss; the caller propagates
  * that null straight out to the consumer.
  *
- * Both miss modes log a dev-mode warning carrying the user's call-site
- * frame — a typo'd key reads as "[attaform] injectForm: no form registered
- * for key 'userz'. Returning null. (pages/profile.vue:42)" rather than
- * as a stack trace from inside attaform internals.
+ * Keyed misses log a dev-mode warning carrying the user's call-site frame
+ * so a typo reads as "[attaform] injectForm: no form registered for key
+ * 'userz'. Returning null. (pages/profile.vue:42)". Ambient misses stay
+ * silent: ambient lookup is opportunistic (a component library built on
+ * `injectForm()` shouldn't spam consumers' consoles when no parent has
+ * provided one), so descendants narrow on `null` and degrade.
  */
 function resolveState<Form extends GenericForm>(
   key: FormKey | undefined,
@@ -199,10 +201,7 @@ function resolveState<Form extends GenericForm>(
     return stored
   }
   const ambient = inject(kFormContext, null) as FormStore<Form> | null
-  if (ambient === null) {
-    warnMiss('no ambient form context', registry.ssr)
-    return null
-  }
+  if (ambient === null) return null
   warnIfAmbientProviderHadDuplicates()
   return ambient
 }

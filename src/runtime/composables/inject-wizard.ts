@@ -91,11 +91,11 @@ export function injectWizard(input?: string | InjectWizardInput): UseWizardRetur
     return handle
   }
 
+  // Ambient miss is opportunistic; descendants narrow on `null` and
+  // degrade rather than getting a warn each render. Keyed misses still
+  // warn (typo signal). Mirrors `injectForm`.
   const ambient = inject(kAttaformAncestorWizard, null)
-  if (ambient === null) {
-    warnMiss('no ambient wizard context', registry.ssr)
-    return null
-  }
+  if (ambient === null) return null
   warnIfAmbientWizardProviderHadDuplicates()
   return ambient
 }

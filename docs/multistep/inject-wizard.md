@@ -154,7 +154,7 @@ Mixing modes is fine. Keyed wizards don't interfere with an ambient sibling. A p
 
 `injectWizard` returns `null` rather than throwing, so descendants are robust to mount-order quirks (a sidebar widget that renders before the wizard's parent setup runs, a conditional wizard ancestor, dynamic imports). Two cases produce `null`:
 
-- **No ambient wizard.** `injectWizard()` called from a tree with no ancestor `useWizard` and no key. Dev mode logs a one-shot `console.warn` naming the missing ambient context.
+- **No ambient wizard.** `injectWizard()` called from a tree with no ancestor `useWizard` and no key. Returns `null` silently. Ambient lookup is opportunistic, so a floating widget reading the ambient slot stays quiet in trees that don't have a wizard rather than spamming consumers' consoles.
 - **Key not registered.** `injectWizard('checkout-wizard')` called when nothing is registered under that key. Dev mode logs the unresolved key alongside any keys that ARE registered, so a typo surfaces at a glance.
 
 Guard the return so the consumer disappears cleanly when the wizard isn't mounted:

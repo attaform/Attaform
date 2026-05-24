@@ -145,7 +145,7 @@ Both resolution modes ref-count on the form's registry entry. In practice:
 
 `injectForm` returns `T | null` rather than throwing — descendants are robust to mount-order quirks (children rendered before the parent's `useForm` runs, conditional ancestors, dynamic imports). Two cases produce `null`:
 
-- **No ambient form** — `injectForm()` with no ancestor `useForm` and no key. Dev mode logs a one-shot `console.warn` naming both resolutions.
+- **No ambient form** — `injectForm()` with no ancestor `useForm` and no key. Returns `null` silently. Ambient lookup is opportunistic, so a component library reading the ambient slot stays quiet in trees that don't have a form rather than spamming consumers' consoles.
 - **Key not registered** — `injectForm('key-name')` but nothing is registered under that key. Dev mode logs the unresolved key.
 
 For the common case where the form is guaranteed to exist (it's set up in the same SFC tree), assert non-null at the call site:

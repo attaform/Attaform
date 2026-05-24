@@ -24,6 +24,11 @@ metaRows:
 
 The previous page ([`useWizard`](/docs/multistep/use-wizard)) introduced slots at a glance. This page is the deep dive: what each slot kind brings, the `ctx` shape that function and `defer()` slots receive, and the rules around drop, dedup, and re-evaluation.
 
+The demo below stitches all four kinds into one flow: a `'welcome'` string, a single attendee form, a function slot that branches by role (and returns a bare string for the no-extras path), another function slot that drops when traveling solo, a `defer()` resolver for the regional pricing form, and a `'review'` string at the end.
+
+::docs-demo{slug="step-slots" label="Slots Demo"}
+::
+
 ## The four kinds at a glance
 
 ```ts

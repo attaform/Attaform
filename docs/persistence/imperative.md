@@ -11,17 +11,17 @@ metaRows:
     value: '(path?) => Promise<void>'
     kind: code
   - label: Bypass per-field gate?
-    value: form.persist — yes. clearPersistedDraft — N/A.
+    value: form.persist yes; clearPersistedDraft N/A.
 ---
 
 # Imperative persistence
 
-> Two methods, one job each — `form.persist(path)` flushes the current value at a path, `form.clearPersistedDraft()` wipes the backend entry. Both are async, both no-op cleanly when persistence isn't configured.
+> Two methods, one job each. `form.persist(path)` flushes the current value at a path, `form.clearPersistedDraft()` wipes the backend entry. Both are async, both no-op cleanly when persistence isn't configured.
 
 ::docs-meta-table
 ::
 
-Neither field in this demo opts into persistence via `register` — but `form.persist(path)` writes them anyway. That's the bypass: the method ignores the per-field opt-in gate so a "Save draft" button can capture whatever's on screen, including fields that don't otherwise persist. The clear buttons demonstrate the per-path and whole-form variants.
+Neither field in this demo opts into persistence via `register`, but `form.persist(path)` writes them anyway. That's the bypass: the method ignores the per-field opt-in gate so a "Save draft" button can capture whatever's on screen, including fields that don't otherwise persist. The clear buttons demonstrate the per-path and whole-form variants.
 
 ::docs-demo{slug="imperative-persistence" label="Imperative Demo"}
 ::
@@ -56,14 +56,14 @@ window.addEventListener('beforeunload', () => {
   for (const p of paths) void form.persist(p)
 })
 
-// Wizard step transition — only the current step's subtree
+// Wizard step transition: only the current step's subtree
 async function goToStep(n: number) {
   await form.persist(`step${currentStep.value}`)
   currentStep.value = n
 }
 ```
 
-The explicit-path signature is deliberate — "save what's on screen" is rarely literally the whole form. The path-scoped call gives you a precise checkpoint without accidentally promoting unfocused fields into storage.
+The explicit-path signature is deliberate; "save what's on screen" is rarely literally the whole form. The path-scoped call gives you a precise checkpoint without accidentally promoting unfocused fields into storage.
 
 ## `form.clearPersistedDraft(path?)`
 
@@ -72,7 +72,7 @@ await form.clearPersistedDraft() // wipe the whole envelope
 await form.clearPersistedDraft('email') // wipe one path's slot
 ```
 
-`clearPersistedDraft` does NOT touch in-memory form state, and does NOT disable any active opt-ins — future writes from opted-in bindings will re-populate the storage entry.
+`clearPersistedDraft` does NOT touch in-memory form state, and does NOT disable any active opt-ins; future writes from opted-in bindings will re-populate the storage entry.
 
 For "wipe both in-memory and on-disk," call `reset()` after `clearPersistedDraft()`:
 
@@ -85,7 +85,7 @@ async function startFresh() {
 
 ## Auto-clear on submit
 
-By default, a successful submit fires `clearPersistedDraft()` automatically — `handleSubmit`'s success callback resolving is the signal to drop the draft. Set `clearOnSubmitSuccess: false` on the form's `persist` config to opt out (review pages, retry-prone APIs that want to keep the draft until a confirmation lands):
+By default, a successful submit fires `clearPersistedDraft()` automatically. `handleSubmit`'s success callback resolving is the signal to drop the draft. Set `clearOnSubmitSuccess: false` on the form's `persist` config to opt out (review pages, retry-prone APIs that want to keep the draft until a confirmation lands):
 
 ```ts
 useForm({
@@ -95,10 +95,10 @@ useForm({
 })
 ```
 
-The default keeps the on-disk surface aligned with the user's mental model — "I submitted, the draft is done." Override only when there's a concrete reason to keep it.
+The default keeps the on-disk surface aligned with the user's mental model: "I submitted, the draft is done." Override only when there's a concrete reason to keep it.
 
 ## Where to next
 
-- [Per-field opt-in](/docs/persistence/per-field-opt-in) — the declarative opt-in `form.persist()` bypasses.
-- [Edge cases & hydration](/docs/persistence/edge-cases) — what happens when imperative writes race the debouncer, hydration timing, cross-tab.
-- [`handleSubmit`](/docs/submitting/handle-submit) — the success path that owns the auto-clear.
+- [Per-field opt-in](/docs/persistence/per-field-opt-in): the declarative opt-in `form.persist()` bypasses.
+- [Edge cases & hydration](/docs/persistence/edge-cases): what happens when imperative writes race the debouncer, hydration timing, cross-tab.
+- [`handleSubmit`](/docs/submitting/handle-submit): the success path that owns the auto-clear.

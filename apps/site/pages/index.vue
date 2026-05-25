@@ -52,13 +52,39 @@
     `${LT}/template>`,
   ].join('\n')
 
-  const { data: signupSnippetHtml } = await useAsyncData('homepage-signup-snippet', () =>
-    codeToHtml(signupSnippet, {
+  // The v-register showcase one-liners. Same Shiki pipeline as the
+  // canonical snippet so all four code blocks share one visual
+  // grammar.
+  const registerLines = [
+    `${LT}input v-register="form.register('email')" />`,
+    `${LT}input v-register="form.register('email', { persist: true })" />`,
+    `${LT}input v-register="form.register('email', { persist: true, transforms: [lowercase], multiTab: false })" />`,
+  ]
+
+  const highlightVue = (source: string) =>
+    codeToHtml(source, {
       lang: 'vue',
       themes: { light: 'github-light', dark: 'github-dark' },
       defaultColor: false,
     })
-  )
+
+  const { data: highlightedSnippets } = await useAsyncData('homepage-snippets', async () => {
+    const [signup, lineOne, lineTwo, lineThree] = await Promise.all([
+      highlightVue(signupSnippet),
+      highlightVue(registerLines[0]!),
+      highlightVue(registerLines[1]!),
+      highlightVue(registerLines[2]!),
+    ])
+    return { signup, lineOne, lineTwo, lineThree }
+  })
+
+  const signupSnippetHtml = computed(() => highlightedSnippets.value?.signup ?? '')
+  const registerLineHtml = (key: 'lineOne' | 'lineTwo' | 'lineThree') =>
+    computed(() => highlightedSnippets.value?.[key] ?? '')
+
+  const registerLineOneHtml = registerLineHtml('lineOne')
+  const registerLineTwoHtml = registerLineHtml('lineTwo')
+  const registerLineThreeHtml = registerLineHtml('lineThree')
 
   // Schema.org SoftwareApplication entry — the canonical structured-
   // data shape for a developer library / dev-tool. Eligible for
@@ -322,22 +348,14 @@
 
         <ol class="mt-12 space-y-8">
           <li>
-            <div
-              class="overflow-x-auto rounded-xl border border-border bg-surface-2/60 px-5 py-4 font-mono text-sm text-fg shadow-xs"
-            >
-              <code>&lt;input v-register="form.register('email')" /&gt;</code>
-            </div>
+            <div class="homepage-shiki homepage-shiki--inline" v-html="registerLineOneHtml" />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
               Typed two-way binding to <UiInlineCode>form.values.email</UiInlineCode>, with
               schema-driven coercion at the directive layer.
             </p>
           </li>
           <li>
-            <div
-              class="overflow-x-auto rounded-xl border border-border bg-surface-2/60 px-5 py-4 font-mono text-sm text-fg shadow-xs"
-            >
-              <code>&lt;input v-register="form.register('email', { persist: true })" /&gt;</code>
-            </div>
+            <div class="homepage-shiki homepage-shiki--inline" v-html="registerLineTwoHtml" />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
               Same line. The field now writes through to the form's persistence backend on every
               keystroke, with the sensitive-name guard catching accidental
@@ -345,14 +363,7 @@
             </p>
           </li>
           <li>
-            <div
-              class="overflow-x-auto rounded-xl border border-border bg-surface-2/60 px-5 py-4 font-mono text-sm text-fg shadow-xs"
-            >
-              <code
-                >&lt;input v-register="form.register('email', { persist: true, transforms:
-                [lowercase], multiTab: false })" /&gt;</code
-              >
-            </div>
+            <div class="homepage-shiki homepage-shiki--inline" v-html="registerLineThreeHtml" />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
               Same line. Add a sync DOM-input transform, opt out of multi-tab sync, all without
               touching the markup elsewhere on the page.
@@ -604,6 +615,14 @@ const wizard = useWizard({
     overflow-x: auto;
     color: var(--shiki-light);
     background-color: var(--shiki-light-bg);
+  }
+  /* Compact variant for the single-line `v-register` showcase. The
+     1.5rem all-around padding of the canonical snippet reads as
+     excessive whitespace around a one-line block; tighten to a
+     line-height-balanced inset instead. */
+  .homepage-shiki--inline :deep(.shiki) {
+    padding: 0.875rem 1.125rem;
+    font-size: 0.875rem;
   }
   .homepage-shiki :deep(.shiki span) {
     color: var(--shiki-light);

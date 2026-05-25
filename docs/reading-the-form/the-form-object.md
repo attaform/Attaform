@@ -1,6 +1,6 @@
 ---
-title: The form object
-description: useForm returns one object — values, fields, errors, meta, register, handleSubmit, setValue, reset — all reactive and typed against your schema.
+title: The reactive form
+description: useForm returns one reactive form, values, fields, errors, meta, register, handleSubmit, setValue, reset, all typed against your schema.
 metaRows:
   - label: Category
     value: Return shape
@@ -9,13 +9,13 @@ metaRows:
     kind: code
 ---
 
-# The form object
+# The reactive form
 
-> Every form on the page is one object — reactive reads, mutators, validation, submit handler, all typed against the schema.
+> Every form on the page is one reactive form: reads, mutators, validation, submit handler, all typed against the schema.
 
 ::docs-meta-table
 ::
-`useForm` returns a single object with everything you need to read, write, validate, and submit. The shape is uniform across schema flavours and entry points.
+`useForm` returns a single reactive form with everything you need to read, write, validate, and submit. The shape is uniform across schema flavors and entry points.
 
 ```ts
 const form = useForm({ schema })
@@ -38,7 +38,7 @@ Every read inside a reactive scope (template, `computed`, `watchEffect`) is trac
 form.register('email')
 ```
 
-`register` returns the RegisterValue the `v-register` directive consumes. Hand it to any native input — text, number, select, checkbox, radio, textarea, file.
+`register` returns the RegisterValue the `v-register` directive consumes. Hand it to any native input: text, number, select, checkbox, radio, textarea, file.
 
 ## Submission
 
@@ -75,6 +75,6 @@ Validators emit into `form.errors` on completion.
 
 ## Where to next
 
-- [`values`](/docs/reading-the-form/values) — drillable reads.
-- [`errors`](/docs/reading-the-form/errors) — per-path error reads.
-- [The `v-register` directive](/docs/binding-inputs/v-register) — the bind layer.
+- [`values`](/docs/reading-the-form/values): drillable reads.
+- [`errors`](/docs/reading-the-form/errors): per-path error reads.
+- [The `v-register` directive](/docs/binding-inputs/v-register): the bind layer.

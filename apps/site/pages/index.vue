@@ -45,7 +45,7 @@
     `${LT}template>`,
     `  ${LT}form @submit.prevent="onSubmit">`,
     `    ${LT}input v-register="form.register('email')" />`,
-    `    ${LT}p v-if="form.errors.email">{{ form.errors.email[0].message }}${LT}/p>`,
+    `    ${LT}p v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}${LT}/p>`,
     '',
     `    ${LT}button :disabled="form.meta.submitting">Sign up${LT}/button>`,
     `  ${LT}/form>`,
@@ -114,8 +114,7 @@
       name: 'Attaform',
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Cross-platform',
-      description:
-        'A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.',
+      description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
       url: 'https://www.attaform.com',
       author: { '@type': 'Person', name: 'Oswald Chisala' },
       // MIT-licensed and free — surface the price-zero offer so the
@@ -250,7 +249,7 @@
             style="--reveal-step-delay: 100ms"
           >
             The
-            <span class="font-semibold text-fg">type-safe, schema-driven</span> form library for
+            <span class="font-semibold text-fg">type-safe, Zod-first</span> form library for
             Vue&nbsp;3 and Nuxt.
           </h2>
 
@@ -258,10 +257,9 @@
             class="reveal-step max-w-2xl text-lg text-balance text-fg-muted"
             style="--reveal-step-delay: 140ms"
           >
-            Hand a Zod schema to <UiInlineCode>useForm</UiInlineCode> and Attaform turns it into a
-            reactive form, typed end-to-end, with live errors and SSR out of the box. It scales from
-            the simplest forms to the most comprehensive multistep wizards while keeping the core
-            experience clear and focused. Because Vue and Nuxt devs deserve nice things, too.
+            <strong class="font-semibold text-fg">Your schema is enough.</strong> Hand it to
+            Attaform and get back types, state, validation, errors, persistence, SSR, and more, all
+            from one definition. Because Vue and Nuxt devs deserve nice things.
           </p>
 
           <div class="reveal-step flex flex-wrap gap-3" style="--reveal-step-delay: 180ms">

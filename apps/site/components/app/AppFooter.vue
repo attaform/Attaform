@@ -112,8 +112,25 @@
       <div
         class="flex flex-col items-center justify-between gap-3 border-t border-border py-6 sm:flex-row"
       >
-        <p class="flex items-center gap-1.5 text-sm text-fg-subtle">
-          <span>© {{ year }} Oswald Chisala · MIT License</span>
+        <p class="flex flex-wrap items-center gap-1.5 text-sm text-fg-subtle">
+          <span>© {{ year }}</span>
+          <a
+            href="https://www.linkedin.com/in/chisalao/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="font-medium text-fg-muted transition-colors hover:text-fg"
+            >Oswald Chisala</a
+          >
+          <span class="text-fg-subtle/50" aria-hidden="true">·</span>
+          <a
+            href="https://github.com/ozzyfromspace"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="font-medium text-fg-muted transition-colors hover:text-fg"
+            >@ozzyfromspace</a
+          >
+          <span class="text-fg-subtle/50" aria-hidden="true">·</span>
+          <span>MIT License</span>
         </p>
         <p class="flex items-center gap-1.5 text-sm text-fg-subtle">
           <span class="heart-host inline-flex items-center gap-1.5">

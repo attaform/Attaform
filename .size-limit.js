@@ -155,18 +155,14 @@ export default [
     //     schemas)
     // Measured at 35.47 KB; ~0.5 KB headroom.
     //
-    // Raised 36 → 38 KB on the useStepper branch:
-    //   - useStepper composable (registration, navigation, claim
-    //     wiring), createStepperRegistry primitive,
-    //     StepperLateRegistrationError, FormStore.stepperHandle +
-    //     factorySettleStarted refs, settle path consult-defer
-    //     branch in useAbstractForm.
-    // Measured at 36.89 KB.
+    // Raised 36 → 38 KB when the multistep composable shipped
+    // (registration, navigation, claim wiring, registry primitive,
+    // FormStore handle additions, settle-path consult-defer branch
+    // in useAbstractForm). Measured at 36.89 KB.
     //
-    // Raised 38 → 39 KB on the stepper history + SSR branch:
-    //   - createStepperHistory primitive (push/replace/popstate
-    //     handle around `window.history`, NOOP_STEPPER_HISTORY for
-    //     SSR + disable path)
+    // Raised 38 → 39 KB on the multistep history + SSR branch:
+    //   - history primitive (push/replace/popstate handle around
+    //     `window.history`, no-op variant for SSR + disable path)
     //   - history config + popstate subscription + URL-seed +
     //     replace-on-mount in use-stepper.ts
     //   - StepperHistoryConfig + getServerActiveStep option types
@@ -273,8 +269,8 @@ export default [
     //   - meta.errorCount + meta.isSubmitted computed siblings
     // Measured at 48.03 KB.
     //
-    // Raised 49 → 51 KB when `useStepper` was re-exported from the
-    // unified `attaform/zod` entry. The full stepper surface
+    // Raised 49 → 51 KB when the multistep composable was re-exported
+    // from the unified `attaform/zod` entry. The full surface
     // (composable + registry + statuses proxy + history primitive)
     // now ships through this bundle too. Measured at 50.40 KB.
     //
@@ -311,8 +307,8 @@ export default [
     // Raised 42 → 43 KB on the defaultValues-trichotomy branch
     // (same shared core chunk as zod.mjs). Measured at 42.11 KB.
     //
-    // Raised 43 → 45 KB when `useStepper` was re-exported from the
-    // `attaform/zod-v4` subpath. Same surface addition as the
+    // Raised 43 → 45 KB when the multistep composable was re-exported
+    // from the `attaform/zod-v4` subpath. Same surface addition as the
     // `attaform/zod` unified entry. Measured at 44.46 KB.
     //
     // Raised 45 → 46 KB tracking index.mjs's file-input v-register
@@ -373,8 +369,8 @@ export default [
     // Raised 36 → 42 KB tracking index.mjs's library-hardening +
     // multi-tab bump (same shared core chunk). Measured at 41.03 KB.
     //
-    // Raised 42 → 44 KB when `useStepper` was re-exported from the
-    // `attaform/zod-v3` subpath. Same surface addition as the
+    // Raised 42 → 44 KB when the multistep composable was re-exported
+    // from the `attaform/zod-v3` subpath. Same surface addition as the
     // `attaform/zod` unified entry. Measured at 43.86 KB.
     //
     // Raised 44 → 45 KB tracking index.mjs's file-input v-register

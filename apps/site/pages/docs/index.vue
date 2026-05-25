@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { Rocket, Code, BookOpen, Wrench, Zap, ArrowRight } from 'lucide-vue-next'
+  import { Rocket, Code, Wrench, Zap, ArrowRight } from 'lucide-vue-next'
 
   // Each section gets a lucide icon plus a tinted-chip color via the
   // brand-soft pair. Sticking to the brand palette (rather than
@@ -9,31 +9,25 @@
     {
       title: 'Quick start',
       body: 'Install, wire up, ship a working form in under five minutes.',
-      to: '/docs/quickstart',
+      to: '/docs/getting-started/quick-start',
       icon: Rocket,
     },
     {
       title: 'API reference',
       body: 'Every public export with signatures and return shapes, grouped by import path.',
-      to: '/docs/api',
+      to: '/docs/reference/entry-points',
       icon: Code,
-    },
-    {
-      title: 'Recipes',
-      body: 'Task-oriented walkthroughs: persistence, dynamic field arrays, async validation, focus-on-error.',
-      to: '/docs/recipes/persistence',
-      icon: BookOpen,
     },
     {
       title: 'Troubleshooting',
       body: 'Common gotchas: type-inference failures, SSR hydration mismatches, v-register on the wrong root.',
-      to: '/docs/troubleshooting',
+      to: '/docs/devtools-and-debugging/troubleshooting',
       icon: Wrench,
     },
     {
       title: 'Performance',
       body: 'How Attaform scales. When to worry. Microbenchmarks.',
-      to: '/docs/perf',
+      to: '/docs/server-and-ssr/performance',
       icon: Zap,
     },
   ]

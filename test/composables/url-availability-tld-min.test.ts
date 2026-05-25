@@ -7,9 +7,9 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Pins the URL-availability demo's TLD policy: a parsed URL must have
- * a TLD of at least two characters. Mirrors the recipe page's
- * `formatUrl` semantic — the demo claims to gate against "real-world
- * domain shapes," and 1-character TLDs (`https://a.b`) are not real.
+ * a TLD of at least two characters. Mirrors the demo's own `formatUrl`
+ * semantic — the demo claims to gate against "real-world domain
+ * shapes," and 1-character TLDs (`https://a.b`) are not real.
  *
  * Without this gate, the WHATWG URL parser accepts `https://a.b` as a
  * valid URL with host `a.b` and lets it through to the availability

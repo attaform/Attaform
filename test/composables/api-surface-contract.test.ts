@@ -238,8 +238,6 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
  * apply via `applyPatchesForward` with `crossTab: true` meta.
  *
  * Tests below pin the surface and the load-bearing security gates.
- * See `docs/recipes/multi-tab-sync.md` for the full design + threat
- * model.
  */
 describe('multi-tab sync — BroadcastChannel', () => {
   /**

@@ -63,18 +63,6 @@ zod kind:
    case — add the same happy-path scenario there if v3 already
    supports the kind, so the two adapters stay aligned.
 
-## Writing a recipe
-
-Recipes live in `docs/recipes/`. The existing set (dynamic field
-arrays, server errors, custom adapter, SSR hydration, advanced
-validation) hits these marks — copy a format that fits:
-
-- Lead with the problem, not the mechanism.
-- First code block is runnable — a user should be able to paste it
-  and hit "save".
-- Cover the subtle failure mode near the end. No recipe has zero
-  edge cases; the one that matters is the one that bites at 2am.
-
 ## Releasing (maintainers only)
 
 Two paths. They produce the same commit shape — `pnpm version` runs

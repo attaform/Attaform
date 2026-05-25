@@ -117,7 +117,7 @@
          already have their own quick-start CTA next to the card. -->
     <NuxtLink
       v-if="props.showQuickStart"
-      to="/docs/quickstart"
+      to="/docs/getting-started/quick-start"
       class="group flex items-center justify-between border-t border-border px-4 py-3 text-sm font-semibold text-accent transition-colors duration-(--duration-fast) hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-ring"
     >
       <span>Quick start</span>

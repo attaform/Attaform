@@ -16,7 +16,7 @@
       links: [
         { label: 'Documentation', to: '/docs' },
         { label: 'Demos', to: '/demos' },
-        { label: 'API reference', to: '/docs/api' },
+        { label: 'API reference', to: '/docs/reference/entry-points' },
       ],
     },
     {

@@ -1692,7 +1692,7 @@ export type MetaTrackerValue = {
    * want pre-error introspection ("the user hasn't decided yet"
    * indicator, "review unanswered fields" hint).
    *
-   * See `docs/recipes/blank-inputs.md` for the full conceptual model.
+   * See `docs/validation/blank.md` for the full conceptual model.
    */
   blank: boolean
 }

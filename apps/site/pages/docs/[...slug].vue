@@ -6,8 +6,9 @@
 
   const route = useRoute()
 
-  // Maps `/docs/recipes/transforms` → repo path `docs/recipes/transforms.md`
-  // → GitHub edit URL on `main`. The /edit/main/ link drops the
+  // Maps `/docs/binding-inputs/transforms` → repo path
+  // `docs/binding-inputs/transforms.md` → GitHub edit URL on `main`.
+  // The /edit/main/ link drops the
   // visitor straight into the in-browser editor with the right file
   // open (anonymous viewers see a "fork to edit" prompt; signed-in
   // contributors get the editor immediately).

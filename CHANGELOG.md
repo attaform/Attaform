@@ -9,9 +9,14 @@ third-party install.
 
 ### Internal
 
-- **Faster contributor lint.** `pnpm lint` now picks up
-  `--cache` and `--concurrency=auto`. Cold runs spread across
-  available cores; warm runs skip unchanged files.
+- **Faster contributor lint.** `pnpm lint` drops from 25+
+  minutes to ~19s cold and ~3s warm. The dominant fix is a
+  single missing ignore: the REPL's bundled type cache under
+  `apps/site/.repl-cache/**` (60k+ lines of `.d.ts` files)
+  was being linted on every run. A small structural pass
+  alongside it keeps the type-aware parser scoped to the
+  rule block that actually reads it. Same rule coverage as
+  before.
 
 ## v0.18.0
 Multistep flows (`useWizard` + `injectWizard`), a Nuxt DevTools

@@ -108,11 +108,11 @@ createAttaform({
 })
 ```
 
-Per-form `useForm({ coerce })` overrides the plugin default. The plugin default overrides the library default. Three layers, deterministic resolution.
+Per-form `useForm({ coerce })` overrides the plugin default. The plugin default overrides Attaform's built-in default (`defaultCoercionRules`). Three layers, deterministic resolution.
 
 ## Sync, no throws
 
-Coercion rules MUST be sync. They SHOULD NOT throw; wrap internal try / catch when the conversion can fail (e.g. `BigInt('not-a-number')` throws for non-numeric strings). The library wraps each invocation in try / catch as defense in depth; throws are caught, logged once per `(input, output)` pair, and the original value passes through to the slim gate.
+Coercion rules MUST be sync. They SHOULD NOT throw; wrap internal try / catch when the conversion can fail (e.g. `BigInt('not-a-number')` throws for non-numeric strings). Attaform wraps each invocation in try / catch as defense in depth; throws are caught, logged once per `(input, output)` pair, and the original value passes through to the slim gate.
 
 ## Where to next
 

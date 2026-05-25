@@ -97,7 +97,7 @@
     <div class="mb-10 max-w-3xl">
       <p class="text-sm font-semibold tracking-wide text-accent uppercase">Live editors</p>
       <h1 class="mt-3 text-display-md font-semibold text-fg">Playgrounds</h1>
-      <p class="mt-4 text-lg text-fg-muted">
+      <p class="mt-4 text-base text-fg-muted">
         Play with Attaform. Experiment, tweak the schema, try things out. Every editor ships with
         <UiInlineCode>attaform</UiInlineCode> pre-bundled and a live preview that updates as you
         type.
@@ -131,8 +131,15 @@
       />
     </NuxtLink>
 
-    <!-- Search + per-page controls. Stacked on mobile, two-up on sm+. -->
-    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <!-- Search + per-page controls. Stacked on mobile, two-up on sm+.
+         Sticky just under AppHeader (which is h-16) so the filter stays
+         within reach while a visitor scrolls the demo grid. `z-30` sits
+         below the header's `z-40` so the header still draws on top on
+         overlap. `bg-bg/85 backdrop-blur` mirrors the header treatment
+         so demo cards visibly tuck under instead of bleeding through. -->
+    <div
+      class="sticky top-16 z-30 mb-6 flex flex-col gap-3 bg-bg/85 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+    >
       <div class="relative flex-1 sm:max-w-sm">
         <Search
           class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-fg-subtle"

@@ -22,7 +22,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-The parent owns the form and renders the email field. `ProfileFieldset` and `StatusPill` are inline render-function components that call `injectForm('docs-demo-inject-form')` to reach the same form: no props passed, same reactive surface. Both child components are defined in this SFC and run unchanged regardless of how deep they sit in the tree.
+The parent owns the form and renders the email field. `ProfileFieldset.vue` and `StatusPill.vue` are sibling SFCs that each call `injectForm('docs-demo-inject-form')` to reach the same form: no props passed, same reactive surface. Both children would run unchanged regardless of how deep they sat in the tree.
 
 ::docs-demo{slug="inject-form" label="Form Injection Demo"}
 ::
@@ -63,8 +63,8 @@ Any descendant grabs the same form:
 
 <template>
   <label>Email</label>
-  <input v-register="form.register('email')" />
-  <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
+  <input v-register="form?.register('email')" />
+  <em v-if="form?.fields.email.showErrors">{{ form?.fields.email.firstError?.message }}</em>
 </template>
 ```
 
@@ -80,15 +80,15 @@ Floating save buttons, sidebar status widgets, anything in a different branch of
   import { injectForm } from 'attaform/zod'
 
   const form = injectForm<Form>('signup')
-  const onSave = form.handleSubmit(async (values) => api.post('/signup', values))
+  const onSave = () => form?.handleSubmit(async (values) => api.post('/signup', values))()
 </script>
 
 <template>
-  <button :disabled="!form.meta.dirty || form.meta.submitting" @click="onSave">Save</button>
+  <button :disabled="!form?.meta.dirty || form?.meta.submitting" @click="onSave">Save</button>
 </template>
 ```
 
-Pass the same `key` you passed to `useForm({ key: 'signup' })`. If no form is registered under that key when the component mounts, `injectForm` returns `null` and dev mode logs the unresolved key at the call site. Narrow on `null` (or non-null-assert if the form is guaranteed to be set up in the same SFC tree). See [When resolution fails](#when-resolution-fails) below.
+Pass the same `key` you passed to `useForm({ key: 'signup' })`. If no form is registered under that key when the component mounts, `injectForm` returns `null` and dev mode logs the unresolved key at the call site. Reach for the form with `?.` at every consumption site so a missing form degrades to no-ops instead of crashing. See [When resolution fails](#when-resolution-fails) below.
 
 ## Do I need to pass a `key` to `useForm`?
 
@@ -148,13 +148,7 @@ Both resolution modes ref-count on the form's registry entry. In practice:
 - **No ambient form**: `injectForm()` with no ancestor `useForm` and no key. Returns `null` silently. Ambient lookup is opportunistic, so a downstream component library reading the ambient slot stays quiet in trees that don't have a form rather than spamming consumers' consoles.
 - **Key not registered**: `injectForm('key-name')` but nothing is registered under that key. Dev mode logs the unresolved key at the call site.
 
-For the common case where the form is guaranteed to exist (it's set up in the same SFC tree), assert non-null at the call site:
-
-```ts
-const form = injectForm<Form>('signup')!
-```
-
-For optional consumers (a floating panel that should hide when the form isn't mounted), guard the return:
+Keep the return as `T | null` and reach for it with `?.` at the consumption sites. The directive accepts `undefined` peacefully, optional chains short-circuit cleanly through reactive reads, and the child still works the moment the form becomes available:
 
 ```vue
 <script setup lang="ts">
@@ -162,9 +156,20 @@ For optional consumers (a floating panel that should hide when the form isn't mo
 </script>
 
 <template>
+  <input v-register="ctx?.register('email')" />
+  <em v-if="ctx?.fields.email.showErrors">{{ ctx?.fields.email.firstError?.message }}</em>
+</template>
+```
+
+For optional consumers (a floating panel that should hide entirely when the form isn't mounted), wrap the whole subtree in `v-if`:
+
+```vue
+<template>
   <div v-if="ctx" class="status">{{ ctx.meta.dirty ? '●' : '' }}</div>
 </template>
 ```
+
+Either way, the non-null assertion (`ctx!`) is a pattern to avoid: it teaches the type checker to look the other way, and a single mount-order regression turns into a runtime crash instead of a quiet no-op.
 
 `injectForm` does throw `OutsideSetupError` if called outside a Vue setup function: a structural mistake the runtime can catch unambiguously.
 

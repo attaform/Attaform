@@ -8,7 +8,7 @@
   // `docs-demos/` automatically surfaces it here on the next build —
   // no per-demo wiring required.
   import { computed, ref, watch } from 'vue'
-  import { ArrowRight, FlaskConical, Search, Sparkles, X } from 'lucide-vue-next'
+  import { ArrowRight, FlaskConical, Rocket, Search, X } from 'lucide-vue-next'
 
   // Inherits the docs shell (sidebar + header + footer) so a reader
   // browsing playgrounds isn't stranded in a sidebar-less layout. The
@@ -98,9 +98,9 @@
       <p class="text-sm font-semibold tracking-wide text-accent uppercase">Live editors</p>
       <h1 class="mt-3 text-display-md font-semibold text-fg">Playgrounds</h1>
       <p class="mt-4 text-lg text-fg-muted">
-        Every editor ships with <UiInlineCode>attaform</UiInlineCode> pre-bundled and a live preview
-        that updates as you type. Start from a blank canvas to experiment freely, or fork any docs
-        demo below.
+        Play with Attaform. Experiment, tweak the schema, try things out. Every editor ships with
+        <UiInlineCode>attaform</UiInlineCode> pre-bundled and a live preview that updates as you
+        type.
       </p>
     </div>
 
@@ -116,13 +116,13 @@
         <span
           class="inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide text-accent uppercase"
         >
-          <Sparkles class="h-3.5 w-3.5" :stroke-width="2" />
-          Start blank
+          <Rocket class="h-3.5 w-3.5" :stroke-width="2" />
+          Play with Attaform
         </span>
         <p class="mt-2 text-xl font-semibold text-fg group-hover:text-accent">Blank playground</p>
         <p class="mt-1 text-sm text-fg-muted">
-          A minimal Attaform form, schema and all. Edit anything and the preview re-renders on each
-          keystroke.
+          Roll up your sleeves and start tweaking. A minimal form, a live preview that re-renders on
+          each keystroke. Try anything, see what happens.
         </p>
       </div>
       <ArrowRight

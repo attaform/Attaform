@@ -69,7 +69,7 @@ The reshape fires for every variant write: `setValue('notify', { channel: 'sms',
 
 ## Variant memory
 
-Switching back to a previously-visited variant restores its prior typed subtree by default; `rememberVariants: true` is the library default. The "memory" lives in-memory only (not persisted across reloads); each discriminated union at every nesting depth memorizes independently.
+Switching back to a previously-visited variant restores its prior typed subtree by default; `rememberVariants: true` is Attaform's default. The "memory" lives in-memory only (not persisted across reloads); each discriminated union at every nesting depth memorizes independently.
 
 Opt out per-form:
 

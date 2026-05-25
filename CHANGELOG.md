@@ -4,6 +4,157 @@
 
 _No unreleased changes yet._
 
+## v0.18.0
+Multistep flows (`useWizard` + `injectWizard`), a Nuxt DevTools
+panel, schema-faithful preprocess (`z.preprocess` / `z.coerce`
+no longer mutate `form.values`), `v-register` on
+`<input type="file">`, and a rebuilt docs site. Pre-1.0
+rip-and-replace; no compat shims.
+
+### New
+
+- **`useWizard({ steps, ... })`**, a list-based multistep
+  orchestrator. Each step is a `useForm` reference, a bare
+  string (affordance-only step, desugars to a noop form), an
+  eager function returning a form / key, or a `lazy(ctx => ...)`
+  marker. Returned surface: `next` / `back` / `goTo` / `reset`
+  navigation, `currentStep` / `activeIndex` / `count` /
+  `isFinalStep`, `canAdvance` / `canGoBack` / `progress` /
+  `complete` / `done`, namespaced `allValues` / `allErrors` /
+  `statuses`, and a typed `forms` map.
+- **`wizard.handleSubmit(onSubmit, onError?)`.** Intermediate-
+  step calls validate the active form and advance; final-step
+  calls validate every form in parallel. Submit context is
+  `{ values, get(formRef), currentKey, isFinal }` with
+  `values: Readonly<Record<FormKey, WizardValue>>`. Failed
+  final-step submits reveal errors across the wizard
+  simultaneously.
+- **`injectWizard()`** for cross-component access. Ambient
+  lookup reaches the nearest
+  anonymous `useWizard()`; keyed lookup
+  (`injectWizard('signup')`) reaches any registered wizard.
+  Returns `null` with a dev warning on miss.
+- **Wizard URL sync.** `WizardOptions.restore` /
+  `WizardOptions.persist` round-trip `?step=<key>`; pass `false`
+  to opt out or a callback for alternate storage. Nuxt
+  deep-links hydrate without mismatch warnings.
+- **`v-register` on `<input type="file">`.** Storage shape:
+  `File | null` (single) or `File[]` (`multiple`). Empty
+  selections route through `form.blankPaths` for required-file
+  errors. `z.file()` is a first-class leaf in the v4 adapter,
+  so `form.fields.<filePath>` resolves to a `FieldState`.
+  `register(path, { persist: true })` on a file input is
+  silently dropped with a dev warn (browsers block programmatic
+  writes to pickers). Recommended pattern: upload-on-select +
+  a sibling URL field.
+- **Nuxt DevTools panel.** A new `attaform` tab auto-wires
+  through `@nuxt/devtools-kit` in dev mode. Live value tree
+  with click-to-edit leaves, schema vs user errors split by
+  source, submit aggregates, and a 200-entry timeline of
+  `onFormChange` / `onSubmitSuccess` / `onReset`. New exports:
+  `DEVTOOLS_WINDOW_KEY`, `REDACTED`, `redactSensitiveLeaves`,
+  `AttaformDevtoolsBridge`. New subpath:
+  `attaform/devtools-panel`.
+- **One `useForm` across Zod v3 and v4.** `attaform/zod` now
+  dispatches per-call on schema shape, so four+ `useForm` calls
+  in one scope no longer trip TS2589. New helpers
+  `UseFormReturn<Schema>` / `UseFormConfig<Schema>` (plus
+  `V4` / `V3` variants for code generic over a major).
+- **`form.meta` additions.** `submissionAttempts: number`
+  (every `handleSubmit` call); `submitted: boolean` (latches
+  on a successful submit, cleared by `reset()`);
+  `departAttempts: number` (real wizard departures).
+- **Public `form.applyInvalidSubmitPolicy(policy?)`** and
+  **`form.rehydrate()`**. `rehydrate()` re-fires a function-form
+  `defaultValues` factory.
+- **New error codes.** `AttaformErrorCode.ValidatorThrew`
+  (throws inside `z.preprocess` / `.refine` / `.transform`),
+  `HydrationFailed` (`defaultValues` factory throws),
+  `ActivationFailed` (walked-form factory throws during
+  `wizard.handleSubmit`). All surface as path-tagged
+  `ValidationError` instead of bubbling as `submitError` or
+  unhandled rejections.
+
+### Breaking
+
+- **`z.preprocess` / `z.coerce` no longer mutate `form.values`.**
+  They run only at parse time (`handleSubmit`, `validate`,
+  `validateAsync`, `form.process()`). `form.values('email')`
+  holds the verbatim input; the parsed output appears as
+  `data` in `form.handleSubmit((data) => ...)`.
+- **`form.blankPaths.value` is `BlankPathsView`** (was
+  `ReadonlySet<string>`). Exposes `.size`,
+  `.has(string | Path)`, `.values()`, and iteration yielding
+  `Path` arrays. Old persisted blank-path payloads drop on
+  hydration with a dev warn.
+- **`FieldState.touched` is `boolean`** (was `boolean | null`).
+  Plain `false` at registration, sticky `true` after first
+  blur, cleared only by `reset()` / `resetField()`. Migrate
+  `touched === null` checks to `touched === false`.
+- **`form.hydrateError` is `ValidationError | null`** (was
+  `unknown | null`), normalised with
+  `code: 'atta:hydration-failed'`. `form.isHydrating` and
+  `form.hydrateError` are auto-unwrapping (read without
+  `.value`).
+- **`form.errors.<container>[''] ` is a new terminal slot.**
+  Cross-field refines (`z.object({...}).refine(...)`) and
+  server-side errors keyed at a container path surface
+  through the proxy under the `''` sentinel at any depth.
+  Schemas with a literal `''` field share the slot.
+- **`typeof useForm<S>` type-query patterns break.** Overload
+  resolution picks the last overload. Migrate
+  `ReturnType<typeof useForm<S>>` to `UseFormReturn<Schema>`,
+  `Parameters<typeof useForm<S>>[0]` to `UseFormConfig<Schema>`.
+- **Removed exports.** `StepperLateRegistrationError`;
+  `normalizeWriteValueAtPath` (adapter contract; replaced by
+  `isPreprocessOrCoerceLeaf`).
+- **`RegisterValue`'s full runtime shape now ships in the
+  published `.d.ts`** (was stripped). Fixes a directive-shape
+  mismatch in downstream Vue apps.
+
+### Behaviour
+
+- **`defaultShouldShowErrors` sharpened.** Post-submit
+  (`submissionAttempts > 0` or `submitCount > 0`) reveals every
+  own-path error unconditionally; errors hide while
+  `field.validating === true` (stale-while-revalidate).
+- **`<input autofocus>`** lands with `focused: true`
+  immediately instead of waiting for the next event.
+- **Throwing `.refine` / `.transform` / `z.preprocess`**
+  surface as path-tagged `ValidationError`
+  (`atta:validator-threw`).
+- **DOM clears on non-string-accepting leaves** route through
+  `markBlank()`, fixing the undeletable last-character on
+  `z.number()` fields rendered as `<input type="text">`.
+
+### Fixes
+
+- **`attaform/vite` subpath rewrite.** The
+  `attaform/zod → attaform/zod-v{3|4}` hook 404'd in real
+  Nuxt 4 consumers; now forwards correctly.
+- **`about:srcdoc` history calls.** REPL iframes no longer
+  blow up with `SecurityError` when the wizard writes
+  `?step=...`.
+
+### Docs
+
+- **Concept-per-page rebuild (~70 pages across 12 categories):**
+  Getting started, Schemas, Reading the form, Binding inputs,
+  Writing & mutating, Validation, Submitting, Persistence,
+  Cross-cutting state, Server & SSR, DevTools & debugging,
+  Multistep, Reference. Each page leads with a one-line
+  definition, a metadata strip, and a working inline demo.
+  New `/play/[slug]` standalone playgrounds with `?from=`
+  back-links to the originating docs page. 301 redirects
+  cover the pre-rebuild URL tree.
+- **New homepage + README** with schema-first positioning, a
+  `v-register` progressive-disclosure showcase, an 8-card
+  feature grid, and a `useWizard` callout.
+- **Measured-perf table** in
+  `docs/server-and-ssr/performance.md` (keystroke /
+  validation / submit / persistence figures against the
+  16.7 ms 60 fps budget).
+
 ## v0.17.2
 _No unreleased changes yet._
 

@@ -143,17 +143,19 @@ When the user toggles `needsId` off, the middle slot drops. `wizard.count` falls
 
 Plain function slots re-evaluate whenever the wizard's compiled list re-evaluates, which happens any time _any_ slot's reactive reads move. That's perfect for the common case: cheap branches on live values reading `ctx.forms.<key>.values.<path>` and returning a form or a string. The wizard re-compiles, the function slot runs again, no harm done.
 
-The pattern stops scaling when a resolver is expensive enough that running it on every wizard mutation produces visible thrash. A fetch that pulls a region-specific schema. A factory that derives a heavy validator. A branch that builds a tenant-specific form layout from server-side defaults. Plain function slots re-fire that resolver every time the user toggles _any_ field anywhere in the wizard, because every field edit re-triggers the compiled list.
+The pattern stops scaling when a resolver is expensive enough that running it on every wizard mutation produces visible thrash. A factory that builds a region-specific schema from already-loaded config. A heavy validator derived from runtime data. A tenant-specific form layout assembled from server-resolved defaults. Plain function slots re-fire that resolver every time the user toggles _any_ field anywhere in the wizard, because every field edit re-triggers the compiled list.
+
+Resolver bodies are synchronous, so async work belongs upstream: load the source data with Nuxt's `useAsyncData` / `useFetch` (which already transfers the result from server to client), then read the resolved ref inside the lazy resolver to derive a form.
 
 `lazy()` is the opt-in cache for those resolvers. Each lazy slot gets its own memoized `computed`: the resolver fires once on the first compile pass, and the result holds until one of the resolver's _own_ tracked reactive reads changes. Reads elsewhere in the wizard (other slots' deps, navigation churn, sibling form mutations) leave the cache intact. It's the same opt-in memoization Vue's `computed` gives you anywhere else, applied at the slot level.
 
 ```ts
 // Plain function slot: re-fires every time the compiled list re-evaluates,
 // which includes unrelated form edits elsewhere in the wizard.
-;(ctx) => fetchPricingFor(ctx.forms.account.values.region)
+;(ctx) => buildPricingFor(ctx.forms.account.values.region)
 
 // Lazy slot: re-fires only when `region` actually changes.
-lazy((ctx) => fetchPricingFor(ctx.forms.account.values.region))
+lazy((ctx) => buildPricingFor(ctx.forms.account.values.region))
 ```
 
 ### How it works

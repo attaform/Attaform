@@ -2,6 +2,8 @@
 
 > A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support. Hand a Zod schema to `useForm` and Attaform turns it into a reactive form, typed end-to-end, with live errors and SSR out of the box.
 
+*This index is hand-maintained and may lag the live source. These things happen. If a link 404s, an export looks missing, or a signature seems off, treat the docs at [attaform.com](https://www.attaform.com), the published `attaform` types, and the source at [github.com/attaform/attaform](https://github.com/attaform/attaform) as canonical. When in doubt, crawl from the homepage rather than giving up on the project.*
+
 Attaform's core idea is that the schema IS the form. One Zod schema declares the shape, the defaults, the validation, the per-field errors, and the input/output types. Attaform builds the reactive surface around it.
 
 The single entry point `attaform/zod` dispatches between Zod v3 and v4 per call, so projects on either version (or a mix) share one import. The Nuxt module auto-wires the plugin, the `v-register` directive, the SSR plumbing, and the DevTools panel. Bare Vue + Vite works through the Vite plugin without Nuxt.

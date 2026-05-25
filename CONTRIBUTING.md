@@ -83,7 +83,11 @@ block in `CHANGELOG.md` to the tagged version.
 
 ### Via GitHub Actions (`publish-npm.yml`)
 
-Recommended — gets OIDC-signed provenance on the npm tarball.
+Recommended. The workflow publishes via npm Trusted Publishing
+(OIDC token exchange against the npmjs.com → `attaform` package →
+Trusted Publishers config; no `NPM_TOKEN` secret involved, nothing
+to rotate) and attaches a signed provenance statement on the
+tarball that consumers can verify with `npm audit signatures`.
 
 Checklist:
 
@@ -131,7 +135,9 @@ pnpm release
 
 Mirrors the CI flow: `pnpm check && pnpm version patch && pnpm
 prepack && pnpm publish && git push --follow-tags`. The local path
-publishes _without_ `--provenance` (OIDC only works in CI), so the
+publishes _without_ `--provenance` (OIDC only works in CI) and
+authenticates with a personal npm access token in your `~/.npmrc`
+rather than the workflow's Trusted Publishing path, so the
 resulting tarball won't carry a signed statement. Prefer the
 workflow when you can.
 

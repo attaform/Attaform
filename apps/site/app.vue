@@ -100,9 +100,13 @@
 
        Description text uses font-mono + whitespace-pre-wrap so
        JSON / multi-line payloads stay readable straight from the
-       toast. Demos that pass `values` (or any object) as
-       `description` get auto-JSON-formatted output via the shim
-       inside `DemoReplEditor.client.vue`. -->
+       toast. `max-h-64 overflow-auto` caps the toast's vertical
+       footprint and adds an inner scroll for large payloads; without
+       the cap, a sprawling values object would either dominate the
+       viewport or get clipped by vue-sonner's stacking. Demos that
+       pass `values` (or any object) as `description` get
+       auto-JSON-formatted output via the shim inside
+       `DemoReplEditor.client.vue`. -->
   <ClientOnly>
     <Toaster
       position="bottom-right"
@@ -111,7 +115,8 @@
       :theme="toasterTheme"
       :toast-options="{
         classes: {
-          description: 'font-mono whitespace-pre-wrap text-xs',
+          description:
+            'font-mono whitespace-pre-wrap text-xs max-h-64 overflow-auto overscroll-contain',
         },
       }"
     />

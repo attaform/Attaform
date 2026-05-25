@@ -122,3 +122,22 @@
     />
   </ClientOnly>
 </template>
+
+<style>
+  /* vue-sonner lays the toast out as `display: flex` with `[data-icon]
+     | [data-content] | [data-close-button]` siblings. `[data-content]`
+     defaults to its intrinsic width because vue-sonner never sets
+     `flex: 1`, so a short description (or a wrapped one) can leave the
+     content column narrower than the toast and the JSON payload renders
+     in a column far skinnier than the available real estate.
+
+     `flex: 1` stretches the content column across the remaining width
+     between the icon and the close button. `min-width: 0` lets it
+     shrink below its content's intrinsic width so the description's
+     own `overflow-auto` can take over and scroll long JSON in place
+     instead of pushing the toast wider. */
+  [data-sonner-toast][data-styled='true'] [data-content] {
+    flex: 1;
+    min-width: 0;
+  }
+</style>

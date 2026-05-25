@@ -121,6 +121,8 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 - **`form.handleSubmit(onValid, onInvalid?)`**: runs validation, dispatches. The valid callback receives the strict Zod-inferred type.
 - **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers, persistence: see [Entry points](https://www.attaform.com/docs/reference/entry-points).
 
+> **Try it live.** Tweak this schema, edit the template, and watch the form rebind in the browser at [attaform.com/demos](https://www.attaform.com/demos). No install needed.
+
 ## `v-register`: one line, every option
 
 `v-register` stays on the same native `<input>`. Every option you add opts into another runtime feature without touching the template structure.

@@ -59,7 +59,7 @@ onMounted(() => {
 
 The template anchor: `<div ref="widget" v-register="form.register('color')" />`. The `v-register` binding still goes on the element; the assigner is what reroutes the write step.
 
-`assignKey` is `Symbol.for('attaform:assign-key')`, a well-known symbol so multiple installers (your code, a third-party wrapper, the library's defaults) can detect and coordinate.
+`assignKey` is `Symbol.for('attaform:assign-key')`, a well-known symbol so multiple installers (your code, a third-party wrapper, Attaform's own built-in assigners) can detect and coordinate.
 
 ## The function signature
 

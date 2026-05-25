@@ -23,7 +23,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "@shikijs/twoslash": "^4.0.2",
     "@tailwindcss/typography": "^0.5.19",
-    "@vue/repl": "^4.7.2",
+    "@vue/repl": "4.7.2",
     "attaform": "workspace:*",
     "better-sqlite3": "^12.9.0",
     "lucide-vue-next": "^1.0.0",

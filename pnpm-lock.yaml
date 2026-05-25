@@ -206,7 +206,7 @@ importers:
         specifier: ^0.5.19
         version: 0.5.19(tailwindcss@4.3.0)
       '@vue/repl':
-        specifier: ^4.7.2
+        specifier: 4.7.2
         version: 4.7.2(patch_hash=a832435783b51fa5c8e55e2332505dc5359537e7238ef8437949989452d026b4)
       attaform:
         specifier: workspace:*

@@ -229,4 +229,4 @@ Patterns that keep Attaform code clean.
 
 ## Author
 
-Attaform is created and maintained by Oswald Chisala ([@ozzyfromspace](https://github.com/ozzyfromspace)).
+Attaform is created and maintained by [Oswald Chisala](https://www.linkedin.com/in/chisalao/) ([@ozzyfromspace](https://github.com/ozzyfromspace) on GitHub).

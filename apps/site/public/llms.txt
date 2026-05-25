@@ -73,6 +73,47 @@ const onComplete = wizard.handleSubmit(async (ctx) => {
 
 Steps can be `useForm` references, bare strings (affordance-only positions), eager function slots, or `lazy(ctx => ...)` markers. `wizard.handleSubmit` validates the active form and advances on intermediate steps, then validates every form in parallel on the final step.
 
+## Quick reference
+
+The form handle returned by `useForm({ schema })`:
+
+- `form.values` reactive view of form state. Drill: `form.values.email`. Call: `form.values('user.email')`.
+- `form.errors` reactive error map by path. Same drill and call shapes.
+- `form.fields.<path>` per-field state. Most-touched keys: `value`, `touched`, `dirty`, `blank`, `showErrors`, `firstError`, `validating`, `valid`, `errors`, `focused`, `blurred`, `connected`.
+- `form.meta` top-level flags: `valid`, `dirty`, `submitting`, `submitted`, `submissionAttempts`, `submitError`, `errorCount`, `errors`, `key`, `instanceId`.
+- `form.register(path, opts?)` returns the binding for `v-register`. Options: `persist`, `transforms`, `multiTab`, `acknowledgeSensitive`.
+- `form.handleSubmit(onSubmit, onError?)` submit wrapper. Validates, routes errors, calls `onSubmit` with the parsed values.
+- `form.setValue(path, value)`, `form.reset(defaults?)`, `form.resetField(path)`, `form.clear(path?)`, `form.unset(path)` programmatic writes.
+- `form.validate(path?)`, `form.validateAsync(path?)`, `form.process(path?)` manual validation.
+- `form.setFieldErrors(errors)`, `form.addFieldErrors(errors)`, `form.clearFieldErrors(path?)` server-error routing.
+- `form.setFormErrors(errors)`, `form.clearFormErrors()` form-level errors.
+- `form.history.{undo, redo, clear, canUndo, canRedo, size}` undo/redo namespace.
+- `form.applyInvalidSubmitPolicy(policy?)`, `form.focusFirstError()`, `form.scrollToFirstError()` UX primitives.
+- `form.touch(path?)`, `form.toRef(path)`, `form.rehydrate()`, `form.clearPersistedDraft(path?)` introspection and lifecycle helpers.
+
+The wizard handle returned by `useWizard({ steps })`:
+
+- `wizard.currentStep`, `wizard.activeForm`, `wizard.activeIndex`, `wizard.count`, `wizard.isFinalStep` position.
+- `wizard.next()`, `wizard.back()`, `wizard.goTo(key)`, `wizard.reset()` navigation.
+- `wizard.handleSubmit(onSubmit, onError?)` universal submit. Intermediate steps validate the active form and advance; the final step validates every form in parallel.
+- `wizard.forms.<key>` typed map of step forms.
+- `wizard.allValues`, `wizard.allErrors`, `wizard.statuses` namespaced aggregates.
+- `wizard.progress`, `wizard.canAdvance`, `wizard.canGoBack`, `wizard.complete`, `wizard.done` derived signals.
+- `wizard.submitting`, `wizard.submissionAttempts`, `wizard.visited` submission state.
+
+## Idioms
+
+Patterns that keep Attaform code clean.
+
+- **Hoist schemas.** Declare `const schema = z.object({...})`, then pass `useForm({ schema })`. Inlining the Zod schema inflates the visible API surface in templates.
+- **Use the form handle. Don't destructure.** `const form = useForm(...)`, then reach for `form.register('email')`, `form.setValue(...)`, etc. Destructuring loses the central noun and the reactive bindings.
+- **Reach with `?.` on nullable returns.** `injectForm()` and `injectWizard()` return `T | null`. Chain optional access at every consumption site (`form?.register('email')`, `form?.fields.email.showErrors`). Skip the `!` non-null assertion; a single mount-order regression turns a quiet no-op into a runtime crash.
+- **Read errors through `field.showErrors` and `field.firstError`.** The visibility heuristic lives in `showErrors`; reaching into `field.errors[0]` directly bypasses it.
+- **Use `key` for stable forms.** Anonymous `useForm({ schema })` works for one-off forms. Pass `key: 'signup'` when you want cross-component lookup via `injectForm('signup')`, multi-tab sync, or stable persistence.
+- **Compose, don't nest.** For multistep flows, compose multiple `useForm` instances under `useWizard` rather than nesting concerns into one schema.
+- **Native inputs first.** Bind to `<input>`, `<select>`, `<textarea>` with `v-register`. Reach for `useRegister` only when wrapping a custom component.
+- **`form.values` is the verbatim input.** Values coerced by `z.coerce.*` or transformed by `z.preprocess` only materialise in the parsed `data` callback inside `form.handleSubmit((data) => ...)`.
+
 ## Getting started
 
 - [Quick start](https://www.attaform.com/docs/getting-started/quick-start): paste-and-run minimal example.
@@ -185,3 +226,7 @@ Steps can be `useForm` references, bare strings (affordance-only positions), eag
 - [GitHub](https://github.com/attaform/attaform): source, issues, discussions.
 - [npm](https://www.npmjs.com/package/attaform): published versions and install command.
 - [CHANGELOG](https://github.com/attaform/attaform/blob/main/CHANGELOG.md): release history.
+
+## Author
+
+Attaform is created and maintained by Oswald Chisala ([@ozzyfromspace](https://github.com/ozzyfromspace)).

@@ -26,20 +26,25 @@
   //
   // Two shapes supported, mirroring DocsDemo's resolution:
   //   - flat:   docs-demos/<slug>.vue
-  //   - folder: docs-demos/<slug>/{App,Foo,Bar}.vue
-  // The folder form wins when both exist; every .vue inside the
-  // folder seeds into the REPL store under src/, preserving the
-  // import path so `import Foo from './Foo.vue'` keeps resolving.
+  //   - folder: docs-demos/<slug>/{App.vue, FieldRow.vue, schema.ts, styles.css, …}
+  // The folder form wins when both exist; every supported file inside
+  // the folder seeds into the REPL store under src/, preserving the
+  // import path so `import Foo from './Foo.vue'`,
+  // `import { schema } from './schema'`, and `import './styles.css'`
+  // all keep resolving without explicit extensions in consumer code.
   const flatSources = import.meta.glob<true, string, string>('../../docs-demos/*.vue', {
     eager: true,
     query: '?raw',
     import: 'default',
   })
-  const folderSources = import.meta.glob<true, string, string>('../../docs-demos/*/*.vue', {
-    eager: true,
-    query: '?raw',
-    import: 'default',
-  })
+  const folderSources = import.meta.glob<true, string, string>(
+    '../../docs-demos/*/*.{vue,ts,js,css}',
+    {
+      eager: true,
+      query: '?raw',
+      import: 'default',
+    }
+  )
 
   // Build the file map the REPL editor will seed. Folder demos
   // produce `{ 'src/App.vue': ..., 'src/FieldRow.vue': ... }`; flat

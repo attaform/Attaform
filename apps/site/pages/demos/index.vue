@@ -25,7 +25,14 @@
   // `eager: false` (the default) returns lazy-loader functions. We
   // never need the modules themselves here; the slug list comes from
   // the glob keys alone, so loaders stay un-invoked.
-  const demoModules = import.meta.glob('../../docs-demos/*.vue')
+  //
+  // Two shapes mirror <DocsDemo>'s resolver:
+  //   - flat:   docs-demos/<slug>.vue
+  //   - folder: docs-demos/<slug>/App.vue
+  // The flat glob matches only direct children, so the folder entries
+  // need their own glob; their slug is the parent directory name.
+  const flatModules = import.meta.glob('../../docs-demos/*.vue')
+  const folderEntries = import.meta.glob('../../docs-demos/*/App.vue')
 
   function formatTitle(slug: string): string {
     return slug
@@ -34,12 +41,15 @@
       .join(' ')
   }
 
-  const allSlugs = computed<string[]>(() =>
-    Object.keys(demoModules)
+  const allSlugs = computed<string[]>(() => {
+    const flat = Object.keys(flatModules)
       .map((path) => path.match(/\/([^/]+)\.vue$/)?.[1])
       .filter((slug): slug is string => typeof slug === 'string')
-      .sort()
-  )
+    const folder = Object.keys(folderEntries)
+      .map((path) => path.match(/\/([^/]+)\/App\.vue$/)?.[1])
+      .filter((slug): slug is string => typeof slug === 'string')
+    return Array.from(new Set([...flat, ...folder])).sort()
+  })
 
   // Substring filter — matches against both the raw slug and its
   // formatted title, so "v-register", "register", and "Register"

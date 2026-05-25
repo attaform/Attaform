@@ -15,7 +15,7 @@ metaRows:
 
 # `meta`
 
-> Form-level state in one place: every FieldState bit rolled up across paths, plus the six submission-cycle reads.
+> Form-level state in one place: every FieldState bit rolled up across paths, plus the seven form-only reads for the submit cycle and wizard departures.
 
 ::docs-meta-table
 ::

@@ -43,7 +43,7 @@ const wizard = useWizard({
     'welcome', // affordance slot (string)
     shipping, // form slot
     (ctx) => (ctx.forms.shipping.values.kind === 'business' ? business : consumer), // function slot
-    lazy((ctx) => fetchSummaryFormFor(ctx)), // memoized lazy slot
+    lazy((ctx) => buildSummaryFormFor(ctx)), // memoized lazy slot
     'congrats', // affordance slot
   ],
 })
@@ -121,7 +121,7 @@ When the user picks `'business'` on the account step, the branching slot resolve
 
 ### Reactive re-evaluation
 
-Function slots re-evaluate whenever the wizard's compiled list re-evaluates, which includes the case where _another_ slot's deps changed. Keep slot bodies cheap: a branch on `ctx.forms.<key>.values.<path>` is fine; a `fetch(...)` is not (slot evaluation is synchronous, and re-evaluating an expensive lookup on every keystroke punishes the user). Reach for [`lazy()`](#lazy-slots-lazy) when the resolver is heavy and should only re-fire on its own tracked reads.
+Function slots re-evaluate whenever the wizard's compiled list re-evaluates, which includes the case where _another_ slot's deps changed. Keep slot bodies cheap: a branch on `ctx.forms.<key>.values.<path>` is fine; a `fetch(...)` is not (slot evaluation is synchronous, and re-evaluating an expensive lookup on every keystroke is wasted work). Reach for [`lazy()`](#lazy-slots-lazy) when the resolver is heavy and should only re-fire on its own tracked reads.
 
 ### Dropping a slot keeps navigation honest
 
@@ -189,7 +189,7 @@ lazy(() => buildShippingFormForRegion(initialRegion))
 | A `string` key   | Resolves to a noop affordance step under that key, building one on the fly if needed. Result caches under the same dep-tracking rules as a form return. |
 | `undefined`      | The slot drops from the compiled list. The drop caches; a tracked dep change or `reset()` re-fires the resolver.                                        |
 
-Use `lazy()` when the resolution is expensive enough that thrash matters. For everyday branching on live values, plain function slots are simpler — they re-evaluate freely with the compiled list, and the wizard pays no cache-bookkeeping cost.
+Use `lazy()` when the resolution is expensive enough that thrash matters. For everyday branching on live values, plain function slots are simpler. They re-evaluate freely with the compiled list, and the wizard pays no cache-bookkeeping cost.
 
 ## The `ctx` surface
 

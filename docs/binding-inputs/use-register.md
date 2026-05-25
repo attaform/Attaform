@@ -30,7 +30,7 @@ Type into either of the two fields rendered by `<FieldRow>` and watch the JSON r
 `useRegister` exists for one specific shape: a Vue component that wraps a single form field, whose **root element is not the input itself**:
 
 ```vue
-<!-- A labelled-row wrapper. The root is <label>, not the input. -->
+<!-- A labeled-row wrapper. The root is <label>, not the input. -->
 <FieldRow v-register="form.register('email')" label="Email" />
 ```
 

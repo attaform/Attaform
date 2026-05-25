@@ -259,7 +259,7 @@
           >
             <strong class="font-semibold text-fg">Your schema is enough.</strong> Hand it to
             Attaform and get back types, state, validation, errors, persistence, SSR, and more, all
-            from one definition. Because Vue and Nuxt devs deserve nice things.
+            from one definition. Because Vue devs deserve nice things.
           </p>
 
           <div class="reveal-step flex flex-wrap gap-3" style="--reveal-step-delay: 180ms">

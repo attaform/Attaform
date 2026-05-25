@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.18.1
 Attaform now ships with **zero runtime dependencies**. The
 SSR-accessed SFC transform that pulled in `magic-string` now
 uses a small in-file helper, with the same rewrites and no

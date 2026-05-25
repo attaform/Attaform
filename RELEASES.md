@@ -1,5 +1,21 @@
 # Releases
 
+## v0.18.1 — 2026-05-25
+
+## What's Changed
+* chore: drop magic-string, reach zero runtime dependencies by @ozzyfromspace in https://github.com/attaform/Attaform/pull/253
+* chore(deps): bump the production-dependencies group with 4 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/257
+* docs(site): tighten the homepage hero + reposition to Zod-first by @ozzyfromspace in https://github.com/attaform/Attaform/pull/261
+* perf(lint): cut lint runtime from 25+ min to ~19s cold, ~3s warm by @ozzyfromspace in https://github.com/attaform/Attaform/pull/254
+* chore: clean up stale refs to removed Recipes section + pre-rebuild slugs by @ozzyfromspace in https://github.com/attaform/Attaform/pull/258
+* fix(docs): move docs-prose + install-command CSS out of .vue `<style>` blocks by @ozzyfromspace in https://github.com/attaform/Attaform/pull/259
+* docs(changelog): zero-runtime-deps + faster contributor lint by @ozzyfromspace in https://github.com/attaform/Attaform/pull/255
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.18.0...v0.18.1
+
+---
+
 ## v0.18.0 — 2026-05-25
 
 ## What's Changed

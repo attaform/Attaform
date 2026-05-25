@@ -2,7 +2,21 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+Attaform now ships with **zero runtime dependencies**. The
+SSR-accessed SFC transform that pulled in `magic-string` now
+uses a small in-file helper, with the same rewrites and no
+third-party install.
+
+### Internal
+
+- **Faster contributor lint.** `pnpm lint` drops from 25+
+  minutes to ~19s cold and ~3s warm. The dominant fix is a
+  single missing ignore: the REPL's bundled type cache under
+  `apps/site/.repl-cache/**` (60k+ lines of `.d.ts` files)
+  was being linted on every run. A small structural pass
+  alongside it keeps the type-aware parser scoped to the
+  rule block that actually reads it. Same rule coverage as
+  before.
 
 ## v0.18.0
 Multistep flows (`useWizard` + `injectWizard`), a Nuxt DevTools

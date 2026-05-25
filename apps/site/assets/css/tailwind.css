@@ -11,6 +11,13 @@
    adding a weight or bumping the upstream font version. */
 @import './fonts.css';
 
+/* Docs prose chrome — `.docs-prose` overrides for the typography
+   plugin, plus the `.docs-article-enter` fade-in. Lives in a global
+   stylesheet (instead of `pages/docs/[...slug].vue`'s `<style>`)
+   so Vite's dev-mode JS-injection lag can't flash the prose
+   unstyled on every back/forward navigation. */
+@import './docs-prose.css';
+
 @variant dark (&:where(.dark, .dark *));
 
 /* ──────────────────────────────────────────────────────────────────

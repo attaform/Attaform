@@ -97,14 +97,26 @@
       </button>
     </div>
 
-    <!-- Command + copy. The sizer renders every variant invisibly
-         to lock the row's width against manager switches. -->
+    <!-- Command + copy. Stacked-grid pattern: every variant renders
+         as an invisible sizer in row/col 1 so the cell auto-sizes
+         to the widest. The visible command is absolute-positioned
+         over the cell, so switching pnpm ↔ npm (different command
+         widths) never resizes the row.
+         Inlined as Tailwind utilities rather than a `<style scoped>`
+         block — scoped CSS in `.vue` files is JS-injected on mount
+         in Vite dev, which flashed the 4 invisible-cmds as visible
+         text on every back/forward before the rule landed. -->
     <div class="flex items-center gap-3 px-4 py-3 font-mono text-sm">
-      <div class="command-sizer flex-1">
-        <code v-for="cmd in allCommands" :key="cmd" aria-hidden="true" class="invisible-cmd">
+      <div class="relative grid min-w-0 flex-1 grid-cols-[max-content]">
+        <code
+          v-for="cmd in allCommands"
+          :key="cmd"
+          aria-hidden="true"
+          class="invisible col-start-1 row-start-1 whitespace-nowrap"
+        >
           <span class="select-none">$ </span>{{ cmd }}
         </code>
-        <code class="visible-cmd text-fg">
+        <code class="absolute inset-0 whitespace-nowrap text-fg">
           <span class="text-fg-subtle select-none">$ </span>{{ command }}
         </code>
       </div>
@@ -128,28 +140,3 @@
     </NuxtLink>
   </div>
 </template>
-
-<style scoped>
-  /* Stacked grid: every invisible variant claims row 1 / col 1
-     so the cell auto-sizes to the widest. The visible command is
-     absolutely positioned over the cell. Switching managers can
-     never narrow or widen the row. */
-  .command-sizer {
-    display: grid;
-    grid-template-columns: max-content;
-    position: relative;
-    min-width: 0;
-  }
-  .command-sizer > code {
-    grid-row: 1;
-    grid-column: 1;
-    white-space: nowrap;
-  }
-  .command-sizer > .invisible-cmd {
-    visibility: hidden;
-  }
-  .command-sizer > .visible-cmd {
-    position: absolute;
-    inset: 0;
-  }
-</style>

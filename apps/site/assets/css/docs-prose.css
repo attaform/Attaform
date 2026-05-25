@@ -244,3 +244,29 @@
 .docs-prose :where(h1, h2, h3, h4) {
   overflow-wrap: anywhere;
 }
+
+/* Docs breadcrumb — stagger entrance + connected-chevron hover.
+ * Moved out of `DocsBreadcrumb.vue`'s `<style scoped>` for the same
+ * dev-mode JS-injection reason `.docs-prose` lives here. The class
+ * names (`.crumb-step`, `.crumb-chevron`, `.crumb-link`) are unique
+ * to the breadcrumb so the global scope doesn't bleed. */
+
+/* Each crumb fades up with a 50ms offset from its index (the inline
+   `--crumb-step-delay` style on each `.crumb-step` carries the
+   per-segment delay). Total trail of 4 crumbs lands in ~200ms +
+   the keyframe's duration, which sits below the threshold where
+   the eye starts reading it as "loading." */
+.crumb-step {
+  animation: reveal-fade-up var(--duration-base) var(--ease-out-quart) both;
+  animation-delay: var(--crumb-step-delay, 0ms);
+}
+.crumb-chevron {
+  opacity: 0.6;
+  transition: opacity var(--duration-fast) var(--ease-out-quart);
+}
+/* Brighten the chevron after a hovered crumb so the connecting line
+   reads as continuous on hover. `:has` support is universal across
+   evergreen browsers as of 2024. */
+nav:has(.crumb-step:hover) .crumb-step:hover + .crumb-chevron {
+  opacity: 1;
+}

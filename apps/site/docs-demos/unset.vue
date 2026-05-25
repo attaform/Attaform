@@ -33,7 +33,7 @@
       </label>
       <label>
         <span>Age</span>
-        <input type="number" v-register="form.register('profile.age')" />
+        <input v-register="form.register('profile.age')" type="number" />
       </label>
     </fieldset>
 
@@ -63,80 +63,3 @@
     </div>
   </form>
 </template>
-
-<style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 32rem;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  fieldset {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.5rem;
-    padding: 0.75rem;
-  }
-  legend {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: #374151;
-    padding: 0 0.375rem;
-  }
-  input {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .actions button {
-    padding: 0.35rem 0.7rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    background: #fff;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    cursor: pointer;
-  }
-  .actions button:hover {
-    background: #f3f4f6;
-  }
-  .panel {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8125rem;
-    font-family: ui-monospace, monospace;
-  }
-  .panel p {
-    margin: 0.2rem 0;
-    white-space: pre-wrap;
-  }
-  code {
-    color: #6b7280;
-  }
-  em {
-    color: #2563eb;
-    font-style: normal;
-    font-weight: 500;
-  }
-</style>

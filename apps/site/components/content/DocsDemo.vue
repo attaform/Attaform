@@ -83,7 +83,12 @@
       </NuxtLink>
     </div>
 
-    <div class="p-6">
+    <!-- `data-demo` stamps the slug onto the demo body wrapper so
+         `assets/css/docs-demos.css` can scope each demo's styles
+         under `[data-demo='<slug>']` (the per-demo `<style scoped>`
+         blocks were lifted into that file to keep them off Vite's
+         dev-mode JS-injection path). -->
+    <div class="p-6" :data-demo="props.slug">
       <component :is="DemoComponent" />
     </div>
   </div>

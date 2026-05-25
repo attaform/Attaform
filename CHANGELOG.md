@@ -1,10 +1,6 @@
 # Changelog
 
 ## Unreleased
-
-_No unreleased changes yet._
-
-## v0.18.0
 Multistep flows (`useWizard` + `injectWizard`), a Nuxt DevTools
 panel, schema-faithful preprocess (`z.preprocess` / `z.coerce`
 no longer mutate `form.values`), `v-register` on

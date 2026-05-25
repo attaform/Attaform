@@ -1,12 +1,23 @@
 <script setup lang="ts">
-  import { ShieldCheck, Zap, Layers, Server, ArrowRight, ExternalLink } from 'lucide-vue-next'
+  import {
+    ShieldCheck,
+    Zap,
+    Layers,
+    Server,
+    Workflow,
+    TerminalSquare,
+    Webhook,
+    MonitorSmartphone,
+    ArrowRight,
+    ExternalLink,
+  } from 'lucide-vue-next'
 
   // Feature cards on the homepage. Same single-color icon-chip
-  // discipline as the docs landing — every chip on this page uses
+  // discipline as the docs landing: every chip on this page uses
   // the brand-soft pair so the page reads as one product surface.
-  // The icons map to the four-line value prop in the lede; a reader
-  // who skims the heading + bullet titles should still get "what
-  // does Attaform do" in 5 seconds.
+  // Eight cards: types + validation + arrays + persistence (the
+  // "first scroll" group), then multistep + devtools + server
+  // errors + multi-tab (the "stays nice as the form grows" group).
   const { attaformVersion } = useRuntimeConfig().public
 
   // Schema.org SoftwareApplication entry — the canonical structured-
@@ -55,6 +66,26 @@
       icon: Server,
       title: 'SSR + persistence',
       body: 'Nuxt round-trips payload automatically. Per-field opt-in drafts to localStorage / sessionStorage / IndexedDB.',
+    },
+    {
+      icon: Workflow,
+      title: 'First-class multistep',
+      body: '`useWizard` composes `useForm` instances into a flow. Shared navigation, per-step validation, persistence across steps, deep-link restore.',
+    },
+    {
+      icon: TerminalSquare,
+      title: 'DevTools panel',
+      body: 'A Nuxt-auto-wired devtools panel. Walk history, edit values live, inspect every form on the page. No probes to install.',
+    },
+    {
+      icon: Webhook,
+      title: 'Server-side errors',
+      body: '`parseApiErrors(payload, { formKey: form.key })` normalizes any API envelope into the same `ValidationError` shape your template already reads.',
+    },
+    {
+      icon: MonitorSmartphone,
+      title: 'Multi-tab sync',
+      body: 'Same-keyed forms in same-origin tabs auto-pair over `BroadcastChannel` and mirror every mutation in near real-time. Sensitive paths filtered.',
     },
   ]
 </script>
@@ -372,8 +403,8 @@ const onSubmit = form.handleSubmit((values) =&gt; api.signup(values))
             Schema-driven, end to end.
           </h2>
           <p class="mt-4 text-lg text-fg-muted">
-            One schema. Inferred types end-to-end. Validation that runs where you want it.
-            Persistence built in. Undo/redo when you need it. Everything else, out of your way.
+            Inferred types. Live validation. Multistep flows. Devtools. Server-side errors,
+            multi-tab sync, persistence, undo/redo. Everything you need, nothing you have to wire.
           </p>
         </div>
 
@@ -404,13 +435,15 @@ const onSubmit = form.handleSubmit((values) =&gt; api.signup(values))
 
     <!-- ─── Live demo ────────────────────────────────────────────
          The interactive REPL embed. Same eyebrow/display/lede
-         pattern + a "Check out more demos" link button on the right
-         of the heading row that's an obvious affordance to escape
-         the embedded view. The frame around the embed elevates it
-         from "floating widget" to "real artifact" — a hairline
-         accent-soft strip across the top, a 2xl shadow, and a
-         strong border. -->
-    <section class="py-24">
+         pattern plus a "Check out more demos" link button on the
+         right of the heading row that's an obvious affordance to
+         escape the embedded view. The frame around the embed
+         elevates it from "floating widget" to "real artifact":
+         a hairline accent-soft strip across the top, a 2xl shadow,
+         and a strong border. The section carries the
+         `#live-editor` anchor so the canonical snippet's "Try it
+         live" link can scroll the reader straight here. -->
+    <section id="live-editor" class="scroll-mt-20 py-24">
       <UiContainer size="xl">
         <div class="mb-10 flex flex-wrap items-end justify-between gap-6">
           <div class="max-w-2xl">
@@ -419,11 +452,8 @@ const onSubmit = form.handleSubmit((values) =&gt; api.signup(values))
               A schema is the form.
             </h2>
             <p class="mt-4 text-lg text-fg-muted">
-              Edit the schema, edit the template, watch it run. No backend, no build step — every
-              change re-renders live. Inputs stay native —
-              <UiInlineCode>v-register</UiInlineCode> is a Vue directive, not a wrapper component,
-              so there's no field-component overhead between your
-              <UiInlineCode>&lt;input&gt;</UiInlineCode> and the form.
+              Edit the schema, edit the template, watch it run. No backend, no build step, every
+              change re-renders live.
             </p>
           </div>
           <UiButton to="/demos" variant="link">
@@ -461,6 +491,55 @@ const onSubmit = form.handleSubmit((values) =&gt; api.signup(values))
             </NuxtLink>
           </div>
           <DemoRepl height="37.5rem" />
+        </div>
+      </UiContainer>
+    </section>
+
+    <!-- ─── Multistep callout ───────────────────────────────────
+         Half-and-half row: copy on the left, a tight useWizard
+         snippet on the right. Acknowledges multistep on the home
+         page since most form libraries don't ship a wizard
+         primitive at all. The snippet pairs two `useForm` handles
+         with two affordance steps (bare string keys) to show that
+         affordance positions are first-class. -->
+    <section class="border-t border-border bg-surface/30 py-24">
+      <UiContainer size="xl">
+        <div class="grid items-center gap-12 md:grid-cols-2 md:gap-x-16">
+          <div>
+            <p class="text-sm font-semibold tracking-wide text-accent uppercase">Multistep</p>
+            <h2 class="mt-3 text-display-md font-semibold tracking-tight text-fg">
+              A wizard, batteries included.
+            </h2>
+            <p class="mt-4 text-lg text-fg-muted">
+              <UiInlineCode>useWizard</UiInlineCode> takes an ordered list of step slots and
+              produces a reactive wizard. Form steps gather data; bare string keys mark affordance
+              steps (welcome screens, review surfaces, congrats cards). Universal
+              <UiInlineCode>handleSubmit</UiInlineCode>, shared persistence, URL sync, all in one
+              composable.
+            </p>
+            <div class="mt-6">
+              <UiButton to="/docs/multistep/use-wizard" variant="link">
+                <span>Read the useWizard guide</span>
+                <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
+              </UiButton>
+            </div>
+          </div>
+          <div class="overflow-hidden rounded-2xl border border-border-strong bg-bg shadow-lg">
+            <div
+              class="flex items-center justify-between border-b border-border bg-surface/40 px-3 py-2"
+            >
+              <span class="px-3 text-xs font-semibold text-fg">Checkout.vue</span>
+            </div>
+            <pre
+              v-pre
+              class="overflow-x-auto px-6 py-6 font-mono text-sm leading-relaxed text-fg"
+            ><code>const shipping = useForm({ schema: shippingSchema, key: 'shipping' })
+const payment  = useForm({ schema: paymentSchema,  key: 'payment'  })
+
+const wizard = useWizard({
+  steps: ['welcome', shipping, payment, 'review'],
+})</code></pre>
+          </div>
         </div>
       </UiContainer>
     </section>

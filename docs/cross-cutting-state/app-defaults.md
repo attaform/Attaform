@@ -1,6 +1,6 @@
 ---
 title: App-wide defaults
-description: createAttaform sets app-level defaults — validateOn, debounceMs, history, coercion, sensitiveNames — that every useForm in the app inherits. Per-form options always win the merge.
+description: createAttaform sets app-level defaults (validateOn, debounceMs, history, coercion, sensitiveNames) that every useForm in the app inherits. Per-form options always win the merge.
 metaRows:
   - label: Category
     value: Plugin
@@ -16,12 +16,12 @@ metaRows:
 
 # App-wide defaults
 
-> One plugin call sets the defaults every `useForm` in the app inherits — set the convention once, override per-form when a particular surface needs something different.
+> One plugin call sets the defaults every `useForm` in the app inherits. Set the convention once, override per-form when a particular surface needs something different.
 
 ::docs-meta-table
 ::
 
-This page is code-only — `createAttaform` runs at app boot, before any form mounts. The demos throughout the rest of the docs implicitly use Attaform's library defaults (`validateOn: 'change'`, `debounceMs: 0`, etc.); this page shows how to set your own.
+This page is code-only; `createAttaform` runs at app boot, before any form mounts. The demos throughout the rest of the docs implicitly use Attaform's built-in defaults (`validateOn: 'change'`, `debounceMs: 0`, etc.); this page shows how to set your own.
 
 ## Setup
 
@@ -60,7 +60,7 @@ export default defineNuxtConfig({
 })
 ```
 
-The Nuxt module surfaces the same `AttaformDefaults` type under `attaform.defaults` in your `nuxt.config.ts` — no separate `createAttaform` call needed.
+The Nuxt module surfaces the same `AttaformDefaults` type under `attaform.defaults` in your `nuxt.config.ts`; no separate `createAttaform` call needed.
 
 ## Resolution order
 
@@ -72,7 +72,7 @@ useForm({ … })  >  createAttaform({ defaults })  >  library default
 
 ## Merge semantics
 
-Every option resolves independently — set anything once at the app level, override anything per-form without losing the rest:
+Every option resolves independently. Set anything once at the app level, override anything per-form without losing the rest:
 
 ```ts
 // Plugin side
@@ -87,7 +87,7 @@ useForm({ schema })
 useForm({ schema, validateOn: 'blur' })
 // → validateOn: 'blur'; debounceMs is dropped
 //   (the TS-level ValidateOnConfig discriminated union rejects
-//    debounceMs when validateOn isn't 'change' — paired with 'blur'
+//    debounceMs when validateOn isn't 'change'; paired with 'blur'
 //    is a compile-time error)
 
 useForm({ schema, debounceMs: 25 })
@@ -109,22 +109,23 @@ type AttaformDefaults = {
   history?: true | { max?: number }
   rememberVariants?: boolean
   coerce?: boolean | CoercionRegistry
-  shouldShowErrors?: ShouldShowErrors | boolean
+  shouldShowErrors?: ShouldShowErrorsConfig
+  maxRecursionDepth?: number
   sensitiveNames?: readonly string[]
   multiTab?: boolean
 }
 ```
 
-`shouldShowErrors` drives `field.showErrors` and `form.meta.showErrors` — the centralised "is this error ready to render?" gate. Set once at the app level so every form follows the same convention. See [Showing errors at the right time](/docs/validation/showing-errors) for the full contract.
+`shouldShowErrors` drives `field.showErrors` and `form.meta.showErrors`: the centralized "is this error ready to render?" gate. Set once at the app level so every form follows the same convention. See [Showing errors at the right time](/docs/validation/showing-errors) for the full contract.
 
 `sensitiveNames` extends the heuristic that gates persistence opt-ins, multi-tab broadcasts, and the DevTools redact walk. See [Sensitive-name protection](/docs/persistence/sensitive-names).
 
 ## What's NOT supported (and why)
 
-- `schema` — per-form by definition; a cross-form schema doesn't make sense.
-- `key` — per-form identity.
-- `defaultValues` — per-form initial values.
-- `persist` — opt-in per form already; cross-form storage defaults are ambiguous (key-prefix collisions, adapter selection).
+- `schema`: per-form by definition; a cross-form schema doesn't make sense.
+- `key`: per-form identity.
+- `defaultValues`: per-form initial values.
+- `persist`: opt-in per form already; cross-form storage defaults are ambiguous (key-prefix collisions, adapter selection).
 
 ## Per-form `defaultValues`
 
@@ -175,10 +176,10 @@ export function useAppForm<S extends z.ZodObject>(opts: Parameters<typeof attafo
 }
 ```
 
-Fully equivalent for the consumer — every `useAppForm` call gets your defaults; per-form options still win via the spread. The plugin-level approach is idiomatic for first-party apps; the wrapper is right when you can't (or shouldn't) influence the plugin config from your call site.
+Fully equivalent for the consumer; every `useAppForm` call gets your defaults; per-form options still win via the spread. The plugin-level approach is idiomatic for first-party apps; the wrapper is right when you can't (or shouldn't) influence the plugin config from your call site.
 
 ## Where to next
 
-- [Sensitive-name protection](/docs/persistence/sensitive-names) — extend the resolved list once at the app level, tighten persistence + multi-tab + DevTools redact in one move.
-- [Showing errors at the right time](/docs/validation/showing-errors) — set the `shouldShowErrors` predicate app-wide for a consistent feel across forms.
-- [When validation runs](/docs/validation/when-validation-runs) — `validateOn` and `debounceMs` defaults shape every form in the app.
+- [Sensitive-name protection](/docs/persistence/sensitive-names): extend the resolved list once at the app level, tighten persistence + multi-tab + DevTools redact in one move.
+- [Showing errors at the right time](/docs/validation/showing-errors): set the `shouldShowErrors` predicate app-wide for a consistent feel across forms.
+- [When validation runs](/docs/validation/when-validation-runs): `validateOn` and `debounceMs` defaults shape every form in the app.

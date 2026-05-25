@@ -17,7 +17,7 @@ metaRows:
 
 # Server-side errors
 
-> Treat API failures the same as schema failures — same reactive surface, same `firstError` reads, same focus / scroll behavior on submit.
+> Treat API failures the same as schema failures: same reactive surface, same `firstError` reads, same focus / scroll behavior on submit.
 
 ::docs-meta-table
 ::
@@ -31,21 +31,21 @@ Submit with `taken@example.com` as the email and `admin` as the username to watc
 
 A successful round-trip lands a value at the form; a failed one needs to land an error at the right path. The three pieces:
 
-1. **`parseApiErrors(envelope, { formKey })`** — normalizes the server response into `ValidationError[]`.
-2. **`setFieldErrors(errors)`** (or `addFieldErrors`) — mounts the parsed errors into the form's reactive surface.
-3. **`clearFieldErrors(path?)`** — drops them when the user starts editing or the next submit fires.
+1. **`parseApiErrors(envelope, { formKey })`**: normalizes the server response into `ValidationError[]`.
+2. **`form.setFieldErrors(errors)`** (or `form.addFieldErrors`): mounts the parsed errors into the form's reactive surface.
+3. **`form.clearFieldErrors(path?)`**: drops them when the user starts editing or the next submit fires.
 
 ```ts
 import { parseApiErrors } from 'attaform'
 
-const onSubmit = handleSubmit(async (values) => {
-  clearFieldErrors()
+const onSubmit = form.handleSubmit(async (values) => {
+  form.clearFieldErrors()
   const response = await api.signup(values)
 
   if (!response.ok) {
     const parsed = parseApiErrors(response, { formKey: form.key })
     if (parsed.ok) {
-      setFieldErrors(parsed.errors)
+      form.setFieldErrors(parsed.errors)
       return
     }
   }
@@ -62,13 +62,13 @@ parseApiErrors(
 ): { ok: true; errors: ValidationError[] } | { ok: false; reason: string }
 ```
 
-`ApiErrorEnvelope` is the shape the server returns — a wrapped object with a `details` array of `{ path, message }` entries. The parser:
+`ApiErrorEnvelope` is the shape the server returns: a wrapped object with a `details` array of `{ path, message }` entries. The parser:
 
 - Validates the envelope shape; returns `{ ok: false, reason }` when it doesn't conform.
 - Maps each entry's `path` to the form's path tuple.
 - Stamps each error with the form key for cross-form isolation.
 
-When the response is a plain `200 { ok: true }`, skip the call entirely — `parseApiErrors` is for failure paths.
+When the response is a plain `200 { ok: true }`, skip the call entirely; `parseApiErrors` is for failure paths.
 
 ## Mounting errors
 
@@ -91,16 +91,16 @@ form.clearFieldErrors() // clear everything
 
 Once mounted, server errors are indistinguishable from schema errors at the read surfaces:
 
-- `errors.email` returns the `ValidationError[]` (server or schema, same shape).
-- `fields.email.firstError` returns the first one.
-- `fields.email.showErrors` gates display per the [`shouldShowErrors`](/docs/validation/showing-errors) predicate.
-- `focusFirstError()` pulls focus to the first server error just like a schema one.
+- `form.errors.email` returns the `ValidationError[]` (server or schema, same shape).
+- `form.fields.email.firstError` returns the first one.
+- `form.fields.email.showErrors` gates display per the [`shouldShowErrors`](/docs/validation/showing-errors) predicate.
+- `form.focusFirstError()` pulls focus to the first server error just like a schema one.
 
-No special "this is a server error" surface in the template. The render code reads `fields.<path>.firstError?.message` the same way for both kinds.
+No special "this is a server error" surface in the template. The render code reads `form.fields.<path>.firstError?.message` the same way for both kinds.
 
 ## Auto-clear on edit
 
-By default, editing a field after a server error landed at that path does NOT auto-clear the error — it'll persist until the next submit re-runs or `clearFieldErrors` fires explicitly. Most servers want a fresh round-trip before the error is "cleared," so this matches the network round-trip semantics.
+By default, editing a field after a server error landed at that path does NOT auto-clear the error: it'll persist until the next submit re-runs or `form.clearFieldErrors` fires explicitly. Most servers want a fresh round-trip before the error is "cleared," so this matches the network round-trip semantics.
 
 For "clear on edit" UX, hook a watcher on the path and call `clearFieldErrors(path)`:
 
@@ -113,6 +113,6 @@ watch(
 
 ## Where to next
 
-- [`handleSubmit`](/docs/submitting/handle-submit) — the dispatch surface server errors plug into.
-- [Focus & scroll on invalid submit](/docs/submitting/focus-scroll) — same machinery, applied to server errors after mount.
-- [`errors`](/docs/reading-the-form/errors) — the reactive read surface for every error, server or schema.
+- [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface server errors plug into.
+- [Focus & scroll on invalid submit](/docs/submitting/focus-scroll): same machinery, applied to server errors after mount.
+- [`errors`](/docs/reading-the-form/errors): the reactive read surface for every error, server or schema.

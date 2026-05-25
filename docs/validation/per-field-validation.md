@@ -17,12 +17,12 @@ metaRows:
 
 # Per-field validation
 
-> The schema is the validator — chain refinements onto one leaf, or attach cross-field rules to the parent with a target path.
+> The schema is the validator. Chain refinements onto one leaf, or attach cross-field rules to the parent with a target path.
 
 ::docs-meta-table
 ::
 
-Type into each field to watch its own refinements light up — the username's regex requirement, the password's min length, and the cross-field "passwords must match" check that fires when `confirmPassword` differs from `password`. Both single-field and cross-field validators live in the schema; the [Two patterns](#two-patterns) section traces each.
+Type into each field to watch its own refinements light up: the username's regex requirement, the password's min length, and the cross-field "passwords must match" check that fires when `confirmPassword` differs from `password`. Both single-field and cross-field validators live in the schema; the [Two patterns](#two-patterns) section traces each.
 
 ::docs-demo{slug="per-field-validation" label="Per-field Validation Demo"}
 ::
@@ -45,7 +45,7 @@ z.object({
 })
 ```
 
-Each refinement's error message appears at `errors.username`. The order matters — refinements stop at the first failure, so `.min(3)` runs before `.regex`. Read the field's `firstError` to get the first failure's message; the full array is available at `errors.<path>` for surfacing every refinement that fired.
+Each refinement's error message appears at `errors.username`. The order matters: refinements stop at the first failure, so `.min(3)` runs before `.regex`. Read the field's `firstError` to get the first failure's message; the full array is available at `errors.<path>` for surfacing every refinement that fired.
 
 ### Cross-field refinements
 
@@ -69,7 +69,7 @@ For predicates beyond the built-in chain, use `.refine` at the leaf:
 
 ```ts
 z.string().refine((v) => !v.includes('admin'), {
-  message: 'Reserved word — pick another username',
+  message: 'Reserved word, pick another username',
 })
 ```
 
@@ -77,11 +77,11 @@ The function receives the parsed leaf value; return `true` to accept, `false` to
 
 ## Sync vs async
 
-Sync refinements run on every validation pass — keystroke, blur, submit (per the [validateOn config](/docs/validation/when-validation-runs)). For checks that need a server round-trip (uniqueness probes, slug availability, password-breach lookups), reach for [async refinements](/docs/validation/async-refinements) — Zod's `.refine` accepts an async predicate, and Attaform awaits it before submit dispatches.
+Sync refinements run on every validation pass: keystroke, blur, submit (per the [validateOn config](/docs/validation/when-validation-runs)). For checks that need a server round-trip (uniqueness probes, slug availability, password-breach lookups), reach for [async refinements](/docs/validation/async-refinements). Zod's `.refine` accepts an async predicate, and Attaform awaits it before submit dispatches.
 
 ## Where to next
 
-- [Async refinements](/docs/validation/async-refinements) — predicates that await a server round-trip.
-- [The validation lifecycle](/docs/validation/lifecycle) — the three imperative methods (`validate`, `validateAsync`, `process`).
-- [When validation runs](/docs/validation/when-validation-runs) — the `validateOn` timing knob.
-- [Showing errors at the right time](/docs/validation/showing-errors) — the `showErrors` predicate.
+- [Async refinements](/docs/validation/async-refinements): predicates that await a server round-trip.
+- [The validation lifecycle](/docs/validation/lifecycle): the three imperative methods (`validate`, `validateAsync`, `process`).
+- [When validation runs](/docs/validation/when-validation-runs): the `validateOn` timing knob.
+- [Showing errors at the right time](/docs/validation/showing-errors): the `showErrors` predicate.

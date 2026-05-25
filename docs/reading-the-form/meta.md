@@ -1,6 +1,6 @@
 ---
 title: meta
-description: form.meta is the form-level FieldState aggregation plus six submission bits, submitting, submissionAttempts, submitError, errorCount, submitted, and instanceId.
+description: form.meta is the form-level FieldState aggregation plus seven form-only reads, submitting, submissionAttempts, departAttempts, submitError, errorCount, submitted, and instanceId.
 metaRows:
   - label: Category
     value: Return property
@@ -10,7 +10,7 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Shape
-    value: FieldState aggregation + 6 form-only props
+    value: FieldState aggregation + 7 form-only props
 ---
 
 # `meta`
@@ -27,10 +27,10 @@ Submit the demo without changing the simulate-failure toggle to watch `submittin
 
 ## Two halves
 
-`form.meta` extends `FieldState` with six submission-state properties. That means `meta` has 28 reads total:
+`form.meta` extends `FieldState` with seven form-only properties. That means `meta` has 29 reads total:
 
 - 22 properties inherited from FieldState, aggregated across every leaf in the form.
-- 6 form-only properties that describe the submit cycle.
+- 7 form-only properties that describe the submit cycle and the wizard-departure counter.
 
 The inherited bits are documented once on the [`fields` page](/docs/reading-the-form/fields): same property names, same types, same reactivity. The only difference is the aggregation:
 
@@ -43,16 +43,17 @@ form.meta.value // the full form values object
 
 ## Form-only properties
 
-These six reads exist only on `meta`, not on individual FieldStates.
+These seven reads exist only on `meta`, not on individual FieldStates.
 
-| Property             | Type      | Meaning                                                                                                                         |
-| -------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `submitting`         | `boolean` | `true` while a `handleSubmit`-produced handler is running. Covers both the validation phase and the async callback.             |
-| `submissionAttempts` | `number`  | How many times the handler has been invoked (pass or fail). Useful for "show errors after first submit" UX.                     |
-| `submitError`        | `unknown` | The error from the most recent callback rejection. `null` on success and at the start of each new attempt.                      |
-| `errorCount`         | `number`  | Scalar mirror of `errors.length`. Read it from templates and `watch()` without indexing the array.                              |
-| `submitted`          | `boolean` | `true` once a `handleSubmit` callback has resolved without throwing. Failed submits leave it `false`. Zeroed by `form.reset()`. |
-| `instanceId`         | `string`  | Per-`useForm()`-call identity, stable for the lifetime of one call. New on every fresh mount.                                   |
+| Property             | Type      | Meaning                                                                                                                                               |
+| -------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `submitting`         | `boolean` | `true` while a `handleSubmit`-produced handler is running. Covers both the validation phase and the async callback.                                   |
+| `submissionAttempts` | `number`  | How many times the handler has been invoked (pass or fail). Useful for "show errors after first submit" UX.                                           |
+| `departAttempts`     | `number`  | How many times wizard navigation has actually departed this form. Bumps on real departures only (no-op back / same-key goTo / blocked next stay put). |
+| `submitError`        | `unknown` | The error from the most recent callback rejection. `null` on success and at the start of each new attempt.                                            |
+| `errorCount`         | `number`  | Scalar mirror of `errors.length`. Read it from templates and `watch()` without indexing the array.                                                    |
+| `submitted`          | `boolean` | `true` once a `handleSubmit` callback has resolved without throwing. Failed submits leave it `false`. Zeroed by `form.reset()`.                       |
+| `instanceId`         | `string`  | Per-`useForm()`-call identity, stable for the lifetime of one call. New on every fresh mount.                                                         |
 
 ## Templates
 
@@ -108,6 +109,27 @@ Reach for it when an inline failure banner needs to react to submit errors witho
   }}
 </p>
 ```
+
+## departAttempts
+
+`departAttempts` counts how many times `wizard.next`, `wizard.back`, or `wizard.goTo` has actually left this form's step. The counter bumps on real departures only:
+
+- `back()` from the first step is a no-op and leaves it alone.
+- `goTo(currentKey)` (same-key jump) leaves it alone.
+- `next()` blocked by failed activation leaves it alone.
+
+The counter is a pure read; Attaform's default `shouldShowErrors` heuristic runs off `submissionAttempts` instead. Reach for `departAttempts` when an analytics event, a prior-step badge, or a layered error-reveal predicate wants the "user visited and left" signal:
+
+```ts
+watch(
+  () => form.meta.departAttempts,
+  (count) => {
+    if (count === 1) analytics.track('step_first_departure', { form: form.key })
+  }
+)
+```
+
+Cleared by `form.reset()` alongside the submission counters.
 
 ## instanceId
 

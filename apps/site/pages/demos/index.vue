@@ -1,6 +1,6 @@
 <script setup lang="ts">
-  // Playground directory. Lists every `apps/site/docs-demos/<slug>.vue`
-  // SFC as its own card linking to `/play/<slug>` — a "show me
+  // Demos directory. Lists every `apps/site/docs-demos/<slug>.vue`
+  // SFC as its own card linking to `/demos/<slug>` — a "show me
   // everything Attaform can do, one widget at a time" entry point
   // (plan §3, sidebar page 8).
   //
@@ -13,13 +13,13 @@
   // Inherits the docs shell (sidebar + header + footer) so a reader
   // browsing playgrounds isn't stranded in a sidebar-less layout. The
   // breadcrumb + pager render below; both walk `useDocsNavigation.ts`
-  // which lists /play under "Getting started".
+  // which lists /demos under "Getting started".
   definePageMeta({ layout: 'docs' })
 
-  useHead({ title: 'Playgrounds' })
+  useHead({ title: 'Demos' })
   useSeoMeta({
     description:
-      'Open any Attaform docs demo in its own editable playground — every demo in the docs, listed in one place.',
+      'Open any Attaform docs demo in its own editable playground. Every demo in the docs, listed in one place.',
   })
 
   // `eager: false` (the default) returns lazy-loader functions. We
@@ -96,7 +96,7 @@
 
     <div class="mb-10 max-w-3xl">
       <p class="text-sm font-semibold tracking-wide text-accent uppercase">Live editors</p>
-      <h1 class="mt-3 text-display-md font-semibold text-fg">Playgrounds</h1>
+      <h1 class="mt-3 text-display-md font-semibold text-fg">Demos</h1>
       <p class="mt-4 text-base text-fg-muted">
         Play with Attaform. Experiment, tweak the schema, try things out. Every editor ships with
         <UiInlineCode>attaform</UiInlineCode> pre-bundled and a live preview that updates as you
@@ -109,7 +109,7 @@
          bottom of the page for a buried link. The accent border + gradient
          differentiates it from the curated demo cards below. -->
     <NuxtLink
-      to="/play/blank"
+      to="/demos/blank"
       class="group relative mb-8 flex items-center justify-between gap-6 overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-br from-accent/[0.06] via-bg to-bg p-6 shadow-xs transition-[border-color,box-shadow] duration-(--duration-base) ease-(--ease-out-quart) hover:border-accent/60 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none"
     >
       <div class="min-w-0">
@@ -182,7 +182,7 @@
       <NuxtLink
         v-for="slug in visible"
         :key="slug"
-        :to="`/play/${slug}`"
+        :to="`/demos/${slug}`"
         class="group flex flex-col gap-2 rounded-xl border bg-bg p-5 shadow-xs transition-[border-color,box-shadow] duration-(--duration-base) ease-(--ease-out-quart) hover:border-accent/40 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none"
       >
         <span
@@ -225,14 +225,14 @@
 
     <!-- Empty state: the docs-demos dir itself is empty (early Phase
          1 before the first SFC lands). Point at the blank-slate
-         playground so /play still feels alive. -->
+         playground so /demos still feels alive. -->
     <div
       v-else
       class="rounded-xl border border-dashed border-border bg-surface/30 p-10 text-center"
     >
       <p class="text-fg-muted">
         No demo playgrounds wired up yet. Try the
-        <NuxtLink to="/play/blank" class="text-accent hover:underline"
+        <NuxtLink to="/demos/blank" class="text-accent hover:underline"
           >blank-slate playground</NuxtLink
         >
         in the meantime.

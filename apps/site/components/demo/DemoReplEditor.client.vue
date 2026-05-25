@@ -11,8 +11,8 @@
   // no extraction step, no drift.
   //
   // The shipment demo is also the *default* seed: the homepage REPL
-  // and the freeform `/play/blank` playground render it untouched.
-  // `/play/<slug>` pages override via the `initialSource` prop with
+  // and the freeform `/demos/blank` playground render it untouched.
+  // `/demos/<slug>` pages override via the `initialSource` prop with
   // an `apps/site/docs-demos/<slug>.vue` source string, so the same
   // editor chrome reads from a different starting point per route.
   import shipmentDemoSource from '~/repl-demos/shipment-demo.vue?raw'

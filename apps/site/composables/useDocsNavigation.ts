@@ -36,7 +36,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Your first schema', to: '/docs/getting-started/your-first-schema' },
       { title: 'From schema to inputs', to: '/docs/getting-started/from-schema-to-inputs' },
       { title: 'From inputs to submit', to: '/docs/getting-started/from-inputs-to-submit' },
-      { title: 'Playgrounds', to: '/play' },
+      { title: 'Demos', to: '/demos' },
     ],
   },
   // Phase 1 fills in the remaining categories below as each page

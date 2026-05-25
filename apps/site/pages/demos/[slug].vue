@@ -11,8 +11,8 @@
   // path travels through the `from` query parameter set by
   // <DocsDemo>; values that don't start with `/docs/` are dropped to
   // close the open-redirect angle. When no `from` is supplied (a
-  // direct visit to /play/<slug>), the back link points at the
-  // playground index.
+  // direct visit to /demos/<slug>), the back link points at the
+  // demos index.
   import { computed } from 'vue'
   import { ArrowLeft, ArrowUpRight } from 'lucide-vue-next'
 
@@ -64,7 +64,7 @@
   if (!initialFiles.value) {
     throw createError({
       statusCode: 404,
-      statusMessage: `No playground for slug "${slug.value}"`,
+      statusMessage: `No demo for slug "${slug.value}"`,
       fatal: true,
     })
   }
@@ -87,7 +87,7 @@
 
   const title = computed(() => formatTitle(slug.value))
 
-  useHead(() => ({ title: `${title.value} playground` }))
+  useHead(() => ({ title: `${title.value} demo` }))
   useSeoMeta({
     description: () =>
       `Edit the "${title.value}" Attaform demo live; the same source you saw on the docs, opened in a standalone editor.`,
@@ -95,13 +95,13 @@
 
   // Sanitize the back-to-docs URL: accept only paths that resolve
   // inside the docs tree. Anything else (an external URL, a non-docs
-  // path) falls back to the playground index.
+  // path) falls back to the demos index.
   const backLink = computed<{ to: string; label: string }>(() => {
     const from = route.query['from']
     if (typeof from === 'string' && from.startsWith('/docs/')) {
       return { to: from, label: 'Back to docs' }
     }
-    return { to: '/play', label: 'Back to playgrounds' }
+    return { to: '/demos', label: 'Back to demos' }
   })
 </script>
 
@@ -111,7 +111,7 @@
       <div class="py-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div class="max-w-3xl">
-            <p class="text-sm font-semibold tracking-wide text-accent uppercase">Playground</p>
+            <p class="text-sm font-semibold tracking-wide text-accent uppercase">Demo</p>
             <h1 class="mt-3 text-display-md font-semibold text-fg">{{ title }}</h1>
             <p class="mt-4 text-sm text-fg-muted">
               Editing <UiInlineCode>apps/site/docs-demos/{{ sourceLabel }}</UiInlineCode
@@ -130,10 +130,10 @@
               {{ backLink.label }}
             </NuxtLink>
             <NuxtLink
-              to="/play"
+              to="/demos"
               class="inline-flex items-center gap-1.5 text-fg-muted transition-colors duration-(--duration-fast) hover:text-fg"
             >
-              All playgrounds
+              All demos
               <ArrowUpRight class="h-3.5 w-3.5" :stroke-width="2" />
             </NuxtLink>
           </div>

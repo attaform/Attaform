@@ -8,7 +8,7 @@
   useHead({ title: 'Blank playground' })
   useSeoMeta({
     description:
-      'A blank-slate Attaform playground — start from a minimal username/password form and edit anything in your browser.',
+      'A blank-slate Attaform playground. Start from a minimal username/password form and edit anything in your browser.',
   })
 </script>
 
@@ -45,8 +45,8 @@
             Errors update synchronously by default.
           </p>
           <p class="mt-3 text-sm text-fg-subtle">
-            Looking for a specific demo? See the
-            <NuxtLink to="/play" class="text-accent hover:underline">playground index</NuxtLink>.
+            Looking for a specific demo? See
+            <NuxtLink to="/demos" class="text-accent hover:underline">all demos</NuxtLink>.
           </p>
         </div>
         <DemoRepl height="calc(100vh - 20rem)" :initial-source="blankStarterSource" />

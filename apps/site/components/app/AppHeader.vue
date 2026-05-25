@@ -3,7 +3,7 @@
 
   const navLinks = [
     { label: 'Docs', to: '/docs', icon: BookOpen },
-    { label: 'Playground', to: '/play', icon: FlaskConical },
+    { label: 'Demos', to: '/demos', icon: FlaskConical },
   ]
 
   // Header always carries the translucent fill + 1px hairline so it

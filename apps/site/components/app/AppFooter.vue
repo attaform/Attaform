@@ -15,7 +15,7 @@
       heading: 'Resources',
       links: [
         { label: 'Documentation', to: '/docs' },
-        { label: 'Playground', to: '/play' },
+        { label: 'Demos', to: '/demos' },
         { label: 'API reference', to: '/docs/api' },
       ],
     },

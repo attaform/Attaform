@@ -91,7 +91,7 @@
        so calls to `toast(...)` land in the same place across all
        pages: inline demos rendered via `<DocsDemo>` on docs pages,
        postMessage-relayed calls from inside the @vue/repl preview
-       iframe on `/play/<slug>`, and any future status-feedback
+       iframe on `/demos/<slug>`, and any future status-feedback
        surface. `position="bottom-right"` plus vue-sonner's
        `position: fixed` means the Toaster isn't clipped by any
        container's `overflow: hidden`. `<ClientOnly>` because

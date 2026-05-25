@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  // SSR-safe shell for the homepage + /play interactive REPL.
+  // SSR-safe shell for the homepage + /demos interactive REPL.
   //
   // Two responsibilities:
   //

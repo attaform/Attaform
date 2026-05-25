@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+Attaform now ships with **zero runtime dependencies**. The
+SSR-accessed SFC transform that pulled in `magic-string` now
+uses a small in-file helper, with the same rewrites and no
+third-party install.
+
+### Internal
+
+- **Faster contributor lint.** `pnpm lint` now picks up
+  `--cache` and `--concurrency=auto`. Cold runs spread across
+  available cores; warm runs skip unchanged files.
 
 ## v0.18.0
 Multistep flows (`useWizard` + `injectWizard`), a Nuxt DevTools

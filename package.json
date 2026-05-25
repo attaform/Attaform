@@ -8,8 +8,8 @@
   ],
   "sideEffects": false,
   "engines": {
-    "node": ">=20.12.0 <27",
-    "pnpm": ">=9.0.0"
+    "node": ">=22.0.0 <27",
+    "pnpm": ">=11.0.0"
   },
   "publishConfig": {
     "access": "public",
@@ -112,24 +112,8 @@
     "attaform"
   ],
   "license": "MIT",
-  "packageManager": "pnpm@10.33.4",
+  "packageManager": "pnpm@11.3.0",
   "type": "module",
-  "pnpm": {
-    "overrides": {
-      "@nuxt/devtools": "3.2.4",
-      "@nuxt/kit": "$nuxt",
-      "@nuxt/schema": "$nuxt",
-      "fast-uri": "^3.1.2"
-    },
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "better-sqlite3",
-      "esbuild",
-      "sharp",
-      "unrs-resolver",
-      "vue-demi"
-    ]
-  },
   "devDependencies": {
     "@commitlint/cli": "^21.0.1",
     "@commitlint/config-conventional": "^21.0.1",

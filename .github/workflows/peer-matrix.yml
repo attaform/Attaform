@@ -6,8 +6,8 @@ name: Peer-Dep Matrix
 # gate (typecheck + test + size-limit) against it.
 #
 # Scope:
-#   - Node runtime: pinned to 20.x so the matrix isolates peer variance.
-#     The main `matrix.yml` workflow already covers Node 18 / 20 / 22 / lts.
+#   - Node runtime: pinned to 22.x so the matrix isolates peer variance.
+#     The main `matrix.yml` workflow covers the auto-rotating current LTS.
 #   - Version pinning uses `pnpm.overrides` injected before install so the
 #     pin propagates across the whole dep graph (transitive resolutions
 #     follow the override too, which is the point of peer-dep testing).
@@ -71,10 +71,10 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v6
         with:
-          node-version: 20.x
+          node-version: 22.x
 
       - name: Inject pnpm.overrides for this matrix cell
         run: |

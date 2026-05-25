@@ -2,7 +2,32 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Breaking
+
+- **Node 22+ required.** `engines.node` raised from `>=20.12.0` to
+  `>=22.0.0`. Node 20 LTS reached EOL on 2026-04-30 and the
+  contributor toolchain now requires pnpm 11, which itself
+  requires Node 22.
+- **pnpm 11 required for development.** `packageManager` bumped to
+  `pnpm@11.3.0`. Contributors on pnpm 10 will need to re-pin via
+  Corepack (`corepack enable && corepack prepare pnpm@11.3.0
+  --activate`) or simply re-clone — Corepack reads
+  `packageManager` automatically. The published `attaform`
+  tarball does not require pnpm at runtime; this only affects
+  the contributor / CI install path.
+
+### Internal
+
+- **pnpm config moved to `pnpm-workspace.yaml`.** pnpm 11 no
+  longer reads `package.json#pnpm`. `overrides` and
+  `onlyBuiltDependencies` (renamed to `allowBuilds` in pnpm 11)
+  migrated to `pnpm-workspace.yaml` accordingly.
+- **24-hour install cooldown active by default.** pnpm 11 ships
+  with `minimumReleaseAge` defaulting to 1440 minutes — packages
+  published less than 24 hours ago are refused at install time.
+  Defeats the install-within-the-hour worm pattern that hit
+  TanStack Router in May 2026. Lockfile-pinned versions are
+  exempt.
 
 ## v0.18.1
 Attaform now ships with **zero runtime dependencies**. The

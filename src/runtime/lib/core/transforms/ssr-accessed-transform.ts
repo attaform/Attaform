@@ -15,7 +15,6 @@
  * live in the implementation plan and in `docs/multistep/ssr.md`.
  */
 import { parse as parseSfc, babelParse } from '@vue/compiler-sfc'
-import MagicString from 'magic-string'
 import type { RootNode, TemplateChildNode } from '@vue/compiler-core'
 
 interface BabelNode {
@@ -72,7 +71,33 @@ interface BindingEntry {
 
 export interface SsrAccessedTransformResult {
   code: string
-  map: ReturnType<MagicString['generateMap']>
+  map: null
+}
+
+// Edits get applied right-to-left so earlier-position offsets stay valid.
+class SourceEditor {
+  readonly original: string
+  private edits: { start: number; end: number; replacement: string }[] = []
+
+  constructor(original: string) {
+    this.original = original
+  }
+
+  appendRight(offset: number, text: string): void {
+    this.edits.push({ start: offset, end: offset, replacement: text })
+  }
+
+  overwrite(start: number, end: number, text: string): void {
+    this.edits.push({ start, end, replacement: text })
+  }
+
+  toString(): string {
+    let out = this.original
+    for (const e of [...this.edits].sort((a, b) => b.start - a.start)) {
+      out = out.slice(0, e.start) + e.replacement + out.slice(e.end)
+    }
+    return out
+  }
 }
 
 /**
@@ -114,16 +139,16 @@ export function transformSsrAccessed(code: string, id: string): SsrAccessedTrans
   const referenced = collectTemplateReferences(descriptor.template.ast, bindings)
   if (referenced.size === 0) return null
 
-  const magic = new MagicString(code)
+  const editor = new SourceEditor(code)
   for (const name of referenced) {
     const entry = bindings.get(name)
     if (entry === undefined) continue
-    injectMark(magic, entry.call, scriptOffset)
+    injectMark(editor, entry.call, scriptOffset)
   }
 
   return {
-    code: magic.toString(),
-    map: magic.generateMap({ hires: true, source: id, includeContent: true }),
+    code: editor.toString(),
+    map: null,
   }
 }
 
@@ -272,14 +297,14 @@ function escapeForRegExp(value: string): string {
  * Other shapes (spread, computed identifier, function call) bail —
  * the consumer's `form.activate()` escape hatch covers them.
  */
-function injectMark(magic: MagicString, call: CallExpressionNode, scriptOffset: number): void {
+function injectMark(editor: SourceEditor, call: CallExpressionNode, scriptOffset: number): void {
   const args = call.arguments
   if (args.length === 0) {
     const calleeEnd = call.callee.end
     if (calleeEnd === null || calleeEnd === undefined) return
     // Find the absolute offset right after the `(` opening paren.
-    const openParenAbs = findChar(magic.original, '(', scriptOffset + calleeEnd) + 1
-    magic.appendRight(openParenAbs, '{ __ssrAccessed: true }')
+    const openParenAbs = findChar(editor.original, '(', scriptOffset + calleeEnd) + 1
+    editor.appendRight(openParenAbs, '{ __ssrAccessed: true }')
     return
   }
   const first = args[0]
@@ -290,7 +315,7 @@ function injectMark(magic: MagicString, call: CallExpressionNode, scriptOffset: 
     const openBraceAbs = scriptOffset + obj.start + 1
     const insertion =
       obj.properties.length === 0 ? ' __ssrAccessed: true ' : ' __ssrAccessed: true,'
-    magic.appendRight(openBraceAbs, insertion)
+    editor.appendRight(openBraceAbs, insertion)
     return
   }
   if (first.type === 'StringLiteral') {
@@ -299,8 +324,8 @@ function injectMark(magic: MagicString, call: CallExpressionNode, scriptOffset: 
     if (lit.end === null || lit.end === undefined) return
     const startAbs = scriptOffset + lit.start
     const endAbs = scriptOffset + lit.end
-    const original = magic.original.slice(startAbs, endAbs)
-    magic.overwrite(startAbs, endAbs, `{ key: ${original}, __ssrAccessed: true }`)
+    const original = editor.original.slice(startAbs, endAbs)
+    editor.overwrite(startAbs, endAbs, `{ key: ${original}, __ssrAccessed: true }`)
     return
   }
   // Unsupported arg shape (spread, identifier, etc.) — caller falls

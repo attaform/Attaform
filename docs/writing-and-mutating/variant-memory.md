@@ -1,6 +1,6 @@
 ---
 title: Variant memory
-description: rememberVariants keeps the inactive variant's typed subtree alive so switching back restores it — opt out for wizards that should reset on backtrack, or for memory-constrained targets.
+description: rememberVariants keeps the inactive variant's typed subtree alive so switching back restores it. Opt out for wizards that should reset on backtrack, or for memory-constrained targets.
 metaRows:
   - label: Category
     value: Form option
@@ -16,7 +16,7 @@ metaRows:
 
 # Variant memory
 
-> Switching away from a discriminated-union variant doesn't have to mean losing what was typed. Memory snapshots ride alongside the active state and rehydrate on switch-back — opt out when the variants are unrelated or memory matters.
+> Switching away from a discriminated-union variant doesn't have to mean losing what was typed. Memory snapshots ride alongside the active state and rehydrate on switch-back. Opt out when the variants are unrelated or memory matters.
 
 ::docs-meta-table
 ::
@@ -31,11 +31,11 @@ Two side-by-side forms with the same payment schema. Type into the card variant,
 ```ts
 useForm({
   schema,
-  // rememberVariants: true is the library default
+  // rememberVariants: true is Attaform's default
 })
 ```
 
-Switching back to a previously-visited variant lands on its prior subtree, including nested fields. Each discriminated union at every nesting depth is independently memorized — a top-level union and a nested one each keep their own memory map.
+Switching back to a previously-visited variant lands on its prior subtree, including nested fields. Each discriminated union at every nesting depth is independently memorized: a top-level union and a nested one each keep their own memory map.
 
 ## Opting out
 
@@ -43,7 +43,7 @@ Switching back to a previously-visited variant lands on its prior subtree, inclu
 useForm({ schema, rememberVariants: false })
 ```
 
-With `false`, every switch drops the outgoing variant's typed state. The new variant initialises from its slim default; the old data is gone.
+With `false`, every switch drops the outgoing variant's typed state. The new variant initializes from its slim default; the old data is gone.
 
 Use the opt-out when:
 
@@ -71,13 +71,13 @@ When the discriminator value flips:
 2. The new variant's slim default seeds storage.
 3. On a subsequent switch to a remembered variant, the snapshot rehydrates over the seeded default.
 
-What's stored: the value subtree only. Field-state (touched, blurred, focused, etc.) is NOT part of the snapshot — that travels with the active field state, which lives outside the union's storage tree.
+What's stored: the value subtree only. Field-state (touched, blurred, focused, etc.) is NOT part of the snapshot; that travels with the active field state, which lives outside the union's storage tree.
 
 ## Memory is in-memory only
 
-Variant memory does NOT survive a page reload. Persisted state (`useForm({ persist: 'local' })`) restores values into form storage on hydration, but the variant memory map starts empty — the first discriminator switch after reload loses any persisted typing in the outgoing variant.
+Variant memory does NOT survive a page reload. Persisted state (`useForm({ persist: 'local' })`) restores values into form storage on hydration, but the variant memory map starts empty: the first discriminator switch after reload loses any persisted typing in the outgoing variant.
 
-For cross-session continuity of inactive-variant typing, persist beyond the union boundary yourself — mirror the inactive subtree into a separate persisted slot via a watcher on the discriminator.
+For cross-session continuity of inactive-variant typing, persist beyond the union boundary yourself. Mirror the inactive subtree into a separate persisted slot via a watcher on the discriminator.
 
 ## `reset()` and `resetField()` interactions
 
@@ -86,6 +86,6 @@ For cross-session continuity of inactive-variant typing, persist beyond the unio
 
 ## Where to next
 
-- [Discriminated unions](/docs/schemas/discriminated-unions) — the schema feature variant memory rides on top of.
-- [`reset` & `resetField`](/docs/writing-and-mutating/reset) — both interact with the memory map deterministically.
-- [App-wide defaults](/docs/cross-cutting-state/app-defaults) — set `rememberVariants` once for every form in the app.
+- [Discriminated unions](/docs/schemas/discriminated-unions): the schema feature variant memory rides on top of.
+- [`reset` & `resetField`](/docs/writing-and-mutating/reset): both interact with the memory map deterministically.
+- [App-wide defaults](/docs/cross-cutting-state/app-defaults): set `rememberVariants` once for every form in the app.

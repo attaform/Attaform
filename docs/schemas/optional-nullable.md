@@ -39,7 +39,7 @@ const schema = z.object({
 const form = useForm({ schema })
 
 form.values.optional // undefined (slot may be absent)
-form.values.nullable // '' (synthesised falsy: string default '')
+form.values.nullable // '' (synthesized falsy: string default '')
 form.values.defaulted // 'seed' (schema-declared default applied)
 ```
 

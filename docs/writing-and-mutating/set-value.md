@@ -1,6 +1,6 @@
 ---
 title: setValue patterns
-description: form.setValue is the programmatic write surface — set the whole form, one path, or a segment-tuple, with values or a callback. Every directive write flows through the same pipeline.
+description: form.setValue is the programmatic write surface, set the whole form, one path, or a segment-tuple, with values or a callback. Every directive write flows through the same pipeline.
 metaRows:
   - label: Category
     value: Return method
@@ -22,22 +22,24 @@ metaRows:
 ::docs-meta-table
 ::
 
-Click the four buttons in the demo to exercise every `setValue` shape — string path, segment tuple, callback, whole-form. The reactive surface (`values`, `fields`, validation) updates the same way it does for directive-driven writes; `setValue` and `v-register` share the pipeline. The [Three call shapes](#three-call-shapes) section unpacks each form.
+Click the four buttons in the demo to exercise every `setValue` shape: string path, segment tuple, callback, whole-form. The reactive surface (`values`, `fields`, validation) updates the same way it does for directive-driven writes; `setValue` and `v-register` share the pipeline. The [Three call shapes](#three-call-shapes) section unpacks each form.
 
 ::docs-demo{slug="set-value" label="Set Value Demo"}
 ::
 
 ## Three call shapes
 
-`setValue` accepts whatever shape fits the write site:
+`setValue` accepts whatever shape fits the write site. Each example below assumes a `form` handle from `useForm({ schema })`:
 
 ```ts
+const form = useForm({ schema })
+
 form.setValue({ name: 'Ada', age: 30 }) // whole-form
 form.setValue('profile.email', 'a@b.c') // dotted path
 form.setValue(['profile', 'email'], 'a@b.c') // segment tuple
 ```
 
-The dotted-path form is the most ergonomic for plain object schemas. The segment-tuple form sidesteps the dotted-key collision (a schema key that contains a literal `.`) and gives TypeScript precise typed-tuple inference. The whole-form shape replaces every path at once — useful for hydrating from a server response or applying external state.
+The dotted-path form is the most ergonomic for plain object schemas. The segment-tuple form sidesteps the dotted-key collision (a schema key that contains a literal `.`) and gives TypeScript precise typed-tuple inference. The whole-form shape replaces every path at once: useful for hydrating from a server response or applying external state.
 
 ## Callback form
 
@@ -49,7 +51,7 @@ form.setValue('tags', (prev) => [...prev, 'new-tag'])
 form.setValue(['profile', 'name'], (prev) => prev.trim().toLowerCase())
 ```
 
-The callback receives the current value at the path; its return value lands in storage. Equivalent to reading `form.values.<path>`, computing the next value, and writing it — but in one atomic step.
+The callback receives the current value at the path; its return value lands in storage. Equivalent to reading `form.values.<path>`, computing the next value, and writing it, in one atomic step.
 
 ## Returns `boolean`
 
@@ -63,7 +65,7 @@ if (form.setValue('age', 21)) {
 
 ## Same pipeline as `v-register`
 
-Every `setValue` call flows through the same write pipeline as the directive — slim-type gating, dirty / touched tracking, persistence, multi-tab sync, history. The reactive surface (`values`, `fields`, validation) reacts identically. No "programmatic writes are second-class" carve-out.
+Every `setValue` call flows through the same write pipeline as the directive: slim-type gating, dirty / touched tracking, persistence, multi-tab sync, history. The reactive surface (`values`, `fields`, validation) reacts identically. No "programmatic writes are second-class" carve-out.
 
 The one difference: `setValue` writes are **never coerced**. Coercion is for user-typed DOM strings; values you pass to `setValue` are already typed at the call site (TypeScript checks it), so coercion would be a no-op at best and a footgun at worst.
 

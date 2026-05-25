@@ -1,6 +1,6 @@
 ---
 title: Field-array mutations
-description: Seven helpers — append, prepend, insert, remove, swap, move, replace — typed against every ArrayPath in your schema. Stable per-item validation and dirty tracking across every shape change.
+description: Seven helpers (append, prepend, insert, remove, swap, move, replace) typed against every ArrayPath in your schema. Stable per-item validation and dirty tracking across every shape change.
 metaRows:
   - label: Category
     value: Return methods
@@ -10,7 +10,7 @@ metaRows:
     value: typed against ArrayPath<Form>
     kind: code
   - label: Stable keys
-    value: 'Yes — per-item identity preserved'
+    value: 'Yes, per-item identity preserved'
 ---
 
 # Field-array mutations
@@ -20,14 +20,14 @@ metaRows:
 ::docs-meta-table
 ::
 
-Use the row arrows and per-row × button to move and remove items; the buttons below dispatch every helper against the array. Watch the readout — the order, count, and contents reflect each call. Stable keys mean per-item validation state, dirty bits, and DOM focus survive shape changes; reordering doesn't reset what the user typed.
+Use the row arrows and per-row × button to move and remove items; the buttons below dispatch every helper against the array. Watch the readout: the order, count, and contents reflect each call. Stable keys mean per-item validation state, dirty bits, and DOM focus survive shape changes; reordering doesn't reset what the user typed.
 
 ::docs-demo{slug="field-arrays" label="Field Arrays Demo"}
 ::
 
 ## The seven helpers
 
-Each helper is typed against the form's `ArrayPath<Form>` set — TypeScript autocompletes only the paths that actually point at an array. The value-shape generic narrows on the inferred element type.
+Each helper is typed against the form's `ArrayPath<Form>` set; TypeScript autocompletes only the paths that actually point at an array. The value-shape generic narrows on the inferred element type.
 
 | Helper                        | Signature         | What it does                                            |
 | ----------------------------- | ----------------- | ------------------------------------------------------- |
@@ -52,15 +52,15 @@ form.append('checkpoints', 'New checkpoint')
 form.remove('checkpoints', 2)
 ```
 
-The path string autocompletes to every array path in the schema. Nested arrays work the same way — `register('teams.0.players')` for an inner array, and the helpers take the same form.
+The path string autocompletes to every array path in the schema. Nested arrays work the same way: `register('teams.0.players')` for an inner array, and the helpers take the same form.
 
 ## Stable per-item identity
 
 Every helper preserves the existing items' reactive identity:
 
 - `append` leaves indices 0..n unchanged.
-- `prepend` shifts every existing item's index by 1 — but the item's own validation state, dirty bit, and bound DOM element follow it to the new index.
-- `swap` / `move` / `remove` follow the same rule — items keep their state across shape changes.
+- `prepend` shifts every existing item's index by 1, but the item's own validation state, dirty bit, and bound DOM element follow it to the new index.
+- `swap` / `move` / `remove` follow the same rule: items keep their state across shape changes.
 
 Practical consequence: a user typing in row 3, hitting "Move up", finishes typing in row 2 without losing focus or having the entered text reset. The directive's per-element identity tracks the item, not the slot.
 
@@ -72,10 +72,10 @@ For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length
 
 ## Reset behavior
 
-`reset()` restores the array's default — same length, same item values, every item back to its pre-edit state. `clear('checkpoints')` writes `[]`. No special "reset the array's helpers" — same pipeline as the rest of the writes.
+`reset()` restores the array's default: same length, same item values, every item back to its pre-edit state. `clear('checkpoints')` writes `[]`. No special "reset the array's helpers", same pipeline as the rest of the writes.
 
 ## Where to next
 
-- [`setValue` patterns](/docs/writing-and-mutating/set-value) — when you need to write the whole array, not mutate one slot.
-- [`reset` & `resetField`](/docs/writing-and-mutating/reset) — restore the array to its baseline.
-- [Showing errors at the right time](/docs/validation/showing-errors) — array-level error display.
+- [`setValue` patterns](/docs/writing-and-mutating/set-value): when you need to write the whole array, not mutate one slot.
+- [`reset` & `resetField`](/docs/writing-and-mutating/reset): restore the array to its baseline.
+- [Showing errors at the right time](/docs/validation/showing-errors): array-level error display.

@@ -28,7 +28,7 @@ This page is the mental model for what a schema is and what it lets you do. The 
 
 A schema is a declarative description of data. It states what keys exist, what types they hold, how they nest, which values are valid, and which transformations apply on the way in or out. A single declaration carries the answer to every question about the data's shape.
 
-Different schema libraries take different approaches: parser-combinators, classes, descriptor objects, type-only signatures. Attaform is schema-agnostic at its core; the library consumes any object that implements the [`AbstractSchema`](#schema-agnostic-core) contract. Out of the box, [Zod](https://zod.dev) is the canonical adapter. Zod v4 is the default; Zod v3 is one import away.
+Different schema libraries take different approaches: parser-combinators, classes, descriptor objects, type-only signatures. Attaform is schema-agnostic at its core, consuming any object that implements the [`AbstractSchema`](#schema-agnostic-core) contract. Out of the box, [Zod](https://zod.dev) is the canonical adapter. Zod v4 is the default; Zod v3 is one import away.
 
 ```ts
 import { z } from 'zod'
@@ -90,7 +90,7 @@ Refinements can be asynchronous. `z.string().refine(async (v) => await api.isAva
 
 ### Transformation
 
-Two stages within parse can transform a value. `z.preprocess(fn, T)` normalises the input before the inner schema sees it. `.transform(fn)` converts the validated value to the wire format.
+Two stages within parse can transform a value. `z.preprocess(fn, T)` normalizes the input before the inner schema sees it. `.transform(fn)` converts the validated value to the wire format.
 
 ```ts
 z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string())

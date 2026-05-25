@@ -40,11 +40,11 @@ The same `form` carries every helper from earlier pages (`register`, `fields`, `
 
 ## The submit handler
 
-`handleSubmit(onSuccess, onError?)` returns a function you bind to `<form @submit>`. The wrapper calls `preventDefault` internally, so the `.prevent` modifier on the template is unnecessary. When the wrapped handler fires, it:
+`handleSubmit(onSubmit, onError?)` returns a function you bind to `<form @submit>`. The wrapper calls `preventDefault` internally, so the `.prevent` modifier on the template is unnecessary. When the wrapped handler fires, it:
 
 - Runs sync and async validation on every active path.
 - Waits for pending async refinements before dispatching.
-- Calls `onSuccess(values)` only if validation passes. `values` is the parsed Zod output, fully typed.
+- Calls `onSubmit(values)` only if validation passes. `values` is the parsed Zod output, fully typed.
 - Calls `onError(errors)` if validation fails. By default, focus moves to the first invalid field.
 
 ```ts
@@ -64,7 +64,7 @@ const onSubmit = form.handleSubmit(
 
 ## form.meta.submitting
 
-While `onSuccess` is running, `form.meta.submitting` is `true`. Use it to disable the submit button or surface a spinner:
+While `onSubmit` is running, `form.meta.submitting` is `true`. Use it to disable the submit button or surface a spinner:
 
 ```vue
 <button :disabled="form.meta.submitting" type="submit">

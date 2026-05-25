@@ -1,6 +1,6 @@
 ---
 title: Errors reference
-description: Every library-emitted error class and every AttaformErrorCode. Catch AttaformError once, branch on subclass — and code-key library validations through the small set of stable identifiers.
+description: Every Attaform-emitted error class and every AttaformErrorCode. Catch AttaformError once, branch on subclass, and code-key Attaform's validations through the small set of stable identifiers.
 metaRows:
   - label: Category
     value: Reference
@@ -16,16 +16,16 @@ metaRows:
 
 # Errors reference
 
-> Every library-emitted error class with the failure mode it represents, plus the small set of stable `code` identifiers for `ValidationError` entries the library produces.
+> Every Attaform-emitted error class with the failure mode it represents, plus the small set of stable `code` identifiers for `ValidationError` entries Attaform produces.
 
 ::docs-meta-table
 ::
 
-This page is reference material. Two surfaces: throw-class errors (caught with `instanceof`) and `ValidationError.code` strings (matched in template / handler logic). Both follow the `atta:` prefix convention for library-emitted entries; consumer codes use whatever prefix you pick (`api:`, `auth:`, `myapp:`).
+This page is reference material. Two surfaces: throw-class errors (caught with `instanceof`) and `ValidationError.code` strings (matched in template / handler logic). Both follow the `atta:` prefix convention for Attaform-emitted entries; consumer codes use whatever prefix you pick (`api:`, `auth:`, `myapp:`).
 
 ## Catching errors polymorphically
 
-Every library-emitted throw extends `AttaformError`, so a single polymorphic catch works:
+Every Attaform-emitted throw extends `AttaformError`, so a single polymorphic catch works:
 
 ```ts
 import { AttaformError } from 'attaform'
@@ -34,7 +34,7 @@ try {
   // useForm setup, register call, persist call, etc.
 } catch (err) {
   if (err instanceof AttaformError) {
-    // It's one of ours — log and handle.
+    // It's one of ours; log and handle.
     console.error('[attaform]', err.name, err.message)
   } else {
     throw err
@@ -66,7 +66,7 @@ try {
 
 ### `AttaformError`
 
-Base class — never thrown directly, only via subclasses. Provides the polymorphic-catch entry point.
+Base class; never thrown directly, only via subclasses. Provides the polymorphic-catch entry point.
 
 ```ts
 class AttaformError extends Error {}
@@ -78,7 +78,7 @@ A path string can't be canonicalized against the form's schema. Typical cause: a
 
 ### `InvalidUseFormConfigError`
 
-`useForm` received an invalid configuration — most often a schema passed directly instead of inside an options object (`useForm(schema)` rather than `useForm({ schema })`).
+`useForm` received an invalid configuration, most often a schema passed directly instead of inside an options object (`useForm(schema)` rather than `useForm({ schema })`).
 
 ### `SubmitErrorHandlerError`
 
@@ -86,7 +86,7 @@ The `onError` callback passed to `handleSubmit` threw. Caught and re-thrown wrap
 
 ### `RegistryNotInstalledError`
 
-A library API needs the registry attached to a Vue app, but it isn't installed. Auto-install kicks in for the lazy bootstrap path, so this usually means `useRegistry()` was called from outside a Vue app's lifecycle.
+An Attaform API needs the registry attached to a Vue app, but it isn't installed. Auto-install kicks in for the lazy bootstrap path, so this usually means `useRegistry()` was called from outside a Vue app's lifecycle.
 
 ### `OutsideSetupError`
 
@@ -104,14 +104,14 @@ The `__atta:` namespace is reserved for internal use; passing a form key startin
 
 Persistence is configured on an anonymous (no `key`) form. The cause property distinguishes:
 
-- `'no-key'` — no `key` passed; persistence needs a stable key to prefix storage entries.
-- `'register-without-config'` — a register call passes `{ persist: true }` against an anonymous form (which wouldn't have a backend even with `persist:` on the form).
+- `'no-key'`: no `key` passed; persistence needs a stable key to prefix storage entries.
+- `'register-without-config'`: a register call passes `{ persist: true }` against an anonymous form (which wouldn't have a backend even with `persist:` on the form).
 
 Carries `schemaFields` (the leaves on the form's schema, for diagnostic context) and `callSite` (the file:line of the offending call).
 
 ## `AttaformErrorCode`
 
-A small, stable enum for library-emitted `ValidationError.code` values. The codes follow `atta:` prefix convention; pair with `parseApiErrors` to read the `code` field reactively in templates.
+A small, stable enum for Attaform-emitted `ValidationError.code` values. The codes follow `atta:` prefix convention; pair with `parseApiErrors` to read the `code` field reactively in templates.
 
 ```ts
 import { AttaformErrorCode } from 'attaform'
@@ -121,13 +121,16 @@ if (form.errors.email?.[0]?.code === AttaformErrorCode.NoValueSupplied) {
 }
 ```
 
-| Code value               | Constant                            | Emitted when                                                       |
-| ------------------------ | ----------------------------------- | ------------------------------------------------------------------ |
-| `atta:no-value-supplied` | `AttaformErrorCode.NoValueSupplied` | A required leaf is in `blankPaths` (numeric auto-mark or `unset`). |
-| `atta:adapter-threw`     | `AttaformErrorCode.AdapterThrew`    | An `AbstractSchema` method (validate, getDefaults, etc.) threw.    |
-| `atta:path-not-found`    | `AttaformErrorCode.PathNotFound`    | A path canonicalization rejected the input as not reachable.       |
+| Code value               | Constant                             | Emitted when                                                                      |
+| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
+| `atta:no-value-supplied` | `AttaformErrorCode.NoValueSupplied`  | A required leaf is in `blankPaths` (numeric auto-mark or `unset`).                |
+| `atta:adapter-threw`     | `AttaformErrorCode.AdapterThrew`     | An `AbstractSchema` method (validate, getDefaults, etc.) threw.                   |
+| `atta:validator-threw`   | `AttaformErrorCode.ValidatorThrew`   | User code inside a `z.preprocess` / `.refine` / `.transform` threw.               |
+| `atta:hydration-failed`  | `AttaformErrorCode.HydrationFailed`  | A function-form `defaultValues` factory threw or its promise rejected.            |
+| `atta:path-not-found`    | `AttaformErrorCode.PathNotFound`     | A path canonicalization rejected the input as not reachable.                      |
+| `atta:activation-failed` | `AttaformErrorCode.ActivationFailed` | A walked form's async `defaultValues` factory threw inside `wizard.handleSubmit`. |
 
-Three codes today; the enum will grow as code-keyed error paths emerge. Don't expect every library-internal error to surface as a stable code — the codes are reserved for cases where consumer templates legitimately want to branch on a specific failure mode without matching message strings.
+Don't expect every internal failure mode to surface as a stable code; the codes are reserved for cases where consumer templates legitimately want to branch on a specific failure mode without matching message strings.
 
 ## The `ValidationError` shape
 
@@ -142,25 +145,25 @@ type ValidationError = {
 }
 ```
 
-- `path` — the canonical segment tuple (`['profile', 'email']`).
-- `message` — the human-readable error text.
-- `code` — stable identifier (`atta:no-value-supplied`, `zod:invalid_type`, `api:duplicate-email`, etc.).
-- `formKey` — which form emitted the error. Useful for cross-form aggregation in wizards.
+- `path`: the canonical segment tuple (`['profile', 'email']`).
+- `message`: the human-readable error text.
+- `code`: stable identifier (`atta:no-value-supplied`, `zod:invalid_type`, `api:duplicate-email`, etc.).
+- `formKey`: which form emitted the error. Useful for cross-form aggregation in wizards.
 
-The `code` is what consumers branch on; the `message` is what templates render. Avoid matching `message` strings — they're localized and may change over time without breaking the public contract.
+The `code` is what consumers branch on; the `message` is what templates render. Avoid matching `message` strings; they're localized and may change over time without breaking the public contract.
 
 ## Code prefixes by source
 
-| Prefix  | Source                                                                                                                  |
-| ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `atta:` | Library-emitted (the three `AttaformErrorCode` values).                                                                 |
-| `zod:`  | Zod adapter (computed from `issue.code` — `zod:invalid_type`, `zod:too_small`, etc.).                                   |
-| `api:`  | Conventional prefix for consumer-emitted server errors. Pick whatever convention fits the app — `auth:`, `myapp:`, etc. |
+| Prefix  | Source                                                                                                                 |
+| ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `atta:` | Attaform-emitted (the `AttaformErrorCode` values).                                                                     |
+| `zod:`  | Zod adapter (computed from `issue.code`: `zod:invalid_type`, `zod:too_small`, etc.).                                   |
+| `api:`  | Conventional prefix for consumer-emitted server errors. Pick whatever convention fits the app: `auth:`, `myapp:`, etc. |
 
 The prefix tells you where the error came from without parsing the rest of the string.
 
 ## Where to next
 
-- [`parseApiErrors`](/docs/server-and-ssr/parse-api-errors) — generate consumer-coded `ValidationError`s from server responses.
-- [The `blank` field-state bit](/docs/validation/blank) — the side-channel that surfaces `atta:no-value-supplied`.
-- [Server-side errors](/docs/submitting/server-side-errors) — the full flow from API failure to reactive `form.errors`.
+- [`parseApiErrors`](/docs/server-and-ssr/parse-api-errors): generate consumer-coded `ValidationError`s from server responses.
+- [The `blank` field-state bit](/docs/validation/blank): the side-channel that surfaces `atta:no-value-supplied`.
+- [Server-side errors](/docs/submitting/server-side-errors): the full flow from API failure to reactive `form.errors`.

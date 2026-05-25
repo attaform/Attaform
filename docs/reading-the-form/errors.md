@@ -61,7 +61,7 @@ form.errors('profile') // flat array: every error inside profile + container-sel
 form.errors() // flat array: every error in the form
 ```
 
-`form.errors()` is the cheapest "is anything wrong?" check (`form.errors().length === 0` when the form is valid). For aggregated counts and submission-state bits, see [`form.meta`](/docs/reading-the-form/meta). When you serialise the dot-form (`JSON.stringify(form.errors)` or `{{ form.errors }}` in a template), the Proxy materialises the live sparse tree, so you can dump the whole error state for debugging without losing structure.
+`form.errors()` is the cheapest "is anything wrong?" check (`form.errors().length === 0` when the form is valid). For aggregated counts and submission-state bits, see [`form.meta`](/docs/reading-the-form/meta). When you serialize the dot-form (`JSON.stringify(form.errors)` or `{{ form.errors }}` in a template), the Proxy materializes the live sparse tree, so you can dump the whole error state for debugging without losing structure.
 
 ### The `''` sentinel: container-self errors
 
@@ -78,7 +78,7 @@ const schema = z.object({
 })
 ```
 
-The refine's error path is `['profile']` — the container itself. To keep `form.errors.profile` readable alongside leaf errors at `['profile', 'bio']` and `['profile', 'handle']`, container-self errors land in the materialised tree under the `''` sentinel slot:
+The refine's error path is `['profile']`, the container itself. To keep `form.errors.profile` readable alongside leaf errors at `['profile', 'bio']` and `['profile', 'handle']`, container-self errors land in the materialized tree under the `''` sentinel slot:
 
 ```ts
 form.errors.profile[''] // refine errors on profile (and any other container-self entries)
@@ -86,7 +86,7 @@ form.errors.profile.bio // leaf errors on bio
 form.errors[''] // root form-level errors (setFormErrors, root refines)
 ```
 
-`JSON.stringify(form.errors.profile)` materialises as `{ '': [refineError], bio: [maxError], handle: [...] }`. Both the refine and the descendant leaves coexist; nothing clobbers anything. The same convention reaches all the way down — a refine on `profile.address` lands at `form.errors.profile.address['']`.
+`JSON.stringify(form.errors.profile)` materializes as `{ '': [refineError], bio: [maxError], handle: [...] }`. Both the refine and the descendant leaves coexist; nothing clobbers anything. The same convention reaches all the way down: a refine on `profile.address` lands at `form.errors.profile.address['']`.
 
 The call form is the flat alternative: `form.errors('profile')` returns one `ValidationError[]` containing the refine PLUS every descendant leaf error in declaration order, no structure. Reach for the structural tree when you want to render per-field; reach for the call form when you want "anything wrong under this container?".
 

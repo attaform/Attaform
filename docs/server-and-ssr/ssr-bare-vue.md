@@ -1,6 +1,6 @@
 ---
-title: SSR hydration — bare Vue
-description: Wire renderAttaformState / hydrateAttaformState into your @vue/server-renderer pipeline — two functions, one inline payload tag, no Nuxt required.
+title: 'SSR hydration: bare Vue'
+description: Wire renderAttaformState / hydrateAttaformState into your @vue/server-renderer pipeline. Two functions, one inline payload tag, no Nuxt required.
 metaRows:
   - label: Category
     value: Integration
@@ -15,14 +15,14 @@ metaRows:
     kind: code
 ---
 
-# SSR hydration — bare Vue
+# SSR hydration: bare Vue
 
 > Two helper functions bridge the server → client boundary for `@vue/server-renderer` projects. Render the state on the server, escape it for an inline `<script>`, replay it before mount on the client.
 
 ::docs-meta-table
 ::
 
-This page is code-only — bare-Vue SSR runs on a Node server you provide. The end-to-end test at [`test/ssr-bare-vue/round-trip.test.ts`](https://github.com/attaform/attaform/blob/main/test/ssr-bare-vue/round-trip.test.ts) exercises exactly the pattern below and is the fastest way to read it working.
+This page is code-only; bare-Vue SSR runs on a Node server you provide. The end-to-end test at [`test/ssr-bare-vue/round-trip.test.ts`](https://github.com/attaform/attaform/blob/main/test/ssr-bare-vue/round-trip.test.ts) exercises exactly the pattern below and is the fastest way to read it working.
 
 ## Server (`entry-server.ts`)
 
@@ -50,7 +50,7 @@ export async function render(url: string) {
 
 ## Server template + injection
 
-The HTML shipped to the browser carries two placeholders — one for the rendered app HTML, one for the inline payload:
+The HTML shipped to the browser carries two placeholders: one for the rendered app HTML, one for the inline payload:
 
 ```html
 <body>
@@ -86,7 +86,7 @@ import App from './App.vue'
 const app = createSSRApp(App)
 app.use(createAttaform())
 
-// Replay the server's form state BEFORE mounting — forms read from
+// Replay the server's form state BEFORE mounting; forms read from
 // the hydration bag during setup.
 const serialized = (window as { __ATTAFORM_STATE__?: unknown }).__ATTAFORM_STATE__
 if (serialized !== undefined) hydrateAttaformState(app, serialized)
@@ -98,7 +98,7 @@ That's it. Every `useForm` call on the client resolves to the same values the se
 
 ## Why `escapeForInlineScript`
 
-Embedding JSON in an inline `<script>` looks safe — until the JSON contains a literal `</script>` or a U+2028 / U+2029 line separator that breaks JavaScript string parsing. `escapeForInlineScript`:
+Embedding JSON in an inline `<script>` looks safe, until the JSON contains a literal `</script>` or a U+2028 / U+2029 line separator that breaks JavaScript string parsing. `escapeForInlineScript`:
 
 - Replaces `</script>` with `<\/script>`.
 - Escapes U+2028 / U+2029 as ` ` / ` `.
@@ -110,10 +110,10 @@ Skip it and a `notes` field containing `</script>` would close the inline tag mi
 
 Same surfaces as the [Nuxt path](/docs/server-and-ssr/ssr-nuxt):
 
-- `form.values` — whole tree, including nested objects and arrays.
-- `errors` — every entry in the error map, keyed by path.
-- `fields` — `touched` / `focused` / `blurred` / `connected` / `updatedAt` per path.
-- `blankPaths` — numeric-blank state survives the boundary.
+- `form.values`: whole tree, including nested objects and arrays.
+- `errors`: every entry in the error map, keyed by path.
+- `fields`: `touched` / `focused` / `blurred` / `connected` / `updatedAt` per path.
+- `blankPaths`: numeric-blank state survives the boundary.
 
 NOT on the wire:
 
@@ -154,6 +154,6 @@ Install the `attaform/vite` plugin (see above). The runtime renders consistent a
 
 ## Where to next
 
-- [SSR hydration — Nuxt](/docs/server-and-ssr/ssr-nuxt) — the same round-trip with zero wiring.
-- [Performance](/docs/server-and-ssr/performance) — what hydration costs at scale.
-- [`parseApiErrors`](/docs/server-and-ssr/parse-api-errors) — turn server 4xx responses into reactive form errors.
+- [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt): the same round-trip with zero wiring.
+- [Performance](/docs/server-and-ssr/performance): what hydration costs at scale.
+- [`parseApiErrors`](/docs/server-and-ssr/parse-api-errors): turn server 4xx responses into reactive form errors.

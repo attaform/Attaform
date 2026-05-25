@@ -92,7 +92,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'setValue patterns', to: '/docs/writing-and-mutating/set-value' },
       { title: 'reset & resetField', to: '/docs/writing-and-mutating/reset' },
       { title: 'clear & blank values', to: '/docs/writing-and-mutating/clear' },
-      { title: 'unset — the absent sentinel', to: '/docs/writing-and-mutating/unset' },
+      { title: 'unset', to: '/docs/writing-and-mutating/unset' },
       { title: 'Field-array mutations', to: '/docs/writing-and-mutating/field-arrays' },
       { title: 'Variant memory', to: '/docs/writing-and-mutating/variant-memory' },
     ],
@@ -153,8 +153,8 @@ export const docsNavigation: DocsSection[] = [
   {
     heading: 'Server & SSR',
     links: [
-      { title: 'SSR hydration — Nuxt', to: '/docs/server-and-ssr/ssr-nuxt' },
-      { title: 'SSR hydration — bare Vue', to: '/docs/server-and-ssr/ssr-bare-vue' },
+      { title: 'SSR hydration: Nuxt', to: '/docs/server-and-ssr/ssr-nuxt' },
+      { title: 'SSR hydration: bare Vue', to: '/docs/server-and-ssr/ssr-bare-vue' },
       { title: 'Parsing API errors', to: '/docs/server-and-ssr/parse-api-errors' },
       { title: 'Performance', to: '/docs/server-and-ssr/performance' },
     ],

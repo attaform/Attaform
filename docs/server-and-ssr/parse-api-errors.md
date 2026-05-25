@@ -1,6 +1,6 @@
 ---
 title: Parsing API errors
-description: parseApiErrors normalises server failure responses into ValidationError[] that setFieldErrors mounts into the form. One parser, two envelope shapes, discriminated result type.
+description: parseApiErrors normalizes server failure responses into ValidationError[] that setFieldErrors mounts into the form. One parser, three envelope shapes, both structured and bare-string entries, discriminated result type.
 metaRows:
   - label: Category
     value: Helper
@@ -17,12 +17,12 @@ metaRows:
 
 # Parsing API errors
 
-> Map server failure responses into Attaform's reactive error store via `parseApiErrors` — JSON envelopes or bare details records, dotted paths, codes preserved end-to-end.
+> Map server failure responses into Attaform's reactive error store via `parseApiErrors`. JSON envelopes or bare details records, dotted paths, codes preserved end-to-end.
 
 ::docs-meta-table
 ::
 
-This page focuses on the **parser surface** — the envelope shapes the helper accepts, the discriminated result type, and how `setFieldErrors` mounts the parsed entries. The [Server-side errors](/docs/submitting/server-side-errors) page covers the full pipeline integration with `handleSubmit`. Both pages reference the same parser; this one's the deep dive.
+This page focuses on the **parser surface**: the envelope shapes the helper accepts, the discriminated result type, and how `setFieldErrors` mounts the parsed entries. The [Server-side errors](/docs/submitting/server-side-errors) page covers the full pipeline integration with `handleSubmit`. Both pages reference the same parser; this one's the deep dive.
 
 ## The signature
 
@@ -33,7 +33,7 @@ parseApiErrors(
 ): ParseApiErrorsResult
 ```
 
-`envelope` is whatever the server returned — the parser introspects it to figure out which shape it received. `options.formKey` stamps each produced `ValidationError` with the form's key for cross-form isolation.
+`envelope` is whatever the server returned; the parser introspects it to figure out which shape it received. `options.formKey` stamps each produced `ValidationError` with the form's key for cross-form isolation. The full options bag also accepts `defaultCode` (default `'api:unknown'`, used for bare-string entries) and the size caps `maxEntries` / `maxPathDepth` / `maxTotalSegments` for hostile-payload protection.
 
 ## The result type
 
@@ -47,8 +47,8 @@ type ParseApiErrorsResult = {
 }
 ```
 
-- `{ ok: true, errors }` — envelope recognized. `errors` may be empty (server returned a 422 with no field-level details).
-- `{ ok: false, errors: [], rejected }` — envelope shape wasn't recognized. `rejected` carries a reason ("payload was string, expected object", "entries must be `{ message, code }` objects", etc.). Log it; don't apply.
+- `{ ok: true, errors }`: envelope recognized. `errors` may be empty (server returned a 422 with no field-level details).
+- `{ ok: false, errors: [], rejected }`: envelope shape wasn't recognized. `rejected` carries a one-line description ("payload was string, expected object", etc.). Log it; don't apply.
 
 ```ts
 const result = parseApiErrors(err.data, { formKey: form.key })
@@ -91,21 +91,31 @@ The parser walks to `error.details` and reads each key-value pair as `path → V
 }
 ```
 
-Same logic, no `error.details` wrapper — the parser introspects the top level for `{ message, code }` entries (or arrays thereof) keyed by path. Pick this shape when the API already returns flat field-error records.
+Same logic, no `error.details` wrapper; the parser introspects the top level for `{ message, code }` entries (or arrays thereof) keyed by path. Pick this shape when the API already returns flat field-error records.
 
 ### Entry shape
 
-Every entry is `{ message: string, code: string }` — both required. The `code` is forwarded verbatim onto the produced `ValidationError`:
+Each detail value is one of two shapes (or a mix-and-match array of both):
 
-```ts
-{ message: 'already taken', code: 'api:duplicate-email' }
-```
+1. **Structured**: `{ message: string, code: string }`. The `code` is forwarded verbatim onto the produced `ValidationError`.
 
-A field's value is either a single entry or an array of entries. Array entries each produce their own `ValidationError`, so a single field can carry multiple distinct failures with their own codes.
+   ```ts
+   { message: 'already taken', code: 'api:duplicate-email' }
+   ```
+
+2. **Bare-string**: a plain string. The parser synthesizes a `ValidationError` with `message` set to the string and `code` set to `options.defaultCode` (default `'api:unknown'`). This is the Rails / Django REST Framework / FastAPI / Laravel shape:
+
+   ```ts
+   { email: ['Email already taken.'], username: 'too short' }
+   ```
+
+   Pass a more specific `defaultCode` (`'api:server-validation'`, `'myapp:legacy'`, etc.) when you know the source.
+
+A field's value is either a single entry, an array, or a mix of structured and bare-string entries. Array entries each produce their own `ValidationError`, so a single field can carry multiple distinct failures.
 
 ## Path shapes
 
-Keys are dotted paths — the parser canonicalizes them into the form's path tuple:
+Keys are dotted paths; the parser canonicalizes them into the form's path tuple:
 
 ```ts
 {
@@ -119,7 +129,7 @@ Keys are dotted paths — the parser canonicalizes them into the form's path tup
 - Numeric segments → array indices.
 - Multi-segment dots → nested object traversal.
 
-Bracket notation is NOT recognized — `items[0].qty` doesn't parse; use `items.0.qty` instead. Match your API's serialization to the dotted-segment convention.
+Bracket notation is NOT recognized; `items[0].qty` doesn't parse. Use `items.0.qty` instead and match your API's serialization to the dotted-segment convention.
 
 ## Code prefixes
 
@@ -137,7 +147,7 @@ Pick a prefix for the codes (`api:`, `auth:`, `myapp:`) and stay consistent. The
 </template>
 ```
 
-The prefix also helps when a single field carries both schema and API errors — schema codes typically start `zod:` / `atta:`; API codes start with your prefix. Filtering by prefix tells you which source emitted each entry.
+The prefix also helps when a single field carries both schema and API errors: schema codes typically start `zod:` / `atta:`; API codes start with your prefix. Filtering by prefix tells you which source emitted each entry.
 
 ## Mounting parsed errors
 
@@ -156,7 +166,7 @@ form.clearFieldErrors('email')
 form.clearFieldErrors() // clear everything
 ```
 
-User-injected errors persist across schema revalidation and successful submits — they're stored separately from schema errors. Schema validation can't replace them, and a successful submit doesn't auto-clear them. The user's next keystroke re-runs schema validation against the field (updating the schema half), but your API entries stay until you call `clearFieldErrors` or unmount.
+User-injected errors persist across schema revalidation and successful submits; they're stored separately from schema errors. Schema validation can't replace them, and a successful submit doesn't auto-clear them. The user's next keystroke re-runs schema validation against the field (updating the schema half), but your API entries stay until you call `clearFieldErrors` or unmount.
 
 ## Auto-clear on edit?
 
@@ -184,6 +194,6 @@ No special "this is a server error" surface in the template. The render code rea
 
 ## Where to next
 
-- [Server-side errors](/docs/submitting/server-side-errors) — the full `handleSubmit` integration story.
-- [`handleSubmit`](/docs/submitting/handle-submit) — the dispatch surface that owns the success / error split.
-- [Focus & scroll on invalid submit](/docs/submitting/focus-scroll) — server errors plug into the same focus pull as schema errors.
+- [Server-side errors](/docs/submitting/server-side-errors): the full `handleSubmit` integration story.
+- [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface that owns the success / error split.
+- [Focus & scroll on invalid submit](/docs/submitting/focus-scroll): server errors plug into the same focus pull as schema errors.

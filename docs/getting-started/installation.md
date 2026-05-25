@@ -5,9 +5,9 @@ description: Install Attaform with one command. Optional setup sections cover th
 
 # Installation
 
-> One command. The library bootstraps itself.
+> One command. Attaform bootstraps itself.
 
-Install Attaform and Zod, and the library is ready to use.
+Install Attaform and Zod, and you're set.
 
 ::ui-install-command{:show-quick-start="false"}
 ::

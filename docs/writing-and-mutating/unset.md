@@ -98,7 +98,7 @@ form.fields.email.blank // true after setValue('email', unset)
 form.fields('profile').blank // true when every descendant of profile is blank
 ```
 
-`form.blankPaths.value` carries the full set as `ReadonlySet<PathKey>` for callers that want the whole list (persistence, debug overlays). The `v-register` directive reads the same signals and renders the DOM empty.
+`form.blankPaths.value` exposes a `BlankPathsView` (Set-like: `size`, `has(input)`, `values()`, plus a `Symbol.iterator`) for callers that want the whole list (persistence, debug overlays). The `v-register` directive reads the same signals and renders the DOM empty.
 
 ## Required schemas raise `no-value-supplied`
 

@@ -19,37 +19,37 @@ metaRows:
 ::docs-meta-table
 ::
 
-This page is reference material — no demo. CI runs the benchmark suite under [`bench/`](https://github.com/attaform/attaform/tree/main/bench) on every PR, so the numbers below come from a known-good environment and ride alongside the code.
+This page is reference material; no demo. CI runs the benchmark suite under [`bench/`](https://github.com/attaform/attaform/tree/main/bench) on every PR, so the numbers below come from a known-good environment and ride alongside the code.
 
 ## Measured numbers
 
 Real-browser numbers from `pnpm bench`, single-threaded on contemporary hardware. Your machine will land elsewhere on the number line; the orders of magnitude won't.
 
-| Operation                                                      | Cost    |
-| -------------------------------------------------------------- | ------- |
-| Single-field keystroke, 100-leaf form                          | 6 µs    |
-| Single-field keystroke, 500-leaf form                          | 30 µs   |
-| Validation overhead per keystroke (`validateOn: 'change'`)     | 5 µs    |
-| Submit lifecycle (validate → submit → parse → setFieldErrors)  | 3.4 µs  |
-| Path canonicalisation (cache hit)                              | 60 ns   |
-| Sensitive-name check (common pattern, early hit)               | 70 ns   |
-| Persistence write — `'local'` / `'session'` (100-leaf payload) | 2.8 µs  |
-| Persistence write — `'indexeddb'` (100-leaf payload)           | 62 µs   |
-| Debounced-writer schedule (steady-state typing)                | 0.18 µs |
-| Discriminated union — write into active variant                | 19 µs   |
-| Discriminated union — cross-variant flip                       | 25 µs   |
-| Reset, 100-leaf object form                                    | 678 µs  |
-| Field-array append, 100-item                                   | 2.5 ms  |
-| Field-array append, 1000-item                                  | 9 ms    |
-| Field-array swap on 500-item                                   | 3.9 ms  |
+| Operation                                                     | Cost    |
+| ------------------------------------------------------------- | ------- |
+| Single-field keystroke, 100-leaf form                         | 6 µs    |
+| Single-field keystroke, 500-leaf form                         | 30 µs   |
+| Validation overhead per keystroke (`validateOn: 'change'`)    | 5 µs    |
+| Submit lifecycle (validate → submit → parse → setFieldErrors) | 3.4 µs  |
+| Path canonicalization (cache hit)                             | 60 ns   |
+| Sensitive-name check (common pattern, early hit)              | 70 ns   |
+| Persistence write, `'local'` / `'session'` (100-leaf payload) | 2.8 µs  |
+| Persistence write, `'indexeddb'` (100-leaf payload)           | 62 µs   |
+| Debounced-writer schedule (steady-state typing)               | 0.18 µs |
+| Discriminated union, write into active variant                | 19 µs   |
+| Discriminated union, cross-variant flip                       | 25 µs   |
+| Reset, 100-leaf object form                                   | 678 µs  |
+| Field-array append, 100-item                                  | 2.5 ms  |
+| Field-array append, 1000-item                                 | 9 ms    |
+| Field-array swap on 500-item                                  | 3.9 ms  |
 
-A 60 fps frame is **16.7 ms**. Single-keystroke work clears the budget by three orders of magnitude on a 100-leaf form and by two on a 500-leaf form — Vue's render gets the rest of the frame to itself.
+A 60 fps frame is **16.7 ms**. Single-keystroke work clears the budget by three orders of magnitude on a 100-leaf form and by two on a 500-leaf form; Vue's render gets the rest of the frame to itself.
 
 ## Hot-path characteristics
 
-- **Keystrokes** — the `register` → form-state path runs against a per-PR threshold; see [`bench/keystroke.bench.ts`](https://github.com/attaform/attaform/blob/main/bench/keystroke.bench.ts) for the measured scenarios (100-leaf and 500-leaf forms, single-leaf mutation).
-- **`form.meta.dirty`** — iterates the tracked leaves with no per-leaf parse cost.
-- **Path resolution** — dotted-string paths are LRU-cached (128 entries), so repeat canonicalisation reduces to a map lookup.
+- **Keystrokes**: the `register` → form-state path runs against a per-PR threshold; see [`bench/keystroke.bench.ts`](https://github.com/attaform/attaform/blob/main/bench/keystroke.bench.ts) for the measured scenarios (100-leaf and 500-leaf forms, single-leaf mutation).
+- **`form.meta.dirty`**: iterates the tracked leaves with no per-leaf parse cost.
+- **Path resolution**: dotted-string paths are LRU-cached (128 entries), so repeat canonicalization reduces to a map lookup.
 
 Sub-500-leaf forms don't surface in profiling.
 
@@ -66,14 +66,14 @@ Sub-500-leaf forms don't surface in profiling.
 `append` / `prepend` / `insert` / `remove` / `swap` / `move` all copy the target array before mutating. That's cheap in the common case (dozens of items), fine at hundreds, but **quadratic if you loop `append` to seed a large list**. For a large seed, assign the whole array in one shot:
 
 ```ts
-form.setValue('items', preBuiltArray) // O(N) — one allocation
+form.setValue('items', preBuiltArray) // O(N): one allocation
 ```
 
 For incremental population (the user appends one item at a time), per-append cost is the only thing that matters and the amortized total is linear over the user's interactions.
 
 ## Keying `v-for` rows
 
-Use a stable per-row key — either an ID carried on the data or a client-generated `crypto.randomUUID()` stored when you append. Keying by index re-renders more than necessary when rows move and flickers focus / scroll state on reordered rows.
+Use a stable per-row key: either an ID carried on the data or a client-generated `crypto.randomUUID()` stored when you append. Keying by index re-renders more than necessary when rows move and flickers focus / scroll state on reordered rows.
 
 ```vue
 <!-- Good: stable key follows the item -->
@@ -87,11 +87,11 @@ The index pattern is fine for append-only or short-lived lists; reach for stable
 
 ## Discriminated unions vs. plain unions
 
-Discriminated unions (`z.discriminatedUnion`) walk only the active branch. Plain unions (`z.union`) walk every branch unconditionally — use a DU when you have a shared key. The cost difference grows with the number of branches; for a 5-branch plain union, validation does 5x the work of the equivalent DU.
+Discriminated unions (`z.discriminatedUnion`) walk only the active branch. Plain unions (`z.union`) walk every branch unconditionally; use a DU when you have a shared key. The cost difference grows with the number of branches; for a 5-branch plain union, validation does 5x the work of the equivalent DU.
 
 ## `form.meta.dirty` in hot templates
 
-`form.meta.dirty` is a whole-form aggregate — it invalidates whenever any tracked leaf's `updatedAt` ticks. If you render it in a hot path (a header that re-renders on every keystroke), derive a more specific predicate instead:
+`form.meta.dirty` is a whole-form aggregate; it invalidates whenever any tracked leaf's `updatedAt` ticks. If you render it in a hot path (a header that re-renders on every keystroke), derive a more specific predicate instead:
 
 ```ts
 // Faster than gating on the whole-form form.meta.dirty:
@@ -102,7 +102,7 @@ The pattern: read at the smallest granularity that gives you the answer you need
 
 ## Reset cost
 
-`reset()` is sub-millisecond on a 100-leaf form (~680 µs in the suite — see the table above). `resetField(path)` scales with the subtree — prefer it for localised reversions.
+`reset()` is sub-millisecond on a 100-leaf form (~680 µs in the suite; see the table above). `resetField(path)` scales with the subtree; prefer it for localized reversions.
 
 ## Benching your own form
 
@@ -113,21 +113,21 @@ import { bench, describe } from 'vitest'
 import { z } from 'zod'
 // import your form setup
 
-describe('my form — typical interaction', () => {
+describe('my form: typical interaction', () => {
   bench('the operation I care about', () => {
     // ...
   })
 })
 ```
 
-Run with `pnpm bench`. The regression gate only fires on benches that follow the `old: / new:` pairing convention — informational benches run without gating.
+Run with `pnpm bench`. The regression gate only fires on benches that follow the `old: / new:` pairing convention; informational benches run without gating.
 
 ## Peer-dep coverage
 
-Per-PR CI covers Node 18 / 20 / 22 / LTS against the devDep-pinned peer versions. A weekly workflow sweeps Vue 3.5 through 3.6, Vite 5 / 6, Nuxt 3.16 through Nuxt 4. Jobs fail independently — versions not yet released surface as failed cells without blocking the main CI.
+Per-PR CI covers Node 18 / 20 / 22 / LTS against the devDep-pinned peer versions. A weekly workflow sweeps Vue 3.5 through 3.6, Vite 5 / 6, Nuxt 3.16 through Nuxt 4. Jobs fail independently; versions not yet released surface as failed cells without blocking the main CI.
 
 ## Where to next
 
-- [Field-array mutations](/docs/writing-and-mutating/field-arrays) — the O(N) characteristics in full, including amortized analysis.
-- [How values are stored](/docs/schemas/storage-shape) — the slim write shape that keeps reads fast.
-- [SSR hydration — Nuxt](/docs/server-and-ssr/ssr-nuxt) — hydration costs depend on form size; pair this page with the SSR pages when sizing.
+- [Field-array mutations](/docs/writing-and-mutating/field-arrays): the O(N) characteristics in full, including amortized analysis.
+- [How values are stored](/docs/schemas/storage-shape): the slim write shape that keeps reads fast.
+- [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt): hydration costs depend on form size; pair this page with the SSR pages when sizing.

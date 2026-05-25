@@ -65,7 +65,7 @@ Structural signature of the schema. Two schemas with the same shape return the s
 - Catch shared-key mismatches in dev (two `useForm({ key: 'x' })` calls with different schemas warn).
 - Key persisted drafts so schema changes auto-invalidate stale drafts.
 
-Must NOT throw. If it does, the library catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback; opaque fingerprints disable schema-change auto-invalidation for persisted drafts (the key never changes), so prefer a real structural hash if your library exposes the metadata.
+Must NOT throw. If it does, Attaform catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback; opaque fingerprints disable schema-change auto-invalidation for persisted drafts (the key never changes), so prefer a real structural hash if your library exposes the metadata.
 
 ## Defaults
 

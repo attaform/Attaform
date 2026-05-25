@@ -1,6 +1,6 @@
 ---
 title: clear & blank values
-description: clear writes the schema-slim empty value at one path or the whole form — `''` for strings, `0` for numbers, `[]` for arrays, `false` for booleans. Defaults are intentionally skipped.
+description: clear writes the schema-slim empty value at one path or the whole form, `''` for strings, `0` for numbers, `[]` for arrays, `false` for booleans. Defaults are intentionally skipped.
 metaRows:
   - label: Category
     value: Return method
@@ -16,12 +16,12 @@ metaRows:
 
 # `clear` & blank values
 
-> Wipe to the schema's empty shape — not to defaults. For "blank canvas" UX where defaults would be the wrong destination.
+> Wipe to the schema's empty shape, not to defaults. For "blank canvas" UX where defaults would be the wrong destination.
 
 ::docs-meta-table
 ::
 
-Click the per-field clear buttons to watch each path drop to its schema-slim empty value — `''` for the string title, `[]` for the tags array, `false` for the published boolean. Click `clear()` to wipe everything. The defaults declared on `useForm` are intentionally skipped — that's the distinction from `reset`. The blank flag on each field flips on to mark the cleared state.
+Click the per-field clear buttons to watch each path drop to its schema-slim empty value: `''` for the string title, `[]` for the tags array, `false` for the published boolean. Click `clear()` to wipe everything. The defaults declared on `useForm` are intentionally skipped; that's the distinction from `reset`. The blank flag on each field flips on to mark the cleared state.
 
 ::docs-demo{slug="clear" label="Clear Demo"}
 ::
@@ -44,7 +44,7 @@ Same shapes Attaform uses for the initial defaults when nothing is declared in `
 
 ## Clear is not reset
 
-The key distinction: `clear` skips defaults; `reset` restores them. Pick clear when the user-facing intent is "blank canvas" — a fresh draft, a wipe, a "start over from nothing". Pick `reset` when the intent is "back to baseline" — the form's authoritative starting state.
+The key distinction: `clear` skips defaults; `reset` restores them. Pick clear when the user-facing intent is "blank canvas": a fresh draft, a wipe, a "start over from nothing". Pick `reset` when the intent is "back to baseline": the form's authoritative starting state.
 
 ```ts
 form.reset() // values.title === 'A great draft'  (the default)
@@ -65,7 +65,7 @@ Same call ergonomics as `setValue`. The whole-form call clears every path recurs
 
 ## Returns `boolean`
 
-`true` on accepted writes, `false` when the slim-type gate rejects (rare — the empty value should always be valid for the path's accept set, but containers with required fields may flag).
+`true` on accepted writes, `false` when the slim-type gate rejects (rare; the empty value should always be valid for the path's accept set, but containers with required fields may flag).
 
 ## When `clear()` is the right call
 

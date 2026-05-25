@@ -39,8 +39,8 @@ External composables, watchers, and DevTools probes sometimes expect a `Ref` rat
 ```ts
 const emailRef = form.toRef('profile.email') // Readonly<Ref<string>>
 
-// Hand off to a composable that takes a Ref
-useExternalComposable(emailRef)
+// Hand off to any third-party composable whose signature expects a Ref
+useThirdPartyRefConsumer(emailRef)
 
 // Watch a single path explicitly
 watch(emailRef, (next) => {
@@ -69,7 +69,7 @@ form.register('profile.email') // bound writes via v-register
 form.append('todos', { title: '' }) // structural writes
 ```
 
-The library tracks dirty, touched, and validation state through those write paths. Assigning to `.value` directly throws; `toRef` is a read handle, not a backdoor.
+Attaform tracks dirty, touched, and validation state through those write paths. Assigning to `.value` directly throws; `toRef` is a read handle, not a backdoor.
 
 ## Reactivity contract
 

@@ -90,7 +90,7 @@ The error surface at this path: raw, ergonomic, and gated.
 
 ### DOM reads
 
-Direct handles to the bound elements for imperative work: `focus()`, `scrollIntoView()`, measure positions, attach observers, anything the library deliberately doesn't wrap behind helpers.
+Direct handles to the bound elements for imperative work: `focus()`, `scrollIntoView()`, measure positions, attach observers, anything Attaform deliberately doesn't wrap behind helpers.
 
 | Property   | Type                     | Meaning                                    |
 | ---------- | ------------------------ | ------------------------------------------ |
@@ -142,7 +142,7 @@ The display-ergonomics pairing of `firstError` plus `showErrors` is the per-fiel
 
 - [`values`](/docs/reading-the-form/values): the value half of every FieldState, lifted to a form-wide Proxy.
 - [`errors`](/docs/reading-the-form/errors): the per-path errors Proxy, the raw array behind `firstError`.
-- [`meta`](/docs/reading-the-form/meta): the form-level aggregation, every FieldState property rolled up, plus 6 submission-state bits.
+- [`meta`](/docs/reading-the-form/meta): the form-level aggregation, every FieldState property rolled up, plus 7 form-only reads.
 - [The `v-register` directive](/docs/binding-inputs/v-register): the binding that drives `touched`, `focused`, `blurred`, and `connected`.
 - [Showing errors at the right time](/docs/validation/showing-errors): the predicate behind `showErrors`.
 - [The `blank` field-state bit](/docs/validation/blank): the lifecycle behind the `blank` cell.

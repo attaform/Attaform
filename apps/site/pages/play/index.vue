@@ -8,7 +8,7 @@
   // `docs-demos/` automatically surfaces it here on the next build —
   // no per-demo wiring required.
   import { computed, ref, watch } from 'vue'
-  import { ArrowRight, FlaskConical, Search, X } from 'lucide-vue-next'
+  import { ArrowRight, FlaskConical, Search, Sparkles, X } from 'lucide-vue-next'
 
   // Inherits the docs shell (sidebar + header + footer) so a reader
   // browsing playgrounds isn't stranded in a sidebar-less layout. The
@@ -98,12 +98,38 @@
       <p class="text-sm font-semibold tracking-wide text-accent uppercase">Live editors</p>
       <h1 class="mt-3 text-display-md font-semibold text-fg">Playgrounds</h1>
       <p class="mt-4 text-lg text-fg-muted">
-        Every demo in the docs has a matching playground, yours to fork and remix. Pick one and the
-        editor opens ready to go: the demo's source loaded,
-        <UiInlineCode>attaform</UiInlineCode> pre-bundled, and a live preview that updates as you
-        type.
+        Every editor ships with <UiInlineCode>attaform</UiInlineCode> pre-bundled and a live preview
+        that updates as you type. Start from a blank canvas to experiment freely, or fork any docs
+        demo below.
       </p>
     </div>
+
+    <!-- Blank-canvas lead CTA. Sits above the demo grid so visitors who
+         just want to tinker land on it first, instead of scanning to the
+         bottom of the page for a buried link. The accent border + gradient
+         differentiates it from the curated demo cards below. -->
+    <NuxtLink
+      to="/play/blank"
+      class="group relative mb-8 flex items-center justify-between gap-6 overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-br from-accent/[0.06] via-bg to-bg p-6 shadow-xs transition-[border-color,box-shadow] duration-(--duration-base) ease-(--ease-out-quart) hover:border-accent/60 hover:shadow-md focus-visible:ring-4 focus-visible:ring-accent-ring focus-visible:outline-none"
+    >
+      <div class="min-w-0">
+        <span
+          class="inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide text-accent uppercase"
+        >
+          <Sparkles class="h-3.5 w-3.5" :stroke-width="2" />
+          Start blank
+        </span>
+        <p class="mt-2 text-xl font-semibold text-fg group-hover:text-accent">Blank playground</p>
+        <p class="mt-1 text-sm text-fg-muted">
+          A minimal Attaform form, schema and all. Edit anything and the preview re-renders on each
+          keystroke.
+        </p>
+      </div>
+      <ArrowRight
+        class="h-5 w-5 shrink-0 text-fg-subtle transition-transform duration-(--duration-fast) ease-(--ease-out-quart) group-hover:translate-x-1 group-hover:text-accent"
+        :stroke-width="2.25"
+      />
+    </NuxtLink>
 
     <!-- Search + per-page controls. Stacked on mobile, two-up on sm+. -->
     <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -235,18 +261,6 @@
           {{ n }}
         </button>
       </div>
-    </div>
-
-    <div class="mt-12 rounded-xl border border-border bg-surface/40 p-5">
-      <p class="text-sm font-semibold text-fg">Want a blank canvas?</p>
-      <p class="mt-1 text-sm text-fg-muted">
-        The
-        <NuxtLink to="/play/blank" class="text-accent hover:underline"
-          >blank-slate playground</NuxtLink
-        >
-        opens a freeform editor seeded with the shipment demo. Edit anything; the preview re-renders
-        on each keystroke.
-      </p>
     </div>
 
     <DocsPager class="mt-12" />

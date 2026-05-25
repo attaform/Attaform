@@ -315,8 +315,7 @@ export default defineNuxtConfig({
   site: {
     url: 'https://www.attaform.com',
     name: 'Attaform',
-    description:
-      'A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.',
+    description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
     defaultLocale: 'en',
     indexable: process.env.VERCEL_ENV === 'production',
   },

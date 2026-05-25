@@ -65,7 +65,7 @@
             <span>Attaform</span>
           </NuxtLink>
           <p class="text-sm text-fg-muted">
-            A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.
+            A type-safe, Zod-first form library for Vue 3 and Nuxt.
           </p>
           <!-- Version chip — warm-soft pair on a small inline pill so
                it ties to the hero release chip without competing with

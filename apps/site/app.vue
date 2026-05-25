@@ -51,17 +51,14 @@
   })
 
   useSeoMeta({
-    description:
-      'A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.',
+    description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
     ogTitle: 'Attaform — Type-safe forms for Vue 3 and Nuxt',
-    ogDescription:
-      'A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.',
+    ogDescription: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
     ogType: 'website',
     ogSiteName: 'Attaform',
     twitterCard: 'summary_large_image',
     twitterTitle: 'Attaform — Type-safe forms for Vue 3 and Nuxt',
-    twitterDescription:
-      'A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.',
+    twitterDescription: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
   })
 
   // Default OG card for every route. Pages override per-route by

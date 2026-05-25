@@ -1,0 +1,185 @@
+# Attaform
+
+> A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support. Hand a Zod schema to `useForm` and Attaform turns it into a reactive form, typed end-to-end, with live errors and SSR out of the box.
+
+Attaform's core idea is that the schema IS the form. One Zod schema declares the shape, the defaults, the validation, the per-field errors, and the input/output types. Attaform builds the reactive surface around it.
+
+The single entry point `attaform/zod` dispatches between Zod v3 and v4 per call, so projects on either version (or a mix) share one import. The Nuxt module auto-wires the plugin, the `v-register` directive, the SSR plumbing, and the DevTools panel. Bare Vue + Vite works through the Vite plugin without Nuxt.
+
+Forms are bound to native inputs through the `v-register` directive. Submission goes through `form.handleSubmit(onSubmit)`. Multistep flows compose multiple `useForm` instances under `useWizard`. Persistence, undo/redo, multi-tab sync, server-error routing, and a Nuxt DevTools panel are all opt-in.
+
+## API at a glance
+
+```ts
+// script setup
+import { z } from 'zod'
+import { useForm } from 'attaform/zod'
+
+const schema = z.object({
+  email: z.email(),
+  password: z.string().min(8),
+})
+
+const form = useForm({ schema, key: 'signup' })
+
+const onSubmit = form.handleSubmit(async (values) => {
+  await fetch('/signup', { method: 'POST', body: JSON.stringify(values) })
+})
+```
+
+```vue
+<!-- template -->
+<form @submit.prevent="onSubmit">
+  <label>
+    Email
+    <input v-register="form.register('email')" />
+    <em v-if="form.fields.email.showErrors">
+      {{ form.fields.email.firstError?.message }}
+    </em>
+  </label>
+
+  <label>
+    Password
+    <input type="password" v-register="form.register('password', { persist: true })" />
+    <em v-if="form.fields.password.showErrors">
+      {{ form.fields.password.firstError?.message }}
+    </em>
+  </label>
+
+  <button :disabled="!form.meta.valid || form.meta.submitting">Sign up</button>
+</form>
+```
+
+The form handle exposes reactive reads (`form.values`, `form.errors`, `form.fields`, `form.meta`), mutation helpers (`form.setValue`, `form.reset`, `form.history.undo`), and submission (`form.handleSubmit`). The `v-register` directive accepts `{ persist, transforms, multiTab, acknowledgeSensitive }` options for per-field opt-ins.
+
+Multistep flows compose forms under `useWizard`:
+
+```ts
+import { useForm, useWizard } from 'attaform/zod'
+
+const account = useForm({ schema: accountSchema, key: 'account' })
+const profile = useForm({ schema: profileSchema, key: 'profile' })
+
+const wizard = useWizard({
+  steps: [account, 'review', profile],
+})
+
+const onComplete = wizard.handleSubmit(async (ctx) => {
+  await fetch('/onboarding', { method: 'POST', body: JSON.stringify(ctx.values) })
+})
+```
+
+Steps can be `useForm` references, bare strings (affordance-only positions), eager function slots, or `lazy(ctx => ...)` markers. `wizard.handleSubmit` validates the active form and advances on intermediate steps, then validates every form in parallel on the final step.
+
+## Getting started
+
+- [Quick start](https://www.attaform.com/docs/getting-started/quick-start): paste-and-run minimal example.
+- [Why Attaform](https://www.attaform.com/docs/getting-started/why-attaform): the design pitch and five convictions.
+- [Installation](https://www.attaform.com/docs/getting-started/installation): Vue, Nuxt, and Vite setups.
+- [Your first schema](https://www.attaform.com/docs/getting-started/your-first-schema): walks the schema-to-form arc.
+- [From schema to inputs](https://www.attaform.com/docs/getting-started/from-schema-to-inputs): binding side of the arc.
+- [From inputs to submit](https://www.attaform.com/docs/getting-started/from-inputs-to-submit): submission side of the arc.
+
+## Core API
+
+- [The form](https://www.attaform.com/docs/reading-the-form/the-form): what `useForm` returns.
+- [`v-register`](https://www.attaform.com/docs/binding-inputs/v-register): the binding directive.
+- [Values](https://www.attaform.com/docs/reading-the-form/values), [errors](https://www.attaform.com/docs/reading-the-form/errors), [fields](https://www.attaform.com/docs/reading-the-form/fields), [meta](https://www.attaform.com/docs/reading-the-form/meta): the reactive reads.
+- [Type safety](https://www.attaform.com/docs/reading-the-form/type-safety): inference and `toRef`.
+- [`injectForm`](https://www.attaform.com/docs/cross-cutting-state/inject-form): reach a form from any descendant.
+- [`useRegister`](https://www.attaform.com/docs/binding-inputs/use-register): re-bind `v-register` inside wrapper components.
+
+## Schemas
+
+- [Abstract schema](https://www.attaform.com/docs/schemas/abstract-schema): the schema contract Attaform consumes.
+- [Defaults](https://www.attaform.com/docs/schemas/defaults): function and value forms, async hydration, SSR.
+- [Optional vs nullable](https://www.attaform.com/docs/schemas/optional-nullable): the storage-shape distinction.
+- [Nested objects](https://www.attaform.com/docs/schemas/nested-objects), [arrays and tuples](https://www.attaform.com/docs/schemas/arrays-and-tuples), [records](https://www.attaform.com/docs/schemas/records): container kinds.
+- [Discriminated unions](https://www.attaform.com/docs/schemas/discriminated-unions): variants, variant memory, merged metadata.
+- [Storage shape](https://www.attaform.com/docs/schemas/storage-shape): what actually lives in `form.values`.
+
+## Binding inputs
+
+- [`v-register`](https://www.attaform.com/docs/binding-inputs/v-register): canonical pattern.
+- [Text, number, textarea](https://www.attaform.com/docs/binding-inputs/text-number-textarea), [checkbox](https://www.attaform.com/docs/binding-inputs/checkbox), [radio](https://www.attaform.com/docs/binding-inputs/radio), [select](https://www.attaform.com/docs/binding-inputs/select), [file](https://www.attaform.com/docs/binding-inputs/file): native input kinds.
+- [Modifiers](https://www.attaform.com/docs/binding-inputs/modifiers): `.lazy`, `.trim`, `.number`.
+- [Coercion](https://www.attaform.com/docs/binding-inputs/coercion): user input string-to-target coercion.
+- [Transforms](https://www.attaform.com/docs/binding-inputs/transforms): per-field sync transform pipeline.
+- [Custom assigners](https://www.attaform.com/docs/binding-inputs/custom-assigners): bind to non-native components.
+
+## Validation
+
+- [When validation runs](https://www.attaform.com/docs/validation/when-validation-runs): `validateOn` + `debounceMs`.
+- [Showing errors](https://www.attaform.com/docs/validation/showing-errors): the default `shouldShowErrors` heuristic and custom predicates.
+- [Async refinements](https://www.attaform.com/docs/validation/async-refinements): debounced async checks.
+- [Per-field validation](https://www.attaform.com/docs/validation/per-field-validation): `form.validate(path)` and `form.validateAsync(path)`.
+- [Lifecycle](https://www.attaform.com/docs/validation/lifecycle): sync versus async, when errors land.
+- [Blank fields](https://www.attaform.com/docs/validation/blank): how Attaform handles "no value supplied".
+
+## Submitting
+
+- [`handleSubmit`](https://www.attaform.com/docs/submitting/handle-submit): the full lifecycle.
+- [Focus and scroll](https://www.attaform.com/docs/submitting/focus-scroll): invalid-submit policy.
+- [Server-side errors](https://www.attaform.com/docs/submitting/server-side-errors): `parseApiErrors` + `form.setFieldErrors`.
+
+## Writing and mutating
+
+- [`setValue`](https://www.attaform.com/docs/writing-and-mutating/set-value), [`reset`](https://www.attaform.com/docs/writing-and-mutating/reset), [`clear`](https://www.attaform.com/docs/writing-and-mutating/clear), [`unset`](https://www.attaform.com/docs/writing-and-mutating/unset): programmatic writes.
+- [Field arrays](https://www.attaform.com/docs/writing-and-mutating/field-arrays): append, insert, remove, swap, move.
+- [Variant memory](https://www.attaform.com/docs/writing-and-mutating/variant-memory): switching discriminated-union variants without losing data.
+
+## Multistep
+
+- [`useWizard`](https://www.attaform.com/docs/multistep/use-wizard): the list-based step orchestrator.
+- [Step slots](https://www.attaform.com/docs/multistep/step-slots): forms, strings, function slots, `lazy()`.
+- [`injectWizard`](https://www.attaform.com/docs/multistep/inject-wizard): cross-component access.
+- [Wizard `handleSubmit`](https://www.attaform.com/docs/multistep/handle-submit): the universal submit lifecycle.
+- [URL sync](https://www.attaform.com/docs/multistep/url-sync): `?step=` round-trip, Nuxt deep-link hydration.
+- [Statuses](https://www.attaform.com/docs/multistep/statuses) and [aggregates](https://www.attaform.com/docs/multistep/aggregates): per-step state, namespaced `allValues` / `allErrors`.
+- [Patterns](https://www.attaform.com/docs/multistep/patterns): common multistep recipes.
+
+## Persistence
+
+- [Overview](https://www.attaform.com/docs/persistence/overview): when persistence runs.
+- [Storage backends](https://www.attaform.com/docs/persistence/storage-backends): localStorage, sessionStorage, IndexedDB, custom adapters.
+- [Per-field opt-in](https://www.attaform.com/docs/persistence/per-field-opt-in): `register(path, { persist: true })`.
+- [Sensitive names](https://www.attaform.com/docs/persistence/sensitive-names): the redact guard.
+- [Imperative API](https://www.attaform.com/docs/persistence/imperative): `form.persist` and `form.clearPersistedDraft`.
+- [Edge cases](https://www.attaform.com/docs/persistence/edge-cases): hydration races, file inputs, the "upload-on-select" pattern.
+
+## Cross-cutting state
+
+- [`injectForm`](https://www.attaform.com/docs/cross-cutting-state/inject-form): ambient or keyed form lookup.
+- [App defaults](https://www.attaform.com/docs/cross-cutting-state/app-defaults): global config defaults.
+- [Multi-tab sync](https://www.attaform.com/docs/cross-cutting-state/multi-tab-sync): `BroadcastChannel`-backed cross-tab state.
+- [Undo and redo](https://www.attaform.com/docs/cross-cutting-state/undo-redo): `form.history`.
+
+## Server and SSR
+
+- [SSR in Nuxt](https://www.attaform.com/docs/server-and-ssr/ssr-nuxt): the canonical SSR setup.
+- [SSR in bare Vue](https://www.attaform.com/docs/server-and-ssr/ssr-bare-vue): without Nuxt.
+- [`parseApiErrors`](https://www.attaform.com/docs/server-and-ssr/parse-api-errors): route server responses into `form.errors`.
+- [Performance](https://www.attaform.com/docs/server-and-ssr/performance): measured numbers anchored against the 60 fps budget.
+
+## DevTools and debugging
+
+- [DevTools panel](https://www.attaform.com/docs/devtools-and-debugging/devtools-panel): the Nuxt DevTools tab.
+- [Vue DevTools](https://www.attaform.com/docs/devtools-and-debugging/vue-devtools): the Chrome extension surface.
+- [Troubleshooting](https://www.attaform.com/docs/devtools-and-debugging/troubleshooting): common pitfalls.
+
+## Reference
+
+- [Entry points](https://www.attaform.com/docs/reference/entry-points): every package subpath (`attaform`, `attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`, `attaform/vite`, `attaform/nuxt`, `attaform/devtools-panel`).
+- [Errors](https://www.attaform.com/docs/reference/errors): `AttaformErrorCode` table and the error class hierarchy.
+- [Types](https://www.attaform.com/docs/reference/types): every exported type.
+- [Custom adapters](https://www.attaform.com/docs/reference/custom-adapters): building a non-Zod schema adapter.
+
+## Interactive
+
+- [Demos](https://www.attaform.com/demos): every docs demo as a standalone editable playground.
+
+## Optional
+
+- [GitHub](https://github.com/attaform/attaform): source, issues, discussions.
+- [npm](https://www.npmjs.com/package/attaform): published versions and install command.
+- [CHANGELOG](https://github.com/attaform/attaform/blob/main/CHANGELOG.md): release history.

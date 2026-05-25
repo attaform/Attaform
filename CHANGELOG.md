@@ -150,6 +150,11 @@ rip-and-replace; no compat shims.
   `docs/server-and-ssr/performance.md` (keystroke /
   validation / submit / persistence figures against the
   16.7 ms 60 fps budget).
+- **`llms.txt`** at
+  [`attaform.com/llms.txt`](https://www.attaform.com/llms.txt)
+  gives AI crawlers and other LLMs a focused, terse view of
+  Attaform's mental model plus categorised links into the
+  docs.
 
 ## v0.17.2
 _No unreleased changes yet._

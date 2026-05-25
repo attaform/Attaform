@@ -35,7 +35,7 @@ Numeric inputs lie. A `<input type="number">` whose value the user has just clea
 - Trust storage and silently submit `0` for an unfilled required field (the public-housing-form footgun: "Income? `$0`. Approved.").
 - Re-define `0` as "definitely blank," which loses the case where the user actually meant `0`.
 
-`blankPaths` is the side-channel. It's a reactive `Set<PathKey>` recording paths where the runtime knows storage and the visible display diverge. The schema author writes `z.number()` and gets the "empty input" signal back without inventing a sentinel value.
+`blankPaths` is the side-channel. It's a reactive `BlankPathsView` (Set-like: `size`, `has(input)`, `values()`, `Symbol.iterator`) recording paths where the runtime knows storage and the visible display diverge. The schema author writes `z.number()` and gets the "empty input" signal back without inventing a sentinel value.
 
 ## When `blank` auto-marks
 
@@ -121,7 +121,7 @@ Combined with required schemas, the sentinel surfaces a `atta:no-value-supplied`
 
 ## How to read `blank` in your UI
 
-The library never renders. It exposes the signal; your component decides what to do.
+Attaform never renders. The signal is exposed; your component decides what to do.
 
 ```vue
 <script setup lang="ts">

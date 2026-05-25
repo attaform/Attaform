@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Common Attaform pitfalls and how to fix them — shared-form key collisions, missing v-register elements, hydration drift, handleSubmit bindings, never-typed register reads.
+description: Common Attaform pitfalls and how to fix them. Shared-form key collisions, missing v-register elements, hydration drift, handleSubmit bindings, never-typed register reads.
 ---
 
 # Troubleshooting
@@ -13,7 +13,7 @@ Three independent causes:
 
 - **The schema doesn't include the field.** A `z.string().optional()` wrapper without an inner refinement accepts everything. Verify the schema.
 - **You're in `strict: false` and watching `validate()`.** Lax mode strips refinements during default-values derivation so the form mounts with empty values without failing; refinements re-apply on submit. Drop the `strict: false` opt-out if you want `validate()` to fire refinements immediately.
-- **The path doesn't match the schema.** `'items.0.name'` and `['items', 0, 'name']` canonicalise to the same path. But `['items', '0', 'name']` (string `'0'`) does NOT — emit numbers when the position is an array index.
+- **The path doesn't match the schema.** `'items.0.name'` and `['items', 0, 'name']` canonicalize to the same path. But `['items', '0', 'name']` (string `'0'`) does NOT; emit numbers when the position is an array index.
 
 ## "`register('email')` returns a `never`-typed value"
 
@@ -24,11 +24,12 @@ The schema generic couldn't be inferred. Two likely causes:
 
 ## "`handleSubmit` doesn't run when I submit the form"
 
-`handleSubmit(onSubmit)` returns the **handler function**, not a Promise. Bind the returned value:
+`form.handleSubmit(onSubmit)` returns the **handler function**, not a Promise. Bind the returned value:
 
 ```vue
 <script setup lang="ts">
-  const onSubmit = handleSubmit(async (values) => {
+  const form = useForm({ schema })
+  const onSubmit = form.handleSubmit(async (values) => {
     await api.signup(values)
   })
 </script>
@@ -65,8 +66,8 @@ The dev-mode console warning `v-register on <div> is a no-op …` points here.
 The path is in the form's `blankPaths` set and bound to a required schema. Three resolutions:
 
 - **The field is genuinely optional.** Wrap the schema: `z.string().optional()`, `z.number().nullable()`, or `z.string().default('')`.
-- **The field is required but `''` should count as "filled".** Supply an explicit default: `defaultValues: { email: '' }`. The library reads this as "empty string is intentional" and skips the auto-mark for that leaf.
-- **The library should treat a blank field as "user didn't fill it."** Working as intended — the synthesized error (`code: 'atta:no-value-supplied'`) prevents silently submitting `0` / `''` / `false` for an unfilled required field.
+- **The field is required but `''` should count as "filled".** Supply an explicit default: `defaultValues: { email: '' }`. Attaform reads this as "empty string is intentional" and skips the auto-mark for that leaf.
+- **Attaform should treat a blank field as "user didn't fill it."** Working as intended; the synthesized error (`code: 'atta:no-value-supplied'`) prevents silently submitting `0` / `''` / `false` for an unfilled required field.
 
 ## "Hydration mismatch after SSR"
 
@@ -78,7 +79,7 @@ Three usual suspects:
 
 ## "Persisted state is gone after a schema change"
 
-Working as intended. Storage keys carry the schema's fingerprint — when the schema changes shape, the fingerprint changes, the old key becomes unreachable, and the orphan-cleanup pass on the next mount removes it. No manual `version` bump needed.
+Working as intended. Storage keys carry the schema's fingerprint: when the schema changes shape, the fingerprint changes, the old key becomes unreachable, and the orphan-cleanup pass on the next mount removes it. No manual `version` bump needed.
 
 To invalidate drafts without changing the schema (e.g. shipping a security fix that requires fresh state), call `form.clearPersistedDraft()` on mount.
 

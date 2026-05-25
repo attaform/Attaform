@@ -47,24 +47,3 @@
     </template>
   </nav>
 </template>
-
-<style scoped>
-  /* Stagger entrance — each crumb fades up with a 50ms offset from its
-     index. Total trail of 4 crumbs lands in ~200ms + the keyframe's
-     duration, which sits below the threshold where the eye starts
-     reading it as "loading." */
-  .crumb-step {
-    animation: reveal-fade-up var(--duration-base) var(--ease-out-quart) both;
-    animation-delay: var(--crumb-step-delay, 0ms);
-  }
-  .crumb-chevron {
-    opacity: 0.6;
-    transition: opacity var(--duration-fast) var(--ease-out-quart);
-  }
-  /* Brighten the chevron after a hovered crumb so the connecting line
-     reads as continuous on hover. :has support is universal as of
-     2024 in evergreen browsers. */
-  nav:has(.crumb-step:hover) .crumb-step:hover + .crumb-chevron {
-    opacity: 1;
-  }
-</style>

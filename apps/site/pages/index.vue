@@ -179,9 +179,9 @@
             style="--reveal-step-delay: 140ms"
           >
             Hand a Zod schema to <UiInlineCode>useForm</UiInlineCode> and Attaform turns it into a
-            reactive form, typed end-to-end, with live errors and SSR out of the box. The same
-            composables carry a one-field signup or a multistep checkout. Because Vue and Nuxt devs
-            deserve nice things, too.
+            reactive form, typed end-to-end, with live errors and SSR out of the box. It scales from
+            the simplest forms to the most comprehensive multistep wizards while keeping the core
+            experience clear and focused. Because Vue and Nuxt devs deserve nice things, too.
           </p>
 
           <div class="reveal-step flex flex-wrap gap-3" style="--reveal-step-delay: 180ms">

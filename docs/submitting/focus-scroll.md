@@ -39,9 +39,9 @@ const onSubmit = form.handleSubmit(async (values) => {
 
 When validation fails, the handler:
 
-1. Increments `meta.submissionAttempts`. `meta.submitted` stays `false`; it only flips on a successful callback.
+1. Increments `form.meta.submissionAttempts`. `form.meta.submitted` stays `false`; it only flips on a successful callback.
 2. Surfaces errors at every invalid path.
-3. Calls `focusFirstError()` (the same method exposed below).
+3. Calls `form.focusFirstError()` (the same method exposed below).
 4. Calls `onError(errors)` if you passed one.
 
 The "first" invalid field is in schema-declaration order, which matches the visual reading order for most forms (top to bottom, left to right).
@@ -95,7 +95,7 @@ useForm({
 Then drive focus + scroll from `onError`:
 
 ```ts
-const onSubmit = form.handleSubmit(onSuccess, () => {
+const onSubmit = form.handleSubmit(onSubmitValid, () => {
   form.scrollToFirstError({ behavior: 'smooth', block: 'center' })
   form.focusFirstError({ preventScroll: true })
 })

@@ -1,5 +1,61 @@
 # Releases
 
+## v0.18.0 — 2026-05-25
+
+## What's Changed
+* feat(form): defaultValues trichotomy + form.rehydrate() + meta extensions by @ozzyfromspace in https://github.com/attaform/Attaform/pull/199
+* feat(form): useStepper core — navigation + activation lifecycle by @ozzyfromspace in https://github.com/attaform/Attaform/pull/200
+* feat(form): useStepper statuses + aggregates + onStatusChange + progress by @ozzyfromspace in https://github.com/attaform/Attaform/pull/201
+* feat(form): useStepper browser history + SSR active-step selection by @ozzyfromspace in https://github.com/attaform/Attaform/pull/202
+* feat(form): useStepper on zod entries + useForm type-alias factoring by @ozzyfromspace in https://github.com/attaform/Attaform/pull/203
+* refactor(types): preserve recursive walkers as aliases in bundled .d.ts (PR A of 4) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/204
+* refactor(types): fuse DeepPartial+DefaultValuesShape into DefaultValuesInput (PR B of 4) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/205
+* refactor(types): factor FieldStateMapEntry + ErrorsProxyShape via LeafWalker (PR C of 4) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/206
+* feat(types): bundled-typecheck CI gate + 4-form pressure suite (PR D of 4) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/207
+* refactor(types): fuse ErrorsProxyShape into LeafWalker (wave 2 — PR E) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/208
+* refactor(composables): untype v3 useForm impl signature (wave 2 — PR F) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/209
+* feat(form): four-form shipment demo + v4/v3 useForm overloads by @ozzyfromspace in https://github.com/attaform/Attaform/pull/210
+* feat: v-register on <input type="file"> (picker plumbing + persistence carve-out) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/211
+* chore: cleanup sweep — lean + efficient + defensive by @ozzyfromspace in https://github.com/attaform/Attaform/pull/212
+* docs(perf): surface measured bench numbers by @ozzyfromspace in https://github.com/attaform/Attaform/pull/213
+* fix(vite): forward attaform/zod rewrite + devtools meta by @ozzyfromspace in https://github.com/attaform/Attaform/pull/214
+* feat(devtools): first-class Nuxt DevTools overlay panel by @ozzyfromspace in https://github.com/attaform/Attaform/pull/215
+* refactor(form): split field-flag tri-state by semantic group + autofocus probe by @ozzyfromspace in https://github.com/attaform/Attaform/pull/216
+* test(multi-tab): pin no-plugin lazy-install path for cross-tab sync by @ozzyfromspace in https://github.com/attaform/Attaform/pull/217
+* ci: manual-trigger docs deploy + exact-version publish mode by @ozzyfromspace in https://github.com/attaform/Attaform/pull/222
+* ci(docs): scope deploy-docs workflow to Production (Docs) environment by @ozzyfromspace in https://github.com/attaform/Attaform/pull/224
+* fix(vercel): move vercel.json to repo root so the disable flag is read by @ozzyfromspace in https://github.com/attaform/Attaform/pull/225
+* fix(husky): mark hook scripts executable so git stops skipping them by @ozzyfromspace in https://github.com/attaform/Attaform/pull/226
+* [01/14] docs(concept-per-page): Phase 1 — preamble + demo restructuring by @ozzyfromspace in https://github.com/attaform/Attaform/pull/229
+* [02/14] docs(concept-per-page): Phase 2 — validation + submitting clusters by @ozzyfromspace in https://github.com/attaform/Attaform/pull/230
+* [03/14] docs(concept-per-page): Phase 3 — devtools + getting-started cluster by @ozzyfromspace in https://github.com/attaform/Attaform/pull/231
+* [04/14] docs(concept-per-page): Phase 4 — reference cluster by @ozzyfromspace in https://github.com/attaform/Attaform/pull/232
+* [05/14] docs(human-review): copy + tone sweep by @ozzyfromspace in https://github.com/attaform/Attaform/pull/233
+* [06/14] docs(human-review): schemas section by @ozzyfromspace in https://github.com/attaform/Attaform/pull/234
+* [07/14] feat(form): preprocess + coerce — no storage mutation by @ozzyfromspace in https://github.com/attaform/Attaform/pull/235
+* [08/14] fix(form): errors proxy container self-materialisation by @ozzyfromspace in https://github.com/attaform/Attaform/pull/236
+* [09/14] refactor(form): blank-paths as dotted strings by @ozzyfromspace in https://github.com/attaform/Attaform/pull/237
+* [10/14] docs(human-review): reading-the-form section by @ozzyfromspace in https://github.com/attaform/Attaform/pull/238
+* [11/14] docs(human-review): binding-inputs section by @ozzyfromspace in https://github.com/attaform/Attaform/pull/239
+* [12/14] feat(form): useWizard lazy activation + SSR by @ozzyfromspace in https://github.com/attaform/Attaform/pull/240
+* [13/14] docs(multistep): section walk by @ozzyfromspace in https://github.com/attaform/Attaform/pull/241
+* [14/14] feat(form): wizard composition — useWizard(entry) + handleSubmit + injectWizard by @ozzyfromspace in https://github.com/attaform/Attaform/pull/221
+* qc: close typecheck gaps after wizard PR + tighter submit typing by @ozzyfromspace in https://github.com/attaform/Attaform/pull/243
+* chore(deps): pin @nuxt/kit and @nuxt/schema to $nuxt in pnpm.overrides by @ozzyfromspace in https://github.com/attaform/Attaform/pull/244
+* Wizard polish: docs, hydration, focus, depart-reveal by @ozzyfromspace in https://github.com/attaform/Attaform/pull/245
+* feat(wizard): rewrite useWizard around list-based steps (v2) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/246
+* feat(wizard): v2 follow-ups — graceful degrade, lazy(), docs sweep by @ozzyfromspace in https://github.com/attaform/Attaform/pull/247
+* docs: brand-voice + API-validation sweep across all sections by @ozzyfromspace in https://github.com/attaform/Attaform/pull/248
+* docs: revamp homepage + README with schema-first positioning + v-register showcase by @ozzyfromspace in https://github.com/attaform/Attaform/pull/249
+* docs(changelog): draft v0.18.0 entry by @ozzyfromspace in https://github.com/attaform/Attaform/pull/250
+* docs: add llms.txt + restore CHANGELOG Unreleased convention by @ozzyfromspace in https://github.com/attaform/Attaform/pull/251
+* ci(publish): switch to npm Trusted Publishing (drop NPM_TOKEN) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/252
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.17.2...v0.18.0
+
+---
+
 ## v0.17.2 — 2026-05-14
 
 ## What's Changed

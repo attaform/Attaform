@@ -79,3 +79,97 @@
     </p>
   </form>
 </template>
+
+<style scoped>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    max-width: 32rem;
+  }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #374151;
+  }
+  input {
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+    font-family: inherit;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  em {
+    color: #b91c1c;
+    font-style: normal;
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  table {
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    width: 100%;
+  }
+  th {
+    text-align: left;
+    padding: 0.375rem 0.625rem 0.375rem 0;
+    width: 6rem;
+    color: #6b7280;
+    font-weight: 500;
+  }
+  td {
+    padding: 0.375rem 0.625rem;
+  }
+  tr + tr th,
+  tr + tr td {
+    border-top: 1px solid #f3f4f6;
+  }
+  code {
+    font-family: ui-monospace, monospace;
+    background: #f3f4f6;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.8125rem;
+  }
+  code.absent {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  code.present {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .valid {
+    color: #047857;
+    font-weight: 500;
+  }
+  .invalid {
+    color: #b91c1c;
+    font-weight: 500;
+  }
+  ol {
+    margin: 0;
+    padding-left: 1.25rem;
+    font-size: 0.8125rem;
+    color: #374151;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+  .note {
+    margin: 0;
+    padding: 0.625rem 0.75rem;
+    background: #f9fafb;
+    border-left: 3px solid #2563eb;
+    font-size: 0.75rem;
+    color: #4b5563;
+    border-radius: 0.25rem;
+  }
+</style>

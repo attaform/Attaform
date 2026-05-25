@@ -18,12 +18,6 @@
    unstyled on every back/forward navigation. */
 @import './docs-prose.css';
 
-/* Docs demo styling — the per-demo rules formerly carried by each
-   `apps/site/docs-demos/<slug>.vue`'s `<style scoped>` block, now
-   nested under `[data-demo='<slug>']` so each demo's chrome ships
-   through the static bundle and lands at first paint. */
-@import './docs-demos.css';
-
 @variant dark (&:where(.dark, .dark *));
 
 /* ──────────────────────────────────────────────────────────────────

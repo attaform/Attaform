@@ -65,3 +65,93 @@
     }}</pre>
   </form>
 </template>
+
+<style scoped>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    max-width: 32rem;
+  }
+  .rows {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    counter-reset: row;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .row::before {
+    counter-increment: row;
+    content: counter(row) '.';
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    color: #6b7280;
+    width: 1.5rem;
+    text-align: right;
+  }
+  input {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  .row-actions {
+    display: flex;
+    gap: 0.2rem;
+  }
+  .row-actions button {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.25rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  .row-actions button:hover {
+    background: #f3f4f6;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .actions button {
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    cursor: pointer;
+  }
+  .actions button:hover:not(:disabled) {
+    background: #f3f4f6;
+  }
+  .actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  pre {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    color: #111827;
+    margin: 0;
+  }
+</style>

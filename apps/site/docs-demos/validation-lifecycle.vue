@@ -60,3 +60,62 @@
     <p class="result">{{ lastResult }}</p>
   </form>
 </template>
+
+<style scoped>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    max-width: 30rem;
+  }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  input {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  em {
+    color: #dc2626;
+    font-size: 0.8125rem;
+    font-style: normal;
+    font-weight: 400;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .actions button {
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    cursor: pointer;
+  }
+  .actions button:hover {
+    background: #f3f4f6;
+  }
+  .result {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    color: #111827;
+    margin: 0;
+  }
+</style>

@@ -46,3 +46,35 @@
     </label>
   </form>
 </template>
+
+<style scoped>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    max-width: 28rem;
+  }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  input {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  em {
+    color: #dc2626;
+    font-size: 0.8125rem;
+    font-style: normal;
+    font-weight: 400;
+  }
+</style>

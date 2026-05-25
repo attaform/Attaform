@@ -60,3 +60,45 @@
     <pre>form.values.color = {{ JSON.stringify(form.values.color) }}</pre>
   </form>
 </template>
+
+<style scoped>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 26rem;
+  }
+  .label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  .widget {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.6rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: #fff;
+  }
+  .widget button {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .widget button[aria-pressed='true'] {
+    border-color: #111827;
+  }
+  pre {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    color: #111827;
+    margin: 0;
+  }
+</style>

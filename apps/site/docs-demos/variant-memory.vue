@@ -130,3 +130,101 @@
     </div>
   </div>
 </template>
+
+<style scoped>
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  @media (max-width: 760px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+  h4 {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    display: flex;
+    align-items: baseline;
+    gap: 0.375rem;
+  }
+  h4 small {
+    color: #6b7280;
+    font-weight: 400;
+  }
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+  fieldset {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    margin: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    align-items: center;
+  }
+  legend {
+    padding: 0 0.375rem;
+    font-size: 0.8125rem;
+    color: #6b7280;
+  }
+  .radio {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  input {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+    font-family: inherit;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  code {
+    font-family: ui-monospace, monospace;
+    background: #f3f4f6;
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+  }
+  .hint {
+    margin: 0;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+  }
+  .hint.ok {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #6ee7b7;
+  }
+  .hint.warn {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+  }
+</style>

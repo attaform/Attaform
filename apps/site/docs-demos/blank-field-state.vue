@@ -105,3 +105,60 @@
     </p>
   </form>
 </template>
+
+<style scoped>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  th,
+  td {
+    text-align: left;
+    padding: 0.5rem 0.625rem;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: middle;
+  }
+  th {
+    background: #f9fafb;
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+  input {
+    width: 100%;
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.8125rem;
+    font-family: inherit;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  code {
+    font-family: ui-monospace, monospace;
+    background: #f3f4f6;
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+  }
+  code.on {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  .muted {
+    color: #d1d5db;
+  }
+  .hint {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+</style>

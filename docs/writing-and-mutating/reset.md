@@ -16,7 +16,7 @@ metaRows:
 
 # `reset` & `resetField`
 
-> The defaults are the destination — `reset` for the whole form, `resetField` for one path. Both wipe state along with values.
+> The defaults are the destination: `reset` for the whole form, `resetField` for one path. Both wipe state along with values.
 
 ::docs-meta-table
 ::
@@ -32,7 +32,7 @@ Type into any field to flip it dirty. Click `resetField` to restore one path; cl
 form.reset()
 ```
 
-Every path goes back to its `defaultValues` entry — or, where no override was given, to the schema-slim default (`''` for strings, `0` for numbers, `false` for booleans). Alongside the value reset:
+Every path goes back to its `defaultValues` entry, or, where no override was given, to the schema-slim default (`''` for strings, `0` for numbers, `false` for booleans). Alongside the value reset:
 
 - `dirty` flips false on every leaf.
 - `touched` flips false on every leaf.
@@ -49,9 +49,9 @@ Pass a new defaults object to update the form's defaults AND reset in one step:
 form.reset({ name: 'New Default', email: 'new@example.com' })
 ```
 
-After this call, the new object IS the form's defaults for any subsequent `reset()` or `resetField` call. Useful when the form needs to switch contexts — editing record A then loading record B's values as the new baseline.
+After this call, the new object IS the form's defaults for any subsequent `reset()` or `resetField` call. Useful when the form needs to switch contexts: editing record A then loading record B's values as the new baseline.
 
-The argument is a `Partial<DefaultValuesInput<Form>>` — fields you don't mention pick up the previous defaults. Pass `{}` to reset with no changes to the defaults.
+The argument is a `Partial<DefaultValuesInput<Form>>`. Fields you don't mention pick up the previous defaults. Pass `{}` to reset with no changes to the defaults.
 
 ## `resetField(path)` restores one path
 
@@ -69,10 +69,10 @@ Useful when one field's been edited but the user wants to discard just that chan
 
 ## Reset vs clear
 
-`reset` and `resetField` go to **defaults**. [`clear`](/docs/writing-and-mutating/clear) goes to **blank** — the schema-slim empty value, skipping defaults. Pick reset when "back to baseline" is the goal; pick clear when "wipe to zero" is.
+`reset` and `resetField` go to **defaults**. [`clear`](/docs/writing-and-mutating/clear) goes to **blank**: the schema-slim empty value, skipping defaults. Pick reset when "back to baseline" is the goal; pick clear when "wipe to zero" is.
 
 ## Where to next
 
-- [`setValue` patterns](/docs/writing-and-mutating/set-value) — write specific values without going through defaults.
-- [`clear`](/docs/writing-and-mutating/clear) — wipe to blank values, defaults intentionally skipped.
-- [Submit lifecycle](/docs/submitting/handle-submit) — handlers that pair reset with successful submits.
+- [`setValue` patterns](/docs/writing-and-mutating/set-value): write specific values without going through defaults.
+- [`clear`](/docs/writing-and-mutating/clear): wipe to blank values, defaults intentionally skipped.
+- [Submit lifecycle](/docs/submitting/handle-submit): handlers that pair reset with successful submits.

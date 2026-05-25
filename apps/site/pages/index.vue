@@ -53,7 +53,7 @@
   ].join('\n')
 
   // The v-register showcase one-liners. Same Shiki pipeline as the
-  // canonical snippet so all four code blocks share one visual
+  // canonical snippet so all five code blocks share one visual
   // grammar.
   const registerLines = [
     `${LT}input v-register="form.register('email')" />`,
@@ -61,24 +61,38 @@
     `${LT}input v-register="form.register('email', { persist: true, transforms: [lowercase], multiTab: false })" />`,
   ]
 
-  const highlightVue = (source: string) =>
+  // The wizard callout snippet. Pure TS expressions, so we tell
+  // Shiki `lang: 'ts'` rather than 'vue' to get the right token
+  // grammar (object keys, string literals, identifiers).
+  const wizardSnippet = [
+    "const shipping = useForm({ schema: shippingSchema, key: 'shipping' })",
+    "const payment  = useForm({ schema: paymentSchema,  key: 'payment'  })",
+    '',
+    'const wizard = useWizard({',
+    "  steps: ['welcome', shipping, payment, 'review'],",
+    '})',
+  ].join('\n')
+
+  const highlight = (source: string, lang: 'vue' | 'ts') =>
     codeToHtml(source, {
-      lang: 'vue',
+      lang,
       themes: { light: 'github-light', dark: 'github-dark' },
       defaultColor: false,
     })
 
   const { data: highlightedSnippets } = await useAsyncData('homepage-snippets', async () => {
-    const [signup, lineOne, lineTwo, lineThree] = await Promise.all([
-      highlightVue(signupSnippet),
-      highlightVue(registerLines[0]!),
-      highlightVue(registerLines[1]!),
-      highlightVue(registerLines[2]!),
+    const [signup, lineOne, lineTwo, lineThree, wizard] = await Promise.all([
+      highlight(signupSnippet, 'vue'),
+      highlight(registerLines[0]!, 'vue'),
+      highlight(registerLines[1]!, 'vue'),
+      highlight(registerLines[2]!, 'vue'),
+      highlight(wizardSnippet, 'ts'),
     ])
-    return { signup, lineOne, lineTwo, lineThree }
+    return { signup, lineOne, lineTwo, lineThree, wizard }
   })
 
   const signupSnippetHtml = computed(() => highlightedSnippets.value?.signup ?? '')
+  const wizardSnippetHtml = computed(() => highlightedSnippets.value?.wizard ?? '')
   const registerLineHtml = (key: 'lineOne' | 'lineTwo' | 'lineThree') =>
     computed(() => highlightedSnippets.value?.[key] ?? '')
 
@@ -541,22 +555,7 @@
               </UiButton>
             </div>
           </div>
-          <div class="overflow-hidden rounded-2xl border border-border-strong bg-bg shadow-lg">
-            <div
-              class="flex items-center justify-between border-b border-border bg-surface/40 px-3 py-2"
-            >
-              <span class="px-3 text-xs font-semibold text-fg">Checkout.vue</span>
-            </div>
-            <pre
-              v-pre
-              class="overflow-x-auto px-6 py-6 font-mono text-sm leading-relaxed text-fg"
-            ><code>const shipping = useForm({ schema: shippingSchema, key: 'shipping' })
-const payment  = useForm({ schema: paymentSchema,  key: 'payment'  })
-
-const wizard = useWizard({
-  steps: ['welcome', shipping, payment, 'review'],
-})</code></pre>
-          </div>
+          <div class="homepage-shiki" v-html="wizardSnippetHtml" />
         </div>
       </UiContainer>
     </section>

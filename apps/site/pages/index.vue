@@ -112,7 +112,7 @@
               />
               <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
             </span>
-            <span>v{{ attaformVersion }} — what's new</span>
+            <span>v{{ attaformVersion }} · what's new</span>
             <ArrowRight
               class="h-4 w-4 text-fg-subtle transition-transform duration-(--duration-fast) group-hover:translate-x-0.5"
               :stroke-width="2.25"
@@ -147,13 +147,13 @@
             class="reveal-step max-w-2xl text-lg text-balance text-fg-muted"
             style="--reveal-step-delay: 140ms"
           >
-            Point a Zod schema at <UiInlineCode>useForm</UiInlineCode>, and Attaform turns it into
-            validated reactive state — typed paths, inferred values, live errors, SSR-safe out of
-            the box. Live your best life.
+            Vue and Nuxt devs deserve nice things, too. Hand a Zod schema to
+            <UiInlineCode>useForm</UiInlineCode> and Attaform turns it into a reactive form, typed
+            end-to-end, with live errors and SSR out of the box. Live your best life.
           </p>
 
           <div class="reveal-step flex flex-wrap gap-3" style="--reveal-step-delay: 180ms">
-            <UiButton to="/docs/quickstart" size="xl">
+            <UiButton to="/docs/getting-started/quick-start" size="xl">
               <span>Quick start</span>
               <ArrowRight class="h-5 w-5" :stroke-width="2.25" />
             </UiButton>
@@ -184,10 +184,44 @@
       </UiContainer>
     </section>
 
+    <!-- ─── Pitch ────────────────────────────────────────────────
+         Two paired principle blocks between the hero and the
+         feature grid. No section eyebrow: the hinge wants to read
+         as confident assertion, not "here begins another section".
+         The schema-first thesis lands on the left; the v-register
+         payoff lands on the right, setting up the directive
+         showcase that follows. -->
+    <section class="border-b border-border bg-surface/30 py-20 md:py-24">
+      <UiContainer size="xl">
+        <div class="grid gap-10 md:grid-cols-2 md:gap-x-16">
+          <div>
+            <h2 class="text-2xl font-semibold tracking-tight text-balance text-fg sm:text-3xl">
+              Schema in, form out.
+            </h2>
+            <p class="mt-4 text-base text-fg-muted sm:text-lg">
+              One Zod schema is the source of truth for types, defaults, validation, errors, and
+              metadata. Define it once. Every reactive surface inherits.
+            </p>
+          </div>
+          <div>
+            <h2 class="text-2xl font-semibold tracking-tight text-balance text-fg sm:text-3xl">
+              One directive. The whole binding stack.
+            </h2>
+            <p class="mt-4 text-base text-fg-muted sm:text-lg">
+              <UiInlineCode>v-register</UiInlineCode> is a Vue directive, not a wrapper component.
+              One line on a native <UiInlineCode>&lt;input&gt;</UiInlineCode> opts that field into
+              typed binding, schema-driven coercion, persistence, multi-tab sync, and the
+              sensitive-name guard.
+            </p>
+          </div>
+        </div>
+      </UiContainer>
+    </section>
+
     <!-- ─── Features ─────────────────────────────────────────────
          Eyebrow + display + lede composition (matches docs landing
          and /demos), then a 2-column feature grid. Each row is icon
-         chip + title + body — denser than the homepage's prior flat
+         chip + title + body, denser than the homepage's prior flat
          paragraph list, and the icon chips give the eye anchors as
          it scrolls. No on-scroll reveal here: the section renders
          in its final state on first paint. -->
@@ -221,7 +255,7 @@
         </div>
 
         <div class="mt-12">
-          <UiButton to="/docs/why" variant="link">
+          <UiButton to="/docs/getting-started/why-attaform" variant="link">
             <span>Read the full case for Attaform</span>
             <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
           </UiButton>
@@ -309,7 +343,7 @@
             demos.
           </p>
           <div class="flex flex-wrap justify-center gap-3">
-            <UiButton to="/docs/quickstart" size="xl">
+            <UiButton to="/docs/getting-started/quick-start" size="xl">
               <span>Quick start</span>
               <ArrowRight class="h-5 w-5" :stroke-width="2.25" />
             </UiButton>

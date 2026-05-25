@@ -14,6 +14,8 @@ A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod 
 >
 > Because Vue and Nuxt devs deserve nice things, too.
 
+**Try it live.** Tweak a schema, edit the template, and watch the form rebind in the browser at [attaform.com/demos](https://www.attaform.com/demos). No install needed.
+
 ## Installation
 
 ```bash
@@ -74,6 +76,8 @@ Attaform pairs well with `noUncheckedIndexedAccess: true`:
 
 It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 sets this for you.
 
+> **Try it live.** Skip the install and tweak a schema in your browser at [attaform.com/demos](https://www.attaform.com/demos).
+
 ## Quick start
 
 ```vue
@@ -116,8 +120,6 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 - **`form.register(path)`**: typed two-way binding. Pair with `v-register` on `<input>` / `<textarea>` / `<select>`.
 - **`form.handleSubmit(onValid, onInvalid?)`**: runs validation, dispatches. The valid callback receives the strict Zod-inferred type.
 - **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers, persistence: see [Entry points](https://www.attaform.com/docs/reference/entry-points).
-
-> **Try it live.** Tweak a schema, edit the template, and watch the form rebind in the browser at [attaform.com/demos](https://www.attaform.com/demos). No install needed.
 
 ## `v-register`: one line, every option
 

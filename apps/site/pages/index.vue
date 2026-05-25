@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  import { codeToHtml } from 'shiki'
   import {
     ShieldCheck,
     Zap,
@@ -19,6 +20,45 @@
   // "first scroll" group), then multistep + devtools + server
   // errors + multi-tab (the "stays nice as the form grows" group).
   const { attaformVersion } = useRuntimeConfig().public
+
+  // Canonical snippet for the "From schema to submit" section.
+  // Every `<` is the JS escape `<` so the Vue SFC tokenizer
+  // never sees a literal tag inside this script block, while the
+  // string Shiki receives reads as actual Vue source. Highlighted
+  // at SSR with the same dual-theme pair the docs pipeline uses,
+  // so the dark-mode swap stays css-only.
+  const LT = '<'
+  const signupSnippet = [
+    `${LT}script setup lang="ts">`,
+    "  import { z } from 'zod'",
+    "  import { useForm } from 'attaform/zod'",
+    '',
+    '  const schema = z.object({',
+    '    email: z.string().email(),',
+    '    password: z.string().min(8),',
+    '  })',
+    '',
+    "  const form = useForm({ schema, key: 'signup' })",
+    '  const onSubmit = form.handleSubmit((values) => api.signup(values))',
+    `${LT}/script>`,
+    '',
+    `${LT}template>`,
+    `  ${LT}form @submit.prevent="onSubmit">`,
+    `    ${LT}input v-register="form.register('email')" />`,
+    `    ${LT}p v-if="form.errors.email">{{ form.errors.email[0].message }}${LT}/p>`,
+    '',
+    `    ${LT}button :disabled="form.meta.submitting">Sign up${LT}/button>`,
+    `  ${LT}/form>`,
+    `${LT}/template>`,
+  ].join('\n')
+
+  const { data: signupSnippetHtml } = await useAsyncData('homepage-signup-snippet', () =>
+    codeToHtml(signupSnippet, {
+      lang: 'vue',
+      themes: { light: 'github-light', dark: 'github-dark' },
+      defaultColor: false,
+    })
+  )
 
   // Schema.org SoftwareApplication entry — the canonical structured-
   // data shape for a developer library / dev-tool. Eligible for
@@ -332,59 +372,27 @@
     <!-- ─── Canonical snippet ────────────────────────────────────
          The full schema → form → bindings arc in one screenful.
          Mirrors the README's quick-start example so a reader who
-         saw either surface gets the same shape. Click-to-copy on
-         the block; "Try it live" anchors down to the REPL section
-         below so the reader can immediately fork it. -->
+         saw either surface gets the same shape. Rendered as a
+         Shiki-highlighted code block (same theme pair the docs
+         pipeline uses) so it visually reads as "reference code",
+         not a live demo. -->
     <section class="border-b border-border bg-surface/30 py-24">
       <UiContainer size="xl">
-        <div class="mb-10 flex flex-wrap items-end justify-between gap-6">
-          <div class="max-w-2xl">
-            <p class="text-sm font-semibold tracking-wide text-accent uppercase">End to end</p>
-            <h2 class="mt-3 text-display-md font-semibold tracking-tight text-fg">
-              From schema to submit.
-            </h2>
-            <p class="mt-4 text-lg text-fg-muted">
-              One schema, one <UiInlineCode>useForm</UiInlineCode> call, one form handle. Reactive
-              values, live errors, and a submit guard, all from the same source of truth.
-            </p>
-          </div>
-          <UiButton to="#live-editor" variant="link">
-            <span>Try it live</span>
-            <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
-          </UiButton>
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold tracking-wide text-accent uppercase">Reference</p>
+          <h2 class="mt-3 text-display-md font-semibold tracking-tight text-fg">
+            From schema to submit.
+          </h2>
+          <p class="mt-4 text-lg text-fg-muted">
+            One schema, one <UiInlineCode>useForm</UiInlineCode> call, one form handle. Reactive
+            values, live errors, and a submit guard, all from the same source of truth.
+          </p>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-border-strong bg-bg shadow-lg">
-          <div
-            class="flex items-center justify-between border-b border-border bg-surface/40 px-3 py-2"
-          >
-            <span class="px-3 text-xs font-semibold text-fg">Signup.vue</span>
-          </div>
-          <pre
-            v-pre
-            class="overflow-x-auto px-6 py-6 font-mono text-sm leading-relaxed text-fg"
-          ><code>&lt;script setup lang="ts"&gt;
-import { z } from 'zod'
-import { useForm } from 'attaform/zod'
-
-const schema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-})
-
-const form = useForm({ schema, key: 'signup' })
-const onSubmit = form.handleSubmit((values) =&gt; api.signup(values))
-&lt;/script&gt;
-
-&lt;template&gt;
-  &lt;form @submit.prevent="onSubmit"&gt;
-    &lt;input v-register="form.register('email')" /&gt;
-    &lt;p v-if="form.errors.email"&gt;{{ form.errors.email[0].message }}&lt;/p&gt;
-
-    &lt;button :disabled="form.meta.submitting"&gt;Sign up&lt;/button&gt;
-  &lt;/form&gt;
-&lt;/template&gt;</code></pre>
-        </div>
+        <!-- Shiki injects inline styles for both light and dark
+             themes; the `homepage-shiki` wrapper toggles between
+             them via the dark-mode class on <html>. -->
+        <div class="homepage-shiki mt-10" v-html="signupSnippetHtml" />
       </UiContainer>
     </section>
 
@@ -440,10 +448,8 @@ const onSubmit = form.handleSubmit((values) =&gt; api.signup(values))
          escape the embedded view. The frame around the embed
          elevates it from "floating widget" to "real artifact":
          a hairline accent-soft strip across the top, a 2xl shadow,
-         and a strong border. The section carries the
-         `#live-editor` anchor so the canonical snippet's "Try it
-         live" link can scroll the reader straight here. -->
-    <section id="live-editor" class="scroll-mt-20 py-24">
+         and a strong border. -->
+    <section class="py-24">
       <UiContainer size="xl">
         <div class="mb-10 flex flex-wrap items-end justify-between gap-6">
           <div class="max-w-2xl">
@@ -582,5 +588,31 @@ const wizard = useWizard({
   .reveal-step {
     animation: reveal-fade-up var(--duration-deliberate) var(--ease-out-quart) both;
     animation-delay: var(--reveal-step-delay, 0ms);
+  }
+
+  /* Shiki-highlighted canonical snippet. Shiki emits inline
+     `--shiki-light` / `--shiki-dark` CSS variables on every token
+     but doesn't pick a default; the rules below consume them so the
+     dark-mode swap stays css-only. `:deep()` is needed because Vue's
+     scoped CSS otherwise can't reach Shiki's injected markup. */
+  .homepage-shiki :deep(.shiki) {
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border);
+    padding: 1.5rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    color: var(--shiki-light);
+    background-color: var(--shiki-light-bg);
+  }
+  .homepage-shiki :deep(.shiki span) {
+    color: var(--shiki-light);
+  }
+  :where(html.dark) .homepage-shiki :deep(.shiki) {
+    color: var(--shiki-dark);
+    background-color: var(--shiki-dark-bg);
+  }
+  :where(html.dark) .homepage-shiki :deep(.shiki span) {
+    color: var(--shiki-dark);
   }
 </style>

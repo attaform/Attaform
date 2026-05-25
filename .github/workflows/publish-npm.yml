@@ -128,11 +128,22 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          # `registry-url` alone configures npm auth via NODE_AUTH_TOKEN
-          # for the npm whoami + publish steps below; `always-auth: true`
-          # was redundant and is no longer a valid input in setup-node@v6
-          # (it now emits "Unexpected input(s) 'always-auth'" warnings).
+          # `registry-url` writes the registry endpoint to .npmrc so
+          # `pnpm publish` below knows where to talk. Under Trusted
+          # Publishing (configured on npmjs.com → attaform → Trusted
+          # Publishers), npm exchanges this run's GitHub OIDC token
+          # for an ephemeral publish credential at publish time, so
+          # no NPM_TOKEN secret is required. The `id-token: write`
+          # permission on this job (declared above) is what lets npm
+          # mint that token.
           registry-url: 'https://registry.npmjs.org/'
+
+      - name: Update npm for Trusted Publishing
+        # Node 22 LTS bundles npm 10.x; Trusted Publishing OIDC
+        # support requires npm 11.5.1 or newer. setup-node doesn't
+        # pin the npm version, so we bump explicitly before any
+        # auth-sensitive npm interaction.
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         # --frozen-lockfile aborts if pnpm-lock.yaml is stale, so the
@@ -140,11 +151,6 @@ jobs:
         # the lockfile promises. Prevents a silent lockfile drift from
         # producing a mystery publish diff.
         run: pnpm install --frozen-lockfile
-
-      - name: Validate Auth
-        run: npm whoami
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Stub attaform
         run: pnpm dev:prepare
@@ -220,10 +226,13 @@ jobs:
 
       - name: Publish to npm
         # `--provenance` attaches an OIDC-signed statement linking the
-        # published tarball to this workflow run + commit. The workflow
-        # already declares `id-token: write`; npm's registry records
-        # the statement so consumers can verify a tarball came from
-        # this repo via `npm audit signatures`.
+        # published tarball to this workflow run + commit, recorded by
+        # the npm registry so consumers can verify the tarball with
+        # `npm audit signatures`. Under Trusted Publishing the same
+        # OIDC token also authorises the publish itself — no
+        # NPM_TOKEN secret is involved, and there is nothing to
+        # rotate. The `id-token: write` permission on this job is
+        # what lets npm mint the token at publish time.
         #
         # Prereleases publish under a dist-tag matching the preid (e.g.
         # `attaform@beta`, `attaform@alpha`) — `npm install attaform` still
@@ -237,7 +246,6 @@ jobs:
         # tarball does not shadow the current major on the default
         # `npm install attaform`.
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
           DIST_TAG: ${{ github.event.inputs.dist_tag }}
         run: |

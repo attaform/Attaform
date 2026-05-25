@@ -1,0 +1,17 @@
+diff --git a/dist/monaco-editor.js b/dist/monaco-editor.js
+index e9f0a247646eead42081f543d1f59f1e086dc4a8..c3e9d3550f3061712821922a779e2315e9826137 100644
+--- a/dist/monaco-editor.js
++++ b/dist/monaco-editor.js
+@@ -149354,7 +149354,11 @@ async function createLanguageFeaturesProvider(worker, getSyncUris) {
+ 		async provideDocumentColors(model, token) {
+ 			const languageService = await worker.withSyncedResources(getSyncUris());
+ 			const codeResult = await languageService.getDocumentColors(getRequestId(token, languageService), model.uri);
+-			if (codeResult) return codeResult.map(toColorInformation);
++			if (codeResult) return codeResult.map((code) => {
++				const monaco = toColorInformation(code);
++				colorInfos.set(monaco, code);
++				return monaco;
++			});
+ 		},
+ 		async provideColorPresentations(model, monacoResult, token) {
+ 			const languageService = await worker.withSyncedResources(getSyncUris());

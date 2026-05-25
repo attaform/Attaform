@@ -248,7 +248,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * (where the side-channel is needed to distinguish "user typed 0"
    * from "user supplied nothing"). String / boolean leaves only land
    * here when the consumer explicitly opted in via the `unset`
-   * sentinel — see `docs/recipes/blank-inputs.md`.
+   * sentinel — see `docs/validation/blank.md`.
    */
   readonly derivedBlankErrors: ComputedRef<ReadonlyMap<PathKey, ValidationError[]>>
   readonly originals: Map<PathKey, OriginalsRecord>
@@ -281,7 +281,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * channel that `derivedBlankErrors` consults to surface
    * "No value supplied" errors for required schemas.
    *
-   * See `docs/recipes/blank-inputs.md` for the conceptual model.
+   * See `docs/validation/blank.md` for the conceptual model.
    */
   readonly blankPaths: Set<PathKey>
   /**

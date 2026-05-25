@@ -13,8 +13,7 @@ import { waitUntil } from '../utils/form-harness'
 /**
  * Runtime contract for `<MyComponent v-register="register(...)" />`.
  *
- * Four supported component patterns (from
- * `docs/recipes/components.md`):
+ * Four supported component patterns:
  *
  *   1. Native form-element root          — directive lands on the input, just works
  *   2. `useRegister()` inside the child  — child re-binds inner native element
@@ -358,10 +357,11 @@ describe('pattern 4: v-register on a non-form root WITH assignKey (kept-current 
     // fires, we use a small companion directive ordered first in the
     // directive list — Vue 3 runs directives in array order, so
     // `vInstallAssignKey.created` lands the assigner on the element
-    // before the `vRegister` lookup. ref-callbacks fire AFTER `created`
-    // (timing footgun documented in the recipe doc); this is the only
-    // clean way to verify the "assignKey installed at created-time"
-    // half of the contract from a runtime test.
+    // before the `vRegister` lookup. ref-callbacks fire AFTER `created`,
+    // so they can't install an assigner the directive's `created` hook
+    // will see; the companion-directive trick is the only clean way to
+    // verify the "assignKey installed at created-time" half of the
+    // contract from a runtime test.
     const received: unknown[] = []
     const vInstallAssignKey = {
       created(el: HTMLElement) {

@@ -484,16 +484,12 @@ export default defineNuxtConfig({
   // under `/docs/api/*` and `/docs/recipes/*`; the new IA splits them
   // by concept (`getting-started`, `reading-the-form`, `validation`,
   // `persistence`, `devtools-and-debugging`, etc.). Specific routes
-  // win over wildcards in Nuxt's route specificity, so the catch-all
-  // globs land any not-individually-mapped URL on the docs spine.
-  //
-  // Phase 1 maps only the destinations whose new pages exist. The
-  // recipes/* and api/* catch-alls drop readers on /docs/getting-started/introduction
-  // — a real page they can read — rather than 404. Phase 2–4 will
-  // tighten these to specific per-recipe targets as the per-concept
-  // pages land.
+  // win over wildcards in Nuxt's route specificity, so each known
+  // pre-rebuild URL maps directly to its natural successor; the
+  // catch-alls at the bottom catch anything missed and land it on
+  // the docs spine rather than 404.
   routeRules: {
-    // Specific Phase 1 targets.
+    // Top-level pre-rebuild slugs.
     '/docs/why': {
       redirect: { to: '/docs/getting-started/why-attaform', statusCode: 301 },
     },
@@ -506,11 +502,111 @@ export default defineNuxtConfig({
     '/docs/perf': {
       redirect: { to: '/docs/server-and-ssr/performance', statusCode: 301 },
     },
+
+    // `/docs/api/*` — every per-entry-point page collapsed into the
+    // single Reference category in the new IA.
+    '/docs/api/core': {
+      redirect: { to: '/docs/reference/entry-points', statusCode: 301 },
+    },
+    '/docs/api/nuxt': {
+      redirect: { to: '/docs/reference/entry-points', statusCode: 301 },
+    },
+    '/docs/api/vite': {
+      redirect: { to: '/docs/reference/entry-points', statusCode: 301 },
+    },
+    '/docs/api/zod': {
+      redirect: { to: '/docs/reference/entry-points', statusCode: 301 },
+    },
+    '/docs/api/zod-v3': {
+      redirect: { to: '/docs/reference/entry-points', statusCode: 301 },
+    },
+    '/docs/api/zod-v4': {
+      redirect: { to: '/docs/reference/entry-points', statusCode: 301 },
+    },
+    '/docs/api/shared-types': {
+      redirect: { to: '/docs/reference/types', statusCode: 301 },
+    },
+    '/docs/api/transforms': {
+      redirect: { to: '/docs/binding-inputs/transforms', statusCode: 301 },
+    },
+    '/docs/api/use-form-return': {
+      redirect: { to: '/docs/reading-the-form/the-form', statusCode: 301 },
+    },
+
+    // `/docs/recipes/*` — task-shaped pages folded into the matching
+    // concept page (the concept-per-page rebuild's whole point).
+    '/docs/recipes/app-defaults': {
+      redirect: { to: '/docs/cross-cutting-state/app-defaults', statusCode: 301 },
+    },
+    '/docs/recipes/async-validation': {
+      redirect: { to: '/docs/validation/async-refinements', statusCode: 301 },
+    },
+    '/docs/recipes/blank-inputs': {
+      redirect: { to: '/docs/validation/blank', statusCode: 301 },
+    },
+    '/docs/recipes/coerce': {
+      redirect: { to: '/docs/binding-inputs/coercion', statusCode: 301 },
+    },
+    '/docs/recipes/custom-adapter': {
+      redirect: { to: '/docs/reference/custom-adapters', statusCode: 301 },
+    },
+    '/docs/recipes/devtools': {
+      redirect: { to: '/docs/devtools-and-debugging/devtools-panel', statusCode: 301 },
+    },
+    '/docs/recipes/discriminated-unions': {
+      redirect: { to: '/docs/schemas/discriminated-unions', statusCode: 301 },
+    },
+    '/docs/recipes/dynamic-field-arrays': {
+      redirect: { to: '/docs/writing-and-mutating/field-arrays', statusCode: 301 },
+    },
+    '/docs/recipes/error-display': {
+      redirect: { to: '/docs/validation/showing-errors', statusCode: 301 },
+    },
+    '/docs/recipes/field-level-validation': {
+      redirect: { to: '/docs/validation/per-field-validation', statusCode: 301 },
+    },
+    '/docs/recipes/file-uploads': {
+      redirect: { to: '/docs/binding-inputs/file', statusCode: 301 },
+    },
+    '/docs/recipes/focus-on-error': {
+      redirect: { to: '/docs/submitting/focus-scroll', statusCode: 301 },
+    },
+    '/docs/recipes/form-context': {
+      redirect: { to: '/docs/cross-cutting-state/inject-form', statusCode: 301 },
+    },
+    '/docs/recipes/multi-tab-sync': {
+      redirect: { to: '/docs/cross-cutting-state/multi-tab-sync', statusCode: 301 },
+    },
     '/docs/recipes/persistence': {
       redirect: { to: '/docs/persistence/overview', statusCode: 301 },
     },
-    // Catch-alls for the pre-rebuild subtrees. Specific routes above
-    // win over these globs.
+    '/docs/recipes/persistence-backends': {
+      redirect: { to: '/docs/persistence/storage-backends', statusCode: 301 },
+    },
+    '/docs/recipes/persistence-edge-cases': {
+      redirect: { to: '/docs/persistence/edge-cases', statusCode: 301 },
+    },
+    '/docs/recipes/persistence-policy': {
+      redirect: { to: '/docs/persistence/per-field-opt-in', statusCode: 301 },
+    },
+    '/docs/recipes/server-errors': {
+      redirect: { to: '/docs/submitting/server-side-errors', statusCode: 301 },
+    },
+    '/docs/recipes/ssr-hydration': {
+      redirect: { to: '/docs/server-and-ssr/ssr-nuxt', statusCode: 301 },
+    },
+    '/docs/recipes/storage-shape': {
+      redirect: { to: '/docs/schemas/storage-shape', statusCode: 301 },
+    },
+    '/docs/recipes/transforms': {
+      redirect: { to: '/docs/binding-inputs/transforms', statusCode: 301 },
+    },
+    '/docs/recipes/undo-redo': {
+      redirect: { to: '/docs/cross-cutting-state/undo-redo', statusCode: 301 },
+    },
+
+    // Catch-alls for anything not covered above. Specific routes win
+    // over these globs in Nuxt's route-rule precedence.
     '/docs/api/**': {
       redirect: { to: '/docs/getting-started/introduction', statusCode: 301 },
     },

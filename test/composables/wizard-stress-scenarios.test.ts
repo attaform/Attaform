@@ -5,13 +5,13 @@ import { createApp, createSSRApp, defineComponent, h, nextTick, ref, type App } 
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
-import { defer } from '../../src/runtime/core/wizard-defer'
+import { lazy } from '../../src/runtime/core/wizard-lazy'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Stress-scenario coverage for the v2 wizard. Each describe block
  * targets a specific composition probe from the plan's S5-S31
- * register — function-slot branching, deferred slot deep-links,
+ * register — function-slot branching, lazy slot deep-links,
  * ghost forms, SSR mixed-slot hydration, special-character step
  * keys, and the no-router fallback path. Each scenario exercises
  * an interaction that the focused per-feature files don't catch
@@ -196,13 +196,13 @@ describe('S4 — mixed wizard with review surfaces', () => {
   })
 })
 
-describe('S6 — deep-link restore to a deferred slot resolves on navigation-land', () => {
+describe('S6 — deep-link restore to a lazy slot resolves on navigation-land', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('a deferred slot resolves at construction (lazy-sticky) and the deep-link lands on it', () => {
+  it('a lazy slot resolves at construction (memoized) and the deep-link lands on it', () => {
     let resolverCalls = 0
     const { app, result } = mountHarness(() => {
       const intro = useForm({
@@ -222,7 +222,7 @@ describe('S6 — deep-link restore to a deferred slot resolves on navigation-lan
       return useWizard({
         steps: [
           intro,
-          defer(() => {
+          lazy(() => {
             resolverCalls += 1
             return fetched
           }),
@@ -233,10 +233,50 @@ describe('S6 — deep-link restore to a deferred slot resolves on navigation-lan
       })
     })
     apps.push(app)
-    // The deferred slot resolved on the first compile pass so the
+    // The lazy slot resolved on the first compile pass so the
     // deep-link to its key succeeded.
     expect(result.currentStep).toBe('s6-fetched')
     expect(resolverCalls).toBe(1)
+  })
+
+  it('wizard.reset() clears every lazy slot cache, resolvers re-fire on next compile pass', async () => {
+    let resolverCalls = 0
+    const { app, result } = mountHarness(() => {
+      const intro = useForm({ schema: z.object({}), key: 's6-reset-intro' })
+      const fetched = useForm({
+        schema: z.object({ x: z.string() }),
+        key: 's6-reset-fetched',
+        defaultValues: { x: 'hello' },
+      })
+      const final = useForm({
+        schema: z.object({ ack: z.boolean() }),
+        key: 's6-reset-final',
+        defaultValues: { ack: false },
+      })
+      return useWizard({
+        steps: [
+          intro,
+          lazy(() => {
+            resolverCalls += 1
+            return fetched
+          }),
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    // First compile pass resolved the lazy slot.
+    expect(resolverCalls).toBe(1)
+    expect(result.count).toBe(3)
+    // Reset bumps the lazy epoch; next compile pass re-invokes the
+    // resolver. A true reboot returns the wizard to first-compile
+    // state, including expensive one-shot lookups.
+    result.reset()
+    await nextTick()
+    expect(resolverCalls).toBe(2)
+    expect(result.count).toBe(3)
   })
 })
 
@@ -263,6 +303,107 @@ describe('S10 — function slot returns undefined drops the slot', () => {
     showSecond.value = true
     await nextTick()
     expect(result.steps.map((s) => s.key)).toEqual(['s10-first', 's10-conditional', 's10-last'])
+  })
+})
+
+describe('S10b — function / lazy slot returns an undeclared string key', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('builds a noop on the fly and surfaces the step uniformly', async () => {
+    const showAffordance = ref(false)
+    const { app, result } = mountHarness(() => {
+      const entry = useForm({ schema: z.object({}), key: 's10b-entry' })
+      const final = useForm({ schema: z.object({}), key: 's10b-final' })
+      return useWizard({
+        steps: [
+          entry,
+          // 's10b-maintenance' is NOT declared as a top-level string slot.
+          // The wizard builds a noop on first reference and treats it
+          // like any other affordance step.
+          () => (showAffordance.value ? 's10b-maintenance' : undefined),
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    expect(result.steps.map((s) => s.key)).toEqual(['s10b-entry', 's10b-final'])
+    showAffordance.value = true
+    await nextTick()
+    expect(result.steps.map((s) => s.key)).toEqual(['s10b-entry', 's10b-maintenance', 's10b-final'])
+    expect(result.statuses['s10b-maintenance']?.valid).toBe(true)
+    expect(result.allErrors['s10b-maintenance']).toEqual([])
+    result.goTo('s10b-maintenance')
+    expect(result.currentStep).toBe('s10b-maintenance')
+  })
+
+  it('reuses the same noop across re-evaluations (no duplicate builds)', async () => {
+    const tick = ref(0)
+    const { app, result } = mountHarness(() => {
+      const entry = useForm({ schema: z.object({}), key: 's10b-2-entry' })
+      const final = useForm({ schema: z.object({}), key: 's10b-2-final' })
+      return useWizard({
+        steps: [
+          entry,
+          () => {
+            // Read a reactive value so the slot re-evaluates whenever
+            // tick mutates. The string return stays the same.
+            void tick.value
+            return 's10b-2-stub'
+          },
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    const firstHandle = result.forms['s10b-2-stub']
+    expect(firstHandle).toBeDefined()
+    tick.value = 1
+    await nextTick()
+    tick.value = 2
+    await nextTick()
+    const secondHandle = result.forms['s10b-2-stub']
+    // Identity preserved: the noop is built once and cached.
+    expect(secondHandle).toBe(firstHandle)
+  })
+
+  it('a lazy slot returning an undeclared string holds across navigation', async () => {
+    let resolverCalls = 0
+    const { app, result } = mountHarness(() => {
+      const entry = useForm({ schema: z.object({}), key: 's10b-3-entry' })
+      const final = useForm({ schema: z.object({}), key: 's10b-3-final' })
+      return useWizard({
+        steps: [
+          entry,
+          lazy(() => {
+            resolverCalls += 1
+            return 's10b-3-survey'
+          }),
+          final,
+        ],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    expect(resolverCalls).toBe(1)
+    expect(result.steps.map((s) => s.key)).toEqual([
+      's10b-3-entry',
+      's10b-3-survey',
+      's10b-3-final',
+    ])
+    await result.next()
+    await result.next()
+    expect(result.currentStep).toBe('s10b-3-final')
+    // The resolver reads no reactive state, so navigation alone does
+    // not invalidate the memoized cache.
+    expect(resolverCalls).toBe(1)
   })
 })
 
@@ -398,5 +539,315 @@ describe('S26 — step keys with special characters round-trip through ?step=', 
     result.goTo(specialKey)
     await nextTick()
     expect(new URL(window.location.href).searchParams.get('step')).toBe(specialKey)
+  })
+})
+
+describe('S31 — full slot-kind mix under aggressive state churn', () => {
+  const apps: App[] = []
+  beforeEach(() => {
+    window.history.replaceState(null, '', 'http://localhost:3000/wizard')
+  })
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+    window.history.replaceState(null, '', 'http://localhost:3000/wizard')
+  })
+
+  function buildSlotMix() {
+    const attendee = useForm({
+      schema: z.object({
+        name: z.string().min(1),
+        role: z.enum(['attendee', 'speaker', 'sponsor']),
+        partySize: z.number().int().min(1).max(20),
+      }),
+      defaultValues: { name: 'Avery', role: 'attendee', partySize: 1 },
+      key: 's31-attendee',
+    })
+    const speaker = useForm({
+      schema: z.object({ talkTitle: z.string().min(3) }),
+      defaultValues: { talkTitle: 'Effective Form Design' },
+      key: 's31-speaker',
+    })
+    const sponsor = useForm({
+      schema: z.object({ companyName: z.string().min(1) }),
+      defaultValues: { companyName: 'Acme' },
+      key: 's31-sponsor',
+    })
+    const companions = useForm({
+      schema: z.object({ list: z.string().min(1) }),
+      defaultValues: { list: 'Riley' },
+      key: 's31-companions',
+    })
+    const pricingUS = useForm({
+      schema: z.object({ tier: z.enum(['basic', 'pro']) }),
+      defaultValues: { tier: 'basic' },
+      key: 's31-pricing-us',
+    })
+    const pricingEU = useForm({
+      schema: z.object({ tier: z.enum(['basic', 'pro']) }),
+      defaultValues: { tier: 'basic' },
+      key: 's31-pricing-eu',
+    })
+    const pricingAPAC = useForm({
+      schema: z.object({ tier: z.enum(['basic', 'pro']) }),
+      defaultValues: { tier: 'basic' },
+      key: 's31-pricing-apac',
+    })
+
+    // Drive the lazy slot with an external signal so we can observe
+    // both the dep-driven re-fire and the reset-driven re-fire from
+    // the same probe.
+    const regionMode = ref<'us' | 'eu' | 'apac'>('us')
+    const probe = { resolverCalls: 0, lastResolvedRegion: null as string | null }
+
+    const wizard = useWizard({
+      steps: [
+        'welcome',
+        attendee,
+        () =>
+          attendee.values.role === 'speaker'
+            ? speaker
+            : attendee.values.role === 'sponsor'
+              ? sponsor
+              : 'no-extras',
+        () => (attendee.values.partySize > 1 ? companions : undefined),
+        lazy(() => {
+          probe.resolverCalls += 1
+          probe.lastResolvedRegion = regionMode.value
+          return regionMode.value === 'us'
+            ? pricingUS
+            : regionMode.value === 'eu'
+              ? pricingEU
+              : pricingAPAC
+        }),
+        'review',
+      ],
+      restore: false,
+      persist: false,
+    })
+
+    return {
+      wizard,
+      forms: { attendee, speaker, sponsor, companions, pricingUS, pricingEU, pricingAPAC },
+      regionMode,
+      probe,
+    }
+  }
+
+  it('role rotation cycles between speaker form, sponsor form, and a lazy noop affordance', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-pricing-us',
+      'review',
+    ])
+
+    forms.attendee.setValue('role', 'speaker')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      's31-speaker',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-speaker']).toBe(forms.speaker)
+
+    forms.attendee.setValue('role', 'sponsor')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      's31-sponsor',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-sponsor']).toBe(forms.sponsor)
+    expect(wizard.forms['s31-speaker']).toBeUndefined()
+
+    forms.attendee.setValue('role', 'attendee')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-pricing-us',
+      'review',
+    ])
+    // Lazy noop identity is preserved across re-resolutions: a later
+    // re-evaluation that returns the same string hits the same cached
+    // noop form.
+    const firstNoop = wizard.forms['no-extras']
+    forms.attendee.setValue('role', 'speaker')
+    await nextTick()
+    forms.attendee.setValue('role', 'attendee')
+    await nextTick()
+    expect(wizard.forms['no-extras']).toBe(firstNoop)
+  })
+
+  it('party-size toggle drops and reintroduces the companions step without losing surrounding state', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
+    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-companions')
+
+    forms.attendee.setValue('partySize', 3)
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-companions',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-companions']).toBe(forms.companions)
+
+    forms.attendee.setValue('partySize', 1)
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-pricing-us',
+      'review',
+    ])
+    expect(wizard.forms['s31-companions']).toBeUndefined()
+
+    // Toggling back up reintroduces the SAME form ref the consumer
+    // originally created. Identity preservation matters for callers
+    // that hold references (e.g. ambient `injectForm('companions')`).
+    forms.attendee.setValue('partySize', 5)
+    await nextTick()
+    expect(wizard.forms['s31-companions']).toBe(forms.companions)
+  })
+
+  it('a lazy slot re-fires when its tracked deps change; unrelated slot churn does not invalidate it', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms, regionMode, probe } = result
+
+    expect(probe.resolverCalls).toBe(1)
+    expect(probe.lastResolvedRegion).toBe('us')
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-us')
+
+    regionMode.value = 'eu'
+    await nextTick()
+    // Reading the steps list flushes the compiled-list computed,
+    // which reads each lazy slot's `.value` and re-fires resolvers
+    // whose tracked deps changed (here: regionMode).
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+    expect(wizard.steps.map((s) => s.key)).not.toContain('s31-pricing-us')
+    expect(probe.resolverCalls).toBe(2)
+    expect(probe.lastResolvedRegion).toBe('eu')
+
+    // Unrelated churn elsewhere in the wizard does NOT re-fire this
+    // resolver — that's what distinguishes a `lazy()` slot from a
+    // plain function slot. Role swap re-evaluates the role function
+    // slot but leaves the lazy pricing slot cached.
+    forms.attendee.setValue('role', 'speaker')
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-speaker')
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+    expect(probe.resolverCalls).toBe(2)
+
+    // Reset bumps the lazy epoch — all lazy resolvers re-fire on the
+    // next compile pass regardless of whether their tracked deps moved.
+    wizard.reset()
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
+    expect(probe.resolverCalls).toBe(3)
+    expect(probe.lastResolvedRegion).toBe('eu')
+    // reset() also reset the attendee form, role back to default.
+    expect(forms.attendee.values.role).toBe('attendee')
+
+    // A subsequent regionMode flip still re-fires the resolver.
+    regionMode.value = 'apac'
+    await nextTick()
+    expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-apac')
+    expect(probe.resolverCalls).toBe(4)
+  })
+
+  it('handleSubmit on the final step validates and aggregates across the currently-live mix', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    forms.attendee.setValue('role', 'speaker')
+    forms.attendee.setValue('partySize', 2)
+    await nextTick()
+
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      's31-speaker',
+      's31-companions',
+      's31-pricing-us',
+      'review',
+    ])
+
+    wizard.goTo('review')
+    await nextTick()
+    expect(wizard.currentStep).toBe('review')
+    expect(wizard.isFinalStep).toBe(true)
+
+    const seen: unknown[] = []
+    const onSubmit = wizard.handleSubmit(
+      ({ values, isFinal }) => {
+        if (isFinal) seen.push(values)
+      },
+      () => {
+        seen.push('error')
+      }
+    )
+    await onSubmit()
+    expect(seen).toHaveLength(1)
+    const submitted = seen[0] as Record<string, unknown>
+    expect(submitted).toHaveProperty('s31-attendee')
+    expect(submitted).toHaveProperty('s31-speaker')
+    expect(submitted).toHaveProperty('s31-companions')
+    expect(submitted).toHaveProperty('s31-pricing-us')
+    // Dropped forms must not leak into the aggregate.
+    expect(submitted).not.toHaveProperty('s31-sponsor')
+    expect(submitted).not.toHaveProperty('s31-pricing-eu')
+    expect(wizard.done).toBe(true)
+  })
+
+  it('concurrent role + party-size churn within a single tick converges on a coherent compiled list', async () => {
+    const { app, result } = mountHarness(() => buildSlotMix())
+    apps.push(app)
+    const { wizard, forms } = result
+
+    // Fire a rapid sequence of mutations before letting Vue flush.
+    forms.attendee.setValue('role', 'speaker')
+    forms.attendee.setValue('partySize', 4)
+    forms.attendee.setValue('role', 'sponsor')
+    forms.attendee.setValue('partySize', 1)
+    forms.attendee.setValue('role', 'attendee')
+    forms.attendee.setValue('partySize', 3)
+    await nextTick()
+
+    // Final state: role=attendee → no-extras, partySize>1 → companions.
+    expect(wizard.steps.map((s) => s.key)).toEqual([
+      'welcome',
+      's31-attendee',
+      'no-extras',
+      's31-companions',
+      's31-pricing-us',
+      'review',
+    ])
+    // No duplicate keys, no orphan entries.
+    const keys = wizard.steps.map((s) => s.key)
+    expect(new Set(keys).size).toBe(keys.length)
+    // Forms record mirrors the compiled list.
+    expect(Object.keys(wizard.forms).sort()).toEqual(
+      ['welcome', 's31-attendee', 'no-extras', 's31-companions', 's31-pricing-us', 'review'].sort()
+    )
   })
 })

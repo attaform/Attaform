@@ -178,7 +178,7 @@ describe('useWizard — handleSubmit on the final step', () => {
     expect(result.wizard.currentStep).toBe('hs-3-review')
   })
 
-  it('complete flips back to false when a walked form turns invalid after success', async () => {
+  it('complete tracks forward-looking validity without requiring a submission', async () => {
     const { app, result } = mountHarness(() => {
       const account = useForm({
         schema: accountSchema,
@@ -196,12 +196,14 @@ describe('useWizard — handleSubmit on the final step', () => {
       }
     })
     apps.push(app)
+    // No submission yet. Land on the final step with every form valid
+    // by default → complete reads true purely from validity + position.
     result.wizard.goTo('hs-4-review')
-    await result.wizard.handleSubmit(vi.fn())()
+    await nextTick()
+    expect(result.wizard.submissionAttempts).toBe(0)
     expect(result.wizard.complete).toBe(true)
-    // Clear the password — drops the form below `min(8)` so its
-    // meta.valid flips to false, and `complete` (forward-looking)
-    // flips off in lockstep.
+    // Drop the account below `min(8)` → complete flips off in lockstep
+    // with the form's meta.valid. Still no submission required.
     result.account.setValue('password', '')
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
@@ -210,6 +212,47 @@ describe('useWizard — handleSubmit on the final step', () => {
     }
     expect(result.account.meta.valid).toBe(false)
     expect(result.wizard.complete).toBe(false)
+  })
+
+  it('done is a monotonic latch: stays true after a walked form goes invalid', async () => {
+    const { app, result } = mountHarness(() => {
+      const account = useForm({
+        schema: accountSchema,
+        key: 'hs-4b-account',
+        defaultValues: { email: 'a@b.c', password: 'passw0rd' },
+      })
+      const review = useForm({
+        schema: reviewSchema,
+        key: 'hs-4b-review',
+        defaultValues: { tos: true as const },
+      })
+      return {
+        wizard: useWizard({ steps: [account, review], restore: false, persist: false }),
+        account,
+      }
+    })
+    apps.push(app)
+    // Pre-submit: never been done.
+    expect(result.wizard.done).toBe(false)
+    result.wizard.goTo('hs-4b-review')
+    // Still pre-submit, even after landing on the final step.
+    expect(result.wizard.done).toBe(false)
+    await result.wizard.handleSubmit(vi.fn())()
+    expect(result.wizard.done).toBe(true)
+    // Invalidate after success. `done` is monotonic — the historical
+    // fact "submission landed" does not flip back.
+    result.account.setValue('password', '')
+    for (let i = 0; i < 16; i += 1) {
+      await Promise.resolve()
+      await nextTick()
+      if (!result.account.meta.validating && result.account.meta.valid === false) break
+    }
+    expect(result.account.meta.valid).toBe(false)
+    expect(result.wizard.done).toBe(true)
+    // reset() is the only thing that flips it back.
+    result.wizard.reset()
+    await nextTick()
+    expect(result.wizard.done).toBe(false)
   })
 
   it('intermediate step: validates the active form only and advances on success', async () => {

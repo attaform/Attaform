@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ShieldCheck, Zap, Layers, Server, ArrowRight } from 'lucide-vue-next'
+  import { ShieldCheck, Zap, Layers, Server, ArrowRight, ExternalLink } from 'lucide-vue-next'
 
   // Feature cards on the homepage. Same single-color icon-chip
   // discipline as the docs landing — every chip on this page uses
@@ -157,7 +157,7 @@
               <span>Quick start</span>
               <ArrowRight class="h-5 w-5" :stroke-width="2.25" />
             </UiButton>
-            <UiButton to="/play" size="xl" variant="secondary">Try it live</UiButton>
+            <UiButton to="/demos" size="xl" variant="secondary">Try it live</UiButton>
             <UiButton href="https://github.com/attaform/attaform" size="xl" variant="ghost">
               <UiBrandGithub class="h-5 w-5" />
               <span>GitHub</span>
@@ -186,7 +186,7 @@
 
     <!-- ─── Features ─────────────────────────────────────────────
          Eyebrow + display + lede composition (matches docs landing
-         and /play), then a 2-column feature grid. Each row is icon
+         and /demos), then a 2-column feature grid. Each row is icon
          chip + title + body — denser than the homepage's prior flat
          paragraph list, and the icon chips give the eye anchors as
          it scrolls. No on-scroll reveal here: the section renders
@@ -231,7 +231,7 @@
 
     <!-- ─── Live demo ────────────────────────────────────────────
          The interactive REPL embed. Same eyebrow/display/lede
-         pattern + a "see full playground" link button on the right
+         pattern + a "Check out more demos" link button on the right
          of the heading row that's an obvious affordance to escape
          the embedded view. The frame around the embed elevates it
          from "floating widget" to "real artifact" — a hairline
@@ -253,8 +253,8 @@
               <UiInlineCode>&lt;input&gt;</UiInlineCode> and the form.
             </p>
           </div>
-          <UiButton to="/play" variant="link">
-            <span>Open full playground</span>
+          <UiButton to="/demos" variant="link">
+            <span>Check out more demos</span>
             <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
           </UiButton>
         </div>
@@ -268,6 +268,25 @@
             class="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-accent to-transparent"
             aria-hidden="true"
           />
+          <!-- Demo chrome — mirrors the inline `<DocsDemo>` header on
+               docs pages: a tiny label on the left and an "Open in
+               playground" affordance on the right, so a reader who
+               wants to fork the homepage's seed can do so without
+               hunting through the demos index for it. The link points
+               at /demos/shipment, the dedicated full-page editor for
+               this same hero seed. -->
+          <div
+            class="relative flex items-center justify-between border-b border-border bg-surface/40 px-3"
+          >
+            <span class="px-3 py-2 text-xs font-semibold text-fg">Shipment demo</span>
+            <NuxtLink
+              to="/demos/shipment"
+              class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg"
+            >
+              Open in playground
+              <ExternalLink class="h-3.5 w-3.5" :stroke-width="2" />
+            </NuxtLink>
+          </div>
           <DemoRepl height="37.5rem" />
         </div>
       </UiContainer>
@@ -287,14 +306,14 @@
           </h2>
           <p class="max-w-xl text-lg text-fg-muted">
             One install, one schema, one composable. Read the quick start or jump straight into the
-            playground.
+            demos.
           </p>
           <div class="flex flex-wrap justify-center gap-3">
             <UiButton to="/docs/quickstart" size="xl">
               <span>Quick start</span>
               <ArrowRight class="h-5 w-5" :stroke-width="2.25" />
             </UiButton>
-            <UiButton to="/play" size="xl" variant="secondary">Try it live</UiButton>
+            <UiButton to="/demos" size="xl" variant="secondary">Try it live</UiButton>
           </div>
         </div>
       </UiContainer>

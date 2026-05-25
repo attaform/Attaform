@@ -91,7 +91,7 @@
        so calls to `toast(...)` land in the same place across all
        pages: inline demos rendered via `<DocsDemo>` on docs pages,
        postMessage-relayed calls from inside the @vue/repl preview
-       iframe on `/play/<slug>`, and any future status-feedback
+       iframe on `/demos/<slug>`, and any future status-feedback
        surface. `position="bottom-right"` plus vue-sonner's
        `position: fixed` means the Toaster isn't clipped by any
        container's `overflow: hidden`. `<ClientOnly>` because
@@ -100,9 +100,13 @@
 
        Description text uses font-mono + whitespace-pre-wrap so
        JSON / multi-line payloads stay readable straight from the
-       toast. Demos that pass `values` (or any object) as
-       `description` get auto-JSON-formatted output via the shim
-       inside `DemoReplEditor.client.vue`. -->
+       toast. `max-h-64 overflow-auto` caps the toast's vertical
+       footprint and adds an inner scroll for large payloads; without
+       the cap, a sprawling values object would either dominate the
+       viewport or get clipped by vue-sonner's stacking. Demos that
+       pass `values` (or any object) as `description` get
+       auto-JSON-formatted output via the shim inside
+       `DemoReplEditor.client.vue`. -->
   <ClientOnly>
     <Toaster
       position="bottom-right"
@@ -111,9 +115,29 @@
       :theme="toasterTheme"
       :toast-options="{
         classes: {
-          description: 'font-mono whitespace-pre-wrap text-xs',
+          description:
+            'font-mono whitespace-pre-wrap text-xs max-h-64 overflow-auto overscroll-contain',
         },
       }"
     />
   </ClientOnly>
 </template>
+
+<style>
+  /* vue-sonner lays the toast out as `display: flex` with `[data-icon]
+     | [data-content] | [data-close-button]` siblings. `[data-content]`
+     defaults to its intrinsic width because vue-sonner never sets
+     `flex: 1`, so a short description (or a wrapped one) can leave the
+     content column narrower than the toast and the JSON payload renders
+     in a column far skinnier than the available real estate.
+
+     `flex: 1` stretches the content column across the remaining width
+     between the icon and the close button. `min-width: 0` lets it
+     shrink below its content's intrinsic width so the description's
+     own `overflow-auto` can take over and scroll long JSON in place
+     instead of pushing the toast wider. */
+  [data-sonner-toast][data-styled='true'] [data-content] {
+    flex: 1;
+    min-width: 0;
+  }
+</style>

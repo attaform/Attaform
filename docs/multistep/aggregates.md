@@ -1,27 +1,30 @@
 ---
 title: Aggregates
-description: wizard.allValues and wizard.allErrors expose cross-step values and a flat error list for review screens, summary panels, and final-submit aggregation. Dormant steps contribute nothing, so a summary read stays cheap and the wizard's render-efficiency floor holds.
+description: wizard.allValues, wizard.allErrors, and wizard.forms expose cross-step state ready for review screens, summary panels, and final-submit aggregation. Each surface is a record keyed by step key, drillable straight into the underlying form.
 metaRows:
+  - label: Category
+    value: Reactive surface
   - label: Values
     value: 'wizard.allValues[key]'
     kind: code
   - label: Errors
-    value: 'wizard.allErrors (flat AggregateError[])'
+    value: 'wizard.allErrors[key]: AggregateError[]'
     kind: code
-  - label: Dormant steps
-    value: contribute nothing
+  - label: Forms
+    value: 'wizard.forms[key]: typed form handle'
+    kind: code
 ---
 
 # Aggregates
 
-> `wizard.allValues` exposes every step's `values` proxy under its key for cross-step review screens. `wizard.allErrors` flattens every activated step's errors into one array carrying its `formKey` so a wizard-wide summary can link back to the source field.
+> `wizard.allValues` and `wizard.allErrors` are records keyed by step key, ready for review screens and error-summary panels. `wizard.forms` is the typed record of every form in the compiled list. The three surfaces share one shape and one read pattern: indexable, drillable, and reactive end-to-end.
 
 ::docs-meta-table
 ::
 
 ## `allValues` for review screens
 
-The final step of a wizard often shows everything the user entered, gated behind a confirm-and-submit button. `wizard.allValues` is the cross-step read surface:
+The final step of a wizard often shows everything the user entered, gated behind a confirm-and-submit button. `wizard.allValues` is the cross-step read surface, keyed by step key:
 
 ```ts
 import { useForm, useWizard } from 'attaform/zod'
@@ -31,16 +34,16 @@ const accountSchema = z.object({ email: z.email(), name: z.string().min(1) })
 const profileSchema = z.object({ city: z.string(), country: z.string() })
 const reviewSchema = z.object({ tos: z.literal(true) })
 
+const account = useForm({ schema: accountSchema, key: 'signup-account' })
+const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
 const review = useForm({ schema: reviewSchema, key: 'signup-review' })
-const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
-const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
 
-const wizard = useWizard(account)
+const wizard = useWizard({ steps: [account, profile, review] })
 ```
 
 ```vue
 <template>
-  <section v-if="wizard.current === 'signup-review'">
+  <section v-if="wizard.currentStep === 'signup-review'">
     <h2>Review</h2>
     <dl>
       <dt>Email</dt>
@@ -60,13 +63,38 @@ const wizard = useWizard(account)
 </template>
 ```
 
-`wizard.allValues['signup-account'].email` proxies to the underlying form's `values.email`. The proxy is reactive: edits on earlier steps reflect in the review screen without a roundtrip.
+`wizard.allValues['signup-account'].email` proxies to the underlying form's `values.email`. The proxy is reactive: edits on earlier steps reflect in the review screen without a round trip. Affordance positions contribute empty objects under their key, so iterating the record stays safe even when the path mixes collection and affordance steps.
 
-Drilling into a step's values activates that step's `defaultValues` factory. `wizard.allValues` is the right surface for review screens because reading it expresses real consumer intent (the user is about to see this data).
+For typed reads, hold onto each form ref and drill through it directly. `wizard.allValues[key]` is typed `unknown` (the wizard doesn't generically thread each form's schema through the aggregate), so:
+
+```ts
+// Typed: the schema follows the ref.
+const accountEmail = account.values.email
+
+// Loose-typed: useful in template prose, cast or narrow in script.
+const aggregateEmail = wizard.allValues['signup-account']
+```
+
+## `forms` for typed cross-step access
+
+`wizard.forms` is the typed record of every form in the compiled list. Statically-known form slots contribute their concrete form type to the record; runtime-resolved positions (function slots, `lazy()` slots) fall under the catch-all `AnyForm` signature.
+
+```ts
+const wizard = useWizard({ steps: [account, profile, review] })
+
+// account / profile / review keys typed to their concrete form refs:
+wizard.forms['signup-account'].values.email // typed string
+wizard.forms['signup-profile'].fields.city.showErrors // typed boolean
+
+// Function-slot positions: AnyForm fallback.
+wizard.forms['runtime-resolved-key'].values // typed unknown
+```
+
+The `forms` record is the right surface for cross-component reads. A floating-finish-button component reaches `wizard.forms[key]` to inspect any step's state, and the form handle that comes back is identity-equal to the original `useForm` ref. Mutations on one are observable on the other.
 
 ## `allErrors` for wizard-wide summaries
 
-`wizard.allErrors` is the flat list of every activated step's validation errors. Each entry carries:
+`wizard.allErrors` is a record keyed by step key. Each value is the flat list of `AggregateError` entries that step has produced:
 
 ```ts
 type AggregateError = {
@@ -75,16 +103,28 @@ type AggregateError = {
   readonly message: string
   readonly code?: string
 }
+
+type AllErrors = Readonly<Record<FormKey, readonly AggregateError[]>>
 ```
 
-Sort order: BFS order from the wizard's entry form, then each form's internal error order. The shape is purpose-built for wizard-wide summary panels:
+Each entry carries `formKey` and `path` so a wizard-wide summary panel can route a click back to the offending field. Empty steps and unresolved steps contribute empty arrays under their key, keeping the record uniform.
+
+For a wizard-wide summary, flatten the record into one array and render the union:
 
 ```vue
+<script setup lang="ts">
+  import { computed } from 'vue'
+
+  const wizard = useWizard({ steps: [account, profile, review] })
+
+  const flatErrors = computed(() => Object.values(wizard.allErrors).flat())
+</script>
+
 <template>
-  <aside v-if="wizard.allErrors.length > 0" class="error-summary">
-    <h3>Fix {{ wizard.allErrors.length }} issue(s) before continuing</h3>
+  <aside v-if="flatErrors.length > 0" class="error-summary">
+    <h3>Fix {{ flatErrors.length }} issue(s) before continuing</h3>
     <ul>
-      <li v-for="err in wizard.allErrors" :key="`${err.formKey}-${err.path.join('.')}`">
+      <li v-for="err in flatErrors" :key="`${err.formKey}-${err.path.join('.')}`">
         <button type="button" @click="wizard.goTo(err.formKey)">
           {{ err.message }} ({{ err.formKey }} · {{ err.path.join('.') }})
         </button>
@@ -94,28 +134,34 @@ Sort order: BFS order from the wizard's entry form, then each form's internal er
 </template>
 ```
 
-A click on any summary row jumps the wizard to the step that produced the error. The consumer wires the focus / scroll behavior from there.
+A click on any summary row jumps the wizard to the step that produced the error. The consumer wires the focus / scroll behavior from there (see `wizard.activeForm.focusField()` on the form handle).
 
-## Dormant steps contribute nothing
+For a per-step summary, index into the record directly:
 
-`wizard.allErrors` deliberately skips steps whose forms have not been activated. A non-current step with an async `defaultValues` factory does **not** fire on the server just because the consumer reads the summary list:
-
-```ts
-const wizard = useWizard(account)
-// On the server, only account's factory has fired.
-// wizard.allErrors only includes errors from account, not profile or review.
+```vue
+<template>
+  <aside v-if="(wizard.allErrors['signup-profile']?.length ?? 0) > 0">
+    <h3>Profile step has {{ wizard.allErrors['signup-profile'].length }} issue(s)</h3>
+  </aside>
+</template>
 ```
 
-That keeps the [activation rule](/docs/multistep/ssr#the-activation-rule) in force. A summary panel rendered on the server reports the current step's errors without disturbing dormant steps, so a 40-step wizard still pays for one fetch per request.
+## What contributes to the aggregates
 
-On the client, navigating to a step activates that step's factory and its errors join the aggregate naturally.
+Each surface walks the compiled step list:
 
-## `FormStatus.submitted` is success-only
+- `allValues[key]` is the form's live `values` proxy. Edits land immediately.
+- `allErrors[key]` is the form's `meta.errors`, rebuilt as `AggregateError` entries with `formKey` stamped on. A form whose defaults are still resolving contributes an empty array.
+- `forms[key]` is the form handle itself, identity-equal to the original `useForm` ref.
 
-Each step's `FormStatus` mirrors that form's `meta.submitted`, which flips `true` only after a `handleSubmit` callback resolves without throwing. Failed submits (validation failure or callback rejection) leave it `false`. For "the user has tried this step," read each form's `meta.submissionAttempts > 0` directly. The wizard-level "user clicked Finish" signal lives on `wizard.submissionAttempts` and `wizard.complete`; see [`useWizard`](/docs/multistep/use-wizard).
+Submitting the wizard via `wizard.handleSubmit` is what populates `allErrors` with validation results. See [handleSubmit](/docs/multistep/handle-submit) for the submission lifecycle that drives the aggregate.
 
-## Cross-reference
+## `wizard.submissionAttempts` vs per-form attempts
+
+Each form keeps its own `meta.submissionAttempts`, incremented by `wizard.handleSubmit` whenever that form is in the validation set (intermediate steps validate only the active form; final-step submits validate every form). The wizard-level `wizard.submissionAttempts` increments once per `handleSubmit` invocation, regardless of how many forms were involved. For "did the user click Finish?" reach for `wizard.submissionAttempts`; for "has the user tried this step?" reach for the form's own `meta.submissionAttempts`.
+
+## Where to next
 
 - [`useWizard`](/docs/multistep/use-wizard) for navigation and `activeForm`.
 - [Statuses](/docs/multistep/statuses) for the per-step `FormStatus` rollup that feeds rails and progress.
-- [Lazy activation](/docs/multistep/lazy-activation) for why reading `allErrors` doesn't fire dormant factories.
+- [handleSubmit](/docs/multistep/handle-submit) for the submission pipeline that populates `allErrors`.

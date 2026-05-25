@@ -14,7 +14,7 @@
  * calls composed via `useWizard({ steps })` in a single scope.
  *
  * Companion fixture `mixed-wizard.ts` covers the v2-specific surfaces
- * (string / function / defer slots, namespaced aggregation, the
+ * (string / function / lazy slots, namespaced aggregation, the
  * universal handleSubmit context) — this file stays narrowly focused
  * on instantiation depth so a regression there isolates cleanly.
  *

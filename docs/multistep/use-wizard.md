@@ -1,335 +1,207 @@
 ---
 title: useWizard
-description: useWizard takes an entry form and walks its declared next links to discover every reachable step. Active form, statuses per step, aggregate errors, navigation methods, handleSubmit with a path-walking validator, a complete signal, and a flow namespace for sitemaps and diagnostics.
+description: useWizard takes an ordered list of step slots and produces a reactive wizard. Forms gather data, bare string keys mark affordance steps (intros, terms, review surfaces), function slots branch on live values, and lazy() memoizes heavy slots by their own tracked reactive reads. Universal handleSubmit, namespaced aggregates, automatic URL sync.
 metaRows:
   - label: Category
     value: Composable
   - label: Signature
-    value: 'useWizard(entryForm, options?)'
+    value: 'useWizard({ steps, ... })'
     kind: code
-  - label: Graph source
-    value: 'useForm({ next })' per step
+  - label: Step slots
+    value: 'Form · string · function · lazy()'
     kind: code
   - label: Aggregates
-    value: statuses · allErrors · progress
+    value: 'allValues · allErrors · forms · statuses'
     kind: code
 ---
 
 # useWizard
 
-> Compose a graph of `useForm` calls into a reactive wizard. Each form declares its successor via `useForm({ next })`, and `useWizard(entryForm)` walks the graph from there to discover every reachable step, drive navigation, aggregate status, and validate the runtime path on submit.
+> Compose a reactive wizard from an ordered list of step slots. Each slot holds a form, an affordance key for a screen with no data collection, or a function that picks one or the other at runtime. Attaform threads the same handle through navigation, status aggregation, URL sync, and a universal `handleSubmit` that validates the right scope on every call.
 
 ::docs-meta-table
 ::
 
-Three small forms chain via `next:` declarations: `account` → `profile` → `review`. `useWizard(account)` walks the chain from the entry form and discovers every reachable step. The progress bar reflects `wizard.progress`, the rail highlights `wizard.current`, and each step keeps its own schema and reactive surface. Tap **Next** / **Back** to walk the chain; the **Finish** button fires on the last step.
+A linear three-step wizard. Each step keeps its own `useForm` call, its own schema, and its own reactive surface. The rail highlights `wizard.currentStep`, the progress bar reflects `wizard.progress`, and `wizard.handleSubmit` fires on the final step.
 
 ::docs-demo{slug="use-wizard" label="Wizard Demo"}
 ::
 
-## Forms self-describe their position
+## Forms and steps
+
+Attaform separates two concepts that often get conflated in multistep code:
+
+- A **form** is the artifact `useForm` returns: schema, fields, values, errors, submission. The central noun of Attaform.
+- A **step** is a position in the wizard's sequence. Steps come in two flavors:
+  - A **collection step** holds a form. The wizard gathers data here.
+  - An **affordance step** holds a bare string key, no form. The wizard uses it for screens that present rather than collect: a welcome card, a terms-and-conditions panel, a review surface, a confirmation card.
+
+A wizard's `steps` list mixes the two freely. The shape of a typical onboarding flow:
 
 ```ts
 import { useForm, useWizard } from 'attaform/zod'
 import { z } from 'zod'
 
-const accountSchema = z.object({ email: z.email(), password: z.string().min(8) })
-const profileSchema = z.object({ name: z.string().min(1), city: z.string() })
-const reviewSchema = z.object({ tos: z.literal(true) })
+const shippingSchema = z.object({ address: z.string(), city: z.string() })
+const contactSchema = z.object({ email: z.email(), phone: z.string() })
+const paymentSchema = z.object({ cardNumber: z.string(), cvv: z.string() })
+const billingSchema = z.object({ name: z.string(), address: z.string() })
 
-const review = useForm({ schema: reviewSchema, key: 'signup-review' })
-const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
-const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
+const shipping = useForm({ schema: shippingSchema, key: 'shipping' })
+const contact = useForm({ schema: contactSchema, key: 'contact' })
+const payment = useForm({ schema: paymentSchema, key: 'payment' })
+const billing = useForm({ schema: billingSchema, key: 'billing' })
 
-const wizard = useWizard(account)
-```
-
-Each step is its own form. Schemas, default values, persistence, and history live per-step; the wizard is a thin orchestrator on top.
-
-### Bottom-up declaration
-
-Declare the terminal form first, the entry form last. The chain reads as "review is terminal; profile flows to review; account flows to profile; the wizard starts at account." TypeScript's temporal dead zone catches a forward reference at compile time, so the convention is enforced by the compiler.
-
-Top-down readers can split each form into its own module and let `import` order drive evaluation. Either layout produces the same reachable graph.
-
-## Branching with `next: { pick, forms }`
-
-A form that routes to one of several successors uses the structured `next` shape. The `pick` callback runs against the form's parsed output (the `z.output` of its schema) and returns one of the declared `forms`:
-
-```ts
-const review = useForm({ schema: reviewSchema, key: 'signup-review' })
-const userProfile = useForm({ schema: userProfileSchema, key: 'signup-user', next: review })
-const adminProfile = useForm({ schema: adminSchema, key: 'signup-admin', next: review })
-
-const accountSchema = z.object({ role: z.enum(['admin', 'user']) })
-const account = useForm({
-  schema: accountSchema,
-  key: 'signup-account',
-  next: {
-    pick: (parsed) => (parsed.role === 'admin' ? adminProfile : userProfile),
-    forms: [adminProfile, userProfile] as const,
-  },
+const wizard = useWizard({
+  steps: ['welcome', shipping, contact, 'shipping-review', payment, billing, 'final-review'],
 })
-
-const wizard = useWizard(account)
 ```
 
-A few invariants worth keeping in mind:
+Seven positions, four collection steps, three affordance steps. The wizard treats every position uniformly. `wizard.currentStep` walks the list left to right. `wizard.statuses[key]` answers for every step, with affordance steps reading as always-valid so a rail dot or progress fraction doesn't need to special-case them. Under the hood, each affordance step gets a wizard-owned noop form backed by an empty `AbstractSchema` (no fields, validates as `{}`), so affordance positions participate in the same registry, status, and submission machinery as schema-backed forms without the wizard knowing about Zod (or any other adapter).
 
-- `pick(parsed)` receives the schema's parsed output, so the callback is type-safe against the form's `z.output<typeof accountSchema>`. No defensive coding for unparsed input.
-- The `forms` tuple is declared `as const` so TypeScript narrows `pick`'s return type to `(typeof forms)[number] | undefined`. Without `as const`, the tuple widens to `AnyForm[]` and the narrowing collapses.
-- Returning `undefined` from `pick` flags a dynamic terminal at this moment. The wizard treats the current step as the runtime terminal.
-- `pick` is called on navigation and during `wizard.handleSubmit`'s walk, never at construction. Keep it free of side effects.
+Affordance steps are a first-class building block, not an edge case. Onboarding flows live or die by the breathing room between dense collection screens: the welcome card that sets expectations, the review surface that lets the user check their work, the congratulations card that confirms a transaction landed. Each one is one string in the `steps` array.
 
-## The return shape
+## Step slots
+
+Each entry in `steps` is a **slot**. Four slot kinds compose the list:
 
 ```ts
-type UseWizardReturnType = {
-  // Identity
-  readonly key: string | undefined
+import { useForm, useWizard, lazy } from 'attaform/zod'
 
-  // Navigation
-  readonly current: string | undefined
-  readonly activeForm: AnyForm | undefined
-  readonly activeIndex: number
-  readonly entryForm: AnyForm
-  readonly allForms: readonly AnyForm[]
-  readonly count: number
-
-  // State signals (reactive getters)
-  readonly canAdvance: boolean
-  readonly canGoBack: boolean
-  readonly complete: boolean
-  readonly submitting: boolean
-  readonly submissionAttempts: number
-
-  // Aggregates
-  readonly statuses: WizardStatusesProxy
-  readonly allValues: Record<string, unknown>
-  readonly allErrors: readonly AggregateError[]
-  readonly progress: number
-
-  // Methods
-  readonly next: (options?: WizardNavOptions) => Promise<void>
-  readonly back: (options?: WizardNavOptions) => void
-  readonly goTo: (key: string, options?: WizardNavOptions) => void
-  readonly handleSubmit: (
-    onSubmit: WizardOnSubmit,
-    onError?: WizardOnError
-  ) => (event?: Event) => Promise<void>
-  readonly reset: () => void
-
-  // Flow introspection
-  readonly flow: WizardFlow
-}
+const wizard = useWizard({
+  steps: [
+    shipping, // form slot
+    'shipping-review', // affordance slot
+    (ctx) => (ctx.forms.contact.values.kind === 'business' ? billing : payment), // function slot
+    lazy((ctx) => buildSummaryForm(ctx)), // memoized lazy slot
+  ],
+})
 ```
 
-| Member                   | What it is                                                                                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `key`                    | The wizard's identifier for [`injectWizard`](/docs/multistep/inject-wizard). `undefined` when no `key` is passed in options.             |
-| `current`                | The active step's key (or `undefined` for a degenerate wizard). Reactive via a getter, so templates branch on it directly.               |
-| `activeForm`             | The active step's form handle, identity-equal to the matching entry in `allForms`. `undefined` when `current` is `undefined`.            |
-| `activeIndex`            | Zero-based index of the active step within `allForms` (BFS order). `-1` when `current` is `undefined`.                                   |
-| `entryForm`              | The form passed to `useWizard(entryForm)`. Identity-equal to the argument; immutable for the wizard's lifetime.                          |
-| `allForms`               | BFS-ordered, deduped list of every form reachable from the entry form. Iterate it for a rail, sitemap, or "Step N of M" label.           |
-| `count`                  | `allForms.length`.                                                                                                                       |
-| `canAdvance`             | `true` when the active form has a non-empty `next` declaration. Graph-structural; reflects the static graph, not the validation state.   |
-| `canGoBack`              | `true` when a prior step exists in BFS order (`activeIndex > 0`).                                                                        |
-| `complete`               | `true` once `wizard.handleSubmit`'s callback resolves without throwing. Flips back to `false` when any walked-path form becomes dirty.   |
-| `submitting`             | `true` while a `wizard.handleSubmit` call is in flight (path walk + callback).                                                           |
-| `submissionAttempts`     | Count of `wizard.handleSubmit` invocations (success or failure).                                                                         |
-| `statuses`               | Drillable proxy of `FormStatus` per step (`valid`, `dirty`, `submitted`, `errorCount`).                                                  |
-| `allValues`              | Drillable record of every step's `values` keyed by form key.                                                                             |
-| `allErrors`              | Cross-step `AggregateError[]` for a wizard-wide summary. Dormant (unactivated) steps contribute nothing.                                 |
-| `progress`               | Fraction in `[0, 1]`. Count of valid forms divided by total, or the consumer's `progress` override.                                      |
-| `next` / `back` / `goTo` | Navigation. `next()` is async because it validates the current step before advancing.                                                    |
-| `handleSubmit`           | Returns a submit handler that walks the runtime path, validates every form along the way, then calls the consumer's `onSubmit`.          |
-| `reset`                  | Zeros wizard lifecycle and calls `form.reset()` on every reachable form.                                                                 |
-| `flow`                   | Introspection namespace: `entryForm`, `tree`, `allForms`, `visited`, `diagnose()`. The structured hand-off for sitemaps and diagnostics. |
+- **Form slot**: a form built with `useForm`. The wizard surfaces it as-is.
+- **Affordance slot**: a bare string. Becomes the step's key; the wizard generates a noop form under it.
+- **Function slot**: `(ctx) => Form | string | undefined`. Re-evaluates reactively as `ctx.forms.<key>.values` mutate. The picked result replaces the slot's compiled step. Returning `undefined` drops the slot.
+- **Lazy slot**: `lazy((ctx) => ...)`. Memoized by the resolver's tracked reactive reads. Re-fires on dep change or `wizard.reset()`. Right shape for resolvers expensive enough that thrash matters.
 
-Every reactive read is a plain getter, no `.value`. `wizard.current`, `wizard.progress`, `wizard.allErrors` stay reactive inside templates and `computed` blocks directly, matching the rest of Attaform (`form.values`, `form.meta`, etc.).
+See [Step slots](/docs/multistep/step-slots) for the full slot reference, including the `ctx` shape and the rules around reactive re-evaluation.
 
-## `statuses`: how to read it
+## Options
+
+`useWizard` takes one options bag. `steps` is required; the rest default sensibly for the common URL-synchronized wizard case.
+
+| Option            | Type                                                               | Default             | What it does                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `steps`           | `Array<StepSlot>`                                                  | required            | Ordered list of slots that compile into the wizard's step list. See [Step slots](/docs/multistep/step-slots).                                                              |
+| `key`             | `string`                                                           | synthetic           | Identifier registered in the per-app registry for [`injectWizard`](/docs/multistep/inject-wizard). Anonymous wizards get a synthetic SSR-stable key under the hood.        |
+| `defaultStatuses` | `Record<key, FormStatus>` &#124; sync factory &#124; async factory | unset               | Seed payload used while a form's defaults are still resolving. See [Statuses](/docs/multistep/statuses).                                                                   |
+| `progress`        | `(steps) => number`                                                | valid-step fraction | Override the default `progress` computation. The override is invoked inside a `computed`, so read reactive sources only.                                                   |
+| `focusFirstError` | `boolean`                                                          | `true`              | On final-step submission failure, jump to the first failing form and run its `applyInvalidSubmitPolicy()` (focus / scroll per the form's `onInvalidSubmit` configuration). |
+| `restore`         | `() => { step? }` &#124; `false`                                   | URL `?step=<key>`   | Source of truth for the active step. Watched reactively; re-applies on URL changes. See [URL sync](/docs/multistep/url-sync).                                              |
+| `persist`         | `({ step }) => void` &#124; `false`                                | URL `?step=<key>`   | Destination for the active step. Invoked when `currentStep` changes (diffed to break the restore-persist loop). See [URL sync](/docs/multistep/url-sync).                  |
+
+## The wizard handle
+
+`useWizard` returns a reactive handle. Every reactive read is a plain getter, no `.value`. Use the rail of links below to reach the page that covers each surface in depth.
+
+| Member               | What it is                                                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                | The wizard's identifier (explicit or synthetic).                                                                                              |
+| `currentStep`        | The active step's key. Typed `string` when the slot tuple is statically non-empty; `string` &#124; `undefined` when a function slot can drop. |
+| `activeForm`         | The active step's form handle, identity-equal to `wizard.forms[currentStep]`. Narrows in lockstep with `currentStep`.                         |
+| `activeIndex`        | Zero-based position of the active step.                                                                                                       |
+| `isFinalStep`        | `true` when `activeIndex === count - 1`. Gates the Next-vs-Finish split in templates.                                                         |
+| `count`              | `steps.length`. Includes affordance positions.                                                                                                |
+| `steps`              | Ordered list of compiled `{ key, form }` slots. See [Step slots](/docs/multistep/step-slots).                                                 |
+| `forms`              | Record indexable by step key. See [Aggregates](/docs/multistep/aggregates).                                                                   |
+| `canAdvance`         | `true` when a next step exists. Pure positional check.                                                                                        |
+| `canGoBack`          | `true` when a prior step exists.                                                                                                              |
+| `complete`           | Forward-looking: `isFinalStep && every-form-valid`. See [Statuses](/docs/multistep/statuses).                                                 |
+| `done`               | Monotonic: `true` once `handleSubmit` lands on the final step; only `reset()` flips it back. See [Statuses](/docs/multistep/statuses).        |
+| `submitting`         | `true` while a `wizard.handleSubmit` call is in flight. Global re-entrance guard.                                                             |
+| `submissionAttempts` | Count of `wizard.handleSubmit` invocations.                                                                                                   |
+| `visited`            | Append-only breadcrumb of navigated step keys.                                                                                                |
+| `progress`           | Fraction in `[0, 1]`. Defaults to valid-step ratio.                                                                                           |
+| `statuses`           | Per-key `FormStatus` proxy. See [Statuses](/docs/multistep/statuses).                                                                         |
+| `allValues`          | Namespaced record of each step's values. See [Aggregates](/docs/multistep/aggregates).                                                        |
+| `allErrors`          | Namespaced record of each step's validation errors. See [Aggregates](/docs/multistep/aggregates).                                             |
+| `next` / `back`      | Positional navigation. Refuses while `submitting`.                                                                                            |
+| `goTo`               | Jump to a specific step by key. Dev-warn on unknown keys.                                                                                     |
+| `handleSubmit`       | Universal submission handler. See [handleSubmit](/docs/multistep/handle-submit).                                                              |
+| `reset`              | Zeros wizard lifecycle, resets every form, returns to `steps[0]`, clears the persisted step, flips `done` back.                               |
+
+## Submission, in one place
+
+`wizard.handleSubmit(onSubmit, onError?)` returns one event handler that fits every step. Intermediate calls validate the active form and advance; the final call validates every form and stays put. The same handler binds to every Next-and-Finish button.
 
 ```ts
-wizard.statuses // the whole proxy
-wizard.statuses() // → { 'signup-account': FormStatus, 'signup-profile': FormStatus, 'signup-review': FormStatus }
-wizard.statuses('signup-account') // → FormStatus for one step
-wizard.statuses['signup-account'] // → FormStatus (drillable read)
-wizard.statuses['signup-account'].valid // → boolean (reactive)
+const onSubmit = wizard.handleSubmit(async (ctx) => {
+  if (!ctx.isFinal) return
+  await api.checkout({
+    shipping: ctx.get(shipping),
+    payment: ctx.get(payment),
+  })
+})
 ```
 
-The drillable read is the template-friendly form; the callable form is convenient in script for one-off reads.
-
-`FormStatus` carries `valid`, `dirty`, `submitted`, and `errorCount`. The aggregator gates on each form's `defaultsResolved` so reading a status for a not-yet-activated step returns a pending `FormStatus` without firing that step's factory. The rail can render without thrashing.
+See [handleSubmit](/docs/multistep/handle-submit) for the universal handler depth, including `focusFirstError`, re-entrance, error aggregation, and the `ctx` shape.
 
 ## Navigation
 
 ```ts
-await wizard.next() // validate active step, then advance one
-wizard.back() // step back one
-wizard.goTo('signup-profile') // jump to a specific step by key
+await wizard.next() // advance one position
+wizard.back() // retreat one position
+wizard.goTo('shipping-review') // jump to a specific step by key
 ```
 
-`wizard.next()` validates the active form before advancing. An invalid form short-circuits: `next()` resolves without changing `current`, and the form's `applyInvalidSubmitPolicy()` runs to focus or scroll to the first error (per the form's own `onInvalidSubmit` option). `wizard.goTo(key)` does NOT validate; it is the explicit "the user clicked a rail item" hand-off, and `wizard.handleSubmit` catches premature jumps when the user clicks Finish.
+`next` / `back` / `goTo` are pure positional navigation. None of them validate; that's `handleSubmit`'s job. Out-of-bounds calls dev-warn and no-op; mid-submission navigation is blocked until `wizard.submitting` clears. A wizard wired into a checkout or signup never throws on navigation.
 
-`WizardNavOptions` carries `replace?: boolean` for history-replace semantics; see [Browser history](/docs/multistep/history) for the round-trip. Omit it for ordinary navigation. Out-of-bounds calls dev-warn and no-op:
+## URL sync, on by default
 
-- `next()` at a terminal step.
-- `back()` on the first step.
-- `goTo(key)` with a key not in the reachable set.
-
-Mid-submission navigation is also blocked: `next` / `back` / `goTo` dev-warn and no-op while `wizard.submitting === true`.
-
-The wizard never throws on navigation. Wired into someone's checkout, Attaform bends rather than crashing the surrounding app.
-
-## Submission with `handleSubmit`
-
-`wizard.handleSubmit(onSubmit, onError?)` returns a submit handler. On invocation it walks the runtime path from the entry form, validates each form along the way, then calls `onSubmit` with the aggregated context:
-
-```vue
-<script setup lang="ts">
-  import { useForm, useWizard } from 'attaform/zod'
-
-  const review = useForm({ schema: reviewSchema, key: 'signup-review' })
-  const profile = useForm({ schema: profileSchema, key: 'signup-profile', next: review })
-  const account = useForm({ schema: accountSchema, key: 'signup-account', next: profile })
-
-  const wizard = useWizard(account)
-
-  const finish = wizard.handleSubmit(
-    async (ctx) => {
-      await api.signup({
-        account: ctx.get(account),
-        profile: ctx.get(profile),
-        review: ctx.get(review),
-      })
-    },
-    (errors) => {
-      console.log('Errors across the runtime path', errors)
-    }
-  )
-</script>
-
-<template>
-  <button v-if="wizard.canAdvance" @click="wizard.next()">Next</button>
-  <button v-else @click="finish">Finish</button>
-</template>
-```
-
-The same `canAdvance` flag gates the Next-vs-Finish split. No consumer-side completeness check needed.
-
-### The `ctx` shape
+A wizard with no extra options reads its starting step from `?step=<key>` on the URL and writes the active step back as the user navigates. Reloads land on the same step, the browser back / forward buttons walk the flow, and the URL is shareable. On the server, the wizard reads the incoming request's `?step` so deep-links render the right step on the first byte.
 
 ```ts
-type WizardSubmitContext = {
-  readonly values: Record<string, unknown>
-  readonly get: <F extends AnyForm>(form: F) => F['values']
-  readonly path: readonly AnyForm[]
-}
+import { useForm, useWizard } from 'attaform/zod'
+
+const wizard = useWizard({
+  steps: ['welcome', shipping, payment, 'final-review'],
+  // restore: defaults to reading ?step=<key>
+  // persist: defaults to writing ?step=<key>
+})
 ```
 
-- `ctx.values` is the loose-keyed aggregate of every walked form's parsed output. Use it for "POST everything to the backend" wiring.
-- `ctx.get(formRef)` returns the form's parsed output, typed by its schema. Works across the wizard's reachable set and also with forms reached through [`injectForm`](/docs/cross-cutting-state/inject-form), since the form ref carries its own schema info.
-- `ctx.path` is the ordered runtime path from the entry form to terminal, with branching `pick(parsed)` callbacks resolved against the current parsed values. Iterate it for per-form audit logs or sequential POSTs.
-
-### What `handleSubmit` actually does
-
-1. Sets `wizard.submitting = true`. Per-form `meta.submitting` does NOT flip during the walk; subscribe to `wizard.submitting` for wizard-scoped submitting state.
-2. Walks the path starting from the entry form. For each form: activates (await async `defaultValues`), then validates. Activation failure surfaces as a synthetic `ValidationError` with `code: 'atta:activation-failed'` and the walk continues so every problem reaches the consumer.
-3. For a single-target `next`, the walk is sequential: errors aggregate and the walk continues to terminal even when an upstream form is invalid.
-4. For a branching `next` with the current form **valid**, `pick(parsed)` chooses one branch and the walk recurses on it.
-5. For a branching `next` with the current form **invalid**, every declared `forms` subgraph is walked in parallel (`Promise.all`), so prerequisites for every reachable path surface at once without serial latency.
-6. Builds `ctx = { values, get, path }` from the runtime path and either calls `onSubmit(ctx)` (all forms valid) or `onError(errors)` (any invalid). On success, `wizard.complete = true`.
-7. On failure with `navigateToFirstError: true` (the default), the wizard calls `goTo(firstFailedKey)`, awaits one `nextTick` so the failed step's form mounts (the common `v-if="wizard.current === ..."` template pattern means its inputs only exist after the render flush), then calls `firstFailedForm.applyInvalidSubmitPolicy()`. The focus or scroll lands on the first error field.
-8. Always: `wizard.submissionAttempts` increments and `wizard.submitting` returns to `false`.
-
-`wizard.complete` flips back to `false` the first time any walked-path form's `meta.dirty` flips `true`. Editing after a successful submit reads as "ready to submit again."
-
-### Re-entrancy is safe
-
-Double-clicking Finish triggers exactly one walk. The second invocation dev-warns and resolves to a no-op promise while the first is still in flight. The same guard protects `onSubmit` callbacks that call `wizard.handleSubmit` recursively.
-
-## Active form
-
-`wizard.activeForm` is the per-step form handle for the active step, identity-equal to the matching entry in `wizard.allForms`. Reach for the active step's reactive surface without indexing by key:
-
-```vue
-<template>
-  <form v-if="wizard.activeForm" @submit.prevent="wizard.activeForm.handleSubmit(onSubmit)()">
-    <h2>Step {{ wizard.activeIndex + 1 }} of {{ wizard.count }}</h2>
-    <input v-register="wizard.activeForm.register('email')" />
-  </form>
-</template>
-```
-
-`wizard.activeIndex` pairs with the index for "Step N of M" labels, progress dots, and per-step rails.
-
-## Aggregate errors
-
-`wizard.allErrors` flattens every activated step's errors into one array, in BFS order then per-form order. Each entry carries the originating form's key. Link back to the source field from a wizard-wide summary:
-
-```vue
-<template>
-  <ul class="wizard-errors">
-    <li v-for="err in wizard.allErrors" :key="`${err.formKey}-${err.path.join('.')}`">
-      <a :href="`#${err.formKey}`">{{ err.message }}</a>
-    </li>
-  </ul>
-</template>
-```
-
-Steps that have not been activated contribute nothing to `allErrors`. That keeps the [activation rule](/docs/multistep/ssr#the-activation-rule) in force: a non-current step with an async `defaultValues` factory will not fire on the server just because the consumer reads the summary list.
-
-## Static analysis at construction
-
-`useWizard(entryForm)` walks the reachable graph BFS-first and surfaces structural anomalies up front:
-
-- **Cycle.** A form whose chain leads back to itself throws at `useWizard(entryForm)` construction. Consumers who want intentional re-entry use `wizard.goTo()` rather than declaring a cycle.
-- **Missing terminal.** Every path from entry should reach a terminal (no `next`, or branching with an empty `forms` array). Hard error if no terminal is reachable.
-- **Unreachable form.** A form constructed in scope that no chain from entry reaches. Dev-warn.
-- **Empty `forms` in branching `next`.** Dev-warn; treated as a terminal.
-- **Out-of-`forms` `pick` return.** Runtime throw at the navigation site (TypeScript should catch this at compile time; the runtime check fires only when consumers escape via `any`).
-- **Single-step wizard.** Entry has no `next`. Valid; one-time dev note.
-
-Construction-time warnings show up in `wizard.flow.diagnose()` for diagnostic panels.
+To rename the param, scope it across multiple wizards on the same page, or wire the state to non-URL storage (localStorage, a broadcast channel, a router state field), pass `restore` and `persist` callbacks. See [URL sync](/docs/multistep/url-sync).
 
 ## Cross-component access with `key`
 
-Pass `key` to register the wizard handle in the per-app registry. Any descendant component can reach the same reactive handle through [`injectWizard`](/docs/multistep/inject-wizard) without prop-threading:
+Pass `key` to give the wizard a stable identifier. Any descendant component reaches the same reactive handle through [`injectWizard`](/docs/multistep/inject-wizard) without prop-threading:
 
 ```ts
-// Parent SFC
-const wizard = useWizard(account, { key: 'signup-wizard' })
+const wizard = useWizard({
+  steps: ['welcome', shipping, payment, 'final-review'],
+  key: 'checkout',
+})
 ```
 
-```ts
-// Any descendant SFC
-const wizard = injectWizard('signup-wizard')
-if (!wizard) return
-wizard.next()
-```
-
-Anonymous wizards (no `key`) are still reachable via ambient `injectWizard()` from descendants of the parent that called `useWizard`. See [`injectWizard`](/docs/multistep/inject-wizard) for the full lookup contract.
+Anonymous wizards (option omitted) get a synthetic SSR-stable key under the hood and remain reachable via ambient `injectWizard()` from descendants of the parent that called `useWizard`.
 
 ## Degenerate inputs
 
 Conditions that would otherwise crash the surrounding app dev-warn and degrade:
 
-- **Empty reachable set.** A wizard whose entry has no schema-valid graph reads as `count: 0`, `current: undefined`, navigation no-ops with a dev-warn.
-- **A form with `key: ''`.** Filtered out of the participating set; dev-warn names the dropped count.
-- **Duplicate keys in the reachable graph.** First occurrence wins; dev-warn lists the dropped keys.
-- **`defaultStatuses` with an unknown key.** The unknown entry is ignored; the known entries still apply.
-- **`getServerActiveStep` returning a key not in the reachable set.** Dev-warn; the wizard falls back to the entry form's `key`.
+- **Empty `steps` array.** Dev-warns and degrades. `wizard.currentStep` reads as `undefined`, navigation refuses, the surrounding app keeps rendering.
+- **Duplicate step keys.** First occurrence wins; later duplicates dev-warn and drop.
+- **Same form ref in multiple slots.** First slot keeps the canonical position; later slots dev-warn and drop.
+- **`defaultStatuses` with an unknown key.** Ignored; known entries still apply.
+- **`restore` returns a key not in the compiled steps.** Dev-warn; the wizard falls back to the first step.
 
-A wizard wired into someone's signup or checkout never crashes the surrounding app for shapes that are clearly a mistake.
+A wizard wired into a signup or checkout never crashes the surrounding app for shapes that are clearly a mistake.
 
 ## Where to next
 
+- [Step slots](/docs/multistep/step-slots) for the full slot reference (form, string, function, lazy).
 - [`injectWizard`](/docs/multistep/inject-wizard) for cross-component access to the wizard handle.
-- [`injectForm`](/docs/cross-cutting-state/inject-form) for single-form sharing across a tree; orthogonal to multistep.
-- [Browser history](/docs/multistep/history) for the `?step=<key>` round-trip.
-- [Statuses](/docs/multistep/statuses) for the per-step `FormStatus` rollup that feeds rails and progress.
-- [Aggregates](/docs/multistep/aggregates) for `allValues` and `allErrors`.
-- [Lazy activation](/docs/multistep/lazy-activation) for why dormant steps stay quiet.
-- [SSR & render efficiency](/docs/multistep/ssr) for server-side step selection and the activation rule.
+- [Statuses](/docs/multistep/statuses) for the per-step rollup, `defaultStatuses`, `complete`, and `done`.
+- [Aggregates](/docs/multistep/aggregates) for `allValues`, `allErrors`, and `forms`.
+- [handleSubmit](/docs/multistep/handle-submit) for the universal submission pipeline.
+- [URL sync](/docs/multistep/url-sync) for `restore` / `persist` and the SSR hand-off.
+- [Patterns](/docs/multistep/patterns) for branching, review surfaces, per-step persistence and undo.

@@ -37,7 +37,7 @@ const monorepoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 // content >5 MB. V8's regex engine blows its internal stack and
 // throws `Maximum call stack size exceeded` from `pattern.test`.
 // Concrete trip-wire: `@vue/repl/monaco-editor`'s 7.2 MB prebundle,
-// surfacing as an `Internal server error` on the first `/play/<slug>`
+// surfacing as an `Internal server error` on the first `/demos/<slug>`
 // page load. Captured via filter-trace instrumentation as
 // `[filter-trace] THREW plugin=vite:asset-import-meta-url`.
 //
@@ -72,7 +72,7 @@ const fixViteAssetImportMetaUrlFilter: VitePlugin = {
   },
 }
 
-// `pages/play/[slug].vue`, `pages/play/index.vue`, and
+// `pages/demos/[slug].vue`, `pages/demos/index.vue`, and
 // `components/content/DocsDemo.vue` each discover every demo SFC
 // via `import.meta.glob('../../docs-demos/*.vue', { eager: true })`.
 // The glob's key set is resolved once at module-eval time. When a
@@ -80,7 +80,7 @@ const fixViteAssetImportMetaUrlFilter: VitePlugin = {
 // already compiled, Vite's default invalidation is best-effort: the
 // file watcher fires, but the consumer's transform cache does not
 // always rerun before the next SSR render. The symptom is a 404
-// from `/play/<new-slug>` (the play routes) or an in-page
+// from `/demos/<new-slug>` (the demos routes) or an in-page
 // `[DocsDemo] no demo found for slug "..."` throw (the inline
 // embed used in docs pages).
 //
@@ -97,8 +97,8 @@ const invalidateDemoGlobConsumersOnDemoChange: VitePlugin = {
     const siteRoot = dirname(fileURLToPath(import.meta.url))
     const demosDir = resolve(siteRoot, 'docs-demos')
     const globConsumers = [
-      resolve(siteRoot, 'pages/play/[slug].vue'),
-      resolve(siteRoot, 'pages/play/index.vue'),
+      resolve(siteRoot, 'pages/demos/[slug].vue'),
+      resolve(siteRoot, 'pages/demos/index.vue'),
       resolve(siteRoot, 'components/content/DocsDemo.vue'),
     ]
     function invalidate(): void {
@@ -622,7 +622,7 @@ export default defineNuxtConfig({
     // `crawlLinks: true` follows internal `<a href>` and NuxtLink
     // targets from the seed routes, so we only have to list the
     // entry points. `/docs` is the index page that links into every
-    // doc; `/play` and `/` round out the rest of the public
+    // doc; `/demos` and `/` round out the rest of the public
     // surface.
     //
     // `failOnError: true` gates the build on prerender 500s — a Vue
@@ -650,7 +650,7 @@ export default defineNuxtConfig({
     static: true,
     prerender: {
       crawlLinks: true,
-      routes: ['/', '/docs', '/play'],
+      routes: ['/', '/docs', '/demos'],
       failOnError: true,
     },
     devHandlers: [
@@ -790,7 +790,7 @@ export default defineNuxtConfig({
       //
       // The symptom: edit `src/runtime/core/unset-walker.ts`, hard-
       // reload `/docs/schemas/defaults`, see no change. The
-      // playground at `/play/schema-defaults` updates because
+      // playground at `/demos/schema-defaults` updates because
       // `bundle-repl-deps.mjs --watch` uses esbuild's watcher,
       // which IS bind-mount-reliable. Two parallel watchers, one
       // working, one not — invisible until a src/ edit fails to
@@ -843,7 +843,7 @@ export default defineNuxtConfig({
       // `@vue/repl` + `@vue/repl/monaco-editor` are prebundled together
       // so Vite's boot crawl finds them even though the editor wrapper
       // itself only mounts inside a `.client.vue` component (which the
-      // SSR scan skips). Without pre-declaring, the first `/play/<slug>`
+      // SSR scan skips). Without pre-declaring, the first `/demos/<slug>`
       // navigation discovers the deps mid-session, the optimizer
       // rebundles, the browser hash flips, and any in-flight
       // prebundled-dep request 504s with "Outdated Optimize Dep".

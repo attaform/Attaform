@@ -90,6 +90,15 @@ export const RESERVED_KEY_PREFIX = '__atta:'
 export const ANONYMOUS_FORM_KEY_PREFIX = `${RESERVED_KEY_PREFIX}anon:`
 
 /**
+ * Synthetic-key prefix for `useWizard()` calls without an explicit
+ * `key`. Separate namespace from `ANONYMOUS_FORM_KEY_PREFIX` so
+ * `wizard.forms[key]` lookups never collide with synthetic wizard
+ * keys even if a consumer iterates both spaces. Lives inside the
+ * reserved `__atta:` namespace for the same enforcement story.
+ */
+export const ANONYMOUS_WIZARD_KEY_PREFIX = `${RESERVED_KEY_PREFIX}anon-wizard:`
+
+/**
  * Recursion ceiling for schema walks that descend through recursive
  * schemas (Zod's `z.lazy(...)` today, equivalent constructs in any
  * future adapter). Adapter walks that follow a recursive boundary —

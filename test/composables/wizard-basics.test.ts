@@ -52,7 +52,7 @@ describe('useWizard — basic navigation', () => {
     expect(result.steps.map((s) => s.key)).toEqual(['a-1-a', 'a-1-b', 'a-1-c'])
     expect(result.currentStep).toBe('a-1-a')
     expect(result.activeIndex).toBe(0)
-    expect(result.activeForm.key).toBe('a-1-a')
+    expect(result.activeForm!.key).toBe('a-1-a')
     expect(result.isFinalStep).toBe(false)
     expect(result.canGoBack).toBe(false)
     expect(result.canAdvance).toBe(true)
@@ -156,7 +156,7 @@ describe('useWizard — basic navigation', () => {
     apps.push(app)
     expect(result.count).toBe(1)
     expect(result.currentStep).toBe('a-7-only')
-    expect(result.activeForm.key).toBe('a-7-only')
+    expect(result.activeForm!.key).toBe('a-7-only')
     expect(result.activeIndex).toBe(0)
     expect(result.isFinalStep).toBe(true)
     expect(result.canAdvance).toBe(false)
@@ -179,7 +179,7 @@ describe('useWizard — basic navigation', () => {
     expect(result.count).toBe(3)
     expect(result.steps.map((s) => s.key)).toEqual(['a-8-intro', 'a-8-a', 'a-8-thanks'])
     expect(result.currentStep).toBe('a-8-intro')
-    expect(result.activeForm.key).toBe('a-8-intro')
+    expect(result.activeForm!.key).toBe('a-8-intro')
     expect(result.statuses['a-8-intro']?.valid).toBe(true)
     expect(result.statuses['a-8-thanks']?.valid).toBe(true)
   })
@@ -193,5 +193,73 @@ describe('useWizard — basic navigation', () => {
     apps.push(app)
     expect(result.forms['a-9-a']?.key).toBe('a-9-a')
     expect(result.forms['a-9-b']?.key).toBe('a-9-b')
+  })
+})
+
+describe('useWizard — degenerate inputs degrade without throwing', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('empty steps array dev-errors and degrades to undefined active position', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { app, result } = mountWizardHarness(() => {
+      return useWizard({ steps: [], restore: false, persist: false })
+    })
+    apps.push(app)
+    expect(result.currentStep).toBeUndefined()
+    expect(result.activeForm).toBeUndefined()
+    expect(result.count).toBe(0)
+    expect(result.activeIndex).toBe(-1)
+    expect(result.isFinalStep).toBe(false)
+    expect(result.canAdvance).toBe(false)
+    expect(result.canGoBack).toBe(false)
+    expect(result.complete).toBe(false)
+    expect(result.done).toBe(false)
+    expect(result.progress).toBe(0)
+    // The wizard handle is still constructable; the surrounding app
+    // never crashes for a misshapen steps configuration.
+    expect(errorSpy).toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  it('all function slots returning undefined collapses to degenerate state without throwing', () => {
+    const { app, result } = mountWizardHarness(() => {
+      return useWizard({
+        steps: [() => undefined, () => undefined],
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    // Compiled list is empty because every function slot dropped.
+    // Reads degrade the same way an empty array does, no throw.
+    expect(result.count).toBe(0)
+    expect(result.currentStep).toBeUndefined()
+    expect(result.activeForm).toBeUndefined()
+  })
+
+  it('navigation methods refuse cleanly on a degenerate wizard', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { app, result } = mountWizardHarness(() => {
+      return useWizard({ steps: [], restore: false, persist: false })
+    })
+    apps.push(app)
+    await result.next()
+    result.back()
+    result.goTo('any-key')
+    // handleSubmit on a degenerate wizard short-circuits without
+    // invoking onSubmit / onError.
+    const onSubmit = vi.fn()
+    const onError = vi.fn()
+    await result.handleSubmit(onSubmit, onError)()
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    // Every refusal logs a dev-warn.
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 })

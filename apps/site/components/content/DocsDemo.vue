@@ -2,7 +2,7 @@
   // Inline demo widget. Renders an `apps/site/docs-demos/<slug>.vue`
   // SFC live above the prose, with an "Open in playground" link that
   // routes readers who want to inspect or edit the source to the
-  // standalone /play/<slug> editor.
+  // standalone /demos/<slug> editor.
   //
   // Build-time invariant: every `<DocsDemo slug="...">` referenced in
   // a docs page must resolve to a file in `apps/site/docs-demos/`. A
@@ -33,7 +33,7 @@
   // encoded for future routes that might contain those characters.
   const route = useRoute()
   const playgroundLink = computed(
-    () => `/play/${props.slug}?from=${encodeURIComponent(route.path).replace(/%2F/gi, '/')}`
+    () => `/demos/${props.slug}?from=${encodeURIComponent(route.path).replace(/%2F/gi, '/')}`
   )
 
   // Eager glob: every demo SFC is bundled into the docs chunk. With

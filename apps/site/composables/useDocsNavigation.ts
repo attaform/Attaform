@@ -36,7 +36,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Your first schema', to: '/docs/getting-started/your-first-schema' },
       { title: 'From schema to inputs', to: '/docs/getting-started/from-schema-to-inputs' },
       { title: 'From inputs to submit', to: '/docs/getting-started/from-inputs-to-submit' },
-      { title: 'Playgrounds', to: '/play' },
+      { title: 'Demos', to: '/demos' },
     ],
   },
   // Phase 1 fills in the remaining categories below as each page
@@ -142,11 +142,11 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'useWizard', to: '/docs/multistep/use-wizard' },
       { title: 'injectWizard', to: '/docs/multistep/inject-wizard' },
+      { title: 'Step slots', to: '/docs/multistep/step-slots' },
       { title: 'Statuses', to: '/docs/multistep/statuses' },
-      { title: 'Browser history', to: '/docs/multistep/history' },
-      { title: 'SSR & render efficiency', to: '/docs/multistep/ssr' },
       { title: 'Aggregates', to: '/docs/multistep/aggregates' },
-      { title: 'Lazy activation', to: '/docs/multistep/lazy-activation' },
+      { title: 'handleSubmit', to: '/docs/multistep/handle-submit' },
+      { title: 'URL sync', to: '/docs/multistep/url-sync' },
       { title: 'Patterns', to: '/docs/multistep/patterns' },
     ],
   },

@@ -87,7 +87,7 @@ describe('injectForm — ambient provide/inject', () => {
     app.unmount()
   })
 
-  describe('miss modes — return null + dev warn', () => {
+  describe('miss modes — keyed warns, ambient silent', () => {
     let warnSpy: ReturnType<typeof vi.spyOn>
     beforeEach(() => {
       warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -101,7 +101,11 @@ describe('injectForm — ambient provide/inject', () => {
         String(args[0] ?? '').includes(NULL_WARN_MARKER)
       )
 
-    it('returns null and warns when there is no ancestor form', () => {
+    it('returns null silently when there is no ancestor form', () => {
+      // Ambient lookup is opportunistic — a component library calling
+      // injectForm() in arbitrary trees should not spam consumers'
+      // consoles when no parent has provided a form. Descendants
+      // narrow on `null` and degrade.
       let captured: ReturnType<typeof injectForm<Form>> | undefined
       const Child = defineComponent({
         setup() {
@@ -109,25 +113,17 @@ describe('injectForm — ambient provide/inject', () => {
           return () => h('div')
         },
       })
-
-      // No `ssr: true` — the warn is suppressed in SSR mode (see
-      // warnMiss in use-form-context.ts). JSDOM has `window`, so the
-      // default detectSSR resolves to false and the warn fires as
-      // intended for client-side coverage.
       const app = createApp(Child).use(createAttaform())
       app.mount(document.createElement('div'))
       expect(captured).toBeNull()
-      const calls = matchingWarnCalls()
-      expect(calls).toHaveLength(1)
-      expect(String(calls[0]?.[0] ?? '')).toMatch(/no ambient form context/)
+      expect(matchingWarnCalls()).toHaveLength(0)
       app.unmount()
     })
 
-    it('returns null and warns when the only ancestor form is keyed', () => {
-      // Keyed useForm() does NOT fill the ambient slot — descendants must
-      // address it explicitly by key. A naive `injectForm()` (no key)
-      // call inside such a subtree gets the same "no ambient" warn + null
-      // it would get with no parent at all.
+    it('returns null silently when the only ancestor form is keyed', () => {
+      // Keyed useForm() does NOT fill the ambient slot — descendants
+      // must address it explicitly by key. `injectForm()` (no key)
+      // gets the same null-without-warn it would get with no parent.
       let captured: ReturnType<typeof injectForm<Form>> | undefined
       const Child = defineComponent({
         setup() {
@@ -144,9 +140,7 @@ describe('injectForm — ambient provide/inject', () => {
       const app = createApp(Parent).use(createAttaform())
       app.mount(document.createElement('div'))
       expect(captured).toBeNull()
-      const calls = matchingWarnCalls()
-      expect(calls).toHaveLength(1)
-      expect(String(calls[0]?.[0] ?? '')).toMatch(/no ambient form context/)
+      expect(matchingWarnCalls()).toHaveLength(0)
       app.unmount()
     })
 

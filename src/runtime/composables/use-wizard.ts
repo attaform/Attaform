@@ -1,5 +1,6 @@
 import {
   computed,
+  effectScope,
   getCurrentInstance,
   getCurrentScope,
   inject,
@@ -7,10 +8,13 @@ import {
   onScopeDispose,
   provide,
   ref,
+  useId,
   watch,
   type ComputedRef,
 } from 'vue'
 import { __DEV__ } from '../core/dev'
+import { ANONYMOUS_WIZARD_KEY_PREFIX } from '../core/defaults'
+import { captureUserCallSite } from '../core/dev-stack-trace'
 import { AttaformErrorCode } from '../core/error-codes'
 import {
   kAttaformAncestorWizard,
@@ -18,21 +22,24 @@ import {
   useRegistry,
 } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
-import { isDeferMarker } from '../core/wizard-defer'
+import { isLazyMarker } from '../core/wizard-lazy'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildNoopWizardSchema } from '../core/wizard-noop-schema'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
-import { useAbstractForm } from './use-abstract-form'
+import { useAbstractForm, type AmbientProvideEntry } from './use-abstract-form'
 import type {
+  ActiveFormOf,
   AggregateError,
   AnyForm,
   CompiledStep,
-  DeferMarker,
+  CurrentStepOf,
   FormStatus,
+  LazyMarker,
   StepSlot,
   UseWizardReturnType,
   WizardCtx,
   WizardCtxForm,
+  WizardForms,
   WizardOnError,
   WizardOnSubmit,
   WizardOptions,
@@ -98,8 +105,8 @@ type SubmissionSourceForm = StatusSourceForm & {
  * Each slot resolves to a participating form: an existing `useForm`
  * reference, a bare string key (desugared to a noop form so affordance
  * steps participate uniformly), an eagerly-evaluated function slot for
- * runtime branching, or a `defer()`-wrapped function slot whose
- * resolution sticks across re-evaluations.
+ * runtime branching, or a `lazy()`-wrapped function slot that caches
+ * its resolution and re-fires only on its own tracked deps.
  *
  * The wizard's surface is read-only from the consumer's side:
  * navigation (`next` / `back` / `goTo`) walks positional indices,
@@ -107,10 +114,20 @@ type SubmissionSourceForm = StatusSourceForm & {
  * the whole wizard on the final step, and URL synchronization rides on
  * `restore` / `persist` callbacks that default to `?step=<key>`.
  */
-export function useWizard(options: WizardOptions): UseWizardReturnType {
-  const rawSteps = options.steps
-  if (!Array.isArray(rawSteps) || rawSteps.length === 0) {
-    throw new Error('[attaform] useWizard({ steps }): expected a non-empty array of step slots.')
+export function useWizard<const S extends ReadonlyArray<StepSlot>>(
+  options: WizardOptions & { readonly steps: S }
+): UseWizardReturnType<S> {
+  // Defensive coercion: a misshapen `steps` (non-array, undefined, empty)
+  // never crashes the surrounding app. Dev-warn surfaces the
+  // misconfiguration; runtime continues with an empty list and the
+  // wizard reads as degenerate (`currentStep === undefined`,
+  // navigation refuses, `handleSubmit` no-ops). The "wizard wired into
+  // a checkout never crashes" promise sits on this branch.
+  const rawSteps: ReadonlyArray<StepSlot> = Array.isArray(options.steps) ? options.steps : []
+  if (rawSteps.length === 0 && __DEV__) {
+    console.error(
+      '[attaform] useWizard({ steps }): expected a non-empty array of step slots. Continuing with an empty step list — wizard.currentStep reads as undefined, navigation refuses, handleSubmit no-ops.'
+    )
   }
 
   const registry = useRegistry()
@@ -121,9 +138,20 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
   // by `buildNoopWizardSchema`. Synthesis runs at setup time so the
   // forms are registered in the registry (status + ref-counting +
   // consumer eviction all flow through the same paths as real forms).
-  // Function slots may return any of these same keys; runtime lookups
-  // use the cache built here.
+  // Function and lazy slots may also return string keys at runtime,
+  // including ones not declared at the top level. Those go through
+  // `getOrBuildNoop` below, which constructs a noop on the fly inside
+  // a wizard-scoped `effectScope` so consumer cleanup, registry
+  // presence, and the rest of the FormStore surface stay identical to
+  // an eagerly-built noop.
   const noopForms = new Map<string, AnyForm>()
+  // Wizard-private scope for lazily-built noops. Building inside this
+  // scope lets `useAbstractForm` register its `onScopeDispose` hook
+  // against the wizard's lifetime, not against whatever component
+  // happens to be active when the function slot first returned an
+  // undeclared key. Stopped when the wizard's own setup scope tears
+  // down.
+  const lazyNoopScope = effectScope(true)
   for (const slot of rawSteps) {
     if (typeof slot !== 'string') continue
     if (noopForms.has(slot)) continue
@@ -132,6 +160,33 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
       key: slot,
     }) as unknown as AnyForm
     noopForms.set(slot, noop)
+  }
+
+  function getOrBuildNoop(key: string): AnyForm {
+    const existing = noopForms.get(key)
+    if (existing !== undefined) return existing
+    const noop = lazyNoopScope.run(
+      () =>
+        useAbstractForm(
+          {
+            schema: buildNoopWizardSchema(key),
+            key,
+          },
+          { registry }
+        ) as unknown as AnyForm
+    )
+    if (noop === undefined) {
+      // `lazyNoopScope.run` only returns `undefined` if the scope has
+      // already been stopped, which only happens at wizard teardown.
+      // Reaching this branch means the wizard is mid-disposal; return
+      // a structurally-empty stand-in so the caller's compile pass
+      // completes without crashing.
+      const stub: AnyForm = { key }
+      return stub
+    }
+    noopForms.set(key, noop)
+    formsAccumulator.set(key, noop)
+    return noop
   }
 
   // --- Static slot inventory -------------------------------------------
@@ -159,13 +214,25 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   // --- Reactive plumbing for the slot compiler --------------------------
   //
-  // `stickyDefers` caches the resolved form for each deferred slot at
-  // its index in `rawSteps`. Once a `defer((ctx) => …)` slot resolves
-  // (or explicitly drops via `undefined`), subsequent reactive reads
-  // reuse the cached result without re-invoking the resolver. The
-  // wizard treats `defer()` slots as eager-but-sticky in this build:
-  // they resolve on first compile-pass evaluation and never re-resolve.
-  const stickyDefers = new Map<number, AnyForm | null>()
+  // Each `lazy()` slot gets its own Vue computed. The resolver fires
+  // eagerly on the first compile pass and the result memoizes. The
+  // cache invalidates only when one of the resolver's own tracked
+  // reactive reads changes (Vue handles dep tracking) — an unrelated
+  // slot re-evaluating does not re-fire this one. `wizard.reset()`
+  // bumps `lazyEpoch` so every lazy computed re-fires on the next
+  // compile pass.
+  //
+  // The computed caches the resolver's *raw* return (form / string /
+  // undefined). String → noop conversion happens outside the computed
+  // so noop-construction reactivity doesn't leak into the lazy slot's
+  // dep set (otherwise the form registry's initialization writes
+  // would invalidate the cache on the very first compile pass).
+  //
+  // The map is keyed by slot index in `rawSteps`; population happens
+  // eagerly below so cross-test mounts get fresh per-index closures.
+  const lazyEpoch = ref(0)
+  type LazyResult = AnyForm | string | undefined
+  const lazyComputeds = new Map<number, ComputedRef<LazyResult>>()
 
   // `activeKey` is the canonical source of truth for the active step.
   // Initialized below from `restore` (or the first compiled slot's key).
@@ -224,21 +291,21 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
    */
   function resolveSlot(slot: StepSlot, index: number, ctx: WizardCtx): AnyForm | undefined {
     if (typeof slot === 'string') {
-      const noop = noopForms.get(slot)
-      if (noop === undefined && __DEV__) {
-        console.warn(
-          `[attaform] useWizard: function slot returned key "${slot}" which is not declared as a top-level string slot or registered form. Skipping.`
-        )
-      }
-      return noop
+      // Top-level string slots are pre-built into `noopForms` at
+      // construction. The lazy builder hits the cache; the unified
+      // path keeps function/lazy string returns consistent with
+      // top-level string slots.
+      return getOrBuildNoop(slot)
     }
-    if (isDeferMarker(slot)) {
-      const cached = stickyDefers.get(index)
-      if (cached !== undefined) return cached === null ? undefined : cached
-      const result = (slot as DeferMarker).resolve(ctx)
-      const form = resolveSlotResult(result)
-      stickyDefers.set(index, form ?? null)
-      return form
+    if (isLazyMarker(slot)) {
+      // Lazy slots flow through their own per-slot computed. Reading
+      // `.value` here memoizes by the resolver's tracked reactive
+      // reads; other slots re-evaluating around it do not re-fire
+      // this one. String → noop conversion runs out here so the
+      // resolver's dep set stays clean of noop-construction side
+      // effects.
+      const c = lazyComputeds.get(index)
+      return c === undefined ? undefined : resolveSlotResult(c.value)
     }
     if (typeof slot === 'function') {
       const result = (slot as (ctx: WizardCtx) => AnyForm | string | undefined)(ctx)
@@ -251,20 +318,50 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
   function resolveSlotResult(result: AnyForm | string | undefined): AnyForm | undefined {
     if (result === undefined) return undefined
     if (typeof result === 'string') {
-      const noop = noopForms.get(result)
-      if (noop === undefined && __DEV__) {
-        console.warn(
-          `[attaform] useWizard: function slot returned key "${result}" which is not declared as a top-level string slot or registered form. Skipping.`
-        )
-      }
-      return noop
+      // Function and lazy slot string returns build a noop on first
+      // reference. Subsequent returns of the same string hit the
+      // cache. Authors don't have to pre-declare affordance keys
+      // anywhere; the wizard handles new keys uniformly.
+      return getOrBuildNoop(result)
     }
     return result
   }
 
+  // Eagerly populate one computed per lazy slot. Each computed
+  // subscribes to `lazyEpoch` so `reset()` can invalidate every cache
+  // in one move, and to whatever reactive reads its own resolver makes
+  // (Vue's standard dep tracking). The closure over `idx` and `marker`
+  // pins this computed to a specific slot in `rawSteps`.
+  //
+  // The ctx object is built inline with `currentKey` as a getter so
+  // the resolver only establishes an `activeKey` dep when it actually
+  // reads `ctx.currentKey` — reading the wizard's wider `slotCtx`
+  // computed would thread activeKey through every lazy slot's deps
+  // and re-fire on navigation regardless of the resolver's intent.
+  const lazyCtx: WizardCtx = {
+    forms: slotForms,
+    get currentKey() {
+      return activeKey.value === '' ? undefined : activeKey.value
+    },
+  }
+  for (let i = 0; i < rawSteps.length; i++) {
+    const slot = rawSteps[i]
+    if (isLazyMarker(slot)) {
+      const idx = i
+      const marker = slot as LazyMarker
+      lazyComputeds.set(
+        idx,
+        computed(() => {
+          void lazyEpoch.value
+          return marker.resolve(lazyCtx)
+        })
+      )
+    }
+  }
+
   // The compiled step list. Function slots re-evaluate on every read
-  // of their reactive deps; sticky defer slots resolve once and stick;
-  // string slots cache their noop forms.
+  // of their reactive deps; lazy slots run through their own memoized
+  // computed; string slots cache their noop forms.
   const compiledSteps = computed<readonly CompiledStep[]>(() => {
     const ctx = slotCtx.value
     const out: CompiledStep[] = []
@@ -300,24 +397,21 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     return -1
   })
 
-  const currentStep = computed<FormKey>(() => {
+  const currentStep = computed<FormKey | undefined>(() => {
     const key = activeKey.value
     if (key !== '') return key
     const first = compiledSteps.value[0]
-    return first === undefined ? '' : first.key
+    return first === undefined ? undefined : first.key
   })
 
-  const activeForm = computed<AnyForm>(() => {
+  const activeForm = computed<AnyForm | undefined>(() => {
     const list = compiledSteps.value
     const idx = activeIndex.value
     if (idx >= 0 && idx < list.length) {
       return (list[idx] as CompiledStep).form
     }
     const first = list[0]
-    if (first === undefined) {
-      throw new Error('[attaform] useWizard: compiled step list is empty.')
-    }
-    return first.form
+    return first === undefined ? undefined : first.form
   })
 
   const isFinalStep = computed<boolean>(() => {
@@ -575,15 +669,12 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     return false
   }
 
-  function firstKey(): FormKey {
+  function firstKey(): FormKey | undefined {
     const first = compiledSteps.value[0]
-    if (first === undefined) {
-      throw new Error('[attaform] useWizard: compiled step list is empty.')
-    }
-    return first.key
+    return first === undefined ? undefined : first.key
   }
 
-  let initialKey: FormKey
+  let initialKey: FormKey | undefined
   const restoredAtSetup = restoreCallback?.()
   const restoredStep = restoredAtSetup?.step
   if (restoredStep !== undefined && isCompiledKey(restoredStep)) {
@@ -601,8 +692,14 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     }
     initialKey = firstKey()
   }
-  activeKey.value = initialKey
-  visited.value = [initialKey]
+  if (initialKey !== undefined) {
+    activeKey.value = initialKey
+    visited.value = [initialKey]
+  }
+  // Degenerate path (`initialKey === undefined`): activeKey stays `''`,
+  // visited stays `[]`, and downstream getters surface `undefined`
+  // accordingly. The wizard handle is still constructable; the
+  // surrounding app keeps rendering.
 
   // --- SSR prefetch coordination ---------------------------------------
   //
@@ -679,8 +776,14 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     )
     // Replace the URL once at construction so a fresh load reflects the
     // active step (idempotent when the URL already named the correct
-    // key — the diff in the watcher handles steady-state).
-    if (initialKey !== initialUrlValue && initialUrlValue === undefined) {
+    // key — the diff in the watcher handles steady-state). The
+    // `initialKey !== undefined` guard short-circuits the degenerate
+    // path: with an empty steps list there's no step to persist.
+    if (
+      initialKey !== undefined &&
+      initialKey !== initialUrlValue &&
+      initialUrlValue === undefined
+    ) {
       lastPersisted = initialKey
       persistCallback({ step: initialKey })
       urlMirror.value = initialKey
@@ -691,6 +794,13 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   const submitting = ref(false)
   const submissionAttempts = ref(0)
+  // Monotonic latch: flips true the first time a final-step
+  // `handleSubmit` resolves without throwing, and stays true through
+  // subsequent edits or invalidations. Only `reset()` flips it back
+  // (a new run starts a new history). Distinct accounting from
+  // `complete`, which is forward-looking and reactive to current form
+  // validity.
+  const done = ref(false)
 
   // --- Navigation internals --------------------------------------------
 
@@ -731,8 +841,14 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
       }
       return
     }
-    const idx = activeIndex.value
     const list = compiledSteps.value
+    if (list.length === 0) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.next(): wizard has no compiled steps; no-op.`)
+      }
+      return
+    }
+    const idx = activeIndex.value
     if (idx < 0 || idx >= list.length - 1) {
       if (__DEV__) {
         console.warn(
@@ -750,6 +866,12 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     if (submitting.value) {
       if (__DEV__) {
         console.warn(`[attaform] wizard.back(): blocked while a submit is in flight.`)
+      }
+      return
+    }
+    if (compiledSteps.value.length === 0) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.back(): wizard has no compiled steps; no-op.`)
       }
       return
     }
@@ -855,6 +977,12 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
       if (event !== undefined && typeof (event as Event).preventDefault === 'function') {
         event.preventDefault()
       }
+      if (compiledSteps.value.length === 0) {
+        if (__DEV__) {
+          console.warn(`[attaform] wizard.handleSubmit: wizard has no compiled steps; no-op.`)
+        }
+        return
+      }
       if (submitting.value) {
         if (__DEV__) {
           console.warn(
@@ -882,8 +1010,9 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
           )
         } else {
           // Intermediate submission: validate the active form only and
-          // advance on success.
-          const active = activeForm.value
+          // advance on success. The empty-list short-circuit above
+          // guarantees `activeForm.value` is defined here.
+          const active = activeForm.value as AnyForm
           const result = await processOne(active)
           results.set(active.key, result)
         }
@@ -912,7 +1041,9 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
           }
           const ctx = buildSubmitContext(valuesMap, currentKey, final)
           await onSubmit(ctx)
-          if (!final) {
+          if (final) {
+            done.value = true
+          } else {
             // Intermediate success → record departure + advance to next
             // step. Mirrors the navigation arm so the URL and visited
             // trail stay coherent.
@@ -950,6 +1081,13 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
 
   function reset(): void {
     submissionAttempts.value = 0
+    done.value = false
+    // Bump the lazy epoch so every `lazy()` slot's memoized computed
+    // re-fires on the next compile pass. Without this, expensive
+    // one-shot lookups would stay glued to their first resolution
+    // across a wizard reboot — and `reset()` is meant to be a true
+    // reboot, not a soft rewind.
+    lazyEpoch.value += 1
     for (const step of compiledSteps.value) {
       const full = step.form as unknown as SubmissionSourceForm
       if (typeof full.reset === 'function') full.reset()
@@ -970,24 +1108,36 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
   if (getCurrentScope() !== undefined) {
     onScopeDispose(() => {
       historyHandle.dispose()
+      lazyNoopScope.stop()
     })
   }
 
   // --- Handle assembly --------------------------------------------------
 
-  const wizardKey = options.key
-  const handle: UseWizardReturnType = {
+  const explicitKey = options.key
+  const wizardKey = resolveWizardKey(explicitKey)
+  // The handle's parameterized return type narrows `currentStep` /
+  // `activeForm` to non-undefined when the steps tuple is statically
+  // safe (see `StaticallyNonEmpty` in types-wizard.ts). The runtime
+  // can't observe the tuple shape, so the active-position getters
+  // cast through `CurrentStepOf<S>` / `ActiveFormOf<S>`. The cast is
+  // sound: when `S` passes the static-safety predicate, the compiled
+  // step list is guaranteed non-empty (only Form and string slots
+  // preserve their positions; function / lazy slots are precluded by
+  // the predicate), so the getters never observe the degenerate
+  // `undefined` branch in that case.
+  const handle: UseWizardReturnType<S> = {
     key: wizardKey,
     next,
     back,
     goTo,
     handleSubmit,
     reset,
-    get currentStep(): FormKey {
-      return currentStep.value
+    get currentStep(): CurrentStepOf<S> {
+      return currentStep.value as CurrentStepOf<S>
     },
-    get activeForm(): AnyForm {
-      return activeForm.value
+    get activeForm(): ActiveFormOf<S> {
+      return activeForm.value as ActiveFormOf<S>
     },
     get activeIndex(): number {
       return activeIndex.value
@@ -998,8 +1148,8 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     get steps(): ReadonlyArray<CompiledStep> {
       return compiledSteps.value
     },
-    get forms(): Readonly<Record<FormKey, AnyForm>> {
-      return formsRecord.value
+    get forms(): WizardForms<S> {
+      return formsRecord.value as unknown as WizardForms<S>
     },
     get count(): number {
       return count.value
@@ -1023,6 +1173,9 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
     get complete(): boolean {
       return complete.value
     },
+    get done(): boolean {
+      return done.value
+    },
     get submitting(): boolean {
       return submitting.value
     },
@@ -1035,26 +1188,91 @@ export function useWizard(options: WizardOptions): UseWizardReturnType {
   }
 
   // Registry registration + ambient provide --------------------------
-  if (wizardKey !== undefined) {
-    const existing = registry.wizards.get(wizardKey)
-    if (existing === undefined) {
-      registry.wizards.set(wizardKey, handle)
-    } else if (__DEV__) {
-      console.warn(
-        `[attaform] useWizard({ key: "${wizardKey}" }): a wizard with this key is already registered. Keeping the existing handle. Pass a unique key to each useWizard call, or share the original handle via injectWizard("${wizardKey}").`
-      )
-    }
-    if (getCurrentScope() !== undefined) {
-      const releaseWizard = registry.trackWizardConsumer(wizardKey)
-      onScopeDispose(releaseWizard)
-    }
+  //
+  // Every wizard (explicit or synthetic key) lands in the registry so
+  // SSR hydration, DevTools labels, and the consumer-counted lifetime
+  // story all work uniformly. The explicit-collision warning fires
+  // only when the consumer chose the colliding key — two synthetic
+  // keys can't collide (each setup-context `useId()` call returns a
+  // tree-position-stable distinct id; outside setup the module-local
+  // counter increments).
+  const existing = registry.wizards.get(wizardKey)
+  if (existing === undefined) {
+    registry.wizards.set(wizardKey, handle)
+  } else if (__DEV__ && explicitKey !== undefined) {
+    console.warn(
+      `[attaform] useWizard({ key: "${wizardKey}" }): a wizard with this key is already registered. Keeping the existing handle. Pass a unique key to each useWizard call, or share the original handle via injectWizard("${wizardKey}").`
+    )
+  }
+  if (getCurrentScope() !== undefined) {
+    const releaseWizard = registry.trackWizardConsumer(wizardKey)
+    onScopeDispose(releaseWizard)
   }
 
-  if (getCurrentInstance() !== null) {
+  // Anonymous wizards fill the ambient slot for descendant
+  // `injectWizard()` calls; keyed wizards stay registry-only, so
+  // explicit / ambient resolution stays disjoint (mirrors `useForm`).
+  if (getCurrentInstance() !== null && explicitKey === undefined) {
+    recordAmbientWizardProvide(registry.ssr)
     provide(kAttaformAncestorWizard, handle)
   }
 
   return handle
+}
+
+/**
+ * Module-local counter for the "no Vue instance in scope" fallback
+ * (tests, raw composable calls outside setup). Collisions with
+ * consumer-supplied keys are impossible because the synthetic prefix
+ * lives inside the reserved `__atta:` namespace and consumer keys
+ * starting with `__atta:` are rejected by `useAbstractForm`. Inside
+ * setup the wizard reaches for `useId()` instead, which is
+ * SSR-stable across the server / hydration boundary.
+ */
+let anonWizardCounter = 0
+
+/**
+ * Tracks which parent Vue component instances have already run an
+ * anonymous-wizard ambient provide. Dev-only; `null` in production so
+ * the WeakMap allocation tree-shakes out. Exported so `injectWizard()`
+ * (no key) can walk the parent chain and warn lazily when a single
+ * parent registered more than one anonymous `useWizard()`, since Vue's
+ * `provide` is last-write-wins. Mirrors `ambientProvideHistory` on the
+ * form side.
+ */
+export const ambientWizardProvideHistory: WeakMap<object, AmbientProvideEntry[]> | null = __DEV__
+  ? new WeakMap<object, AmbientProvideEntry[]>()
+  : null
+
+function recordAmbientWizardProvide(ssr: boolean): void {
+  if (!__DEV__ || ssr || ambientWizardProvideHistory === null) return
+  const instance = getCurrentInstance()
+  if (instance === null) return
+  const instanceKey = instance as unknown as object
+  const entry: AmbientProvideEntry = {
+    source: captureUserCallSite(),
+  }
+  const existing = ambientWizardProvideHistory.get(instanceKey)
+  if (existing === undefined) {
+    ambientWizardProvideHistory.set(instanceKey, [entry])
+    return
+  }
+  existing.push(entry)
+}
+
+/**
+ * Resolve `options.key` into a concrete wizard key. Explicit keys
+ * pass through; empty / nullish keys are allocated under the
+ * `__atta:anon-wizard:` prefix. Mirrors `resolveFormKey` in
+ * `use-abstract-form.ts` so anonymous wizards get the same SSR
+ * hydration story anonymous forms do.
+ */
+function resolveWizardKey(key: string | undefined): string {
+  if (key !== undefined && key !== null && key !== '') return key
+  if (getCurrentInstance() !== null) {
+    return `${ANONYMOUS_WIZARD_KEY_PREFIX}${useId()}`
+  }
+  return `${ANONYMOUS_WIZARD_KEY_PREFIX}${anonWizardCounter++}`
 }
 
 /** Best-effort discriminator for the `AnyForm` arm of `StepSlot`. Forms

@@ -1,8 +1,14 @@
 <script setup lang="ts">
+  // Lightweight starter seed. The homepage REPL keeps the full shipment
+  // demo for its hero showcase; this page hands new visitors a minimal
+  // username/password form (~30 lines of script) so the first thing
+  // they see is something tractable to start editing.
+  import blankStarterSource from '~/repl-demos/blank-starter.vue?raw'
+
   useHead({ title: 'Blank playground' })
   useSeoMeta({
     description:
-      'A blank-slate Attaform playground — start from the shipment demo and edit a real form in your browser.',
+      'A blank-slate Attaform playground. Start from a minimal username/password form and edit anything in your browser.',
   })
 </script>
 
@@ -39,11 +45,11 @@
             Errors update synchronously by default.
           </p>
           <p class="mt-3 text-sm text-fg-subtle">
-            Looking for a specific demo? See the
-            <NuxtLink to="/play" class="text-accent hover:underline">playground index</NuxtLink>.
+            Looking for a specific demo? See
+            <NuxtLink to="/demos" class="text-accent hover:underline">all demos</NuxtLink>.
           </p>
         </div>
-        <DemoRepl height="calc(100vh - 20rem)" />
+        <DemoRepl height="calc(100vh - 20rem)" :initial-source="blankStarterSource" />
       </div>
     </UiContainer>
   </div>

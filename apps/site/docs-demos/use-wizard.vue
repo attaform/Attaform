@@ -123,7 +123,7 @@
       </button>
     </div>
 
-    <div v-if="wizard.complete" class="success-card" role="status">
+    <div v-if="wizard.done" class="success-card" role="status">
       ✓ Submission sent. Edit any field to revise.
     </div>
 

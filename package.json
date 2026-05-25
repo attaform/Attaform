@@ -130,9 +130,6 @@
       "vue-demi"
     ]
   },
-  "dependencies": {
-    "magic-string": "^0.30.21"
-  },
   "devDependencies": {
     "@commitlint/cli": "^21.0.1",
     "@commitlint/config-conventional": "^21.0.1",

@@ -13,10 +13,6 @@ overrides:
 importers:
 
   .:
-    dependencies:
-      magic-string:
-        specifier: ^0.30.21
-        version: 0.30.21
     devDependencies:
       '@commitlint/cli':
         specifier: ^21.0.1

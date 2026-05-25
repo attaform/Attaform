@@ -19,7 +19,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-`shouldShowErrors` is the predicate that decides whether a path's error should appear in the UI. The library default holds back until the user has actually interacted with a field, so a fresh-page form doesn't open with every required field already complaining.
+`shouldShowErrors` is the predicate that decides whether a path's error should appear in the UI. Attaform's default predicate holds back until the user has actually interacted with a field, so a fresh-page form doesn't open with every required field already complaining.
 
 ## The default predicate
 
@@ -52,8 +52,8 @@ The not-focused half hides transient errors while the user is actively editing t
 Until one of the timing conditions holds, `field.showErrors` returns `false` even when `errors.<path>` has a value. Your template branches on the predicate-resolved boolean:
 
 ```vue
-<input v-register="register('email')" />
-<p v-if="fields.email.showErrors">{{ fields.email.firstError?.message }}</p>
+<input v-register="form.register('email')" />
+<p v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</p>
 ```
 
 ## Override per form
@@ -71,7 +71,7 @@ Boolean shortcuts work too: `shouldShowErrors: true` always shows when errors ex
 
 ## Compose with the default
 
-Adopter predicates can layer on top of the library default. Defer to `defaultShouldShowErrors` for the common case and special-case only the paths you care about:
+Adopter predicates can layer on top of `defaultShouldShowErrors`. Defer to it for the common case and special-case only the paths you care about:
 
 ```ts
 import { defaultShouldShowErrors } from 'attaform'

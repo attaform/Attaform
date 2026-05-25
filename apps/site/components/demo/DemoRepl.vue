@@ -33,6 +33,10 @@
       // store seeds all entries verbatim; the file at `src/App.vue`
       // is the entry point.
       initialFiles?: Record<string, string>
+      // Slug of the loaded docs-demo. Forwarded to `<DemoReplEditor>`
+      // so the iframe's `<body>` picks up the matching `data-demo`
+      // attribute and the lifted demo styles apply to the preview.
+      demoSlug?: string
     }>(),
     { height: '37.5rem' }
   )
@@ -122,6 +126,7 @@
         v-if="showEditor"
         :initial-source="props.initialSource"
         :initial-files="props.initialFiles"
+        :demo-slug="props.demoSlug"
       />
     </div>
   </div>

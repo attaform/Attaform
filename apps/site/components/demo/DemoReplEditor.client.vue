@@ -16,6 +16,13 @@
   // an `apps/site/docs-demos/<slug>.vue` source string, so the same
   // editor chrome reads from a different starting point per route.
   import shipmentDemoSource from '~/repl-demos/shipment-demo.vue?raw'
+  // Demo styles live in the static CSS bundle (per the FOUC fix that
+  // lifted them out of each SFC's `<style scoped>` block), scoped
+  // under `[data-demo='<slug>']`. The REPL's preview is a sandboxed
+  // iframe that doesn't inherit the parent's stylesheets, so we ship
+  // the same CSS into the iframe at boot time and stamp `data-demo`
+  // on its `<body>` for the rules to match.
+  import docsDemosCss from '~/assets/css/docs-demos.css?raw'
 
   const props = withDefaults(
     defineProps<{
@@ -24,6 +31,13 @@
       // Wins over `initialSource` when present. The entry point must
       // be at `src/App.vue` (matches @vue/repl's default mainFile).
       initialFiles?: Record<string, string>
+      // Slug of the demo loaded into the editor. Drives the
+      // `data-demo` attribute on the iframe's body so the lifted
+      // demo styles reach the rendered preview. Undefined for the
+      // freeform `/demos/blank` and `/demos/shipment` playgrounds —
+      // they ship without docs-demo styling and rely on their own
+      // inline source.
+      demoSlug?: string
     }>(),
     { initialSource: () => shipmentDemoSource }
   )
@@ -176,10 +190,28 @@
       window.toast = t;
     } catch {}
   `
+  // CSS injection for the playground iframe. When the editor is
+  // rendering a docs-demo (`demoSlug` is set), stamp `data-demo` on
+  // the iframe body and inject the lifted demo stylesheet so the
+  // preview matches what the inline `<DocsDemo>` renders in-page.
+  // Skipped for the freeform `/demos/blank` and `/demos/shipment`
+  // playgrounds (they have no slug and don't carry docs-demo
+  // styling).
+  const DOCS_DEMO_STYLE_SHIM = props.demoSlug
+    ? `
+      try {
+        document.body.setAttribute('data-demo', ${JSON.stringify(props.demoSlug)});
+        const style = document.createElement('style');
+        style.textContent = ${JSON.stringify(docsDemosCss)};
+        document.head.appendChild(style);
+      } catch {}
+    `
+    : ''
+
   const previewOptions = {
     customCode: {
       importCode: `import { createAttaform } from 'attaform'`,
-      useCode: `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())`,
+      useCode: `${TOAST_SHIM_SOURCE}\n${DOCS_DEMO_STYLE_SHIM}\napp.use(createAttaform())`,
     },
   }
 

@@ -203,7 +203,7 @@ A keyboard shortcut bound to the active step:
 
 `wizard.activeForm` is identity-equal to the form in `wizard.forms[wizard.currentStep]`, so undo / redo dispatches to the right chain.
 
-Each step's history is independent: undoing on the `cargo` step doesn't retreat changes the user made on `billing`. That matches the user's mental model — "undo what I just typed here," not "undo the entire flow."
+Each step's history is independent: undoing on the `cargo` step doesn't retreat changes the user made on `billing`. That matches the user's mental model: "undo what I just typed here," not "undo the entire flow."
 
 ## Cross-component access
 

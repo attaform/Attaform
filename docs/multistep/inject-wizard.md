@@ -181,7 +181,7 @@ Both resolution modes ref-count the wizard handle in the registry. In practice:
 - Cleanup is automatic; no explicit dispose call from the consumer.
 - A wizard accessed only by `injectWizard(key)` stays alive as long as at least one consumer is mounted, even if the parent `useWizard` owner unmounted first.
 
-Hot-module reload reuses the existing handle when the parent SFC re-mounts (deferred-eviction-cancel within the same microtask). Child `injectWizard` consumers see the same wizard reactive surface they had before, not a freshly created one. Useful for stepping through the live demo on `localhost:3000` without losing the rail's pre-filled state every save.
+Hot-module reload reuses the existing handle when the parent SFC re-mounts (deferred-eviction-cancel within the same microtask). Child `injectWizard` consumers see the same wizard reactive surface they had before, not a freshly created one, so a rail's pre-filled state survives every save.
 
 ## Duplicate keys
 

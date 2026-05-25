@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { codeToHtml } from 'shiki'
+  import { codeToHast } from 'shiki'
   import {
     ShieldCheck,
     Zap,
@@ -73,8 +73,12 @@
     '})',
   ].join('\n')
 
+  // Shiki's `codeToHast` returns the syntax-highlight AST. Pairing
+  // it with `<AppHighlighted />` lets us render through Vue's normal
+  // vnode pipeline instead of `v-html` — same visual result, no
+  // raw-HTML directive, full SSR support.
   const highlight = (source: string, lang: 'vue' | 'ts') =>
-    codeToHtml(source, {
+    codeToHast(source, {
       lang,
       themes: { light: 'github-light', dark: 'github-dark' },
       defaultColor: false,
@@ -91,14 +95,14 @@
     return { signup, lineOne, lineTwo, lineThree, wizard }
   })
 
-  const signupSnippetHtml = computed(() => highlightedSnippets.value?.signup ?? '')
-  const wizardSnippetHtml = computed(() => highlightedSnippets.value?.wizard ?? '')
-  const registerLineHtml = (key: 'lineOne' | 'lineTwo' | 'lineThree') =>
-    computed(() => highlightedSnippets.value?.[key] ?? '')
+  const signupSnippetTree = computed(() => highlightedSnippets.value?.signup ?? null)
+  const wizardSnippetTree = computed(() => highlightedSnippets.value?.wizard ?? null)
+  const registerLineTree = (key: 'lineOne' | 'lineTwo' | 'lineThree') =>
+    computed(() => highlightedSnippets.value?.[key] ?? null)
 
-  const registerLineOneHtml = registerLineHtml('lineOne')
-  const registerLineTwoHtml = registerLineHtml('lineTwo')
-  const registerLineThreeHtml = registerLineHtml('lineThree')
+  const registerLineOneTree = registerLineTree('lineOne')
+  const registerLineTwoTree = registerLineTree('lineTwo')
+  const registerLineThreeTree = registerLineTree('lineThree')
 
   // Schema.org SoftwareApplication entry — the canonical structured-
   // data shape for a developer library / dev-tool. Eligible for
@@ -362,14 +366,20 @@
 
         <ol class="mt-12 space-y-8">
           <li>
-            <div class="homepage-shiki homepage-shiki--inline" v-html="registerLineOneHtml" />
+            <AppHighlighted
+              class="homepage-shiki homepage-shiki--inline"
+              :tree="registerLineOneTree"
+            />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
               Typed two-way binding to <UiInlineCode>form.values.email</UiInlineCode>, with
               schema-driven coercion at the directive layer.
             </p>
           </li>
           <li>
-            <div class="homepage-shiki homepage-shiki--inline" v-html="registerLineTwoHtml" />
+            <AppHighlighted
+              class="homepage-shiki homepage-shiki--inline"
+              :tree="registerLineTwoTree"
+            />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
               Same line. The field now writes through to the form's persistence backend on every
               keystroke, with the sensitive-name guard catching accidental
@@ -377,7 +387,10 @@
             </p>
           </li>
           <li>
-            <div class="homepage-shiki homepage-shiki--inline" v-html="registerLineThreeHtml" />
+            <AppHighlighted
+              class="homepage-shiki homepage-shiki--inline"
+              :tree="registerLineThreeTree"
+            />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
               Same line. Add a sync DOM-input transform, opt out of multi-tab sync, all without
               touching the markup elsewhere on the page.
@@ -417,7 +430,7 @@
         <!-- Shiki injects inline styles for both light and dark
              themes; the `homepage-shiki` wrapper toggles between
              them via the dark-mode class on <html>. -->
-        <div class="homepage-shiki mt-10" v-html="signupSnippetHtml" />
+        <AppHighlighted class="homepage-shiki mt-10" :tree="signupSnippetTree" />
       </UiContainer>
     </section>
 
@@ -555,7 +568,7 @@
               </UiButton>
             </div>
           </div>
-          <div class="homepage-shiki" v-html="wizardSnippetHtml" />
+          <AppHighlighted class="homepage-shiki" :tree="wizardSnippetTree" />
         </div>
       </UiContainer>
     </section>

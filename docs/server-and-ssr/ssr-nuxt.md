@@ -1,6 +1,6 @@
 ---
-title: SSR hydration — Nuxt
-description: Server-rendered Vue 3 forms round-trip values, errors, and field flags to the client automatically via attaform/nuxt — no hydration flicker, no manual wiring.
+title: 'SSR hydration: Nuxt'
+description: Server-rendered Vue 3 forms round-trip values, errors, and field flags to the client automatically via attaform/nuxt. No hydration flicker, no manual wiring.
 metaRows:
   - label: Category
     value: Integration
@@ -13,14 +13,14 @@ metaRows:
     value: values · errors · field flags
 ---
 
-# SSR hydration — Nuxt
+# SSR hydration: Nuxt
 
-> The fastest path to server-rendered form values that don't flicker on hydrate — install the module, write `useForm` normally, and the round-trip wires itself.
+> The fastest path to server-rendered form values that don't flicker on hydrate. Install the module, write `useForm` normally, and the round-trip wires itself.
 
 ::docs-meta-table
 ::
 
-This page is code-only — SSR happens at the server runtime; the docs site can't demo a hydration round-trip without bootstrapping a separate server. The setup is small enough to verify in your own Nuxt project; see [SSR hydration — bare Vue](/docs/server-and-ssr/ssr-bare-vue) for the equivalent without the Nuxt convenience.
+This page is code-only; SSR happens at the server runtime, and the docs site can't demo a hydration round-trip without bootstrapping a separate server. The setup is small enough to verify in your own Nuxt project; see [SSR hydration: bare Vue](/docs/server-and-ssr/ssr-bare-vue) for the equivalent without the Nuxt convenience.
 
 ## Nothing to wire
 
@@ -50,29 +50,25 @@ That's the whole setup. Values, errors, and field interaction flags (touched / f
 | `history` chain            | ❌           | Each tab walks its own undo timeline.                                   |
 | Validation in-flight state | ❌           | Re-runs locally on the client.                                          |
 
-The client-side form is identical to the server one — no second round of validation kicks in unless the user interacts.
+The client-side form is identical to the server one; no second round of validation kicks in unless the user interacts.
 
 ## Auto-imports
 
-The Nuxt module auto-imports `useForm`, `injectForm`, `useWizard`, and `useRegister` globally — no `import` statement needed in `<script setup>`:
+The Nuxt module auto-imports `useForm` from the unified entry point. No `import` statement needed in `<script setup>`:
 
 ```vue
 <script setup lang="ts">
-  // Both auto-imported by the module
   const form = useForm({ schema, key: 'signup' })
-  const child = injectForm<Form>('signup')
 </script>
 ```
 
-Auto-import is a Nuxt convention; disable it via the module config if you prefer explicit imports:
+For the Zod-typed wrapper (`useForm` from `attaform/zod`), or for any other helper (`injectForm`, `useWizard`, `useRegister`, `parseApiErrors`, `unset`, `defaultShouldShowErrors`), import explicitly:
 
-```ts
-export default defineNuxtConfig({
-  modules: ['attaform/nuxt'],
-  attaform: {
-    autoImports: false,
-  },
-})
+```vue
+<script setup lang="ts">
+  import { injectForm, useWizard } from 'attaform/zod'
+  import { parseApiErrors } from 'attaform'
+</script>
 ```
 
 ## App-wide defaults under Nuxt
@@ -98,7 +94,7 @@ See [App-wide defaults](/docs/cross-cutting-state/app-defaults) for the full opt
 
 ### "The form is empty on the client even though the server rendered values."
 
-- Does the form's `key` match between server and client? Hard-code it as a string literal — `uuidv4()` or `Math.random()` produces a fresh key per render and breaks the round-trip lookup.
+- Does the form's `key` match between server and client? Hard-code it as a string literal; `uuidv4()` or `Math.random()` produces a fresh key per render and breaks the round-trip lookup.
 - Was the form created in `setup`? Forms created in `onMounted` or event handlers aren't in the SSR snapshot.
 
 ### "Field errors from the server disappear on first interaction."
@@ -117,10 +113,10 @@ Forms created in `onMounted` or event handlers aren't in the SSR snapshot. Creat
 
 ## DevTools panel
 
-The Nuxt module auto-wires the [Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel) into the Nuxt DevTools sidebar. The panel inspects every registered form including the SSR-rendered ones — useful for confirming the server-rendered shape matches your expectation before the user touches anything.
+The Nuxt module auto-wires the [Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel) into the Nuxt DevTools sidebar. The panel inspects every registered form including the SSR-rendered ones, useful for confirming the server-rendered shape matches your expectation before the user touches anything.
 
 ## Where to next
 
-- [SSR hydration — bare Vue](/docs/server-and-ssr/ssr-bare-vue) — the same round-trip without the Nuxt module, when you're not on Nuxt.
-- [Persistence overview](/docs/persistence/overview) — different problem (durable drafts vs. one-time SSR snapshot), composable with SSR.
-- [Performance](/docs/server-and-ssr/performance) — what SSR hydration costs in practice.
+- [SSR hydration: bare Vue](/docs/server-and-ssr/ssr-bare-vue): the same round-trip without the Nuxt module, when you're not on Nuxt.
+- [Persistence overview](/docs/persistence/overview): different problem (durable drafts vs. one-time SSR snapshot), composable with SSR.
+- [Performance](/docs/server-and-ssr/performance): what SSR hydration costs in practice.

@@ -109,7 +109,7 @@ The runtime treats `Map` as a leaf container; `form.values.scoresByUser` returns
 - You need `Map`-specific semantics: insertion order, key types beyond strings, or `.size` as an O(1) read.
 - The form persists to `'indexeddb'` and you want structured-clone fidelity. `JSON.stringify` flattens a `Map` to `{}`; structured clone preserves it.
 
-Records are the right call for serialisation-friendly dictionaries; maps are right when you need the primitive.
+Records are the right call for serialization-friendly dictionaries; maps are right when you need the primitive.
 
 ## Iterating in templates
 
@@ -150,7 +150,7 @@ The aggregate `form.meta.errors` flattens every entry's errors into one list, in
 
 ## When to pick which
 
-- **`z.record(z.string(), V)`**: string-keyed dictionaries serialised as JSON. The default choice.
+- **`z.record(z.string(), V)`**: string-keyed dictionaries serialized as JSON. The default choice.
 - **`z.record(z.enum([...]), V)`**: keys constrained to a small set. Compile-time autocomplete on the keys.
 - **`z.map(K, V)`**: when you need `Map`'s insertion order, non-string keys, or structured-clone fidelity for IndexedDB persistence.
 - **`z.object({ … })`**: when the keys are fixed and known at schema-write time. Records are for the dynamic case.

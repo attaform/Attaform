@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+Attaform now ships with **zero runtime dependencies**. The
+SSR-accessed SFC transform that pulled in `magic-string` now
+uses a small in-file helper, with the same rewrites and no
+third-party install.
 
 ## v0.18.0
 Multistep flows (`useWizard` + `injectWizard`), a Nuxt DevTools

@@ -147,9 +147,10 @@
             class="reveal-step max-w-2xl text-lg text-balance text-fg-muted"
             style="--reveal-step-delay: 140ms"
           >
-            Vue and Nuxt devs deserve nice things, too. Hand a Zod schema to
-            <UiInlineCode>useForm</UiInlineCode> and Attaform turns it into a reactive form, typed
-            end-to-end, with live errors and SSR out of the box. Live your best life.
+            Hand a Zod schema to <UiInlineCode>useForm</UiInlineCode> and Attaform turns it into a
+            reactive form, typed end-to-end, with live errors and SSR out of the box. The same
+            composables carry a one-field signup or a multistep checkout. Because Vue and Nuxt devs
+            deserve nice things, too.
           </p>
 
           <div class="reveal-step flex flex-wrap gap-3" style="--reveal-step-delay: 180ms">
@@ -185,35 +186,173 @@
     </section>
 
     <!-- ─── Pitch ────────────────────────────────────────────────
-         Two paired principle blocks between the hero and the
-         feature grid. No section eyebrow: the hinge wants to read
-         as confident assertion, not "here begins another section".
-         The schema-first thesis lands on the left; the v-register
-         payoff lands on the right, setting up the directive
-         showcase that follows. -->
+         Three principle blocks between the hero and the feature
+         grid. No section eyebrow: the hinge wants to read as
+         confident assertion, not "here begins another section".
+         Schema-first thesis (left), v-register payoff (middle),
+         scale story (right). Wraps to 2 + 1 at md so the scale
+         block gets a solo row at the tablet breakpoint. -->
     <section class="border-b border-border bg-surface/30 py-20 md:py-24">
       <UiContainer size="xl">
-        <div class="grid gap-10 md:grid-cols-2 md:gap-x-16">
+        <div class="grid gap-10 md:grid-cols-2 md:gap-x-12 lg:grid-cols-3">
           <div>
-            <h2 class="text-2xl font-semibold tracking-tight text-balance text-fg sm:text-3xl">
+            <h2 class="text-xl font-semibold tracking-tight text-balance text-fg sm:text-2xl">
               Schema in, form out.
             </h2>
-            <p class="mt-4 text-base text-fg-muted sm:text-lg">
+            <p class="mt-3 text-base text-fg-muted">
               One Zod schema is the source of truth for types, defaults, validation, errors, and
               metadata. Define it once. Every reactive surface inherits.
             </p>
           </div>
           <div>
-            <h2 class="text-2xl font-semibold tracking-tight text-balance text-fg sm:text-3xl">
+            <h2 class="text-xl font-semibold tracking-tight text-balance text-fg sm:text-2xl">
               One directive. The whole binding stack.
             </h2>
-            <p class="mt-4 text-base text-fg-muted sm:text-lg">
+            <p class="mt-3 text-base text-fg-muted">
               <UiInlineCode>v-register</UiInlineCode> is a Vue directive, not a wrapper component.
               One line on a native <UiInlineCode>&lt;input&gt;</UiInlineCode> opts that field into
-              typed binding, schema-driven coercion, persistence, multi-tab sync, and the
-              sensitive-name guard.
+              typed binding, coercion, persistence, multi-tab sync, and the sensitive-name guard.
             </p>
           </div>
+          <div>
+            <h2 class="text-xl font-semibold tracking-tight text-balance text-fg sm:text-2xl">
+              From tiny forms to multistep flows.
+            </h2>
+            <p class="mt-3 text-base text-fg-muted">
+              <UiInlineCode>useForm</UiInlineCode> handles a single-field signup.
+              <UiInlineCode>useWizard</UiInlineCode> composes those forms into a flow with shared
+              state, validation, and persistence. Same composables, all the way up.
+            </p>
+          </div>
+        </div>
+      </UiContainer>
+    </section>
+
+    <!-- ─── v-register showcase ──────────────────────────────────
+         Progressive disclosure on the directive itself. Three
+         single-line snippets stacked vertically; each adds one more
+         option to `register()` to demonstrate that the markup never
+         changes shape. The caption under each row points at what
+         the directive just gained. Concrete payoff: "v-register
+         scales by options, not by template surgery." -->
+    <section class="border-b border-border py-24">
+      <UiContainer size="xl">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold tracking-wide text-accent uppercase">The directive</p>
+          <h2 class="mt-3 text-display-md font-semibold tracking-tight text-fg">
+            One line on a native input.
+          </h2>
+          <p class="mt-4 text-lg text-fg-muted">
+            <UiInlineCode>v-register</UiInlineCode> stays on the same
+            <UiInlineCode>&lt;input&gt;</UiInlineCode>. Every option you add opts into another
+            runtime feature without touching the template. The markup never grows.
+          </p>
+        </div>
+
+        <ol class="mt-12 space-y-8">
+          <li>
+            <div
+              class="overflow-x-auto rounded-xl border border-border bg-surface-2/60 px-5 py-4 font-mono text-sm text-fg shadow-xs"
+            >
+              <code>&lt;input v-register="form.register('email')" /&gt;</code>
+            </div>
+            <p class="mt-3 max-w-3xl text-base text-fg-muted">
+              Typed two-way binding to <UiInlineCode>form.values.email</UiInlineCode>, with
+              schema-driven coercion at the directive layer.
+            </p>
+          </li>
+          <li>
+            <div
+              class="overflow-x-auto rounded-xl border border-border bg-surface-2/60 px-5 py-4 font-mono text-sm text-fg shadow-xs"
+            >
+              <code>&lt;input v-register="form.register('email', { persist: true })" /&gt;</code>
+            </div>
+            <p class="mt-3 max-w-3xl text-base text-fg-muted">
+              Same line. The field now writes through to the form's persistence backend on every
+              keystroke, with the sensitive-name guard catching accidental
+              <UiInlineCode>password</UiInlineCode>-style opt-ins before they reach storage.
+            </p>
+          </li>
+          <li>
+            <div
+              class="overflow-x-auto rounded-xl border border-border bg-surface-2/60 px-5 py-4 font-mono text-sm text-fg shadow-xs"
+            >
+              <code
+                >&lt;input v-register="form.register('email', { persist: true, transforms:
+                [lowercase], multiTab: false })" /&gt;</code
+              >
+            </div>
+            <p class="mt-3 max-w-3xl text-base text-fg-muted">
+              Same line. Add a sync DOM-input transform, opt out of multi-tab sync, all without
+              touching the markup elsewhere on the page.
+            </p>
+          </li>
+        </ol>
+
+        <div class="mt-10">
+          <UiButton to="/docs/binding-inputs/v-register" variant="link">
+            <span>Read the v-register reference</span>
+            <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
+          </UiButton>
+        </div>
+      </UiContainer>
+    </section>
+
+    <!-- ─── Canonical snippet ────────────────────────────────────
+         The full schema → form → bindings arc in one screenful.
+         Mirrors the README's quick-start example so a reader who
+         saw either surface gets the same shape. Click-to-copy on
+         the block; "Try it live" anchors down to the REPL section
+         below so the reader can immediately fork it. -->
+    <section class="border-b border-border bg-surface/30 py-24">
+      <UiContainer size="xl">
+        <div class="mb-10 flex flex-wrap items-end justify-between gap-6">
+          <div class="max-w-2xl">
+            <p class="text-sm font-semibold tracking-wide text-accent uppercase">End to end</p>
+            <h2 class="mt-3 text-display-md font-semibold tracking-tight text-fg">
+              From schema to submit.
+            </h2>
+            <p class="mt-4 text-lg text-fg-muted">
+              One schema, one <UiInlineCode>useForm</UiInlineCode> call, one form handle. Reactive
+              values, live errors, and a submit guard, all from the same source of truth.
+            </p>
+          </div>
+          <UiButton to="#live-editor" variant="link">
+            <span>Try it live</span>
+            <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
+          </UiButton>
+        </div>
+
+        <div class="overflow-hidden rounded-2xl border border-border-strong bg-bg shadow-lg">
+          <div
+            class="flex items-center justify-between border-b border-border bg-surface/40 px-3 py-2"
+          >
+            <span class="px-3 text-xs font-semibold text-fg">Signup.vue</span>
+          </div>
+          <pre
+            v-pre
+            class="overflow-x-auto px-6 py-6 font-mono text-sm leading-relaxed text-fg"
+          ><code>&lt;script setup lang="ts"&gt;
+import { z } from 'zod'
+import { useForm } from 'attaform/zod'
+
+const schema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+})
+
+const form = useForm({ schema, key: 'signup' })
+const onSubmit = form.handleSubmit((values) =&gt; api.signup(values))
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;form @submit.prevent="onSubmit"&gt;
+    &lt;input v-register="form.register('email')" /&gt;
+    &lt;p v-if="form.errors.email"&gt;{{ form.errors.email[0].message }}&lt;/p&gt;
+
+    &lt;button :disabled="form.meta.submitting"&gt;Sign up&lt;/button&gt;
+  &lt;/form&gt;
+&lt;/template&gt;</code></pre>
         </div>
       </UiContainer>
     </section>

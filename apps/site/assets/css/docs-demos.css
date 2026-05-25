@@ -4181,3 +4181,234 @@
     border: 1px solid #fcd34d;
   }
 }
+
+/* ─── inject-form (folder demo: App.vue + ProfileFieldset.vue + StatusPill.vue) ─── */
+/* The three SFCs all rendered into the same `data-demo='inject-form'`
+   subtree, with overlapping but identical-valued `label` / `input` /
+   `em` rules. Combined here without per-SFC scoping since the value
+   collisions resolve to the same styling either way. */
+[data-demo='inject-form'] {
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    max-width: 32rem;
+  }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  input {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+    font-family: inherit;
+  }
+  input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  em {
+    color: #dc2626;
+    font-size: 0.8125rem;
+    font-style: normal;
+    font-weight: 400;
+  }
+  .footer {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  button {
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover {
+    background: #1d4ed8;
+  }
+  code {
+    font-family: ui-monospace, monospace;
+    background: #f3f4f6;
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.25rem;
+  }
+  .hint {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+
+  /* From ProfileFieldset.vue */
+  fieldset {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  legend {
+    padding: 0 0.375rem;
+    font-size: 0.8125rem;
+    color: #6b7280;
+  }
+
+  /* From StatusPill.vue */
+  .pill {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+    font-family: ui-monospace, monospace;
+  }
+  .pill.ok {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #6ee7b7;
+  }
+  .pill.pending {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+  }
+}
+
+/* ─── use-register (folder demo: App.vue + FieldRow.vue) ─── */
+/* Cross-SFC class collision: both App.vue and FieldRow.vue define a
+   bare `.scope-tag` rule with different `left` offsets (parent badge
+   sits at left 0.75rem; child badge at 0.625rem). Disambiguating by
+   pinning each rule to its wrapper (`.parent-scope` / `.child-scope`)
+   so the child-inside-parent nesting doesn't blow specificity. */
+[data-demo='use-register'] {
+  /* From App.vue */
+  .parent-scope {
+    position: relative;
+    border: 1px dashed #93c5fd;
+    background: #eff6ff;
+    border-radius: 0.5rem;
+    padding: 2.25rem 1rem 1rem;
+    max-width: 28rem;
+  }
+  .parent-scope > .scope-tag {
+    position: absolute;
+    top: 0;
+    left: 0.75rem;
+    transform: translateY(-50%);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.075em;
+    text-transform: uppercase;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: ui-monospace, monospace;
+  }
+  .scope-tag--parent {
+    background: #2563eb;
+    color: #fff;
+  }
+  .lede {
+    margin: 0 0 1rem 0;
+    font-size: 0.8125rem;
+    color: #1e40af;
+    line-height: 1.5;
+  }
+  .lede code {
+    font-family: ui-monospace, monospace;
+    background: #dbeafe;
+    padding: 0.05rem 0.35rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    color: #1e3a8a;
+  }
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+  pre {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    color: #111827;
+    margin: 0;
+  }
+
+  /* From FieldRow.vue */
+  .child-scope {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border: 1px dashed #fcd34d;
+    background: #fffbeb;
+    border-radius: 0.5rem;
+    padding: 1.25rem 0.875rem 0.75rem;
+  }
+  .child-scope > .scope-tag {
+    position: absolute;
+    top: 0;
+    left: 0.625rem;
+    transform: translateY(-50%);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.075em;
+    text-transform: uppercase;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: ui-monospace, monospace;
+  }
+  .scope-tag--child {
+    background: #d97706;
+    color: #fff;
+  }
+  .field-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #78350f;
+  }
+  .field-input {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    font-size: 0.875rem;
+    font-weight: 400;
+  }
+  .field-input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+  }
+  .field-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #92400e;
+    margin-top: 0.125rem;
+  }
+  .field-tag-arrow {
+    color: #d97706;
+  }
+  .field-tag code {
+    font-family: ui-monospace, monospace;
+    background: #fef3c7;
+    padding: 0.05rem 0.4rem;
+    border-radius: 0.25rem;
+    color: #78350f;
+  }
+}

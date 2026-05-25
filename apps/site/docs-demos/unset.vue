@@ -33,7 +33,7 @@
       </label>
       <label>
         <span>Age</span>
-        <input type="number" v-register="form.register('profile.age')" />
+        <input v-register="form.register('profile.age')" type="number" />
       </label>
     </fieldset>
 

@@ -238,7 +238,6 @@
         userErrorCount: userEntries.length,
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('[attaform devtools] field-state lookup failed', { path, err })
       return null
     }
@@ -274,7 +273,7 @@
       // tripping over panel-vs-host Array constructors) so we don't
       // silently swallow them. Devtools-only path, so console.error is
       // appropriate.
-      // eslint-disable-next-line no-console
+
       console.error('[attaform devtools] edit failed', { rawPath, next, err })
     }
   }

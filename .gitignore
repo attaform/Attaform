@@ -61,6 +61,9 @@ coverage
 .nyc_output
 /.husky/_
 
+# ESLint
+.eslintcache
+
 # Claude Code (auto-memory + plan files; per-developer, not committed)
 .claude
 

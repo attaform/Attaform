@@ -49,7 +49,7 @@
     "version": "node scripts/promote-changelog.mjs && (node scripts/generate-release-notes.mjs || echo '[version] release-notes step failed; continuing') && git add CHANGELOG.md RELEASES.md",
     "prepare": "husky"
   },
-  "description": "A fully type-safe, schema-driven form library for Vue 3 that gives you superpowers.",
+  "description": "A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.",
   "author": "Oswald Chisala",
   "bugs": {
     "url": "https://github.com/attaform/attaform/issues"

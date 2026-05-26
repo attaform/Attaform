@@ -20,6 +20,22 @@ on:
         required: false
         default: ''
 
+# Workflow-level default: read-only. The `publish` job below upgrades
+# to `contents: write` + `id-token: write` for the version-bump commit
+# push + Trusted Publishing OIDC handshake. The `validate` job inherits
+# the workflow-level `contents: read`.
+permissions:
+  contents: read
+
+# Serialize publishes strictly. Two concurrent publishes would race on
+# the version-bump commit + tag and could leave the repo in a state
+# where main has the bump but the tag is missing (or vice versa). The
+# cost of `cancel-in-progress: false` is at most one queued workflow
+# run; the cost of overlapping publishes is a corrupted release.
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
 # Job topology — split into `validate` and `publish` to minimise the
 # attack surface of the privileged publish step:
 #
@@ -61,9 +77,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Drop GITHUB_TOKEN from .git/config after checkout. This job
+          # only runs `pnpm check` against the working tree; it never
+          # pushes or fetches a private ref. Keeping the token attached
+          # would be unnecessary ambient authority during the `pnpm
+          # install` install-script window.
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -89,11 +112,28 @@ jobs:
 
   publish:
     name: Publish
+    # Scoping to the `Production (NPM)` GitHub Environment buys three
+    # things on top of plain repo secrets:
+    #   1. Activity log: each publish shows up under repo →
+    #      Deployments, with timestamp + triggering user, so the npm-
+    #      release ledger lives in one obvious place.
+    #   2. Branch restriction: the environment's "Deployment branches
+    #      and tags" rules gate which refs can read GPG_PRIVATE_KEY +
+    #      GPG_PASSPHRASE. Restricted to `main` so a fork or feature-
+    #      branch copy of this workflow can't reach the signing
+    #      credentials.
+    #   3. Optional reviewer gate: the environment's "Required
+    #      reviewers" rule (configured in the repo's settings, NOT
+    #      here) can add a manual-approval click before each publish.
+    #      Currently disabled (solo maintainer; reviewer-required
+    #      would block self-deploys).
+    environment:
+      name: 'Production (NPM)'
     needs: [validate]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
+      contents: write # Push the version-bump commit + tag to protected `main` via `git push --follow-tags`. Read alone would 403 at the GitHub API layer.
+      id-token: write # Mint an ephemeral npm publish credential from this run's GitHub OIDC token under Trusted Publishing. No NPM_TOKEN secret is involved.
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -103,6 +143,12 @@ jobs:
           # `gh api .../generate-notes` and needs to resolve the prior
           # tag from `git tag --sort=-version:refname`.
           fetch-depth: 0
+          # Drop GITHUB_TOKEN from .git/config after checkout. The
+          # `Push version bump` step below wires `gh` as a credential
+          # helper via `gh auth setup-git` instead, so the token lives
+          # in env (retrieved on-demand by `gh auth git-credential`)
+          # rather than persisted in the working tree's git config.
+          persist-credentials: false
 
       - name: Calculate next version
         id: calculate-next-version
@@ -192,10 +238,17 @@ jobs:
           fi
 
       - name: Update version
-        run: echo "::notice title=Version::Publishing version ${{ steps.calculate-next-version.outputs.next_version }}"
+        env:
+          # Bind the step output into an env var so the `run:` block
+          # references it as an ordinary shell variable. Step outputs
+          # are not user-controllable, but env-binding eliminates the
+          # lower-confidence template-injection finding without leaving
+          # a suppression comment behind.
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+        run: echo "::notice title=Version::Publishing version $NEXT_VERSION"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -376,7 +429,17 @@ jobs:
 
       - name: Push version bump
         if: success()
-        run: git push --follow-tags
+        env:
+          # `gh auth setup-git` configures git to use the `gh` CLI as
+          # the credential helper for github.com. The helper calls
+          # `gh auth git-credential` on demand, which reads GH_TOKEN
+          # from env — the token never lands in the working tree's
+          # .git/config. Pairs with `persist-credentials: false` on
+          # the publish-job checkout above.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh auth setup-git
+          git push --follow-tags
 
       # Create the GitHub Release for the just-pushed tag. Runs AFTER
       # npm publish + git push so a release on
@@ -395,9 +458,26 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Bind workflow-dispatch inputs into env vars so the `run:`
+          # block below can reference them as ordinary shell variables.
+          # Direct `${{ github.event.inputs.* }}` interpolation inside a
+          # shell context lets an attacker-controlled input value expand
+          # into the runner's bash before quoting takes effect — the
+          # classic GitHub Actions template-injection pattern.
+          INPUT_DIST_TAG: ${{ github.event.inputs.dist_tag }}
+          INPUT_PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+          # Bind workflow-context values + step output the same way.
+          # github.server_url / .repository / .run_id are GitHub-set and
+          # not attacker-controllable, but env-binding eliminates the
+          # template-injection finding without leaving a suppression
+          # comment behind.
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.calculate-next-version.outputs.next_version }}"
+          VERSION="$NEXT_VERSION"
           TAG="v$VERSION"
 
           # Metadata harvested from the version-bump commit at HEAD.
@@ -407,13 +487,13 @@ jobs:
           COMMIT_AUTHOR_EMAIL=$(git log -1 --pretty=%ae HEAD)
           COMMIT_DATE_ISO=$(git log -1 --pretty=%aI HEAD)
           SHORT_SHA="${COMMIT_SHA:0:12}"
-          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+          REPO_URL="${GH_SERVER_URL}/${GH_REPOSITORY}"
 
           # Auto-generated PR-grouped notes — follows `.github/release.yml`
           # if present, otherwise GitHub's default categorisation.
           AUTO_NOTES=$(gh api \
             --method POST \
-            "/repos/${{ github.repository }}/releases/generate-notes" \
+            "/repos/${GH_REPOSITORY}/releases/generate-notes" \
             -f tag_name="$TAG" \
             --jq .body)
 
@@ -422,7 +502,7 @@ jobs:
             echo ""
             echo "- Commit: [\`$SHORT_SHA\`]($REPO_URL/commit/$COMMIT_SHA) — $COMMIT_TITLE"
             echo "- Author: **$COMMIT_AUTHOR_NAME** <$COMMIT_AUTHOR_EMAIL>"
-            echo "- Published via: [workflow run]($REPO_URL/actions/runs/${{ github.run_id }})"
+            echo "- Published via: [workflow run]($REPO_URL/actions/runs/${GH_RUN_ID})"
             echo "- npm: [\`attaform@$VERSION\`](https://www.npmjs.com/package/attaform/v/$VERSION)"
             echo ""
             echo "---"
@@ -439,13 +519,12 @@ jobs:
           # hotfixes (any non-empty, non-`latest` dist_tag) get neither
           # flag — they appear in the release list but don't claim
           # the "Latest" badge that the current major's release holds.
-          DIST_TAG_INPUT="${{ github.event.inputs.dist_tag }}"
-          if [ -n "$DIST_TAG_INPUT" ] && [ "$DIST_TAG_INPUT" != "latest" ]; then
+          if [ -n "${INPUT_DIST_TAG:-}" ] && [ "$INPUT_DIST_TAG" != "latest" ]; then
             gh release create "$TAG" \
               --title "$TAG" \
               --notes-file "$RUNNER_TEMP/release-body.md" \
               --verify-tag
-          elif [ -n "${{ github.event.inputs.prerelease_id }}" ]; then
+          elif [ -n "${INPUT_PRERELEASE_ID:-}" ]; then
             gh release create "$TAG" \
               --title "$TAG" \
               --notes-file "$RUNNER_TEMP/release-body.md" \

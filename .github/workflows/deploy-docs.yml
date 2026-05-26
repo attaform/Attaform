@@ -27,8 +27,22 @@ on:
         required: false
         default: ''
 
+# Workflow-level default: zero scopes. The `deploy` job below hits a
+# Vercel webhook with a secret — no GitHub API access is needed.
+permissions: {}
+
+# Serialize deploys; never cancel one mid-flight. The Vercel webhook is
+# fire-and-forget — once the POST returns, Vercel has the build queued
+# regardless of whether THIS workflow run continues. Cancelling a deploy
+# step that's already POSTed would just lose the run-summary write,
+# not the deploy itself.
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    name: Deploy to Vercel production
     runs-on: ubuntu-latest
     # Scoping to the `Production (Docs)` GitHub Environment buys three
     # things on top of a plain repo secret:
@@ -64,7 +78,16 @@ jobs:
       # after Vercel builds, so we surface the dashboard link instead.
       - name: Trigger Vercel production deploy
         env:
+          # Bind workflow-context values into env vars rather than
+          # interpolating `${{ ... }}` directly into the shell script
+          # below. Without this binding, an actor or input value
+          # containing shell metacharacters would be expanded into the
+          # runner's bash before bash parses it, opening a command-
+          # injection path. The env-binding makes the values ordinary
+          # shell variables that quoting protects.
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+          TRIGGERED_BY: ${{ github.actor }}
+          DEPLOY_REASON: ${{ github.event.inputs.reason }}
         run: |
           set -euo pipefail
           if [ -z "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
@@ -76,9 +99,9 @@ jobs:
           {
             echo "### Vercel deploy queued"
             echo ""
-            echo "Triggered by: @${{ github.actor }}"
-            if [ -n "${{ github.event.inputs.reason }}" ]; then
-              echo "Reason: ${{ github.event.inputs.reason }}"
+            echo "Triggered by: @${TRIGGERED_BY}"
+            if [ -n "${DEPLOY_REASON:-}" ]; then
+              echo "Reason: ${DEPLOY_REASON}"
             fi
             echo ""
             echo "Hook response:"

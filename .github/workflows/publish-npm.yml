@@ -126,13 +126,12 @@ jobs:
           # `gh api .../generate-notes` and needs to resolve the prior
           # tag from `git tag --sort=-version:refname`.
           fetch-depth: 0
-          # Keep the GITHUB_TOKEN attached to .git/config so the
-          # `git push --follow-tags` step below can authenticate
-          # against the protected `main` branch. The publish job is
-          # `workflow_dispatch`-only (maintainer-restricted) and the
-          # token's scope here is the explicit `contents: write` job
-          # permission above, so the ambient authority is bounded.
-          persist-credentials: true
+          # Drop GITHUB_TOKEN from .git/config after checkout. The
+          # `Push version bump` step below wires `gh` as a credential
+          # helper via `gh auth setup-git` instead, so the token lives
+          # in env (retrieved on-demand by `gh auth git-credential`)
+          # rather than persisted in the working tree's git config.
+          persist-credentials: false
 
       - name: Calculate next version
         id: calculate-next-version
@@ -413,7 +412,17 @@ jobs:
 
       - name: Push version bump
         if: success()
-        run: git push --follow-tags
+        env:
+          # `gh auth setup-git` configures git to use the `gh` CLI as
+          # the credential helper for github.com. The helper calls
+          # `gh auth git-credential` on demand, which reads GH_TOKEN
+          # from env — the token never lands in the working tree's
+          # .git/config. Pairs with `persist-credentials: false` on
+          # the publish-job checkout above.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh auth setup-git
+          git push --follow-tags
 
       # Create the GitHub Release for the just-pushed tag. Runs AFTER
       # npm publish + git push so a release on

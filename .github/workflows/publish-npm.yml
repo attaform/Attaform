@@ -112,6 +112,23 @@ jobs:
 
   publish:
     name: Publish
+    # Scoping to the `Production (NPM)` GitHub Environment buys three
+    # things on top of plain repo secrets:
+    #   1. Activity log: each publish shows up under repo →
+    #      Deployments, with timestamp + triggering user, so the npm-
+    #      release ledger lives in one obvious place.
+    #   2. Branch restriction: the environment's "Deployment branches
+    #      and tags" rules gate which refs can read GPG_PRIVATE_KEY +
+    #      GPG_PASSPHRASE. Restricted to `main` so a fork or feature-
+    #      branch copy of this workflow can't reach the signing
+    #      credentials.
+    #   3. Optional reviewer gate: the environment's "Required
+    #      reviewers" rule (configured in the repo's settings, NOT
+    #      here) can add a manual-approval click before each publish.
+    #      Currently disabled (solo maintainer; reviewer-required
+    #      would block self-deploys).
+    environment:
+      name: 'Production (NPM)'
     needs: [validate]
     runs-on: ubuntu-latest
     permissions:

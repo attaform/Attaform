@@ -395,6 +395,14 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Bind workflow-dispatch inputs into env vars so the `run:`
+          # block below can reference them as ordinary shell variables.
+          # Direct `${{ github.event.inputs.* }}` interpolation inside a
+          # shell context lets an attacker-controlled input value expand
+          # into the runner's bash before quoting takes effect — the
+          # classic GitHub Actions template-injection pattern.
+          INPUT_DIST_TAG: ${{ github.event.inputs.dist_tag }}
+          INPUT_PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.calculate-next-version.outputs.next_version }}"
@@ -439,13 +447,12 @@ jobs:
           # hotfixes (any non-empty, non-`latest` dist_tag) get neither
           # flag — they appear in the release list but don't claim
           # the "Latest" badge that the current major's release holds.
-          DIST_TAG_INPUT="${{ github.event.inputs.dist_tag }}"
-          if [ -n "$DIST_TAG_INPUT" ] && [ "$DIST_TAG_INPUT" != "latest" ]; then
+          if [ -n "${INPUT_DIST_TAG:-}" ] && [ "$INPUT_DIST_TAG" != "latest" ]; then
             gh release create "$TAG" \
               --title "$TAG" \
               --notes-file "$RUNNER_TEMP/release-body.md" \
               --verify-tag
-          elif [ -n "${{ github.event.inputs.prerelease_id }}" ]; then
+          elif [ -n "${INPUT_PRERELEASE_ID:-}" ]; then
             gh release create "$TAG" \
               --title "$TAG" \
               --notes-file "$RUNNER_TEMP/release-body.md" \

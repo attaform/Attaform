@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+Supply-chain hardening across the publish pipeline. Attaform's npm
+tarballs ship with OIDC Trusted Publishing + SLSA provenance,
+branch-restricted GPG signing through a dedicated GitHub Environment,
+env-bound secrets and context vars throughout, and a scoped-install
+publish job whose dependency surface is just the published package
+itself. Workflow security lint (`zizmor` pedantic) and OpenSSF
+Scorecard run on every push to keep the posture from drifting.
+
 ### Breaking
 
 - **Node 22+ required.** `engines.node` raised from `>=20.12.0` to
@@ -11,10 +19,48 @@
 - **pnpm 11 required for development.** `packageManager` bumped to
   `pnpm@11.3.0`. Contributors on pnpm 10 will need to re-pin via
   Corepack (`corepack enable && corepack prepare pnpm@11.3.0
-  --activate`) or simply re-clone — Corepack reads
+  --activate`) or simply re-clone; Corepack reads
   `packageManager` automatically. The published `attaform`
   tarball does not require pnpm at runtime; this only affects
   the contributor / CI install path.
+
+### Security
+
+- **OIDC Trusted Publishing.** `pnpm publish` uses GitHub's OIDC
+  token to mint an ephemeral npm publish credential at publish
+  time. No long-lived `NPM_TOKEN` secret exists in the repo, and
+  there is nothing to rotate. The published tarball carries SLSA
+  provenance verifiable via `npm audit signatures`.
+- **Scoped install for the publish job.** `publish-npm.yml` runs
+  `pnpm install --filter attaform... --frozen-lockfile`, so
+  `apps/site` and bench dependencies never load into the runner
+  during the OIDC-token-write window. A compromised dev dep in
+  those subtrees cannot reach the publish credential.
+- **Branch-restricted GPG signing.** Version-bump commits + tags
+  are GPG-signed via `crazy-max/ghaction-import-gpg`.
+  `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` are scoped to the
+  `Production (NPM)` GitHub Environment with branch restriction
+  to `main`, so a fork or feature-branch copy of the workflow
+  cannot reach the signing credentials.
+- **No `GITHUB_TOKEN` in the working tree.** The publish-job
+  checkout runs `persist-credentials: false`; the post-publish
+  `git push --follow-tags` wires `gh auth setup-git` as the
+  credential helper, so the token lives in env (retrieved
+  on-demand) rather than persisted in `.git/config`.
+- **24-hour install cooldown.** `.npmrc minimumReleaseAge=1440`
+  refuses to install any package version published less than 24
+  hours ago. Defeats the install-within-the-hour worm pattern
+  (TanStack Router, May 2026). Lockfile-pinned versions are
+  exempt; `attaform` itself is excluded from the cooldown so
+  downstream testers can install fresh releases immediately.
+- **Dependabot cooldown.** New-release PRs wait 7 days (14 for
+  semver-major bumps) before opening. Security advisories bypass
+  cooldown so critical CVEs still surface immediately.
+- **Tarball-size budget.** `pnpm pack` output is checked against
+  `.github/tarball-size-budget.txt` at publish time. Catches
+  accidental publish-surface leaks (a stray `apps/site` embed, a
+  debug bundle escaping `.npmignore`) before the tarball reaches
+  the registry.
 
 ### Internal
 
@@ -22,12 +68,49 @@
   longer reads `package.json#pnpm`. `overrides` and
   `onlyBuiltDependencies` (renamed to `allowBuilds` in pnpm 11)
   migrated to `pnpm-workspace.yaml` accordingly.
-- **24-hour install cooldown active by default.** pnpm 11 ships
-  with `minimumReleaseAge` defaulting to 1440 minutes — packages
-  published less than 24 hours ago are refused at install time.
-  Defeats the install-within-the-hour worm pattern that hit
-  TanStack Router in May 2026. Lockfile-pinned versions are
-  exempt.
+- **SHA-pinned actions.** Every `uses:` in `.github/workflows/`
+  pins to a 40-character commit SHA with an explanatory version
+  comment. Dependabot updates both fields together when a new
+  upstream tag publishes.
+- **Workflow security lint (`zizmor` pedantic).** Runs on every
+  push and PR, uploading SARIF to Code Scanning. Catches
+  unpinned actions, template-injection through user-controlled
+  context vars, cache cross-ref poisoning, overbroad token
+  permissions, missing concurrency blocks, and undocumented
+  permission scopes. Current finding count: zero.
+- **OpenSSF Scorecard.** Weekly + on-push scoring published to
+  [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/attaform/Attaform),
+  surfacing the supply-chain health posture to downstream
+  consumers.
+- **Publish-job split.** `publish-npm.yml` is now two jobs:
+  `validate` (workspace-wide `pnpm check`, no `id-token`) gates
+  `publish` (scoped install, OIDC handshake, signed version
+  bump, npm publish, GitHub release). The publish job only
+  starts when validate is green.
+- **Cache hygiene.** `actions/cache` is split into `cache/restore`
+  (every job) and `cache/save` (main-push only) with the
+  `restore-keys` prefix-fallback removed. PR runs no longer
+  write to main's cache key, closing the cross-ref cache
+  poisoning vector.
+- **Least-privilege workflow permissions.** Every workflow
+  declares `permissions:` at the top level (`contents: read` or
+  tighter); individual jobs upgrade to the exact scopes they
+  need with inline rationale comments.
+- **Per-workflow concurrency.** Publish + deploy serialize
+  without cancelling mid-flight; PR-time workflows (lint,
+  typecheck, dependency review) cancel stale runs on new
+  commits.
+- **Env-bound workflow context.** `${{ github.event.inputs.* }}`,
+  `${{ github.actor }}`, `${{ github.server_url }}`,
+  `${{ github.repository }}`, `${{ github.run_id }}`, and step
+  outputs are bound to step `env:` blocks before reaching any
+  shell or `node -e` script. Removes the template-injection
+  expansion path that interpolates workflow-context values into
+  the runner's bash before quoting takes effect.
+- **`CODEOWNERS` + `SECURITY.md`.** Default ownership rules and
+  the security disclosure policy are now first-class repo files.
+  Private vulnerability reporting + maintainer contact + PGP
+  fingerprint surface from the repo's Security tab.
 
 ## v0.18.1
 Attaform now ships with **zero runtime dependencies**. The

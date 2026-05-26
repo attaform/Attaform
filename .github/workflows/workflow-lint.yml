@@ -35,18 +35,21 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref. New commits supersede the
+# prior lint result — only the latest commit's findings matter for the
+# PR check.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   zizmor:
     name: zizmor (pedantic)
     runs-on: ubuntu-latest
     permissions:
-      # Required to upload SARIF results to Code Scanning.
-      security-events: write
-      # Required so zizmor can resolve workflow context against the
-      # checked-out commit on private repos (no-op on this public repo
-      # but the upstream README recommends keeping it set for parity).
+      security-events: write # Upload SARIF results to Code Scanning.
       contents: read
-      actions: read
+      actions: read # Read workflow context against the checked-out commit on private repos (no-op on this public repo; upstream README recommends keeping it set for parity).
 
     steps:
       - name: Checkout

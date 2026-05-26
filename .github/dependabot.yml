@@ -20,6 +20,17 @@ updates:
     # Cap open PRs so a dep graph with many out-of-date packages doesn't
     # carpet-bomb the PR list. Security PRs are NOT counted against this cap.
     open-pull-requests-limit: 5
+    # Cooldown delays a Dependabot PR until a new release has been on the
+    # registry for the floor duration. Belt-and-braces over the install-
+    # time cooldown declared in `.npmrc` (`minimumReleaseAge`): `.npmrc`
+    # gates `pnpm install`, this gates whether Dependabot even opens the
+    # PR. Together they defeat the "worm publishes, downstream CI installs
+    # within the hour" failure mode that hit @tanstack in May 2026.
+    # Major bumps wait longer — they're the highest-risk upgrade class
+    # and rarely time-sensitive.
+    cooldown:
+      default-days: 2
+      semver-major-days: 7
     # Group non-security updates by kind so the review surface stays small.
     # Security updates are intentionally NOT grouped — each one gets its own
     # PR so the severity, advisory link, and upgrade blast radius are clear.
@@ -50,6 +61,14 @@ updates:
       interval: 'weekly'
       day: 'monday'
     open-pull-requests-limit: 5
+    # No `.npmrc`-equivalent for action SHA pins, so this cooldown is
+    # the ONLY release-age enforcement on the github-actions axis. 2
+    # days catches actively-worming SHAs published in the prior weekly
+    # cycle; 7 days for major bumps adds breathing room for upstream
+    # regressions on the highest-risk upgrade class.
+    cooldown:
+      default-days: 2
+      semver-major-days: 7
     # Same pattern as the npm block: scope is in the prefix itself;
     # `include: 'scope'` is intentionally omitted to avoid a double scope.
     commit-message:

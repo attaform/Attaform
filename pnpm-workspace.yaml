@@ -1,2 +1,26 @@
 packages:
   - 'apps/*'
+
+# Settings migrated from package.json#pnpm in the pnpm 10 → 11 bump.
+# pnpm 11 no longer reads the `pnpm` field in package.json. See
+# https://pnpm.io/settings for the full list of supported keys.
+overrides:
+  '@nuxt/devtools': 3.2.4
+  '@nuxt/kit': $nuxt
+  '@nuxt/schema': $nuxt
+  fast-uri: ^3.1.2
+
+# Install-script allowlist. Any package NOT listed here has its
+# install / postinstall / preinstall scripts skipped at install
+# time. Mini-Shai-Hulud-style worms that ride a postinstall hook in
+# a transitive dev dep are blocked structurally — only these six
+# trusted packages (all have legitimate native-binary install needs)
+# get to run scripts. Replaces the deprecated pnpm 10 setting
+# `onlyBuiltDependencies` (different name, different shape).
+allowBuilds:
+  '@parcel/watcher': true
+  better-sqlite3: true
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+  vue-demi: true

@@ -124,18 +124,17 @@ jobs:
 
     strategy:
       matrix:
-        # Node 18 dropped after its 2025-04-30 EOL — several transitive
-        # dependencies (Nuxt 4's nuxi → @clack/core) now call
-        # `node:util.styleText`, which ships in Node 20.12+ only.
+        # Node 20 dropped after its 2026-04-30 EOL — concurrent with
+        # the pnpm 10 → 11 bump, which itself requires Node 22+ to
+        # run. The package's `engines.node` was raised to >=22.0.0
+        # in the same change.
         #
-        # Two-row matrix: 20.x is the engines lower bound (pinned —
-        # never auto-rotates), and `lts/*` is the auto-rotating
-        # current-LTS canary (today 22.x; when Node 24 ships LTS the
-        # canary jumps with no config change). Listing 22.x explicitly
+        # Single-row matrix: `lts/*` is the auto-rotating current-LTS
+        # canary (today 22.x; when Node 24 ships LTS the canary
+        # jumps with no config change). Listing 22.x explicitly
         # alongside `lts/*` would be redundant today and would freeze
-        # us at "previous LTS" the moment a new one ships — neither
-        # outcome is what we want.
-        node-version: [20.x, 'lts/*']
+        # us at "previous LTS" the moment a new one ships.
+        node-version: ['lts/*']
       fail-fast: false
 
     steps:

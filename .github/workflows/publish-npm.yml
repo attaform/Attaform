@@ -19,8 +19,77 @@ on:
         description: 'npm dist-tag override. Leave EMPTY in normal flows — the workflow derives `latest` for stable releases and the preid for prereleases. Set this when publishing an off-latest version (e.g. "v1" for a v1.x hotfix while 2.x is current) so `npm install attaform` still resolves to the current major.'
         required: false
         default: ''
+
+# Job topology — split into `validate` and `publish` to minimise the
+# attack surface of the privileged publish step:
+#
+#   validate (contents: read, no id-token):
+#     Workspace-wide `pnpm install --frozen-lockfile` + `pnpm check`.
+#     Loads the full dep graph (incl. apps/site's @nuxt/content,
+#     shiki, satori, pagefind, @resvg/resvg-js, better-sqlite3, plus
+#     the bench tooling) into node_modules. Acts as a hard gate: the
+#     publish job below cannot start unless `pnpm check` is green.
+#
+#   publish (contents: write + id-token: write):
+#     Scoped `pnpm install --filter attaform... --frozen-lockfile`.
+#     ONLY the root workspace's dep graph (the published `attaform`
+#     package) is installed. apps/site's and bench's transitive deps
+#     are NOT present on the runner during the OIDC-token-minting
+#     window. Combined with `allowBuilds` in `pnpm-workspace.yaml`
+#     (six trusted packages with legitimate native-binary install
+#     needs), the install-script vector available to the publish
+#     credential is structurally minimised.
+#
+# Why this matters:
+#   The May 2026 "Mini Shai-Hulud" worm (TanStack Router) exfiltrated
+#   the OIDC publish token from a job that had loaded the full dev
+#   dependency graph — the worm rode an install-script in a
+#   transitive dev dep. By scoping the privileged job's install to
+#   the library workspace only, a compromised devDep in apps/site or
+#   bench cannot reach the publish credential even if `allowBuilds`
+#   were ever loosened.
+#
+# No artifacts cross the job boundary: validate is a pure read-only
+# gate; publish does its own checkout, version-bump, build, and push.
+
 jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        # Workspace-wide install — needed for `pnpm check:site` (which
+        # builds apps/site under `pnpm check`) to have its dep graph
+        # available. The publish job below uses a SCOPED install
+        # instead — its OIDC-token-write privilege never sees the
+        # apps/site dependency surface.
+        run: pnpm install --frozen-lockfile
+
+      - name: Stub attaform
+        run: pnpm dev:prepare
+
+      - name: Validate (lint, typecheck, test, size, bench, coverage)
+        # `pnpm check` runs lint, format:check, typecheck, check:site,
+        # test, check:size, check:bench, check:coverage. A separate
+        # `pnpm test` step after this would duplicate work.
+        run: pnpm check
+
   publish:
+    name: Publish
+    needs: [validate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -29,6 +98,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          # Full history needed by the `version` npm-hook script's
+          # `generate-release-notes.mjs`, which calls
+          # `gh api .../generate-notes` and needs to resolve the prior
+          # tag from `git tag --sort=-version:refname`.
           fetch-depth: 0
 
       - name: Calculate next version
@@ -138,28 +211,30 @@ jobs:
           # mint that token.
           registry-url: 'https://registry.npmjs.org/'
 
-      - name: Update npm for Trusted Publishing
-        # Node 22 LTS bundles npm 10.x; Trusted Publishing OIDC
-        # support requires npm 11.5.1 or newer. setup-node doesn't
-        # pin the npm version, so we bump explicitly before any
-        # auth-sensitive npm interaction.
-        run: npm install -g npm@latest
+      # No `npm install -g npm@latest` step. pnpm 11 dropped the
+      # npm-CLI publish fallback in favor of pnpm's native publish
+      # path, which negotiates OIDC Trusted Publishing + attaches
+      # `--provenance` attestations directly — the npm CLI version
+      # bundled with Node 22 is no longer in the publish handshake.
 
-      - name: Install dependencies
-        # --frozen-lockfile aborts if pnpm-lock.yaml is stale, so the
-        # published tarball is always built against the exact dep graph
-        # the lockfile promises. Prevents a silent lockfile drift from
-        # producing a mystery publish diff.
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies (library workspace only)
+        # `--filter attaform... --frozen-lockfile` scopes the install
+        # to the published `attaform` workspace and its workspace
+        # dependencies (currently none — attaform is the root and
+        # apps/site depends on it, not the other way around).
+        # apps/site's deps (@nuxt/content, shiki, satori, pagefind,
+        # @resvg/resvg-js, better-sqlite3) and the bench tooling are
+        # NOT installed on this runner.
+        #
+        # The validate job above already installed everything and ran
+        # `pnpm check` against the full workspace, so cross-workspace
+        # correctness is gated upstream. This job's narrower install
+        # exists purely to minimise the install-script surface area
+        # available to the OIDC publish credential.
+        run: pnpm install --filter attaform... --frozen-lockfile
 
       - name: Stub attaform
         run: pnpm dev:prepare
-
-      - name: Validate ESLint and Types
-        # `pnpm check` already runs lint, format:check, typecheck, test,
-        # size, bench, and coverage. A separate `pnpm test` step after
-        # this duplicates work and slows the workflow.
-        run: pnpm check
 
       # Import a GPG signing key so the version-bump commit + tag created
       # below by `pnpm version` are signed and show as "Verified" on GitHub.
@@ -224,6 +299,41 @@ jobs:
       - name: Build
         run: pnpm prepack
 
+      - name: Pack and enforce tarball-size budget
+        # Pack the just-built `dist/` into a tarball and fail the run
+        # if it exceeds the byte budget in
+        # `.github/tarball-size-budget.txt`. Catches accidental
+        # publish-surface leaks (a stray `apps/site/` embed, a debug
+        # bundle escaping `.npmignore`) before they reach the npm
+        # registry — see the budget file's header for the full
+        # rationale.
+        #
+        # The `pnpm publish --no-prepack` step below runs pnpm's pack
+        # logic again internally, skipping the prepack lifecycle. With
+        # `dist/` frozen between this step and that one (no
+        # intervening rebuild), the published tarball is byte-
+        # identical to the one measured here.
+        run: |
+          set -euo pipefail
+          BUDGET=$(grep -Eo '^[0-9]+' .github/tarball-size-budget.txt | head -n1)
+          if [ -z "$BUDGET" ]; then
+            echo "::error::Could not read budget integer from .github/tarball-size-budget.txt"
+            exit 1
+          fi
+          pnpm pack
+          TARBALL=$(ls -1 attaform-*.tgz 2>/dev/null | head -n1)
+          if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
+            echo "::error::pnpm pack did not produce an attaform-*.tgz tarball in the workdir"
+            exit 1
+          fi
+          SIZE=$(stat -c%s "$TARBALL")
+          echo "::notice title=Tarball size::$TARBALL is $SIZE bytes (budget: $BUDGET)"
+          if [ "$SIZE" -gt "$BUDGET" ]; then
+            DELTA=$((SIZE - BUDGET))
+            echo "::error::Tarball $SIZE bytes exceeds budget $BUDGET (delta: +$DELTA bytes). Trim the publish surface (.npmignore, package.json#files) or raise the budget in .github/tarball-size-budget.txt with a justification in the commit message."
+            exit 1
+          fi
+
       - name: Publish to npm
         # `--provenance` attaches an OIDC-signed statement linking the
         # published tarball to this workflow run + commit, recorded by
@@ -233,6 +343,13 @@ jobs:
         # NPM_TOKEN secret is involved, and there is nothing to
         # rotate. The `id-token: write` permission on this job is
         # what lets npm mint the token at publish time.
+        #
+        # `--no-prepack` skips re-running the prepack lifecycle: the
+        # explicit `pnpm prepack` step above already built `dist/`,
+        # and the tarball-size step verified the pack output. Re-
+        # running unbuild here would just produce byte-identical
+        # output at higher CI cost and break the size-check guarantee
+        # if any non-deterministic source ever crept into the build.
         #
         # Prereleases publish under a dist-tag matching the preid (e.g.
         # `attaform@beta`, `attaform@alpha`) — `npm install attaform` still
@@ -250,11 +367,11 @@ jobs:
           DIST_TAG: ${{ github.event.inputs.dist_tag }}
         run: |
           if [ -n "$DIST_TAG" ]; then
-            pnpm publish --access public --provenance --tag "$DIST_TAG"
+            pnpm publish --no-prepack --access public --provenance --tag "$DIST_TAG"
           elif [ -n "$PRERELEASE_ID" ]; then
-            pnpm publish --access public --provenance --tag "$PRERELEASE_ID"
+            pnpm publish --no-prepack --access public --provenance --tag "$PRERELEASE_ID"
           else
-            pnpm publish --access public --provenance
+            pnpm publish --no-prepack --access public --provenance
           fi
 
       - name: Push version bump

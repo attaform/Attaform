@@ -1,0 +1,41 @@
+# Maximum allowed `pnpm pack` tarball byte count for the published
+# `attaform` npm package. Enforced in `.github/workflows/publish-npm.yml`
+# (the "Pack and enforce tarball-size budget" step). A publish run
+# whose packed tarball exceeds this value fails before reaching the
+# npm registry.
+#
+# Why a budget:
+#   Sudden tarball growth is a strong signal of an accidental
+#   publish-surface leak: a build artifact, a test fixture, or a debug
+#   bundle escaping into the npm tarball via a `.npmignore` /
+#   `package.json#files` mistake. Catching it at publish time means
+#   consumers never pay for the regression and we don't ship an
+#   `attaform.tgz` with `apps/site/` embedded.
+#
+# Why a committed file (not inline in the workflow):
+#   Raising the ceiling is then a code-review event with a
+#   justification in the commit message. The workflow file itself
+#   stays untouched on size bumps. Same posture as `.size-limit.js`,
+#   which fences the JS bundle byte budget separately (see "sibling
+#   check" below).
+#
+# Sibling check:
+#   `.size-limit.js` tracks the JS bundle byte budget — what consumers
+#   actually parse and execute at runtime. This file tracks the total
+#   npm tarball byte count — what travels over the network and lands
+#   on consumers' disks. Different surfaces, both worth fencing.
+#
+# Current anchor:
+#   v0.18.1's packed tarball measures ~1.46 MB (1456639 bytes). The
+#   1887436-byte budget below is ~1.29× of that — tight enough to flag
+#   an accidental publish-surface leak (a stray apps/site/ embed would
+#   be an order of magnitude over, easily caught), loose enough that
+#   ordinary feature work lands without triggering the gate.
+#
+# Editing:
+#   Bump only with a clear justification in the commit message
+#   (e.g. "raise tarball budget for the new <X> bundle"). The
+#   workflow grep picks the first standalone integer in this file, so
+#   keep comments above the number.
+
+1887436

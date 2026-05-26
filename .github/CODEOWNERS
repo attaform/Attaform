@@ -1,0 +1,24 @@
+# Default owner for everything. Branch protection on `main` already
+# restricts push to the maintainer; this file is defense-in-depth +
+# auto-reviewer assignment + a single place to flip ownership if a
+# co-maintainer joins.
+
+*                      @ozzyfromspace
+
+# High-impact paths — explicit re-listing so the GitHub UI sidebar
+# highlights the privileged surface on PRs that touch it.
+/.github/              @ozzyfromspace
+/package.json          @ozzyfromspace
+/pnpm-workspace.yaml   @ozzyfromspace
+/pnpm-lock.yaml        @ozzyfromspace
+/.npmrc                @ozzyfromspace
+/.npmignore            @ozzyfromspace
+/build.config.ts       @ozzyfromspace
+/tsconfig.json         @ozzyfromspace
+/vitest.config.ts      @ozzyfromspace
+/eslint.config.js      @ozzyfromspace
+/scripts/              @ozzyfromspace
+/.husky/               @ozzyfromspace
+/Dockerfile            @ozzyfromspace
+/Makefile              @ozzyfromspace
+/SECURITY.md           @ozzyfromspace

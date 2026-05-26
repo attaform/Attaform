@@ -366,14 +366,12 @@ jobs:
         # `.github/tarball-size-budget.txt`. Catches accidental
         # publish-surface leaks (a stray `apps/site/` embed, a debug
         # bundle escaping `.npmignore`) before they reach the npm
-        # registry — see the budget file's header for the full
+        # registry. See the budget file's header for the full
         # rationale.
         #
-        # The `pnpm publish --no-prepack` step below runs pnpm's pack
-        # logic again internally, skipping the prepack lifecycle. With
-        # `dist/` frozen between this step and that one (no
-        # intervening rebuild), the published tarball is byte-
-        # identical to the one measured here.
+        # The publish step below passes this exact tarball to
+        # `pnpm publish`, so the bytes measured here are the bytes
+        # that land on the registry. No re-pack, no unbuild rerun.
         run: |
           set -euo pipefail
           BUDGET=$(grep -Eo '^[0-9]+' .github/tarball-size-budget.txt | head -n1)
@@ -394,31 +392,36 @@ jobs:
             echo "::error::Tarball $SIZE bytes exceeds budget $BUDGET (delta: +$DELTA bytes). Trim the publish surface (.npmignore, package.json#files) or raise the budget in .github/tarball-size-budget.txt with a justification in the commit message."
             exit 1
           fi
+          echo "TARBALL_PATH=$(pwd)/$TARBALL" >> "$GITHUB_ENV"
 
       - name: Publish to npm
         # `--provenance` attaches an OIDC-signed statement linking the
         # published tarball to this workflow run + commit, recorded by
         # the npm registry so consumers can verify the tarball with
         # `npm audit signatures`. Under Trusted Publishing the same
-        # OIDC token also authorises the publish itself — no
-        # NPM_TOKEN secret is involved, and there is nothing to
+        # OIDC token also authorises the publish itself, so no
+        # NPM_TOKEN secret is involved and there is nothing to
         # rotate. The `id-token: write` permission on this job is
         # what lets npm mint the token at publish time.
         #
-        # `--no-prepack` skips re-running the prepack lifecycle: the
-        # explicit `pnpm prepack` step above already built `dist/`,
-        # and the tarball-size step verified the pack output. Re-
-        # running unbuild here would just produce byte-identical
-        # output at higher CI cost and break the size-check guarantee
-        # if any non-deterministic source ever crept into the build.
+        # Passing the pre-packed tarball path to `pnpm publish`
+        # skips the prepack lifecycle: `pnpm publish <tarball>`
+        # treats the tarball as the artifact directly, so the
+        # explicit `pnpm prepack` + `pnpm pack` steps above already
+        # produced the exact bytes that land on the registry. Re-
+        # running unbuild here would produce byte-identical output
+        # at higher CI cost (and would break the size-check
+        # guarantee if any non-deterministic source ever crept into
+        # the build).
         #
         # Prereleases publish under a dist-tag matching the preid (e.g.
-        # `attaform@beta`, `attaform@alpha`) — `npm install attaform` still
-        # resolves to `latest` (the stable line), and consumers opt in
-        # via `npm install attaform@beta`. Without `--tag`, pnpm publish
-        # defaults to `latest`, which would shadow the stable release.
+        # `attaform@beta`, `attaform@alpha`); `npm install attaform`
+        # still resolves to `latest` (the stable line), and consumers
+        # opt in via `npm install attaform@beta`. Without `--tag`,
+        # pnpm publish defaults to `latest`, which would shadow the
+        # stable release.
         #
-        # `dist_tag` input wins over prerelease_id when set — used in
+        # `dist_tag` input wins over prerelease_id when set, used in
         # the exact_version override mode to publish a v1.x hotfix
         # under a non-latest tag (e.g. "v1") so the older-major
         # tarball does not shadow the current major on the default
@@ -428,11 +431,11 @@ jobs:
           DIST_TAG: ${{ github.event.inputs.dist_tag }}
         run: |
           if [ -n "$DIST_TAG" ]; then
-            pnpm publish --no-prepack --access public --provenance --tag "$DIST_TAG"
+            pnpm publish "$TARBALL_PATH" --access public --provenance --tag "$DIST_TAG"
           elif [ -n "$PRERELEASE_ID" ]; then
-            pnpm publish --no-prepack --access public --provenance --tag "$PRERELEASE_ID"
+            pnpm publish "$TARBALL_PATH" --access public --provenance --tag "$PRERELEASE_ID"
           else
-            pnpm publish --no-prepack --access public --provenance
+            pnpm publish "$TARBALL_PATH" --access public --provenance
           fi
 
       - name: Push version bump

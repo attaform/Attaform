@@ -30,17 +30,22 @@ on:
   pull_request:
     branches: ['main']
 
+# Default to read-only at the workflow level; the job below upgrades
+# only the scopes it actually needs (this is the principle of least
+# privilege for GHA token scopes).
 permissions:
   contents: read
-  # Needed for `comment-summary-in-pr: on-failure` below. GitHub
-  # automatically downgrades this to read-only for forked-PR runs,
-  # so the comment post silently no-ops on forks (see note above).
-  pull-requests: write
 
 jobs:
   dependency-review:
     name: Review dependency changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed for `comment-summary-in-pr: on-failure` below. GitHub
+      # automatically downgrades this to read-only for forked-PR runs,
+      # so the comment post silently no-ops on forks (see note above).
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

@@ -64,7 +64,16 @@ jobs:
       # after Vercel builds, so we surface the dashboard link instead.
       - name: Trigger Vercel production deploy
         env:
+          # Bind workflow-context values into env vars rather than
+          # interpolating `${{ ... }}` directly into the shell script
+          # below. Without this binding, an actor or input value
+          # containing shell metacharacters would be expanded into the
+          # runner's bash before bash parses it, opening a command-
+          # injection path. The env-binding makes the values ordinary
+          # shell variables that quoting protects.
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+          TRIGGERED_BY: ${{ github.actor }}
+          DEPLOY_REASON: ${{ github.event.inputs.reason }}
         run: |
           set -euo pipefail
           if [ -z "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
@@ -76,9 +85,9 @@ jobs:
           {
             echo "### Vercel deploy queued"
             echo ""
-            echo "Triggered by: @${{ github.actor }}"
-            if [ -n "${{ github.event.inputs.reason }}" ]; then
-              echo "Reason: ${{ github.event.inputs.reason }}"
+            echo "Triggered by: @${TRIGGERED_BY}"
+            if [ -n "${DEPLOY_REASON:-}" ]; then
+              echo "Reason: ${DEPLOY_REASON}"
             fi
             echo ""
             echo "Hook response:"

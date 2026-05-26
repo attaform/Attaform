@@ -286,8 +286,16 @@ jobs:
         # available to the OIDC publish credential.
         run: pnpm install --filter attaform... --frozen-lockfile
 
-      - name: Stub attaform
-        run: pnpm dev:prepare
+      # `pnpm dev:prepare` is NOT run here. It expands to
+      # `unbuild --stub && nuxi prepare apps/site`, and the second
+      # half (`nuxi prepare apps/site`) needs apps/site's deps in
+      # node_modules — but the scoped install above deliberately
+      # omits them to minimise the install-script surface during
+      # the OIDC publish window. The publish path doesn't need
+      # apps/site machinery: the `pnpm prepack` step further down
+      # builds the real `dist/` (full unbuild, not --stub) before
+      # `pnpm pack` + `pnpm publish`. The validate job covers the
+      # full-workspace `dev:prepare` for type-system + lint gates.
 
       # Import a GPG signing key so the version-bump commit + tag created
       # below by `pnpm version` are signed and show as "Verified" on GitHub.

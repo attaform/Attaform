@@ -1,5 +1,27 @@
 # Releases
 
+## v0.18.2 — 2026-05-26
+
+## What's Changed
+* build(deps): bump pnpm 10 → 11, raise Node floor to 22 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/262
+* chore(security): pin action SHAs, add CODEOWNERS and SECURITY.md by @ozzyfromspace in https://github.com/attaform/Attaform/pull/263
+* chore(security): add zizmor + openssf scorecard workflows by @ozzyfromspace in https://github.com/attaform/Attaform/pull/264
+* chore(security): split publish into validate + publish, gate tarball size by @ozzyfromspace in https://github.com/attaform/Attaform/pull/265
+* chore(security): bind workflow inputs to env, scope dependency-review perms by @ozzyfromspace in https://github.com/attaform/Attaform/pull/268
+* chore(ci): resolve remaining zizmor warnings by @ozzyfromspace in https://github.com/attaform/Attaform/pull/269
+* fix(ci): adjust dependabot cooldown to pass both zizmor + Dependabot validation by @ozzyfromspace in https://github.com/attaform/Attaform/pull/270
+* chore(security): push version bump without persisting GITHUB_TOKEN by @ozzyfromspace in https://github.com/attaform/Attaform/pull/272
+* chore(security): scope publish-job GPG secrets to a GitHub Environment by @ozzyfromspace in https://github.com/attaform/Attaform/pull/271
+* chore(security): install cooldown + matrix cache restore/save split by @ozzyfromspace in https://github.com/attaform/Attaform/pull/266
+* docs(changelog): note the supply-chain hardening initiative by @ozzyfromspace in https://github.com/attaform/Attaform/pull/273
+* fix(ci): drop apps/site prepare step from the publish job by @ozzyfromspace in https://github.com/attaform/Attaform/pull/274
+* fix(ci): publish the pre-packed tarball, not via --no-prepack by @ozzyfromspace in https://github.com/attaform/Attaform/pull/275
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.18.1...v0.18.2
+
+---
+
 ## v0.18.1 — 2026-05-25
 
 ## What's Changed

@@ -1,0 +1,91 @@
+name: OpenSSF Scorecard
+
+# Runs the OpenSSF Scorecard analyzer against this repository.
+#
+# Background:
+#   Scorecard is a public-good supply-chain health check maintained by
+#   the OpenSSF. It rates a repository across ~18 dimensions
+#   (branch protection, signed commits, pinned dependencies, token
+#   permissions, dangerous workflows, fuzzing, SAST, etc.). Results are
+#   published to https://securityscorecards.dev and surface as a
+#   green/yellow/red badge that downstream consumers and security
+#   scanners (Snyk, Dependabot, GitHub's own dependency graph) ingest.
+#
+# Why on this repository:
+#   Attaform publishes to npm and is consumed by downstream Vue / Nuxt
+#   projects. A public Scorecard report gives those consumers a
+#   first-party signal that the publish chain follows current
+#   supply-chain hygiene practice (SHA-pinned actions, branch
+#   protection, signed commits, trusted publishing).
+#
+# Triggers:
+#   - `branch_protection_rule`: re-score whenever branch protection
+#     changes so a regression is caught immediately.
+#   - Weekly cron (Mon 09:00 UTC, offset from peer-matrix's 06:00 to
+#     spread runner load).
+#   - Push to `main`: re-score after every merged change so the report
+#     never lags the actual repo state.
+#
+# Where findings show up:
+#   SARIF is uploaded to Code Scanning (Security tab). The public
+#   viewer is at
+#     https://securityscorecards.dev/viewer/?uri=github.com/attaform/Attaform
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: '0 9 * * 1'
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+# Default to read-only at the workflow level; the analysis job
+# upgrades only the scopes it actually needs.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to upload SARIF to Code Scanning.
+      security-events: write
+      # Required to mint an OIDC token for the Scorecard publishing
+      # service (`api.securityscorecards.dev`). Audience is
+      # `securityscorecards.dev`, distinct from the npm Trusted
+      # Publishing audience used by `publish-npm.yml`.
+      id-token: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Scorecard's own `Token-Permissions` check fails if the
+          # workflow leaves GITHUB_TOKEN attached to the local git
+          # config after checkout. Drop it.
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@99c09fe975337306107572b4fdf4db224cf8e2f2 # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publish to https://securityscorecards.dev so the result is
+          # visible to downstream consumers via the public viewer.
+          # This repo is public; for private repos this would need to
+          # stay `false` and a `repo_token` PAT would be required.
+          publish_results: true
+
+      - name: Upload SARIF artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 14
+
+      - name: Upload to Code Scanning
+        uses: github/codeql-action/upload-sarif@f52b05f4acaaa234e44466e66d29050e135ea9ef # v4.36.0
+        with:
+          sarif_file: results.sarif

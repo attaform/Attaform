@@ -1,0 +1,75 @@
+name: Workflow Security Lint
+
+# Runs `zizmor` against every workflow file in `.github/workflows/`.
+#
+# Background:
+#   zizmor is a static analyzer for GitHub Actions workflows. It catches the
+#   exact anti-patterns behind the May 2026 "Mini Shai-Hulud" worm
+#   (TanStack Router): `pull_request_target` + checkout-PR-ref pwn requests,
+#   unpinned `uses:` references, expression-injection through unsanitised
+#   env vars, `actions/cache` `restore-keys` prefix-fallback poisoning, etc.
+#
+# Why pedantic persona:
+#   The plan that introduced this workflow already SHA-pinned every `uses:`
+#   line and removed every `pull_request_target` trigger. The `pedantic`
+#   persona's strict-by-default rules are what hold that ground over time —
+#   any future workflow change that backslides (e.g. a copy-pasted snippet
+#   landing `uses: foo/bar@v3` without a SHA) fails CI here.
+#
+# Where findings show up:
+#   `advanced-security: enabled` makes the action upload SARIF to GitHub
+#   Code Scanning. Findings appear in the Security tab under "Code
+#   scanning alerts". They also appear inline in PR checks.
+#
+# Suppression policy:
+#   If a finding ever becomes load-bearing noise, suppress it per-rule via
+#   a committed `.github/zizmor.yml` config — do NOT downgrade the persona.
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    name: zizmor (pedantic)
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to upload SARIF results to Code Scanning.
+      security-events: write
+      # Required so zizmor can resolve workflow context against the
+      # checked-out commit on private repos (no-op on this public repo
+      # but the upstream README recommends keeping it set for parity).
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # `persist-credentials: false` drops the GITHUB_TOKEN from the
+          # local git config after checkout. zizmor only reads workflow
+          # files from disk — it never needs to push or fetch private
+          # refs — so leaving the token attached would be unnecessary
+          # ambient authority. Same rationale as the scorecard workflow.
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d # v0.5.6
+        with:
+          # `pedantic` enables the strictest rule set, including the
+          # `unpinned-uses` rule that fails CI on any `uses: foo/bar@vN`
+          # without a 40-character SHA.
+          persona: pedantic
+          # `enabled` uploads SARIF to Code Scanning unconditionally.
+          # The default (`auto`) would skip the upload on forked PRs,
+          # which is the right behavior for public repos but leaves the
+          # check status silent. `enabled` here surfaces a real failure
+          # on the PR check even when SARIF upload itself is downgraded
+          # by GitHub for forked-PR runs.
+          advanced-security: enabled

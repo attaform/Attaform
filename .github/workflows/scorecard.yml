@@ -39,24 +39,30 @@ on:
     branches: ['main']
   workflow_dispatch:
 
-# Default to read-only at the workflow level; the analysis job
-# upgrades only the scopes it actually needs.
-permissions: read-all
+# Workflow-level default: zero scopes. The `analysis` job declares the
+# exact scopes it needs (security-events: write, id-token: write,
+# contents: read, actions: read). Pedantic least-privilege — narrower
+# than the previous `read-all`, which granted read on every scope
+# regardless of whether the job consumed them.
+permissions: {}
+
+# Serialize scorecard runs across schedule + push + dispatch triggers.
+# A second run kicking off mid-analysis would just compete for the same
+# OIDC token audience (`securityscorecards.dev`) and write back
+# overlapping SARIF.
+concurrency:
+  group: scorecard
+  cancel-in-progress: false
 
 jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
     permissions:
-      # Required to upload SARIF to Code Scanning.
-      security-events: write
-      # Required to mint an OIDC token for the Scorecard publishing
-      # service (`api.securityscorecards.dev`). Audience is
-      # `securityscorecards.dev`, distinct from the npm Trusted
-      # Publishing audience used by `publish-npm.yml`.
-      id-token: write
+      security-events: write # Upload SARIF to Code Scanning.
+      id-token: write # Mint an OIDC token for the Scorecard publishing service (`api.securityscorecards.dev`). Audience is distinct from the npm Trusted Publishing audience used by `publish-npm.yml`.
       contents: read
-      actions: read
+      actions: read # Read other workflow runs so the analyzer can score branch-protection + workflow-token-permission posture.
 
     steps:
       - name: Checkout
@@ -68,7 +74,7 @@ jobs:
           persist-credentials: false
 
       - name: Run analysis
-        uses: ossf/scorecard-action@99c09fe975337306107572b4fdf4db224cf8e2f2 # v2.4.3
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
         with:
           results_file: results.sarif
           results_format: sarif
@@ -86,6 +92,6 @@ jobs:
           retention-days: 14
 
       - name: Upload to Code Scanning
-        uses: github/codeql-action/upload-sarif@f52b05f4acaaa234e44466e66d29050e135ea9ef # v4.36.0
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         with:
           sarif_file: results.sarif

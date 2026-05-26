@@ -27,8 +27,22 @@ on:
         required: false
         default: ''
 
+# Workflow-level default: zero scopes. The `deploy` job below hits a
+# Vercel webhook with a secret — no GitHub API access is needed.
+permissions: {}
+
+# Serialize deploys; never cancel one mid-flight. The Vercel webhook is
+# fire-and-forget — once the POST returns, Vercel has the build queued
+# regardless of whether THIS workflow run continues. Cancelling a deploy
+# step that's already POSTed would just lose the run-summary write,
+# not the deploy itself.
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    name: Deploy to Vercel production
     runs-on: ubuntu-latest
     # Scoping to the `Production (Docs)` GitHub Environment buys three
     # things on top of a plain repo secret:

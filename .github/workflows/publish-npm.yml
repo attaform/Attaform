@@ -20,6 +20,22 @@ on:
         required: false
         default: ''
 
+# Workflow-level default: read-only. The `publish` job below upgrades
+# to `contents: write` + `id-token: write` for the version-bump commit
+# push + Trusted Publishing OIDC handshake. The `validate` job inherits
+# the workflow-level `contents: read`.
+permissions:
+  contents: read
+
+# Serialize publishes strictly. Two concurrent publishes would race on
+# the version-bump commit + tag and could leave the repo in a state
+# where main has the bump but the tag is missing (or vice versa). The
+# cost of `cancel-in-progress: false` is at most one queued workflow
+# run; the cost of overlapping publishes is a corrupted release.
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
 # Job topology — split into `validate` and `publish` to minimise the
 # attack surface of the privileged publish step:
 #
@@ -61,9 +77,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Drop GITHUB_TOKEN from .git/config after checkout. This job
+          # only runs `pnpm check` against the working tree; it never
+          # pushes or fetches a private ref. Keeping the token attached
+          # would be unnecessary ambient authority during the `pnpm
+          # install` install-script window.
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -92,8 +115,8 @@ jobs:
     needs: [validate]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
+      contents: write # Push the version-bump commit + tag to protected `main` via `git push --follow-tags`. Read alone would 403 at the GitHub API layer.
+      id-token: write # Mint an ephemeral npm publish credential from this run's GitHub OIDC token under Trusted Publishing. No NPM_TOKEN secret is involved.
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -103,6 +126,13 @@ jobs:
           # `gh api .../generate-notes` and needs to resolve the prior
           # tag from `git tag --sort=-version:refname`.
           fetch-depth: 0
+          # Keep the GITHUB_TOKEN attached to .git/config so the
+          # `git push --follow-tags` step below can authenticate
+          # against the protected `main` branch. The publish job is
+          # `workflow_dispatch`-only (maintainer-restricted) and the
+          # token's scope here is the explicit `contents: write` job
+          # permission above, so the ambient authority is bounded.
+          persist-credentials: true
 
       - name: Calculate next version
         id: calculate-next-version
@@ -192,10 +222,17 @@ jobs:
           fi
 
       - name: Update version
-        run: echo "::notice title=Version::Publishing version ${{ steps.calculate-next-version.outputs.next_version }}"
+        env:
+          # Bind the step output into an env var so the `run:` block
+          # references it as an ordinary shell variable. Step outputs
+          # are not user-controllable, but env-binding eliminates the
+          # lower-confidence template-injection finding without leaving
+          # a suppression comment behind.
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+        run: echo "::notice title=Version::Publishing version $NEXT_VERSION"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -403,9 +440,18 @@ jobs:
           # classic GitHub Actions template-injection pattern.
           INPUT_DIST_TAG: ${{ github.event.inputs.dist_tag }}
           INPUT_PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+          # Bind workflow-context values + step output the same way.
+          # github.server_url / .repository / .run_id are GitHub-set and
+          # not attacker-controllable, but env-binding eliminates the
+          # template-injection finding without leaving a suppression
+          # comment behind.
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.calculate-next-version.outputs.next_version }}"
+          VERSION="$NEXT_VERSION"
           TAG="v$VERSION"
 
           # Metadata harvested from the version-bump commit at HEAD.
@@ -415,13 +461,13 @@ jobs:
           COMMIT_AUTHOR_EMAIL=$(git log -1 --pretty=%ae HEAD)
           COMMIT_DATE_ISO=$(git log -1 --pretty=%aI HEAD)
           SHORT_SHA="${COMMIT_SHA:0:12}"
-          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+          REPO_URL="${GH_SERVER_URL}/${GH_REPOSITORY}"
 
           # Auto-generated PR-grouped notes — follows `.github/release.yml`
           # if present, otherwise GitHub's default categorisation.
           AUTO_NOTES=$(gh api \
             --method POST \
-            "/repos/${{ github.repository }}/releases/generate-notes" \
+            "/repos/${GH_REPOSITORY}/releases/generate-notes" \
             -f tag_name="$TAG" \
             --jq .body)
 
@@ -430,7 +476,7 @@ jobs:
             echo ""
             echo "- Commit: [\`$SHORT_SHA\`]($REPO_URL/commit/$COMMIT_SHA) — $COMMIT_TITLE"
             echo "- Author: **$COMMIT_AUTHOR_NAME** <$COMMIT_AUTHOR_EMAIL>"
-            echo "- Published via: [workflow run]($REPO_URL/actions/runs/${{ github.run_id }})"
+            echo "- Published via: [workflow run]($REPO_URL/actions/runs/${GH_RUN_ID})"
             echo "- npm: [\`attaform@$VERSION\`](https://www.npmjs.com/package/attaform/v/$VERSION)"
             echo ""
             echo "---"

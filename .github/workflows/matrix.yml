@@ -36,6 +36,28 @@ concurrency:
 # When adding a new check to `pnpm check`, ALSO add a corresponding
 # job here. `pnpm check` stays the single source-of-truth command
 # for local dev; CI fans the same set out into independent jobs.
+#
+# Cache strategy — every job uses `actions/cache/restore` (read-only)
+# + `actions/cache/save` (write, main-push only). Three things matter:
+#
+#   1. The unified `actions/cache` action saves on every run. PR runs
+#      saving to a key shared with `main` would let a malicious PR
+#      poison the cache that subsequent `main` runs restore — a
+#      variant of the cross-ref cache poisoning vector that hit
+#      TanStack Router (2026-05-11). Splitting restore/save and
+#      gating save on `github.ref == 'refs/heads/main'` closes that.
+#
+#   2. `restore-keys:` (prefix fallback) is deliberately absent.
+#      Prefix-fallback restore is the other half of the poisoning
+#      vector — if a stale `main` cache exists under a partial-match
+#      key, it would be restored into a PR run that didn't pin the
+#      lockfile-hash exact key. Exact-key-only restore means a
+#      lockfile change always cold-installs. PR-CI runs that bump
+#      deps pay +60-90s; the trade is worth it.
+#
+#   3. The save step is additionally gated on
+#      `cache-hit != 'true'` so we don't re-upload an unchanged
+#      blob on every `main` push.
 
 jobs:
   lint:
@@ -58,16 +80,22 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
 
       # Generate apps/site/.nuxt/imports.d.ts so the eslint config can
       # parse Nuxt's auto-imports (`computed`, `useState`, etc.) and
@@ -101,16 +129,22 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
 
       - name: Stub attaform (Nuxt + site types)
         run: pnpm dev:prepare
@@ -154,16 +188,22 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
 
       - name: Stub attaform (Nuxt + site types)
         run: pnpm dev:prepare
@@ -191,16 +231,22 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
 
       # `pnpm check:size` runs `pnpm prepack` (unbuild) before
       # invoking size-limit, so we don't need a separate prepack
@@ -236,16 +282,22 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
 
       - name: Stub attaform
         run: pnpm dev:prepare
@@ -278,16 +330,22 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
 
       - name: Stub attaform (Nuxt + site types)
         run: pnpm dev:prepare
@@ -320,16 +378,22 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
 
       - name: Stub attaform
         run: pnpm dev:prepare

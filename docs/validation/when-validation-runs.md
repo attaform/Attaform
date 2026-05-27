@@ -65,5 +65,5 @@ Sync refinements (`refine`, `superRefine` with synchronous returns) run on the t
 
 ## Where to next
 
-- [Showing errors at the right time](/docs/validation/showing-errors): the `shouldShowErrors` predicate.
+- [Display state and showing errors](/docs/validation/showing-errors): the `getDisplayState` predicate.
 - [`errors`](/docs/reading-the-form/errors): per-path error reads.

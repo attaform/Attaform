@@ -79,4 +79,4 @@ For "go back to the baseline this form was hydrated with," reach for [`reset`](/
 
 - [`reset` & `resetField`](/docs/writing-and-mutating/reset): restore defaults instead of clearing.
 - [`unset`](/docs/writing-and-mutating/unset): flag any path blank in `defaultValues`, `setValue`, or `reset`.
-- [Showing errors at the right time](/docs/validation/showing-errors): how blank fields interact with the error-display predicate.
+- [Display state and showing errors](/docs/validation/showing-errors): how blank fields interact with the error-display predicate.

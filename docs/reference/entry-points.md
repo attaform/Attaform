@@ -102,8 +102,8 @@ import {
   PARSE_API_ERRORS_DEFAULTS,
   // Sensitive-name protection
   DEFAULT_SENSITIVE_NAMES,
-  // ShouldShowErrors composable default
-  defaultShouldShowErrors,
+  // Display-state heuristic default
+  defaultDisplayState,
   // Path primitives (custom adapters only)
   canonicalizePath,
   parseDottedPath,

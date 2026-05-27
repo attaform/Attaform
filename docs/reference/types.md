@@ -22,24 +22,24 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Form configuration
 
-| Type                                          | Source                  | Purpose                                                                     |
-| --------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- |
-| `UseFormConfiguration<Form>`                  | runtime/types/types-api | The options bag passed to `useForm`.                                        |
-| `UseFormReturnType<Form, GetValue>`           | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.           |
-| `AttaformPluginOptions`                       | runtime/core/plugin     | Options for `createAttaform({ defaults, devtools })`.                       |
-| `AttaformDefaults`                            | runtime/types/types-api | The fields settable via `createAttaform({ defaults })`.                     |
-| `HistoryConfig`                               | runtime/types/types-api | `useForm({ history })` shape.                                               |
-| `PersistConfig` / `PersistConfigOptions`      | runtime/types/types-api | `useForm({ persist })` shape (shorthand vs. full options).                  |
-| `PersistIncludeMode`                          | runtime/types/types-api | `'form'` \| `'form+errors'`.                                                |
-| `OnInvalidSubmitPolicy`                       | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`. |
-| `ValidateOn` / `ValidateOnConfig`             | runtime/types/types-api | `validateOn` field and its discriminated config.                            |
-| `ShouldShowErrors` / `ShouldShowErrorsConfig` | runtime/types/types-api | The "is this error ready to render?" predicate signature.                   |
+| Type                                     | Source                  | Purpose                                                                                   |
+| ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `UseFormConfiguration<Form>`             | runtime/types/types-api | The options bag passed to `useForm`.                                                      |
+| `UseFormReturnType<Form, GetValue>`      | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.                         |
+| `AttaformPluginOptions`                  | runtime/core/plugin     | Options for `createAttaform({ defaults, devtools })`.                                     |
+| `AttaformDefaults`                       | runtime/types/types-api | The fields settable via `createAttaform({ defaults })`.                                   |
+| `HistoryConfig`                          | runtime/types/types-api | `useForm({ history })` shape.                                                             |
+| `PersistConfig` / `PersistConfigOptions` | runtime/types/types-api | `useForm({ persist })` shape (shorthand vs. full options).                                |
+| `PersistIncludeMode`                     | runtime/types/types-api | `'form'` \| `'form+errors'`.                                                              |
+| `OnInvalidSubmitPolicy`                  | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.               |
+| `ValidateOn` / `ValidateOnConfig`        | runtime/types/types-api | `validateOn` field and its discriminated config.                                          |
+| `DisplayState` / `GetDisplayState`       | runtime/types/types-api | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver. |
 
 ## Reactive surfaces
 
 | Type                            | Source                  | Purpose                                                   |
 | ------------------------------- | ----------------------- | --------------------------------------------------------- |
-| `FieldState<Value>`             | runtime/types/types-api | The 22-property per-leaf reactive bundle.                 |
+| `FieldState<Value>`             | runtime/types/types-api | The 26-property per-leaf reactive bundle.                 |
 | `FieldStateMap<Form>` / `Entry` | runtime/types/types-api | The proxy shape exposing `form.fields`.                   |
 | `FormMeta<Form>`                | runtime/types/types-api | Form-level aggregates over every field's state.           |
 | `FormErrorsSurface<Form>`       | runtime/types/types-api | The proxy shape exposing `form.errors`.                   |

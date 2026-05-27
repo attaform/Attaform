@@ -109,14 +109,14 @@ type AttaformDefaults = {
   history?: true | { max?: number }
   rememberVariants?: boolean
   coerce?: boolean | CoercionRegistry
-  shouldShowErrors?: ShouldShowErrorsConfig
+  getDisplayState?: GetDisplayState
   maxRecursionDepth?: number
   sensitiveNames?: readonly string[]
   multiTab?: boolean
 }
 ```
 
-`shouldShowErrors` drives `field.showErrors` and `form.meta.showErrors`: the centralized "is this error ready to render?" gate. Set once at the app level so every form follows the same convention. See [Showing errors at the right time](/docs/validation/showing-errors) for the full contract.
+`getDisplayState` resolves `field.displayState` and its `show*` projections: the centralized "what should this field surface right now?" heuristic, one of idle, pending, error, or success. Set it once at the app level so every form follows the same convention. See [Display state and showing errors](/docs/validation/showing-errors) for the full contract.
 
 `sensitiveNames` extends the heuristic that gates persistence opt-ins, multi-tab broadcasts, and the DevTools redact walk. See [Sensitive-name protection](/docs/persistence/sensitive-names).
 
@@ -181,5 +181,5 @@ Fully equivalent for the consumer; every `useAppForm` call gets your defaults; p
 ## Where to next
 
 - [Sensitive-name protection](/docs/persistence/sensitive-names): extend the resolved list once at the app level, tighten persistence + multi-tab + DevTools redact in one move.
-- [Showing errors at the right time](/docs/validation/showing-errors): set the `shouldShowErrors` predicate app-wide for a consistent feel across forms.
+- [Display state and showing errors](/docs/validation/showing-errors): set the `getDisplayState` predicate app-wide for a consistent feel across forms.
 - [When validation runs](/docs/validation/when-validation-runs): `validateOn` and `debounceMs` defaults shape every form in the app.

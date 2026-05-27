@@ -4,13 +4,12 @@ import type {
   CoercionRegistry,
   FormKey,
   DefaultValuesResponse,
-  ShouldShowErrors,
-  ShouldShowErrorsConfig,
+  GetDisplayState,
   ValidateOn,
   ValidationError,
   WriteMeta,
 } from '../types/types-api'
-import { resolveShouldShowErrors } from './should-show-errors'
+import { resolveGetDisplayState } from './display-state'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
@@ -303,15 +302,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly ssr: boolean
 
   /**
-   * Resolved `shouldShowErrors` predicate driving `field.showErrors`
-   * and `form.meta.showErrors`. Resolved once at construction via
-   * `resolveShouldShowErrors(options.shouldShowErrors)` so the
-   * field-state computeds don't repeat the boolean-vs-function
-   * branch on every read. Boolean shorthand has already been lifted
-   * to a constant predicate by the time it lands here; `undefined`
-   * config falls through to `defaultShouldShowErrors`.
+   * Resolved `getDisplayState` predicate driving `field.displayState`,
+   * the `show*` booleans, and their `form.meta` rollups. Resolved once
+   * at construction via `resolveGetDisplayState(options.getDisplayState)`;
+   * `undefined` config falls through to `defaultDisplayState`. The
+   * field-state computeds read the resolved function directly on every
+   * read.
    */
-  readonly shouldShowErrors: ShouldShowErrors
+  readonly getDisplayState: GetDisplayState
 
   // --- submission lifecycle ---
   // Driven by buildProcessForm's handleSubmit wrapper. See use-abstract-form.ts
@@ -338,10 +336,9 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   // --- wizard navigation lifecycle ---
   // Bumped by `useWizard` each time wizard navigation (`next`, `back`,
   // `goTo`) actually departs this form. Cleared by `reset()` alongside
-  // the submission lifecycle. Drives the depart arm of
-  // `defaultShouldShowErrors`: once wizard navigation has left this
-  // form, any errors on the form reveal regardless of touched / blurred
-  // state. Distinct from `submissionAttempts` (which counts
+  // the submission lifecycle. Feeds `submissionAttempts`-style reveal in
+  // layered `getDisplayState` predicates but does NOT drive the
+  // library default. Distinct from `submissionAttempts` (which counts
   // `handleSubmit` passes only) so submission accounting stays
   // unambiguous; distinct from `form.validate()`, which is a read-only
   // primitive that never bumps any counter.
@@ -902,14 +899,14 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    */
   readonly coerce?: boolean | CoercionRegistry | undefined
   /**
-   * Configurable predicate driving `field.showErrors` and
-   * `form.meta.showErrors`. Function | boolean | undefined; resolved
-   * once at construction via `resolveShouldShowErrors`. See
-   * `UseFormConfiguration.shouldShowErrors` and
-   * `AttaformDefaults.shouldShowErrors` for the full contract and
+   * Configurable predicate driving `field.displayState`, the `show*`
+   * booleans, and their `form.meta` rollups. Function | undefined;
+   * resolved once at construction via `resolveGetDisplayState`. See
+   * `UseFormConfiguration.getDisplayState` and
+   * `AttaformDefaults.getDisplayState` for the full contract and
    * three-tier resolution rules.
    */
-  readonly shouldShowErrors?: ShouldShowErrorsConfig | undefined
+  readonly getDisplayState?: GetDisplayState | undefined
   /**
    * Pre-resolved sensitive-path predicate. Built by the caller from
    * the `sensitiveNames` cascade (`useForm({ sensitiveNames })` >
@@ -1181,13 +1178,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // path-scoped coerce closures on each `RegisterValue`.
   const coerceIndex: CoercionIndex = resolveCoercionIndex(options.coerce)
 
-  // Resolve `shouldShowErrors` once. Boolean shorthand lifts to a
-  // constant predicate; `undefined` falls back to
-  // `defaultShouldShowErrors`. The field-state computeds read the
-  // resolved function directly without re-branching on type.
-  const resolvedShouldShowErrors: ShouldShowErrors = resolveShouldShowErrors(
-    options.shouldShowErrors
-  )
+  // Resolve `getDisplayState` once. `undefined` falls back to
+  // `defaultDisplayState`. The field-state computeds read the resolved
+  // function directly on every read.
+  const resolvedGetDisplayState: GetDisplayState = resolveGetDisplayState(options.getDisplayState)
 
   // Sensitive-path predicates: caller-provided (built from the
   // `sensitiveNames` cascade in `use-abstract-form.ts`) or the
@@ -1511,7 +1505,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const submitError = ref<unknown>(null)
   // Counts wizard departures from this form. Bumped by `useWizard`
   // when `next` / `back` / `goTo` actually leaves this form; zeroed by
-  // `reset()` below. Drives the depart arm of `defaultShouldShowErrors`.
+  // `reset()` below. Introspection only — the library-default
+  // `getDisplayState` reveals via `submissionAttempts`, not this.
   const departAttempts = ref(0)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
@@ -3348,7 +3343,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     originals,
     schema,
     ssr,
-    shouldShowErrors: resolvedShouldShowErrors,
+    getDisplayState: resolvedGetDisplayState,
     submitting,
     activeSubmissions,
     submissionAttempts,

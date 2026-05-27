@@ -93,7 +93,7 @@ Once mounted, server errors are indistinguishable from schema errors at the read
 
 - `form.errors.email` returns the `ValidationError[]` (server or schema, same shape).
 - `form.fields.email.firstError` returns the first one.
-- `form.fields.email.showErrors` gates display per the [`shouldShowErrors`](/docs/validation/showing-errors) predicate.
+- `form.fields.email.showErrors` gates display per the [`getDisplayState`](/docs/validation/showing-errors) predicate.
 - `form.focusFirstError()` pulls focus to the first server error just like a schema one.
 
 No special "this is a server error" surface in the template. The render code reads `form.fields.<path>.firstError?.message` the same way for both kinds.

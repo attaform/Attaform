@@ -27,9 +27,9 @@ Submit the demo without changing the simulate-failure toggle to watch `submittin
 
 ## Two halves
 
-`form.meta` extends `FieldState` with seven form-only properties. That means `meta` has 29 reads total:
+`form.meta` extends `FieldState` with seven form-only properties. That means `meta` has 33 reads total:
 
-- 22 properties inherited from FieldState, aggregated across every leaf in the form.
+- 26 properties inherited from FieldState, aggregated across every leaf in the form.
 - 7 form-only properties that describe the submit cycle and the wizard-departure counter.
 
 The inherited bits are documented once on the [`fields` page](/docs/reading-the-form/fields): same property names, same types, same reactivity. The only difference is the aggregation:
@@ -118,7 +118,7 @@ Reach for it when an inline failure banner needs to react to submit errors witho
 - `goTo(currentKey)` (same-key jump) leaves it alone.
 - `next()` blocked by failed activation leaves it alone.
 
-The counter is a pure read; Attaform's default `shouldShowErrors` heuristic runs off `submissionAttempts` instead. Reach for `departAttempts` when an analytics event, a prior-step badge, or a layered error-reveal predicate wants the "user visited and left" signal:
+The counter is a pure read; Attaform's default `getDisplayState` heuristic runs off `submissionAttempts` instead. Reach for `departAttempts` when an analytics event, a prior-step badge, or a layered error-reveal predicate wants the "user visited and left" signal:
 
 ```ts
 watch(

@@ -78,4 +78,4 @@ For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length
 
 - [`setValue` patterns](/docs/writing-and-mutating/set-value): when you need to write the whole array, not mutate one slot.
 - [`reset` & `resetField`](/docs/writing-and-mutating/reset): restore the array to its baseline.
-- [Showing errors at the right time](/docs/validation/showing-errors): array-level error display.
+- [Display state and showing errors](/docs/validation/showing-errors): array-level error display.

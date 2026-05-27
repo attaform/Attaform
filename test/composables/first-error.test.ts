@@ -13,9 +13,9 @@ import type { ValidationError } from '../../src'
  *
  * `firstError` returns the first error in the deterministic schema-
  * declaration order at the path (`errors[0]`). It is INDEPENDENT of
- * `field.showErrors` / `shouldShowErrors`: the data is the data
- * regardless of whether the heuristic chooses to render it. Adopters
- * who use a different gate read `firstError` directly.
+ * `field.displayState` / the `getDisplayState` heuristic: the data is
+ * the data regardless of whether the heuristic chooses to render it.
+ * Adopters who use a different gate read `firstError` directly.
  *
  * For container paths, `firstError` is the first error in the
  * aggregated subtree (descendant errors sorted by `pathOrdinal`).

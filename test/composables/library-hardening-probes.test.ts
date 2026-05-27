@@ -3321,7 +3321,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
   // Shared-key semantics are intentional (modal + main rendering the
   // same logical form). The store IS shared; storage IS shared. What
   // mustn't bleed is per-instance config — each useForm callsite
-  // honors its own validateOn / shouldShowErrors / coerce /
+  // honors its own validateOn / getDisplayState / coerce /
   // rememberVariants / debounceMs. The first call's defaultValues
   // wins; subsequent calls inherit the live store state, not their own
   // seed (so opening a modal shows whatever the user typed in the
@@ -5862,15 +5862,15 @@ describe('chaos — handleSubmit when onError callback throws', () => {
   })
 })
 
-// -------------------- 13.3 Plugin shouldShowErrors that throws --------------------
+// -------------------- 13.3 Plugin getDisplayState that throws --------------------
 describe('chaos — plugin defaults with a throwing predicate', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('a shouldShowErrors that throws does not crash the form', async () => {
-    const explosivePredicate = (): boolean => {
+  it('a getDisplayState that throws does not crash the form', async () => {
+    const explosivePredicate = (): never => {
       throw new Error('predicate exploded')
     }
     const handle: { api?: ProfileApi } = {}
@@ -5882,13 +5882,13 @@ describe('chaos — plugin defaults with a throwing predicate', () => {
             schema: profileSchema,
             key: `chaos-throw-predicate-${Math.random().toString(36).slice(2)}`,
             defaultValues: { name: '', notify: { channel: 'email', address: '' } },
-            shouldShowErrors: explosivePredicate,
+            getDisplayState: explosivePredicate,
           }) as unknown as ProfileApi
           return () => h('div')
         },
       })
       const app = createApp(App).use(
-        createAttaform({ defaults: { shouldShowErrors: explosivePredicate } })
+        createAttaform({ defaults: { getDisplayState: explosivePredicate } })
       )
       app.mount(document.createElement('div'))
       apps.push(app)
@@ -5898,22 +5898,24 @@ describe('chaos — plugin defaults with a throwing predicate', () => {
 
     expect(constructionThrew).toBe(false)
 
-    // Reading the field's showErrors must not propagate the throw out
-    // of the reactive system. Either it returns a default (false) or
-    // captures + reports the error — but does not break Vue's render.
+    // Reading the field's displayState must not propagate the throw out
+    // of the reactive system. The chokepoint catches a throwing predicate
+    // and falls back to the library default, so the read yields a valid
+    // DisplayState rather than breaking Vue's render.
     if (handle.api !== undefined) {
       let readThrew = false
+      let observed: unknown
       try {
-        const _show = (
+        observed = (
           handle.api as unknown as {
-            fields: { name: { showErrors: boolean } }
+            fields: { name: { displayState: string } }
           }
-        ).fields.name.showErrors
-        void _show
+        ).fields.name.displayState
       } catch {
         readThrew = true
       }
       expect(readThrew).toBe(false)
+      expect(['idle', 'pending', 'error', 'success']).toContain(observed)
     }
   })
 })

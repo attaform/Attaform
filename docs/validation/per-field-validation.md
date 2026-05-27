@@ -84,4 +84,4 @@ Sync refinements run on every validation pass: keystroke, blur, submit (per the 
 - [Async refinements](/docs/validation/async-refinements): predicates that await a server round-trip.
 - [The validation lifecycle](/docs/validation/lifecycle): the three imperative methods (`validate`, `validateAsync`, `process`).
 - [When validation runs](/docs/validation/when-validation-runs): the `validateOn` timing knob.
-- [Showing errors at the right time](/docs/validation/showing-errors): the `showErrors` predicate.
+- [Display state and showing errors](/docs/validation/showing-errors): the `getDisplayState` predicate.

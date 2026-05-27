@@ -151,4 +151,4 @@ If you need the typed shape outside submit, call `form.validateAsync()` or `form
 
 - [The storage contract](/docs/schemas/storage-shape): why preprocess and coerce keep storage raw, and how the two-layer model splits responsibilities.
 - [Async refinements](/docs/validation/async-refinements): the broader lifecycle around async refine, debouncing, and the validating state.
-- [Showing errors at the right time](/docs/validation/showing-errors): when to render `form.errors.url` so the user sees the message at the right moment.
+- [Display state and showing errors](/docs/validation/showing-errors): when to render `form.errors.url` so the user sees the message at the right moment.

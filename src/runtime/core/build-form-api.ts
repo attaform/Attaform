@@ -643,6 +643,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       path: computed(() => rootFieldState.value.path),
       id: computed(() => rootFieldState.value.id),
       aria: computed(() => rootFieldState.value.aria),
+      key: computed(() => rootFieldState.value.key),
       blank: computed(() => rootFieldState.value.blank),
       label: computed(() => rootFieldState.value.label),
       description: computed(() => rootFieldState.value.description),
@@ -872,6 +873,44 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     }) as F
   }
 
+  // `form.list(path)`: the array at `path` as one field state per
+  // element, in index order. Entries are the cached `form.fields`
+  // terminals, so each stays live and carries its element `key`. Reading
+  // the value tracks the array length, so the view recomputes when the
+  // array grows or shrinks. The frozen result enforces the read-only
+  // contract; mutate through `append` / `remove` / `move` / `swap`.
+  const callTerminal = fieldStateProxy as unknown as (path: string) => unknown
+  const EMPTY_FIELD_LIST: readonly unknown[] = Object.freeze([])
+  function list(path: string): readonly unknown[] {
+    const { segments } = canonicalizePath(path)
+    const value = state.getValueAtPath(segments)
+    if (!Array.isArray(value)) return EMPTY_FIELD_LIST
+    const out = new Array<unknown>(value.length)
+    for (let i = 0; i < value.length; i += 1) out[i] = callTerminal(`${path}.${i}`)
+    return Object.freeze(out)
+  }
+
+  // `form.record(path)`: the record at `path` as one field state per
+  // entry, keyed by the entry's own key. The array counterpart of `list`,
+  // shaped as a keyed object rather than an ordered array. Entries are the
+  // cached `form.fields` terminals, so each stays live. Reading the value
+  // and its keys tracks the key set, so the view recomputes when an entry
+  // joins or leaves. The frozen result is read-only; grow or shrink the
+  // record through `setValue` at an entry path.
+  const EMPTY_FIELD_RECORD: Readonly<Record<string, unknown>> = Object.freeze({})
+  function record(path: string): Readonly<Record<string, unknown>> {
+    const { segments } = canonicalizePath(path)
+    const value = state.getValueAtPath(segments)
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return EMPTY_FIELD_RECORD
+    }
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      out[key] = callTerminal(`${path}.${key}`)
+    }
+    return Object.freeze(out)
+  }
+
   return {
     handleSubmit: gated(handleSubmit),
     // Callable readonly Proxies (`values`, `fields`, `errors`) and the
@@ -959,6 +998,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     swap: gated(fieldArrays.swap) as UseFormReturnType<Form, GetValueFormType>['swap'],
     move: gated(fieldArrays.move) as UseFormReturnType<Form, GetValueFormType>['move'],
     replace: gated(fieldArrays.replace) as UseFormReturnType<Form, GetValueFormType>['replace'],
+    list: gated(list) as UseFormReturnType<Form, GetValueFormType>['list'],
+    record: gated(record) as UseFormReturnType<Form, GetValueFormType>['record'],
     get blankPaths() {
       void state.activate()
       return blankPathsView

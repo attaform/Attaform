@@ -368,6 +368,37 @@ export type ArrayItem<Form, Path extends ArrayPath<Form>> =
   NestedType<Form, Path> extends ReadonlyArray<infer Item> ? Item : never
 
 /**
+ * Companion to `ArrayPath`: filter `FlatPath<Form>` down to the subset
+ * of paths whose resolved leaf is a record (an object with an open
+ * string-keyed index signature, e.g. `z.record(z.string(), V)`). A
+ * fixed-shape object (`z.object({ ... })`) is excluded — its keys are
+ * statically known, so it has no `string` index signature.
+ *
+ * `string extends keyof T` is the index-signature probe: it holds for
+ * `Record<string, V>` (`keyof` is `string`) and fails for a fixed object
+ * (`keyof` is the literal key union). The leading array guard keeps
+ * arrays (which also satisfy the object check) out of the record set.
+ */
+export type RecordPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P extends string
+  ? NestedType<Form, P> extends readonly unknown[]
+    ? never
+    : NestedType<Form, P> extends Record<string, unknown>
+      ? string extends keyof NestedType<Form, P>
+        ? P
+        : never
+      : never
+  : never
+
+/**
+ * Value type of the record addressed by `Path` — the `V` in a
+ * `Record<string, V>`. Callers constrain `Path extends RecordPath<Form>`,
+ * so the leaf is always an open string-keyed record and this is
+ * well-defined.
+ */
+export type RecordValue<Form, Path extends RecordPath<Form>> =
+  NestedType<Form, Path> extends Record<string, infer Value> ? Value : never
+
+/**
  * Widens primitive-literal leaves to their primitive supertype to
  * match the runtime "slim-primitive write contract."
  *

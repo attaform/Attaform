@@ -74,9 +74,9 @@ export function buildFieldArrayApi<F extends GenericForm>(
     prepend(path, value) {
       const next = readArray(path)
       next.unshift(value)
-      // Every existing index shifted by 1; memory at every index now
-      // refers to a different element. Clear all under the array.
-      return writeArray(path, next, { kind: 'shift-from', index: 0 })
+      // Prepend is an insert at the head: every existing element shifts up
+      // by one. The `insert` op records that exact permutation.
+      return writeArray(path, next, { kind: 'insert', index: 0 })
     },
     insert(path, index, value) {
       const next = readArray(path)
@@ -85,13 +85,13 @@ export function buildFieldArrayApi<F extends GenericForm>(
       // consumer's expected behaviour here.
       next.splice(index, 0, value)
       const clampedIndex = Math.max(0, Math.min(index, next.length))
-      return writeArray(path, next, { kind: 'shift-from', index: clampedIndex })
+      return writeArray(path, next, { kind: 'insert', index: clampedIndex })
     },
     remove(path, index) {
       const next = readArray(path)
       if (index < 0 || index >= next.length) return false
       next.splice(index, 1)
-      return writeArray(path, next, { kind: 'shift-from', index })
+      return writeArray(path, next, { kind: 'remove', index })
     },
     swap(path, a, b) {
       const next = readArray(path)
@@ -109,11 +109,10 @@ export function buildFieldArrayApi<F extends GenericForm>(
       const [item] = next.splice(from, 1)
       const clampedTo = Math.max(0, Math.min(to, next.length))
       next.splice(clampedTo, 0, item)
-      return writeArray(path, next, {
-        kind: 'shift-range',
-        fromIndex: Math.min(from, clampedTo),
-        toIndex: Math.max(from, clampedTo),
-      })
+      // The element leaves `from` and lands at `clampedTo`; everything
+      // between shifts by one. `to` carries the clamped destination so
+      // the permutation matches the array we just wrote.
+      return writeArray(path, next, { kind: 'move', from, to: clampedTo })
     },
     replace(path, index, value) {
       const next = readArray(path)

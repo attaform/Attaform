@@ -146,6 +146,9 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(['undefined', 'object']).toContain(typeof api.meta.firstError)
     expect(typeof api.meta.id).toBe('string')
     expect(api.meta.aria.errorId).toBe(`${api.meta.id}-error`)
+    // The root is not an array element, so its identity key is empty.
+    expect(api.meta.key).toBe('')
+    expectTypeOf(api.meta.key).toEqualTypeOf<string>()
 
     // Type-level absence at the top level.
     // @ts-expect-error api.dirty must NOT exist; use api.meta.dirty
@@ -197,6 +200,8 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(emailField.id.length).toBeGreaterThan(0)
     expect(emailField.aria.errorId).toBe(`${emailField.id}-error`)
     expect(emailField.aria.descriptionId).toBe(`${emailField.id}-description`)
+    // A scalar leaf is not an array element, so its identity key is empty.
+    expect(emailField.key).toBe('')
 
     expectTypeOf(emailField.dirty).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.valid).toEqualTypeOf<boolean>()
@@ -207,6 +212,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expectTypeOf(emailField.showSuccess).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.showIdle).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.id).toEqualTypeOf<string>()
+    expectTypeOf(emailField.key).toEqualTypeOf<string>()
   })
 
   it('per-field history does NOT exist today (pinned for the consolidation question)', () => {

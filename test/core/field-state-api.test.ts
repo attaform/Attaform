@@ -62,6 +62,9 @@ describe('buildFieldStateAccessor', () => {
     expect(s.value.aria.descriptionId).toBe(`${s.value.id}-description`)
     // Distinct paths get distinct ids.
     expect(getFieldState(['profile', 'name']).value.id).not.toBe(s.value.id)
+    // Non-array-element paths carry an empty identity key.
+    expect(s.value.key).toBe('')
+    expect(getFieldState(['profile', 'name']).value.key).toBe('')
   })
 
   it('returns empty errors array for fields without errors', () => {

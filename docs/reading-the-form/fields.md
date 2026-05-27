@@ -10,13 +10,13 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Read shape per leaf
-    value: FieldState (28 properties)
+    value: FieldState (29 properties)
     kind: code
 ---
 
 # `fields`
 
-> A reactive Proxy keyed by schema paths. Every leaf surfaces a 28-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
+> A reactive Proxy keyed by schema paths. Every leaf surfaces a 29-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
 
 ::docs-meta-table
 ::
@@ -50,7 +50,7 @@ Container paths (`form.fields.profile`) descend through the proxy. Call-form (`f
 
 ## What FieldState carries
 
-Each leaf exposes a 28-property `FieldState` object. The properties fall into five jobs:
+Each leaf exposes a 29-property `FieldState` object. The properties fall into five jobs:
 
 ### State bits
 
@@ -108,17 +108,18 @@ form.fields.email.element?.scrollIntoView({ block: 'center' })
 
 ### Schema metadata + identity
 
-Schema-registered presentational hints, the path that produced this FieldState, and the stable DOM ids for wiring labels and assistive-tech references.
+Schema-registered presentational hints, the path that produced this FieldState, the stable DOM ids for wiring labels and assistive-tech references, and the element identity key for iterating array elements.
 
-| Property      | Type                            | Meaning                                                                          |
-| ------------- | ------------------------------- | -------------------------------------------------------------------------------- |
-| `label`       | `string`                        | Registered label, or a humanized fallback from the path's last segment.          |
-| `description` | `string \| undefined`           | Registered description; falls back to `schema.describe('...')` when no override. |
-| `placeholder` | `string \| undefined`           | Registered placeholder hint.                                                     |
-| `meta`        | `Readonly<FieldMetaPayload>`    | The full registered payload; escape hatch for consumer-augmented keys.           |
-| `path`        | `readonly (string \| number)[]` | The path tuple that produced this FieldState.                                    |
-| `id`          | `string`                        | Stable, SSR-safe DOM id for this field, unique across every mount on the page.   |
-| `aria`        | `{ errorId, descriptionId }`    | Satellite ids derived from `id` for wiring error and description elements.       |
+| Property      | Type                            | Meaning                                                                                                                                                                        |
+| ------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `label`       | `string`                        | Registered label, or a humanized fallback from the path's last segment.                                                                                                        |
+| `description` | `string \| undefined`           | Registered description; falls back to `schema.describe('...')` when no override.                                                                                               |
+| `placeholder` | `string \| undefined`           | Registered placeholder hint.                                                                                                                                                   |
+| `meta`        | `Readonly<FieldMetaPayload>`    | The full registered payload; escape hatch for consumer-augmented keys.                                                                                                         |
+| `path`        | `readonly (string \| number)[]` | The path tuple that produced this FieldState.                                                                                                                                  |
+| `id`          | `string`                        | Stable, SSR-safe DOM id for this field, unique across every mount on the page.                                                                                                 |
+| `aria`        | `{ errorId, descriptionId }`    | Satellite ids derived from `id` for wiring error and description elements.                                                                                                     |
+| `key`         | `string`                        | Allocated identity token while the field is an array element, empty otherwise. Follows the element across reorders; the `:key` for [`form.list`](/docs/reading-the-form/list). |
 
 Register schema metadata with `withMeta` (works on Zod 3 and Zod 4) or the native `schema.register(fieldMeta, {...})` chain (Zod 4):
 
@@ -146,6 +147,7 @@ The display-ergonomics pairing of `firstError` plus `showErrors` is the per-fiel
 
 ## Where to next
 
+- [`form.list`](/docs/reading-the-form/list): iterate an array as one FieldState per element, keyed by `key` so a `v-for` survives reorders.
 - [`values`](/docs/reading-the-form/values): the value half of every FieldState, lifted to a form-wide Proxy.
 - [`errors`](/docs/reading-the-form/errors): the per-path errors Proxy, the raw array behind `firstError`.
 - [`meta`](/docs/reading-the-form/meta): the form-level aggregation, every FieldState property rolled up, plus 7 form-only reads.

@@ -10,6 +10,7 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
+import { createArrayIdentity } from './array-identity'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
@@ -507,6 +508,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean
   getValueAtPath(path: Path): unknown
+  /**
+   * Stable identity for the array element at `path`. An array element
+   * (numeric last segment) carries its allocated identity token,
+   * maintained by `array-identity.ts` across structural mutations.
+   * Empty for any non-array-element path: a record entry, a
+   * fixed-object field, a container, or the root. Backs `FieldState.key`.
+   */
+  arrayElementKey(path: Path): string
 
   // --- reset / clear ---
   reset(nextDefaultValues?: DeepPartial<WriteShape<F>>): void
@@ -1296,6 +1305,27 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   const form = ref(stubbedInitialData) as Ref<F>
 
+  // Operation-maintained per-element identity. Reads the live array
+  // length so it can seed and realign token lists by position for writes
+  // it can't follow; structural mutations replay their permutation onto
+  // the tokens through `applyOp`.
+  const arrayIdentity = createArrayIdentity((arraySegs) => {
+    const v = getAtPath(form.value, arraySegs)
+    return Array.isArray(v) ? v.length : 0
+  })
+
+  // FieldState.key: an array element (numeric last segment) carries its
+  // allocated identity token, which travels with the element across
+  // structural mutations so a keyed `v-for` survives reorders. Empty for
+  // any non-array-element path; a record entry's stable identity is its
+  // own key, surfaced through `form.record`, so it needs no token here.
+  function arrayElementKey(path: Path): string {
+    if (path.length === 0) return ''
+    const last = path[path.length - 1]
+    if (typeof last === 'number') return arrayIdentity.tokenAt(path.slice(0, -1), last)
+    return ''
+  }
+
   // Per-path state. `reactive(new Map())` uses Vue's collection handlers —
   // reads of specific keys track those keys only, so a change to one field
   // doesn't invalidate computeds watching another.
@@ -1429,12 +1459,18 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   function applyArrayOpToMemory(arrayPath: Path, op: NonNullable<WriteMeta['arrayOp']>): void {
     switch (op.kind) {
-      case 'shift-from':
+      case 'insert':
+      case 'remove':
+        // Every index at or past the touched slot now refers to a
+        // different element (shifted up by an insert, down by a remove).
         clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= op.index)
         return
-      case 'shift-range':
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= op.fromIndex && i <= op.toIndex)
+      case 'move': {
+        const lo = Math.min(op.from, op.to)
+        const hi = Math.max(op.from, op.to)
+        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= lo && i <= hi)
         return
+      }
       case 'swap':
         clearVariantMemoryAtArrayIndices(arrayPath, (i) => i === op.a || i === op.b)
         return
@@ -1996,8 +2032,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // those indices on a future variant switch.
     if (meta?.arrayOp !== undefined) {
       applyArrayOpToMemory(path, meta.arrayOp)
+      arrayIdentity.applyOp(path, meta.arrayOp)
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {
       clearVariantMemoryUnderPath(path)
+      arrayIdentity.realign(path)
     }
     const effectiveModeAfterWrite = meta?.instance?.validateOn ?? fieldValidationMode
     if (effectiveModeAfterWrite === 'change') {
@@ -3367,6 +3405,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     applyFormReplacement,
     setValueAtPath,
     getValueAtPath,
+    arrayElementKey,
 
     reset,
     resetField,

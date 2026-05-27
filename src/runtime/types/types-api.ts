@@ -20,6 +20,8 @@ import type {
   LiftedValueShape,
   NestedReadType,
   NestedType,
+  RecordPath,
+  RecordValue,
   ValueOfUnion,
   WriteShape,
 } from './types-core'
@@ -809,16 +811,18 @@ export type WriteMeta = {
    */
   readonly skipDiscriminatorReshape?: boolean
   /**
-   * Hint about an array structural mutation, set by `field-arrays.ts`
-   * helpers so `setValueAtPath` can surgically clear variant memory
-   * for indices the operation invalidated. Without this hint, a raw
-   * whole-array `setValue(arrayPath, [...])` clears all memory under
-   * the array (the runtime can't tell which indices stayed put).
-   * Internal — don't set from consumer code.
+   * Records an array structural mutation precisely enough to replay the
+   * exact index permutation it produced, set by `field-arrays.ts`
+   * helpers. `setValueAtPath` uses it to surgically clear variant memory
+   * for the indices the operation invalidated. Without this hint, a raw
+   * whole-array `setValue(arrayPath, [...])` clears all memory under the
+   * array (the runtime can't tell which indices stayed put). Internal —
+   * don't set from consumer code.
    */
   readonly arrayOp?:
-    | { readonly kind: 'shift-from'; readonly index: number }
-    | { readonly kind: 'shift-range'; readonly fromIndex: number; readonly toIndex: number }
+    | { readonly kind: 'insert'; readonly index: number }
+    | { readonly kind: 'remove'; readonly index: number }
+    | { readonly kind: 'move'; readonly from: number; readonly to: number }
     | { readonly kind: 'swap'; readonly a: number; readonly b: number }
     | { readonly kind: 'replace-at'; readonly index: number }
   /**
@@ -2841,6 +2845,15 @@ export type FieldState<Value = unknown> = {
     readonly errorId: string
     readonly descriptionId: string
   }
+  /**
+   * Stable identity for this field as an element of its parent array,
+   * suitable as a Vue `:key` when iterating array elements. An allocated
+   * token (not derived from the element's value) that follows the
+   * element across inserts, removals, moves, and swaps, so a row keeps
+   * its component instance across a reorder. Empty for fields that are
+   * not array elements. Treat as opaque identity, not state.
+   */
+  readonly key: string
   readonly blank: boolean
   /**
    * Presentational label for this field. Resolves through the
@@ -4212,6 +4225,50 @@ export type UseFormReturnType<
     index: number,
     value: ArrayItem<Form, Path>
   ) => void
+  /**
+   * Read-only, reactive view of the array at `path` as one `FieldState`
+   * per element, in index order. Each entry carries its element `key`,
+   * an allocated identity token, so a `v-for` keyed by it keeps a row's
+   * component instance across an insert, removal, move, or swap:
+   *
+   * ```vue
+   * <div v-for="(row, i) in form.list('contacts')" :key="row.key">
+   *   <input v-register="form.register(`contacts.${i}.name`)" />
+   *   <p v-if="row.showErrors">{{ row.firstError?.message }}</p>
+   * </div>
+   * ```
+   *
+   * Entries are the same field states `form.fields` exposes, so reads
+   * stay live. `form.fields(path)` remains the single aggregated
+   * container for the whole array; `list` is the per-element view.
+   * For a record, reach for `record`, which keys each entry by its own
+   * key.
+   */
+  list: <Path extends ArrayPath<Form>>(path: Path) => readonly FieldState<ArrayItem<Form, Path>>[]
+  /**
+   * Read-only, reactive view of the record at `path` as one `FieldState`
+   * per entry, keyed by the entry's own key. Where `list` hands back an
+   * ordered array for an array path, `record` hands back a keyed object
+   * for a record path, so you iterate it by key:
+   *
+   * ```vue
+   * <div v-for="(field, key) in form.record('scoresByTeam')" :key="key">
+   *   <label>{{ key }}</label>
+   *   <input v-register="form.register(`scoresByTeam.${key}`)" />
+   *   <p v-if="field.showErrors">{{ field.firstError?.message }}</p>
+   * </div>
+   * ```
+   *
+   * Entries are the same field states `form.fields` exposes, so reads
+   * stay live, and the keyed shape mirrors the record's own keys: an
+   * entry appears once you write its key (`form.setValue`) and drops
+   * when the key leaves. `form.fields(path)` remains the single
+   * aggregated container for the whole record; `record` is the
+   * per-entry view.
+   */
+  record: <Path extends RecordPath<Form>>(
+    path: Path
+  ) => Readonly<Record<string, FieldState<RecordValue<Form, Path>>>>
   /**
    * Read-only view of the form's blank path set. Reactive — Vue 3.5
    * tracks `.has()` / `for..of` / size accesses, so consumers can drive

@@ -46,8 +46,12 @@
         </span>
       </div>
 
-      <em v-if="form.fields.username.showErrors">{{ form.fields.username.firstError?.message }}</em>
-      <small v-else-if="form.fields.username.showPending">Checking availability…</small>
+      <div class="message">
+        <em v-if="form.fields.username.showErrors">{{
+          form.fields.username.firstError?.message
+        }}</em>
+        <small v-else-if="form.fields.username.showPending">Checking availability…</small>
+      </div>
     </div>
 
     <button type="submit">Submit</button>
@@ -138,6 +142,11 @@
     border-color: #2563eb;
     color: #1d4ed8;
     font-weight: 600;
+  }
+  .message {
+    margin: 0;
+    min-height: 1.25rem;
+    line-height: 1.25rem;
   }
   em {
     color: #dc2626;

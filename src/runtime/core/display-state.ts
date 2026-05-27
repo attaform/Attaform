@@ -1,0 +1,84 @@
+import type { GetDisplayState } from '../types/types-api'
+
+/**
+ * Library-default `getDisplayState` heuristic. Resolves every path's
+ * `field.displayState` — and thus `field.show*` and the `form.meta`
+ * rollups — whenever the consumer has not configured an override at the
+ * per-form or plugin level.
+ *
+ * One timing gate, then precedence:
+ *
+ * 1. **Timing gate.** `gateOpen` once the form has been submitted
+ *    (`submissionAttempts > 0`) OR the field is touched and not
+ *    currently focused. Before the gate opens the verdict is `'idle'`
+ *    regardless of errors — transient mid-edit problems stay quiet while
+ *    the user is actively working the field, and reappear on blur (or
+ *    when a sibling takes focus). The not-focused half also covers
+ *    blur-without-typing on a required field: `touched` flips on blur
+ *    regardless of `dirty`, so visiting an empty required field and
+ *    moving on opens the gate.
+ *
+ *    The submit arm covers `form.handleSubmit` directly and
+ *    `wizard.handleSubmit` (which bumps `submissionAttempts` on the
+ *    active form at intermediate steps and on every form at the final
+ *    step, lighting up the whole flow at once).
+ *
+ * 2. **Pending.** With the gate open, a per-field run in flight
+ *    (`validating === true`) wins: the verdict in `errors` is stale by
+ *    definition, so surface `'pending'` (a spinner) rather than a
+ *    possibly-wrong error or success. Containers roll `validating` up as
+ *    a disjunction, so any descendant under revalidation reads
+ *    `'pending'` at the container too.
+ *
+ * 3. **Error.** An own-path error (one whose path equals the field's own
+ *    path) resolves to `'error'`. The own-path filter means a container
+ *    never duplicates an error a more-specific descendant already
+ *    renders; aggregate banners bind to `form.meta.errorCount` instead.
+ *
+ * 4. **Success.** No error and `valid === true` resolves to `'success'`
+ *    — the green-check confirmation. `valid` already gates async schemas
+ *    on the form-wide first validation pass, so this never fires a
+ *    premature success before the first verdict lands.
+ *
+ * 5. **Idle.** Anything else (gate open, not validating, no error, not
+ *    yet `valid`) stays `'idle'`.
+ *
+ * Public re-export so adopters can compose with this without
+ * copy-pasting the rule body — a layered predicate that special-cases a
+ * subtree but otherwise defers picks up future refinements
+ * automatically:
+ *
+ * ```ts
+ * import { defaultDisplayState } from 'attaform'
+ *
+ * useForm({
+ *   schema,
+ *   getDisplayState: (field, formMeta) => {
+ *     const state = defaultDisplayState(field, formMeta)
+ *     return field.path[0] === 'username' && state === 'success' ? 'idle' : state
+ *   },
+ * })
+ * ```
+ */
+export const defaultDisplayState: GetDisplayState = (field, formMeta) => {
+  const gateOpen =
+    formMeta.submissionAttempts > 0 || (field.touched === true && field.focused !== true)
+  if (!gateOpen) return 'idle'
+  if (field.validating === true) return 'pending'
+  const hasOwnError = field.errors.some(
+    (e) => e.path.length === field.path.length && e.path.every((s, i) => s === field.path[i])
+  )
+  if (hasOwnError) return 'error'
+  if (field.valid === true) return 'success'
+  return 'idle'
+}
+
+/**
+ * Resolve a `getDisplayState` config (function | undefined) to a
+ * concrete predicate. `undefined` falls back to the library default.
+ * Called once at form construction; the resolved predicate is then
+ * stored on `FormStore` for the field-state computeds to read directly.
+ */
+export function resolveGetDisplayState(config: GetDisplayState | undefined): GetDisplayState {
+  return config ?? defaultDisplayState
+}

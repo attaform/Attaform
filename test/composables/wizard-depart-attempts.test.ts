@@ -26,7 +26,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *  - `form.reset()` zeros departAttempts alongside the rest of the
  *    submission lifecycle.
  *
- * The counter is pure introspection; the default `shouldShowErrors`
+ * The counter is pure introspection; the default `getDisplayState`
  * heuristic does NOT consult it. Reveal-on-submit flows entirely
  * through `submissionAttempts`, covered by `wizard-handle-submit`.
  */

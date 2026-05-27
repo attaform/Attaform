@@ -5,10 +5,10 @@ import type {
   FormErrorsSurface,
   FormHistoryNamespace,
   FormMeta,
+  GetDisplayState,
   OnInvalidSubmitPolicy,
   ReactiveValidationStatus,
   RegisterValue,
-  ShouldShowErrors,
   UseFormReturnType,
   ValidateOn,
   ValidationError,
@@ -67,7 +67,7 @@ export type BuildFormApiOptions = {
   /**
    * Per-`useForm()`-instance config that the API layer threads through
    * writes / register / field-state so each callsite honors its own
-   * `validateOn` / `debounceMs` / `shouldShowErrors` / `coerce` /
+   * `validateOn` / `debounceMs` / `getDisplayState` / `coerce` /
    * `rememberVariants` even when sharing a FormStore with sibling
    * instances (e.g., a modal and main form rendering the same logical
    * form). Anything omitted falls through to the store's
@@ -75,7 +75,7 @@ export type BuildFormApiOptions = {
    */
   validateOn?: ValidateOn
   debounceMs?: number
-  shouldShowErrors?: ShouldShowErrors
+  getDisplayState?: GetDisplayState
   coerce?: boolean | CoercionRegistry
   rememberVariants?: boolean
 }
@@ -462,7 +462,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // `useWizard` bumps `state.departAttempts` whenever navigation
   // (`next` / `back` / `goTo`) actually departs this form. The
   // computed mirror surfaces on `form.meta.departAttempts` for
-  // templates and the depart arm of `defaultShouldShowErrors`.
+  // templates and layered `getDisplayState` predicates (introspection
+  // only — the library default reveals via `submissionAttempts`).
   const departAttempts = computed<number>(() => state.departAttempts.value)
 
   // --- Validation lifecycle ---
@@ -549,7 +550,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // `form.fields().dirty`, and `form.fields([]).dirty` all read
   // identical aggregated state.
   // Thunk producing a fresh `FormMetaBase` snapshot on each call —
-  // the omit'd-shape second argument to `state.shouldShowErrors`.
+  // the omit'd-shape second argument to `state.getDisplayState`.
   // Reads run inside the field-state computed, so every reactive
   // primitive touched here (submissionAttempts, canUndo, ...) registers as
   // a dependency of that computed. Bypasses the cached field-state
@@ -571,9 +572,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   }
 
   const fieldStateAccessorOptions =
-    options.shouldShowErrors !== undefined
-      ? { shouldShowErrors: options.shouldShowErrors }
-      : undefined
+    options.getDisplayState !== undefined ? { getDisplayState: options.getDisplayState } : undefined
   const getRootFieldStateAt = buildFieldStateAccessor(
     state,
     getFormMetaBase,
@@ -614,12 +613,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // keep the explicit form-level computation for the gate.
       valid,
       errors: metaErrors,
-      // `showErrors` / `firstError` flow through the same root
-      // field-state computed as the rest of the FieldState surface,
-      // so `form.meta.showErrors` matches `form.fields().showErrors`
-      // exactly — the predicate runs once at the root and the result
-      // is shared.
+      // `displayState` / the `show*` booleans / `firstError` flow
+      // through the same root field-state computed as the rest of the
+      // FieldState surface, so `form.meta.displayState` matches
+      // `form.fields().displayState` exactly — the predicate runs once
+      // at the root and the result is shared.
+      displayState: computed(() => rootFieldState.value.displayState),
       showErrors: computed(() => rootFieldState.value.showErrors),
+      showPending: computed(() => rootFieldState.value.showPending),
+      showSuccess: computed(() => rootFieldState.value.showSuccess),
+      showIdle: computed(() => rootFieldState.value.showIdle),
       firstError: computed(() => rootFieldState.value.firstError),
       path: computed(() => rootFieldState.value.path),
       blank: computed(() => rootFieldState.value.blank),

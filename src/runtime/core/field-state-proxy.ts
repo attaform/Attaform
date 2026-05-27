@@ -1,4 +1,4 @@
-import type { ShouldShowErrors } from '../types/types-api'
+import type { GetDisplayState } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import {
@@ -43,7 +43,11 @@ const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>
   'errors',
   'validating',
   'valid',
+  'displayState',
   'showErrors',
+  'showPending',
+  'showSuccess',
+  'showIdle',
   'firstError',
   'path',
   'blank',
@@ -78,13 +82,13 @@ const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>
 export function buildFieldStateProxy<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   getFormMetaBase: FormMetaBaseGetter,
-  options?: { readonly shouldShowErrors?: ShouldShowErrors }
+  options?: { readonly getDisplayState?: GetDisplayState }
 ): SurfaceProxy {
   const getFieldStateAt = buildFieldStateAccessor(
     state,
     getFormMetaBase,
-    options?.shouldShowErrors !== undefined
-      ? { shouldShowErrors: options.shouldShowErrors }
+    options?.getDisplayState !== undefined
+      ? { getDisplayState: options.getDisplayState }
       : undefined
   )
   const snapshotFieldStateAt = (path: Path): Record<string, unknown> => {

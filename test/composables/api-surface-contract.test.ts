@@ -4,7 +4,7 @@ import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { UseFormReturnType } from '../../src/runtime/types/types-api'
+import type { DisplayState, UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
  * Pins the public surface of `useForm()`'s return value against
@@ -137,8 +137,12 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.meta.submitting).toBe('boolean')
     expect(typeof api.meta.submissionAttempts).toBe('number')
 
-    // showErrors / firstError landed in PR #186.
+    // displayState + the show* projections + firstError on the rolled-up meta.
+    expect(['idle', 'pending', 'error', 'success']).toContain(api.meta.displayState)
     expect(typeof api.meta.showErrors).toBe('boolean')
+    expect(typeof api.meta.showPending).toBe('boolean')
+    expect(typeof api.meta.showSuccess).toBe('boolean')
+    expect(typeof api.meta.showIdle).toBe('boolean')
     expect(['undefined', 'object']).toContain(typeof api.meta.firstError)
 
     // Type-level absence at the top level.
@@ -180,12 +184,20 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof emailField.dirty).toBe('boolean')
     expect(typeof emailField.valid).toBe('boolean')
     expect(typeof emailField.touched).toBe('boolean')
+    expect(['idle', 'pending', 'error', 'success']).toContain(emailField.displayState)
     expect(typeof emailField.showErrors).toBe('boolean')
+    expect(typeof emailField.showPending).toBe('boolean')
+    expect(typeof emailField.showSuccess).toBe('boolean')
+    expect(typeof emailField.showIdle).toBe('boolean')
 
     expectTypeOf(emailField.dirty).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.valid).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.touched).toEqualTypeOf<boolean>()
+    expectTypeOf(emailField.displayState).toEqualTypeOf<DisplayState>()
     expectTypeOf(emailField.showErrors).toEqualTypeOf<boolean>()
+    expectTypeOf(emailField.showPending).toEqualTypeOf<boolean>()
+    expectTypeOf(emailField.showSuccess).toEqualTypeOf<boolean>()
+    expectTypeOf(emailField.showIdle).toEqualTypeOf<boolean>()
   })
 
   it('per-field history does NOT exist today (pinned for the consolidation question)', () => {

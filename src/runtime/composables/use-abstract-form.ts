@@ -51,7 +51,6 @@ import { canonicalizePath, coerceToPathKey, type Path, type PathKey } from '../c
 import { deleteAtPath, getAtPath, setAtPath, isPlainRecord } from '../core/path-walker'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
-import { resolveShouldShowErrors } from '../core/should-show-errors'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { walkUnsetSentinels } from '../core/unset-walker'
 import type {
@@ -250,7 +249,7 @@ export function useAbstractForm<
     // `'session'`, finds nothing in sessionStorage, debugs for an hour
     // — the main-form team wired `'local'` first. Surface the divergence
     // as a dev-warn so the surprise is explicit. `validateOn` /
-    // `debounceMs` / `coerce` / `rememberVariants` / `shouldShowErrors`
+    // `debounceMs` / `coerce` / `rememberVariants` / `getDisplayState`
     // are now per-instance, so they don't need this guard;
     // `defaultValues` is intentionally first-wins (the live store
     // state is what the modal should see); `strict` is construction-
@@ -526,7 +525,7 @@ export function useAbstractForm<
     apiOptions.history = history
   }
   // Per-instance config lifts: each `useForm()` callsite carries its
-  // own `validateOn` / `debounceMs` / `shouldShowErrors` / `coerce` /
+  // own `validateOn` / `debounceMs` / `getDisplayState` / `coerce` /
   // `rememberVariants`. These thread through `buildFormApi` into
   // register's coerce closure, the field-state predicate, and store
   // writes' WriteMeta — so two `useForm({ key })` calls (modal + main)
@@ -539,8 +538,8 @@ export function useAbstractForm<
   if (mergedDebounceMs !== undefined) {
     apiOptions.debounceMs = mergedDebounceMs
   }
-  if (merged.shouldShowErrors !== undefined) {
-    apiOptions.shouldShowErrors = resolveShouldShowErrors(merged.shouldShowErrors)
+  if (merged.getDisplayState !== undefined) {
+    apiOptions.getDisplayState = merged.getDisplayState
   }
   if (merged.coerce !== undefined) {
     apiOptions.coerce = merged.coerce
@@ -591,7 +590,7 @@ function mergeWithDefaults<
   // unconditional. The runtime check in `create-form-store.ts` ignores
   // the value under non-`'change'` modes regardless.
   const debounceMs = (configuration as { debounceMs?: number }).debounceMs ?? defaults.debounceMs
-  const shouldShowErrors = configuration.shouldShowErrors ?? defaults.shouldShowErrors
+  const getDisplayState = configuration.getDisplayState ?? defaults.getDisplayState
   const maxRecursionDepth = configuration.maxRecursionDepth ?? defaults.maxRecursionDepth
   // sensitiveNames REPLACES (doesn't extend) — consumers compose
   // additive lists themselves via `[...DEFAULT_SENSITIVE_NAMES, ...]`.
@@ -612,7 +611,7 @@ function mergeWithDefaults<
     ...(coerce === undefined ? {} : { coerce }),
     ...(validateOn === undefined ? {} : { validateOn }),
     ...(debounceMs === undefined ? {} : { debounceMs }),
-    ...(shouldShowErrors === undefined ? {} : { shouldShowErrors }),
+    ...(getDisplayState === undefined ? {} : { getDisplayState }),
     ...(maxRecursionDepth === undefined ? {} : { maxRecursionDepth }),
     ...(sensitiveNames === undefined ? {} : { sensitiveNames }),
     ...(multiTab === undefined ? {} : { multiTab }),
@@ -710,8 +709,8 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       ? { rememberVariants: configuration.rememberVariants }
       : {}),
     ...(configuration.coerce !== undefined ? { coerce: configuration.coerce } : {}),
-    ...(configuration.shouldShowErrors !== undefined
-      ? { shouldShowErrors: configuration.shouldShowErrors }
+    ...(configuration.getDisplayState !== undefined
+      ? { getDisplayState: configuration.getDisplayState }
       : {}),
     ...(initialBlankPaths !== undefined ? { initialBlankPaths } : {}),
     ...(resolvedIsSensitivePath !== undefined ? { isSensitivePath: resolvedIsSensitivePath } : {}),

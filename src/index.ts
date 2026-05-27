@@ -106,6 +106,7 @@ export type {
   CoercionResult,
   CustomDirectiveRegisterAssignerFn,
   DefaultValuesResponse,
+  DisplayState,
   ErrorsProxyShape,
   FieldMetaPayload,
   FieldState,
@@ -117,6 +118,7 @@ export type {
   FormMeta,
   FormStorage,
   FormStorageKind,
+  GetDisplayState,
   HandleSubmit,
   HistoryConfig,
   MetaTrackerValue,
@@ -138,8 +140,6 @@ export type {
   SetValueCallback,
   SetValuePayload,
   SettledValidationStatus,
-  ShouldShowErrors,
-  ShouldShowErrorsConfig,
   SlimPrimitiveKind,
   SlimRuntimeOf,
   SubmitHandler,
@@ -213,10 +213,10 @@ export {
   SubmitErrorHandlerError,
 } from './runtime/core/errors'
 
-// Library-default heuristic for `shouldShowErrors`. Public so adopter
+// Library-default heuristic for `getDisplayState`. Public so adopter
 // predicates can compose with it (a layered predicate that defers to
 // the library default for the unhandled cases).
-export { defaultShouldShowErrors } from './runtime/core/should-show-errors'
+export { defaultDisplayState } from './runtime/core/display-state'
 
 // Library-default list of identifier name stems flagged as sensitive
 // (password, ssn, cvv, token, etc.). Compose with `sensitiveNames` at

@@ -1244,16 +1244,14 @@ export type UseFormConfiguration<
    */
   coerce?: boolean | CoercionRegistry
   /**
-   * Per-form override of the `shouldShowErrors` heuristic that drives
-   * `field.showErrors` and `form.meta.showErrors`. Falls back to
-   * `AttaformDefaults.shouldShowErrors`, then to the library default
-   * (`defaultShouldShowErrors`). See `AttaformDefaults.shouldShowErrors`
-   * for the resolution rules and predicate signature.
-   *
-   * Boolean shorthand: `true` → always show *when errors exist*;
-   * `false` → never show.
+   * Per-form override of the `getDisplayState` heuristic that drives
+   * `field.displayState` and the `show*` booleans (and their `form.meta`
+   * rollups). Falls back to `AttaformDefaults.getDisplayState`, then to
+   * the library default (`defaultDisplayState`). See
+   * `AttaformDefaults.getDisplayState` for the resolution rules and
+   * predicate signature.
    */
-  shouldShowErrors?: ShouldShowErrorsConfig
+  getDisplayState?: GetDisplayState
   /**
    * Recursion ceiling for schema walks that descend through recursive
    * schemas (Zod's `z.lazy(...)` today). Default `64`. Per-form value
@@ -1408,33 +1406,41 @@ export type AttaformDefaults = {
    */
   coerce?: boolean | CoercionRegistry
   /**
-   * Default for `useForm({ shouldShowErrors })`. Centralised heuristic
-   * that drives `field.showErrors` (and `form.meta.showErrors`) — a
-   * boolean that gates whether a path's errors are *ready* to render.
+   * Default for `useForm({ getDisplayState })`. The centralised
+   * heuristic that resolves every path's `field.displayState` — and thus
+   * the `show*` booleans and their `form.meta` rollups — to one of
+   * `'idle' | 'pending' | 'error' | 'success'`.
    *
    * Resolution order (per-form wins):
    *
-   *   useForm({ shouldShowErrors })  >  AttaformDefaults  >  library default
+   *   useForm({ getDisplayState })  >  AttaformDefaults  >  library default
    *
-   * The library default reads "show after the first submit attempt OR
-   * after the field has been interacted with AND changed":
+   * The library default opens one timing gate, then resolves by
+   * precedence: gate closed → `'idle'`; a run in flight → `'pending'`;
+   * an own-path error → `'error'`; otherwise `valid` → `'success'`, else
+   * `'idle'`. The gate opens after the first submit attempt OR once the
+   * field is touched and not currently focused:
    *
    * ```ts
-   * (field, formMeta) =>
-   *   formMeta.submissionAttempts > 0 || (field.touched === true && field.dirty)
+   * (field, formMeta) => {
+   *   const gateOpen =
+   *     formMeta.submissionAttempts > 0 ||
+   *     (field.touched === true && field.focused !== true)
+   *   if (!gateOpen) return 'idle'
+   *   if (field.validating === true) return 'pending'
+   *   // ...own-path error → 'error'; valid → 'success'; else 'idle'
+   * }
    * ```
    *
-   * Compose with the library default via the public
-   * `defaultShouldShowErrors` export. Boolean shorthand is supported:
-   * `true` → always show *when errors exist*; `false` → never show. The
-   * predicate is invoked only when `errors.length > 0`, so authors
-   * don't re-check inside.
+   * Compose with the library default via the public `defaultDisplayState`
+   * export. The predicate runs on every field-state read, so it owns the
+   * idle / pending / error / success decision outright.
    *
-   * The predicate's args are `Omit`'d of `showErrors` / `firstError`
-   * to prevent recursive predicates — those are derived FROM this
-   * predicate, so reading them inside would be a self-reference.
+   * The predicate's args are `Omit`'d of the derived `displayState` /
+   * `show*` / `firstError` keys (see `FieldStateDerivedKey`) to prevent
+   * a self-referential predicate.
    */
-  shouldShowErrors?: ShouldShowErrorsConfig
+  getDisplayState?: GetDisplayState
   /**
    * Default for `useForm({ maxRecursionDepth })`. Recursion ceiling
    * for schema walks that descend through recursive schemas (Zod's
@@ -1564,49 +1570,70 @@ export type OnSubmit<Form extends GenericForm> = (form: Form) => void | Promise<
 export type OnError = (error: ValidationError[]) => void | Promise<void>
 
 /**
- * Predicate that drives `field.showErrors` (and `form.meta.showErrors`).
- * Receives the field's reactive state plus the form's reactive meta;
- * returns `true` to render the field's errors, `false` to keep them
- * hidden. The framework gates the call on `errors.length > 0`, so
- * authors don't re-check error presence inside.
+ * The display-state verdict at a path: the single signal a UI needs to
+ * decide what (if anything) to surface about validation right now.
+ * Rolled up at containers and at the form root (`form.meta.displayState`).
  *
- * Both arguments are `Omit`'d of `showErrors` / `firstError` — those
- * are derived FROM this predicate, so reading them inside would be a
- * self-reference. The omit is enforced at the type level AND at
- * runtime: the keys literally are not present on the objects passed
- * in, so `as` casting in TS or vanilla-JS bypass cannot create a
- * cycle.
+ * - `'idle'` — nothing to surface. Either pre-interaction (the timing
+ *   gate hasn't opened) or gate-open with no verdict worth showing.
+ * - `'pending'` — a validation run is in flight at this path; the prior
+ *   verdict is stale. Drive a spinner / "Checking…" affordance.
+ * - `'error'` — a blocking error the timing gate has cleared for display.
+ * - `'success'` — validation passed and the gate has cleared a positive
+ *   confirmation (the green-check pattern).
  *
- * The library default — `defaultShouldShowErrors` — is publicly
- * exported so a layered predicate can compose with it:
+ * The four `show*` booleans on `FieldState` are sugar over this enum
+ * (`showErrors === (displayState === 'error')`, and so on), so they can
+ * never contradict it.
+ */
+export type DisplayState = 'idle' | 'pending' | 'error' | 'success'
+
+/**
+ * Keys on `FieldState` layered on FROM the display-state predicate
+ * (plus `firstError`, computed alongside them). `Omit`'d from the
+ * predicate's arguments so a predicate cannot read its own output and
+ * form a cycle — enforced at the type level AND at runtime: the base
+ * objects passed in literally lack these keys, so an `as` cast in TS
+ * or a vanilla-JS caller still can't reach them. `FieldStateBase` /
+ * `FormMetaBase` (field-state-api.ts) omit the same set in lockstep.
+ */
+export type FieldStateDerivedKey =
+  | 'displayState'
+  | 'showErrors'
+  | 'showPending'
+  | 'showSuccess'
+  | 'showIdle'
+  | 'firstError'
+
+/**
+ * Predicate that resolves a path's `displayState`. Receives the field's
+ * reactive state plus the form's reactive meta (both minus the derived
+ * `displayState` / `show*` / `firstError` keys — see `FieldStateDerivedKey`)
+ * and returns the single enum verdict; the `show*` booleans derive from
+ * the result. Runs unconditionally on every field-state read, so the
+ * idle / pending / error / success decision lives in exactly one place
+ * and the whole app's validation-display behavior flows from it.
+ *
+ * The library default — `defaultDisplayState` — is publicly exported so
+ * a layered predicate can compose with it:
  *
  * ```ts
- * import { defaultShouldShowErrors } from 'attaform'
+ * import { defaultDisplayState } from 'attaform'
  *
  * useForm({
  *   schema,
- *   shouldShowErrors: (field, formMeta) =>
- *     field.path[0] === 'urgent' || defaultShouldShowErrors(field, formMeta),
+ *   // Defer to the default everywhere, but never show a success check on `username`.
+ *   getDisplayState: (field, formMeta) => {
+ *     const state = defaultDisplayState(field, formMeta)
+ *     return field.path[0] === 'username' && state === 'success' ? 'idle' : state
+ *   },
  * })
  * ```
  */
-export type ShouldShowErrors = (
-  field: Omit<FieldState, 'showErrors' | 'firstError'>,
-  formMeta: Omit<FormMeta, 'showErrors' | 'firstError'>
-) => boolean
-
-/**
- * Configuration shape for `shouldShowErrors`. A predicate function or
- * a boolean shorthand:
- *
- * - `true` — always show errors (when any exist).
- * - `false` — never show errors.
- * - function — custom predicate, see `ShouldShowErrors`.
- *
- * Resolved through three tiers (per-form > plugin defaults > library
- * default).
- */
-export type ShouldShowErrorsConfig = ShouldShowErrors | boolean
+export type GetDisplayState = (
+  field: Omit<FieldState, FieldStateDerivedKey>,
+  formMeta: Omit<FormMeta, FieldStateDerivedKey>
+) => DisplayState
 
 /**
  * Submit handler returned by `handleSubmit(onSubmit, onError)`. Bind
@@ -2623,9 +2650,29 @@ export type FieldState<Value = unknown> = {
    */
   readonly valid: boolean
   /**
-   * Centralised "should I render this field's errors right now?"
-   * gate. Wraps `errors.length > 0 && shouldShowErrors(field, formMeta)`
-   * so templates avoid re-spelling the heuristic at every error site:
+   * The single display-state verdict at this path: `'idle'`,
+   * `'pending'`, `'error'`, or `'success'`. The source of truth the
+   * four `show*` booleans below derive from. Bind it directly when one
+   * branch over the set reads cleaner than four flags:
+   *
+   * ```vue
+   * <FieldStatusIcon :state="form.fields.email.displayState" />
+   * ```
+   *
+   * Resolved by the `getDisplayState` heuristic:
+   * `useForm({ getDisplayState })` →
+   * `createAttaform({ defaults: { getDisplayState } })` → library
+   * default (`defaultDisplayState`). Override per form, app-wide, or
+   * compose with `defaultDisplayState` for a layered predicate.
+   *
+   * Available on container paths too: `form.fields.users[0].displayState`
+   * rolls up over the row's descendants.
+   */
+  readonly displayState: DisplayState
+  /**
+   * `displayState === 'error'`. The centralised "render this field's
+   * errors right now?" gate, so templates avoid re-spelling the
+   * heuristic at every error site:
    *
    * ```vue
    * <span v-if="form.fields.email.showErrors">
@@ -2633,20 +2680,29 @@ export type FieldState<Value = unknown> = {
    * </span>
    * ```
    *
-   * The heuristic itself comes from `useForm({ shouldShowErrors })` →
-   * `createAttaform({ defaults: { shouldShowErrors } })` → library
-   * default (`defaultShouldShowErrors` — show after first submit OR
-   * after touched-and-dirty). Override per form, app-wide, or
-   * compose with `defaultShouldShowErrors` for a layered predicate.
-   *
-   * Falls back to `false` whenever there are no errors — the gate
-   * skips the predicate entirely in that case.
-   *
-   * Available on container paths too: `form.fields.users[0].showErrors`
-   * aggregates over the row's descendants (any descendant with a
-   * qualifying error flips the container on).
+   * Kept plural to match `errors` / `firstError`. On container paths it
+   * rolls up over descendants (any descendant resolving to `'error'`
+   * flips the container on).
    */
   readonly showErrors: boolean
+  /**
+   * `displayState === 'pending'`. A per-field validation run is in
+   * flight at this path and the prior verdict is stale; drive a spinner
+   * or a "Checking…" affordance.
+   */
+  readonly showPending: boolean
+  /**
+   * `displayState === 'success'`. Validation has passed and the timing
+   * gate has cleared a positive confirmation; drive the green-check
+   * pattern.
+   */
+  readonly showSuccess: boolean
+  /**
+   * `displayState === 'idle'`. Nothing to surface yet — pre-interaction,
+   * or gate-open with no verdict worth showing. Read it to suppress
+   * helper text the moment any other signal takes over.
+   */
+  readonly showIdle: boolean
   /**
    * The first `ValidationError` at this path in the deterministic
    * schema-declaration order — equivalent to `errors[0]`, exposed as
@@ -3161,8 +3217,8 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    *
    * Pure introspection counter — useful for "this form has been
    * visited and left" UX (analytics, prior-step badges, layered
-   * `shouldShowErrors` predicates) but does NOT drive the library's
-   * default `shouldShowErrors` heuristic. The reveal-on-submit story
+   * `getDisplayState` predicates) but does NOT drive the library's
+   * default `getDisplayState` heuristic. The reveal-on-submit story
    * runs entirely through `submissionAttempts`, which
    * `wizard.handleSubmit` bumps on the active form at intermediate
    * steps and on every form at the final step.

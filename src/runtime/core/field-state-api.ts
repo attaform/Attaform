@@ -1,7 +1,14 @@
 import { computed, type ComputedRef } from 'vue'
-import type { FieldState, FormMeta, ShouldShowErrors, ValidationError } from '../types/types-api'
+import type {
+  FieldState,
+  FieldStateDerivedKey,
+  FormMeta,
+  GetDisplayState,
+  ValidationError,
+} from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import { defaultDisplayState } from './display-state'
 import { EMPTY_RESOLVED_FIELD_META } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath } from './path-walker'
@@ -58,26 +65,26 @@ function isUnderStubAncestor<F extends GenericForm>(
 export type { FieldState }
 
 /**
- * Internal shape of a field's reactive state minus the two derived
- * predicate-fed properties (`showErrors`, `firstError`). The
- * predicate `state.shouldShowErrors(field, formMeta)` is invoked
- * with this exact shape on the field side: the keys literally are
- * not present, so a vanilla-JS adopter (or `as`-cast caller) cannot
- * read `field.showErrors` from inside their predicate and form a
- * cycle. Pair with `FormMetaBase` for the matching guard on the
- * form-level argument.
+ * Internal shape of a field's reactive state minus the derived
+ * predicate-fed properties (`displayState`, the `show*` booleans, and
+ * `firstError` — see `FieldStateDerivedKey`). The predicate
+ * `state.getDisplayState(field, formMeta)` is invoked with this exact
+ * shape on the field side: the keys literally are not present, so a
+ * vanilla-JS adopter (or `as`-cast caller) cannot read `field.displayState`
+ * from inside their predicate and form a cycle. Pair with `FormMetaBase`
+ * for the matching guard on the form-level argument.
  */
-export type FieldStateBase = Omit<FieldState<unknown>, 'showErrors' | 'firstError'>
+export type FieldStateBase = Omit<FieldState<unknown>, FieldStateDerivedKey>
 
 /**
- * Internal shape of the form's reactive meta minus the two derived
+ * Internal shape of the form's reactive meta minus the derived
  * predicate-fed properties. Same defense-in-depth role as
  * `FieldStateBase` for the second predicate argument. Built in
  * `build-form-api.ts` once per form (where the history options are
  * in scope) and threaded through to the field-state computeds via
  * the `getFormMetaBase` thunk.
  */
-export type FormMetaBase = Omit<FormMeta<unknown>, 'showErrors' | 'firstError'>
+export type FormMetaBase = Omit<FormMeta<unknown>, FieldStateDerivedKey>
 
 /**
  * Thunk shape passed to `buildFieldStateAccessor`. Each call to the
@@ -93,14 +100,14 @@ export type FormMetaBaseGetter = () => FormMetaBase
 export function buildFieldStateAccessor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   getFormMetaBase: FormMetaBaseGetter,
-  options?: { readonly shouldShowErrors?: ShouldShowErrors }
+  options?: { readonly getDisplayState?: GetDisplayState }
 ) {
   // Per-path memoisation so `getFieldStateAt(p)` returns the same
   // `ComputedRef` reference on repeated reads with the same canonical
   // path. The Map's lifetime equals the form-store's; cleared
   // implicitly when the store is GC'd.
   const cache = new Map<PathKey, ComputedRef<FieldState<unknown>>>()
-  const predicate = options?.shouldShowErrors
+  const predicate = options?.getDisplayState
 
   return function getFieldState(pathInput: string | Path): ComputedRef<FieldState<unknown>> {
     const { segments, key } = canonicalizePath(pathInput)
@@ -196,21 +203,21 @@ function buildLeafFieldStateBase<F extends GenericForm>(
 
 /**
  * Per-leaf full computation: builds the base, then layers on
- * `showErrors` / `firstError` via `state.shouldShowErrors`. The
- * base object passed to the predicate has NO `showErrors` /
- * `firstError` keys at runtime (it's the literal `FieldStateBase`
- * we just constructed) — recursion is impossible regardless of TS
- * vs vanilla-JS.
+ * `displayState` / the `show*` booleans / `firstError` via
+ * `state.getDisplayState`. The base object passed to the predicate has
+ * none of those keys at runtime (it's the literal `FieldStateBase` we
+ * just constructed) — recursion is impossible regardless of TS vs
+ * vanilla-JS.
  */
 function buildLeafFieldState<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: Path,
   key: PathKey,
   getFormMetaBase: FormMetaBaseGetter,
-  shouldShowErrors?: ShouldShowErrors
+  getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
   const base = buildLeafFieldStateBase(state, segments, key)
-  return decorateWithDerivedProps(base, state, getFormMetaBase, shouldShowErrors)
+  return decorateWithDerivedProps(base, state, getFormMetaBase, getDisplayState)
 }
 
 /**
@@ -338,36 +345,56 @@ function buildContainerFieldState<F extends GenericForm>(
   segments: Path,
   key: PathKey,
   getFormMetaBase: FormMetaBaseGetter,
-  shouldShowErrors?: ShouldShowErrors
+  getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
   const base = buildContainerFieldStateBase(state, segments, key)
-  return decorateWithDerivedProps(base, state, getFormMetaBase, shouldShowErrors)
+  return decorateWithDerivedProps(base, state, getFormMetaBase, getDisplayState)
 }
 
 /**
- * Layer `showErrors` + `firstError` onto a freshly-computed base.
- * Shared by leaf and container paths so the gate runs identically
- * at every depth.
+ * Layer `displayState`, the four `show*` booleans, and `firstError`
+ * onto a freshly-computed base. Shared by leaf and container paths so
+ * the heuristic runs identically at every depth.
  *
  * `firstError` is `errors[0]` — deterministic because errors are
- * already sorted by schema-declaration order (within a leaf: schema
- * → blank → user concat; across a container: `pathOrdinal` bucket
- * sort).
+ * already sorted by schema-declaration order (within a leaf: schema →
+ * blank → user concat; across a container: `pathOrdinal` bucket sort).
  *
- * `showErrors` short-circuits when there are no errors, so the
- * predicate only fires when the heuristic actually has something to
- * decide.
+ * The predicate runs UNCONDITIONALLY: it resolves the full
+ * idle/pending/error/success verdict, not just error visibility, so it
+ * must see the no-error states (success, idle) too — short-circuiting on
+ * `errors.length === 0` would starve those. The `show*` booleans are
+ * pure projections of the single `displayState` result, so they can
+ * never disagree with it.
  */
 function decorateWithDerivedProps<F extends GenericForm>(
   base: FieldStateBase,
   state: FormStore<F, GenericForm>,
   getFormMetaBase: FormMetaBaseGetter,
-  shouldShowErrors?: ShouldShowErrors
+  getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
   const firstError = base.errors[0]
-  const predicate = shouldShowErrors ?? state.shouldShowErrors
-  const showErrors = base.errors.length > 0 && predicate(base, getFormMetaBase())
-  return { ...base, showErrors, firstError }
+  const predicate = getDisplayState ?? state.getDisplayState
+  const formMeta = getFormMetaBase()
+  // The predicate runs on every field-state read, so a misbehaving
+  // custom predicate must not take down the whole reactive surface.
+  // Fall back to the library default (total over well-formed base
+  // shapes) rather than propagating the throw out of the computed.
+  let displayState: ReturnType<GetDisplayState>
+  try {
+    displayState = predicate(base, formMeta)
+  } catch {
+    displayState = defaultDisplayState(base, formMeta)
+  }
+  return {
+    ...base,
+    displayState,
+    showErrors: displayState === 'error',
+    showPending: displayState === 'pending',
+    showSuccess: displayState === 'success',
+    showIdle: displayState === 'idle',
+    firstError,
+  }
 }
 
 /**

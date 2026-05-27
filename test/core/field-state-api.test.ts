@@ -11,13 +11,15 @@ function makeAccessor() {
     formKey: 'fs',
     schema: fakeSchema<F>({ email: 'initial@x', profile: { name: '' } }),
   })
-  // Stub out `getFormMetaBase`; these tests don't exercise
-  // `showErrors` / `firstError`, only the underlying field
-  // aggregation. The predicate path is exercised in
-  // `test/composables/should-show-errors.test.ts` where a real form
-  // is mounted with the production code path. The cast bypasses the
+  // Stub out `getFormMetaBase`; these tests assert the underlying
+  // field aggregation, not the derived display props. The predicate
+  // runs unconditionally now, but the library default only reads
+  // `submissionAttempts` off the meta, so this minimal stub suffices.
+  // The full predicate path is exercised in
+  // `test/composables/display-state.test.ts` where a real form is
+  // mounted with the production code path. The cast bypasses the
   // full `FormMetaBase` shape (would require duplicating every
-  // FieldState field) — fine for a test stub that's never read.
+  // FieldState field) — fine for a test stub that's barely read.
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
   return { state, getFieldState: buildFieldStateAccessor(state, getFormMetaBase) }
@@ -286,10 +288,10 @@ describe('buildFieldStateAccessor — container aggregation', () => {
         delivery: { city: '' },
       }),
     })
-    // Stub out `getFormMetaBase`; container-aggregation coverage
-    // here doesn't run the `shouldShowErrors` predicate. Real-form
+    // Stub out `getFormMetaBase`; container-aggregation coverage here
+    // asserts the base rollup, not the derived display props. Real-form
     // tests for the predicate live in
-    // `test/composables/should-show-errors.test.ts`.
+    // `test/composables/display-state.test.ts`.
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
     return { state, getFieldState: buildFieldStateAccessor(state, getFormMetaBase) }

@@ -11,6 +11,13 @@ import type {
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
 import { createArrayIdentity } from './array-identity'
+import {
+  changedIndices,
+  migrateMapSubtree,
+  migrateSetSubtree,
+  remapForOp,
+} from './array-state-migrate'
+import type { IndexRemap } from './array-state-migrate'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
@@ -620,6 +627,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * isn't exposed to consumers.
    */
   isPristineAtPath(path: Path): boolean
+  /**
+   * Whether any tracked array under `path` has changed shape — a reorder,
+   * insert, or removal — relative to its construction/reset baseline. The
+   * structural half of `dirty`: per-element baselines travel with their
+   * element across a mutation, so a positional value comparison alone can
+   * no longer see the shape change.
+   */
+  hasStructuralChangeUnder(path: Path): boolean
   getFieldRecord(path: Path): FieldRecord | undefined
   getOriginalAtPath(path: Path): unknown
   /**
@@ -1480,6 +1495,106 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }
   }
 
+  // Relocate per-element state so it follows an element across a structural
+  // mutation rather than bleeding onto the new occupant of the element's old
+  // index. Driven by the operation's exact permutation, not by the consumer-
+  // facing identity token — the token is a downstream reader, not the source
+  // of truth. Every non-derived per-element fact moves:
+  //
+  //   - `fields`: touched / focused / blurred / connection bookkeeping, plus
+  //     the record's embedded `path`.
+  //   - `userErrors`: consumer-set errors, plus each error's embedded `path`.
+  //   - `blankPaths`: the cleared-field display flag.
+  //   - `originals` / `originalBlankPaths`: the per-element dirty baseline, so
+  //     a moved element keeps its OWN dirty verdict instead of inheriting the
+  //     slot's. A structural change (reorder / insert / removal) still dirties
+  //     the form through the identity tracker's order comparison
+  //     (`hasStructuralChangeUnder`), which the positional baseline can no
+  //     longer surface once it travels with the element.
+  //
+  // Derived state (schema verdicts, validation counts) is not relocated; it
+  // is dropped and recomputed by revalidation.
+  function migrateArrayElementState(arrayPath: Path, remap: IndexRemap): void {
+    if (remap.moved.size === 0 && remap.vacated.size === 0) return
+    migrateMapSubtree(fields, arrayPath, remap, (record, segments) => ({
+      ...record,
+      path: segments,
+    }))
+    migrateMapSubtree(userErrors, arrayPath, remap, (errors, segments) =>
+      errors.map((error) => ({ ...error, path: [...segments] }))
+    )
+    migrateMapSubtree(originals, arrayPath, remap, (record, segments) => ({
+      segments,
+      value: record.value,
+    }))
+    migrateSetSubtree(blankPaths, arrayPath, remap)
+    migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+  }
+
+  // Register a freshly created element (an insert slot, a replace-at target)
+  // the way `applyFormReplacement` registers an appended one: walk its leaves
+  // and seed an absence baseline in `originals` (so the new element reads
+  // dirty, like an append) plus a field record. Migration has already
+  // relocated the prior occupant's state off this slot's keys and deleted
+  // them; without this the new element would be invisible to `touch` and read
+  // pristine, since `originals` is the leaf registry both consult.
+  function seedFreshElement(arrayPath: Path, freshIndex: number): void {
+    const elementPath: Path = [...arrayPath, freshIndex]
+    const now = new Date().toISOString()
+    diffAndApply(undefined, getAtPath(form.value, elementPath), elementPath, (patch) => {
+      if (patch.kind !== 'added') return
+      const { key } = canonicalizePath(patch.path)
+      if (!originals.has(key)) originals.set(key, { segments: patch.path, value: undefined })
+      touchFieldRecord(key, patch.path, { updatedAt: now })
+    })
+  }
+
+  // Schema verdicts are derived, not relocated: after a structural mutation
+  // the entries at changed indices describe the slots' prior occupants. Drop
+  // them synchronously so a stale verdict can't show for the frame before a
+  // 'change'-mode revalidation repopulates — and so it doesn't linger at all
+  // under a `validateOn` that won't revalidate on this write. The next pass
+  // rewrites the whole subtree from the live value.
+  function dropSchemaErrorsAtChangedIndices(arrayPath: Path, remap: IndexRemap): void {
+    const changed = changedIndices(remap)
+    if (changed.size === 0) return
+    const idxPos = arrayPath.length
+    for (const key of [...schemaErrors.keys()]) {
+      const segs = segmentsForPathKey(key)
+      if (segs === null) continue
+      if (!isPathPrefix(arrayPath, segs)) continue
+      if (segs.length <= idxPos) continue
+      const idx = segs[idxPos]
+      if (typeof idx === 'number' && changed.has(idx)) schemaErrors.delete(key)
+    }
+  }
+
+  // A removed element's slot is gone. Abort any field validation still in
+  // flight for its leaves so a late async resolution can't write a verdict at
+  // a dead index, and release the pending counters so `meta.validating`
+  // reflects the removal at once. Mirrors the per-entry half of
+  // `cancelFieldValidation`, scoped to the vacated indices.
+  function abortValidationAtVacatedIndices(arrayPath: Path, remap: IndexRemap): void {
+    if (remap.vacated.size === 0) return
+    const idxPos = arrayPath.length
+    for (const [key, entry] of [...fieldValidationState]) {
+      const segs = segmentsForPathKey(key)
+      if (segs === null) continue
+      if (!isPathPrefix(arrayPath, segs)) continue
+      if (segs.length <= idxPos) continue
+      const idx = segs[idxPos]
+      if (typeof idx !== 'number' || !remap.vacated.has(idx)) continue
+      if (entry.timer !== null) {
+        clearTimeout(entry.timer)
+      } else if (!entry.settled) {
+        activeValidations.value = Math.max(0, activeValidations.value - 1)
+        decFieldValidation(key)
+      }
+      entry.controller.abort()
+      fieldValidationState.delete(key)
+    }
+  }
+
   // Schema-declaration ordinal map for `form.meta.errors` sort order.
   // Plain (non-reactive) Map: it's mutated lazily from inside the
   // `metaErrors` computed when an unseen path appears, and a reactive
@@ -2021,6 +2136,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       }
       return true
     }
+    // Capture the array length BEFORE replacement: `applyFormReplacement`
+    // mutates `form.value` in place, so the pre-op length has to be read off
+    // `currentValue` here, while it still reflects the array the operation
+    // acted on. Only the `arrayOp` branch reads it.
+    const oldArrayLength = Array.isArray(currentValue) ? currentValue.length : 0
     const nextForm = setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F
     applyFormReplacement(nextForm, meta)
     // Variant-memory bookkeeping for array structural mutations. The
@@ -2031,6 +2151,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // by absolute index would otherwise bleed onto new occupants of
     // those indices on a future variant switch.
     if (meta?.arrayOp !== undefined) {
+      // Relocate non-derived per-element state along the operation's exact
+      // permutation, then register any freshly created element. Runs after
+      // `applyFormReplacement` so it overwrites the placeholder originals
+      // replacement seeds at shifted destinations with each moved element's
+      // true baseline.
+      const remap = remapForOp(meta.arrayOp, oldArrayLength)
+      migrateArrayElementState(path, remap)
+      for (const freshIndex of remap.fresh) seedFreshElement(path, freshIndex)
+      dropSchemaErrorsAtChangedIndices(path, remap)
+      abortValidationAtVacatedIndices(path, remap)
       applyArrayOpToMemory(path, meta.arrayOp)
       arrayIdentity.applyOp(path, meta.arrayOp)
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {
@@ -3013,6 +3143,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // Replace form in one shot. `applyFormReplacement` emits diffAndApply
     // patches and touches field records for every changed leaf.
     applyFormReplacement(next)
+    // Re-anchor array identity baselines to the post-reset shape, so a
+    // reorder or removal made before this reset no longer reads as a
+    // structural change once the form is back at its baseline.
+    arrayIdentity.rebaselineAll()
     // Rebuild originals from the new baseline. The set becomes the
     // post-reset pristine reference — a subsequent dirty comparison
     // returns false until the consumer mutates again.
@@ -3312,6 +3446,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return Object.is(getAtPath(form.value, segments), entry.value)
   }
 
+  function hasStructuralChangeUnder(path: Path): boolean {
+    return arrayIdentity.hasStructuralChangeUnder(path)
+  }
+
   function getFieldRecord(path: Path): FieldRecord | undefined {
     const { key } = canonicalizePath(path)
     return fields.get(key)
@@ -3429,6 +3567,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     markConnectedOptimistically,
 
     isPristineAtPath,
+    hasStructuralChangeUnder,
     getFieldRecord,
     getOriginalAtPath,
     getFirstErrorElement,

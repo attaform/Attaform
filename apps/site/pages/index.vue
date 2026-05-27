@@ -3,6 +3,7 @@
   import {
     ShieldCheck,
     Zap,
+    Accessibility,
     Layers,
     Server,
     Workflow,
@@ -16,9 +17,10 @@
   // Feature cards on the homepage. Same single-color icon-chip
   // discipline as the docs landing: every chip on this page uses
   // the brand-soft pair so the page reads as one product surface.
-  // Eight cards: types + validation + arrays + persistence (the
-  // "first scroll" group), then multistep + devtools + server
-  // errors + multi-tab (the "stays nice as the form grows" group).
+  // Nine cards: types + validation + accessibility + arrays +
+  // persistence (the "first scroll" group), then multistep +
+  // devtools + server errors + multi-tab (the "stays nice as the
+  // form grows" group).
   const { attaformVersion } = useRuntimeConfig().public
 
   // Canonical snippet for the "From schema to submit" section.
@@ -139,6 +141,11 @@
       icon: Zap,
       title: 'Live validation',
       body: 'Per-field validation on change, blur, or submit. Synchronous by default; async refinements await before submit dispatches.',
+    },
+    {
+      icon: Accessibility,
+      title: 'Accessible by default',
+      body: '`aria-invalid`, `aria-busy`, `aria-required`, and `aria-describedby` stay in sync with validation state, server-rendered before hydration. Write any aria attribute yourself and Attaform leaves it alone.',
     },
     {
       icon: Layers,

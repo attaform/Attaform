@@ -14,7 +14,7 @@
 <template>
   <form @submit.prevent>
     <ol class="rows">
-      <li v-for="(_, i) in form.values.checkpoints" :key="i" class="row">
+      <li v-for="(row, i) in form.list('checkpoints')" :key="row.key" class="row">
         <input v-register="form.register(`checkpoints.${i}` as const)" />
         <div class="row-actions">
           <button

@@ -298,6 +298,15 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       if (updatedAt === null || ts > updatedAt) updatedAt = ts
     }
   }
+  // A structural change to a descendant array — a reorder, insert, or
+  // removal — is dirty even when every surviving element still matches its
+  // own baseline, because per-element state (including the baseline) travels
+  // with the element. The positional leaf walk above can't see that on its
+  // own, so consult the identity tracker's order comparison.
+  if (!dirty && state.hasStructuralChangeUnder(segments)) {
+    pristine = false
+    dirty = true
+  }
   // Aggregate errors at this prefix. Drives `form.fields(p).errors`,
   // `form.errors(p)`, and `form.meta.errors` through one helper so
   // the three surfaces read identically. Active-variant filter

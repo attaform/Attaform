@@ -621,6 +621,16 @@ function setAssignFunction(
 
 // We are exporting the v-model runtime directly as vnode hooks so that it can
 // be tree-shaken in case v-model is never used.
+// First genuine user-input event flips the field's sticky `interacted`
+// bit — the signal `defaultDisplayState` reads to keep a clean
+// tab-through quiet while still engaging validation the moment the user
+// edits. Routed only through these DOM listeners, so hydration and
+// programmatic setValue never trip it. Idempotent and store-guarded on
+// the RegisterValue side.
+function noteInteraction(value: unknown): void {
+  if (isRegisterValue(value)) value.markInteracted()
+}
+
 const vRegisterText: RegisterTextCustomDirective = {
   created(el, { value, modifiers: { lazy, trim, number } }, vnode) {
     const castToNumber = number === true || vnode.props?.['type'] === 'number'
@@ -638,6 +648,7 @@ const vRegisterText: RegisterTextCustomDirective = {
       if (shouldBailListener(el)) return
       const target = e.target as ComposingTarget
       if (target === null || target.composing) return
+      noteInteraction(value)
       let domValue: string | number = el.value
       // Deferred-to-blur trim: only trim here when this listener is
       // already on `change` (i.e. `.lazy.trim`). Per-keystroke trim
@@ -961,6 +972,7 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
     setAssignFunction(el, vnode, value)
     addEventListener(el, 'change', () => {
       if (shouldBailListener(el)) return
+      noteInteraction(value)
       const modelValue = value.innerRef.value ?? []
 
       // this side-steps subtle 2-way binding bugs where ref updates but input cannot be tracked by value
@@ -1115,6 +1127,7 @@ const vRegisterRadio: RegisterRadioCustomDirective = {
     setAssignFunction(el, vnode, value)
     addEventListener(el, 'change', () => {
       if (shouldBailListener(el)) return
+      noteInteraction(value)
       el[assignKey]?.(getValue(el))
       // After the default assigner runs, force-sync `el.checked` to
       // current storage. Catches the no-op-write case where a
@@ -1177,6 +1190,7 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
     const isSetModel = isSet(value.innerRef.value)
     addEventListener(el, 'change', () => {
       if (shouldBailListener(el)) return
+      noteInteraction(value)
       const selectedVal = Array.prototype.filter
         .call(el.options, (o: HTMLOptionElement) => o.selected)
         .map((o: HTMLOptionElement) => (number === true ? looseToNumber(getValue(o)) : getValue(o)))
@@ -1778,6 +1792,7 @@ const vRegisterFile: RegisterModelDynamicCustomDirective = {
     }
 
     addEventListener(input, 'change', () => {
+      noteInteraction(value)
       const next = readFilesFromInput(input)
       const blank = isBlankFileValue(next)
       value.setValueWithInternalPath(next, blank ? { blank: true } : undefined)

@@ -345,6 +345,10 @@ export function buildRegister<F extends GenericForm>(
         )
       },
 
+      markInteracted: (): void => {
+        state.markInteracted(segments)
+      },
+
       registerElement: (element: HTMLElement): void => {
         // Skip non-form elements. Prevents accidental registration of
         // component wrapper divs when fallthrough attributes carry the

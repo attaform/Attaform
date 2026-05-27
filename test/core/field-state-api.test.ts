@@ -353,6 +353,7 @@ describe('buildFieldStateAccessor — container aggregation', () => {
       focused: true,
       blurred: false,
       touched: false,
+      interacted: false,
     })
     expect(pickup.value.focused).toBe(true)
   })

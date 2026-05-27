@@ -43,6 +43,7 @@ function makeRegisterValue<T>(initial: T): {
     innerRef: innerRef as InternalRegisterValue<T>['innerRef'],
     displayValue: ref('') as Readonly<Ref<string>>,
     markBlank,
+    markInteracted: () => undefined,
     lastTypedForm: ref<string | null>(null),
     registerElement: vi.fn(),
     deregisterElement: vi.fn(),

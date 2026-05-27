@@ -2201,6 +2201,16 @@ export type RegisterValue<Value = unknown> = Readonly<{
    */
   markBlank: () => boolean
   /**
+   * Flip this field's sticky `interacted` flag — the signal that the
+   * user has issued at least one value edit here (an insert or a
+   * delete). Called by the directive's input / change listeners on
+   * every genuine user input; never by hydration or programmatic
+   * writes. Idempotent (the store skips the write once set). Don't
+   * call from consumer code.
+   * @internal
+   */
+  markInteracted: () => void
+  /**
    * `true` when the schema's slim primitive set at this path includes
    * `'undefined'` — i.e. the leaf was declared `.optional()` (or as
    * part of a union admitting `undefined`). Cached at register-time.
@@ -2633,7 +2643,7 @@ export type PathSetValuePayload<Leaf> =
       : SetValuePayload<DefaultValuesShape<Leaf>, NonNullable<WriteShape<Leaf>>>
 
 /**
- * Focus / blur / touched flags for a registered field.
+ * Focus / blur / touched / interacted flags for a registered field.
  *
  * - `focused` — `true` while the user is interacting with the field,
  *   `false` after blur. `null` while no DOM element is connected for
@@ -2641,11 +2651,15 @@ export type PathSetValuePayload<Leaf> =
  * - `blurred` — strictly the inverse of `focused` when an element is
  *   connected: `true` while not focused, `false` while focused. `null`
  *   while no element is connected.
- * - `touched` — interaction history. Plain `boolean`: `false` at
+ * - `touched` — focus/blur history. Plain `boolean`: `false` at
  *   registration, flips to `true` on the first blur, stays `true`
  *   thereafter, and is preserved across disconnects. Cleared only by
- *   `form.reset()` / `form.resetField(path)`. Useful for "show errors
- *   only after the user has interacted" UX.
+ *   `form.reset()` / `form.resetField(path)`.
+ * - `interacted` — value-mutation history. Plain `boolean`: `false` at
+ *   registration, flips to `true` on the user's first value edit, stays
+ *   `true` thereafter. Set only by user input (never hydration or
+ *   programmatic writes); cleared with `touched`. Together they support
+ *   "show feedback only after the user has actually engaged" UX.
  */
 export type DOMFieldState = {
   /** `true` while focused; `false` while connected but not focused; `null` while no element is connected. */
@@ -2654,6 +2668,8 @@ export type DOMFieldState = {
   blurred: boolean | null
   /** `true` after the first blur; persists across disconnects until `reset()`. */
   touched: boolean
+  /** `true` after the user's first value edit; persists until `reset()`. */
+  interacted: boolean
 }
 /**
  * Per-field reactive shape returned by `form.fields.<leaf-path>` and
@@ -2677,6 +2693,19 @@ export type FieldState<Value = unknown> = {
   readonly focused: boolean | null
   readonly blurred: boolean | null
   readonly touched: boolean
+  /**
+   * `true` once the user has issued at least one value edit on this
+   * field through `v-register` (an insert or a delete), sticky
+   * thereafter and preserved across disconnects. Distinct from
+   * `dirty`: typing `"a"` then deleting it back to empty leaves the
+   * field net-unchanged (`dirty: false`) yet `interacted: true`.
+   * Distinct from `touched`: tabbing through a field without editing
+   * flips `touched` but never `interacted`. Set only by user input,
+   * never by hydration or programmatic `setValue`; cleared by
+   * `form.reset()` / `form.resetField(path)`. Containers roll it up as
+   * a disjunction (any descendant interacted).
+   */
+  readonly interacted: boolean
   readonly connected: boolean
   /**
    * The first DOM element bound to this path via `v-register`, or

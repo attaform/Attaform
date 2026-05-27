@@ -54,6 +54,52 @@ The directive's binding pair is read-and-error: `form.register('email')` for the
 
 The raw `form.errors.email` Proxy stays available as `ValidationError[]` when you need the full array, empty when the field is valid. `form.fields` is the display-ergonomics layer over the same data.
 
+## Accessibility, handled
+
+By default, `v-register` keeps a field's aria attributes in sync with its [display state](/docs/validation/showing-errors), so assistive technology announces exactly what sighted users see, with no extra wiring:
+
+| Attribute          | Set when                                                              |
+| ------------------ | --------------------------------------------------------------------- |
+| `aria-invalid`     | the field's `displayState` is `'error'`                               |
+| `aria-busy`        | the field's `displayState` is `'pending'` (an async check is running) |
+| `aria-required`    | the schema marks the path required                                    |
+| `aria-describedby` | points at the field's error id while in the error state               |
+
+These track the same gated `displayState` that drives `form.fields.email.showErrors`, so the announcement and the visible message reveal together, never on a half-typed value. The required and invalid states are emitted during SSR too, so a server-rendered form is accessible before hydration.
+
+### Wiring the error element
+
+Auto-aria sets `aria-describedby` to [`form.fields.<path>.aria.errorId`](/docs/reading-the-form/fields). Put that id on your error element so the reference resolves:
+
+```vue
+<input v-register="form.register('email')" />
+<p v-if="form.fields.email.showErrors" :id="form.fields.email.aria.errorId">
+  {{ form.fields.email.firstError?.message }}
+</p>
+```
+
+`form.fields.email.aria.errorId` is stable for the field and unique across every mount on the page (it folds in the form's `instanceId`), so two instances of the same form never cross their references. The companion `form.fields.email.id` wires a `<label :for>` to the input when you need one.
+
+### Respect your markup
+
+Write any aria attribute yourself and Attaform leaves it alone, for that one attribute. Author `aria-invalid` while the other three stay automatic:
+
+```vue
+<input v-register="form.register('email')" :aria-invalid="hasCustomError" />
+```
+
+The check happens per attribute and per binding, so reaching for one escape hatch never disables the rest.
+
+### Turning it off
+
+Three opt-outs compose, narrowest first:
+
+- Per binding: `form.register('email', { aria: false })`.
+- Per form: `useForm({ schema, autoAria: false })`.
+- App-wide: `createAttaform({ defaults: { autoAria: false } })`.
+
+Any of these hands every aria attribute back to your markup; an authored attribute is always preserved regardless.
+
 ## Where to next
 
 - [`useRegister`](/docs/binding-inputs/use-register): the composable for re-binding `v-register` onto an inner native element inside a wrapper component.
@@ -61,3 +107,5 @@ The raw `form.errors.email` Proxy stays available as `ValidationError[]` when yo
 - [Schema-driven coercion](/docs/binding-inputs/coercion): how DOM strings land at the right leaf type.
 - [`values`](/docs/reading-the-form/values): what the directive writes into.
 - [`errors`](/docs/reading-the-form/errors): the error reads paired with each registered path.
+- [`fields`](/docs/reading-the-form/fields): the `id` and `aria` ids the accessibility wiring reads from.
+- [Display state and showing errors](/docs/validation/showing-errors): the gated verdict the aria attributes track.

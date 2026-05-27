@@ -27,9 +27,9 @@ Submit the demo without changing the simulate-failure toggle to watch `submittin
 
 ## Two halves
 
-`form.meta` extends `FieldState` with seven form-only properties. That means `meta` has 33 reads total:
+`form.meta` extends `FieldState` with seven form-only properties. That means `meta` has 35 reads total:
 
-- 26 properties inherited from FieldState, aggregated across every leaf in the form.
+- 28 properties inherited from FieldState, aggregated across every leaf in the form.
 - 7 form-only properties that describe the submit cycle and the wizard-departure counter.
 
 The inherited bits are documented once on the [`fields` page](/docs/reading-the-form/fields): same property names, same types, same reactivity. The only difference is the aggregation:

@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { computed, isRef } from 'vue'
+import { computed, isRef, ref } from 'vue'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
+import { vRegister } from '../../src/runtime/core/directive'
 import { AnonPersistError } from '../../src/runtime/core/errors'
-import { buildRegister } from '../../src/runtime/core/register-api'
+import { computeFieldIdentity } from '../../src/runtime/core/field-ids'
+import { canonicalizePath } from '../../src/runtime/core/paths'
+import { buildRegister, type InstanceRegisterConfig } from '../../src/runtime/core/register-api'
+import type { DisplayState } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 
 type F = { email: string; note: string }
@@ -291,6 +295,71 @@ describe('buildRegister', () => {
       }
       expect(thrown).toBeInstanceOf(AnonPersistError)
       expect((thrown as AnonPersistError).cause).toBe('register-without-config')
+    })
+  })
+
+  describe('aria wiring', () => {
+    function makeAriaRegister(config?: InstanceRegisterConfig) {
+      const state = createFormStore<F>({
+        formKey: 'aria-form',
+        schema: fakeSchema<F>({ email: '', note: '' }),
+      })
+      return { state, register: buildRegister(state, 'aria:inst', config) }
+    }
+
+    it('bakes aria ids matching computeFieldIdentity', () => {
+      const { register } = makeAriaRegister({ getDisplayStateAt: () => 'idle' })
+      const rv = register(['email'])
+      const expected = computeFieldIdentity(
+        'aria:inst',
+        'aria-form',
+        canonicalizePath(['email']).key
+      )
+      expect(rv.aria).toEqual(expected.aria)
+    })
+
+    it('exposes the schema required flag as a boolean', () => {
+      const { register } = makeAriaRegister({ getDisplayStateAt: () => 'idle' })
+      expect(typeof register(['email']).isRequired).toBe('boolean')
+    })
+
+    it('enables aria by default, and the verdict reuses getDisplayStateAt', () => {
+      const ds = ref<DisplayState>('idle')
+      const { register } = makeAriaRegister({ getDisplayStateAt: () => ds.value })
+      const rv = register(['email'])
+      expect(rv.ariaEnabled).toBe(true)
+      expect(rv.ariaDisplayState?.value).toBe('idle')
+      // Reactive: a verdict change flows through without re-registering.
+      ds.value = 'error'
+      expect(rv.ariaDisplayState?.value).toBe('error')
+    })
+
+    it('disables aria for the whole form when autoAria is false', () => {
+      const { register } = makeAriaRegister({ autoAria: false, getDisplayStateAt: () => 'idle' })
+      expect(register(['email']).ariaEnabled).toBe(false)
+    })
+
+    it('disables aria per-binding via the register aria option', () => {
+      const { register } = makeAriaRegister({ getDisplayStateAt: () => 'idle' })
+      expect(register(['email'], { aria: false }).ariaEnabled).toBe(false)
+      // Sibling bindings on the same form keep aria on.
+      expect(register(['note']).ariaEnabled).toBe(true)
+    })
+
+    it('omits ariaDisplayState when no accessor is wired (hand-rolled factory)', () => {
+      const { register } = makeAriaRegister()
+      expect(register(['email']).ariaDisplayState).toBeUndefined()
+    })
+
+    it('getSSRProps tolerates the null vnode the compiled SSR helper passes', () => {
+      // Vue's compiled SSR directive-props helper calls getSSRProps with
+      // a null vnode (no vnode object in string-based SSR). Reading
+      // `vnode.props` unguarded would crash every server render.
+      const { register } = makeAriaRegister({ getDisplayStateAt: () => 'error' })
+      const rv = register(['email'])
+      const binding = { value: rv }
+      const ssr = vRegister.getSSRProps?.(binding as never, null as never)
+      expect(ssr).toMatchObject({ 'aria-invalid': 'true' })
     })
   })
 })

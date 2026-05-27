@@ -17,6 +17,21 @@
   export is now `defaultDisplayState`. `form.meta` gains `displayState`
   and the matching `show*` projections.
 
+### Added
+
+- **Accessible-by-default field ids and aria.** Every `FieldState` now
+  carries a stable, SSR-safe `id` plus `aria.errorId` /
+  `aria.descriptionId` satellites, unique across every mount on the page
+  (they fold in the form's `instanceId`), so wiring a `<label :for>` or
+  an `aria-describedby` reference never risks a cross-mount collision.
+  `v-register` keeps `aria-invalid`, `aria-busy`, `aria-required`, and
+  `aria-describedby` in sync with each field's gated display state, and
+  emits the required / invalid states during SSR too. Any aria attribute
+  you author yourself is left untouched. Opt out per binding
+  (`register(path, { aria: false })`), per form
+  (`useForm({ autoAria: false })`), or app-wide via
+  `createAttaform({ defaults: { autoAria: false } })`.
+
 ## v0.18.2
 Supply-chain hardening across the publish pipeline. Attaform's npm
 tarballs ship with OIDC Trusted Publishing + SLSA provenance,

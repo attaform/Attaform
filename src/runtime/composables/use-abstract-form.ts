@@ -547,6 +547,9 @@ export function useAbstractForm<
   if (merged.rememberVariants !== undefined) {
     apiOptions.rememberVariants = merged.rememberVariants
   }
+  if (merged.autoAria !== undefined) {
+    apiOptions.autoAria = merged.autoAria
+  }
   // `buildFormApi` returns the schema-agnostic shape (`ReadForm = Form`);
   // adapter callers compute the richer `ReadForm` (zod-v4's
   // `StorageShape<Schema>`) and assert it through the public return
@@ -602,6 +605,7 @@ function mergeWithDefaults<
   // (so the merged config still distinguishes "consumer didn't say"
   // from an explicit `false` for downstream diagnostics).
   const multiTab = configuration.multiTab ?? defaults.multiTab
+  const autoAria = configuration.autoAria ?? defaults.autoAria
   return {
     ...configuration,
     ...(strict === undefined ? {} : { strict }),
@@ -615,6 +619,7 @@ function mergeWithDefaults<
     ...(maxRecursionDepth === undefined ? {} : { maxRecursionDepth }),
     ...(sensitiveNames === undefined ? {} : { sensitiveNames }),
     ...(multiTab === undefined ? {} : { multiTab }),
+    ...(autoAria === undefined ? {} : { autoAria }),
   } as UseFormConfiguration<Form, GetValueFormType, Schema, Defaults>
 }
 

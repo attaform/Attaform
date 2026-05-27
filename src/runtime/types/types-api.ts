@@ -1325,6 +1325,20 @@ export type UseFormConfiguration<
    */
   multiTab?: boolean
   /**
+   * Whether `v-register` automatically manages aria attributes
+   * (`aria-invalid`, `aria-busy`, `aria-required`, `aria-describedby`)
+   * from the field's display state. **Defaults to `true`.**
+   *
+   * **Resolution order (per-register override > per-form > global > library):**
+   *
+   *   register(path, { aria })  >  useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
+   *
+   * Set `false` to leave all aria wiring to your own markup form-wide.
+   * Any aria attribute you author yourself is always left untouched,
+   * independent of this flag.
+   */
+  autoAria?: boolean
+  /**
    * @internal
    * SSR prefetch mark — set by the `attaform/vite` compile-time
    * transform on `useForm` calls whose surrounding SFC template (or a
@@ -1540,6 +1554,21 @@ export type AttaformDefaults = {
    * the multi-tab-sync recipe's Security section for the threat model.
    */
   multiTab?: boolean
+  /**
+   * App-wide default for `useForm({ autoAria })`. Library default is
+   * `true`: `v-register` keeps `aria-invalid` / `aria-busy` /
+   * `aria-required` / `aria-describedby` in sync with each field's
+   * display state out of the box.
+   *
+   * **Resolution order (per-form wins):**
+   *
+   *   useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
+   *
+   * Set `false` once at the plugin level to make every form manage its
+   * own aria markup. Authored aria attributes are always preserved
+   * regardless of this setting.
+   */
+  autoAria?: boolean
 }
 
 export type FormStore<TData extends GenericForm> = Map<FormKey, TData>
@@ -1952,6 +1981,20 @@ export type RegisterOptions = {
    * instead — see the "Custom assigners" section in the API docs.
    */
   transforms?: ReadonlyArray<RegisterTransform>
+  /**
+   * Opt this binding OUT of automatic aria management. By default the
+   * directive keeps `aria-invalid` / `aria-busy` / `aria-required` /
+   * `aria-describedby` in sync with the field's display state. Pass
+   * `aria: false` to leave every aria attribute on this element to you
+   * (the directive still manages value binding and registration).
+   *
+   * This is the per-binding opt-out; `useForm({ autoAria: false })` and
+   * `createAttaform({ defaults: { autoAria: false } })` turn it off
+   * form-wide and app-wide. Writing an aria attribute yourself also
+   * locks the directive out of that one attribute, regardless of this
+   * flag.
+   */
+  aria?: boolean
 }
 
 /**
@@ -2184,6 +2227,42 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   acceptsString: boolean
+  /**
+   * The field's aria satellite ids, mirroring `FieldState.aria`. The
+   * directive points `aria-describedby` at `errorId` while the field
+   * is in its error state. Optional so hand-rolled `RegisterValue`
+   * mocks don't have to declare it; the directive skips aria wiring
+   * when absent.
+   * @internal
+   */
+  aria?: {
+    readonly errorId: string
+    readonly descriptionId: string
+  }
+  /**
+   * Whether the schema marks this path required, from
+   * `schema.isRequiredAtPath(segments)`. Drives `aria-required`.
+   * Optional for the same mock-tolerance reason as `aria`.
+   * @internal
+   */
+  isRequired?: boolean
+  /**
+   * Whether the directive should auto-manage aria attributes for this
+   * binding. Resolves the `autoAria` cascade (form-level) AND the
+   * per-register `aria` option: `formAutoAria && options.aria !== false`.
+   * The directive treats an absent value as off.
+   * @internal
+   */
+  ariaEnabled?: boolean
+  /**
+   * The gated display-state verdict for this path, reusing the same
+   * field-state identity as `form.fields`. The directive watches it to
+   * keep `aria-invalid` / `aria-busy` / `aria-describedby` in lockstep
+   * with the visible error state, even on async ticks with no parent
+   * re-render. Optional; the directive skips aria wiring when absent.
+   * @internal
+   */
+  ariaDisplayState?: Readonly<Ref<DisplayState>>
 }>
 
 /**
@@ -2724,6 +2803,44 @@ export type FieldState<Value = unknown> = {
    */
   readonly firstError: ValidationError | undefined
   readonly path: ReadonlyArray<string | number>
+  /**
+   * Stable, SSR-safe DOM id for this field, unique across every mount
+   * on the page. Derived from the form's key and this path, folded with
+   * the form's per-mount `instanceId` so two simultaneous mounts of the
+   * same keyed form never collide. Bind it to wire a label and its
+   * input without inventing your own id:
+   *
+   * ```vue
+   * <label :for="form.fields.email.id">Email</label>
+   * <input :id="form.fields.email.id" v-register="form.register('email')" />
+   * ```
+   *
+   * Treat as identity, not state: stable for the path across the form's
+   * lifetime, opaque, not meant to be parsed.
+   */
+  readonly id: string
+  /**
+   * Satellite ids derived from {@link id} for the elements that
+   * describe this field. Wire them to an error node and a description
+   * node so assistive tech announces them with the input. The
+   * `v-register` directive points `aria-describedby` at `errorId`
+   * automatically while the field is in its error state; you render the
+   * matching element and id it:
+   *
+   * ```vue
+   * <input v-register="form.register('email')" />
+   * <span :id="form.fields.email.aria.errorId" v-if="form.fields.email.showErrors">
+   *   {{ form.fields.email.firstError?.message }}
+   * </span>
+   * ```
+   *
+   * `descriptionId` is for opt-in help text; chain it into your own
+   * `aria-describedby` when you render a persistent description element.
+   */
+  readonly aria: {
+    readonly errorId: string
+    readonly descriptionId: string
+  }
   readonly blank: boolean
   /**
    * Presentational label for this field. Resolves through the

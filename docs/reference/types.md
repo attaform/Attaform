@@ -39,7 +39,7 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 | Type                            | Source                  | Purpose                                                   |
 | ------------------------------- | ----------------------- | --------------------------------------------------------- |
-| `FieldState<Value>`             | runtime/types/types-api | The 26-property per-leaf reactive bundle.                 |
+| `FieldState<Value>`             | runtime/types/types-api | The 28-property per-leaf reactive bundle.                 |
 | `FieldStateMap<Form>` / `Entry` | runtime/types/types-api | The proxy shape exposing `form.fields`.                   |
 | `FormMeta<Form>`                | runtime/types/types-api | Form-level aggregates over every field's state.           |
 | `FormErrorsSurface<Form>`       | runtime/types/types-api | The proxy shape exposing `form.errors`.                   |

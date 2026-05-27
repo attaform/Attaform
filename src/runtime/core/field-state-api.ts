@@ -9,6 +9,7 @@ import type {
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { defaultDisplayState } from './display-state'
+import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath } from './path-walker'
@@ -99,6 +100,7 @@ export type FormMetaBaseGetter = () => FormMetaBase
 
 export function buildFieldStateAccessor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
+  formInstanceId: string,
   getFormMetaBase: FormMetaBaseGetter,
   options?: { readonly getDisplayState?: GetDisplayState }
 ) {
@@ -115,8 +117,8 @@ export function buildFieldStateAccessor<F extends GenericForm>(
     if (cached !== undefined) return cached
     const c = computed<FieldState<unknown>>(() =>
       state.schema.isLeafAtPath(segments)
-        ? buildLeafFieldState(state, segments, key, getFormMetaBase, predicate)
-        : buildContainerFieldState(state, segments, key, getFormMetaBase, predicate)
+        ? buildLeafFieldState(state, segments, key, formInstanceId, getFormMetaBase, predicate)
+        : buildContainerFieldState(state, segments, key, formInstanceId, getFormMetaBase, predicate)
     )
     cache.set(key, c)
     return c
@@ -132,7 +134,8 @@ export function buildFieldStateAccessor<F extends GenericForm>(
 function buildLeafFieldStateBase<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: Path,
-  key: PathKey
+  key: PathKey,
+  formInstanceId: string
 ): FieldStateBase {
   const record = state.fields.get(key)
   const value = state.getValueAtPath(segments)
@@ -193,6 +196,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     validating,
     valid,
     path: segments,
+    ...computeFieldIdentity(formInstanceId, state.formKey, key),
     blank: state.blankPaths.has(key),
     label,
     description: resolved.description,
@@ -213,10 +217,11 @@ function buildLeafFieldState<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: Path,
   key: PathKey,
+  formInstanceId: string,
   getFormMetaBase: FormMetaBaseGetter,
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
-  const base = buildLeafFieldStateBase(state, segments, key)
+  const base = buildLeafFieldStateBase(state, segments, key, formInstanceId)
   return decorateWithDerivedProps(base, state, getFormMetaBase, getDisplayState)
 }
 
@@ -243,7 +248,8 @@ function buildLeafFieldState<F extends GenericForm>(
 export function buildContainerFieldStateBase<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: Path,
-  _key: PathKey
+  key: PathKey,
+  formInstanceId: string
 ): FieldStateBase {
   // Read live form value first so the access participates in dep
   // tracking; the discriminator key write that switches a DU variant
@@ -328,6 +334,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     validating,
     valid,
     path: segments,
+    ...computeFieldIdentity(formInstanceId, state.formKey, key),
     blank,
     label,
     description: resolved.description,
@@ -344,10 +351,11 @@ function buildContainerFieldState<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: Path,
   key: PathKey,
+  formInstanceId: string,
   getFormMetaBase: FormMetaBaseGetter,
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
-  const base = buildContainerFieldStateBase(state, segments, key)
+  const base = buildContainerFieldStateBase(state, segments, key, formInstanceId)
   return decorateWithDerivedProps(base, state, getFormMetaBase, getDisplayState)
 }
 

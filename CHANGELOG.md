@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.19.0
 ### Breaking
 
 - **`shouldShowErrors` becomes `displayState`.** The single-verdict

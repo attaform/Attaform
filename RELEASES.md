@@ -1,5 +1,26 @@
 # Releases
 
+## v0.19.0 — 2026-05-27
+
+## What's Changed
+* docs(readme): add OpenSSF Scorecard badge by @ozzyfromspace in https://github.com/attaform/Attaform/pull/276
+* chore: align package.json description with the homepage + README by @ozzyfromspace in https://github.com/attaform/Attaform/pull/277
+* refactor(validation)!: displayState replaces shouldShowErrors by @ozzyfromspace in https://github.com/attaform/Attaform/pull/278
+* feat(a11y): field ids and auto-aria via v-register by @ozzyfromspace in https://github.com/attaform/Attaform/pull/279
+* feat(forms): form.list / form.record with stable element identity by @ozzyfromspace in https://github.com/attaform/Attaform/pull/280
+* feat(arrays): identity-keyed element state across array mutations by @ozzyfromspace in https://github.com/attaform/Attaform/pull/281
+* fix(home): stop the multistep code block forcing mobile horizontal scroll by @ozzyfromspace in https://github.com/attaform/Attaform/pull/282
+* chore(size-limit): rebaseline core-bundle budgets after the refactor by @ozzyfromspace in https://github.com/attaform/Attaform/pull/283
+* docs(demos): pare the display-state demo to a single field by @ozzyfromspace in https://github.com/attaform/Attaform/pull/284
+* feat(validation): tune the default display state (earned success + interacted gate) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/285
+* refactor(aria): unify autoAria across form, app, and per-register by @ozzyfromspace in https://github.com/attaform/Attaform/pull/286
+* fix(validation): skip blur revalidation when the value is unchanged by @ozzyfromspace in https://github.com/attaform/Attaform/pull/287
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.18.2...v0.19.0
+
+---
+
 ## v0.18.2 — 2026-05-26
 
 ## What's Changed

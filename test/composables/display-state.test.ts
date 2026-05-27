@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, expectTypeOf, it } from 'vitest'
-import { computed, createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { computed, createApp, defineComponent, h, nextTick, withDirectives, type App } from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { vRegister } from '../../src/runtime/core/directive'
 import { defaultDisplayState } from '../../src'
 import type {
   DisplayState,
@@ -24,7 +25,7 @@ import type {
  * 'error')`, and so on). The heuristic `getDisplayState(field, formMeta)`
  * resolves through three tiers:
  *   1. Library default: one timing gate
- *      (`submissionAttempts > 0 || (touched && !focused)`), then
+ *      (`submissionAttempts > 0 || (interacted && touched)`), then
  *      precedence — `validating` → pending; own-path error → error;
  *      earned (`valid && !blank && dirty`) → success; else idle.
  *      Containers (intermediate AND root) only resolve to error on their
@@ -75,6 +76,7 @@ type FieldStateLike = {
   readonly showIdle: boolean
   readonly firstError: ValidationError | undefined
   readonly touched: boolean
+  readonly interacted: boolean
   readonly dirty: boolean
   readonly valid: boolean
   readonly validating: boolean
@@ -128,33 +130,35 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         expectProjections(form.fields('email'))
       })
 
-      it('errors present, touched (post-blur), regardless of dirty → error', async () => {
+      it('touched but not interacted (tab-through) stays idle until submit', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         form.touch('email')
         await nextTick()
         expect(form.fields('email').touched).toBe(true)
-        expect(form.fields('email').dirty).toBe(false)
-        // Gate opens on (touched && !focused) — form.touch() flips touched
-        // without DOM focus — so the own-path error resolves to 'error'
-        // regardless of dirty. Catches "user blurred out of a required
-        // empty field".
-        expect(form.fields('email').displayState).toBe('error')
+        expect(form.fields('email').interacted).toBe(false)
+        // The gate needs (interacted && touched): a programmatic touch (and
+        // a real tab-through) flips touched but never interacted, so the
+        // field stays quiet. No scolding a field the user never edited.
+        expect(form.fields('email').displayState).toBe('idle')
         expectProjections(form.fields('email'))
       })
 
-      it('errors present, touched and dirty → error', async () => {
+      it('programmatic touch + setValue (no user input) stays idle', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
         form.touch('email')
         form.setValue('email', 'x')
         // Drain the change-mode validation chain so `field.validating`
-        // returns to false. The default resolves to 'pending' during
-        // revalidation; this assertion pins the post-validation verdict.
+        // returns to false before the verdict assertion.
         await new Promise((r) => setTimeout(r, 0))
         expect(form.fields('email').dirty).toBe(true)
+        expect(form.fields('email').interacted).toBe(false)
         expect(form.fields('email').validating).toBe(false)
-        expect(form.fields('email').displayState).toBe('error')
+        // Neither a programmatic touch nor a programmatic setValue counts as
+        // user interaction, so the gate stays closed and the verdict is idle.
+        // Only user input through v-register flips interacted.
+        expect(form.fields('email').displayState).toBe('idle')
         expectProjections(form.fields('email'))
       })
 
@@ -240,21 +244,18 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         expect(probe.value).toBe('error')
       })
 
-      it('clearing errors flips error → success', async () => {
+      it('clearing errors flips error → success (gate open via submit)', async () => {
         const form = makeForm()
-        injectError(form, ['email'], 'email required')
-        // touched + dirty + valid value (so no schema error replaces the
-        // injected one when validateOn:'change' fires on setValue).
-        form.touch('email')
-        form.setValue('email', 'x')
-        // Drain the change-mode validation chain so the pending window
-        // closes before the displayState assertion.
-        await new Promise((r) => setTimeout(r, 0))
-        expect(form.fields('email').displayState).toBe('error')
-        form.setFieldErrors([])
+        // Submit opens the gate for every field; the empty required email
+        // fails the schema, so it starts in error.
+        await form.handleSubmit(() => {})()
         await nextTick()
+        expect(form.fields('email').displayState).toBe('error')
+        // Edit to a valid value: revalidation clears the error, and the
+        // earned (dirty + non-blank + valid) field greens.
+        form.setValue('email', 'x')
+        await new Promise((r) => setTimeout(r, 0))
         expect(form.fields('email').errors.length).toBe(0)
-        // Gate still open (touched), now valid → success.
         expect(form.fields('email').displayState).toBe('success')
         expectProjections(form.fields('email'))
       })
@@ -523,6 +524,7 @@ describe('getDisplayState — cross-cutting', () => {
     const ownErrorField = {
       errors: [{ path: ['x'], message: 'm', formKey: 'k', code: 'c' }],
       touched: false,
+      interacted: false,
       focused: false,
       validating: false,
       valid: false,
@@ -535,22 +537,45 @@ describe('getDisplayState — cross-cutting', () => {
     // Gate closed (no submit, not touched): idle even with an own error.
     expect(defaultDisplayState(ownErrorField, baseMeta)).toBe('idle')
 
-    // Touched and not focused (post-blur), own error: error, regardless of dirty.
-    expect(defaultDisplayState({ ...ownErrorField, touched: true, focused: false }, baseMeta)).toBe(
-      'error'
-    )
-
-    // Touched and still focused (mid-edit): gate stays closed → idle. Hide
-    // transient errors while the user is actively editing the field.
-    expect(defaultDisplayState({ ...ownErrorField, touched: true, focused: true }, baseMeta)).toBe(
-      'idle'
-    )
-
-    // Currently validating (gate open via touch): pending wins over the
-    // stale error verdict.
+    // Edited and blurred (interacted + touched), own error → error,
+    // regardless of dirty.
     expect(
       defaultDisplayState(
-        { ...ownErrorField, touched: true, focused: false, validating: true },
+        { ...ownErrorField, interacted: true, touched: true, focused: false },
+        baseMeta
+      )
+    ).toBe('error')
+
+    // Re-focused after engaging (interacted + touched + focused): the gate
+    // carries no not-focused term, so it stays open and the error persists
+    // through the re-focus instead of vanishing mid-fix.
+    expect(
+      defaultDisplayState(
+        { ...ownErrorField, interacted: true, touched: true, focused: true },
+        baseMeta
+      )
+    ).toBe('error')
+
+    // Tabbed through without editing (touched but NOT interacted): a clean
+    // tab-through never engages the gate → idle.
+    expect(
+      defaultDisplayState({ ...ownErrorField, interacted: false, touched: true }, baseMeta)
+    ).toBe('idle')
+
+    // First keystrokes, not yet blurred (interacted but NOT touched): the
+    // error stays quiet mid-entry until the user leaves the field → idle.
+    expect(
+      defaultDisplayState(
+        { ...ownErrorField, interacted: true, touched: false, focused: true },
+        baseMeta
+      )
+    ).toBe('idle')
+
+    // Currently validating (gate open via interacted + touched): pending
+    // wins over the stale error verdict.
+    expect(
+      defaultDisplayState(
+        { ...ownErrorField, interacted: true, touched: true, focused: false, validating: true },
         baseMeta
       )
     ).toBe('pending')
@@ -583,6 +608,7 @@ describe('getDisplayState — cross-cutting', () => {
     const validField = {
       errors: [],
       touched: true,
+      interacted: true,
       focused: false,
       validating: false,
       valid: true,
@@ -746,6 +772,69 @@ describe('getDisplayState — success is earned (dirty + non-blank)', () => {
     expect(form.fields('handle').dirty).toBe(true)
     expect(form.fields('handle').displayState).toBe('success')
     expectProjections(form.fields('handle'))
+  })
+})
+
+describe('getDisplayState — reward early, punish late (DOM gate)', () => {
+  const gateSchema = zV4.object({ email: zV4.string().email('Enter a valid email') })
+
+  function mountInput(): { api: FormLike; input: HTMLInputElement } {
+    const handle: { api?: FormLike } = {}
+    const Comp = defineComponent({
+      setup() {
+        const api = useFormV4({
+          schema: gateSchema,
+          key: `gate-${Math.random()}`,
+          strict: false,
+          validateOn: 'blur',
+        } as never) as unknown as FormLike & { register: (p: string) => unknown }
+        handle.api = api
+        return () =>
+          withDirectives(h('input', { type: 'text' }), [[vRegister, api.register('email')]])
+      },
+    })
+    const app = createApp(Comp).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    apps.push(app)
+    if (handle.api === undefined) throw new Error('mountInput: api never set')
+    return { api: handle.api, input: root.firstElementChild as HTMLInputElement }
+  }
+
+  function typeInto(input: HTMLInputElement, value: string): void {
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  it('a clean tab-through (focus then blur, no edit) keeps a hidden error idle', async () => {
+    const { api, input } = mountInput()
+    input.dispatchEvent(new FocusEvent('focus'))
+    input.dispatchEvent(new FocusEvent('blur'))
+    // validateOn:'blur' computes the (failing) verdict on blur, but the gate
+    // needs interacted too, so a clean tab-through never surfaces it.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(api.fields('email').touched).toBe(true)
+    expect(api.fields('email').interacted).toBe(false)
+    expect(api.fields('email').errors.length).toBeGreaterThan(0)
+    expect(api.fields('email').displayState).toBe('idle')
+    expectProjections(api.fields('email'))
+  })
+
+  it('stays quiet mid-entry, then reveals the error on blur', async () => {
+    const { api, input } = mountInput()
+    input.dispatchEvent(new FocusEvent('focus'))
+    typeInto(input, 'not-an-email')
+    await nextTick()
+    // Edited but not yet blurred: interacted flips, touched does not, so the
+    // first keystrokes stay quiet (punish late).
+    expect(api.fields('email').interacted).toBe(true)
+    expect(api.fields('email').displayState).toBe('idle')
+    // Blur runs validateOn:'blur' and completes the gate → the error reveals.
+    input.dispatchEvent(new FocusEvent('blur'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(api.fields('email').displayState).toBe('error')
+    expectProjections(api.fields('email'))
   })
 })
 

@@ -9,14 +9,22 @@ import type { GetDisplayState } from '../types/types-api'
  * One timing gate, then precedence:
  *
  * 1. **Timing gate.** `gateOpen` once the form has been submitted
- *    (`submissionAttempts > 0`) OR the field is touched and not
- *    currently focused. Before the gate opens the verdict is `'idle'`
- *    regardless of errors — transient mid-edit problems stay quiet while
- *    the user is actively working the field, and reappear on blur (or
- *    when a sibling takes focus). The not-focused half also covers
- *    blur-without-typing on a required field: `touched` flips on blur
- *    regardless of `dirty`, so visiting an empty required field and
- *    moving on opens the gate.
+ *    (`submissionAttempts > 0`) OR the field has been both edited and
+ *    left (`interacted === true && touched === true`). Before the gate
+ *    opens the verdict is `'idle'` regardless of errors. This is the
+ *    "reward early, punish late" rule:
+ *      - A clean tab-through never engages. Tabbing flips `touched` but
+ *        not `interacted`, so visiting a field and moving on without
+ *        editing its value keeps it quiet until a submit forces the
+ *        issue (no scolding for fields the user never edited).
+ *      - The first keystrokes stay quiet. `interacted` flips on the
+ *        first edit but `touched` is still false until blur, so an
+ *        error reveals only after the user leaves the field, not
+ *        mid-entry.
+ *      - Recovery is live. The gate carries no not-focused term, so
+ *        once a field is engaged it stays open through a re-focus: a
+ *        shown error clears (or greens) the instant the value becomes
+ *        valid, without forcing another blur.
  *
  *    The submit arm covers `form.handleSubmit` directly and
  *    `wizard.handleSubmit` (which bumps `submissionAttempts` on the
@@ -68,7 +76,7 @@ import type { GetDisplayState } from '../types/types-api'
  */
 export const defaultDisplayState: GetDisplayState = (field, formMeta) => {
   const gateOpen =
-    formMeta.submissionAttempts > 0 || (field.touched === true && field.focused !== true)
+    formMeta.submissionAttempts > 0 || (field.interacted === true && field.touched === true)
   if (!gateOpen) return 'idle'
   if (field.validating === true) return 'pending'
   const hasOwnError = field.errors.some(

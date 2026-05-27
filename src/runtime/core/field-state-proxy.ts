@@ -52,6 +52,7 @@ const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>
   'path',
   'id',
   'aria',
+  'key',
   'blank',
   'label',
   'description',

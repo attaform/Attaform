@@ -643,6 +643,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       path: computed(() => rootFieldState.value.path),
       id: computed(() => rootFieldState.value.id),
       aria: computed(() => rootFieldState.value.aria),
+      key: computed(() => rootFieldState.value.key),
       blank: computed(() => rootFieldState.value.blank),
       label: computed(() => rootFieldState.value.label),
       description: computed(() => rootFieldState.value.description),

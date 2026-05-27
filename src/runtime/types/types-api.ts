@@ -2843,6 +2843,15 @@ export type FieldState<Value = unknown> = {
     readonly errorId: string
     readonly descriptionId: string
   }
+  /**
+   * Stable identity for this field as an element of its parent array,
+   * suitable as a Vue `:key` when iterating array elements. An allocated
+   * token (not derived from the element's value) that follows the
+   * element across inserts, removals, moves, and swaps, so a row keeps
+   * its component instance across a reorder. Empty for fields that are
+   * not array elements. Treat as opaque identity, not state.
+   */
+  readonly key: string
   readonly blank: boolean
   /**
    * Presentational label for this field. Resolves through the

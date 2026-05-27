@@ -508,6 +508,13 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean
   getValueAtPath(path: Path): unknown
+  /**
+   * Stable identity token for the array element at `path`, maintained by
+   * `array-identity.ts` across structural mutations. Empty when `path`
+   * is not an array element (its last segment is not a numeric index).
+   * Backs `FieldState.key`.
+   */
+  arrayElementKey(path: Path): string
 
   // --- reset / clear ---
   reset(nextDefaultValues?: DeepPartial<WriteShape<F>>): void
@@ -1305,6 +1312,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const v = getAtPath(form.value, arraySegs)
     return Array.isArray(v) ? v.length : 0
   })
+
+  // FieldState.key for any path: an array element (numeric last segment)
+  // carries its allocated identity token; everything else is keyless.
+  function arrayElementKey(path: Path): string {
+    const last = path[path.length - 1]
+    if (typeof last !== 'number') return ''
+    return arrayIdentity.tokenAt(path.slice(0, -1), last)
+  }
 
   // Per-path state. `reactive(new Map())` uses Vue's collection handlers —
   // reads of specific keys track those keys only, so a change to one field
@@ -3385,6 +3400,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     applyFormReplacement,
     setValueAtPath,
     getValueAtPath,
+    arrayElementKey,
 
     reset,
     resetField,

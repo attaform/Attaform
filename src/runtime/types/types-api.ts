@@ -2660,6 +2660,10 @@ export type PathSetValuePayload<Leaf> =
  *   `true` thereafter. Set only by user input (never hydration or
  *   programmatic writes); cleared with `touched`. Together they support
  *   "show feedback only after the user has actually engaged" UX.
+ * - `blurredAfterInteraction` — the first blur that follows a value edit
+ *   (edited, then left). Plain `boolean`, sticky. A tab-through with no
+ *   edit never sets it. Composes `interacted` with the departure and
+ *   drives the default display gate.
  */
 export type DOMFieldState = {
   /** `true` while focused; `false` while connected but not focused; `null` while no element is connected. */
@@ -2670,6 +2674,8 @@ export type DOMFieldState = {
   touched: boolean
   /** `true` after the user's first value edit; persists until `reset()`. */
   interacted: boolean
+  /** `true` after the first blur that follows an edit; persists until `reset()`. */
+  blurredAfterInteraction: boolean
 }
 /**
  * Per-field reactive shape returned by `form.fields.<leaf-path>` and
@@ -2706,6 +2712,19 @@ export type FieldState<Value = unknown> = {
    * a disjunction (any descendant interacted).
    */
   readonly interacted: boolean
+  /**
+   * `true` once the user has blurred this field after editing it: the
+   * first time they edit a value and then leave. Sticky thereafter and
+   * preserved across disconnects; a tab-through with no edit never sets
+   * it (`interacted` is still false at that blur). It composes
+   * `interacted` with the departure and drives the default display gate,
+   * so errors reveal once the user finishes a pass and leaves, then stay
+   * visible through a re-focus to be fixed live. Set only by user
+   * input/blur, never by hydration or programmatic writes; cleared by
+   * `form.reset()` / `form.resetField(path)`. Containers roll it up as a
+   * disjunction.
+   */
+  readonly blurredAfterInteraction: boolean
   readonly connected: boolean
   /**
    * The first DOM element bound to this path via `v-register`, or

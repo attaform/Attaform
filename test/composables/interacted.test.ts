@@ -93,3 +93,58 @@ describe('interacted — sticky value-mutation signal', () => {
     expect(mounted.api.meta.interacted).toBe(true)
   })
 })
+
+describe('blurredAfterInteraction — sticky edited-then-left signal', () => {
+  let mounted: Mounted | undefined
+  afterEach(() => {
+    mounted?.app.unmount()
+    mounted = undefined
+    document.body.innerHTML = ''
+  })
+
+  it('is false at registration', async () => {
+    mounted = await mountField()
+    expect(mounted.api.fields.name.blurredAfterInteraction).toBe(false)
+  })
+
+  it('stays false on a tab-through (blur with no edit)', async () => {
+    mounted = await mountField()
+    mounted.input.dispatchEvent(new FocusEvent('focus'))
+    mounted.input.dispatchEvent(new FocusEvent('blur'))
+    expect(mounted.api.fields.name.touched).toBe(true)
+    expect(mounted.api.fields.name.blurredAfterInteraction).toBe(false)
+  })
+
+  it('stays false after the first edit until the user leaves the field', async () => {
+    mounted = await mountField()
+    // Tab through first so touched is already sticky-true.
+    mounted.input.dispatchEvent(new FocusEvent('focus'))
+    mounted.input.dispatchEvent(new FocusEvent('blur'))
+    // Come back and edit: interacted flips, but there is no blur since.
+    mounted.input.dispatchEvent(new FocusEvent('focus'))
+    typeInto(mounted.input, 'a')
+    expect(mounted.api.fields.name.interacted).toBe(true)
+    expect(mounted.api.fields.name.blurredAfterInteraction).toBe(false)
+  })
+
+  it('flips true on the first blur after an edit and stays sticky through re-focus', async () => {
+    mounted = await mountField()
+    mounted.input.dispatchEvent(new FocusEvent('focus'))
+    typeInto(mounted.input, 'a')
+    mounted.input.dispatchEvent(new FocusEvent('blur'))
+    expect(mounted.api.fields.name.blurredAfterInteraction).toBe(true)
+    // Re-focusing to fix the field does not clear it (keeps the gate open).
+    mounted.input.dispatchEvent(new FocusEvent('focus'))
+    expect(mounted.api.fields.name.blurredAfterInteraction).toBe(true)
+  })
+
+  it('is cleared by reset', async () => {
+    mounted = await mountField()
+    mounted.input.dispatchEvent(new FocusEvent('focus'))
+    typeInto(mounted.input, 'champion')
+    mounted.input.dispatchEvent(new FocusEvent('blur'))
+    expect(mounted.api.fields.name.blurredAfterInteraction).toBe(true)
+    mounted.api.reset()
+    expect(mounted.api.fields.name.blurredAfterInteraction).toBe(false)
+  })
+})

@@ -67,7 +67,7 @@ import {
 
 /**
  * Per-path field status. Replaced wholesale (not mutated in place) on
- * every change. Four semantic groups:
+ * every change. Five semantic groups:
  *
  *   - `connected` — is a DOM element registered for this path?
  *   - `focused` / `blurred` — DOM-state flags. `null` while no element
@@ -85,6 +85,11 @@ import {
  *     issues a value edit through the directive's input listeners
  *     (never on hydration, default seeding, or programmatic setValue);
  *     cleared with `touched` by `form.reset()` / `form.resetField(path)`.
+ *   - `blurredAfterInteraction` — the first blur that follows a value
+ *     edit (the field has been edited and then left). Plain boolean,
+ *     sticky `true`. A tab-through blur with no prior edit does NOT set
+ *     it (`interacted` is still false at that blur). Composes
+ *     `interacted` with the departure; drives the default display gate.
  */
 export type FieldRecord = {
   readonly path: Path
@@ -94,6 +99,7 @@ export type FieldRecord = {
   readonly blurred: boolean | null
   readonly touched: boolean
   readonly interacted: boolean
+  readonly blurredAfterInteraction: boolean
 }
 
 // Hydration shape guards — defend against rolling deploys / stale cache
@@ -113,7 +119,8 @@ function isHydratedFieldRecord(value: unknown): value is FieldRecord {
     (typeof r.focused === 'boolean' || r.focused === null) &&
     (typeof r.blurred === 'boolean' || r.blurred === null) &&
     typeof r.touched === 'boolean' &&
-    typeof r.interacted === 'boolean'
+    typeof r.interacted === 'boolean' &&
+    typeof r.blurredAfterInteraction === 'boolean'
   )
 }
 
@@ -1803,6 +1810,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         blurred: null,
         touched: false,
         interacted: false,
+        blurredAfterInteraction: false,
       })
     })
     // No hydration — seed schemaErrors from the construction-time
@@ -1872,6 +1880,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // `??` preserves the current bit. It flips back to false solely
       // through the reset paths, which reconstruct the record outright.
       interacted: patch.interacted ?? current?.interacted ?? false,
+      blurredAfterInteraction:
+        patch.blurredAfterInteraction ?? current?.blurredAfterInteraction ?? false,
     })
   }
 
@@ -2891,12 +2901,21 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     meta?: { readonly instance?: WriteMeta['instance'] }
   ): void {
     const { key } = canonicalizePath(path)
+    const current = fields.get(key)
     touchFieldRecord(key, path, {
       focused,
       blurred: !focused,
       // `touched` flips to true on blur and stays true thereafter; while
       // a field is currently focused we keep whatever value it held.
-      touched: focused ? (fields.get(key)?.touched ?? false) : true,
+      touched: focused ? (current?.touched ?? false) : true,
+      // `blurredAfterInteraction` flips true on the first blur that lands
+      // after a value edit and stays true. A tab-through blur before any
+      // edit leaves it false (`interacted` is still false at that blur),
+      // which is what keeps a clean tab-through from arming the gate.
+      blurredAfterInteraction:
+        !focused && current?.interacted === true
+          ? true
+          : (current?.blurredAfterInteraction ?? false),
     })
     // On blur (focused → false), `validateOn: 'blur'` fires an
     // immediate (no-debounce) validation for this path. Ignored for
@@ -3281,6 +3300,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         blurred: record.blurred,
         touched: false,
         interacted: false,
+        blurredAfterInteraction: false,
       })
     }
     // Clear submission lifecycle so a reset surface reports "nothing has
@@ -3440,6 +3460,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       blurred: record.blurred,
       touched: false,
       interacted: false,
+      blurredAfterInteraction: false,
     })
   }
 

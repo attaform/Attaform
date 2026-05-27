@@ -609,6 +609,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       blurred: computed(() => rootFieldState.value.blurred),
       touched: computed(() => rootFieldState.value.touched),
       interacted: computed(() => rootFieldState.value.interacted),
+      blurredAfterInteraction: computed(() => rootFieldState.value.blurredAfterInteraction),
       connected: computed(() => rootFieldState.value.connected),
       element: computed(() => rootFieldState.value.element),
       elements: computed(() => rootFieldState.value.elements),

@@ -37,6 +37,7 @@ const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>
   'blurred',
   'touched',
   'interacted',
+  'blurredAfterInteraction',
   'connected',
   'element',
   'elements',

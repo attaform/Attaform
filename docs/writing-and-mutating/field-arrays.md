@@ -56,19 +56,21 @@ The path string autocompletes to every array path in the schema. Nested arrays w
 
 ## Stable per-item identity
 
-Every helper preserves the existing items' reactive identity:
+Every helper preserves the existing items' reactive identity, and an item's full state travels with it to its new index:
 
 - `append` leaves indices 0..n unchanged.
-- `prepend` shifts every existing item's index by 1, but the item's own validation state, dirty bit, and bound DOM element follow it to the new index.
-- `swap` / `move` / `remove` follow the same rule: items keep their state across shape changes.
+- `prepend`, `insert`, `swap`, and `move` carry the moved item's value, its original baseline, its dirty and touched state, any error you set on it, its blank display, and its bound DOM element to the new index. Nothing bleeds onto the item that shifts into the vacated slot.
+- `remove` drops the removed item's state; `replace` starts the incoming item fresh.
 
-Practical consequence: a user typing in row 3, hitting "Move up", finishes typing in row 2 without losing focus or having the entered text reset. The directive's per-element identity tracks the item, not the slot.
+Practical consequence: a user typing in row 3, hitting "Move up", finishes typing in row 2 without losing focus or having the entered text reset. A row already marked dirty stays dirty at its new index, and the row that shifts into the old slot keeps its own clean state. Attaform tracks the item, not the slot.
+
+Because each item carries its own baseline, Attaform still reads a structural change as a change: a reorder, insert, or removal leaves `form.meta.dirty` true even when every surviving item matches its own baseline.
 
 ## Validation per item
 
-Per-item validation runs independently for each array slot. An error at `checkpoints.2` clears when the item at index 2 is removed; an error at `checkpoints.0` survives a `move(0, 4)` (the item moved, the error moved with it).
+Per-item validation tracks the item, not the slot. An error you set with `form.setFieldErrors` on `checkpoints.0` follows the item through a `move(0, 4)` to `checkpoints.4`. Schema verdicts recompute from the live value after each shape change, so a still-invalid item shows its error at its new index, and a removed item's verdict clears at once instead of lingering on whatever shifts into the slot.
 
-For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length > 0)`), the error lands at the array path itself, not at any slot. Read it via `errors.checkpoints` (or `fields.checkpoints.firstError`).
+For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length > 0)`), the error lands at the array path itself, not at any slot. Read it via `form.errors('checkpoints')` (or `form.fields('checkpoints').firstError`).
 
 ## Reset behavior
 

@@ -52,6 +52,18 @@
   array for `list` and a record for `record`, and each rejects the other at
   compile time. Works the same on zod-v3 and zod-v4.
 
+- **Element state stays with the element across array mutations.** A `move`,
+  `swap`, `insert`, `remove`, or `replace` now relocates an item's full
+  per-element state to its new index: its value, its original baseline, its
+  dirty and touched state, the errors you set on it, and its blank display
+  all travel with the item rather than staying behind on the slot. A
+  reordered row keeps its own dirty verdict, and nothing bleeds onto the row
+  that shifts into its old place. A structural change still registers the
+  form as dirty even when every surviving item matches its own baseline.
+  Schema verdicts recompute from the live value after the change, and a
+  removed item's in-flight validation is abandoned cleanly. Works the same on
+  zod-v3 and zod-v4.
+
 ## v0.18.2
 Supply-chain hardening across the publish pipeline. Attaform's npm
 tarballs ship with OIDC Trusted Publishing + SLSA provenance,

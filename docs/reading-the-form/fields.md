@@ -10,13 +10,13 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Read shape per leaf
-    value: FieldState (26 properties)
+    value: FieldState (28 properties)
     kind: code
 ---
 
 # `fields`
 
-> A reactive Proxy keyed by schema paths. Every leaf surfaces a 26-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
+> A reactive Proxy keyed by schema paths. Every leaf surfaces a 28-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
 
 ::docs-meta-table
 ::
@@ -50,7 +50,7 @@ Container paths (`form.fields.profile`) descend through the proxy. Call-form (`f
 
 ## What FieldState carries
 
-Each leaf exposes a 26-property `FieldState` object. The properties fall into five jobs:
+Each leaf exposes a 28-property `FieldState` object. The properties fall into five jobs:
 
 ### State bits
 
@@ -108,7 +108,7 @@ form.fields.email.element?.scrollIntoView({ block: 'center' })
 
 ### Schema metadata + identity
 
-Schema-registered presentational hints + the path that produced this FieldState.
+Schema-registered presentational hints, the path that produced this FieldState, and the stable DOM ids for wiring labels and assistive-tech references.
 
 | Property      | Type                            | Meaning                                                                          |
 | ------------- | ------------------------------- | -------------------------------------------------------------------------------- |
@@ -117,6 +117,8 @@ Schema-registered presentational hints + the path that produced this FieldState.
 | `placeholder` | `string \| undefined`           | Registered placeholder hint.                                                     |
 | `meta`        | `Readonly<FieldMetaPayload>`    | The full registered payload; escape hatch for consumer-augmented keys.           |
 | `path`        | `readonly (string \| number)[]` | The path tuple that produced this FieldState.                                    |
+| `id`          | `string`                        | Stable, SSR-safe DOM id for this field, unique across every mount on the page.   |
+| `aria`        | `{ errorId, descriptionId }`    | Satellite ids derived from `id` for wiring error and description elements.       |
 
 Register schema metadata with `withMeta` (works on Zod 3 and Zod 4) or the native `schema.register(fieldMeta, {...})` chain (Zod 4):
 

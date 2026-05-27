@@ -558,7 +558,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // going through the accessor would recurse through the root path's
   // own showErrors computation.
   const getFormMetaBase = (): FormMetaBase => {
-    const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY)
+    const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY, formInstanceId)
     return {
       ...rootBase,
       submitting: state.submitting.value,
@@ -575,6 +575,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     options.getDisplayState !== undefined ? { getDisplayState: options.getDisplayState } : undefined
   const getRootFieldStateAt = buildFieldStateAccessor(
     state,
+    formInstanceId,
     getFormMetaBase,
     fieldStateAccessorOptions
   )
@@ -625,6 +626,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       showIdle: computed(() => rootFieldState.value.showIdle),
       firstError: computed(() => rootFieldState.value.firstError),
       path: computed(() => rootFieldState.value.path),
+      id: computed(() => rootFieldState.value.id),
+      aria: computed(() => rootFieldState.value.aria),
       blank: computed(() => rootFieldState.value.blank),
       label: computed(() => rootFieldState.value.label),
       description: computed(() => rootFieldState.value.description),
@@ -835,7 +838,12 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // computed it reads through, so repeated access to the same path
   // (`form.fields.email` twice) returns the same object — useful
   // for downstream `===` checks and Vue's render diff.
-  const fieldStateProxy = buildFieldStateProxy(state, getFormMetaBase, fieldStateAccessorOptions)
+  const fieldStateProxy = buildFieldStateProxy(
+    state,
+    formInstanceId,
+    getFormMetaBase,
+    fieldStateAccessorOptions
+  )
 
   // Lazy-activation gate: every public method routes through `activate`
   // so the first reactive interaction kicks the captured factory. The

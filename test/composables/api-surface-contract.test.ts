@@ -144,6 +144,8 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.meta.showSuccess).toBe('boolean')
     expect(typeof api.meta.showIdle).toBe('boolean')
     expect(['undefined', 'object']).toContain(typeof api.meta.firstError)
+    expect(typeof api.meta.id).toBe('string')
+    expect(api.meta.aria.errorId).toBe(`${api.meta.id}-error`)
 
     // Type-level absence at the top level.
     // @ts-expect-error api.dirty must NOT exist; use api.meta.dirty
@@ -190,6 +192,12 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof emailField.showSuccess).toBe('boolean')
     expect(typeof emailField.showIdle).toBe('boolean')
 
+    // Stable id + aria satellites for accessibility wiring.
+    expect(typeof emailField.id).toBe('string')
+    expect(emailField.id.length).toBeGreaterThan(0)
+    expect(emailField.aria.errorId).toBe(`${emailField.id}-error`)
+    expect(emailField.aria.descriptionId).toBe(`${emailField.id}-description`)
+
     expectTypeOf(emailField.dirty).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.valid).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.touched).toEqualTypeOf<boolean>()
@@ -198,6 +206,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expectTypeOf(emailField.showPending).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.showSuccess).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.showIdle).toEqualTypeOf<boolean>()
+    expectTypeOf(emailField.id).toEqualTypeOf<string>()
   })
 
   it('per-field history does NOT exist today (pinned for the consolidation question)', () => {

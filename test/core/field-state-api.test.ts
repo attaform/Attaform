@@ -22,7 +22,10 @@ function makeAccessor() {
   // FieldState field) — fine for a test stub that's barely read.
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
-  return { state, getFieldState: buildFieldStateAccessor(state, getFormMetaBase) }
+  return {
+    state,
+    getFieldState: buildFieldStateAccessor(state, 'test-instance', getFormMetaBase),
+  }
 }
 
 describe('buildFieldStateAccessor', () => {
@@ -48,6 +51,17 @@ describe('buildFieldStateAccessor', () => {
     const { getFieldState } = makeAccessor()
     const s = getFieldState('profile.name')
     expect(s.value.path).toEqual(['profile', 'name'])
+  })
+
+  it('exposes a non-empty id with matching aria satellites', () => {
+    const { getFieldState } = makeAccessor()
+    const s = getFieldState(['email'])
+    expect(s.value.id.length).toBeGreaterThan(0)
+    expect(s.value.id).not.toMatch(/\s/)
+    expect(s.value.aria.errorId).toBe(`${s.value.id}-error`)
+    expect(s.value.aria.descriptionId).toBe(`${s.value.id}-description`)
+    // Distinct paths get distinct ids.
+    expect(getFieldState(['profile', 'name']).value.id).not.toBe(s.value.id)
   })
 
   it('returns empty errors array for fields without errors', () => {
@@ -294,7 +308,10 @@ describe('buildFieldStateAccessor — container aggregation', () => {
     // `test/composables/display-state.test.ts`.
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
-    return { state, getFieldState: buildFieldStateAccessor(state, getFormMetaBase) }
+    return {
+      state,
+      getFieldState: buildFieldStateAccessor(state, 'test-instance', getFormMetaBase),
+    }
   }
 
   it('container.pristine is true while all descendants are pristine', () => {

@@ -50,6 +50,8 @@ const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>
   'showIdle',
   'firstError',
   'path',
+  'id',
+  'aria',
   'blank',
   'label',
   'description',
@@ -81,11 +83,13 @@ const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>
  */
 export function buildFieldStateProxy<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
+  formInstanceId: string,
   getFormMetaBase: FormMetaBaseGetter,
   options?: { readonly getDisplayState?: GetDisplayState }
 ): SurfaceProxy {
   const getFieldStateAt = buildFieldStateAccessor(
     state,
+    formInstanceId,
     getFormMetaBase,
     options?.getDisplayState !== undefined
       ? { getDisplayState: options.getDisplayState }

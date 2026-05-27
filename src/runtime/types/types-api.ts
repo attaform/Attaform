@@ -2724,6 +2724,44 @@ export type FieldState<Value = unknown> = {
    */
   readonly firstError: ValidationError | undefined
   readonly path: ReadonlyArray<string | number>
+  /**
+   * Stable, SSR-safe DOM id for this field, unique across every mount
+   * on the page. Derived from the form's key and this path, folded with
+   * the form's per-mount `instanceId` so two simultaneous mounts of the
+   * same keyed form never collide. Bind it to wire a label and its
+   * input without inventing your own id:
+   *
+   * ```vue
+   * <label :for="form.fields.email.id">Email</label>
+   * <input :id="form.fields.email.id" v-register="form.register('email')" />
+   * ```
+   *
+   * Treat as identity, not state: stable for the path across the form's
+   * lifetime, opaque, not meant to be parsed.
+   */
+  readonly id: string
+  /**
+   * Satellite ids derived from {@link id} for the elements that
+   * describe this field. Wire them to an error node and a description
+   * node so assistive tech announces them with the input. The
+   * `v-register` directive points `aria-describedby` at `errorId`
+   * automatically while the field is in its error state; you render the
+   * matching element and id it:
+   *
+   * ```vue
+   * <input v-register="form.register('email')" />
+   * <span :id="form.fields.email.aria.errorId" v-if="form.fields.email.showErrors">
+   *   {{ form.fields.email.firstError?.message }}
+   * </span>
+   * ```
+   *
+   * `descriptionId` is for opt-in help text; chain it into your own
+   * `aria-describedby` when you render a persistent description element.
+   */
+  readonly aria: {
+    readonly errorId: string
+    readonly descriptionId: string
+  }
   readonly blank: boolean
   /**
    * Presentational label for this field. Resolves through the

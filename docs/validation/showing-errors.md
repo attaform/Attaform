@@ -28,6 +28,9 @@ Every path on a form carries a single display-state verdict, `field.displayState
 
 `getDisplayState` is the one heuristic that resolves that verdict, and it runs for every field. Attaform's default holds back until the user has actually interacted with a field, so a fresh-page form does not open with every required field already complaining.
 
+::docs-demo{slug="display-state" label="Display State Demo"}
+::
+
 ## Sugar over the verdict
 
 The four `show*` booleans are exact projections of `displayState`, so they can never disagree with it:

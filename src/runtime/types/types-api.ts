@@ -8,8 +8,6 @@ export type { FieldMetaPayload, ResolvedFieldMeta }
 import type {
   ArrayItem,
   ArrayPath,
-  CollectionItem,
-  CollectionPath,
   DeepPartial,
   DefaultValuesInput,
   DefaultValuesShape,
@@ -22,6 +20,8 @@ import type {
   LiftedValueShape,
   NestedReadType,
   NestedType,
+  RecordPath,
+  RecordValue,
   ValueOfUnion,
   WriteShape,
 } from './types-core'
@@ -4226,12 +4226,10 @@ export type UseFormReturnType<
     value: ArrayItem<Form, Path>
   ) => void
   /**
-   * Read-only, reactive view of the collection at `path` as one
-   * `FieldState` per element, in order. Accepts an array or a record.
-   * Each entry carries its element `key` — the allocated identity token
-   * for an array element, the natural key for a record entry — so a
-   * `v-for` keyed by it keeps a row's component instance across an
-   * insert, removal, move, or swap:
+   * Read-only, reactive view of the array at `path` as one `FieldState`
+   * per element, in index order. Each entry carries its element `key`,
+   * an allocated identity token, so a `v-for` keyed by it keeps a row's
+   * component instance across an insert, removal, move, or swap:
    *
    * ```vue
    * <div v-for="(row, i) in form.list('contacts')" :key="row.key">
@@ -4242,11 +4240,35 @@ export type UseFormReturnType<
    *
    * Entries are the same field states `form.fields` exposes, so reads
    * stay live. `form.fields(path)` remains the single aggregated
-   * container for the whole collection; `list` is the per-element view.
+   * container for the whole array; `list` is the per-element view.
+   * For a record, reach for `record`, which keys each entry by its own
+   * key.
    */
-  list: <Path extends CollectionPath<Form>>(
+  list: <Path extends ArrayPath<Form>>(path: Path) => readonly FieldState<ArrayItem<Form, Path>>[]
+  /**
+   * Read-only, reactive view of the record at `path` as one `FieldState`
+   * per entry, keyed by the entry's own key. Where `list` hands back an
+   * ordered array for an array path, `record` hands back a keyed object
+   * for a record path, so you iterate it by key:
+   *
+   * ```vue
+   * <div v-for="(field, key) in form.record('scoresByTeam')" :key="key">
+   *   <label>{{ key }}</label>
+   *   <input v-register="form.register(`scoresByTeam.${key}`)" />
+   *   <p v-if="field.showErrors">{{ field.firstError?.message }}</p>
+   * </div>
+   * ```
+   *
+   * Entries are the same field states `form.fields` exposes, so reads
+   * stay live, and the keyed shape mirrors the record's own keys: an
+   * entry appears once you write its key (`form.setValue`) and drops
+   * when the key leaves. `form.fields(path)` remains the single
+   * aggregated container for the whole record; `record` is the
+   * per-entry view.
+   */
+  record: <Path extends RecordPath<Form>>(
     path: Path
-  ) => readonly FieldState<CollectionItem<Form, Path>>[]
+  ) => Readonly<Record<string, FieldState<RecordValue<Form, Path>>>>
   /**
    * Read-only view of the form's blank path set. Reactive — Vue 3.5
    * tracks `.has()` / `for..of` / size accesses, so consumers can drive

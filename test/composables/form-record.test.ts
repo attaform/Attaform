@@ -9,11 +9,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { FieldState, UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
- * `form.list` over a record. The array-vs-record fork is decided at
- * runtime from the value (`Array.isArray`), and a record entry's `key`
- * is its natural key, surfaced through the existing `getSchemasAtPath`
- * contract. zod-v3 and zod-v4 are first-class peers, so the same suite
- * runs against both adapters.
+ * `form.record` reads a record at `path` as one `FieldState` per entry,
+ * keyed by the entry's own key — the keyed-object counterpart to the
+ * ordered array `form.list` returns for an array path. zod-v3 and zod-v4
+ * are first-class peers, so the same suite runs against both adapters.
  */
 
 function mountWith<R>(setup: () => R): { api: R; unmount: () => void } {
@@ -39,7 +38,7 @@ function mountWith<R>(setup: () => R): { api: R; unmount: () => void } {
 }
 
 let counter = 0
-const uniqueKey = (prefix: string): string => `flr-${prefix}-${(counter += 1)}`
+const uniqueKey = (prefix: string): string => `frec-${prefix}-${(counter += 1)}`
 
 type RecordSuiteForm = {
   title: string
@@ -48,32 +47,33 @@ type RecordSuiteForm = {
 }
 
 // `useForm` overloads differ between adapters; the suite only needs the
-// shared runtime surface (`list`, `fields`, `setValue`, `values`).
+// shared runtime surface (`record`, `fields`, `setValue`).
 type SharedForm = UseFormReturnType<RecordSuiteForm>
 
 function runRecordSuite(
   label: string,
   buildForm: (key: string) => { api: SharedForm; unmount: () => void }
 ): void {
-  describe(`form.list over a record (${label})`, () => {
+  describe(`form.record (${label})`, () => {
     const callFields = (form: SharedForm, path: string): { readonly key: string; value: unknown } =>
       (form.fields as unknown as (p: string) => { readonly key: string; value: unknown })(path)
 
-    it('returns one entry per key, in insertion order, with values', () => {
-      const { api, unmount } = buildForm(uniqueKey('order'))
+    it('returns one field state per key, keyed by the key, with values', () => {
+      const { api, unmount } = buildForm(uniqueKey('shape'))
       try {
-        const rows = api.list('scores')
-        expect(rows).toHaveLength(2)
-        expect(rows.map((row) => row.value)).toEqual([1, 2])
+        const entries = api.record('scores')
+        expect(Object.keys(entries)).toEqual(['alpha', 'beta'])
+        expect(entries['alpha']?.value).toBe(1)
+        expect(entries['beta']?.value).toBe(2)
       } finally {
         unmount()
       }
     })
 
-    it('each entry carries its natural key', () => {
-      const { api, unmount } = buildForm(uniqueKey('keys'))
+    it('keys mirror the record keys, in insertion order', () => {
+      const { api, unmount } = buildForm(uniqueKey('order'))
       try {
-        expect(api.list('scores').map((row) => row.key)).toEqual(['alpha', 'beta'])
+        expect(Object.keys(api.record('scores'))).toEqual(['alpha', 'beta'])
       } finally {
         unmount()
       }
@@ -82,21 +82,20 @@ function runRecordSuite(
     it('entries are the same field states the form.fields call form returns', () => {
       const { api, unmount } = buildForm(uniqueKey('same'))
       try {
-        expect(api.list('scores')[0]).toBe(callFields(api, 'scores.alpha'))
-        expect(api.list('scores')[1]).toBe(callFields(api, 'scores.beta'))
+        expect(api.record('scores')['alpha']).toBe(callFields(api, 'scores.alpha'))
+        expect(api.record('scores')['beta']).toBe(callFields(api, 'scores.beta'))
       } finally {
         unmount()
       }
     })
 
-    it('grows when a key is added and the key follows it', () => {
+    it('grows when a key is added', () => {
       const { api, unmount } = buildForm(uniqueKey('grow'))
       try {
         api.setValue('scores.gamma', 3)
-        const rows = api.list('scores')
-        expect(rows).toHaveLength(3)
-        expect(rows.map((row) => row.key)).toEqual(['alpha', 'beta', 'gamma'])
-        expect(rows.map((row) => row.value)).toEqual([1, 2, 3])
+        const entries = api.record('scores')
+        expect(Object.keys(entries)).toEqual(['alpha', 'beta', 'gamma'])
+        expect(entries['gamma']?.value).toBe(3)
       } finally {
         unmount()
       }
@@ -106,32 +105,30 @@ function runRecordSuite(
       const { api, unmount } = buildForm(uniqueKey('shrink'))
       try {
         api.setValue('scores', { beta: 2 })
-        const rows = api.list('scores')
-        expect(rows).toHaveLength(1)
-        expect(rows[0]?.key).toBe('beta')
+        expect(Object.keys(api.record('scores'))).toEqual(['beta'])
       } finally {
         unmount()
       }
     })
 
-    it('keeps fixed-object fields and the record container keyless', () => {
+    it('keeps a record entry FieldState keyless — the key lives on the record view', () => {
       const { api, unmount } = buildForm(uniqueKey('keyless'))
       try {
-        // A fixed-shape object field and a plain scalar are not
-        // collection elements, so their key is empty.
+        // FieldState.key is the array-element identity token; a record
+        // entry's stable identity is its own key, surfaced by the
+        // `form.record` object, so the entry's `key` stays empty.
+        expect(callFields(api, 'scores.alpha').key).toBe('')
         expect(callFields(api, 'meta.label').key).toBe('')
         expect(callFields(api, 'title').key).toBe('')
-        // The record container itself is the aggregate, not an element.
-        expect(callFields(api, 'scores').key).toBe('')
       } finally {
         unmount()
       }
     })
 
-    it('is a frozen, read-only array', () => {
+    it('is a frozen, read-only object', () => {
       const { api, unmount } = buildForm(uniqueKey('frozen'))
       try {
-        expect(Object.isFrozen(api.list('scores'))).toBe(true)
+        expect(Object.isFrozen(api.record('scores'))).toBe(true)
       } finally {
         unmount()
       }
@@ -171,8 +168,8 @@ runRecordSuite(
     ) as { api: SharedForm; unmount: () => void }
 )
 
-describe('form.list collection-path typing', () => {
-  it('accepts records and arrays, rejects scalars and fixed objects', () => {
+describe('form.record / form.list path typing', () => {
+  it('record accepts records only; list accepts arrays only', () => {
     const { api, unmount } = mountWith(() =>
       useFormV4({
         schema: zV4.object({
@@ -186,12 +183,18 @@ describe('form.list collection-path typing', () => {
       })
     )
     try {
-      expectTypeOf(api.list('scores')).toEqualTypeOf<readonly FieldState<number>[]>()
+      expectTypeOf(api.record('scores')).toEqualTypeOf<
+        Readonly<Record<string, FieldState<number>>>
+      >()
       expectTypeOf(api.list('roster')).toEqualTypeOf<readonly FieldState<string>[]>()
-      // @ts-expect-error a scalar leaf is not a collection
-      api.list('title')
-      // @ts-expect-error a fixed-shape object is not a collection
-      api.list('meta')
+      // @ts-expect-error a scalar leaf is not a record
+      api.record('title')
+      // @ts-expect-error a fixed-shape object is not a record
+      api.record('meta')
+      // @ts-expect-error an array is read through `list`, not `record`
+      api.record('roster')
+      // @ts-expect-error a record is read through `record`, not `list`
+      api.list('scores')
     } finally {
       unmount()
     }

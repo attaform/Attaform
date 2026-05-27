@@ -390,23 +390,13 @@ export type RecordPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P exte
   : never
 
 /**
- * Paths `form.list` accepts: an array OR a record. Both resolve to an
- * ordered run of same-shaped elements the view iterates.
+ * Value type of the record addressed by `Path` — the `V` in a
+ * `Record<string, V>`. Callers constrain `Path extends RecordPath<Form>`,
+ * so the leaf is always an open string-keyed record and this is
+ * well-defined.
  */
-export type CollectionPath<Form> = ArrayPath<Form> | RecordPath<Form>
-
-/**
- * Element type of the collection addressed by `Path` — the array
- * element for an `ArrayPath`, the record value for a `RecordPath`.
- * Resolved off `NestedType` directly so one conditional covers both
- * without re-satisfying `ArrayItem`'s narrower constraint.
- */
-export type CollectionItem<Form, Path extends CollectionPath<Form>> =
-  NestedType<Form, Path> extends ReadonlyArray<infer Item>
-    ? Item
-    : NestedType<Form, Path> extends Record<string, infer Value>
-      ? Value
-      : never
+export type RecordValue<Form, Path extends RecordPath<Form>> =
+  NestedType<Form, Path> extends Record<string, infer Value> ? Value : never
 
 /**
  * Widens primitive-literal leaves to their primitive supertype to

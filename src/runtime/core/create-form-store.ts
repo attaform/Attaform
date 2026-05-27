@@ -509,13 +509,13 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean
   getValueAtPath(path: Path): unknown
   /**
-   * Stable identity for the collection element at `path`. An array
-   * element (numeric last segment) carries its allocated identity
-   * token, maintained by `array-identity.ts` across structural
-   * mutations; a record entry carries its natural key. Empty for a
+   * Stable identity for the array element at `path`. An array element
+   * (numeric last segment) carries its allocated identity token,
+   * maintained by `array-identity.ts` across structural mutations.
+   * Empty for any non-array-element path: a record entry, a
    * fixed-object field, a container, or the root. Backs `FieldState.key`.
    */
-  elementKey(path: Path): string
+  arrayElementKey(path: Path): string
 
   // --- reset / clear ---
   reset(nextDefaultValues?: DeepPartial<WriteShape<F>>): void
@@ -1314,41 +1314,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return Array.isArray(v) ? v.length : 0
   })
 
-  // Whether the container at `segs` is a record (open string-keyed
-  // index signature) rather than a fixed-shape object. Decided by
-  // runtime schema introspection through the existing `getSchemasAtPath`
-  // contract: a synthetic key resolves through a record's value schema
-  // but returns nothing for an unknown key of a fixed object. Record-ness
-  // is schema-stable, so the answer is cached per container path key.
-  const RECORD_PROBE_SEGMENT = '\u0000atta:record-probe'
-  const recordContainerCache = new Map<PathKey, boolean>()
-  function isRecordContainer(segs: Path): boolean {
-    const cacheKey = canonicalizePath(segs).key
-    const cached = recordContainerCache.get(cacheKey)
-    if (cached !== undefined) return cached
-    let result: boolean
-    try {
-      result = schema.getSchemasAtPath([...segs, RECORD_PROBE_SEGMENT]).length > 0
-    } catch {
-      result = false
-    }
-    recordContainerCache.set(cacheKey, result)
-    return result
-  }
-
-  // FieldState.key for any path: an array element (numeric last segment)
-  // carries its allocated identity token; a record entry carries its
-  // natural key; a fixed-object field, container, or the root is keyless.
-  function elementKey(path: Path): string {
+  // FieldState.key: an array element (numeric last segment) carries its
+  // allocated identity token, which travels with the element across
+  // structural mutations so a keyed `v-for` survives reorders. Empty for
+  // any non-array-element path; a record entry's stable identity is its
+  // own key, surfaced through `form.record`, so it needs no token here.
+  function arrayElementKey(path: Path): string {
     if (path.length === 0) return ''
     const last = path[path.length - 1]
     if (typeof last === 'number') return arrayIdentity.tokenAt(path.slice(0, -1), last)
-    const parentSegs = path.slice(0, -1)
-    const parentValue = getAtPath(form.value, parentSegs)
-    if (parentValue === null || typeof parentValue !== 'object' || Array.isArray(parentValue)) {
-      return ''
-    }
-    return isRecordContainer(parentSegs) ? String(last) : ''
+    return ''
   }
 
   // Per-path state. `reactive(new Map())` uses Vue's collection handlers —
@@ -3430,7 +3405,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     applyFormReplacement,
     setValueAtPath,
     getValueAtPath,
-    elementKey,
+    arrayElementKey,
 
     reset,
     resetField,

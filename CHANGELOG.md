@@ -9,15 +9,24 @@
   `field.displayState` is now the source of truth, one of `'idle'`,
   `'pending'`, `'error'`, or `'success'`, and `showErrors` /
   `showPending` / `showSuccess` / `showIdle` are exact projections of
-  it. The default keeps today's error-reveal timing precisely (after a
-  submit attempt, or once a field is touched and blurred) and adds a
-  `pending` spinner state and a `success` green-check state for free.
+  it. The default follows "reward early, punish late": errors stay quiet
+  on a clean tab-through and during first entry, then reveal once a field
+  is edited and blurred (or on any submit), and clear live on re-focus as
+  the user fixes them. It adds a `pending` spinner state and an earned
+  `success` green check, shown only for a non-blank field the user edited
+  to a valid value.
   The predicate config is renamed `getDisplayState` (a function;
   the boolean shorthand is gone), and the public `defaultShouldShowErrors`
   export is now `defaultDisplayState`. `form.meta` gains `displayState`
   and the matching `show*` projections.
 
 ### Added
+
+- **`FieldState.interacted`.** A sticky boolean that flips true on the
+  user's first value edit through `v-register` (an insert or a delete)
+  and stays true, distinct from `dirty` (net change from the baseline)
+  and `touched` (blur history). It powers the default display-state
+  timing and rolls up on `form.meta`.
 
 - **Accessible-by-default field ids and aria.** Every `FieldState` now
   carries a stable, SSR-safe `id` plus `aria.errorId` /

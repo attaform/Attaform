@@ -15,7 +15,6 @@
       .string()
       .min(3, 'At least 3 characters')
       .refine(async (v) => isAvailable(v), { message: 'That username is taken' }),
-    email: z.email('Enter a valid email'),
   })
 
   const form = useForm({
@@ -24,45 +23,51 @@
     key: 'docs-demo-display-state',
   })
 
-  const fields = [
-    { path: 'username', label: 'Username (taken: ada, champ, athlete)' },
-    { path: 'email', label: 'Email' },
-  ] as const
-
   const onSubmit = form.handleSubmit(() => {})
 </script>
 
 <template>
   <form @submit.prevent="onSubmit">
-    <div v-for="f in fields" :key="f.path" class="field">
+    <div class="field">
       <label>
-        <span>{{ f.label }}</span>
-        <input v-register="form.register(f.path)" />
+        <span>Username (taken: ada, champ, athlete)</span>
+        <input v-register="form.register('username')" />
       </label>
 
       <div class="readout">
-        <span class="badge" :class="form.fields(f.path).displayState">
-          {{ form.fields(f.path).displayState }}
+        <span class="badge" :class="form.fields.username.displayState">
+          {{ form.fields.username.displayState }}
         </span>
         <span class="chips">
-          <span class="chip" :class="{ on: form.fields(f.path).showIdle }">showIdle</span>
-          <span class="chip" :class="{ on: form.fields(f.path).showPending }">showPending</span>
-          <span class="chip" :class="{ on: form.fields(f.path).showErrors }">showErrors</span>
-          <span class="chip" :class="{ on: form.fields(f.path).showSuccess }">showSuccess</span>
+          <span class="chip" :class="{ on: form.fields.username.showIdle }">showIdle</span>
+          <span class="chip" :class="{ on: form.fields.username.showPending }">showPending</span>
+          <span class="chip" :class="{ on: form.fields.username.showErrors }">showErrors</span>
+          <span class="chip" :class="{ on: form.fields.username.showSuccess }">showSuccess</span>
         </span>
       </div>
 
-      <em v-if="form.fields(f.path).showErrors">{{ form.fields(f.path).firstError?.message }}</em>
-      <small v-else-if="form.fields(f.path).showPending">Checking availability…</small>
+      <p
+        class="message"
+        :class="{
+          'message--error': form.fields.username.showErrors,
+          'message--pending': form.fields.username.showPending,
+        }"
+      >
+        <template v-if="form.fields.username.showErrors">{{
+          form.fields.username.firstError?.message
+        }}</template>
+        <template v-else-if="form.fields.username.showPending">Checking availability…</template>
+        <template v-else>&nbsp;</template>
+      </p>
     </div>
 
     <button type="submit">Submit</button>
 
     <p class="hint">
-      Every field resolves to one <code>displayState</code>. An untouched field reads
-      <code>idle</code>; blur one to open the gate, watch the async check rest at
-      <code>pending</code>, then settle on <code>error</code> or <code>success</code>. Submit to
-      open the gate on every field at once.
+      One field, one <code>displayState</code>. Untouched reads <code>idle</code>; blur to open the
+      gate, watch the async check rest at <code>pending</code>, then settle on <code>error</code> or
+      <code>success</code>. The chips are the <code>show*</code> booleans, exact projections of the
+      verdict.
     </p>
   </form>
 </template>
@@ -145,15 +150,16 @@
     color: #1d4ed8;
     font-weight: 600;
   }
-  em {
-    color: #dc2626;
+  .message {
+    margin: 0;
     font-size: 0.8125rem;
-    font-style: normal;
+    line-height: 1.25rem;
   }
-  small {
+  .message--error {
+    color: #dc2626;
+  }
+  .message--pending {
     color: #2563eb;
-    font-size: 0.75rem;
-    font-weight: 500;
   }
   button {
     align-self: flex-start;

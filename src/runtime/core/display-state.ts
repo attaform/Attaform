@@ -35,13 +35,19 @@ import type { GetDisplayState } from '../types/types-api'
  *    never duplicates an error a more-specific descendant already
  *    renders; aggregate banners bind to `form.meta.errorCount` instead.
  *
- * 4. **Success.** No error and `valid === true` resolves to `'success'`
- *    — the green-check confirmation. `valid` already gates async schemas
- *    on the form-wide first validation pass, so this never fires a
- *    premature success before the first verdict lands.
+ * 4. **Success.** No error, `valid === true`, and the green check is
+ *    earned: the field is non-blank and `dirty` (its value diverges from
+ *    the hydration original). Gating success on `dirty && !blank` keeps
+ *    the check meaningful — an empty field that happens to pass, a
+ *    pre-filled field merely tabbed through, and the post-submit flood of
+ *    every valid field all stay `'idle'` rather than greening for free.
+ *    `valid` already gates async schemas on the form-wide first
+ *    validation pass, so success never fires before the first verdict
+ *    lands.
  *
- * 5. **Idle.** Anything else (gate open, not validating, no error, not
- *    yet `valid`) stays `'idle'`.
+ * 5. **Idle.** Anything else — gate open but not validating, no own-path
+ *    error, and either not yet `valid` or valid-but-unearned (blank or
+ *    unchanged) — stays `'idle'`.
  *
  * Public re-export so adopters can compose with this without
  * copy-pasting the rule body — a layered predicate that special-cases a
@@ -69,7 +75,7 @@ export const defaultDisplayState: GetDisplayState = (field, formMeta) => {
     (e) => e.path.length === field.path.length && e.path.every((s, i) => s === field.path[i])
   )
   if (hasOwnError) return 'error'
-  if (field.valid === true) return 'success'
+  if (field.valid === true && field.blank !== true && field.dirty === true) return 'success'
   return 'idle'
 }
 

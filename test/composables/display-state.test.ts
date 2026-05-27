@@ -26,9 +26,10 @@ import type {
  *   1. Library default: one timing gate
  *      (`submissionAttempts > 0 || (touched && !focused)`), then
  *      precedence — `validating` → pending; own-path error → error;
- *      `valid` → success; else idle. Containers (intermediate AND root)
- *      only resolve to error on their own-path errors; leaves always
- *      satisfy the own-path filter when they have errors.
+ *      earned (`valid && !blank && dirty`) → success; else idle.
+ *      Containers (intermediate AND root) only resolve to error on their
+ *      own-path errors; leaves always satisfy the own-path filter when
+ *      they have errors.
  *   2. `createAttaform({ defaults: { getDisplayState } })`.
  *   3. `useForm({ getDisplayState })`, wins over both above.
  *
@@ -178,7 +179,9 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
         expect(form.fields('email').errors.length).toBe(0)
         expect(form.fields('email').valid).toBe(true)
         expect(form.meta.submissionAttempts).toBe(10)
-        // No error + valid + gate open → the green-check confirmation.
+        // No error + valid + earned (the value was edited to 'x', so the
+        // field is dirty and non-blank) → the green-check confirmation.
+        expect(form.fields('email').dirty).toBe(true)
         expect(form.fields('email').displayState).toBe('success')
         expect(form.fields('email').showErrors).toBe(false)
         expectProjections(form.fields('email'))
@@ -576,19 +579,36 @@ describe('getDisplayState — cross-cutting', () => {
       } as typeof baseMeta)
     ).toBe('error')
 
-    // No error + valid + gate open → success.
+    // No error + valid + earned (dirty + non-blank) + gate open → success.
     const validField = {
       errors: [],
       touched: true,
       focused: false,
       validating: false,
       valid: true,
+      blank: false,
+      dirty: true,
       path: ['x'],
     } as unknown as Omit<FieldState, 'displayState' | 'showErrors' | 'firstError'>
     expect(defaultDisplayState(validField, baseMeta)).toBe('success')
 
     // No error + NOT yet valid (e.g. async first pass pending) + gate open → idle.
     expect(defaultDisplayState({ ...validField, valid: false }, baseMeta)).toBe('idle')
+
+    // Valid but UNEARNED: success is withheld so the green check only ever
+    // means the user put valid content there themselves.
+    //   Blank (an empty optional field that happens to pass) → idle.
+    expect(defaultDisplayState({ ...validField, blank: true }, baseMeta)).toBe('idle')
+    //   Not dirty (a pre-filled field merely tabbed through) → idle.
+    expect(defaultDisplayState({ ...validField, dirty: false }, baseMeta)).toBe('idle')
+    //   The post-submit flood: a valid, non-blank, but untouched field
+    //   stays idle even with the gate forced open by a submit attempt.
+    expect(
+      defaultDisplayState({ ...validField, dirty: false }, {
+        ...baseMeta,
+        submissionAttempts: 1,
+      } as typeof baseMeta)
+    ).toBe('idle')
 
     // Container with ONLY descendant errors: idle even after submit. The
     // own-path filter blocks the container from resolving to error and
@@ -675,6 +695,57 @@ describe('getDisplayState — pending during validating', () => {
     expect(form.fields('email').validating).toBe(false)
     expect(form.fields('email').errors.length).toBeGreaterThan(0)
     expect(form.fields('email').displayState).toBe('error')
+  })
+})
+
+describe('getDisplayState — success is earned (dirty + non-blank)', () => {
+  /**
+   * The green check only fires for a field the user filled with valid
+   * content themselves. A pre-filled field left untouched, an empty
+   * optional field that happens to pass, and the post-submit flood of
+   * every still-valid field all stay idle rather than greening for free.
+   */
+  it('valid-but-unchanged and valid-but-blank stay idle; editing to a valid value greens', async () => {
+    const schema = zV4.object({
+      // Pre-filled with a valid value: valid from mount, not dirty until edited.
+      handle: zV4.string().min(1),
+      // Optional: valid while empty, so it exercises the blank guard.
+      bio: zV4.string().optional(),
+    })
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `earned-success-${Math.random()}`,
+          strict: false,
+          defaultValues: { handle: 'ada', bio: '' },
+        } as never)
+      )
+    )
+
+    // Force the gate open for every field.
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.meta.submissionAttempts).toBeGreaterThan(0)
+
+    // handle: valid + non-blank but NOT dirty (untouched default) → idle.
+    expect(form.fields('handle').valid).toBe(true)
+    expect(form.fields('handle').dirty).toBe(false)
+    expect(form.fields('handle').displayState).toBe('idle')
+    expectProjections(form.fields('handle'))
+
+    // bio: valid (optional) but blank → idle.
+    expect(form.fields('bio').valid).toBe(true)
+    expect(form.fields('bio').displayState).toBe('idle')
+    expectProjections(form.fields('bio'))
+
+    // Edit handle to a new valid value → dirty + non-blank + valid → success.
+    form.touch('handle')
+    form.setValue('handle', 'champion')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(form.fields('handle').dirty).toBe(true)
+    expect(form.fields('handle').displayState).toBe('success')
+    expectProjections(form.fields('handle'))
   })
 })
 

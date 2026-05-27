@@ -1,6 +1,6 @@
 ---
 title: list
-description: form.list reads an array as one FieldState per element, in order, each carrying a stable key so a keyed v-for survives inserts, removals, moves, and swaps.
+description: form.list reads an array or record as one FieldState per element, in order, each carrying a stable key so a keyed v-for survives inserts, removals, moves, and swaps.
 metaRows:
   - label: Category
     value: Return method
@@ -13,12 +13,12 @@ metaRows:
 
 # `list`
 
-> One array, one FieldState per element, in order. Each entry carries a stable `key`, so a keyed `v-for` keeps every row attached to its element through any reorder.
+> One collection, one FieldState per element, in order. Each entry carries a stable `key`, so a keyed `v-for` keeps every row attached to its element through any reorder.
 
 ::docs-meta-table
 ::
 
-`form.list(path)` is the iteration view over an array. It hands back one [`FieldState`](/docs/reading-the-form/fields) per element, in array order, and each entry carries a `key` that follows its element across every shape change. Bind that `key` to your `v-for` and Vue keeps each row's component instance, input focus, and cursor attached to the element the user is working on, even after a drag-reorder.
+`form.list(path)` is the iteration view over an array or a record. It hands back one [`FieldState`](/docs/reading-the-form/fields) per element, in order, and each entry carries a `key` that follows its element across every shape change. Bind that `key` to your `v-for` and Vue keeps each row's component instance, input focus, and cursor attached to the element the user is working on, even after a drag-reorder.
 
 ::docs-demo{slug="form-list" label="form.list Demo"}
 ::
@@ -47,13 +47,39 @@ Reach for `list` wherever you render a repeating field. Pair it with the array i
 </template>
 ```
 
-`list` is typed against every `ArrayPath` in the schema, so the path autocompletes to array paths only, and each entry's type narrows to the element shape.
+`list` is typed against every array and record path in the schema, so the path autocompletes to collections only, and each entry's type narrows to the element shape.
 
 ## Why key by `row.key`
 
-`row.key` is an allocated identity token, not the index. It is minted once for an element and travels with it through `insert`, `remove`, `move`, and `swap`, staying distinct even when two elements hold identical values. Keying a `v-for` by the index instead ties each row to a slot, so a reorder reshuffles which DOM node and component instance render which element; a half-typed input can jump to the wrong row. Keying by `row.key` ties each row to its element, so the row a user is editing stays put when the list around it moves.
+For an array element, `row.key` is an allocated identity token, not the index. It is minted once for an element and travels with it through `insert`, `remove`, `move`, and `swap`, staying distinct even when two elements hold identical values. Keying a `v-for` by the index instead ties each row to a slot, so a reorder reshuffles which DOM node and component instance render which element; a half-typed input can jump to the wrong row. Keying by `row.key` ties each row to its element, so the row a user is editing stays put when the list around it moves.
 
 The same token is on every FieldState as [`field.key`](/docs/reading-the-form/fields), reachable through `form.fields('roster.0').key` when you need it outside an iteration.
+
+## Records, by their own key
+
+`list` reads a record just as happily as an array. Pass a record path and you get one entry per key, in the record's own order, with each `row.key` set to that entry's natural key:
+
+```vue
+<script setup lang="ts">
+  import { useForm } from 'attaform/zod'
+  import { z } from 'zod'
+
+  const schema = z.object({
+    scoresByTeam: z.record(z.string(), z.number()),
+  })
+
+  const form = useForm({ schema })
+</script>
+
+<template>
+  <div v-for="row in form.list('scoresByTeam')" :key="row.key">
+    <label>{{ row.key }}</label>
+    <input v-register="form.register(`scoresByTeam.${row.key}`)" />
+  </div>
+</template>
+```
+
+A record entry already has a stable identity in its key, so `list` hands that straight back as `row.key`, with no allocated token needed. Add an entry with `form.setValue('scoresByTeam.west', 0)` and a new row joins the view; the existing rows keep their keys and their component instances. Attaform reads whether a path is an array or a record from the value at run time, so one `list` call covers both, and a fixed-shape object stays off-limits because its keys are part of its type, not a collection to iterate.
 
 ## Each entry is a live FieldState
 
@@ -78,13 +104,13 @@ Binding still flows through `form.register` with the element path; `list` suppli
 
 ## Read-only by design
 
-The returned array is frozen. Identity is bookkept by the mutation helpers, so shape changes go through them rather than the view:
+The returned array is frozen. For an array, identity is bookkept by the mutation helpers, so shape changes go through them rather than the view:
 
 - [`append`](/docs/writing-and-mutating/field-arrays) / `prepend` / `insert` to add a row.
 - `remove` to drop one, `move` / `swap` to reorder.
 - `replace` to overwrite a slot with a fresh element.
 
-Each helper replays its exact change onto the identity tokens, which is what lets `row.key` stay true across the mutation.
+Each helper replays its exact change onto the identity tokens, which is what lets `row.key` stay true across the mutation. A record carries its own keys, so you grow or shrink it with `form.setValue` at an entry path, and `row.key` tracks the keys directly.
 
 ## Where to next
 

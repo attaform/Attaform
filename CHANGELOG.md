@@ -32,15 +32,17 @@
   (`useForm({ autoAria: false })`), or app-wide via
   `createAttaform({ defaults: { autoAria: false } })`.
 
-- **`form.list` and `FieldState.key` for stable array iteration.** Every
-  `FieldState` now carries `key`: an allocated identity token for the
-  field as an element of its parent array, empty otherwise. It follows
-  the element across `insert`, `remove`, `move`, and `swap`, staying
-  distinct even for duplicate values. `form.list(path)` returns the array
-  as one FieldState per element, in order, each carrying that key, so a
-  `v-for` keyed by `row.key` keeps a row's component instance and input
-  focus attached to its element through any reorder. The view is
-  read-only; `form.fields(path)` stays the aggregated container.
+- **`form.list` and `FieldState.key` for stable collection iteration.** Every
+  `FieldState` now carries `key`: an allocated identity token for an array
+  element, the natural key for a record entry, and empty otherwise. For an
+  array element it follows the element across `insert`, `remove`, `move`, and
+  `swap`, staying distinct even for duplicate values. `form.list(path)` reads
+  an array or a record as one FieldState per element, in order, each carrying
+  that key, so a `v-for` keyed by `row.key` keeps a row's component instance
+  and input focus attached to its element through any reorder. The
+  array-vs-record fork is read from the value at run time and works the same
+  on zod-v3 and zod-v4. The view is read-only; `form.fields(path)` stays the
+  aggregated container.
 
 ## v0.18.2
 Supply-chain hardening across the publish pipeline. Attaform's npm

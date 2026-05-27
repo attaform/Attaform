@@ -11,7 +11,12 @@ import type {
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
 import { createArrayIdentity } from './array-identity'
-import { migrateMapSubtree, migrateSetSubtree, remapForOp } from './array-state-migrate'
+import {
+  changedIndices,
+  migrateMapSubtree,
+  migrateSetSubtree,
+  remapForOp,
+} from './array-state-migrate'
 import type { IndexRemap } from './array-state-migrate'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
@@ -1544,6 +1549,52 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     })
   }
 
+  // Schema verdicts are derived, not relocated: after a structural mutation
+  // the entries at changed indices describe the slots' prior occupants. Drop
+  // them synchronously so a stale verdict can't show for the frame before a
+  // 'change'-mode revalidation repopulates — and so it doesn't linger at all
+  // under a `validateOn` that won't revalidate on this write. The next pass
+  // rewrites the whole subtree from the live value.
+  function dropSchemaErrorsAtChangedIndices(arrayPath: Path, remap: IndexRemap): void {
+    const changed = changedIndices(remap)
+    if (changed.size === 0) return
+    const idxPos = arrayPath.length
+    for (const key of [...schemaErrors.keys()]) {
+      const segs = segmentsForPathKey(key)
+      if (segs === null) continue
+      if (!isPathPrefix(arrayPath, segs)) continue
+      if (segs.length <= idxPos) continue
+      const idx = segs[idxPos]
+      if (typeof idx === 'number' && changed.has(idx)) schemaErrors.delete(key)
+    }
+  }
+
+  // A removed element's slot is gone. Abort any field validation still in
+  // flight for its leaves so a late async resolution can't write a verdict at
+  // a dead index, and release the pending counters so `meta.validating`
+  // reflects the removal at once. Mirrors the per-entry half of
+  // `cancelFieldValidation`, scoped to the vacated indices.
+  function abortValidationAtVacatedIndices(arrayPath: Path, remap: IndexRemap): void {
+    if (remap.vacated.size === 0) return
+    const idxPos = arrayPath.length
+    for (const [key, entry] of [...fieldValidationState]) {
+      const segs = segmentsForPathKey(key)
+      if (segs === null) continue
+      if (!isPathPrefix(arrayPath, segs)) continue
+      if (segs.length <= idxPos) continue
+      const idx = segs[idxPos]
+      if (typeof idx !== 'number' || !remap.vacated.has(idx)) continue
+      if (entry.timer !== null) {
+        clearTimeout(entry.timer)
+      } else if (!entry.settled) {
+        activeValidations.value = Math.max(0, activeValidations.value - 1)
+        decFieldValidation(key)
+      }
+      entry.controller.abort()
+      fieldValidationState.delete(key)
+    }
+  }
+
   // Schema-declaration ordinal map for `form.meta.errors` sort order.
   // Plain (non-reactive) Map: it's mutated lazily from inside the
   // `metaErrors` computed when an unseen path appears, and a reactive
@@ -2108,6 +2159,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       const remap = remapForOp(meta.arrayOp, oldArrayLength)
       migrateArrayElementState(path, remap)
       for (const freshIndex of remap.fresh) seedFreshElement(path, freshIndex)
+      dropSchemaErrorsAtChangedIndices(path, remap)
+      abortValidationAtVacatedIndices(path, remap)
       applyArrayOpToMemory(path, meta.arrayOp)
       arrayIdentity.applyOp(path, meta.arrayOp)
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {

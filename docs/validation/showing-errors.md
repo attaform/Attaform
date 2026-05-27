@@ -1,85 +1,111 @@
 ---
-title: Showing errors at the right time
-description: shouldShowErrors gates when a path's error gets surfaced. The default fires after a submit attempt or once the user has blurred the field, and never duplicates errors that more-specific descendants already render.
+title: Display state and showing errors
+description: getDisplayState resolves every path to one verdict (idle, pending, error, or success). The default holds errors back until a submit attempt or a blur, surfaces a spinner while async checks run, and confirms a clean field with success, never duplicating errors a more-specific descendant already renders.
 metaRows:
   - label: Category
     value: Option
   - label: Option
-    value: shouldShowErrors
+    value: getDisplayState
     kind: code
   - label: Default
-    value: defaultShouldShowErrors
+    value: defaultDisplayState
     kind: code
 ---
 
-# Showing errors at the right time
+# Display state and showing errors
 
-> Errors exist in the store the moment validation runs; the predicate decides when the UI surfaces them.
+> Errors exist in the store the moment validation runs; the display state decides what the UI surfaces, and when.
 
 ::docs-meta-table
 ::
 
-`shouldShowErrors` is the predicate that decides whether a path's error should appear in the UI. Attaform's default predicate holds back until the user has actually interacted with a field, so a fresh-page form doesn't open with every required field already complaining.
+Every path on a form carries a single display-state verdict, `field.displayState`, that is one of four values:
 
-## The default predicate
+- `'idle'`: nothing to surface yet.
+- `'pending'`: an async check is in flight.
+- `'error'`: a blocking error is ready to show.
+- `'success'`: the field has passed and earned its green check.
 
-```ts
-import { defaultShouldShowErrors } from 'attaform'
+`getDisplayState` is the one heuristic that resolves that verdict, and it runs for every field. Attaform's default holds back until the user has actually interacted with a field, so a fresh-page form does not open with every required field already complaining.
 
-shouldShowErrors: defaultShouldShowErrors
-```
+## Sugar over the verdict
 
-The default runs two checks in sequence.
+The four `show*` booleans are exact projections of `displayState`, so they can never disagree with it:
 
-### 1. Own-path filter
+| Boolean       | True when                    |
+| ------------- | ---------------------------- |
+| `showErrors`  | `displayState === 'error'`   |
+| `showPending` | `displayState === 'pending'` |
+| `showSuccess` | `displayState === 'success'` |
+| `showIdle`    | `displayState === 'idle'`    |
 
-The field must have at least one error whose path equals the field's own path.
-
-- **Leaves** always satisfy this when they have errors (a leaf's errors are at its own path).
-- **Containers** (intermediate AND root) only satisfy it for errors that point directly at them. Descendant errors are rendered by the descendant fields, so a UI binding `field.showErrors` at a container never duplicates them.
-
-That means `form.meta.showErrors` only fires for root-level (cross-field / object-level) errors. Aggregate "fix the errors below" banners should bind to `form.meta.errorCount > 0` paired with whatever timing signal fits, not to `form.meta.showErrors`.
-
-### 2. Timing gate
-
-After the filter, the default returns `true` when either:
-
-- The form has attempted at least one submit (`formMeta.submissionAttempts > 0`), OR
-- The field has been touched (sticky-true after the first blur) AND is not currently focused.
-
-The not-focused half hides transient errors while the user is actively editing the field; they reappear when the user blurs or moves to a sibling. The empty-required-field case is covered: `touched` flips on blur regardless of whether the value changed, so a user who visits an empty required field and moves on sees the error.
-
-Until one of the timing conditions holds, `field.showErrors` returns `false` even when `errors.<path>` has a value. Your template branches on the predicate-resolved boolean:
+Bind whichever reads cleanest. A field that narrates all of its states in one template block:
 
 ```vue
 <input v-register="form.register('email')" />
 <p v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</p>
+<Spinner v-else-if="form.fields.email.showPending" />
+<CheckIcon v-else-if="form.fields.email.showSuccess" />
 ```
+
+Prefer one branch over the set? Switch on `form.fields.email.displayState` directly. Either way, the same verdict drives the same paint.
+
+## The default heuristic
+
+The default opens one timing gate, then resolves the verdict by precedence.
+
+### 1. Timing gate
+
+The gate opens when either:
+
+- The form has attempted at least one submit (`formMeta.submissionAttempts > 0`), OR
+- The field has been touched (sticky-true after the first blur) AND is not currently focused.
+
+Until the gate opens, `displayState` is `'idle'` no matter what is in the store. The not-focused half keeps transient errors quiet while the user is actively editing the field; they reappear when the user blurs or moves to a sibling. The empty-required-field case is covered: `touched` flips on blur regardless of whether the value changed, so a user who visits an empty required field and moves on sees the error.
+
+### 2. Precedence
+
+Once the gate is open, the default resolves in order:
+
+1. **Pending.** A per-field validation run in flight (`field.validating`) wins. The verdict in `field.errors` is stale by definition, so Attaform surfaces a spinner rather than a possibly-wrong message.
+2. **Error.** An own-path error resolves to `'error'`.
+3. **Success.** No error and `field.valid` resolves to `'success'`, the green-check confirmation. `valid` already waits on the form-wide first validation pass for async schemas, so success never fires before the first real verdict lands.
+4. **Idle.** Anything else stays `'idle'`.
+
+### The own-path filter
+
+The error arm fires only on an error whose path equals the field's own path.
+
+- **Leaves** always satisfy this when they have errors (a leaf's errors are at its own path).
+- **Containers** (intermediate AND root) resolve to `'error'` only for errors that point directly at them. Descendant errors are rendered by the descendant fields, so binding `field.showErrors` at a container never duplicates them.
+
+That means `form.meta.displayState` only reaches `'error'` for root-level (cross-field or object-level) errors. Aggregate "fix the errors below" banners should bind to `form.meta.errorCount > 0` paired with whatever timing signal fits, not to `form.meta.showErrors`.
 
 ## Override per form
 
 ```ts
 useForm({
   schema,
-  shouldShowErrors: (field) => field.touched === true,
+  getDisplayState: (field) => (field.errors.length > 0 && field.touched ? 'error' : 'idle'),
 })
 ```
 
-Pass a custom predicate to bend the rule, for example to reveal errors as soon as a field has been touched once (ignoring focus state). The predicate receives the field's `FieldState` and the form's `FormMeta`, both with `showErrors` and `firstError` omitted to make accidental recursion impossible.
-
-Boolean shortcuts work too: `shouldShowErrors: true` always shows when errors exist; `shouldShowErrors: false` never shows.
+Pass a custom predicate to bend the rule, for example to reveal errors the moment a field is touched (ignoring focus and submit state). The predicate receives the field's `FieldState` and the form's `FormMeta`, both with the derived `displayState` / `show*` / `firstError` keys omitted so an accidental self-reference is impossible, and returns the verdict.
 
 ## Compose with the default
 
-Adopter predicates can layer on top of `defaultShouldShowErrors`. Defer to it for the common case and special-case only the paths you care about:
+Adopter predicates can layer on top of `defaultDisplayState`. Defer to it for the common case and special-case only the paths you care about:
 
 ```ts
-import { defaultShouldShowErrors } from 'attaform'
+import { defaultDisplayState } from 'attaform'
 
 useForm({
   schema,
-  shouldShowErrors: (field, formMeta) =>
-    field.path[0] === 'urgent' || defaultShouldShowErrors(field, formMeta),
+  // Defer everywhere, but never show a success check on `username`.
+  getDisplayState: (field, formMeta) => {
+    const state = defaultDisplayState(field, formMeta)
+    return field.path[0] === 'username' && state === 'success' ? 'idle' : state
+  },
 })
 ```
 

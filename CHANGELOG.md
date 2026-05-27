@@ -2,7 +2,20 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Breaking
+
+- **`shouldShowErrors` becomes `displayState`.** The single-verdict
+  `shouldShowErrors` timing gate grows into a full display-state system.
+  `field.displayState` is now the source of truth, one of `'idle'`,
+  `'pending'`, `'error'`, or `'success'`, and `showErrors` /
+  `showPending` / `showSuccess` / `showIdle` are exact projections of
+  it. The default keeps today's error-reveal timing precisely (after a
+  submit attempt, or once a field is touched and blurred) and adds a
+  `pending` spinner state and a `success` green-check state for free.
+  The predicate config is renamed `getDisplayState` (a function;
+  the boolean shorthand is gone), and the public `defaultShouldShowErrors`
+  export is now `defaultDisplayState`. `form.meta` gains `displayState`
+  and the matching `show*` projections.
 
 ## v0.18.2
 Supply-chain hardening across the publish pipeline. Attaform's npm

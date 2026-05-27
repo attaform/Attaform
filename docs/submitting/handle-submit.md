@@ -43,7 +43,7 @@ The return value is a function ready for `<form @submit.prevent>`. Call signatur
 
 When the returned handler fires:
 
-1. The form's submit count increments. `form.meta.submissionAttempts` lifts; `defaultShouldShowErrors` starts allowing errors to surface for every field.
+1. The form's submit count increments. `form.meta.submissionAttempts` lifts; the default `getDisplayState` heuristic starts surfacing errors for every field.
 2. Sync validation runs across every active path.
 3. Async refinements are awaited.
 4. If every refinement passes, `onSubmit(values)` is called with the **parsed** Zod output: `.transform`-aware, fully typed.
@@ -75,4 +75,4 @@ Skip `onError` when the default behavior (focus the first invalid field) is enou
 
 - [`errors`](/docs/reading-the-form/errors): the per-path error reads.
 - [When validation runs](/docs/validation/when-validation-runs): the timing knob.
-- [Showing errors at the right time](/docs/validation/showing-errors): the `shouldShowErrors` predicate.
+- [Display state and showing errors](/docs/validation/showing-errors): the `getDisplayState` predicate.

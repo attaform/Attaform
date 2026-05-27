@@ -107,4 +107,4 @@ The `'focus-first-error'` (default), `'scroll-to-first-error'`, `'both'`, and `'
 
 - [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface that calls these by default.
 - [Server-side errors](/docs/submitting/server-side-errors): bring API failures back into the same focus / scroll machinery.
-- [Showing errors at the right time](/docs/validation/showing-errors): the predicate that decides when errors render.
+- [Display state and showing errors](/docs/validation/showing-errors): the predicate that decides when errors render.

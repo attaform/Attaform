@@ -105,7 +105,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Async refinements', to: '/docs/validation/async-refinements' },
       { title: 'URL availability check', to: '/docs/validation/url-availability-check' },
       { title: 'The validation lifecycle', to: '/docs/validation/lifecycle' },
-      { title: 'Showing errors at the right time', to: '/docs/validation/showing-errors' },
+      { title: 'Display state and showing errors', to: '/docs/validation/showing-errors' },
       { title: 'The blank field-state bit', to: '/docs/validation/blank' },
     ],
   },

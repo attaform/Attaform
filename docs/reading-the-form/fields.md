@@ -10,13 +10,13 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Read shape per leaf
-    value: FieldState (22 properties)
+    value: FieldState (26 properties)
     kind: code
 ---
 
 # `fields`
 
-> A reactive Proxy keyed by schema paths. Every leaf surfaces a 22-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
+> A reactive Proxy keyed by schema paths. Every leaf surfaces a 26-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
 
 ::docs-meta-table
 ::
@@ -50,7 +50,7 @@ Container paths (`form.fields.profile`) descend through the proxy. Call-form (`f
 
 ## What FieldState carries
 
-Each leaf exposes a 22-property `FieldState` object. The properties fall into five jobs:
+Each leaf exposes a 26-property `FieldState` object. The properties fall into five jobs:
 
 ### State bits
 
@@ -80,13 +80,17 @@ The data sitting at this path right now, and what it was at hydration.
 
 The error surface at this path: raw, ergonomic, and gated.
 
-| Property     | Type                           | Meaning                                                                                                          |
-| ------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `errors`     | `readonly ValidationError[]`   | Every error at this path, schema-declaration order.                                                              |
-| `firstError` | `ValidationError \| undefined` | Sugar for `errors[0]`.                                                                                           |
-| `valid`      | `boolean`                      | `errors.length === 0 && !validating`.                                                                            |
-| `validating` | `boolean`                      | `true` while a per-field validation run is in flight.                                                            |
-| `showErrors` | `boolean`                      | The display-time gate; combines errors with the [`shouldShowErrors`](/docs/validation/showing-errors) predicate. |
+| Property       | Type                                          | Meaning                                                                                             |
+| -------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `errors`       | `readonly ValidationError[]`                  | Every error at this path, schema-declaration order.                                                 |
+| `firstError`   | `ValidationError \| undefined`                | Sugar for `errors[0]`.                                                                              |
+| `valid`        | `boolean`                                     | `errors.length === 0 && !validating`.                                                               |
+| `validating`   | `boolean`                                     | `true` while a per-field validation run is in flight.                                               |
+| `displayState` | `'idle' \| 'pending' \| 'error' \| 'success'` | The single display-state verdict, resolved by [`getDisplayState`](/docs/validation/showing-errors). |
+| `showErrors`   | `boolean`                                     | `displayState === 'error'`. The display-time error gate.                                            |
+| `showPending`  | `boolean`                                     | `displayState === 'pending'`. An async check is in flight.                                          |
+| `showSuccess`  | `boolean`                                     | `displayState === 'success'`. The field has passed.                                                 |
+| `showIdle`     | `boolean`                                     | `displayState === 'idle'`. Nothing to surface yet.                                                  |
 
 ### DOM reads
 
@@ -144,6 +148,6 @@ The display-ergonomics pairing of `firstError` plus `showErrors` is the per-fiel
 - [`errors`](/docs/reading-the-form/errors): the per-path errors Proxy, the raw array behind `firstError`.
 - [`meta`](/docs/reading-the-form/meta): the form-level aggregation, every FieldState property rolled up, plus 7 form-only reads.
 - [The `v-register` directive](/docs/binding-inputs/v-register): the binding that drives `touched`, `focused`, `blurred`, and `connected`.
-- [Showing errors at the right time](/docs/validation/showing-errors): the predicate behind `showErrors`.
+- [Display state and showing errors](/docs/validation/showing-errors): the predicate behind `displayState`.
 - [The `blank` field-state bit](/docs/validation/blank): the lifecycle behind the `blank` cell.
 - [The form](/docs/reading-the-form/the-form): every other reactive read on `form` itself.

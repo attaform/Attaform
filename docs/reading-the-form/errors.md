@@ -49,7 +49,7 @@ The first error's `.message` is what most templates render:
 </template>
 ```
 
-For display ergonomics, gating by [`shouldShowErrors`](/docs/validation/showing-errors) and pulling the first error in one shot, reach for [`form.fields.email.firstError`](/docs/reading-the-form/fields) paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display gating and `firstError` sugar layered on.
+For display ergonomics, gating by [`getDisplayState`](/docs/validation/showing-errors) and pulling the first error in one shot, reach for [`form.fields.email.firstError`](/docs/reading-the-form/fields) paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display gating and `firstError` sugar layered on.
 
 ## Container reads
 

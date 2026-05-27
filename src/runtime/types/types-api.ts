@@ -809,16 +809,18 @@ export type WriteMeta = {
    */
   readonly skipDiscriminatorReshape?: boolean
   /**
-   * Hint about an array structural mutation, set by `field-arrays.ts`
-   * helpers so `setValueAtPath` can surgically clear variant memory
-   * for indices the operation invalidated. Without this hint, a raw
-   * whole-array `setValue(arrayPath, [...])` clears all memory under
-   * the array (the runtime can't tell which indices stayed put).
-   * Internal — don't set from consumer code.
+   * Records an array structural mutation precisely enough to replay the
+   * exact index permutation it produced, set by `field-arrays.ts`
+   * helpers. `setValueAtPath` uses it to surgically clear variant memory
+   * for the indices the operation invalidated. Without this hint, a raw
+   * whole-array `setValue(arrayPath, [...])` clears all memory under the
+   * array (the runtime can't tell which indices stayed put). Internal —
+   * don't set from consumer code.
    */
   readonly arrayOp?:
-    | { readonly kind: 'shift-from'; readonly index: number }
-    | { readonly kind: 'shift-range'; readonly fromIndex: number; readonly toIndex: number }
+    | { readonly kind: 'insert'; readonly index: number }
+    | { readonly kind: 'remove'; readonly index: number }
+    | { readonly kind: 'move'; readonly from: number; readonly to: number }
     | { readonly kind: 'swap'; readonly a: number; readonly b: number }
     | { readonly kind: 'replace-at'; readonly index: number }
   /**

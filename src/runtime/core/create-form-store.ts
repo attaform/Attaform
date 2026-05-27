@@ -1429,12 +1429,18 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   function applyArrayOpToMemory(arrayPath: Path, op: NonNullable<WriteMeta['arrayOp']>): void {
     switch (op.kind) {
-      case 'shift-from':
+      case 'insert':
+      case 'remove':
+        // Every index at or past the touched slot now refers to a
+        // different element (shifted up by an insert, down by a remove).
         clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= op.index)
         return
-      case 'shift-range':
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= op.fromIndex && i <= op.toIndex)
+      case 'move': {
+        const lo = Math.min(op.from, op.to)
+        const hi = Math.max(op.from, op.to)
+        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= lo && i <= hi)
         return
+      }
       case 'swap':
         clearVariantMemoryAtArrayIndices(arrayPath, (i) => i === op.a || i === op.b)
         return

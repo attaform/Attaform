@@ -2,6 +2,7 @@ import { computed, reactive, readonly, type Ref } from 'vue'
 import type {
   BlankPathsView,
   CoercionRegistry,
+  DisplayState,
   FormErrorsSurface,
   FormHistoryNamespace,
   FormMeta,
@@ -78,6 +79,12 @@ export type BuildFormApiOptions = {
   getDisplayState?: GetDisplayState
   coerce?: boolean | CoercionRegistry
   rememberVariants?: boolean
+  /**
+   * Per-`useForm()`-instance `autoAria` resolution. Threaded into
+   * register so each binding's `ariaEnabled` reflects this callsite's
+   * setting. Omitted (undefined) is the library default, `true`.
+   */
+  autoAria?: boolean
 }
 
 /**
@@ -121,15 +128,53 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return meta === undefined ? { instance: instanceMeta } : { ...meta, instance: instanceMeta }
   }
 
+  // Thunk producing a fresh `FormMetaBase` snapshot on each call —
+  // the omit'd-shape second argument to `state.getDisplayState`.
+  // Reads run inside the field-state computed, so every reactive
+  // primitive touched here (submissionAttempts, canUndo, ...) registers as
+  // a dependency of that computed. Bypasses the cached field-state
+  // accessor by calling `buildContainerFieldStateBase` directly —
+  // going through the accessor would recurse through the root path's
+  // own showErrors computation.
+  const getFormMetaBase = (): FormMetaBase => {
+    const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY, formInstanceId)
+    return {
+      ...rootBase,
+      submitting: state.submitting.value,
+      submissionAttempts: state.submissionAttempts.value,
+      departAttempts: state.departAttempts.value,
+      submitError: state.submitError.value,
+      errorCount: rootBase.errors.length,
+      submitted: state.submitted.value,
+      instanceId: formInstanceId,
+    }
+  }
+
+  const fieldStateAccessorOptions =
+    options.getDisplayState !== undefined ? { getDisplayState: options.getDisplayState } : undefined
+  const getRootFieldStateAt = buildFieldStateAccessor(
+    state,
+    formInstanceId,
+    getFormMetaBase,
+    fieldStateAccessorOptions
+  )
+  // Gated `displayState` at any path, reusing the same memoised
+  // field-state identity as `form.fields`. Threaded into register so a
+  // binding's `ariaDisplayState` carries the exact verdict the visible
+  // `form.fields.<path>.displayState` shows. Built before `register`
+  // so the closure is ready when the factory bakes each RegisterValue.
+  const getDisplayStateAt = (segments: Path): DisplayState =>
+    getRootFieldStateAt(segments).value.displayState
+
   const registerConfig = {
     ...(instanceMeta !== undefined ? { instanceMeta } : {}),
     ...(options.coerce !== undefined ? { coerce: options.coerce } : {}),
+    ...(options.autoAria !== undefined ? { autoAria: options.autoAria } : {}),
+    getDisplayStateAt,
   }
-  const register = buildRegister(
-    state,
-    formInstanceId,
-    Object.keys(registerConfig).length > 0 ? registerConfig : undefined
-  ) as (path: string | Path) => RegisterValue<unknown>
+  const register = buildRegister(state, formInstanceId, registerConfig) as (
+    path: string | Path
+  ) => RegisterValue<unknown>
   // Don't set `onInvalidSubmit: undefined` — exactOptionalPropertyTypes
   // treats an explicit-undefined value differently from an omitted
   // property. Only pass the key when the consumer opted in.
@@ -549,36 +594,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // reference returned by `form.fields()`) so `form.meta.dirty`,
   // `form.fields().dirty`, and `form.fields([]).dirty` all read
   // identical aggregated state.
-  // Thunk producing a fresh `FormMetaBase` snapshot on each call —
-  // the omit'd-shape second argument to `state.getDisplayState`.
-  // Reads run inside the field-state computed, so every reactive
-  // primitive touched here (submissionAttempts, canUndo, ...) registers as
-  // a dependency of that computed. Bypasses the cached field-state
-  // accessor by calling `buildContainerFieldStateBase` directly —
-  // going through the accessor would recurse through the root path's
-  // own showErrors computation.
-  const getFormMetaBase = (): FormMetaBase => {
-    const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY, formInstanceId)
-    return {
-      ...rootBase,
-      submitting: state.submitting.value,
-      submissionAttempts: state.submissionAttempts.value,
-      departAttempts: state.departAttempts.value,
-      submitError: state.submitError.value,
-      errorCount: rootBase.errors.length,
-      submitted: state.submitted.value,
-      instanceId: formInstanceId,
-    }
-  }
-
-  const fieldStateAccessorOptions =
-    options.getDisplayState !== undefined ? { getDisplayState: options.getDisplayState } : undefined
-  const getRootFieldStateAt = buildFieldStateAccessor(
-    state,
-    formInstanceId,
-    getFormMetaBase,
-    fieldStateAccessorOptions
-  )
   const rootFieldState = getRootFieldStateAt([] as Path)
   const formMeta = readonly(
     reactive({

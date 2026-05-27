@@ -1,6 +1,7 @@
 import { computed, ref, shallowReadonly, type Ref } from 'vue'
 import type {
   CoercionRegistry,
+  DisplayState,
   InternalRegisterValue,
   RegisterOptions,
   RegisterTransform,
@@ -12,6 +13,7 @@ import type { FormStore } from './create-form-store'
 import { captureUserCallSite } from './dev-stack-trace'
 import { AnonPersistError } from './errors'
 import { extractSchemaFields } from './extract-schema-fields'
+import { computeFieldIdentity } from './field-ids'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 import { PERSISTENCE_MODULE_KEY } from './persistence'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
@@ -26,6 +28,20 @@ import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './sch
 export type InstanceRegisterConfig = {
   readonly instanceMeta?: WriteMeta['instance']
   readonly coerce?: boolean | CoercionRegistry
+  /**
+   * Form-level `autoAria` resolution. Combined with the per-register
+   * `aria` option to produce each binding's `ariaEnabled`. Omitted
+   * (undefined) is treated as the library default, `true`.
+   */
+  readonly autoAria?: boolean
+  /**
+   * Resolves the gated `displayState` at a path, reusing the same
+   * field-state identity as `form.fields`. Closed over the form's
+   * field-state accessor by `build-form-api.ts`; absent only for
+   * hand-rolled register factories (in which case bindings carry no
+   * `ariaDisplayState` and the directive skips aria wiring).
+   */
+  readonly getDisplayStateAt?: (segments: Path) => DisplayState
 }
 
 // Module-level frozen empty array — re-used as the transforms default
@@ -122,6 +138,11 @@ export function buildRegister<F extends GenericForm>(
       ? resolveCoercionIndex(instanceConfig.coerce)
       : state.coerceIndex
   const instanceMeta = instanceConfig?.instanceMeta
+  // Form-level aria resolution captured once for this register factory.
+  // `autoAria` omitted is the library default (`true`); the per-register
+  // `aria` option is folded in per call below.
+  const formAutoAria = instanceConfig?.autoAria !== false
+  const getDisplayStateAt = instanceConfig?.getDisplayStateAt
   // `meta.instance` is forwarded into every store write below so the
   // store's reads of `validateOn` / `debounceMs` / `rememberVariants`
   // honor THIS instance's config. Composed with caller-supplied
@@ -280,6 +301,21 @@ export function buildRegister<F extends GenericForm>(
       })
     }
 
+    // Aria wiring baked onto the RegisterValue so the (store-less)
+    // directive can drive `aria-*` without a field-state lookup. The
+    // ids match `FieldState.aria` exactly (same pure derivation).
+    // `ariaEnabled` folds the form-level `autoAria` with this binding's
+    // per-register `aria` option. `ariaDisplayState` reuses the form's
+    // field-state accessor, so it carries the SAME gated verdict the
+    // visible `form.fields.<path>.displayState` shows.
+    const { aria } = computeFieldIdentity(formInstanceId, state.formKey, pathKey)
+    const isRequired = state.schema.isRequiredAtPath(segments)
+    const ariaEnabled = formAutoAria && options?.aria !== false
+    const ariaDisplayState =
+      getDisplayStateAt !== undefined
+        ? (computed(() => getDisplayStateAt(segments)) as Readonly<Ref<DisplayState>>)
+        : undefined
+
     // `shallowReadonly` is what makes `rv.path`, `rv.formKey`, and the
     // other top-level string fields feel like reactive state in
     // wrapper components: property reads track in computeds /
@@ -362,6 +398,12 @@ export function buildRegister<F extends GenericForm>(
       ...(coerceElement !== undefined ? { coerceElement } : {}),
       acceptsUndefined,
       acceptsString,
+
+      // --- Aria (internal; consumed by the directive) ---
+      aria,
+      isRequired,
+      ariaEnabled,
+      ...(ariaDisplayState !== undefined ? { ariaDisplayState } : {}),
     }
     return shallowReadonly(internalRv) as RegisterValue
   }

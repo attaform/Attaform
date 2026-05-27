@@ -1325,6 +1325,20 @@ export type UseFormConfiguration<
    */
   multiTab?: boolean
   /**
+   * Whether `v-register` automatically manages aria attributes
+   * (`aria-invalid`, `aria-busy`, `aria-required`, `aria-describedby`)
+   * from the field's display state. **Defaults to `true`.**
+   *
+   * **Resolution order (per-register override > per-form > global > library):**
+   *
+   *   register(path, { aria })  >  useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
+   *
+   * Set `false` to leave all aria wiring to your own markup form-wide.
+   * Any aria attribute you author yourself is always left untouched,
+   * independent of this flag.
+   */
+  autoAria?: boolean
+  /**
    * @internal
    * SSR prefetch mark — set by the `attaform/vite` compile-time
    * transform on `useForm` calls whose surrounding SFC template (or a
@@ -1540,6 +1554,21 @@ export type AttaformDefaults = {
    * the multi-tab-sync recipe's Security section for the threat model.
    */
   multiTab?: boolean
+  /**
+   * App-wide default for `useForm({ autoAria })`. Library default is
+   * `true`: `v-register` keeps `aria-invalid` / `aria-busy` /
+   * `aria-required` / `aria-describedby` in sync with each field's
+   * display state out of the box.
+   *
+   * **Resolution order (per-form wins):**
+   *
+   *   useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
+   *
+   * Set `false` once at the plugin level to make every form manage its
+   * own aria markup. Authored aria attributes are always preserved
+   * regardless of this setting.
+   */
+  autoAria?: boolean
 }
 
 export type FormStore<TData extends GenericForm> = Map<FormKey, TData>
@@ -1952,6 +1981,20 @@ export type RegisterOptions = {
    * instead — see the "Custom assigners" section in the API docs.
    */
   transforms?: ReadonlyArray<RegisterTransform>
+  /**
+   * Opt this binding OUT of automatic aria management. By default the
+   * directive keeps `aria-invalid` / `aria-busy` / `aria-required` /
+   * `aria-describedby` in sync with the field's display state. Pass
+   * `aria: false` to leave every aria attribute on this element to you
+   * (the directive still manages value binding and registration).
+   *
+   * This is the per-binding opt-out; `useForm({ autoAria: false })` and
+   * `createAttaform({ defaults: { autoAria: false } })` turn it off
+   * form-wide and app-wide. Writing an aria attribute yourself also
+   * locks the directive out of that one attribute, regardless of this
+   * flag.
+   */
+  aria?: boolean
 }
 
 /**
@@ -2184,6 +2227,42 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   acceptsString: boolean
+  /**
+   * The field's aria satellite ids, mirroring `FieldState.aria`. The
+   * directive points `aria-describedby` at `errorId` while the field
+   * is in its error state. Optional so hand-rolled `RegisterValue`
+   * mocks don't have to declare it; the directive skips aria wiring
+   * when absent.
+   * @internal
+   */
+  aria?: {
+    readonly errorId: string
+    readonly descriptionId: string
+  }
+  /**
+   * Whether the schema marks this path required, from
+   * `schema.isRequiredAtPath(segments)`. Drives `aria-required`.
+   * Optional for the same mock-tolerance reason as `aria`.
+   * @internal
+   */
+  isRequired?: boolean
+  /**
+   * Whether the directive should auto-manage aria attributes for this
+   * binding. Resolves the `autoAria` cascade (form-level) AND the
+   * per-register `aria` option: `formAutoAria && options.aria !== false`.
+   * The directive treats an absent value as off.
+   * @internal
+   */
+  ariaEnabled?: boolean
+  /**
+   * The gated display-state verdict for this path, reusing the same
+   * field-state identity as `form.fields`. The directive watches it to
+   * keep `aria-invalid` / `aria-busy` / `aria-describedby` in lockstep
+   * with the visible error state, even on async ticks with no parent
+   * re-render. Optional; the directive skips aria wiring when absent.
+   * @internal
+   */
+  ariaDisplayState?: Readonly<Ref<DisplayState>>
 }>
 
 /**

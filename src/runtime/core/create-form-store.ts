@@ -10,6 +10,7 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
+import { createArrayIdentity } from './array-identity'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
@@ -1296,6 +1297,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   const form = ref(stubbedInitialData) as Ref<F>
 
+  // Operation-maintained per-element identity. Reads the live array
+  // length so it can seed and realign token lists by position for writes
+  // it can't follow; structural mutations replay their permutation onto
+  // the tokens through `applyOp`.
+  const arrayIdentity = createArrayIdentity((arraySegs) => {
+    const v = getAtPath(form.value, arraySegs)
+    return Array.isArray(v) ? v.length : 0
+  })
+
   // Per-path state. `reactive(new Map())` uses Vue's collection handlers —
   // reads of specific keys track those keys only, so a change to one field
   // doesn't invalidate computeds watching another.
@@ -2002,8 +2012,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // those indices on a future variant switch.
     if (meta?.arrayOp !== undefined) {
       applyArrayOpToMemory(path, meta.arrayOp)
+      arrayIdentity.applyOp(path, meta.arrayOp)
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {
       clearVariantMemoryUnderPath(path)
+      arrayIdentity.realign(path)
     }
     const effectiveModeAfterWrite = meta?.instance?.validateOn ?? fieldValidationMode
     if (effectiveModeAfterWrite === 'change') {

@@ -1,5 +1,5 @@
 import type { WriteMeta } from '../types/types-api'
-import { canonicalizePath } from './paths'
+import { canonicalizePath, isPathPrefix, segmentsForPathKey } from './paths'
 import type { Path, PathKey } from './paths'
 
 type ArrayOp = NonNullable<WriteMeta['arrayOp']>
@@ -33,11 +33,28 @@ export type ArrayIdentity = {
   applyOp(arraySegs: Path, op: ArrayOp): void
   /** Realign a tracked array's tokens to its current length by position. */
   realign(arraySegs: Path): void
+  /**
+   * Whether any tracked array under `prefix` differs from its baseline
+   * element order — a different length, or a reordered identity sequence.
+   * Backs the structural component of `dirty`: once per-element state
+   * follows its element, a positional value comparison can no longer see a
+   * reorder or removal, so the dirty verdict consults this instead.
+   */
+  hasStructuralChangeUnder(prefix: Path): boolean
+  /**
+   * Re-anchor every tracked array's baseline order to its current order.
+   * Called on `reset()` so a form reads structurally pristine afterward.
+   */
+  rebaselineAll(): void
 }
 
 export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number): ArrayIdentity {
   // Token lists keyed by array PathKey, each parallel to its array.
   const tokens = new Map<PathKey, string[]>()
+  // Baseline token order per array, captured on first track and re-anchored
+  // on reset. A live order that diverges from its baseline is a structural
+  // change (reorder, insert, or removal).
+  const baselines = new Map<PathKey, string[]>()
   // One form-wide monotonic counter, so every token is unique across
   // every array in the form (safe as a Map key, not just a v-for key).
   let counter = 0
@@ -48,13 +65,28 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
   // tokens, or drop a shrunk tail. Returns the live list.
   function ensure(arrayKey: PathKey, expectedLen: number): string[] {
     let ids = tokens.get(arrayKey)
+    const firstTrack = ids === undefined
     if (ids === undefined) {
       ids = []
       tokens.set(arrayKey, ids)
     }
     while (ids.length < expectedLen) ids.push(allocate())
     if (ids.length > expectedLen) ids.length = expectedLen
+    // Anchor the baseline the first time the array is seen, before any
+    // operation permutes it — that snapshot is its construction-time order.
+    if (firstTrack) baselines.set(arrayKey, [...ids])
     return ids
+  }
+
+  function orderPristineForKey(arrayKey: PathKey): boolean {
+    const baseline = baselines.get(arrayKey)
+    const current = tokens.get(arrayKey)
+    if (baseline === undefined || current === undefined) return true
+    if (baseline.length !== current.length) return false
+    for (let i = 0; i < current.length; i++) {
+      if (current[i] !== baseline[i]) return false
+    }
+    return true
   }
 
   return {
@@ -100,6 +132,29 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
 
     realign(arraySegs) {
       ensure(canonicalizePath(arraySegs).key, getArrayLength(arraySegs))
+    },
+
+    hasStructuralChangeUnder(prefix) {
+      for (const arrayKey of tokens.keys()) {
+        if (orderPristineForKey(arrayKey)) continue
+        const segs = segmentsForPathKey(arrayKey)
+        if (segs === null) continue
+        if (isPathPrefix(prefix, segs)) return true
+      }
+      return false
+    },
+
+    rebaselineAll() {
+      // Reset replaces the form wholesale without an `arrayOp`, so realign
+      // each tracked array to its post-reset length by position first, then
+      // anchor that order as the new baseline — otherwise a reset that
+      // changes a length would read structurally dirty on the next access.
+      for (const arrayKey of [...tokens.keys()]) {
+        const segs = segmentsForPathKey(arrayKey)
+        if (segs === null) continue
+        const ids = ensure(arrayKey, getArrayLength(segs))
+        baselines.set(arrayKey, [...ids])
+      }
     },
   }
 }

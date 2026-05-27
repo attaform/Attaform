@@ -1681,6 +1681,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const departAttempts = ref(0)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
+  // Structural snapshot of the form value as of the last blur-mode validation
+  // pass, `null` before the first. The blur guard skips a re-run only while
+  // the live form still deep-equals this (no leaf differs): a focus/blur cycle
+  // with no net change can't move any verdict, so re-running would only
+  // flicker a settled error through 'pending'. Keying on the value, not a
+  // write count, means editing away and back to the last-validated value
+  // (`"a" -> "ab" -> "a"`) also stays quiet. The `{ value }` box keeps a form
+  // value of `null` / `undefined` distinct from "never validated". Plain
+  // `let`, not a ref: only the blur handler reads it, never reactively.
+  let lastValidatedSnapshot: { readonly value: unknown } | null = null
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
   // first call for this key: `defaultValuesFactory` captures the
   // function-form input, `hydrating` flips true until settle
@@ -2439,6 +2449,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const run = () => {
       fresh.timer = null
       if (controller.signal.aborted) return
+      // Record the value this pass validates so a later blur can recognise an
+      // unchanged form and skip. Blur-mode only: the blur guard is the sole
+      // reader, so change-mode never pays for the snapshot.
+      if (effectiveMode === 'blur') {
+        lastValidatedSnapshot = { value: structuralSnapshot(form.value) }
+      }
       // Defense-in-depth: the increments below trigger reactive
       // subscribers (sync watchers on `api.meta.validating` or
       // `api.fields.X.validating`). If one of those subscribers throws,
@@ -2917,17 +2933,41 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           ? true
           : (current?.blurredAfterInteraction ?? false),
     })
-    // On blur (focused → false), `validateOn: 'blur'` fires an
-    // immediate (no-debounce) validation for this path. Ignored for
-    // change/submit modes so behaviour matches the declared config.
+    // On blur (focused → false), `validateOn: 'blur'` fires an immediate
+    // (no-debounce) validation for this path. Ignored for change/submit modes
+    // so behaviour matches the declared config. Two reasons to run; else skip:
+    //
+    //   1. First interactive blur. The user edited the field and is leaving it
+    //      for the first time, so its verdict becomes visible now
+    //      (`blurredAfterInteraction` flips above). Run unconditionally: a
+    //      snapshot seeded before any interaction — e.g. the construction pass
+    //      over an unauthored initial value, whose verdict may have been
+    //      filtered out — must not suppress this first real verdict, even when
+    //      the value round-tripped back to its initial state.
+    //   2. The value changed since the last pass. Skipping an unchanged form
+    //      keeps a settled error from flickering through 'pending' on every
+    //      refocus; comparing the value (not a write count) keeps editing away
+    //      and back to the last-validated value quiet too.
     const focusMode = meta?.instance?.validateOn ?? fieldValidationMode
     if (!focused && focusMode === 'blur') {
-      scheduleFieldValidation(path, true /* immediate */, {
-        ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-        ...(meta?.instance?.debounceMs !== undefined
-          ? { debounceMs: meta.instance.debounceMs }
-          : {}),
-      })
+      const firstInteractiveBlur =
+        current?.interacted === true && current.blurredAfterInteraction !== true
+      const snapshot = lastValidatedSnapshot
+      let changed = true
+      if (!firstInteractiveBlur && snapshot !== null) {
+        changed = false
+        diffAndApply(snapshot.value, form.value, [], () => {
+          changed = true
+        })
+      }
+      if (changed) {
+        scheduleFieldValidation(path, true /* immediate */, {
+          ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
+          ...(meta?.instance?.debounceMs !== undefined
+            ? { debounceMs: meta.instance.debounceMs }
+            : {}),
+        })
+      }
     }
   }
 

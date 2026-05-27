@@ -77,6 +77,16 @@
   removed item's in-flight validation is abandoned cleanly. Works the same on
   zod-v3 and zod-v4.
 
+### Fixed
+
+- **`validateOn: 'blur'` no longer revalidates an unchanged field.** A
+  focus/blur cycle with no edit used to fire a fresh whole-form validation
+  pass, flipping `validating` true for its duration and flickering a settled
+  error through `'pending'` and back on every refocus. Attaform now tracks
+  whether the form has changed since its last pass and skips the redundant
+  run, so a showing error stays steady and async probes don't re-fire when the
+  user refocuses without editing.
+
 ## v0.18.2
 Supply-chain hardening across the publish pipeline. Attaform's npm
 tarballs ship with OIDC Trusted Publishing + SLSA provenance,

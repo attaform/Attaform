@@ -74,6 +74,8 @@ useForm({
 })
 ```
 
+Blur fires the probe only when the value actually changed since the last pass, so refocusing a field and tabbing away without editing it won't re-hit the server.
+
 Or stay on the per-keystroke trigger and coalesce bursts with `debounceMs`:
 
 ```ts

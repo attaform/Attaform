@@ -4224,6 +4224,24 @@ export type UseFormReturnType<
     value: ArrayItem<Form, Path>
   ) => void
   /**
+   * Read-only, reactive view of the array at `path` as one `FieldState`
+   * per element, in array order. Each entry carries its element `key`,
+   * so a `v-for` keyed by it keeps a row's component instance across an
+   * insert, removal, move, or swap:
+   *
+   * ```vue
+   * <div v-for="(row, i) in form.list('contacts')" :key="row.key">
+   *   <input v-register="form.register(`contacts.${i}.name`)" />
+   *   <p v-if="row.showErrors">{{ row.firstError?.message }}</p>
+   * </div>
+   * ```
+   *
+   * Entries are the same field states `form.fields` exposes, so reads
+   * stay live. `form.fields(path)` remains the single aggregated
+   * container for the whole array; `list` is the per-element view.
+   */
+  list: <Path extends ArrayPath<Form>>(path: Path) => readonly FieldState<ArrayItem<Form, Path>>[]
+  /**
    * Read-only view of the form's blank path set. Reactive — Vue 3.5
    * tracks `.has()` / `for..of` / size accesses, so consumers can drive
    * conditional UI off it directly:

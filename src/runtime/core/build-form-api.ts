@@ -873,6 +873,23 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     }) as F
   }
 
+  // `form.list(path)`: the array at `path` as one field state per
+  // element, in order. Entries are the cached `form.fields` terminals,
+  // so each stays live and carries its element `key`. Reading the array
+  // value tracks length and order, so the view recomputes on a
+  // structural mutation. The frozen result enforces the read-only
+  // contract; mutate through `append` / `remove` / `move` / etc.
+  const callTerminal = fieldStateProxy as unknown as (path: string) => unknown
+  const EMPTY_FIELD_LIST: readonly unknown[] = Object.freeze([])
+  function list(path: string): readonly unknown[] {
+    const { segments } = canonicalizePath(path)
+    const value = state.getValueAtPath(segments)
+    if (!Array.isArray(value)) return EMPTY_FIELD_LIST
+    const out = new Array<unknown>(value.length)
+    for (let i = 0; i < value.length; i += 1) out[i] = callTerminal(`${path}.${i}`)
+    return Object.freeze(out)
+  }
+
   return {
     handleSubmit: gated(handleSubmit),
     // Callable readonly Proxies (`values`, `fields`, `errors`) and the
@@ -960,6 +977,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     swap: gated(fieldArrays.swap) as UseFormReturnType<Form, GetValueFormType>['swap'],
     move: gated(fieldArrays.move) as UseFormReturnType<Form, GetValueFormType>['move'],
     replace: gated(fieldArrays.replace) as UseFormReturnType<Form, GetValueFormType>['replace'],
+    list: gated(list) as UseFormReturnType<Form, GetValueFormType>['list'],
     get blankPaths() {
       void state.activate()
       return blankPathsView

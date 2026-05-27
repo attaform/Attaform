@@ -21,7 +21,7 @@ function uniqueKey(): string {
 
 async function mountField(opts?: {
   autoAria?: boolean
-  registerAria?: boolean
+  registerAutoAria?: boolean
   getDisplayState?: GetDisplayState
   authored?: Record<string, unknown>
   path?: 'email' | 'note'
@@ -38,7 +38,7 @@ async function mountField(opts?: {
       handle.api = api
       const rv = api.register(
         opts?.path ?? 'email',
-        opts?.registerAria === false ? { aria: false } : undefined
+        opts?.registerAutoAria === false ? { autoAria: false } : undefined
       )
       return () =>
         withDirectives(h('input', { type: 'text', ...(opts?.authored ?? {}) }), [[vRegister, rv]])
@@ -166,8 +166,8 @@ describe('auto-aria opt-out tiers', () => {
     expect(mounted.input.hasAttribute('aria-required')).toBe(false)
   })
 
-  it('manages nothing when the binding passes aria: false', async () => {
-    mounted = await mountField({ registerAria: false, getDisplayState: forceState('error') })
+  it('manages nothing when the binding passes autoAria: false', async () => {
+    mounted = await mountField({ registerAutoAria: false, getDisplayState: forceState('error') })
     expect(mounted.input.hasAttribute('aria-invalid')).toBe(false)
     expect(mounted.input.hasAttribute('aria-required')).toBe(false)
   })

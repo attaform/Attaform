@@ -41,7 +41,7 @@
   `aria-describedby` in sync with each field's gated display state, and
   emits the required / invalid states during SSR too. Any aria attribute
   you author yourself is left untouched. Opt out per binding
-  (`register(path, { aria: false })`), per form
+  (`register(path, { autoAria: false })`), per form
   (`useForm({ autoAria: false })`), or app-wide via
   `createAttaform({ defaults: { autoAria: false } })`.
 

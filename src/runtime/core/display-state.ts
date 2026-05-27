@@ -9,14 +9,21 @@ import type { GetDisplayState } from '../types/types-api'
  * One timing gate, then precedence:
  *
  * 1. **Timing gate.** `gateOpen` once the form has been submitted
- *    (`submissionAttempts > 0`) OR the field is touched and not
- *    currently focused. Before the gate opens the verdict is `'idle'`
- *    regardless of errors — transient mid-edit problems stay quiet while
- *    the user is actively working the field, and reappear on blur (or
- *    when a sibling takes focus). The not-focused half also covers
- *    blur-without-typing on a required field: `touched` flips on blur
- *    regardless of `dirty`, so visiting an empty required field and
- *    moving on opens the gate.
+ *    (`submissionAttempts > 0`) OR the field has been edited and then
+ *    left (`blurredAfterInteraction === true`). Before the gate opens
+ *    the verdict is `'idle'` regardless of errors. This is the "reward
+ *    early, punish late" rule:
+ *      - A clean tab-through never engages. `blurredAfterInteraction`
+ *        only flips on a blur that follows an edit, so visiting a field
+ *        and moving on without editing it stays quiet until a submit
+ *        forces the issue, even if the field was tabbed through before.
+ *      - The first pass stays quiet. Editing alone (`interacted`) does
+ *        not open the gate; the error reveals only once the user
+ *        finishes that pass and leaves the field, never mid-entry.
+ *      - Recovery is live. The bit is sticky and carries no not-focused
+ *        term, so once a field has been revealed it stays open through a
+ *        re-focus: a shown error clears (or greens) the instant the
+ *        value becomes valid, without forcing another blur.
  *
  *    The submit arm covers `form.handleSubmit` directly and
  *    `wizard.handleSubmit` (which bumps `submissionAttempts` on the
@@ -35,13 +42,19 @@ import type { GetDisplayState } from '../types/types-api'
  *    never duplicates an error a more-specific descendant already
  *    renders; aggregate banners bind to `form.meta.errorCount` instead.
  *
- * 4. **Success.** No error and `valid === true` resolves to `'success'`
- *    — the green-check confirmation. `valid` already gates async schemas
- *    on the form-wide first validation pass, so this never fires a
- *    premature success before the first verdict lands.
+ * 4. **Success.** No error, `valid === true`, and the green check is
+ *    earned: the field is non-blank and `dirty` (its value diverges from
+ *    the hydration original). Gating success on `dirty && !blank` keeps
+ *    the check meaningful — an empty field that happens to pass, a
+ *    pre-filled field merely tabbed through, and the post-submit flood of
+ *    every valid field all stay `'idle'` rather than greening for free.
+ *    `valid` already gates async schemas on the form-wide first
+ *    validation pass, so success never fires before the first verdict
+ *    lands.
  *
- * 5. **Idle.** Anything else (gate open, not validating, no error, not
- *    yet `valid`) stays `'idle'`.
+ * 5. **Idle.** Anything else — gate open but not validating, no own-path
+ *    error, and either not yet `valid` or valid-but-unearned (blank or
+ *    unchanged) — stays `'idle'`.
  *
  * Public re-export so adopters can compose with this without
  * copy-pasting the rule body — a layered predicate that special-cases a
@@ -61,15 +74,14 @@ import type { GetDisplayState } from '../types/types-api'
  * ```
  */
 export const defaultDisplayState: GetDisplayState = (field, formMeta) => {
-  const gateOpen =
-    formMeta.submissionAttempts > 0 || (field.touched === true && field.focused !== true)
+  const gateOpen = formMeta.submissionAttempts > 0 || field.blurredAfterInteraction === true
   if (!gateOpen) return 'idle'
   if (field.validating === true) return 'pending'
   const hasOwnError = field.errors.some(
     (e) => e.path.length === field.path.length && e.path.every((s, i) => s === field.path[i])
   )
   if (hasOwnError) return 'error'
-  if (field.valid === true) return 'success'
+  if (field.valid === true && field.blank !== true && field.dirty === true) return 'success'
   return 'idle'
 }
 

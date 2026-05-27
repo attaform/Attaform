@@ -10,13 +10,13 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Read shape per leaf
-    value: FieldState (29 properties)
+    value: FieldState (31 properties)
     kind: code
 ---
 
 # `fields`
 
-> A reactive Proxy keyed by schema paths. Every leaf surfaces a 29-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
+> A reactive Proxy keyed by schema paths. Every leaf surfaces a 31-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
 
 ::docs-meta-table
 ::
@@ -50,22 +50,24 @@ Container paths (`form.fields.profile`) descend through the proxy. Call-form (`f
 
 ## What FieldState carries
 
-Each leaf exposes a 29-property `FieldState` object. The properties fall into five jobs:
+Each leaf exposes a 31-property `FieldState` object. The properties fall into five jobs:
 
 ### State bits
 
 The reactive lifecycle of a field: how it got here, what it's doing now.
 
-| Property    | Type              | Meaning                                                                                          |
-| ----------- | ----------------- | ------------------------------------------------------------------------------------------------ |
-| `pristine`  | `boolean`         | `true` until the value diverges from the original.                                               |
-| `dirty`     | `boolean`         | Inverse of `pristine`.                                                                           |
-| `focused`   | `boolean \| null` | `true` while the element is focused; `null` while disconnected.                                  |
-| `blurred`   | `boolean \| null` | Inverse of `focused` when connected; `null` while disconnected.                                  |
-| `touched`   | `boolean`         | `true` after the first blur; survives reset cycles.                                              |
-| `connected` | `boolean`         | `true` while at least one element is bound via `v-register`.                                     |
-| `blank`     | `boolean`         | `true` while the leaf reads as empty per the [blank predicate](/docs/validation/showing-errors). |
-| `updatedAt` | `string \| null`  | ISO timestamp of the last write; `null` until first write.                                       |
+| Property                  | Type              | Meaning                                                                                                     |
+| ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `pristine`                | `boolean`         | `true` until the value diverges from the original.                                                          |
+| `dirty`                   | `boolean`         | Inverse of `pristine`.                                                                                      |
+| `focused`                 | `boolean \| null` | `true` while the element is focused; `null` while disconnected.                                             |
+| `blurred`                 | `boolean \| null` | Inverse of `focused` when connected; `null` while disconnected.                                             |
+| `touched`                 | `boolean`         | `true` after the first blur; survives reset cycles.                                                         |
+| `interacted`              | `boolean`         | `true` after the user's first value edit through `v-register`; survives reset cycles.                       |
+| `blurredAfterInteraction` | `boolean`         | `true` after the first blur that follows an edit (edited, then left); drives the default error-reveal gate. |
+| `connected`               | `boolean`         | `true` while at least one element is bound via `v-register`.                                                |
+| `blank`                   | `boolean`         | `true` while the leaf reads as empty per the [blank predicate](/docs/validation/showing-errors).            |
+| `updatedAt`               | `string \| null`  | ISO timestamp of the last write; `null` until first write.                                                  |
 
 ### Value reads
 

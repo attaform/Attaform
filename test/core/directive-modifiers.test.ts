@@ -67,6 +67,7 @@ function makeRegisterValue<T>(initial: T): {
       return v == null ? '' : String(v)
     }) as Readonly<Ref<string>>,
     markBlank: () => true,
+    markInteracted: () => undefined,
     lastTypedForm: ref<string | null>(null),
     registerElement: register,
     deregisterElement: deregister,

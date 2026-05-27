@@ -1,6 +1,6 @@
 ---
 title: Display state and showing errors
-description: getDisplayState resolves every path to one verdict (idle, pending, error, or success). The default holds errors back until a submit attempt or a blur, surfaces a spinner while async checks run, and confirms a clean field with success, never duplicating errors a more-specific descendant already renders.
+description: getDisplayState resolves every path to one verdict (idle, pending, error, or success). The default holds errors back until a field is edited and blurred or the form is submitted, surfaces a spinner while async checks run, and confirms a clean field with an earned success, never duplicating errors a more-specific descendant already renders.
 metaRows:
   - label: Category
     value: Option
@@ -62,9 +62,9 @@ The default opens one timing gate, then resolves the verdict by precedence.
 The gate opens when either:
 
 - The form has attempted at least one submit (`formMeta.submissionAttempts > 0`), OR
-- The field has been touched (sticky-true after the first blur) AND is not currently focused.
+- The field has been edited and then left (`blurredAfterInteraction`, sticky-true after the first blur that follows a value edit).
 
-Until the gate opens, `displayState` is `'idle'` no matter what is in the store. The not-focused half keeps transient errors quiet while the user is actively editing the field; they reappear when the user blurs or moves to a sibling. The empty-required-field case is covered: `touched` flips on blur regardless of whether the value changed, so a user who visits an empty required field and moves on sees the error.
+Until the gate opens, `displayState` is `'idle'` no matter what is in the store. This is "reward early, punish late." A clean tab-through stays quiet: `blurredAfterInteraction` only flips on a blur that follows an edit, so a field the user tabbed through but never edited does not complain until a submit forces the issue. The first pass stays quiet too: editing alone does not open the gate, so the error reveals once the user finishes the pass and leaves the field, never mid-entry, even when the field happened to be tabbed through earlier. And because the bit is sticky and carries no not-focused condition, the gate stays open through a re-focus: once a field has been revealed, fixing its error clears the message live, instead of making the user blur again to see it.
 
 ### 2. Precedence
 
@@ -72,8 +72,8 @@ Once the gate is open, the default resolves in order:
 
 1. **Pending.** A per-field validation run in flight (`field.validating`) wins. The verdict in `field.errors` is stale by definition, so Attaform surfaces a spinner rather than a possibly-wrong message.
 2. **Error.** An own-path error resolves to `'error'`.
-3. **Success.** No error and `field.valid` resolves to `'success'`, the green-check confirmation. `valid` already waits on the form-wide first validation pass for async schemas, so success never fires before the first real verdict lands.
-4. **Idle.** Anything else stays `'idle'`.
+3. **Success.** No error, `field.valid`, and the green check is earned: the field is non-blank and `dirty`, so the user put valid content there themselves. An empty field that happens to pass, a pre-filled field merely tabbed through, and the post-submit flood of every valid field all stay `'idle'` rather than greening for free. `valid` already waits on the form-wide first validation pass for async schemas, so success never fires before the first real verdict lands.
+4. **Idle.** Anything else, including a valid-but-unearned field (blank or unchanged), stays `'idle'`.
 
 ### The own-path filter
 

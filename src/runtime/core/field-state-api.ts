@@ -188,6 +188,8 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     focused: record?.focused ?? null,
     blurred: record?.blurred ?? null,
     touched: record?.touched ?? false,
+    interacted: record?.interacted ?? false,
+    blurredAfterInteraction: record?.blurredAfterInteraction ?? false,
     connected: record?.connected ?? false,
     element: firstElement,
     elements: elementsArr,
@@ -270,6 +272,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   let focused = false
   let blurred = false
   let touched = false
+  let interacted = false
+  let blurredAfterInteraction = false
   let connected = false
   let validating = false
   let updatedAt: string | null = null
@@ -288,6 +292,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (leafRecord?.focused === true) focused = true
     if (leafRecord?.blurred === true) blurred = true
     if (leafRecord?.touched === true) touched = true
+    if (leafRecord?.interacted === true) interacted = true
+    if (leafRecord?.blurredAfterInteraction === true) blurredAfterInteraction = true
     if (leafRecord?.connected === true) connected = true
     if ((state.fieldValidationCounts.get(leafKey) ?? 0) > 0) validating = true
     if (state.pathHasAsyncValidation(entry.segments)) asyncPending = true
@@ -336,6 +342,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     focused,
     blurred,
     touched,
+    interacted,
+    blurredAfterInteraction,
     connected,
     element: null,
     elements: EMPTY_ELEMENTS,

@@ -67,19 +67,29 @@ import {
 
 /**
  * Per-path field status. Replaced wholesale (not mutated in place) on
- * every change. Three semantic groups:
+ * every change. Five semantic groups:
  *
  *   - `connected` — is a DOM element registered for this path?
  *   - `focused` / `blurred` — DOM-state flags. `null` while no element
  *     is connected (no DOM means the concepts don't apply); plain
  *     booleans once connected, with the invariant `blurred === !focused`
  *     enforced by `markFocused`.
- *   - `touched` — interaction history, not DOM state. Always a plain
+ *   - `touched` — focus/blur history, not DOM state. Always a plain
  *     boolean: `false` at registration, sticky `true` after first blur,
  *     cleared only by `form.reset()` / `form.resetField(path)`. Persists
  *     across disconnects so v-if'd-away fields don't lose their touched
  *     state on rehide (wizard "show review of touched fields" patterns
  *     rely on this).
+ *   - `interacted` — value-mutation history, not DOM state. Plain
+ *     boolean: `false` at registration, sticky `true` once the user
+ *     issues a value edit through the directive's input listeners
+ *     (never on hydration, default seeding, or programmatic setValue);
+ *     cleared with `touched` by `form.reset()` / `form.resetField(path)`.
+ *   - `blurredAfterInteraction` — the first blur that follows a value
+ *     edit (the field has been edited and then left). Plain boolean,
+ *     sticky `true`. A tab-through blur with no prior edit does NOT set
+ *     it (`interacted` is still false at that blur). Composes
+ *     `interacted` with the departure; drives the default display gate.
  */
 export type FieldRecord = {
   readonly path: Path
@@ -88,6 +98,8 @@ export type FieldRecord = {
   readonly focused: boolean | null
   readonly blurred: boolean | null
   readonly touched: boolean
+  readonly interacted: boolean
+  readonly blurredAfterInteraction: boolean
 }
 
 // Hydration shape guards — defend against rolling deploys / stale cache
@@ -106,7 +118,9 @@ function isHydratedFieldRecord(value: unknown): value is FieldRecord {
     typeof r.connected === 'boolean' &&
     (typeof r.focused === 'boolean' || r.focused === null) &&
     (typeof r.blurred === 'boolean' || r.blurred === null) &&
-    typeof r.touched === 'boolean'
+    typeof r.touched === 'boolean' &&
+    typeof r.interacted === 'boolean' &&
+    typeof r.blurredAfterInteraction === 'boolean'
   )
 }
 
@@ -599,6 +613,12 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
     meta?: { readonly instance?: WriteMeta['instance'] }
   ): void
   markTouched(path: Path): void
+  /**
+   * Flip `interacted: true` on a leaf — the sticky value-mutation flag.
+   * Driven by the directive's input listeners (via the RegisterValue's
+   * `markInteracted`); idempotent, never set by programmatic writes.
+   */
+  markInteracted(path: Path): void
   /**
    * Walk every active-variant leaf under `segments` and flip
    * `touched: true`. Powers `form.touch(path?)`. Idempotent;
@@ -1789,6 +1809,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         focused: null,
         blurred: null,
         touched: false,
+        interacted: false,
+        blurredAfterInteraction: false,
       })
     })
     // No hydration — seed schemaErrors from the construction-time
@@ -1854,6 +1876,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // touched is plain `boolean`; `??` is equivalent to the explicit
       // guard here because `false` is not nullish.
       touched: patch.touched ?? current?.touched ?? false,
+      // interacted is sticky-true; a merge patch only ever sets it, so
+      // `??` preserves the current bit. It flips back to false solely
+      // through the reset paths, which reconstruct the record outright.
+      interacted: patch.interacted ?? current?.interacted ?? false,
+      blurredAfterInteraction:
+        patch.blurredAfterInteraction ?? current?.blurredAfterInteraction ?? false,
     })
   }
 
@@ -2873,12 +2901,21 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     meta?: { readonly instance?: WriteMeta['instance'] }
   ): void {
     const { key } = canonicalizePath(path)
+    const current = fields.get(key)
     touchFieldRecord(key, path, {
       focused,
       blurred: !focused,
       // `touched` flips to true on blur and stays true thereafter; while
       // a field is currently focused we keep whatever value it held.
-      touched: focused ? (fields.get(key)?.touched ?? false) : true,
+      touched: focused ? (current?.touched ?? false) : true,
+      // `blurredAfterInteraction` flips true on the first blur that lands
+      // after a value edit and stays true. A tab-through blur before any
+      // edit leaves it false (`interacted` is still false at that blur),
+      // which is what keeps a clean tab-through from arming the gate.
+      blurredAfterInteraction:
+        !focused && current?.interacted === true
+          ? true
+          : (current?.blurredAfterInteraction ?? false),
     })
     // On blur (focused → false), `validateOn: 'blur'` fires an
     // immediate (no-debounce) validation for this path. Ignored for
@@ -2897,6 +2934,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   function markTouched(path: Path): void {
     const { key } = canonicalizePath(path)
     touchFieldRecord(key, path, { touched: true })
+  }
+
+  function markInteracted(path: Path): void {
+    const { key } = canonicalizePath(path)
+    // Fired per keystroke from the directive's input listeners; skip the
+    // reactive write once the bit is set so only the first edit notifies.
+    if (fields.get(key)?.interacted === true) return
+    touchFieldRecord(key, path, { interacted: true })
   }
 
   /**
@@ -3240,11 +3285,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (needsAsync) {
       queueMicrotask(() => scheduleFieldValidation([], true /* immediate */))
     }
-    // Clear interaction history (`touched`) per field. `focused` /
-    // `blurred` reflect DOM-truth and stay as-is — `reset()` doesn't
-    // synthetically blur the currently-focused input, so the library
-    // shouldn't claim it did. `connected` is a separate concern from
-    // form state and is preserved. `updatedAt` stamps to now.
+    // Clear interaction history (`touched` / `interacted`) per field.
+    // `focused` / `blurred` reflect DOM-truth and stay as-is — `reset()`
+    // doesn't synthetically blur the currently-focused input, so the
+    // library shouldn't claim it did. `connected` is a separate concern
+    // from form state and is preserved. `updatedAt` stamps to now.
     const now = new Date().toISOString()
     for (const [pathKey, record] of fields) {
       fields.set(pathKey, {
@@ -3254,6 +3299,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         focused: record.focused,
         blurred: record.blurred,
         touched: false,
+        interacted: false,
+        blurredAfterInteraction: false,
       })
     }
     // Clear submission lifecycle so a reset surface reports "nothing has
@@ -3402,9 +3449,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const record = fields.get(pathKey)
     if (record === undefined) return
     // Mirrors `resetForm`'s field-loop: clear interaction history
-    // (`touched`), preserve DOM-truth (`focused` / `blurred`) and
-    // `connected`. The function name is historical — it now clears
-    // only the history flag, not all flags.
+    // (`touched` / `interacted`), preserve DOM-truth (`focused` /
+    // `blurred`) and `connected`. The function name is historical — it
+    // now clears only the history flags, not all flags.
     fields.set(pathKey, {
       path: record.path,
       updatedAt: new Date().toISOString(),
@@ -3412,6 +3459,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       focused: record.focused,
       blurred: record.blurred,
       touched: false,
+      interacted: false,
+      blurredAfterInteraction: false,
     })
   }
 
@@ -3563,6 +3612,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     deregisterElement,
     markFocused,
     markTouched,
+    markInteracted,
     touchAtPath,
     markConnectedOptimistically,
 

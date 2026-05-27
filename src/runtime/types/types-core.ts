@@ -368,6 +368,47 @@ export type ArrayItem<Form, Path extends ArrayPath<Form>> =
   NestedType<Form, Path> extends ReadonlyArray<infer Item> ? Item : never
 
 /**
+ * Companion to `ArrayPath`: filter `FlatPath<Form>` down to the subset
+ * of paths whose resolved leaf is a record (an object with an open
+ * string-keyed index signature, e.g. `z.record(z.string(), V)`). A
+ * fixed-shape object (`z.object({ ... })`) is excluded — its keys are
+ * statically known, so it has no `string` index signature.
+ *
+ * `string extends keyof T` is the index-signature probe: it holds for
+ * `Record<string, V>` (`keyof` is `string`) and fails for a fixed object
+ * (`keyof` is the literal key union). The leading array guard keeps
+ * arrays (which also satisfy the object check) out of the record set.
+ */
+export type RecordPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P extends string
+  ? NestedType<Form, P> extends readonly unknown[]
+    ? never
+    : NestedType<Form, P> extends Record<string, unknown>
+      ? string extends keyof NestedType<Form, P>
+        ? P
+        : never
+      : never
+  : never
+
+/**
+ * Paths `form.list` accepts: an array OR a record. Both resolve to an
+ * ordered run of same-shaped elements the view iterates.
+ */
+export type CollectionPath<Form> = ArrayPath<Form> | RecordPath<Form>
+
+/**
+ * Element type of the collection addressed by `Path` — the array
+ * element for an `ArrayPath`, the record value for a `RecordPath`.
+ * Resolved off `NestedType` directly so one conditional covers both
+ * without re-satisfying `ArrayItem`'s narrower constraint.
+ */
+export type CollectionItem<Form, Path extends CollectionPath<Form>> =
+  NestedType<Form, Path> extends ReadonlyArray<infer Item>
+    ? Item
+    : NestedType<Form, Path> extends Record<string, infer Value>
+      ? Value
+      : never
+
+/**
  * Widens primitive-literal leaves to their primitive supertype to
  * match the runtime "slim-primitive write contract."
  *

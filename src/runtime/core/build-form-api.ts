@@ -873,21 +873,35 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     }) as F
   }
 
-  // `form.list(path)`: the array at `path` as one field state per
+  // `form.list(path)`: the collection at `path` as one field state per
   // element, in order. Entries are the cached `form.fields` terminals,
-  // so each stays live and carries its element `key`. Reading the array
-  // value tracks length and order, so the view recomputes on a
+  // so each stays live and carries its element `key`. The array-vs-record
+  // fork is decided at runtime from the value itself: an array iterates by
+  // index, a record iterates its own keys (each `key` is its natural key).
+  // Reading the value tracks length / key set, so the view recomputes on a
   // structural mutation. The frozen result enforces the read-only
-  // contract; mutate through `append` / `remove` / `move` / etc.
+  // contract; mutate through `append` / `remove` / `move` / `setValue`.
   const callTerminal = fieldStateProxy as unknown as (path: string) => unknown
   const EMPTY_FIELD_LIST: readonly unknown[] = Object.freeze([])
   function list(path: string): readonly unknown[] {
     const { segments } = canonicalizePath(path)
     const value = state.getValueAtPath(segments)
-    if (!Array.isArray(value)) return EMPTY_FIELD_LIST
-    const out = new Array<unknown>(value.length)
-    for (let i = 0; i < value.length; i += 1) out[i] = callTerminal(`${path}.${i}`)
-    return Object.freeze(out)
+    if (Array.isArray(value)) {
+      const out = new Array<unknown>(value.length)
+      for (let i = 0; i < value.length; i += 1) out[i] = callTerminal(`${path}.${i}`)
+      return Object.freeze(out)
+    }
+    if (value !== null && typeof value === 'object') {
+      const keys = Object.keys(value as Record<string, unknown>)
+      const out = new Array<unknown>(keys.length)
+      let i = 0
+      for (const key of keys) {
+        out[i] = callTerminal(`${path}.${key}`)
+        i += 1
+      }
+      return Object.freeze(out)
+    }
+    return EMPTY_FIELD_LIST
   }
 
   return {

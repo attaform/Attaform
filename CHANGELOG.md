@@ -32,6 +32,16 @@
   (`useForm({ autoAria: false })`), or app-wide via
   `createAttaform({ defaults: { autoAria: false } })`.
 
+- **`form.list` and `FieldState.key` for stable array iteration.** Every
+  `FieldState` now carries `key`: an allocated identity token for the
+  field as an element of its parent array, empty otherwise. It follows
+  the element across `insert`, `remove`, `move`, and `swap`, staying
+  distinct even for duplicate values. `form.list(path)` returns the array
+  as one FieldState per element, in order, each carrying that key, so a
+  `v-for` keyed by `row.key` keeps a row's component instance and input
+  focus attached to its element through any reorder. The view is
+  read-only; `form.fields(path)` stays the aggregated container.
+
 ## v0.18.2
 Supply-chain hardening across the publish pipeline. Attaform's npm
 tarballs ship with OIDC Trusted Publishing + SLSA provenance,

@@ -76,6 +76,7 @@ For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length
 
 ## Where to next
 
+- [`form.list`](/docs/reading-the-form/list): iterate the array as one FieldState per element, keyed by `key` so a `v-for` survives every reorder.
 - [`setValue` patterns](/docs/writing-and-mutating/set-value): when you need to write the whole array, not mutate one slot.
 - [`reset` & `resetField`](/docs/writing-and-mutating/reset): restore the array to its baseline.
 - [Display state and showing errors](/docs/validation/showing-errors): array-level error display.

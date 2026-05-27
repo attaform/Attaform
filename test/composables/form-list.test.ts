@@ -86,11 +86,11 @@ describe('form.list', () => {
     apps.push(app)
     const rows = form.list('rows')
     expect(rows).toHaveLength(2)
-    expect(rows[0].key).not.toBe('')
-    expect(rows[0].key).not.toBe(rows[1].key)
-    const firstKey = rows[0].key
+    expect(rows[0]?.key).not.toBe('')
+    expect(rows[0]?.key).not.toBe(rows[1]?.key)
+    const firstKey = rows[0]?.key
     form.swap('rows', 0, 1)
-    expect(form.list('rows')[1].key).toBe(firstKey)
+    expect(form.list('rows')[1]?.key).toBe(firstKey)
   })
 
   it('returns a frozen, read-only array', () => {

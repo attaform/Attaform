@@ -1408,6 +1408,104 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
   ? new WeakSet<HTMLElement>()
   : null
 
+// The aria attributes the directive keeps in sync with the field's
+// gated display state. Each is managed independently so authoring one
+// (e.g. a hand-written `aria-describedby`) never disables the others.
+const MANAGED_ARIA_ATTRS = [
+  'aria-invalid',
+  'aria-busy',
+  'aria-required',
+  'aria-describedby',
+] as const
+
+// Per-element symbol slots. `ariaLockKey` records which managed attrs
+// the author wrote (off-limits for the binding's lifetime);
+// `ariaScopeKey` holds the teardown for the reactive watch. Both
+// `Symbol.for(...)` so duplicate copies of attaform agree on the slot.
+const ariaLockKey: unique symbol = Symbol.for('attaform:aria-locks')
+const ariaScopeKey: unique symbol = Symbol.for('attaform:aria-scope')
+type AriaCarrier = HTMLElement & {
+  [ariaLockKey]?: Set<string>
+  [ariaScopeKey]?: () => void
+}
+
+const EMPTY_ARIA_LOCKS: ReadonlySet<string> = new Set()
+
+// "Respect your markup": detect authored aria attributes at the vnode
+// props level rather than the DOM, so a dynamic `:aria-invalid="x"` is
+// caught even when `x` is falsy at mount. Locks only ever accumulate —
+// once an attribute is authored, the directive leaves it alone for the
+// binding's lifetime.
+function mergeAriaLocks(el: AriaCarrier, vnode: VNode): Set<string> {
+  let locks = el[ariaLockKey]
+  if (locks === undefined) {
+    locks = new Set<string>()
+    el[ariaLockKey] = locks
+  }
+  const props = vnode.props
+  if (props !== null) {
+    for (const attr of MANAGED_ARIA_ATTRS) {
+      if (attr in props) locks.add(attr)
+    }
+  }
+  return locks
+}
+
+function setAriaAttr(el: HTMLElement, attr: string, value: string | null): void {
+  if (value === null) el.removeAttribute(attr)
+  else el.setAttribute(attr, value)
+}
+
+// Reflect the binding's gated display state onto the unmanaged aria
+// attributes. Binding to `ariaDisplayState` (not raw `errors`) keeps the
+// screen-reader signal in lockstep with the visible error state.
+function applyAria(el: AriaCarrier, rv: RegisterValue): void {
+  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
+  const ds = rv.ariaDisplayState.value
+  if (!locks.has('aria-invalid')) setAriaAttr(el, 'aria-invalid', ds === 'error' ? 'true' : null)
+  if (!locks.has('aria-busy')) setAriaAttr(el, 'aria-busy', ds === 'pending' ? 'true' : null)
+  if (!locks.has('aria-required')) {
+    setAriaAttr(el, 'aria-required', rv.isRequired === true ? 'true' : null)
+  }
+  if (!locks.has('aria-describedby')) {
+    const errorId = rv.aria?.errorId
+    setAriaAttr(el, 'aria-describedby', ds === 'error' && errorId !== undefined ? errorId : null)
+  }
+}
+
+// Begin managing aria for a binding: lock authored attrs, paint the
+// initial state, and watch `ariaDisplayState` in its own effect scope
+// so async validation ticks update the attributes even when no parent
+// re-render fires. No-op when this binding has aria disabled.
+function setupAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode): void {
+  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  mergeAriaLocks(el, vnode)
+  applyAria(el, rv)
+  const displayState = rv.ariaDisplayState
+  const scope = effectScope(true)
+  scope.run(() => {
+    watch(displayState, () => applyAria(el, rv), { flush: 'post' })
+  })
+  el[ariaScopeKey] = (): void => scope.stop()
+}
+
+// Stop managing aria: tear down the watch and clear only the attributes
+// the directive set (authored attrs stay). Gated on an active scope so
+// a binding that never managed aria leaves the element's attributes
+// untouched.
+function teardownAria(el: AriaCarrier): void {
+  const stop = el[ariaScopeKey]
+  if (stop === undefined) return
+  stop()
+  delete el[ariaScopeKey]
+  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
+  for (const attr of MANAGED_ARIA_ATTRS) {
+    if (!locks.has(attr)) el.removeAttribute(attr)
+  }
+  delete el[ariaLockKey]
+}
+
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   created(el, binding, vnode) {
     // Per-element persist opt-in is reconciled at the dynamic level so
@@ -1422,6 +1520,11 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // (`shouldBailListener`) prevents the bubbled-write bug on
     // non-supported roots while letting consumer overrides through.
     callModelHook(el, binding, vnode, null, 'created')
+
+    // Auto-aria: lock authored attrs, paint the initial state, and watch
+    // the gated display state for async ticks. No-op when the binding
+    // disabled aria or carries no display-state accessor.
+    if (isRegisterValue(binding.value)) setupAria(el as AriaCarrier, binding.value, vnode)
 
     // Defer the unsupported-element warn to nextTick. By then:
     //  - useRegister's onMounted has run, setting REGISTER_OWNER_MARKER
@@ -1472,6 +1575,30 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // short-circuit so identity-stable bindings don't thrash.
     syncElementRegistration(el, binding.value, binding.oldValue)
     callModelHook(el, binding, vnode, prevVNode, 'beforeUpdate')
+
+    // Re-derive aria. A path change (a reused node rebound on reorder)
+    // re-establishes the watch against the new path's display state; a
+    // disabled / removed binding tears down the attrs we set; otherwise
+    // we re-paint and pick up any newly-authored attribute lock.
+    const ariaEl = el as AriaCarrier
+    const value = binding.value
+    if (
+      !isRegisterValue(value) ||
+      value.ariaEnabled !== true ||
+      value.ariaDisplayState === undefined
+    ) {
+      teardownAria(ariaEl)
+    } else {
+      const old = binding.oldValue
+      const pathChanged = !isRegisterValue(old) || old.path !== value.path
+      if (pathChanged) {
+        teardownAria(ariaEl)
+        setupAria(ariaEl, value, vnode)
+      } else {
+        mergeAriaLocks(ariaEl, vnode)
+        applyAria(ariaEl, value)
+      }
+    }
   },
   updated(el, binding, vnode, prevVNode) {
     callModelHook(el, binding, vnode, prevVNode, 'updated')
@@ -1482,6 +1609,10 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // re-used by KeepAlive / v-show would otherwise double its listener
     // count on the next activation cycle.
     removeTrackedListeners(el)
+
+    // Stop the aria watch and clear the attributes we set. A reused
+    // element (KeepAlive / v-show) starts clean on its next activation.
+    teardownAria(el as AriaCarrier)
 
     // Drop every opt-in this element ever held — `removeAllFor` sweeps
     // by elementId rather than (id, path), which covers the case where

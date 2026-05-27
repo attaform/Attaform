@@ -42,6 +42,16 @@
   any reorder. The view is read-only; `form.fields(path)` stays the
   aggregated container.
 
+- **`form.record` for keyed record iteration.** `form.record(path)` reads a
+  record as one FieldState per entry, keyed by the entry's own key, so you
+  iterate dynamic keys with `v-for="(field, key) in form.record(path)"`
+  without tracking them yourself. An entry joins the view when you write its
+  key through `form.setValue` and leaves when the key does. The keyed object
+  is read-only; `form.fields(path)` stays the aggregated container.
+  `form.list` and `form.record` are tightly typed to their own path sets, an
+  array for `list` and a record for `record`, and each rejects the other at
+  compile time. Works the same on zod-v3 and zod-v4.
+
 ## v0.18.2
 Supply-chain hardening across the publish pipeline. Attaform's npm
 tarballs ship with OIDC Trusted Publishing + SLSA provenance,

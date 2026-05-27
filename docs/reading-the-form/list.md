@@ -86,8 +86,13 @@ The returned array is frozen. Identity is bookkept by the mutation helpers, so s
 
 Each helper replays its exact change onto the identity tokens, which is what lets `row.key` stay true across the mutation.
 
+## `record` is the record counterpart
+
+`list` is for arrays. For a record, whose entries are keyed rather than ordered, reach for [`record`](/docs/reading-the-form/record): it hands back a keyed object, one FieldState per entry under the entry's own key. The two split cleanly by path type, and each rejects the other at compile time.
+
 ## Where to next
 
+- [`record`](/docs/reading-the-form/record): the record counterpart, one FieldState per entry keyed by the record's own key.
 - [Field-array mutations](/docs/writing-and-mutating/field-arrays): the seven helpers that add, remove, and reorder elements.
 - [`fields`](/docs/reading-the-form/fields): the per-leaf FieldState and the `key` every entry carries.
 - [The `v-register` directive](/docs/binding-inputs/v-register): the binding each row's input flows through.

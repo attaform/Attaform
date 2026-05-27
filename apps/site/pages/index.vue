@@ -573,7 +573,7 @@
               </UiButton>
             </div>
           </div>
-          <AppHighlighted class="homepage-shiki" :tree="wizardSnippetTree" />
+          <AppHighlighted class="homepage-shiki min-w-0" :tree="wizardSnippetTree" />
         </div>
       </UiContainer>
     </section>

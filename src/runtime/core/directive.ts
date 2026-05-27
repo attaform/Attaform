@@ -30,6 +30,7 @@ import { REGISTER_OWNER_MARKER } from '../composables/use-register'
 import { __DEV__ } from './dev'
 import type {
   CustomDirectiveRegisterAssignerFn,
+  DisplayState,
   InternalRegisterValue,
   RegisterCheckboxCustomDirective,
   RegisterModelDynamicCustomDirective,
@@ -1456,21 +1457,35 @@ function setAriaAttr(el: HTMLElement, attr: string, value: string | null): void 
   else el.setAttribute(attr, value)
 }
 
+// The desired value for one managed aria attribute given the binding's
+// required flag and gated display state, or `null` when the attribute
+// should be absent. Shared by the DOM path (`applyAria`) and the SSR
+// path (`getSSRProps`) so the two can never drift. Binding to the gated
+// display state (not raw `errors`) keeps the screen-reader signal in
+// lockstep with the visible error state.
+function resolveAriaValue(attr: string, rv: RegisterValue, ds: DisplayState): string | null {
+  switch (attr) {
+    case 'aria-invalid':
+      return ds === 'error' ? 'true' : null
+    case 'aria-busy':
+      return ds === 'pending' ? 'true' : null
+    case 'aria-required':
+      return rv.isRequired === true ? 'true' : null
+    case 'aria-describedby':
+      return ds === 'error' && rv.aria?.errorId !== undefined ? rv.aria.errorId : null
+    default:
+      return null
+  }
+}
+
 // Reflect the binding's gated display state onto the unmanaged aria
-// attributes. Binding to `ariaDisplayState` (not raw `errors`) keeps the
-// screen-reader signal in lockstep with the visible error state.
+// attributes. Each managed attr is set or removed independently.
 function applyAria(el: AriaCarrier, rv: RegisterValue): void {
   if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
   const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
   const ds = rv.ariaDisplayState.value
-  if (!locks.has('aria-invalid')) setAriaAttr(el, 'aria-invalid', ds === 'error' ? 'true' : null)
-  if (!locks.has('aria-busy')) setAriaAttr(el, 'aria-busy', ds === 'pending' ? 'true' : null)
-  if (!locks.has('aria-required')) {
-    setAriaAttr(el, 'aria-required', rv.isRequired === true ? 'true' : null)
-  }
-  if (!locks.has('aria-describedby')) {
-    const errorId = rv.aria?.errorId
-    setAriaAttr(el, 'aria-describedby', ds === 'error' && errorId !== undefined ? errorId : null)
+  for (const attr of MANAGED_ARIA_ATTRS) {
+    if (!locks.has(attr)) setAriaAttr(el, attr, resolveAriaValue(attr, rv, ds))
   }
 }
 
@@ -1636,6 +1651,34 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     delete (el as { composing?: boolean }).composing
     delete (el as { _assigning?: boolean })._assigning
     delete (el as unknown as { [k: symbol]: unknown })[assignKey]
+  },
+  // The lifecycle hooks above don't run on the server (Vue skips
+  // directive lifecycle during SSR), so emit the same aria attributes
+  // here from the SSR-time gated display state. Honors authored attrs
+  // (vnode-level lockout) and the ariaEnabled gate, touches no DOM, and
+  // shares `resolveAriaValue` with the client path. Ids are SSR-stable
+  // (formInstanceId derives from Vue's useId), so a server-rendered
+  // describedby matches the client after hydration.
+  getSSRProps(binding, vnode) {
+    const rv = binding.value
+    if (!isRegisterValue(rv) || rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) {
+      return undefined
+    }
+    // Vue passes `null` for the vnode in the compiled SSR directive-props
+    // helper (string-based SSR has no vnode object), and the real vnode
+    // in the runtime `withDirectives` path. The vnode-level authored
+    // lockout is therefore only available client-side and on the runtime
+    // SSR path; under compiled SSR an authored aria attribute can't be
+    // detected here, and the client directive reconciles it on hydration.
+    const props = (vnode as VNode | null)?.props ?? null
+    const ds = rv.ariaDisplayState.value
+    const out: Record<string, string> = {}
+    for (const attr of MANAGED_ARIA_ATTRS) {
+      if (props !== null && attr in props) continue
+      const value = resolveAriaValue(attr, rv, ds)
+      if (value !== null) out[attr] = value
+    }
+    return out
   },
 }
 

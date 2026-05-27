@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { computed, isRef, ref } from 'vue'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
+import { vRegister } from '../../src/runtime/core/directive'
 import { AnonPersistError } from '../../src/runtime/core/errors'
 import { computeFieldIdentity } from '../../src/runtime/core/field-ids'
 import { canonicalizePath } from '../../src/runtime/core/paths'
@@ -348,6 +349,17 @@ describe('buildRegister', () => {
     it('omits ariaDisplayState when no accessor is wired (hand-rolled factory)', () => {
       const { register } = makeAriaRegister()
       expect(register(['email']).ariaDisplayState).toBeUndefined()
+    })
+
+    it('getSSRProps tolerates the null vnode the compiled SSR helper passes', () => {
+      // Vue's compiled SSR directive-props helper calls getSSRProps with
+      // a null vnode (no vnode object in string-based SSR). Reading
+      // `vnode.props` unguarded would crash every server render.
+      const { register } = makeAriaRegister({ getDisplayStateAt: () => 'error' })
+      const rv = register(['email'])
+      const binding = { value: rv }
+      const ssr = vRegister.getSSRProps?.(binding as never, null as never)
+      expect(ssr).toMatchObject({ 'aria-invalid': 'true' })
     })
   })
 })

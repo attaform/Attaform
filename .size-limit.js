@@ -200,7 +200,17 @@ export default [
     // restore / persist URL-sync callbacks. Net-net the budget held
     // — the new surfaces roughly offset the deleted graph code — so
     // the 44 KB ceiling stayed. Re-measure if the limit binds in CI.
-    limit: '44 KB',
+    //
+    // Raised 44 → 48 KB on the validation-signals refactor (PRs
+    // #278-#281): displayState + show* projections replacing
+    // shouldShowErrors (display-state.ts), deterministic field ids +
+    // aria wiring driven from v-register (field-ids.ts, directive
+    // applyAria + getSSRProps), form.list / form.record per-element
+    // views + FieldState.key identity (array-identity.ts), and
+    // identity-keyed element-state migration across array mutations
+    // (array-state-migrate.ts) plus the structural-dirty signal.
+    // Measured at 45.66 KB.
+    limit: '48 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -283,7 +293,12 @@ export default [
     // injectWizard, registry extension, applyInvalidSubmitPolicy
     // extraction, submitted/submissionAttempts split. Measured at
     // 54.98 KB.
-    limit: '56 KB',
+    //
+    // Raised 56 → 60 KB tracking index.mjs's validation-signals bump
+    // (PRs #278-#281): same shared core chunk (displayState, field
+    // ids + aria, form.list / form.record + FieldState.key,
+    // identity-keyed state migration). Measured at 58.04 KB.
+    limit: '60 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -319,7 +334,10 @@ export default [
     // Raised 46 → 51 KB tracking index.mjs's wizard composition
     // bump (#221): same shared core chunk additions (graph walker,
     // handleSubmit, injectWizard, registry). Measured at 49.2 KB.
-    limit: '51 KB',
+    //
+    // Raised 51 → 54 KB tracking index.mjs's validation-signals bump
+    // (PRs #278-#281): same shared core chunk. Measured at 52.27 KB.
+    limit: '54 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -380,7 +398,10 @@ export default [
     // Raised 45 → 50 KB tracking index.mjs's wizard composition
     // bump (#221): same shared core chunk additions (graph walker,
     // handleSubmit, injectWizard, registry). Measured at 48.07 KB.
-    limit: '50 KB',
+    //
+    // Raised 50 → 53 KB tracking index.mjs's validation-signals bump
+    // (PRs #278-#281): same shared core chunk. Measured at 51.13 KB.
+    limit: '53 KB',
     gzip: true,
     ignore: ['zod', 'lodash-es'],
     modifyEsbuildConfig: asEsm,

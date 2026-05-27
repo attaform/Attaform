@@ -9,22 +9,21 @@ import type { GetDisplayState } from '../types/types-api'
  * One timing gate, then precedence:
  *
  * 1. **Timing gate.** `gateOpen` once the form has been submitted
- *    (`submissionAttempts > 0`) OR the field has been both edited and
- *    left (`interacted === true && touched === true`). Before the gate
- *    opens the verdict is `'idle'` regardless of errors. This is the
- *    "reward early, punish late" rule:
- *      - A clean tab-through never engages. Tabbing flips `touched` but
- *        not `interacted`, so visiting a field and moving on without
- *        editing its value keeps it quiet until a submit forces the
- *        issue (no scolding for fields the user never edited).
- *      - The first keystrokes stay quiet. `interacted` flips on the
- *        first edit but `touched` is still false until blur, so an
- *        error reveals only after the user leaves the field, not
- *        mid-entry.
- *      - Recovery is live. The gate carries no not-focused term, so
- *        once a field is engaged it stays open through a re-focus: a
- *        shown error clears (or greens) the instant the value becomes
- *        valid, without forcing another blur.
+ *    (`submissionAttempts > 0`) OR the field has been edited and then
+ *    left (`blurredAfterInteraction === true`). Before the gate opens
+ *    the verdict is `'idle'` regardless of errors. This is the "reward
+ *    early, punish late" rule:
+ *      - A clean tab-through never engages. `blurredAfterInteraction`
+ *        only flips on a blur that follows an edit, so visiting a field
+ *        and moving on without editing it stays quiet until a submit
+ *        forces the issue, even if the field was tabbed through before.
+ *      - The first pass stays quiet. Editing alone (`interacted`) does
+ *        not open the gate; the error reveals only once the user
+ *        finishes that pass and leaves the field, never mid-entry.
+ *      - Recovery is live. The bit is sticky and carries no not-focused
+ *        term, so once a field has been revealed it stays open through a
+ *        re-focus: a shown error clears (or greens) the instant the
+ *        value becomes valid, without forcing another blur.
  *
  *    The submit arm covers `form.handleSubmit` directly and
  *    `wizard.handleSubmit` (which bumps `submissionAttempts` on the
@@ -75,8 +74,7 @@ import type { GetDisplayState } from '../types/types-api'
  * ```
  */
 export const defaultDisplayState: GetDisplayState = (field, formMeta) => {
-  const gateOpen =
-    formMeta.submissionAttempts > 0 || (field.interacted === true && field.touched === true)
+  const gateOpen = formMeta.submissionAttempts > 0 || field.blurredAfterInteraction === true
   if (!gateOpen) return 'idle'
   if (field.validating === true) return 'pending'
   const hasOwnError = field.errors.some(

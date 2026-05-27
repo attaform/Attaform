@@ -25,7 +25,7 @@ import type {
  * 'error')`, and so on). The heuristic `getDisplayState(field, formMeta)`
  * resolves through three tiers:
  *   1. Library default: one timing gate
- *      (`submissionAttempts > 0 || (interacted && touched)`), then
+ *      (`submissionAttempts > 0 || blurredAfterInteraction`), then
  *      precedence — `validating` → pending; own-path error → error;
  *      earned (`valid && !blank && dirty`) → success; else idle.
  *      Containers (intermediate AND root) only resolve to error on their
@@ -525,6 +525,7 @@ describe('getDisplayState — cross-cutting', () => {
       errors: [{ path: ['x'], message: 'm', formKey: 'k', code: 'c' }],
       touched: false,
       interacted: false,
+      blurredAfterInteraction: false,
       focused: false,
       validating: false,
       valid: false,
@@ -537,45 +538,43 @@ describe('getDisplayState — cross-cutting', () => {
     // Gate closed (no submit, not touched): idle even with an own error.
     expect(defaultDisplayState(ownErrorField, baseMeta)).toBe('idle')
 
-    // Edited and blurred (interacted + touched), own error → error,
+    // Edited and left (blurredAfterInteraction), own error → error,
     // regardless of dirty.
+    expect(defaultDisplayState({ ...ownErrorField, blurredAfterInteraction: true }, baseMeta)).toBe(
+      'error'
+    )
+
+    // Re-focused after engaging (blurredAfterInteraction stays true while
+    // focused): the bit is sticky and carries no not-focused term, so the
+    // error persists through the re-focus instead of vanishing mid-fix.
     expect(
       defaultDisplayState(
-        { ...ownErrorField, interacted: true, touched: true, focused: false },
+        { ...ownErrorField, blurredAfterInteraction: true, focused: true },
         baseMeta
       )
     ).toBe('error')
 
-    // Re-focused after engaging (interacted + touched + focused): the gate
-    // carries no not-focused term, so it stays open and the error persists
-    // through the re-focus instead of vanishing mid-fix.
+    // Tabbed through without editing (touched, but never edited so
+    // blurredAfterInteraction is false): a clean tab-through never engages
+    // the gate → idle.
+    expect(defaultDisplayState({ ...ownErrorField, touched: true }, baseMeta)).toBe('idle')
+
+    // First pass mid-entry: edited (interacted) and focused, and even
+    // tabbed through earlier (touched), but not yet left since the edit
+    // (blurredAfterInteraction false). The error stays quiet → idle. This
+    // is the case a bare `interacted && touched` gate got wrong.
     expect(
       defaultDisplayState(
         { ...ownErrorField, interacted: true, touched: true, focused: true },
         baseMeta
       )
-    ).toBe('error')
-
-    // Tabbed through without editing (touched but NOT interacted): a clean
-    // tab-through never engages the gate → idle.
-    expect(
-      defaultDisplayState({ ...ownErrorField, interacted: false, touched: true }, baseMeta)
     ).toBe('idle')
 
-    // First keystrokes, not yet blurred (interacted but NOT touched): the
-    // error stays quiet mid-entry until the user leaves the field → idle.
-    expect(
-      defaultDisplayState(
-        { ...ownErrorField, interacted: true, touched: false, focused: true },
-        baseMeta
-      )
-    ).toBe('idle')
-
-    // Currently validating (gate open via interacted + touched): pending
+    // Currently validating (gate open via blurredAfterInteraction): pending
     // wins over the stale error verdict.
     expect(
       defaultDisplayState(
-        { ...ownErrorField, interacted: true, touched: true, focused: false, validating: true },
+        { ...ownErrorField, blurredAfterInteraction: true, validating: true },
         baseMeta
       )
     ).toBe('pending')
@@ -609,6 +608,7 @@ describe('getDisplayState — cross-cutting', () => {
       errors: [],
       touched: true,
       interacted: true,
+      blurredAfterInteraction: true,
       focused: false,
       validating: false,
       valid: true,
@@ -835,6 +835,33 @@ describe('getDisplayState — reward early, punish late (DOM gate)', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(api.fields('email').displayState).toBe('error')
     expectProjections(api.fields('email'))
+  })
+
+  // Regression: an earlier tab-through must not arm the error for the first
+  // real edit. `touched` is sticky after the tab-through's blur, so the gate
+  // `interacted && touched` fires the instant `interacted` flips on the first
+  // keystroke — scolding the user mid-first-entry. Punish late means the
+  // error should wait until the user leaves the field AFTER editing it.
+  it('does not fire the error on the first keystroke after an earlier tab-through', async () => {
+    const { api, input } = mountInput()
+
+    // 1-3. Tab through without editing: focus then blur. touched flips, but
+    // interacted stays false, so the (already failing) field stays quiet.
+    input.dispatchEvent(new FocusEvent('focus'))
+    input.dispatchEvent(new FocusEvent('blur'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(api.fields('email').touched).toBe(true)
+    expect(api.fields('email').interacted).toBe(false)
+    expect(api.fields('email').displayState).toBe('idle')
+
+    // 4-6. Click back in and type the first character: the user's first real
+    // edit. The error should NOT fire yet, since they have not left the field
+    // since editing it.
+    input.dispatchEvent(new FocusEvent('focus'))
+    typeInto(input, 'a')
+    await nextTick()
+    expect(api.fields('email').interacted).toBe(true)
+    expect(api.fields('email').displayState).toBe('idle')
   })
 })
 

@@ -62,9 +62,9 @@ The default opens one timing gate, then resolves the verdict by precedence.
 The gate opens when either:
 
 - The form has attempted at least one submit (`formMeta.submissionAttempts > 0`), OR
-- The field has been both edited and left: `interacted` (sticky-true after the user's first value edit) AND `touched` (sticky-true after the first blur).
+- The field has been edited and then left (`blurredAfterInteraction`, sticky-true after the first blur that follows a value edit).
 
-Until the gate opens, `displayState` is `'idle'` no matter what is in the store. This is "reward early, punish late." A clean tab-through stays quiet: tabbing flips `touched` but never `interacted`, so a field the user never edited does not complain until a submit forces the issue. The first keystrokes stay quiet too, because `touched` is still false until the user leaves the field, so the error reveals on blur rather than mid-entry. And since the gate carries no not-focused condition, it stays open through a re-focus: once a field is engaged, fixing its error clears the message live, instead of making the user blur again to see it.
+Until the gate opens, `displayState` is `'idle'` no matter what is in the store. This is "reward early, punish late." A clean tab-through stays quiet: `blurredAfterInteraction` only flips on a blur that follows an edit, so a field the user tabbed through but never edited does not complain until a submit forces the issue. The first pass stays quiet too: editing alone does not open the gate, so the error reveals once the user finishes the pass and leaves the field, never mid-entry, even when the field happened to be tabbed through earlier. And because the bit is sticky and carries no not-focused condition, the gate stays open through a re-focus: once a field has been revealed, fixing its error clears the message live, instead of making the user blur again to see it.
 
 ### 2. Precedence
 

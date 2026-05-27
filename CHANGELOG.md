@@ -22,11 +22,15 @@
 
 ### Added
 
-- **`FieldState.interacted`.** A sticky boolean that flips true on the
-  user's first value edit through `v-register` (an insert or a delete)
-  and stays true, distinct from `dirty` (net change from the baseline)
-  and `touched` (blur history). It powers the default display-state
-  timing and rolls up on `form.meta`.
+- **`FieldState.interacted` and `FieldState.blurredAfterInteraction`.**
+  Two sticky booleans for interaction-aware UX. `interacted` flips true on
+  the user's first value edit through `v-register` (an insert or a
+  delete), distinct from `dirty` (net change from the baseline) and
+  `touched` (blur history). `blurredAfterInteraction` flips true on the
+  first blur that follows an edit (edited, then left), composing
+  `interacted` with the departure; it drives the default display-state
+  gate, so a field tabbed through but never edited never complains. Both
+  roll up on `form.meta` and clear on reset.
 
 - **Accessible-by-default field ids and aria.** Every `FieldState` now
   carries a stable, SSR-safe `id` plus `aria.errorId` /

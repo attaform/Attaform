@@ -1335,7 +1335,7 @@ export type UseFormConfiguration<
    *
    * **Resolution order (per-register override > per-form > global > library):**
    *
-   *   register(path, { aria })  >  useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
+   *   register(path, { autoAria })  >  useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
    *
    * Set `false` to leave all aria wiring to your own markup form-wide.
    * Any aria attribute you author yourself is always left untouched,
@@ -1986,19 +1986,21 @@ export type RegisterOptions = {
    */
   transforms?: ReadonlyArray<RegisterTransform>
   /**
-   * Opt this binding OUT of automatic aria management. By default the
-   * directive keeps `aria-invalid` / `aria-busy` / `aria-required` /
-   * `aria-describedby` in sync with the field's display state. Pass
-   * `aria: false` to leave every aria attribute on this element to you
-   * (the directive still manages value binding and registration).
+   * Per-binding override for automatic aria management, the narrowest
+   * tier of the `autoAria` cascade. By default the directive keeps
+   * `aria-invalid` / `aria-busy` / `aria-required` / `aria-describedby`
+   * in sync with the field's display state. Pass `autoAria: false` to
+   * leave every aria attribute on this element to you (the directive
+   * still manages value binding and registration), or `autoAria: true`
+   * to re-enable management on one binding even when the form set
+   * `useForm({ autoAria: false })`.
    *
-   * This is the per-binding opt-out; `useForm({ autoAria: false })` and
-   * `createAttaform({ defaults: { autoAria: false } })` turn it off
-   * form-wide and app-wide. Writing an aria attribute yourself also
-   * locks the directive out of that one attribute, regardless of this
-   * flag.
+   * Overrides `useForm({ autoAria })` and
+   * `createAttaform({ defaults: { autoAria } })`. Writing an aria
+   * attribute yourself also locks the directive out of that one
+   * attribute, regardless of this flag.
    */
-  aria?: boolean
+  autoAria?: boolean
 }
 
 /**
@@ -2252,9 +2254,9 @@ export type RegisterValue<Value = unknown> = Readonly<{
   isRequired?: boolean
   /**
    * Whether the directive should auto-manage aria attributes for this
-   * binding. Resolves the `autoAria` cascade (form-level) AND the
-   * per-register `aria` option: `formAutoAria && options.aria !== false`.
-   * The directive treats an absent value as off.
+   * binding. Resolves the per-register `autoAria` override against the
+   * form-level value: `options.autoAria ?? formAutoAria`. The directive
+   * treats an absent value as off.
    * @internal
    */
   ariaEnabled?: boolean

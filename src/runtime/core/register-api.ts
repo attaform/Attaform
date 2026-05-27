@@ -29,9 +29,10 @@ export type InstanceRegisterConfig = {
   readonly instanceMeta?: WriteMeta['instance']
   readonly coerce?: boolean | CoercionRegistry
   /**
-   * Form-level `autoAria` resolution. Combined with the per-register
-   * `aria` option to produce each binding's `ariaEnabled`. Omitted
-   * (undefined) is treated as the library default, `true`.
+   * Form-level `autoAria` resolution (form config merged over app
+   * defaults). The per-register `autoAria` option overrides this per
+   * binding to produce each binding's `ariaEnabled`. Omitted (undefined)
+   * is treated as the library default, `true`.
    */
   readonly autoAria?: boolean
   /**
@@ -140,8 +141,8 @@ export function buildRegister<F extends GenericForm>(
   const instanceMeta = instanceConfig?.instanceMeta
   // Form-level aria resolution captured once for this register factory.
   // `autoAria` omitted is the library default (`true`); the per-register
-  // `aria` option is folded in per call below.
-  const formAutoAria = instanceConfig?.autoAria !== false
+  // `autoAria` option overrides this per call below.
+  const formAutoAria = instanceConfig?.autoAria ?? true
   const getDisplayStateAt = instanceConfig?.getDisplayStateAt
   // `meta.instance` is forwarded into every store write below so the
   // store's reads of `validateOn` / `debounceMs` / `rememberVariants`
@@ -304,13 +305,14 @@ export function buildRegister<F extends GenericForm>(
     // Aria wiring baked onto the RegisterValue so the (store-less)
     // directive can drive `aria-*` without a field-state lookup. The
     // ids match `FieldState.aria` exactly (same pure derivation).
-    // `ariaEnabled` folds the form-level `autoAria` with this binding's
-    // per-register `aria` option. `ariaDisplayState` reuses the form's
-    // field-state accessor, so it carries the SAME gated verdict the
-    // visible `form.fields.<path>.displayState` shows.
+    // `ariaEnabled` resolves this binding's per-register `autoAria`
+    // override against the form-level value, so a binding can re-enable
+    // aria even when the form opted out. `ariaDisplayState` reuses the
+    // form's field-state accessor, so it carries the SAME gated verdict
+    // the visible `form.fields.<path>.displayState` shows.
     const { aria } = computeFieldIdentity(formInstanceId, state.formKey, pathKey)
     const isRequired = state.schema.isRequiredAtPath(segments)
-    const ariaEnabled = formAutoAria && options?.aria !== false
+    const ariaEnabled = options?.autoAria ?? formAutoAria
     const ariaDisplayState =
       getDisplayStateAt !== undefined
         ? (computed(() => getDisplayStateAt(segments)) as Readonly<Ref<DisplayState>>)

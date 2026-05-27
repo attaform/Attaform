@@ -339,11 +339,19 @@ describe('buildRegister', () => {
       expect(register(['email']).ariaEnabled).toBe(false)
     })
 
-    it('disables aria per-binding via the register aria option', () => {
+    it('disables aria per-binding via the register autoAria option', () => {
       const { register } = makeAriaRegister({ getDisplayStateAt: () => 'idle' })
-      expect(register(['email'], { aria: false }).ariaEnabled).toBe(false)
+      expect(register(['email'], { autoAria: false }).ariaEnabled).toBe(false)
       // Sibling bindings on the same form keep aria on.
       expect(register(['note']).ariaEnabled).toBe(true)
+    })
+
+    it('re-enables aria per-binding even when the form opted out', () => {
+      const { register } = makeAriaRegister({ autoAria: false, getDisplayStateAt: () => 'idle' })
+      // Per-binding autoAria overrides the form-level opt-out in both directions.
+      expect(register(['email'], { autoAria: true }).ariaEnabled).toBe(true)
+      // Bindings that don't override still inherit the form's opt-out.
+      expect(register(['note']).ariaEnabled).toBe(false)
     })
 
     it('omits ariaDisplayState when no accessor is wired (hand-rolled factory)', () => {

@@ -154,9 +154,14 @@ function walkSegments(
     case 'template-literal':
     case 'transform':
     case 'file':
+    case 'map':
+    case 'symbol':
+    case 'function':
       // ZodTransform is the input side of `z.preprocess(fn, inner)` and
       // not directly walkable; callers reach `inner` through the
-      // surrounding pipe. `file` is a leaf with no sub-paths.
+      // surrounding pipe. `file` / `map` / `symbol` / `function` are
+      // leaves with no sub-paths (the last three are rejected at adapter
+      // construction; kept here for compile-time exhaustiveness).
       return []
     default: {
       const _exhaustive: never = kind

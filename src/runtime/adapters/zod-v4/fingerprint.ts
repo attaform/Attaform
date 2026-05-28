@@ -224,12 +224,17 @@ function computeFingerprint(
     // Structural shape isn't observable for these. Bucket them into
     // kind-only fingerprints — a schema-mismatch warning can't do
     // better than "both are `custom`" here, but that still catches
-    // `object` vs `custom` mismatches.
+    // `object` vs `custom` mismatches. `map` / `symbol` / `function`
+    // are rejected at adapter construction; kept here for exhaustive
+    // switch safety when `fingerprintSchema` is called from tooling.
     case 'promise':
     case 'custom':
     case 'template-literal':
     case 'transform':
     case 'file':
+    case 'map':
+    case 'symbol':
+    case 'function':
       return `${kind}:*`
 
     default: {

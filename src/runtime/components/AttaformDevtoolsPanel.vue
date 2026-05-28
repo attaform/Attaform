@@ -107,7 +107,7 @@
     try {
       const parsed = JSON.parse(key) as unknown[]
       if (Array.isArray(parsed)) {
-        return parsed.map((seg) => (typeof seg === 'number' ? String(seg) : String(seg))).join('.')
+        return parsed.map((seg) => String(seg)).join('.')
       }
     } catch {
       // not JSON, render as-is

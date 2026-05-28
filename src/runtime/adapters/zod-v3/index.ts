@@ -535,9 +535,15 @@ export function zodAdapter<
         // wrapper at the path's leaf — `path: ['name']` against
         // `z.object({ name: z.optional(z.string()) })` returns the
         // optional wrapper itself, which is what we need to inspect.
-        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
-        if (!leaf) return false
-        return isLeafRequiredV3(leaf)
+        //
+        // For paths that traverse a union the walker returns one
+        // resolution per branch. The slot is required only if EVERY
+        // branch is required at that path — any permissive branch
+        // makes the union permissive at parse time. Mirrors v4's
+        // `resolved.every(isLeafRequired)`.
+        const resolved = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
+        if (resolved.length === 0) return false
+        return resolved.every((candidate) => isLeafRequiredV3(candidate))
       },
       getFieldMetaAtPath(path): ResolvedFieldMeta {
         return resolveFieldMetaAtPathV3(_zodSchema, path, _maxRecursionDepth)
@@ -1140,15 +1146,18 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
 function isLeafRequiredV3(schema: z.ZodTypeAny, depth = 0): boolean {
   if (depth > MAX_UNWRAP_STEPS) return true
   // Direct "schema accepts empty" wrappers and bare empty-marker leaves.
-  // `z.undefined()` / `z.null()` inside a union are how authors express
-  // "this field can be absent" without a wrapper.
+  // `z.undefined()` / `z.null()` / `z.void()` inside a union are how
+  // schema authors express "this field can be absent" without a wrapper,
+  // so they count as not-required. Mirrors v4's `isLeafRequired`
+  // short-circuit list.
   if (
     isZodSchemaType(schema, 'ZodOptional') ||
     isZodSchemaType(schema, 'ZodNullable') ||
     isZodSchemaType(schema, 'ZodDefault') ||
     isZodSchemaType(schema, 'ZodCatch') ||
     isZodSchemaType(schema, 'ZodUndefined') ||
-    isZodSchemaType(schema, 'ZodNull')
+    isZodSchemaType(schema, 'ZodNull') ||
+    isZodSchemaType(schema, 'ZodVoid')
   ) {
     return false
   }

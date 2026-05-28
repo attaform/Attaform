@@ -1,6 +1,23 @@
 import type { z } from 'zod-v3'
 import { UnsupportedSchemaError } from './errors'
 import { isZodSchemaType } from './helpers'
+import {
+  getArrayElement,
+  getDiscriminatedOptions,
+  getIntersectionLeft,
+  getIntersectionRight,
+  getLazyGetter,
+  getObjectShape,
+  getRecordValueType,
+  getSetValueType,
+  getTupleItems,
+  getTypeName,
+  getUnionOptions,
+  unwrapBranded,
+  unwrapEffectsSource,
+  unwrapInner,
+  unwrapPipeIn,
+} from './introspect'
 
 /**
  * Kinds the v3 adapter does not implement. `z.promise(...)`,
@@ -20,11 +37,6 @@ function labelPath(path: readonly string[]): string {
   return path.length === 0 ? '<root>' : path.join('.')
 }
 
-function getTypeName(schema: z.ZodTypeAny): string | undefined {
-  const def = (schema as { _def?: { typeName?: string } })._def
-  return def?.typeName
-}
-
 /**
  * Walk the schema tree and fail fast on unsupported kinds. Detects
  * recursive `z.lazy(...)` by tracking the *getter function identity*
@@ -34,8 +46,8 @@ function getTypeName(schema: z.ZodTypeAny): string | undefined {
  * This runs once, at adapter construction time, so the cost is paid
  * at app startup rather than per keystroke. Mirrors v4's
  * `assertSupportedKinds`; the dispatch goes through `isZodSchemaType`
- * (typeName comparison) instead of the v4 `kindOf` helper because v3
- * doesn't have an equivalent introspect layer.
+ * (typeName comparison) plus the introspect accessors for the
+ * structural reads.
  */
 export function assertSupportedKinds(
   schema: z.ZodTypeAny,
@@ -50,53 +62,53 @@ export function assertSupportedKinds(
   }
 
   if (isZodSchemaType(schema, 'ZodObject')) {
-    const shape = schema.shape as Record<string, z.ZodTypeAny>
-    for (const [key, sub] of Object.entries(shape)) {
+    for (const [key, sub] of Object.entries(getObjectShape(schema))) {
       assertSupportedKinds(sub, [...path, key], lazyGetters)
     }
     return
   }
 
   if (isZodSchemaType(schema, 'ZodArray')) {
-    const inner = (schema._def as { type?: z.ZodTypeAny }).type
+    const inner = getArrayElement(schema)
     if (inner) assertSupportedKinds(inner, [...path, '*'], lazyGetters)
     return
   }
 
   if (isZodSchemaType(schema, 'ZodSet')) {
-    const inner = (schema._def as { valueType?: z.ZodTypeAny }).valueType
+    const inner = getSetValueType(schema)
     if (inner) assertSupportedKinds(inner, [...path, '*'], lazyGetters)
     return
   }
 
   if (isZodSchemaType(schema, 'ZodRecord')) {
-    const inner = (schema._def as { valueType?: z.ZodTypeAny }).valueType
+    const inner = getRecordValueType(schema)
     if (inner) assertSupportedKinds(inner, [...path, '*'], lazyGetters)
     return
   }
 
   if (isZodSchemaType(schema, 'ZodTuple')) {
-    const items = (schema._def as { items?: z.ZodTypeAny[] }).items ?? []
+    const items = getTupleItems(schema)
     items.forEach((item, i) => assertSupportedKinds(item, [...path, String(i)], lazyGetters))
     return
   }
 
   if (isZodSchemaType(schema, 'ZodUnion')) {
-    const options = (schema._def as { options?: z.ZodTypeAny[] }).options ?? []
+    const options = getUnionOptions(schema)
     options.forEach((opt, i) => assertSupportedKinds(opt, [...path, `|${i}`], lazyGetters))
     return
   }
 
   if (isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
-    const options = (schema._def as { options?: z.ZodTypeAny[] }).options ?? []
+    const options = getDiscriminatedOptions(schema)
     options.forEach((opt, i) => assertSupportedKinds(opt, [...path, `|${i}`], lazyGetters))
     return
   }
 
   if (isZodSchemaType(schema, 'ZodIntersection')) {
-    const def = schema._def as { left?: z.ZodTypeAny; right?: z.ZodTypeAny }
-    if (def.left) assertSupportedKinds(def.left, [...path, 'left'], lazyGetters)
-    if (def.right) assertSupportedKinds(def.right, [...path, 'right'], lazyGetters)
+    const left = getIntersectionLeft(schema)
+    if (left) assertSupportedKinds(left, [...path, 'left'], lazyGetters)
+    const right = getIntersectionRight(schema)
+    if (right) assertSupportedKinds(right, [...path, 'right'], lazyGetters)
     return
   }
 
@@ -105,30 +117,33 @@ export function assertSupportedKinds(
     isZodSchemaType(schema, 'ZodNullable') ||
     isZodSchemaType(schema, 'ZodDefault') ||
     isZodSchemaType(schema, 'ZodReadonly') ||
-    isZodSchemaType(schema, 'ZodCatch') ||
-    isZodSchemaType(schema, 'ZodBranded')
+    isZodSchemaType(schema, 'ZodCatch')
   ) {
-    const inner =
-      (schema._def as { innerType?: z.ZodTypeAny }).innerType ??
-      (schema._def as { type?: z.ZodTypeAny }).type
+    const inner = unwrapInner(schema)
+    if (inner) assertSupportedKinds(inner, path, lazyGetters)
+    return
+  }
+
+  if (isZodSchemaType(schema, 'ZodBranded')) {
+    const inner = unwrapBranded(schema)
     if (inner) assertSupportedKinds(inner, path, lazyGetters)
     return
   }
 
   if (isZodSchemaType(schema, 'ZodEffects')) {
-    const inner = schema.innerType()
-    assertSupportedKinds(inner, path, lazyGetters)
+    const inner = unwrapEffectsSource(schema)
+    if (inner) assertSupportedKinds(inner, path, lazyGetters)
     return
   }
 
   if (isZodSchemaType(schema, 'ZodPipeline')) {
-    const inner = (schema._def as { in?: z.ZodTypeAny }).in
+    const inner = unwrapPipeIn(schema)
     if (inner) assertSupportedKinds(inner, path, lazyGetters)
     return
   }
 
   if (isZodSchemaType(schema, 'ZodLazy')) {
-    const getter = (schema._def as { getter?: () => z.ZodTypeAny }).getter
+    const getter = getLazyGetter(schema)
     // Recursive z.lazy() is supported. Stop descending on the second
     // encounter (the shape walk only needs each unique getter once);
     // downstream walks cap their descent via `maxRecursionDepth`.
@@ -136,7 +151,7 @@ export function assertSupportedKinds(
     const inner = getter?.()
     if (inner !== undefined) {
       assertSupportedKinds(
-        inner,
+        inner as z.ZodTypeAny,
         path,
         getter === undefined ? lazyGetters : [...lazyGetters, getter]
       )

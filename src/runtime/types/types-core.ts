@@ -47,29 +47,6 @@ export type PartialFlatPath<Form, Key extends keyof Form = keyof Form> =
         : never
     : never
 
-export type CompleteFlatPath<Form, Key extends keyof Form = keyof Form> =
-  IsObjectOrArray<Form> extends true
-    ? Key extends string
-      ? Form[Key] extends infer Value
-        ? Value extends Array<infer ArrayItem>
-          ? `${Key}.${number}.${CompleteFlatPath<ArrayItem>}`
-          : Value extends GenericForm
-            ? `${Key}.${CompleteFlatPath<Value>}`
-            : `${Key}`
-        : never
-      : Key extends number
-        ?
-            | `${Key}`
-            | (Form[Key] extends GenericForm
-                ? `${Key}.${CompleteFlatPath<Form[Key]>}`
-                : Form[Key] extends Array<infer ArrayItem>
-                  ? IsObjectOrArray<ArrayItem> extends true
-                    ? `${Key}.${number}.${CompleteFlatPath<ArrayItem>}`
-                    : `${Key}.${number}`
-                  : never)
-        : never
-    : never
-
 // FlatPath Generic Gotchas:
 //
 // 1. Typescript collapses paths like `something.${string}` | `something.${string}.deeper`
@@ -92,15 +69,8 @@ export type CompleteFlatPath<Form, Key extends keyof Form = keyof Form> =
  * Used by every path-addressed API (`setValue(path, value)`,
  * `register(path)`, `toRef(path)`, etc.) so paths autocomplete in
  * the IDE and typos compile-error.
- *
- * Set `ForceFullPath` to `true` to restrict to leaf paths only
- * (no intermediate container paths).
  */
-export type FlatPath<
-  Form,
-  Key extends keyof Form = keyof Form,
-  ForceFullPath extends boolean = false,
-> = ForceFullPath extends true ? CompleteFlatPath<Form, Key> : PartialFlatPath<Form, Key>
+export type FlatPath<Form, Key extends keyof Form = keyof Form> = PartialFlatPath<Form, Key>
 
 /**
  * Convert a tuple of path segments to its dotted-string equivalent.

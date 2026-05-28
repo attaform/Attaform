@@ -1579,16 +1579,6 @@ export type AttaformDefaults = {
 
 export type FormStore<TData extends GenericForm> = Map<FormKey, TData>
 
-export type FormSummaryValue = {
-  originalValue: unknown
-  previousValue: unknown
-  currentValue: unknown
-  pristine: boolean
-  dirty: boolean
-}
-export type FormSummaryValueRecord = Record<string, FormSummaryValue>
-export type FormSummaryStore = Map<FormKey, FormSummaryValueRecord>
-
 /**
  * Callback invoked by `handleSubmit` after the form parses successfully.
  * Receives the strictly-typed parsed value — refinements have run, so
@@ -1758,8 +1748,6 @@ export type MetaTrackerValue = {
    */
   blank: boolean
 }
-export type MetaTracker = Record<string, MetaTrackerValue>
-export type MetaTrackerStore = Map<FormKey, MetaTracker>
 
 // Generates every registrable path inside `Form`. Arrays of primitive
 // items (string / number / boolean / bigint) expose BOTH the array root
@@ -2648,41 +2636,6 @@ export type PathSetValuePayload<Leaf> =
       : SetValuePayload<DefaultValuesShape<Leaf>, NonNullable<WriteShape<Leaf>>>
 
 /**
- * Focus / blur / touched / interacted flags for a registered field.
- *
- * - `focused` — `true` while the user is interacting with the field,
- *   `false` after blur. `null` while no DOM element is connected for
- *   this path (the DOM-state concept doesn't apply with no element).
- * - `blurred` — strictly the inverse of `focused` when an element is
- *   connected: `true` while not focused, `false` while focused. `null`
- *   while no element is connected.
- * - `touched` — focus/blur history. Plain `boolean`: `false` at
- *   registration, flips to `true` on the first blur, stays `true`
- *   thereafter, and is preserved across disconnects. Cleared only by
- *   `form.reset()` / `form.resetField(path)`.
- * - `interacted` — value-mutation history. Plain `boolean`: `false` at
- *   registration, flips to `true` on the user's first value edit, stays
- *   `true` thereafter. Set only by user input (never hydration or
- *   programmatic writes); cleared with `touched`. Together they support
- *   "show feedback only after the user has actually engaged" UX.
- * - `blurredAfterInteraction` — the first blur that follows a value edit
- *   (edited, then left). Plain `boolean`, sticky. A tab-through with no
- *   edit never sets it. Composes `interacted` with the departure and
- *   drives the default display gate.
- */
-export type DOMFieldState = {
-  /** `true` while focused; `false` while connected but not focused; `null` while no element is connected. */
-  focused: boolean | null
-  /** Inverse of `focused` when connected; `null` while no element is connected. */
-  blurred: boolean | null
-  /** `true` after the first blur; persists across disconnects until `reset()`. */
-  touched: boolean
-  /** `true` after the user's first value edit; persists until `reset()`. */
-  interacted: boolean
-  /** `true` after the first blur that follows an edit; persists until `reset()`. */
-  blurredAfterInteraction: boolean
-}
-/**
  * Per-field reactive shape returned by `form.fields.<leaf-path>` and
  * `form.fields(path)`. Slim, readonly across the board. The unified
  * shape replaces the older split between `FieldState` /
@@ -3161,8 +3114,6 @@ export type FieldStateMap<Form extends GenericForm> = ([IsUnion<Form>] extends [
   (): FieldState<Form>
 }
 
-export type DOMFieldStateStore = Map<string, DOMFieldState | undefined>
-
 /**
  * Untyped error map keyed by dotted-string path. The same data
  * exposed by `form.errors`, but as a plain record — useful when
@@ -3170,7 +3121,6 @@ export type DOMFieldStateStore = Map<string, DOMFieldState | undefined>
  * type doesn't know about.
  */
 export type FormErrorRecord = Record<string, ValidationError[]>
-export type FormErrorStore = Map<FormKey, FormErrorRecord>
 
 /**
  * Type of `form.errors`. Leaf-aware drillable callable Proxy. At a

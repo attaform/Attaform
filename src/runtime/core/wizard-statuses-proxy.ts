@@ -104,6 +104,16 @@ export function buildWizardStatusesProxy<S extends Record<string, FormStatus>>(
       }
       return true
     },
-    defineProperty: () => true,
+    // Mirrors set / delete: warn in dev and return `true` (returning
+    // `false` would throw in strict mode). Previous `() => true`
+    // claimed success silently.
+    defineProperty(_, key) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] wizard.statuses is read-only — define of "${String(key)}" was ignored.`
+        )
+      }
+      return true
+    },
   })
 }

@@ -1,6 +1,7 @@
 import type { GetDisplayState } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import { __DEV__ } from './dev'
 import {
   buildFieldStateAccessor,
   type FieldState,
@@ -160,9 +161,34 @@ export function buildFieldStateProxy<F extends GenericForm>(
           writable: false,
         }
       },
-      set: () => false,
-      deleteProperty: () => false,
-      defineProperty: () => false,
+      // Warn-and-noop: returning `false` here throws `TypeError` under
+      // strict mode (`form.fields('email').value = 1` from any ESM
+      // module), which would violate the documented "writes are
+      // ignored" contract. Mirrors `values-proxy` / `wizard-statuses-proxy`.
+      set: (_, key) => {
+        if (__DEV__) {
+          console.warn(
+            `[attaform] form.fields(path) is read-only — write to "${String(key)}" was ignored. Use form.setValue / the directive / field-array helpers instead.`
+          )
+        }
+        return true
+      },
+      deleteProperty: (_, key) => {
+        if (__DEV__) {
+          console.warn(
+            `[attaform] form.fields(path) is read-only — delete of "${String(key)}" was ignored.`
+          )
+        }
+        return true
+      },
+      defineProperty: (_, key) => {
+        if (__DEV__) {
+          console.warn(
+            `[attaform] form.fields(path) is read-only — define of "${String(key)}" was ignored.`
+          )
+        }
+        return true
+      },
     })
     terminalCache.set(cacheKey, proxy)
     return proxy

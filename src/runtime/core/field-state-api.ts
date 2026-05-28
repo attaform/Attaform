@@ -8,6 +8,7 @@ import type {
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import { __DEV__ } from './dev'
 import { defaultDisplayState } from './display-state'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META } from './field-meta'
@@ -21,6 +22,18 @@ import {
   type Path,
   type PathKey,
 } from './paths'
+
+/**
+ * Dedup set for the dev-only "consumer predicate threw" warn. Keyed by
+ * the predicate function itself so a stable consumer reference earns
+ * one warn for its lifetime — a single bad predicate doesn't flood the
+ * console on every field read. New predicate references (each new
+ * `useForm({ getDisplayState })` call producing a fresh closure) warn
+ * once each, so a regression on a different form still surfaces.
+ *
+ * WeakSet so the registry never pins a consumer predicate against GC.
+ */
+const warnedDisplayStatePredicates = new WeakSet<GetDisplayState>()
 
 function isUnderStubAncestor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -416,10 +429,21 @@ function decorateWithDerivedProps<F extends GenericForm>(
   // custom predicate must not take down the whole reactive surface.
   // Fall back to the library default (total over well-formed base
   // shapes) rather than propagating the throw out of the computed.
+  // Surface one dev-only warn per predicate reference so a
+  // consistently-broken consumer override is visible without spamming
+  // every read.
   let displayState: ReturnType<GetDisplayState>
   try {
     displayState = predicate(base, formMeta)
-  } catch {
+  } catch (err) {
+    if (__DEV__ && !warnedDisplayStatePredicates.has(predicate)) {
+      warnedDisplayStatePredicates.add(predicate)
+      console.warn(
+        '[attaform] custom getDisplayState threw — falling back to defaultDisplayState. ' +
+          'Subsequent throws from the same predicate will not warn again.',
+        err
+      )
+    }
     displayState = defaultDisplayState(base, formMeta)
   }
   return {

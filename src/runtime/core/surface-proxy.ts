@@ -1,5 +1,28 @@
 import type { AbstractSchema } from '../types/types-api'
+import { __DEV__ } from './dev'
 import { canonicalizePath, type Path, type Segment } from './paths'
+
+/**
+ * Warn-and-noop trap pair shared by every readonly proxy in the surface
+ * layer. Returning `true` keeps strict-mode callers from throwing on
+ * `proxy.x = …` / `delete proxy.x` / `Object.defineProperty(proxy, …)` —
+ * the readonly contract is enforced by the absence of any actual
+ * mutation, not by tripping a host-level `TypeError`. Aligns
+ * `form.fields` / `form.errors` with the warn-and-noop pattern already
+ * in `values-proxy` and `wizard-statuses-proxy`. See PASS2-4 + PASS2-12
+ * for the audit context.
+ */
+function warnReadOnly(
+  surface: string,
+  action: 'write' | 'delete' | 'define',
+  key: PropertyKey
+): void {
+  if (!__DEV__) return
+  const phrase = action === 'write' ? `write to "${String(key)}"` : `${action} of "${String(key)}"`
+  console.warn(
+    `[attaform] ${surface} is read-only — ${phrase} was ignored. Mutate the form via setValue / the directive / field-array helpers instead.`
+  )
+}
 
 /**
  * Leaf-aware callable Proxy machinery shared by `form.values`,
@@ -342,6 +365,41 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
           return opts.containerOwnKeys === undefined ? 0 : opts.containerOwnKeys(segments).length
         }
         const childSegs = [...segments, keyToSegment(key)]
+        // Array.prototype pass-through on array-shaped containers
+        // (`form.fields.tags.map`, `form.errors.<array>.forEach`, …).
+        // Pre-fix the schema-descent branch below would treat `'map'`
+        // as a phantom child field and hand back a sub-proxy / leaf
+        // view, because an array schema accepts ANY segment (numeric
+        // or not) at the element position — so `schemaHasPath` is
+        // unconditionally true on array paths and can't be used as the
+        // arbiter here.
+        //
+        // The gate is "isArrayLike AND the key is a non-integer string
+        // present on Array.prototype." Integer-segment keys (`'0'`,
+        // `'1'`, …) still descend so per-element field proxies work.
+        // Non-integer keys on array-shaped paths route to the Array
+        // prototype: read-only methods (`map` / `forEach` / `find` /
+        // `filter` / `slice` / `reduce` / …) work naturally because
+        // they call `this[i]` and `this.length` back through this
+        // `get` trap, which still returns the descended sub-proxy.
+        // Mutating methods (`push` / `pop` / `splice` / …) become
+        // reachable but the proxy's `set` trap (warn-and-noop) blocks
+        // any actual mutation — readonly contract holds, the consumer
+        // gets a dev warn.
+        //
+        // No schema-authority concern: array schemas don't have
+        // literal field names at the element layer (every index shares
+        // one element schema). Object-shaped containers fail the
+        // `isArrayLike` gate, so a record literally containing a field
+        // named `map` still descends through the schema-aware path
+        // below.
+        if (
+          (isArrayLike || opts.isArrayContainer?.(segments) === true) &&
+          typeof keyToSegment(key) === 'string' &&
+          key in Array.prototype
+        ) {
+          return Reflect.get(Array.prototype, key)
+        }
         // Direct method-call coercion (`proxy.toString()` /
         // `proxy.valueOf()`): without intercepting these names, the
         // schema-aware descent below would return a sub-proxy and the
@@ -411,10 +469,25 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         }
       },
       // Block writes at the proxy boundary. Mutations go through
-      // `setValue`, the directive, or the field-array helpers.
-      set: () => false,
-      deleteProperty: () => false,
-      defineProperty: () => false,
+      // `setValue`, the directive, or the field-array helpers. Each
+      // trap returns `true` (warn-and-noop) — returning `false` from a
+      // `set`/`delete`/`defineProperty` trap throws `TypeError` under
+      // strict mode (every ESM / `<script setup>`), which would surface
+      // a host-level exception in consumer code that the library
+      // documents as "writes are ignored." Aligns with the contract on
+      // `form.values` / `wizard.statuses`.
+      set: (_, key) => {
+        warnReadOnly('form.fields / form.errors', 'write', key)
+        return true
+      },
+      deleteProperty: (_, key) => {
+        warnReadOnly('form.fields / form.errors', 'delete', key)
+        return true
+      },
+      defineProperty: (_, key) => {
+        warnReadOnly('form.fields / form.errors', 'define', key)
+        return true
+      },
     })
     containerCache.set(cacheKey, proxy)
     return proxy
@@ -537,9 +610,22 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
           writable: false,
         }
       },
-      set: () => false,
-      deleteProperty: () => false,
-      defineProperty: () => false,
+      // Same warn-and-noop contract as the container traps above.
+      // Returning `true` keeps strict-mode callers from throwing on
+      // `form.fields.email.value = …`; the actual readonly guarantee
+      // is the absence of any mutation, not the host-level reject.
+      set: (_, key) => {
+        warnReadOnly('form.fields.<leaf>', 'write', key)
+        return true
+      },
+      deleteProperty: (_, key) => {
+        warnReadOnly('form.fields.<leaf>', 'delete', key)
+        return true
+      },
+      defineProperty: (_, key) => {
+        warnReadOnly('form.fields.<leaf>', 'define', key)
+        return true
+      },
     })
     leafViewCache.set(cacheKey, proxy)
     return proxy

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, expectTypeOf, it } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { computed, createApp, defineComponent, h, nextTick, withDirectives, type App } from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
@@ -653,6 +653,55 @@ describe('getDisplayState — cross-cutting', () => {
         submissionAttempts: 1,
       } as typeof baseMeta)
     ).toBe('idle')
+  })
+
+  // PASS2-11 — a consumer predicate that throws must not take the
+  // reactive surface down. The catch was already there (correct, never
+  // throws into the app), but the throw was silently swallowed so a
+  // misbehaving predicate stayed invisible. Standing diagnostic: warn
+  // once in dev, fall back to the library default.
+  it('consumer predicate throw: warns in dev once, falls back to default verdict', async () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
+
+    let throws = 0
+    const exploding: GetDisplayState = () => {
+      throws += 1
+      throw new Error('boom')
+    }
+
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema: v4Schema,
+          key: `throw-pred-${Math.random()}`,
+          strict: false,
+          defaultValues: v4Defaults,
+          getDisplayState: exploding,
+        })
+      )
+    )
+    form.setFieldErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
+    // Read the field twice to exercise the predicate path on a hot
+    // re-read; the warn should still fire once (dedup on the predicate
+    // reference).
+    const first = form.fields('email').displayState
+    const second = form.fields('email').displayState
+
+    warnSpy.mockRestore()
+    expect(typeof first).toBe('string')
+    expect(typeof second).toBe('string')
+    // Library default returned the error verdict (an own-path error +
+    // submissionAttempts=0 → 'idle' under the gate). The exact verdict
+    // is the library default's call; what matters is the FALLBACK
+    // landed, not what value it produced.
+    expect(throws).toBeGreaterThan(0)
+    const matchingWarns = warnings.filter(
+      (w) => w.includes('getDisplayState') && w.includes('default')
+    )
+    expect(matchingWarns.length).toBe(1)
   })
 })
 

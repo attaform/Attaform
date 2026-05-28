@@ -121,17 +121,17 @@ describe('persistence — blank round-trips across mount', () => {
     document.body.innerHTML = ''
   })
 
-  it('a v=5 payload with blankPaths restores the empty UI state on next mount', async () => {
-    // Pre-seed a v=5 payload that mirrors what the lib would have
+  it('a v=6 payload with blankPaths restores the empty UI state on next mount', async () => {
+    // Pre-seed a v=6 payload that mirrors what the lib would have
     // written on a previous session: storage holds the slim default
-    // (0) but the path is in `blankPaths` so the UI re-renders
-    // blank. On-disk blankPaths shape switched to dotted public
-    // paths at v=5.
+    // (0) but the path is in `blankPaths` so the UI re-renders blank.
+    // On-disk blankPaths shape returned to the canonical PathKey JSON
+    // form at v=6 (PASS2-8).
     localStorage.setItem(
       fpKey('te-rt'),
       JSON.stringify({
-        v: 5,
-        data: { form: { income: 0 }, blankPaths: ['income'] },
+        v: 6,
+        data: { form: { income: 0 }, blankPaths: ['["income"]'] },
       })
     )
 
@@ -225,27 +225,29 @@ describe('persistence — blank round-trips across mount', () => {
 
     // Poll until the post-clear write lands the blankPaths entry —
     // the 10ms debounce + adapter.setItem can outlast a fixed pump.
+    // v=6 writes the canonical PathKey JSON form (`'["income"]'`),
+    // matching the in-memory representation.
     const raw = await waitUntil(() => {
       const r = localStorage.getItem(fpKey('te-write'))
       if (r === null) return null
       const p = JSON.parse(r) as { data?: { blankPaths?: string[] } }
-      return p.data?.blankPaths?.includes('income') === true ? r : null
+      return p.data?.blankPaths?.includes('["income"]') === true ? r : null
     })
     expect(raw).not.toBeNull()
     const payload = JSON.parse(raw as string)
-    expect(payload.v).toBe(5)
-    expect(payload.data.blankPaths).toContain('income')
+    expect(payload.v).toBe(6)
+    expect(payload.data.blankPaths).toContain('["income"]')
   })
 
   it('hydration overrides construction-time auto-mark — persisted empty list wins', async () => {
     // The form has no defaultValues, so construction-time auto-mark
-    // would mark `income`. But a v=3 payload pre-seeded with an EMPTY
+    // would mark `income`. But a v=6 payload pre-seeded with an EMPTY
     // `blankPaths` list (representing "user previously filled
     // this in") must override — the hydrated set is the truth.
     localStorage.setItem(
       fpKey('te-hyd'),
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: { form: { income: 100 }, blankPaths: [] },
       })
     )

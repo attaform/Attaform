@@ -282,7 +282,7 @@ describe('rememberVariants × persistence — refresh-survives contract', () => 
     localStorage.setItem(
       fpKey('seed'),
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: { form: { notify: { channel: 'sms', number: 'pre-seeded' } } },
       })
     )

@@ -28,6 +28,7 @@ import {
   FORM_ERRORS_PATH,
   FORM_ERRORS_PATH_KEY,
   isDangerousSegment,
+  isPathPrefix,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -3479,21 +3480,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       interacted: false,
       blurredAfterInteraction: false,
     })
-  }
-
-  /**
-   * True iff `prefix` is a path-prefix of `candidate`. Equal arrays count as
-   * a prefix (every array is a prefix of itself). Segment equality is strict
-   * `===` — `'0'` and `0` are distinct here even though canonicalizePath
-   * normalises them upstream; both paths always come from the same
-   * canonicalisation so the check holds.
-   */
-  function isPathPrefix(prefix: readonly Segment[], candidate: readonly Segment[]): boolean {
-    if (prefix.length > candidate.length) return false
-    for (let i = 0; i < prefix.length; i++) {
-      if (prefix[i] !== candidate[i]) return false
-    }
-    return true
   }
 
   // --- Derived ---

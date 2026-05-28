@@ -1693,6 +1693,23 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // value of `null` / `undefined` distinct from "never validated". Plain
   // `let`, not a ref: only the blur handler reads it, never reactively.
   let lastValidatedSnapshot: { readonly value: unknown } | null = null
+  // Form-level monotonic counters that guard cross-path async races.
+  // Per-path AbortControllers cover same-path rapid typing (a fresh
+  // schedule cancels its predecessor at the same key), but they don't
+  // cross-invalidate runs scheduled at DIFFERENT paths — and every
+  // run commits a WHOLE-form replacement via
+  // `applySchemaErrorsForSubtree([], …)`. Without an epoch gate, two
+  // concurrent different-path runs both commit in resolution order;
+  // a slow earlier-scheduled run that lands AFTER a faster
+  // later-scheduled one would overwrite the fresher verdict with
+  // pre-edit state. Each `scheduleFieldValidation` call captures a
+  // fresh `myEpoch` from `scheduleEpoch`; the commit branch in `run()`
+  // re-checks `myEpoch > lastCommittedEpoch` before writing, dropping
+  // any run that a fresher one has already overtaken at the commit
+  // site. Plain `let`s — the counters are only read inside `run()`'s
+  // chained `.then`, never reactively.
+  let scheduleEpoch = 0
+  let lastCommittedEpoch = 0
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
   // first call for this key: `defaultValuesFactory` captures the
   // function-form input, `hydrating` flips true until settle
@@ -2465,6 +2482,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const controller = new AbortController()
     const fresh: FieldValidationEntry = { controller, timer: null, settled: false }
     fieldValidationState.set(key, fresh)
+    // Capture a fresh epoch at schedule time. Closed over by `run`
+    // below and re-checked at the commit site so a later-scheduled
+    // run that resolves first protects its verdict from clobber by
+    // an earlier-scheduled run that resolves later (PASS2-2).
+    const myEpoch = ++scheduleEpoch
 
     const run = () => {
       fresh.timer = null
@@ -2518,6 +2540,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         .then(() => schema.validateAtPath(form.value, undefined))
         .then((response) => {
           if (controller.signal.aborted) return
+          // Form-level epoch gate. If a later-scheduled run has
+          // already committed its verdict, dropping this stale
+          // commit prevents an asymmetric-latency race from
+          // overwriting the fresher result. `<=` is conservative
+          // — counter monotonicity makes equality impossible in
+          // practice, but a re-entrant commit at the same epoch
+          // would still be a no-op.
+          if (myEpoch <= lastCommittedEpoch) return
+          lastCommittedEpoch = myEpoch
           const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
           // storage is undefined AND the consumer didn't author a

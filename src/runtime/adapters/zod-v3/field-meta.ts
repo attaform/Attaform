@@ -28,7 +28,11 @@
  */
 import type { z } from 'zod-v3'
 import type { FieldMetaPayload } from '../../core/field-meta'
-import { fieldMetaStore, getFieldMetaForSchema } from '../../core/field-meta-store'
+import {
+  fieldMetaStore,
+  getFieldMetaForSchema,
+  getFieldMetaListForSchema,
+} from '../../core/field-meta-store'
 
 /**
  * The shared registry every Attaform-aware Zod 3 schema can register
@@ -49,6 +53,11 @@ type FieldMetaRegistryV3 = {
   get(schema: z.ZodTypeAny): FieldMetaPayload | undefined
   /** True iff a payload has been registered for the schema. */
   has(schema: z.ZodTypeAny): boolean
+  /**
+   * Drop every registered payload for `schema`. Returns the registry
+   * for chaining; idempotent on a never-registered schema.
+   */
+  remove(schema: z.ZodTypeAny): FieldMetaRegistryV3
 }
 
 export const fieldMeta = fieldMetaStore as unknown as FieldMetaRegistryV3
@@ -101,4 +110,18 @@ export function withMeta<S extends z.ZodTypeAny>(schema: S, payload: FieldMetaPa
  */
 export function getFieldMeta(schema: z.ZodTypeAny): FieldMetaPayload | undefined {
   return getFieldMetaForSchema(schema as object)
+}
+
+/**
+ * Read the list of payloads registered against `schema`, in
+ * registration order. Empty list when nothing has been registered.
+ *
+ * Used by the v3 adapter's path-resolver to disambiguate per
+ * occurrence when a schema is shared across multiple form paths.
+ * Most consumers won't need this — use `fieldMeta.get(schema)` for
+ * the single-payload case. Mirrors `getFieldMetaList` on the v4
+ * adapter so per-adapter feature parity stays explicit.
+ */
+export function getFieldMetaList(schema: z.ZodTypeAny): readonly FieldMetaPayload[] {
+  return getFieldMetaListForSchema(schema as object)
 }

@@ -401,7 +401,20 @@ export default [
     //
     // Raised 50 → 53 KB tracking index.mjs's validation-signals bump
     // (PRs #278-#281): same shared core chunk. Measured at 51.13 KB.
-    limit: '53 KB',
+    //
+    // Raised 53 → 54 KB on the v3-walker-unification branch (Phase 8
+    // of the audit-remediation series, D1 / D15 / D16 / R1). The v3
+    // adapter's `getNestedZodSchemasAtPath` becomes a kind-switch
+    // mirror of v4's `walkSegments` — descends ZodUnion / ZodTuple /
+    // ZodIntersection / ZodLazy and peels ZodCatch transparently,
+    // closing the five parity gaps the audit flagged. The structural
+    // parallelism with v4 (now sharing the same accessor surface and
+    // walker shape) is the unblocker for Phase 12's adapter dedup
+    // factory (ADAPT-D1), which will collapse the parallel methods
+    // into one and reclaim this slot and more. Matches v4's 54 KB
+    // cap exactly — symmetry is honest, both adapters carry the
+    // same surface area now. Measured at 53.24 KB.
+    limit: '54 KB',
     gzip: true,
     ignore: ['zod', 'lodash-es'],
     modifyEsbuildConfig: asEsm,

@@ -485,7 +485,16 @@ export function zodAdapter<
         if (!leaf) return undefined
         // The walker preserves the TERMINAL wrapper at the leaf — peel
         // every transparent wrapper here so we see the structural kind.
-        const peeled = peelAllV3Wrappers(leaf)
+        // `peelV3Wrappers` peels Optional / Nullable / Default / Readonly
+        // / Effects / Pipeline / Branded; catch is peeled by hand since
+        // `peelV3Wrappers` preserves it for `unwrapDefault`'s use.
+        let peeled = peelV3Wrappers(leaf)
+        for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
+          if (!isZodSchemaType(peeled, 'ZodCatch')) break
+          const inner = unwrapInner(peeled)
+          if (!inner) break
+          peeled = peelV3Wrappers(inner)
+        }
         if (isZodSchemaType(peeled, 'ZodTuple')) return getTupleItems(peeled).length
         if (isZodSchemaType(peeled, 'ZodArray')) return null
         return undefined
@@ -1097,47 +1106,6 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
       continue
     }
     break
-  }
-  return current
-}
-
-/**
- * Peel every transparent wrapper (optional / nullable / default / readonly
- * / catch / pipeline / branded / effects / lazy) off `schema`. Stops on
- * the first non-wrapper kind. Used by `arrayShapeAtPath` where we want the
- * inner structural kind regardless of what the default-value semantic is
- * — different from `peelV3Wrappers`, which preserves `.catch()` so
- * `unwrapDefault` can read it directly.
- *
- * Mirrors v4's `peelAllWrappers` (`zod-v4/adapter.ts`). Bounded by
- * `MAX_UNWRAP_STEPS` as a runaway guard.
- */
-function peelAllV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
-  let current: z.ZodTypeAny = schema
-  for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
-    const k = kindOf(current)
-    let inner: z.ZodTypeAny | undefined
-    if (
-      k === 'optional' ||
-      k === 'nullable' ||
-      k === 'default' ||
-      k === 'readonly' ||
-      k === 'catch'
-    ) {
-      inner = unwrapInner(current)
-    } else if (k === 'pipeline') {
-      inner = unwrapPipeIn(current)
-    } else if (k === 'branded') {
-      inner = unwrapBranded(current)
-    } else if (k === 'effects') {
-      inner = unwrapEffectsSource(current)
-    } else if (k === 'lazy') {
-      inner = unwrapLazy(current)
-    } else {
-      return current
-    }
-    if (inner === undefined) return current
-    current = inner
   }
   return current
 }

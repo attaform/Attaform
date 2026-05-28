@@ -2491,12 +2491,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const run = () => {
       fresh.timer = null
       if (controller.signal.aborted) return
-      // Record the value this pass validates so a later blur can recognise an
-      // unchanged form and skip. Blur-mode only: the blur guard is the sole
-      // reader, so change-mode never pays for the snapshot.
-      if (effectiveMode === 'blur') {
-        lastValidatedSnapshot = { value: structuralSnapshot(form.value) }
-      }
       // Defense-in-depth: the increments below trigger reactive
       // subscribers (sync watchers on `api.meta.validating` or
       // `api.fields.X.validating`). If one of those subscribers throws,
@@ -2549,6 +2543,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // would still be a no-op.
           if (myEpoch <= lastCommittedEpoch) return
           lastCommittedEpoch = myEpoch
+          // Record the value this pass validates so a later blur can
+          // recognise an unchanged form and skip. Blur-mode only: the
+          // blur guard is the sole reader, so change-mode never pays
+          // for the snapshot. Lives in the applied branch — an aborted
+          // run never advances the snapshot, so a later blur with
+          // nothing committed for this path still re-validates instead
+          // of falsely skipping against a stale-but-uncommitted anchor.
+          if (effectiveMode === 'blur') {
+            lastValidatedSnapshot = { value: structuralSnapshot(form.value) }
+          }
           const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
           // storage is undefined AND the consumer didn't author a

@@ -96,6 +96,11 @@ interface ZodV3InternalShape {
     catchValue?: (ctx: { error: unknown; input: unknown }) => unknown
     // Refinement payload.
     checks?: readonly unknown[]
+    // `z.coerce.X()` flags the wrapped primitive's def with `coerce:
+    // true` — the constructor returns a ZodString / ZodNumber / etc.
+    // schema rather than a separate wrapper, and the flag drives Zod's
+    // own safeParse to cast the input. Used by `isCoercePrimitive`.
+    coerce?: boolean
   }
 }
 
@@ -345,6 +350,20 @@ export function getEffectsKind(
   const type = def?.effect?.type
   if (type === 'refinement' || type === 'transform' || type === 'preprocess') return type
   return undefined
+}
+
+/**
+ * Detect `z.coerce.X()` — a primitive schema (ZodString / ZodNumber /
+ * etc.) carrying `_def.coerce === true`. v3 stores coerce as a flag on
+ * the wrapped primitive's def rather than as a separate wrapper, so
+ * the schema's typeName is just `ZodString` / `ZodNumber` / etc.; the
+ * caller still wants to know it's a coerce slot (default-derivation
+ * leaves the slot `undefined`; the slim-primitive write gate accepts
+ * raw consumer writes verbatim through the coerce subtree). Mirrors
+ * v4's `isCoercePrimitive`.
+ */
+export function isCoercePrimitive(schema: z.ZodTypeAny): boolean {
+  return readDef(schema)?.coerce === true
 }
 
 /** ZodPipeline input schema. */

@@ -90,6 +90,7 @@ import {
   hasCatchValue,
   hasChecks,
   hasContainerOrRootRefine,
+  isCoercePrimitive,
   kindOf,
   unwrapBranded,
   unwrapEffectsSource,
@@ -597,13 +598,20 @@ export function zodAdapter<
         return isLeaf
       },
       isPreprocessOrCoerceLeaf(path) {
-        // Walks prefixes of `path` looking for a `ZodEffects` whose
-        // `effect.type === 'preprocess'`. Returns true at such a node
-        // OR anywhere underneath it; the slim-primitive gate uses this
-        // to accept raw consumer writes verbatim throughout that
-        // subtree. v3 has no `z.coerce.X()` analog (coerce in v3 is a
-        // boolean flag on the wrapped primitive, not a separate
-        // wrapper), so this only fires for `z.preprocess(fn, _)`.
+        // Walks prefixes of `path` looking for either shape v3 uses for
+        // schema-side input normalizers:
+        //   - `z.preprocess(fn, inner)` — a `ZodEffects` whose
+        //     `effect.type === 'preprocess'` (`getEffectsKind`).
+        //   - `z.coerce.X()` — a primitive schema (ZodString /
+        //     ZodNumber / etc.) carrying `_def.coerce === true`
+        //     (`isCoercePrimitive`). v3's coerce is a flag on the
+        //     wrapped primitive's def rather than a wrapper, so the
+        //     typeName stays `ZodString` etc.; the gate still needs to
+        //     recognise the coerce intent so raw consumer writes pass
+        //     through verbatim, matching v4.
+        // Returns true at such a node OR anywhere underneath it; the
+        // slim-primitive gate uses this to accept raw consumer writes
+        // verbatim throughout that subtree.
         const cacheKey = canonicalizePath(path).key
         const cached = preprocessOrCoerceCache.get(cacheKey)
         if (cached !== undefined) return cached
@@ -619,6 +627,10 @@ export function zodAdapter<
                   _maxRecursionDepth
                 ) as z.ZodTypeAny[])
           for (const candidate of candidates) {
+            if (isCoercePrimitive(candidate)) {
+              hit = true
+              break
+            }
             if (!isZodSchemaType(candidate, 'ZodEffects')) continue
             if (getEffectsKind(candidate) === 'preprocess') {
               hit = true
@@ -1369,6 +1381,37 @@ function unwrapDefault(schema: z.ZodTypeAny): [unknown, boolean] {
   return [null, false]
 }
 
+/**
+ * Walk through transparent wrappers (Optional / Nullable / Readonly /
+ * Catch) looking for a `ZodDefault` in the chain. Used by the preprocess
+ * branch of `generateValue` to decide whether the inner has a
+ * consumer-declared default the adapter should honor (return the inner
+ * walk) or whether the slot is fully consumer-owned (return `undefined`).
+ * Mirrors v4's `hasDeclaredDefaultInChain`.
+ *
+ * Bounded loop matches the surrounding `unwrapDefault`/`unwrapTo*`
+ * patterns — a deeper wrapper stack is almost certainly a recursive
+ * cycle, not legitimate schema construction.
+ */
+function hasDeclaredDefaultInChainV3(schema: z.ZodTypeAny): boolean {
+  let current: z.ZodTypeAny | undefined = schema
+  for (let i = 0; i < 32; i++) {
+    if (current === undefined) return false
+    if (isZodSchemaType(current, 'ZodDefault')) return true
+    if (
+      isZodSchemaType(current, 'ZodOptional') ||
+      isZodSchemaType(current, 'ZodNullable') ||
+      isZodSchemaType(current, 'ZodReadonly') ||
+      isZodSchemaType(current, 'ZodCatch')
+    ) {
+      current = unwrapInner(current)
+      continue
+    }
+    return false
+  }
+  return false
+}
+
 function getDefaultValuesFromZodSchema<
   FormSchema extends z.ZodSchema,
   Form extends z.infer<FormSchema>,
@@ -1383,6 +1426,16 @@ function getDefaultValuesFromZodSchema<
         return defaultValue // Prioritize the 1st default value (if it exists)
       }
     }
+
+    // `z.coerce.X()` flags the wrapped primitive's def with `coerce:
+    // true`; the consumer's input pre-conversion shape is unknown so
+    // synthesising the primitive's slim concrete (`''` / `0` / etc.)
+    // would claim a value the consumer never supplied. Leave the slot
+    // `undefined` so `defaultValues` or a later `setValue` owns what
+    // lands in storage. A consumer-declared `.default(x)` on the coerce
+    // primitive was already honored by the `unwrapDefault` check above.
+    // Mirrors v4's `isCoercePrimitive` early-return.
+    if (isCoercePrimitive(schema)) return undefined
 
     // Handle nullable
     if (isZodSchemaType(schema, 'ZodNullable')) {
@@ -1481,6 +1534,20 @@ function getDefaultValuesFromZodSchema<
 
     if (isZodSchemaType(schema, 'ZodEffects')) {
       const inner = unwrapEffectsSource(schema)
+      // `z.preprocess(fn, _)` declares an input normalizer; the input
+      // side is the user-supplied `fn` and the slot has no canonical
+      // empty value the adapter can honestly synthesise. Mirror v4's
+      // pipe-with-transform case: when the inner carries a consumer-
+      // declared default it takes priority (recurse so the `unwrapDefault`
+      // check at the top of `generateValue` picks it up under
+      // `useDefaultSchemaValues`, or the inner `ZodDefault` branch
+      // resolves to the leaf empty under strict mode); otherwise leave
+      // the slot `undefined`. `refinement` / `transform` keep the
+      // original behavior — they wrap a real source schema.
+      if (getEffectsKind(schema) === 'preprocess') {
+        if (inner && hasDeclaredDefaultInChainV3(inner)) return generateValue(inner)
+        return undefined
+      }
       if (inner) return generateValue(inner)
     }
 

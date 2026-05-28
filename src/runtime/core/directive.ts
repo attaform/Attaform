@@ -288,10 +288,6 @@ function logTransformFailure(
 }
 
 /**
- * Log a Promise-returning transform. Same dev/prod posture as
- * `logTransformFailure` — informative in dev, opaque in prod.
- */
-/**
  * Apply the field's coerce closure (built at register-time by
  * `buildCoerceFn`) to a post-transform value. Identity when the
  * RegisterValue is a hand-rolled mock that omits the field, or when
@@ -316,6 +312,10 @@ function applyElementCoerce(value: unknown, registerValue: RegisterValue): unkno
   return registerValue.coerceElement !== undefined ? registerValue.coerceElement(value) : value
 }
 
+/**
+ * Log a Promise-returning transform. Same dev/prod posture as
+ * `logTransformFailure` — informative in dev, opaque in prod.
+ */
 function logTransformAsync(path: PathKey): void {
   if (__DEV__) {
     console.error(

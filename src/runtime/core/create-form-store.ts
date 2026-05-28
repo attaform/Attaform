@@ -3426,6 +3426,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // that reached the controller-aborted branch resolve to a no-op, so
     // the error store stays clean after the reset clears it above.
     cancelFieldValidation()
+    // Reset the per-path blur-dedup snapshots and the form-level epoch
+    // counters. After `cancelFieldValidation` no in-flight run can
+    // commit, so clearing here can't be raced by a late commit
+    // re-populating the map. Survivor snapshots from before the reset
+    // would otherwise match a post-reset value that happens to mirror
+    // a pre-reset state and skip a real revalidation that the reset's
+    // cleared error stores need to repopulate.
+    pathSnapshots.clear()
+    scheduleEpoch = 0
+    lastCommittedEpoch = 0
     // Variant memory is UX state — a fresh start drops the per-variant
     // typed-data cache too. Without this, a post-reset switch would
     // surface stale variant values from before the reset.

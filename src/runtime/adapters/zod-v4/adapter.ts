@@ -276,10 +276,61 @@ export function zodV4Adapter<
     // primitive write gate consults it at every level of value-tree
     // descent; the prefix walk is cheap but adds up across deep writes.
     const preprocessOrCoerceCache = new Map<PathKey, boolean>()
+    // Per-adapter cache for `getUnionDiscriminatorAtPath`. The walker
+    // path is consulted on every `setValue` and every `form.meta` read
+    // (every ancestor segment, every time), and the result is a pure
+    // function of (schema, path) — once computed it never changes for
+    // the lifetime of the adapter. Caches both positive and negative
+    // (no-DU) results so the common no-DU schema pays the walk cost
+    // once per path instead of per keystroke.
+    const discriminatorCache = new Map<PathKey, UnionDiscriminatorContext | undefined>()
     // Memoised one-shot walk; `needsAsyncValidation` is queried at
     // construction and possibly again from devtools, so a single tree
     // traversal earns its keep across the adapter's lifetime.
     let asyncValidationFlag: boolean | null = null
+
+    function computeDiscriminator(path: Path): UnionDiscriminatorContext | undefined {
+      const candidates =
+        path.length === 0
+          ? [rootSchema as z.ZodType]
+          : getNestedZodSchemasAtPath(rootSchema, path, maxRecursionDepth)
+      let matchedUnion: z.ZodType | undefined
+      for (const candidate of candidates) {
+        const du = unwrapToDiscriminatedUnion(candidate)
+        if (du === undefined) continue
+        if (matchedUnion !== undefined && matchedUnion !== du) return undefined
+        matchedUnion = du
+      }
+      if (matchedUnion === undefined) return undefined
+      const discKey = getDiscriminator(matchedUnion)
+      if (discKey === undefined) return undefined
+      const options = getDiscriminatedOptions(matchedUnion)
+      const literalSet = new Set<unknown>()
+      for (const opt of options) {
+        const shape = getObjectShape(opt)
+        const litSchema = shape[discKey]
+        if (litSchema === undefined) continue
+        if (kindOf(litSchema) !== 'literal') continue
+        for (const v of getLiteralValues(litSchema)) literalSet.add(v)
+      }
+      return {
+        discriminatorKey: discKey,
+        getVariantDefault(value: unknown): unknown {
+          for (const opt of options) {
+            const shape = getObjectShape(opt)
+            const litSchema = shape[discKey]
+            if (litSchema === undefined) continue
+            if (kindOf(litSchema) !== 'literal') continue
+            const literalValues = getLiteralValues(litSchema)
+            if (literalValues.includes(value)) return deriveDefault(opt, true, maxRecursionDepth)
+          }
+          return undefined
+        },
+        isVariantSelected(value: unknown): boolean {
+          return literalSet.has(value)
+        },
+      }
+    }
 
     return {
       fingerprint: () => fingerprintZodSchema(rootSchema),
@@ -548,46 +599,13 @@ export function zodV4Adapter<
         // `unwrapToDiscriminatedUnion`. Ambiguous resolutions (two
         // distinct DUs both reachable) bail — the runtime then falls
         // back to a plain write.
-        const candidates =
-          path.length === 0
-            ? [rootSchema as z.ZodType]
-            : getNestedZodSchemasAtPath(rootSchema, path, maxRecursionDepth)
-        let matchedUnion: z.ZodType | undefined
-        for (const candidate of candidates) {
-          const du = unwrapToDiscriminatedUnion(candidate)
-          if (du === undefined) continue
-          if (matchedUnion !== undefined && matchedUnion !== du) return undefined
-          matchedUnion = du
+        const cacheKey = canonicalizePath(path).key
+        if (discriminatorCache.has(cacheKey)) {
+          return discriminatorCache.get(cacheKey)
         }
-        if (matchedUnion === undefined) return undefined
-        const discKey = getDiscriminator(matchedUnion)
-        if (discKey === undefined) return undefined
-        const options = getDiscriminatedOptions(matchedUnion)
-        const literalSet = new Set<unknown>()
-        for (const opt of options) {
-          const shape = getObjectShape(opt)
-          const litSchema = shape[discKey]
-          if (litSchema === undefined) continue
-          if (kindOf(litSchema) !== 'literal') continue
-          for (const v of getLiteralValues(litSchema)) literalSet.add(v)
-        }
-        return {
-          discriminatorKey: discKey,
-          getVariantDefault(value: unknown): unknown {
-            for (const opt of options) {
-              const shape = getObjectShape(opt)
-              const litSchema = shape[discKey]
-              if (litSchema === undefined) continue
-              if (kindOf(litSchema) !== 'literal') continue
-              const literalValues = getLiteralValues(litSchema)
-              if (literalValues.includes(value)) return deriveDefault(opt, true, maxRecursionDepth)
-            }
-            return undefined
-          },
-          isVariantSelected(value: unknown): boolean {
-            return literalSet.has(value)
-          },
-        }
+        const result = computeDiscriminator(path)
+        discriminatorCache.set(cacheKey, result)
+        return result
       },
 
       validateAtPath(

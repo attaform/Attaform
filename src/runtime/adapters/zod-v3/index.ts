@@ -116,6 +116,60 @@ export function zodAdapter<
     // Per-adapter cache for the preprocess predicate. The slim-primitive
     // write gate consults it at every level of value-tree descent.
     const preprocessOrCoerceCache = new Map<PathKey, boolean>()
+    // Per-adapter cache for `getUnionDiscriminatorAtPath`. The walker
+    // path is consulted on every `setValue` and every `form.meta` read
+    // (every ancestor segment, every time), and the result is a pure
+    // function of (schema, path) — once computed it never changes for
+    // the lifetime of the adapter. Caches both positive and negative
+    // (no-DU) results so the common no-DU schema pays the walk cost
+    // once per path instead of per keystroke.
+    const discriminatorCache = new Map<PathKey, UnionDiscriminatorContext | undefined>()
+
+    function computeDiscriminator(path: Path): UnionDiscriminatorContext | undefined {
+      const candidates =
+        path.length === 0
+          ? [_zodSchema as z.ZodTypeAny]
+          : (getNestedZodSchemasAtPath(_zodSchema, path) as z.ZodTypeAny[])
+      let matchedUnion: z.ZodTypeAny | undefined
+      for (const candidate of candidates) {
+        const peeled = peelV3Wrappers(candidate)
+        if (!isZodSchemaType(peeled, 'ZodDiscriminatedUnion')) continue
+        if (matchedUnion !== undefined && matchedUnion !== peeled) return undefined
+        matchedUnion = peeled
+      }
+      if (matchedUnion === undefined) return undefined
+      const discKey = (
+        matchedUnion as z.ZodDiscriminatedUnion<string, z.ZodDiscriminatedUnionOption<string>[]>
+      )._def.discriminator
+      const options = (
+        matchedUnion as z.ZodDiscriminatedUnion<string, z.ZodDiscriminatedUnionOption<string>[]>
+      )._def.options
+      const literalSet = new Set<unknown>()
+      for (const opt of options) {
+        const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
+        if (!litSchema) continue
+        if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
+        literalSet.add(litSchema._def.value)
+      }
+      return {
+        discriminatorKey: discKey,
+        getVariantDefault(value: unknown): unknown {
+          for (const opt of options) {
+            const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
+            if (!litSchema) continue
+            if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
+            if (litSchema._def.value === value) {
+              return getDefaultValuesFromZodSchema(opt as unknown as z.ZodSchema, true, _formKey)
+            }
+          }
+          return undefined
+        },
+        isVariantSelected(value: unknown): boolean {
+          return literalSet.has(value)
+        },
+      }
+    }
+
     const abstractSchema: AbstractSchema<Form, GetValueFormType> = {
       fingerprint: () => fingerprintZodSchema(_zodSchema),
       getDefaultValues(config) {
@@ -450,48 +504,13 @@ export function zodAdapter<
         // is (or wraps) a discriminated union. `peelV3Wrappers` peels
         // optional / nullable / default / effects / pipeline / readonly
         // / branded.
-        const candidates =
-          path.length === 0
-            ? [_zodSchema as z.ZodTypeAny]
-            : (getNestedZodSchemasAtPath(_zodSchema, path) as z.ZodTypeAny[])
-        let matchedUnion: z.ZodTypeAny | undefined
-        for (const candidate of candidates) {
-          const peeled = peelV3Wrappers(candidate)
-          if (!isZodSchemaType(peeled, 'ZodDiscriminatedUnion')) continue
-          if (matchedUnion !== undefined && matchedUnion !== peeled) return undefined
-          matchedUnion = peeled
+        const cacheKey = canonicalizePath(path).key
+        if (discriminatorCache.has(cacheKey)) {
+          return discriminatorCache.get(cacheKey)
         }
-        if (matchedUnion === undefined) return undefined
-        const discKey = (
-          matchedUnion as z.ZodDiscriminatedUnion<string, z.ZodDiscriminatedUnionOption<string>[]>
-        )._def.discriminator
-        const options = (
-          matchedUnion as z.ZodDiscriminatedUnion<string, z.ZodDiscriminatedUnionOption<string>[]>
-        )._def.options
-        const literalSet = new Set<unknown>()
-        for (const opt of options) {
-          const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
-          if (!litSchema) continue
-          if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
-          literalSet.add(litSchema._def.value)
-        }
-        return {
-          discriminatorKey: discKey,
-          getVariantDefault(value: unknown): unknown {
-            for (const opt of options) {
-              const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
-              if (!litSchema) continue
-              if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
-              if (litSchema._def.value === value) {
-                return getDefaultValuesFromZodSchema(opt as unknown as z.ZodSchema, true, _formKey)
-              }
-            }
-            return undefined
-          },
-          isVariantSelected(value: unknown): boolean {
-            return literalSet.has(value)
-          },
-        }
+        const result = computeDiscriminator(path)
+        discriminatorCache.set(cacheKey, result)
+        return result
       },
       getSlimPrimitiveTypesAtPath(path) {
         if (path.length === 0) return new Set(['object'])

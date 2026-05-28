@@ -153,7 +153,7 @@ describe('form.errors — readonly contract', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('rejects direct property assignment at a leaf', () => {
+  it('ignores direct property assignment at a leaf (warn-and-noop)', () => {
     const { app, api } = mount()
     apps.push(app)
 
@@ -161,17 +161,20 @@ describe('form.errors — readonly contract', () => {
       { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
     ])
 
-    // Strict mode (ESM): the `set` trap returning false throws TypeError.
+    // PASS2-4: writes through the readonly proxy warn-and-noop instead
+    // of throwing `TypeError` under strict mode. The actual readonly
+    // guarantee is the absence of any mutation — pinned by the entry
+    // surviving below.
     expect(() => {
       // @ts-expect-error — runtime proves the trap matches the type promise.
       api.errors.email = []
-    }).toThrow(TypeError)
+    }).not.toThrow()
 
     // Underlying entry survives.
     expect(api.errors.email?.[0]?.message).toBe('bad email')
   })
 
-  it('rejects delete at a leaf', () => {
+  it('ignores delete at a leaf (warn-and-noop)', () => {
     const { app, api } = mount()
     apps.push(app)
 
@@ -182,7 +185,7 @@ describe('form.errors — readonly contract', () => {
     expect(() => {
       // @ts-expect-error — runtime proves the trap matches the type promise.
       delete api.errors.email
-    }).toThrow(TypeError)
+    }).not.toThrow()
 
     expect(api.errors.email?.[0]?.message).toBe('bad email')
   })

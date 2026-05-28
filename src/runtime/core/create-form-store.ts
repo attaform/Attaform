@@ -29,6 +29,7 @@ import {
   FORM_ERRORS_PATH_KEY,
   isDangerousSegment,
   isPathPrefix,
+  ROOT_PATH_KEY,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -1683,16 +1684,25 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const departAttempts = ref(0)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
-  // Structural snapshot of the form value as of the last blur-mode validation
-  // pass, `null` before the first. The blur guard skips a re-run only while
-  // the live form still deep-equals this (no leaf differs): a focus/blur cycle
-  // with no net change can't move any verdict, so re-running would only
-  // flicker a settled error through 'pending'. Keying on the value, not a
-  // write count, means editing away and back to the last-validated value
-  // (`"a" -> "ab" -> "a"`) also stays quiet. The `{ value }` box keeps a form
-  // value of `null` / `undefined` distinct from "never validated". Plain
-  // `let`, not a ref: only the blur handler reads it, never reactively.
-  let lastValidatedSnapshot: { readonly value: unknown } | null = null
+  // Per-path snapshots of `form.value` keyed by the canonical
+  // PathKey of the SCOPE each blur-mode `run()` commits at. The
+  // blur-dedup at path P walks from P up to the root and reads the
+  // closest ancestor entry, then compares the subtree-at-P from
+  // that snapshot against the live subtree-at-P — so a sibling-only
+  // edit between blurs leaves A's subtree-at-A unchanged and A's
+  // re-blur correctly skips, without depending on whether B's
+  // commit happened to advance a shared anchor.
+  //
+  // Under today's whole-form validation scope every commit lands at
+  // the root key, so all blurs share a single entry (equivalent
+  // semantics to the old form-wide `let`). Per-path lookup keeps
+  // the design correct once subtree-scope commits land: a commit
+  // at B advances B's entry only; A's blur-dedup walks up to
+  // whatever ancestor scope WAS last committed and uses it.
+  //
+  // Empty Map → no entry → first blur revalidates (matches the
+  // pre-fix `null` initial state).
+  const pathSnapshots = new Map<PathKey, unknown>()
   // Form-level monotonic counters that guard cross-path async races.
   // Per-path AbortControllers cover same-path rapid typing (a fresh
   // schedule cancels its predecessor at the same key), but they don't
@@ -2550,8 +2560,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // run never advances the snapshot, so a later blur with
           // nothing committed for this path still re-validates instead
           // of falsely skipping against a stale-but-uncommitted anchor.
+          //
+          // Keyed under `ROOT_PATH_KEY` while validation scope is
+          // whole-form. Once CORE-P1a's subtree scope lands, this
+          // becomes the canonical key of the actual commit scope.
           if (effectiveMode === 'blur') {
-            lastValidatedSnapshot = { value: structuralSnapshot(form.value) }
+            pathSnapshots.set(ROOT_PATH_KEY, structuralSnapshot(form.value))
           }
           const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
@@ -3007,11 +3021,35 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (!focused && focusMode === 'blur') {
       const firstInteractiveBlur =
         current?.interacted === true && current.blurredAfterInteraction !== true
-      const snapshot = lastValidatedSnapshot
+      // Walk from the blurred path up to the root and pick the first
+      // ancestor scope that's been committed at. The blur-dedup
+      // compares the SUBTREE-AT-PATH of that snapshot against the
+      // live subtree — a sibling-only edit between blurs leaves
+      // this path's subtree unchanged and the dedup correctly
+      // skips. Under whole-form scope today every commit lives at
+      // `ROOT_PATH_KEY`, so the walk falls through to that single
+      // entry; under subtree scope (CORE-P1a) the closest ancestor
+      // entry is the one this leaf was actually validated under.
+      let snapshot: unknown | undefined = undefined
+      for (let i = path.length; i >= 0; i--) {
+        const ancestorKey = canonicalizePath(path.slice(0, i)).key
+        const entry = pathSnapshots.get(ancestorKey)
+        if (entry !== undefined) {
+          snapshot = entry
+          break
+        }
+      }
       let changed = true
-      if (!firstInteractiveBlur && snapshot !== null) {
+      if (!firstInteractiveBlur && snapshot !== undefined) {
+        // Extract the SUBTREE-AT-PATH on both sides — `diffAndApply`'s
+        // `prefix` only labels emitted patch paths, it doesn't scope
+        // the walk. Subtree extraction is what makes a sibling-only
+        // edit between blurs (this path unchanged) read as
+        // `changed === false`.
+        const snapshotSubtree = getAtPath(snapshot, path)
+        const liveSubtree = getAtPath(form.value, path)
         changed = false
-        diffAndApply(snapshot.value, form.value, [], () => {
+        diffAndApply(snapshotSubtree, liveSubtree, path, () => {
           changed = true
         })
       }

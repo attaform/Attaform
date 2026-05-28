@@ -1540,6 +1540,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
     migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    // Nested-array identity: relocate every tracked array sitting under
+    // `arrayPath`'s element slots so a nested `v-for :key` stays stable
+    // across an outer-array mutation (no token leak, no collision on the
+    // new occupant of a vacated slot).
+    arrayIdentity.applyRemap(arrayPath, remap)
   }
 
   // Register a freshly created element (an insert slot, a replace-at target)

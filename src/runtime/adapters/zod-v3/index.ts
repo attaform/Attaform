@@ -1,4 +1,4 @@
-import { cloneDeep, isFunction, merge, set } from 'lodash-es'
+import { cloneDeep, isFunction } from 'lodash-es'
 // Imports zod v3 via the pnpm alias defined in devDependencies; the
 // published bundle rewrites this specifier back to 'zod' via the build
 // step (see build.config.ts). Consumers of `attaform/zod-v3`
@@ -13,7 +13,7 @@ import type {
   ValidationError,
   ValidationResponse,
 } from '../../types/types-api'
-import { getAtPath } from '../../core/path-walker'
+import { getAtPath, isPlainRecord, setAtPath } from '../../core/path-walker'
 import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path, type PathKey } from '../../core/paths'
@@ -57,6 +57,42 @@ function constraintsAreSlimValid(slimSchema: z.ZodSchema, constraints: unknown):
   } catch {
     return false
   }
+}
+
+/**
+ * Deep-merge two values for default-derivation. Mirrors v4's
+ * `mergeDeep` (`default-values.ts:308`) exactly so the v3 + v4
+ * constraint-merge semantic matches:
+ *
+ *   - `undefined` override → keep base
+ *   - non-plain-record override (primitive, array, `Date`, `Map`,
+ *     class instance, `null`) → REPLACE base wholesale (NOT lodash's
+ *     element-wise array merge; explicit `null` clears a nullable
+ *     default rather than being silently dropped)
+ *   - plain-record override + plain-record base → recurse per-key
+ *   - plain-record override + non-plain-record base → replace
+ *     wholesale
+ *
+ * Local duplication of v4's helper; Phase 12's `createAbstractSchema`
+ * factory will dedup against `ADAPT-D5` (validate-then-fix
+ * `getDefaultValues` loop). Pre-1.0 with no users so the temporary
+ * duplication carries no compat tail.
+ */
+function mergeDeepV3(base: unknown, override: unknown): unknown {
+  if (override === undefined) return base
+  if (!isPlainRecord(override)) return override
+  if (!isPlainRecord(base)) return override
+  const result: Record<string, unknown> = { ...base }
+  for (const key of Object.keys(override)) {
+    const oVal = override[key]
+    const bVal = base[key]
+    if (isPlainRecord(oVal) && isPlainRecord(bVal)) {
+      result[key] = mergeDeepV3(bVal, oVal)
+    } else {
+      result[key] = oVal
+    }
+  }
+  return result
 }
 
 import { __DEV__ } from '../../core/dev'
@@ -250,7 +286,10 @@ export function zodAdapter<
 
         let rawDefaultValues = defaultValuesWithoutConstraints
         if (!isPrimitive(rawDefaultValues)) {
-          rawDefaultValues = merge(defaultValuesWithoutConstraints, config.constraints)
+          // `mergeDeepV3` (NOT lodash `merge`) so arrays replace
+          // wholesale and explicit `null`/`undefined` overrides survive,
+          // matching v4's `mergeDeep` semantic.
+          rawDefaultValues = mergeDeepV3(defaultValuesWithoutConstraints, config.constraints)
         } else if (constraintsAreSlimValid(slimSchema, config.constraints)) {
           rawDefaultValues = config.constraints
         }
@@ -372,7 +411,7 @@ export function zodAdapter<
                       },
                     }
                 const defaultValue = getDefaultValue(issue.expected, defaultValueContext)
-                set(fixedData, path, defaultValue)
+                fixedData = setAtPath(fixedData, path, defaultValue) as Record<string, unknown>
                 continue
               }
 
@@ -381,7 +420,7 @@ export function zodAdapter<
               // against a string-enum). Fall back to the schema's default.
               const [defaultValue, found] = unwrapDefault(schemaAtPath)
               if (found) {
-                set(fixedData, path, defaultValue)
+                fixedData = setAtPath(fixedData, path, defaultValue) as Record<string, unknown>
                 continue
               }
               // Last-ditch: derive a default for the schema kind at this
@@ -415,12 +454,18 @@ export function zodAdapter<
                                 ? 'object'
                                 : null
                 if (expected !== null) {
-                  set(fixedData, path, getDefaultValue(expected, ctx))
+                  fixedData = setAtPath(fixedData, path, getDefaultValue(expected, ctx)) as Record<
+                    string,
+                    unknown
+                  >
                 }
               }
             }
           }
-          fixedData = merge(rawDefaultValues, fixedData)
+          // `mergeDeepV3` so the fix-up overrides the raw defaults
+          // with copy-on-write semantics matching v4 (array replace,
+          // null/undefined clears honored).
+          fixedData = mergeDeepV3(rawDefaultValues, fixedData) as Record<string, unknown>
         }
 
         // Best-effort re-parse: if the fix-up loop couldn't fully
@@ -1650,14 +1695,15 @@ function getDefaultValuesFromZodSchema<
 
     // ZodIntersection — `z.intersection(A, B)` must satisfy both sides
     // at parse time, so the merged shape carries both halves' defaults.
-    // `merge` mutates its first arg, so seed an empty record. Leaves on
-    // either side replace; nested records merge recursively.
+    // `mergeDeepV3` (NOT lodash `merge`) so leaves replace wholesale and
+    // explicit `null` overrides survive — matches v4's intersection
+    // branch (`default-values.ts:228-244`).
     if (isZodSchemaType(schema, 'ZodIntersection')) {
       const leftSchema = getIntersectionLeft(schema)
       const rightSchema = getIntersectionRight(schema)
       const left = leftSchema ? generateValue(leftSchema) : undefined
       const right = rightSchema ? generateValue(rightSchema) : undefined
-      return merge({}, left, right)
+      return mergeDeepV3(left, right)
     }
 
     // ZodNativeEnum — TS-enum-backed selects. Numeric enums get

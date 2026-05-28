@@ -122,6 +122,16 @@ const JOIN_COLLECTION_WINDOW_MS = 50
 const SNAPSHOT_TIMEOUT_MS = 200
 /** Max retries for leader-election before giving up and proceeding solo. */
 const MAX_LEADER_ATTEMPTS = 3
+/**
+ * Minimum gap between snapshot replies to the SAME requesting sender.
+ * Each reply is a full-form deep-clone + sensitive-scrub + serialise, so
+ * an unthrottled responder is a CPU-amplification target for a hostile
+ * same-origin tab that spams `requestSnapshot`. A legitimate joiner
+ * sends a leader exactly one request (a lost reply retries the
+ * next-lowest leader, not the same one), so this never drops real
+ * traffic. Comfortably above `SNAPSHOT_TIMEOUT_MS` for that reason.
+ */
+const SNAPSHOT_RESPONSE_MIN_INTERVAL_MS = 500
 
 type SyncMessage<F> =
   | { readonly v: 1; readonly kind: 'hello'; readonly senderId: string }
@@ -407,6 +417,9 @@ export function createMultiTabSyncModule<F extends GenericForm>(
   // election. Cleared once the joining tab transitions to
   // `'established'` (no further use case for the set).
   const peerIds = new Set<string>()
+  // Last snapshot-reply timestamp per requesting sender — throttles the
+  // expensive scrub+serialise against a spamming peer (SEC-4).
+  const lastSnapshotResponseAt = new Map<string, number>()
   let joinCollectionTimer: ReturnType<typeof setTimeout> | null = null
   let snapshotTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   let leaderAttempts = 0
@@ -604,7 +617,14 @@ export function createMultiTabSyncModule<F extends GenericForm>(
     safePost({ v: PROTOCOL_VERSION, kind: 'announce', senderId })
   }
 
-  function respondToSnapshotRequest(): void {
+  function respondToSnapshotRequest(requesterId: string): void {
+    // Throttle per requester: a hostile tab that learned our senderId
+    // could otherwise spam requests and force a full scrub+serialise on
+    // each. A real joiner only asks once, so this is invisible to it.
+    const now = Date.now()
+    const last = lastSnapshotResponseAt.get(requesterId)
+    if (last !== undefined && now - last < SNAPSHOT_RESPONSE_MIN_INTERVAL_MS) return
+    lastSnapshotResponseAt.set(requesterId, now)
     const scrubbedForm = stripSensitivePathsDeep(state.form.value, [], options.isSensitivePath) as F
     safePost({
       v: PROTOCOL_VERSION,
@@ -641,7 +661,7 @@ export function createMultiTabSyncModule<F extends GenericForm>(
         case 'requestSnapshot':
           if (lifecycle !== 'established') return
           if (msg.targetId !== senderId) return
-          respondToSnapshotRequest()
+          respondToSnapshotRequest(msg.senderId)
           break
         case 'snapshot':
           handleSnapshot(msg)

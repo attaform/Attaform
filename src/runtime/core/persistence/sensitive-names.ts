@@ -24,9 +24,9 @@ import type { Path, PathKey, Segment } from '../paths'
  * })
  * ```
  *
- * The same resolved predicate gates persistence writes, multi-tab sync
- * broadcasts, AND the DevTools redact walk — one source of truth for
- * "what counts as sensitive" across every surface.
+ * The same resolved predicate gates persistence writes and multi-tab
+ * sync broadcasts — one source of truth for "what counts as sensitive"
+ * across those surfaces. (DevTools renders raw values by design.)
  *
  * **Non-goals.** This is not a soundness guarantee. Adversarial paths
  * (`'sensitive_data'`, `'CCV'` instead of `'CVV'`) can slip through.
@@ -142,8 +142,8 @@ const DEFAULT_PATTERNS = namesToPatterns(DEFAULT_SENSITIVE_NAMES)
 
 /**
  * Factory: returns a closure that tests a single Segment against the
- * resolved name list. Reused by the DevTools redact walk to
- * short-circuit whole subtrees the moment any ancestor segment matches.
+ * resolved name list. `createIsSensitivePath` composes it to test the
+ * segments of a full path.
  *
  * Pass an empty array to disable the heuristic entirely (no segment
  * counts as sensitive). Omitting the argument uses the library

@@ -1283,8 +1283,9 @@ export type UseFormConfiguration<
   maxRecursionDepth?: number
   /**
    * Override the path-segment name stems treated as sensitive for this
-   * form. Sensitive paths are excluded from persistence writes,
-   * multi-tab sync broadcasts, AND the DevTools redact walk.
+   * form. Sensitive paths are excluded from persistence writes and
+   * multi-tab sync broadcasts. (DevTools renders raw values by design;
+   * it does not redact.)
    *
    * Resolution: per-form value (this field) > global default
    * (`createAttaform({ defaults: { sensitiveNames } })`) > library
@@ -1511,9 +1512,10 @@ export type AttaformDefaults = {
   maxRecursionDepth?: number
   /**
    * Override the path-segment name stems treated as sensitive.
-   * Sensitive paths are excluded from persistence writes, multi-tab
-   * sync broadcasts, AND the DevTools redact walk — one configurable
-   * source of truth across every surface.
+   * Sensitive paths are excluded from persistence writes and multi-tab
+   * sync broadcasts — one configurable source of truth across those
+   * surfaces. (DevTools renders raw values by design; it does not
+   * redact.)
    *
    * Library default is `DEFAULT_SENSITIVE_NAMES` (exported from
    * `attaform`); compose to extend:

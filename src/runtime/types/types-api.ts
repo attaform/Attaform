@@ -547,6 +547,33 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * answers without a separate top-level overload.
    */
   needsAsyncValidation?(): boolean
+
+  /**
+   * Return `true` iff the schema carries a refine / check / transform
+   * at any NON-LEAF position — a container node (object / array /
+   * tuple / union / intersection / record / map / set) or the root
+   * itself. False means every check this schema runs is leaf-local,
+   * so a per-keystroke `validateAtPath(form, leafPath)` catches the
+   * same verdicts as a whole-form pass — no ancestor refine reads
+   * the form's wider state.
+   *
+   * The runtime uses this at the per-keystroke schedule to scope
+   * field-level validation to the changed subtree when it can,
+   * falling back to a whole-form pass when an ancestor refine
+   * (cross-field equality, sum constraints, etc.) could be moved
+   * by a leaf write. Optional. The runtime treats a missing
+   * implementation as `() => true` — conservative whole-form,
+   * preserving correctness for adapters that don't yet model
+   * container-refine detection.
+   *
+   * Detection is best-effort: false negatives (returning `true`
+   * when no container refine exists) only lose a perf win and
+   * still validate correctly; false positives (returning `false`
+   * when a container refine exists) would let an ancestor verdict
+   * go stale and are the real risk — implementations should bias
+   * toward returning `true` when in doubt.
+   */
+  hasContainerOrRootRefine?(): boolean
 }
 
 /**

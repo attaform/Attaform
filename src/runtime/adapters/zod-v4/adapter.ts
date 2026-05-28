@@ -35,6 +35,7 @@ import {
   getSetValueType,
   getTupleItems,
   getUnionOptions,
+  hasContainerOrRootRefine,
   isCoercePrimitive,
   kindOf,
   unwrapInner,
@@ -288,6 +289,11 @@ export function zodV4Adapter<
     // construction and possibly again from devtools, so a single tree
     // traversal earns its keep across the adapter's lifetime.
     let asyncValidationFlag: boolean | null = null
+    // Same lazy-memo pattern as the async flag: the per-keystroke
+    // validation scheduler queries `hasContainerOrRootRefine` on every
+    // keystroke to decide whole-form vs subtree scope, so the walk
+    // pays for itself within the first few mutations.
+    let containerRefineFlag: boolean | null = null
 
     function computeDiscriminator(path: Path): UnionDiscriminatorContext | undefined {
       const candidates =
@@ -339,6 +345,11 @@ export function zodV4Adapter<
         asyncValidationFlag ??=
           containsAsyncRefine(rootSchema) || containsAsyncTransform(rootSchema)
         return asyncValidationFlag
+      },
+
+      hasContainerOrRootRefine(): boolean {
+        containerRefineFlag ??= hasContainerOrRootRefine(rootSchema)
+        return containerRefineFlag
       },
 
       getDefaultValues(

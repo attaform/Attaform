@@ -464,6 +464,121 @@ export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): 
 }
 
 /**
+ * True iff the schema tree carries any refine / check / transform at
+ * the root or at a non-leaf node. False means every check is at a leaf
+ * — a per-keystroke subtree pass will catch the same verdicts as a
+ * whole-form pass, and the runtime can scope leaf validation to the
+ * edited path. True forces whole-form (correct, just slower).
+ *
+ * "Non-leaf" is detected by the presence of descendable children on
+ * `def`: `shape` / `entries` / `element` / `options` / `items` /
+ * `keyType` / `valueType` / `left` / `right`. The root is always
+ * eligible — its checks ARE root refines. Transparent wrappers
+ * (Optional / Nullable / Default / Catch / Readonly / Pipe / Lazy)
+ * peel through to their inner without re-flagging — a `.refine` added
+ * on top of a wrapper lands its check on the WRAPPER node itself, so
+ * the wrapper's own `def.checks` is what's inspected.
+ *
+ * Bias conservative: a missed wrapper variant or an exotic `def`
+ * shape we don't yet recognise returns false ONLY for that node,
+ * but the recursive descent continues, so a container refine
+ * nested inside still triggers `true`. Unknown wrappers we forget
+ * to peel only lose the perf win, never correctness.
+ */
+export function hasContainerOrRootRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
+  const visited = seen ?? new WeakSet<object>()
+  const candidate = schema as unknown
+  if (typeof candidate !== 'object' || candidate === null) return false
+  if (visited.has(candidate)) return false
+  visited.add(candidate)
+
+  const def = readDef(schema)
+  if (def === undefined) return false
+
+  // A node is a "container" iff it owns descendable structure. Refines
+  // / checks on such a node fire only when the container is the parse
+  // scope — a leaf-scoped subtree pass beneath it never re-runs them.
+  const isContainer =
+    def.shape !== undefined ||
+    def.entries !== undefined ||
+    def.element !== undefined ||
+    def.options !== undefined ||
+    def.items !== undefined ||
+    def.keyType !== undefined ||
+    def.valueType !== undefined ||
+    def.left !== undefined ||
+    def.right !== undefined
+
+  if (isContainer) {
+    const checks = getChecks(schema)
+    if (checks.length > 0) return true
+  }
+
+  if (
+    def.innerType !== undefined &&
+    hasContainerOrRootRefine(def.innerType as z.ZodType, visited)
+  ) {
+    return true
+  }
+  if (def.element !== undefined && hasContainerOrRootRefine(def.element as z.ZodType, visited)) {
+    return true
+  }
+  if (def.in !== undefined && hasContainerOrRootRefine(def.in as z.ZodType, visited)) {
+    return true
+  }
+  if (def.out !== undefined && hasContainerOrRootRefine(def.out as z.ZodType, visited)) {
+    return true
+  }
+  if (def.left !== undefined && hasContainerOrRootRefine(def.left as z.ZodType, visited)) {
+    return true
+  }
+  if (def.right !== undefined && hasContainerOrRootRefine(def.right as z.ZodType, visited)) {
+    return true
+  }
+  if (def.keyType !== undefined && hasContainerOrRootRefine(def.keyType as z.ZodType, visited)) {
+    return true
+  }
+  if (
+    def.valueType !== undefined &&
+    hasContainerOrRootRefine(def.valueType as z.ZodType, visited)
+  ) {
+    return true
+  }
+  if (def.shape !== undefined) {
+    for (const sub of Object.values(def.shape)) {
+      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.entries !== undefined) {
+    for (const sub of Object.values(def.entries)) {
+      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.options !== undefined) {
+    for (const sub of def.options) {
+      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (def.items !== undefined) {
+    for (const sub of def.items) {
+      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
+    }
+  }
+  if (typeof def.getter === 'function') {
+    try {
+      const inner = def.getter() as z.ZodType
+      if (hasContainerOrRootRefine(inner, visited)) return true
+    } catch {
+      // Lazy schemas may throw before their inner is constructed;
+      // treat as no detection and let the caller's conservative
+      // default apply.
+    }
+  }
+
+  return false
+}
+
+/**
  * True iff any `ZodTransform` in the schema tree wraps an async
  * function. `z.preprocess(fn, inner)` desugars to a pipe whose
  * `def.in` is a `ZodTransform` with `def.transform = fn`; an async

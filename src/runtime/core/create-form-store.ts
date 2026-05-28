@@ -29,6 +29,7 @@ import {
   FORM_ERRORS_PATH_KEY,
   isDangerousSegment,
   isPathPrefix,
+  ROOT_PATH_KEY,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -1683,16 +1684,42 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const departAttempts = ref(0)
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
-  // Structural snapshot of the form value as of the last blur-mode validation
-  // pass, `null` before the first. The blur guard skips a re-run only while
-  // the live form still deep-equals this (no leaf differs): a focus/blur cycle
-  // with no net change can't move any verdict, so re-running would only
-  // flicker a settled error through 'pending'. Keying on the value, not a
-  // write count, means editing away and back to the last-validated value
-  // (`"a" -> "ab" -> "a"`) also stays quiet. The `{ value }` box keeps a form
-  // value of `null` / `undefined` distinct from "never validated". Plain
-  // `let`, not a ref: only the blur handler reads it, never reactively.
-  let lastValidatedSnapshot: { readonly value: unknown } | null = null
+  // Per-path snapshots of `form.value` keyed by the canonical
+  // PathKey of the SCOPE each blur-mode `run()` commits at. The
+  // blur-dedup at path P walks from P up to the root and reads the
+  // closest ancestor entry, then compares the subtree-at-P from
+  // that snapshot against the live subtree-at-P — so a sibling-only
+  // edit between blurs leaves A's subtree-at-A unchanged and A's
+  // re-blur correctly skips, without depending on whether B's
+  // commit happened to advance a shared anchor.
+  //
+  // Under today's whole-form validation scope every commit lands at
+  // the root key, so all blurs share a single entry (equivalent
+  // semantics to the old form-wide `let`). Per-path lookup keeps
+  // the design correct once subtree-scope commits land: a commit
+  // at B advances B's entry only; A's blur-dedup walks up to
+  // whatever ancestor scope WAS last committed and uses it.
+  //
+  // Empty Map → no entry → first blur revalidates (matches the
+  // pre-fix `null` initial state).
+  const pathSnapshots = new Map<PathKey, unknown>()
+  // Form-level monotonic counters that guard cross-path async races.
+  // Per-path AbortControllers cover same-path rapid typing (a fresh
+  // schedule cancels its predecessor at the same key), but they don't
+  // cross-invalidate runs scheduled at DIFFERENT paths — and every
+  // run commits a WHOLE-form replacement via
+  // `applySchemaErrorsForSubtree([], …)`. Without an epoch gate, two
+  // concurrent different-path runs both commit in resolution order;
+  // a slow earlier-scheduled run that lands AFTER a faster
+  // later-scheduled one would overwrite the fresher verdict with
+  // pre-edit state. Each `scheduleFieldValidation` call captures a
+  // fresh `myEpoch` from `scheduleEpoch`; the commit branch in `run()`
+  // re-checks `myEpoch > lastCommittedEpoch` before writing, dropping
+  // any run that a fresher one has already overtaken at the commit
+  // site. Plain `let`s — the counters are only read inside `run()`'s
+  // chained `.then`, never reactively.
+  let scheduleEpoch = 0
+  let lastCommittedEpoch = 0
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
   // first call for this key: `defaultValuesFactory` captures the
   // function-form input, `hydrating` flips true until settle
@@ -2465,16 +2492,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const controller = new AbortController()
     const fresh: FieldValidationEntry = { controller, timer: null, settled: false }
     fieldValidationState.set(key, fresh)
+    // Capture a fresh epoch at schedule time. Closed over by `run`
+    // below and re-checked at the commit site so a later-scheduled
+    // run that resolves first protects its verdict from clobber by
+    // an earlier-scheduled run that resolves later (PASS2-2).
+    const myEpoch = ++scheduleEpoch
 
     const run = () => {
       fresh.timer = null
       if (controller.signal.aborted) return
-      // Record the value this pass validates so a later blur can recognise an
-      // unchanged form and skip. Blur-mode only: the blur guard is the sole
-      // reader, so change-mode never pays for the snapshot.
-      if (effectiveMode === 'blur') {
-        lastValidatedSnapshot = { value: structuralSnapshot(form.value) }
-      }
       // Defense-in-depth: the increments below trigger reactive
       // subscribers (sync watchers on `api.meta.validating` or
       // `api.fields.X.validating`). If one of those subscribers throws,
@@ -2500,24 +2526,44 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         }
         throw err
       }
-      // Whole-form revalidation on every leaf change. Sub-schema-only
-      // passes leave ancestor refines (and root refines) stale: a
-      // `.refine()` on `z.object({...})` keys its verdict at the
-      // container path, which is neither the leaf nor a descendant of
-      // it, so a leaf-scoped `applySchemaErrorsForSubtree` doesn't
-      // touch it. Running the whole-form pass and writing via
-      // `applySchemaErrorsForSubtree([], ...)` lets every refine at
-      // every depth re-evaluate against the live form value and
-      // replaces every `schemaErrors` key in one go — stale entries
-      // drop, current ones survive. Per-path debounce / abort keys
-      // (above) still coalesce rapid same-leaf typing into one run;
-      // `validateAsync` / `handleSubmit` cancel pending chains so
-      // their authoritative whole-form writes aren't clobbered by
-      // a late SFV resolution.
+      // Per-keystroke scope. When the schema carries no container or
+      // root refine (predicate returns `false` and the schedule is at
+      // a real path), every verdict it can produce lives at the
+      // edited subtree or below — a subtree-scoped pass is sufficient
+      // and the runtime avoids the O(N) whole-form parse on each
+      // keystroke. Predicate `true` (or missing — adapters that don't
+      // implement detection) keeps the conservative whole-form pass
+      // so ancestor refines (cross-field equality, sum constraints,
+      // etc.) still re-evaluate against the live form value. An
+      // empty `path` (root schedule, mount / reset / explicit
+      // whole-form) also folds to whole-form.
+      const subtreeScope = path.length > 0 && schema.hasContainerOrRootRefine?.() === false
+      const scopePath: Path | undefined = subtreeScope ? path : undefined
+      const dataAtScope: unknown = subtreeScope ? getAtPath(form.value, path) : form.value
+      const scopeKey: PathKey = subtreeScope ? canonicalizePath(path).key : ROOT_PATH_KEY
       void Promise.resolve()
-        .then(() => schema.validateAtPath(form.value, undefined))
+        .then(() => schema.validateAtPath(dataAtScope, scopePath))
         .then((response) => {
           if (controller.signal.aborted) return
+          // Form-level epoch gate. If a later-scheduled run has
+          // already committed its verdict, dropping this stale
+          // commit prevents an asymmetric-latency race from
+          // overwriting the fresher result. `<=` is conservative
+          // — counter monotonicity makes equality impossible in
+          // practice, but a re-entrant commit at the same epoch
+          // would still be a no-op.
+          if (myEpoch <= lastCommittedEpoch) return
+          lastCommittedEpoch = myEpoch
+          // Record the value this pass validates so a later blur can
+          // recognise an unchanged form and skip. Blur-mode only: the
+          // blur guard is the sole reader, so change-mode never pays
+          // for the snapshot. Lives in the applied branch — an aborted
+          // run never advances the snapshot, so a later blur with
+          // nothing committed for this path still re-validates instead
+          // of falsely skipping against a stale-but-uncommitted anchor.
+          if (effectiveMode === 'blur') {
+            pathSnapshots.set(scopeKey, structuralSnapshot(form.value))
+          }
           const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
           // storage is undefined AND the consumer didn't author a
@@ -2529,7 +2575,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // paths (defaultValues OR schema `.default(...)`) skip the
           // filter; their verdicts ARE legitimate.
           const filtered = filterAuthoredErrors(errors)
-          applySchemaErrorsForSubtree([], filtered)
+          // Subtree-scoped responses carry paths relative to the
+          // subtree; restamp with absolute paths so the storage
+          // convention holds. Whole-form responses are already
+          // absolute — pass through.
+          const restamped: ValidationError[] = subtreeScope
+            ? filtered.map((err) => ({
+                ...err,
+                path: [...path, ...(err.path as Segment[])],
+              }))
+            : filtered
+          applySchemaErrorsForSubtree(scopePath ?? [], restamped)
         })
         .catch(() => {
           // Adapter contract forbids throws — swallow here so a misbehaving
@@ -2972,11 +3028,35 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (!focused && focusMode === 'blur') {
       const firstInteractiveBlur =
         current?.interacted === true && current.blurredAfterInteraction !== true
-      const snapshot = lastValidatedSnapshot
+      // Walk from the blurred path up to the root and pick the first
+      // ancestor scope that's been committed at. The blur-dedup
+      // compares the SUBTREE-AT-PATH of that snapshot against the
+      // live subtree — a sibling-only edit between blurs leaves
+      // this path's subtree unchanged and the dedup correctly
+      // skips. Under whole-form scope today every commit lives at
+      // `ROOT_PATH_KEY`, so the walk falls through to that single
+      // entry; under subtree scope (CORE-P1a) the closest ancestor
+      // entry is the one this leaf was actually validated under.
+      let snapshot: unknown | undefined = undefined
+      for (let i = path.length; i >= 0; i--) {
+        const ancestorKey = canonicalizePath(path.slice(0, i)).key
+        const entry = pathSnapshots.get(ancestorKey)
+        if (entry !== undefined) {
+          snapshot = entry
+          break
+        }
+      }
       let changed = true
-      if (!firstInteractiveBlur && snapshot !== null) {
+      if (!firstInteractiveBlur && snapshot !== undefined) {
+        // Extract the SUBTREE-AT-PATH on both sides — `diffAndApply`'s
+        // `prefix` only labels emitted patch paths, it doesn't scope
+        // the walk. Subtree extraction is what makes a sibling-only
+        // edit between blurs (this path unchanged) read as
+        // `changed === false`.
+        const snapshotSubtree = getAtPath(snapshot, path)
+        const liveSubtree = getAtPath(form.value, path)
         changed = false
-        diffAndApply(snapshot.value, form.value, [], () => {
+        diffAndApply(snapshotSubtree, liveSubtree, path, () => {
           changed = true
         })
       }
@@ -3353,6 +3433,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // that reached the controller-aborted branch resolve to a no-op, so
     // the error store stays clean after the reset clears it above.
     cancelFieldValidation()
+    // Reset the per-path blur-dedup snapshots and the form-level epoch
+    // counters. After `cancelFieldValidation` no in-flight run can
+    // commit, so clearing here can't be raced by a late commit
+    // re-populating the map. Survivor snapshots from before the reset
+    // would otherwise match a post-reset value that happens to mirror
+    // a pre-reset state and skip a real revalidation that the reset's
+    // cleared error stores need to repopulate.
+    pathSnapshots.clear()
+    scheduleEpoch = 0
+    lastCommittedEpoch = 0
     // Variant memory is UX state — a fresh start drops the per-variant
     // typed-data cache too. Without this, a post-reset switch would
     // surface stale variant values from before the reset.

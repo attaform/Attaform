@@ -1565,6 +1565,27 @@ function getDefaultValuesFromZodSchema<
       return new Set()
     }
 
+    // ZodNaN — the only valid value `z.nan()` accepts is `NaN`. v4
+    // returns `NaN` here; mirror that so the default seeds a schema-
+    // valid slot instead of falling through to the warn-path.
+    if (isZodSchemaType(schema, 'ZodNaN')) {
+      return NaN
+    }
+
+    // `z.void()` / `z.any()` / `z.unknown()` / `z.never()` carry no
+    // canonical empty value beyond `undefined`. v4 returns `undefined`
+    // for all four; returning `null` here (the warn-path fallback)
+    // misrepresented the slot and triggered a noisy console warning for
+    // a schema kind we can actually handle.
+    if (
+      isZodSchemaType(schema, 'ZodVoid') ||
+      isZodSchemaType(schema, 'ZodAny') ||
+      isZodSchemaType(schema, 'ZodUnknown') ||
+      isZodSchemaType(schema, 'ZodNever')
+    ) {
+      return undefined
+    }
+
     console.warn(
       `[attaform] zod-v3 adapter: unsupported schema kind ` +
         `'${schema.constructor.name}' on form '${formKey}'. Defaulting the field to null. ` +

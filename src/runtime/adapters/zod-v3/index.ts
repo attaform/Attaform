@@ -80,16 +80,19 @@ import {
   getIntersectionRight,
   getLiteralValue,
   getObjectShape,
+  getRecordKeyType,
   getRecordValueType,
   getSetValueType,
   getTupleItems,
   getTypeName,
   getUnionOptions,
   hasCatchValue,
+  hasChecks,
   hasContainerOrRootRefine,
   unwrapBranded,
   unwrapEffectsSource,
   unwrapInner,
+  unwrapLazy,
   unwrapPipeIn,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
@@ -1582,19 +1585,6 @@ type StripConfig = {
   stripDefaultValues?: boolean | StripConfigCallback
 }
 
-function hasChecks(schema: z.ZodTypeAny): boolean {
-  if (!('_def' in schema)) return false
-
-  const schemaDef = schema._def
-  if (!('checks' in schemaDef)) return false
-
-  const checks = schemaDef['checks'] as unknown
-
-  if (!Array.isArray(checks)) return false
-
-  return checks.length > 0
-}
-
 function stripRefinements<T extends z.ZodTypeAny>(schema: T) {
   // `depth` bounds the recursion at MAX_UNWRAP_STEPS (per branch). For
   // realistic form schemas the structural depth is in single digits;
@@ -1603,28 +1593,29 @@ function stripRefinements<T extends z.ZodTypeAny>(schema: T) {
   // depth is exactly the chain length).
   function _stripRefinements(_schema: z.ZodTypeAny, depth: number): z.ZodTypeAny {
     if (depth >= MAX_UNWRAP_STEPS) return _schema as T
-    if (isZodSchemaType(_schema, 'ZodString') && _schema._def.checks.length > 0) {
+    if (isZodSchemaType(_schema, 'ZodString') && hasChecks(_schema)) {
       // Rebuild a ZodString without checks
       return z.string()
     }
 
-    if (isZodSchemaType(_schema, 'ZodNumber') && _schema._def.checks.length > 0) {
+    if (isZodSchemaType(_schema, 'ZodNumber') && hasChecks(_schema)) {
       // Rebuild a ZodNumber without checks
       return z.number()
     }
 
     if (isZodSchemaType(_schema, 'ZodArray')) {
       // Recursively process the array's inner type
-      return z.array(_stripRefinements(_schema._def.type, depth + 1))
+      const inner = getArrayElement(_schema)
+      if (!inner) return _schema
+      return z.array(_stripRefinements(inner, depth + 1))
     }
 
     if (isZodSchemaType(_schema, 'ZodObject')) {
       // Recursively process each property of the object
-      const shape = _schema.shape
       const strippedShape = Object.fromEntries(
-        Object.entries(shape).map(([key, value]) => [
+        Object.entries(getObjectShape(_schema)).map(([key, value]) => [
           key,
-          _stripRefinements(value as z.ZodTypeAny, depth + 1),
+          _stripRefinements(value, depth + 1),
         ])
       )
       return z.object(strippedShape)
@@ -1632,17 +1623,23 @@ function stripRefinements<T extends z.ZodTypeAny>(schema: T) {
 
     if (isZodSchemaType(_schema, 'ZodEffects')) {
       // Unwrap the inner schema and strip refinements
-      return _stripRefinements(_schema.innerType(), depth + 1)
+      const inner = unwrapEffectsSource(_schema)
+      if (!inner) return _schema
+      return _stripRefinements(inner, depth + 1)
     }
 
     if (isZodSchemaType(_schema, 'ZodOptional')) {
       // Recursively strip optional's inner type
-      return z.optional(_stripRefinements(_schema.unwrap(), depth + 1))
+      const inner = unwrapInner(_schema)
+      if (!inner) return _schema
+      return z.optional(_stripRefinements(inner, depth + 1))
     }
 
     if (isZodSchemaType(_schema, 'ZodNullable')) {
       // Recursively strip nullable's inner type
-      return z.nullable(_stripRefinements(_schema.unwrap(), depth + 1))
+      const inner = unwrapInner(_schema)
+      if (!inner) return _schema
+      return z.nullable(_stripRefinements(inner, depth + 1))
     }
 
     // Newer transparent wrappers — descend into their inner schema and
@@ -1650,19 +1647,19 @@ function stripRefinements<T extends z.ZodTypeAny>(schema: T) {
     // refinement/branding/pipeline metadata isn't load-bearing for the
     // slim-parse pass that consumes the stripped schema.
     if (isZodSchemaType(_schema, 'ZodReadonly')) {
-      const inner = (_schema._def as { innerType?: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(_schema)
       if (!inner) return _schema
       return _stripRefinements(inner, depth + 1)
     }
 
     if (isZodSchemaType(_schema, 'ZodBranded')) {
-      const inner = (_schema._def as { type?: z.ZodTypeAny }).type
+      const inner = unwrapBranded(_schema)
       if (!inner) return _schema
       return _stripRefinements(inner, depth + 1)
     }
 
     if (isZodSchemaType(_schema, 'ZodPipeline')) {
-      const inner = (_schema._def as { in?: z.ZodTypeAny }).in
+      const inner = unwrapPipeIn(_schema)
       if (!inner) return _schema
       return _stripRefinements(inner, depth + 1)
     }
@@ -1674,69 +1671,66 @@ function stripRefinements<T extends z.ZodTypeAny>(schema: T) {
     // contract, no fix-up needed.
 
     if (isZodSchemaType(_schema, 'ZodSet')) {
-      const valueType = (_schema._def as { valueType?: z.ZodTypeAny }).valueType
+      const valueType = getSetValueType(_schema)
       if (!valueType) return _schema
       return z.set(_stripRefinements(valueType, depth + 1))
     }
 
     if (isZodSchemaType(_schema, 'ZodTuple')) {
-      const items = (_schema._def as { items?: z.ZodTypeAny[] }).items
-      if (!items) return _schema
+      const items = getTupleItems(_schema)
+      if (items.length === 0) return _schema
       const stripped = items.map((it) => _stripRefinements(it, depth + 1))
       return z.tuple(stripped as [z.ZodTypeAny, ...z.ZodTypeAny[]])
     }
 
     if (isZodSchemaType(_schema, 'ZodRecord')) {
-      const def = _schema._def as { keyType?: z.ZodTypeAny; valueType?: z.ZodTypeAny }
-      if (!def.valueType) return _schema
-      const value = _stripRefinements(def.valueType, depth + 1)
+      const valueType = getRecordValueType(_schema)
+      if (!valueType) return _schema
+      const value = _stripRefinements(valueType, depth + 1)
       // z.record's two-arg form preserves the key schema; one-arg form
       // assumes z.string(). Forward the key type unchanged — refinements
       // on record keys aren't load-bearing for slim-schema concerns.
-      if (def.keyType) {
-        return z.record(def.keyType as z.ZodString, value)
+      const keyType = getRecordKeyType(_schema)
+      if (keyType) {
+        return z.record(keyType as z.ZodString, value)
       }
       return z.record(value)
     }
 
     if (isZodSchemaType(_schema, 'ZodUnion')) {
-      const options = (_schema._def as { options?: z.ZodTypeAny[] }).options
-      if (!options) return _schema
+      const options = getUnionOptions(_schema)
+      if (options.length === 0) return _schema
       const stripped = options.map((o) => _stripRefinements(o, depth + 1))
       return z.union(stripped as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]])
     }
 
     if (isZodSchemaType(_schema, 'ZodDiscriminatedUnion')) {
-      const def = _schema._def as {
-        discriminator?: string
-        options?: z.ZodObject<z.ZodRawShape>[]
-      }
-      if (def.discriminator === undefined || !def.options) return _schema
-      const stripped = def.options.map(
+      const discKey = getDiscriminator(_schema)
+      const options = getDiscriminatedOptions(_schema)
+      if (discKey === undefined || options.length === 0) return _schema
+      const stripped = options.map(
         (o) => _stripRefinements(o, depth + 1) as z.ZodObject<z.ZodRawShape>
       )
       return z.discriminatedUnion(
-        def.discriminator,
+        discKey,
         stripped as [z.ZodObject<z.ZodRawShape>, ...z.ZodObject<z.ZodRawShape>[]]
       )
     }
 
     if (isZodSchemaType(_schema, 'ZodIntersection')) {
-      const def = _schema._def as { left?: z.ZodTypeAny; right?: z.ZodTypeAny }
-      if (!def.left || !def.right) return _schema
-      return z.intersection(
-        _stripRefinements(def.left, depth + 1),
-        _stripRefinements(def.right, depth + 1)
-      )
+      const left = getIntersectionLeft(_schema)
+      const right = getIntersectionRight(_schema)
+      if (!left || !right) return _schema
+      return z.intersection(_stripRefinements(left, depth + 1), _stripRefinements(right, depth + 1))
     }
 
     if (isZodSchemaType(_schema, 'ZodLazy')) {
-      const getter = (_schema._def as { getter?: () => z.ZodTypeAny }).getter
-      if (!getter) return _schema
+      const inner = unwrapLazy(_schema)
+      if (!inner) return _schema
       // Eagerly resolve once and capture the stripped target so the
       // returned lazy resolves to a stable schema. assertSupportedKinds
       // has already rejected self-referencing lazies, so this is finite.
-      const stripped = _stripRefinements(getter(), depth + 1)
+      const stripped = _stripRefinements(inner, depth + 1)
       return z.lazy(() => stripped)
     }
 
@@ -1774,7 +1768,8 @@ function stripRootSchema(schema: z.ZodSchema, stripConfig: StripConfig) {
       getStripInstruction(stripConfig.stripDefaultValues, _schema) &&
       isZodSchemaType(_schema, 'ZodDefault')
     ) {
-      return recursion(_schema._def.innerType, true)
+      const inner = unwrapInner(_schema)
+      if (inner) return recursion(inner as z.ZodSchema, true)
     }
 
     if (getStripInstruction(stripConfig.stripZodRefinements, _schema) && hasChecks(_schema)) {
@@ -1809,38 +1804,42 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
   function _getSlimSchema(_schema: z.ZodSchema): z.ZodSchema {
     if (isZodSchemaType(_schema, 'ZodObject')) {
       const newShape: z.ZodRawShape = {}
-
-      for (const key in _schema.shape) {
-        const value = _schema.shape[key]
-        newShape[key] = _getSlimSchema(value)
+      for (const [key, value] of Object.entries(getObjectShape(_schema))) {
+        newShape[key] = _getSlimSchema(value as z.ZodSchema)
       }
-
       return z.object(newShape)
     }
 
     if (isZodSchemaType(_schema, 'ZodArray')) {
-      return z.array(_getSlimSchema(_schema.element))
+      const inner = getArrayElement(_schema)
+      if (!inner) return _schema
+      return z.array(_getSlimSchema(inner as z.ZodSchema))
     }
 
     if (isZodSchemaType(_schema, 'ZodRecord')) {
-      const key = _getSlimSchema(_schema._def.keyType)
-      const value = _getSlimSchema(_schema._def.valueType)
-      return z.record(key, value)
+      const keyType = getRecordKeyType(_schema)
+      const valueType = getRecordValueType(_schema)
+      if (!keyType || !valueType) return _schema
+      const key = _getSlimSchema(keyType as z.ZodSchema)
+      const value = _getSlimSchema(valueType as z.ZodSchema)
+      return z.record(key as z.ZodString, value)
     }
 
     // same way we go into records, objects, and arrays, go into discriminated unions
     if (isZodSchemaType(_schema, 'ZodDiscriminatedUnion')) {
       const slimmedSchemas = []
+      const discKey = getDiscriminator(_schema)
+      if (discKey === undefined) return _schema
 
-      for (const option of _schema._def.options) {
-        const slimmedSchema = _getSlimSchema(option)
+      for (const option of getDiscriminatedOptions(_schema)) {
+        const slimmedSchema = _getSlimSchema(option as unknown as z.ZodSchema)
         // slimmedSchema will be a structurally deep object, so break pointer refs to prevent recursion bugs
         const deepCloneSlimmedSchema = cloneDeep(slimmedSchema)
         slimmedSchemas.push(deepCloneSlimmedSchema)
       }
 
       return z.discriminatedUnion(
-        _schema._def.discriminator,
+        discKey,
         slimmedSchemas as unknown as readonly [
           z.ZodDiscriminatedUnionOption<string>,
           ...z.ZodDiscriminatedUnionOption<string>[],
@@ -1852,21 +1851,24 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
       getStripInstruction(config.stripConfig.stripZodEffects, _schema) &&
       isZodSchemaType(_schema, 'ZodEffects')
     ) {
-      return _getSlimSchema(_schema.innerType())
+      const inner = unwrapEffectsSource(_schema)
+      if (inner) return _getSlimSchema(inner as z.ZodSchema)
     }
 
     if (
       getStripInstruction(config.stripConfig.stripNullable, _schema) &&
       isZodSchemaType(_schema, 'ZodNullable')
     ) {
-      return _getSlimSchema(_schema._def.innerType)
+      const inner = unwrapInner(_schema)
+      if (inner) return _getSlimSchema(inner as z.ZodSchema)
     }
 
     if (
       getStripInstruction(config.stripConfig.stripOptional, _schema) &&
       isZodSchemaType(_schema, 'ZodOptional')
     ) {
-      return _getSlimSchema(_schema._def.innerType)
+      const inner = unwrapInner(_schema)
+      if (inner) return _getSlimSchema(inner as z.ZodSchema)
     }
 
     if (
@@ -1880,7 +1882,8 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
       getStripInstruction(config.stripConfig.stripDefaultValues, _schema) &&
       isZodSchemaType(_schema, 'ZodDefault')
     ) {
-      return _getSlimSchema(_schema._def.innerType)
+      const inner = unwrapInner(_schema)
+      if (inner) return _getSlimSchema(inner as z.ZodSchema)
     }
 
     // Attempt to unwrap a schema to find a discriminated union (bail if you hit another valid schema type)

@@ -79,6 +79,7 @@ import {
   getIntersectionLeft,
   getIntersectionRight,
   getLiteralValue,
+  getLiteralValues,
   getNativeEnumValues,
   getObjectShape,
   getRecordKeyType,
@@ -165,12 +166,18 @@ export function zodAdapter<
         path.length === 0
           ? [_zodSchema as z.ZodTypeAny]
           : (getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth) as z.ZodTypeAny[])
+      // `unwrapToDiscriminatedUnion` peels every transparent wrapper
+      // (Optional / Nullable / Default / Readonly / Catch / Effects /
+      // Pipeline / Branded) and descends ZodIntersection sides looking
+      // for a single discriminated union. Ambiguous resolutions (two
+      // distinct DUs both reachable across candidates) bail — the
+      // runtime then falls back to a plain write.
       let matchedUnion: z.ZodTypeAny | undefined
       for (const candidate of candidates) {
-        const peeled = peelV3Wrappers(candidate)
-        if (!isZodSchemaType(peeled, 'ZodDiscriminatedUnion')) continue
-        if (matchedUnion !== undefined && matchedUnion !== peeled) return undefined
-        matchedUnion = peeled
+        const du = unwrapToDiscriminatedUnion(candidate)
+        if (du === undefined) continue
+        if (matchedUnion !== undefined && matchedUnion !== du) return undefined
+        matchedUnion = du
       }
       if (matchedUnion === undefined) return undefined
       const discKey = getDiscriminator(matchedUnion)
@@ -181,7 +188,10 @@ export function zodAdapter<
         const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
         if (!litSchema) continue
         if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
-        literalSet.add(getLiteralValue(litSchema))
+        // `getLiteralValues` returns every value the literal admits as
+        // an array, so multi-value `z.literal(['a','b'])` registers
+        // both 'a' and 'b' as selectable variants.
+        for (const v of getLiteralValues(litSchema)) literalSet.add(v)
       }
       return {
         discriminatorKey: discKey,
@@ -190,7 +200,8 @@ export function zodAdapter<
             const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
             if (!litSchema) continue
             if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
-            if (getLiteralValue(litSchema) === value) {
+            const values = getLiteralValues(litSchema)
+            if (values.includes(value)) {
               return getDefaultValuesFromZodSchema(opt as unknown as z.ZodSchema, true, _formKey)
             }
           }
@@ -1198,24 +1209,31 @@ function isLeafRequiredV3(schema: z.ZodTypeAny, depth = 0): boolean {
 }
 
 function unwrapToDiscriminatedUnion(
-  schema: z.ZodTypeAny
+  schema: z.ZodTypeAny,
+  depth = 0
 ): z.ZodDiscriminatedUnion<string, readonly z.ZodDiscriminatedUnionOption<string>[]> | undefined {
+  // Bounded descent so a pathological lazy self-reference can't hang
+  // the lookup. The recursive intersection branch also threads through
+  // this cap.
+  if (depth > MAX_UNWRAP_STEPS) return undefined
   let currentSchema: z.ZodTypeAny = schema
 
-  // Bounded by MAX_UNWRAP_STEPS so a pathological lazy self-reference
-  // can't hang the lookup. `innerType` on ZodDefault/Optional/Nullable
-  // is a ZodType (non-nullable); the cap is a soundness guard.
   for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
     // If the schema is a discriminated union, return it
     if (isZodSchemaType(currentSchema, 'ZodDiscriminatedUnion')) {
       return currentSchema
     }
 
-    // Handle ZodDefault, ZodOptional, and ZodNullable
+    // Handle ZodDefault, ZodOptional, ZodNullable, and ZodCatch. Catch
+    // is load-bearing: the consumer's `.catch(...)` fallback exists to
+    // fail open to a usable variant, so the runtime must still know
+    // which variant the fallback selects. Without this peel the
+    // variant-aware reshape never fires on a catch-wrapped DU.
     if (
       isZodSchemaType(currentSchema, 'ZodDefault') ||
       isZodSchemaType(currentSchema, 'ZodOptional') ||
-      isZodSchemaType(currentSchema, 'ZodNullable')
+      isZodSchemaType(currentSchema, 'ZodNullable') ||
+      isZodSchemaType(currentSchema, 'ZodCatch')
     ) {
       const inner = unwrapInner(currentSchema)
       if (!inner) return undefined
@@ -1241,6 +1259,31 @@ function unwrapToDiscriminatedUnion(
       if (!inner) return undefined
       currentSchema = inner
       continue
+    }
+    // ZodEffects (`z.preprocess` / `.refine` / `.transform`) is a
+    // transparent wrapper for structural traversal; the discriminated
+    // union may live on the source schema.
+    if (isZodSchemaType(currentSchema, 'ZodEffects')) {
+      const inner = unwrapEffectsSource(currentSchema)
+      if (!inner) return undefined
+      currentSchema = inner
+      continue
+    }
+    // ZodIntersection — try each side. Intersections with a DU on
+    // EXACTLY one side resolve to that side; both sides yielding
+    // distinct DUs is ambiguous (the discriminator-aware reshape can't
+    // pick one without arbitrary preference), so bail and let the
+    // runtime fall through to a plain write. Mirrors v4's
+    // intersection branch in `discriminator.ts:35`.
+    if (isZodSchemaType(currentSchema, 'ZodIntersection')) {
+      const left = getIntersectionLeft(currentSchema)
+      const right = getIntersectionRight(currentSchema)
+      const leftDU = left ? unwrapToDiscriminatedUnion(left, depth + 1) : undefined
+      const rightDU = right ? unwrapToDiscriminatedUnion(right, depth + 1) : undefined
+      if (leftDU !== undefined && rightDU !== undefined) {
+        return leftDU === rightDU ? leftDU : undefined
+      }
+      return leftDU ?? rightDU
     }
 
     // Any other type: give up.

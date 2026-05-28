@@ -421,6 +421,22 @@ export function getLiteralValue(schema: z.ZodTypeAny): unknown {
 }
 
 /**
+ * Read every value a `z.literal(...)` admits as an array. v3 stores
+ * single-value literals as `_def.value` (the value itself) and
+ * multi-value literals (`z.literal(['a','b'])`) as `_def.value` set to
+ * the array. Returning a unified array shape lets callers iterate
+ * without branching on `Array.isArray(_def.value)`. Mirrors v4's
+ * `getLiteralValues` (`introspect.ts:238`).
+ */
+export function getLiteralValues(schema: z.ZodTypeAny): readonly unknown[] {
+  const def = readDef(schema)
+  const v = def?.value
+  if (Array.isArray(v)) return v
+  if (v === undefined) return []
+  return [v]
+}
+
+/**
  * Raw values object on a `z.nativeEnum(E)` — the TypeScript enum
  * object itself. Numeric enums have a reverse mapping
  * (`enum E { A } → { A: 0, '0': 'A' }`); callers that need the valid

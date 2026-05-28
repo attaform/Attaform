@@ -613,7 +613,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
     focused: boolean,
     meta?: { readonly instance?: WriteMeta['instance'] }
   ): void
-  markTouched(path: Path): void
   /**
    * Flip `interacted: true` on a leaf — the sticky value-mutation flag.
    * Driven by the directive's input listeners (via the RegisterValue's
@@ -2954,11 +2953,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }
   }
 
-  function markTouched(path: Path): void {
-    const { key } = canonicalizePath(path)
-    touchFieldRecord(key, path, { touched: true })
-  }
-
   function markInteracted(path: Path): void {
     const { key } = canonicalizePath(path)
     // Fired per keystroke from the directive's input listeners; skip the
@@ -3634,7 +3628,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     registerElement,
     deregisterElement,
     markFocused,
-    markTouched,
     markInteracted,
     touchAtPath,
     markConnectedOptimistically,

@@ -36,6 +36,7 @@ import {
   pluckPaths,
   readPersistedPayload,
   resolveStorageKeyBase,
+  stripUnacknowledgedSensitiveLeaves,
   sweepAllOrphansAcrossStandardStores,
   sweepNonConfiguredStandardStoresForOrphans,
   type PersistenceModule,
@@ -1043,7 +1044,16 @@ function wirePersistence<F extends GenericForm>(
     // proxies (DATA_CLONE_ERR), and local/session stringify the
     // proxy's own-enumerable keys anyway.
     const rawForm = toRaw(state.form.value)
-    const filteredForm = pluckPaths(rawForm, optedInPaths) as F
+    // Shed sensitive leaves a container opt-in dragged in that weren't
+    // individually acknowledged — they must never reach storage in
+    // cleartext (SEC-1). Directly- or container-acknowledged secrets are
+    // kept; the opt-in gate guarantees a sensitive opted-in path was
+    // acknowledged.
+    const filteredForm = stripUnacknowledgedSensitiveLeaves(
+      pluckPaths(rawForm, optedInPaths),
+      optedInPaths,
+      state.isSensitivePath as (path: Path) => boolean
+    ) as F
     // Build the envelope with the attaform-internal envelope version baked
     // in by `buildPersistedPayload`. Consumers no longer manage `v` —
     // schema-content invalidation lives at the storage-key level via

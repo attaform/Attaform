@@ -11,6 +11,7 @@ import { __DEV__ } from '../dev'
 import { isPlainRecord, setAtPath, getAtPath } from '../path-walker'
 import {
   isDangerousSegment,
+  isPathPrefix,
   pathKeyToDotted,
   segmentsForPathKey,
   type Path,
@@ -520,6 +521,60 @@ export function pluckPaths(form: unknown, pathKeys: Iterable<PathKey>): unknown 
     sparse = setAtPath(sparse ?? {}, segments, value)
   }
   return sparse ?? {}
+}
+
+/**
+ * Strip sensitive-named leaves from an already-plucked persisted form
+ * unless their sensitivity was acknowledged, then return a new object
+ * (the input is not mutated). A container opt-in
+ * (`register('payment', { persist: true })`) copies its whole subtree
+ * via `pluckPaths`, so nested `cvv` / `card_number` leaves would
+ * otherwise reach storage in cleartext even though they were never
+ * individually acknowledged.
+ *
+ * A sensitive path is kept only when an opted-in path that COVERS it
+ * (the leaf itself, or an ancestor container) is itself sensitive.
+ * Because the persist opt-in gate (`allowSensitivePersist`) only admits
+ * a sensitive path when `acknowledgeSensitive: true` was set, an opted-in
+ * sensitive path is, by construction, an acknowledged one — so this
+ * keeps a directly-acknowledged leaf AND the subtree of an acknowledged
+ * sensitive container, while shedding the unacknowledged secrets a
+ * non-sensitive container opt-in dragged along.
+ *
+ * Mirrors multi-tab's `stripSensitivePathsDeep`, but keyed off the
+ * persist opt-in set rather than stripping every sensitive path.
+ */
+export function stripUnacknowledgedSensitiveLeaves(
+  form: unknown,
+  optedInPaths: ReadonlySet<PathKey>,
+  isSensitivePath: (path: Path) => boolean
+): unknown {
+  // Opted-in paths that are themselves sensitive could only reach the
+  // set by being acknowledged; a sensitive value survives the scrub iff
+  // one of these covers it.
+  const acknowledgedSensitive: Path[] = []
+  for (const key of optedInPaths) {
+    const segs = segmentsForPathKey(key)
+    if (segs !== null && isSensitivePath(segs as Path)) acknowledgedSensitive.push(segs as Path)
+  }
+  const coveredByAcknowledged = (path: Path): boolean =>
+    acknowledgedSensitive.some((prefix) => isPathPrefix(prefix, path))
+
+  const walk = (path: Path, value: unknown): unknown => {
+    if (path.length > 0 && isSensitivePath(path) && !coveredByAcknowledged(path)) {
+      return undefined // strip this leaf / subtree
+    }
+    if (value === null || typeof value !== 'object') return value
+    if (Array.isArray(value)) return value.map((item, i) => walk([...path, i], item))
+    if (!isPlainRecord(value)) return value
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      const walked = walk([...path, key], (value as Record<string, unknown>)[key])
+      if (walked !== undefined) out[key] = walked
+    }
+    return out
+  }
+  return walk([], form)
 }
 
 /**

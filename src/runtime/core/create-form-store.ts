@@ -485,6 +485,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   pathHasAsyncValidation(path: Path): boolean
   /**
+   * Precomputed-key shortcut for `pathHasAsyncValidation`. The
+   * canonical key is required and must correspond to `segments`; the
+   * helper skips the `canonicalizePath` round-trip so descendant-walk
+   * loops (whose Map iteration already yields the canonical key) can
+   * read the async-gate verdict without a per-leaf canonicalize.
+   */
+  pathHasAsyncValidationByKey(key: PathKey, segments: Path): boolean
+  /**
    * Per-path counter of in-flight field-level validation runs.
    * `field.validating` on `FieldState` mirrors
    * `(fieldValidationCounts.get(key) ?? 0) > 0`.
@@ -648,6 +656,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * isn't exposed to consumers.
    */
   isPristineAtPath(path: Path): boolean
+  /**
+   * Precomputed-key shortcut for `isPristineAtPath`. The canonical
+   * key is required and must correspond to `segments`; the helper
+   * skips the `canonicalizePath` round-trip so descendant-walk loops
+   * (whose Map iteration already yields the canonical key) can read
+   * the pristine verdict without a per-leaf canonicalize.
+   */
+  isPristineAtPathByKey(key: PathKey, segments: Path): boolean
   /**
    * Whether any tracked array under `path` has changed shape — a reorder,
    * insert, or removal — relative to its construction/reset baseline. The
@@ -1723,6 +1739,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const pathAsyncCache = new Map<PathKey, boolean>()
   function pathHasAsyncValidation(path: Path): boolean {
     const { key } = canonicalizePath(path)
+    return pathHasAsyncValidationByKey(key, path)
+  }
+  function pathHasAsyncValidationByKey(key: PathKey, segments: Path): boolean {
     const cached = pathAsyncCache.get(key)
     if (cached !== undefined) return cached
     // `getSchemasAtPath` returns every candidate sub-schema (DU
@@ -1731,7 +1750,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // conservative and gate. Adapters that don't expose
     // `needsAsyncValidation` are treated as `false`, matching the
     // optional-method contract on AbstractSchema.
-    const candidates = schema.getSchemasAtPath(path)
+    const candidates = schema.getSchemasAtPath(segments)
     const hasAsync = candidates.some((sub) => sub.needsAsyncValidation?.() === true)
     pathAsyncCache.set(key, hasAsync)
     return hasAsync
@@ -3486,6 +3505,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   function isPristineAtPath(path: Path): boolean {
     const { key, segments } = canonicalizePath(path)
+    return isPristineAtPathByKey(key, segments)
+  }
+  function isPristineAtPathByKey(key: PathKey, segments: Path): boolean {
     // Storage match is necessary but not sufficient: a primitive leaf
     // toggled between "displayed empty" (blank + slim default)
     // and "explicitly the slim default" carries the same storage value
@@ -3590,6 +3612,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     activeValidations,
     firstValidationDone,
     pathHasAsyncValidation,
+    pathHasAsyncValidationByKey,
     fieldValidationCounts,
 
     applyFormReplacement,
@@ -3619,6 +3642,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     markConnectedOptimistically,
 
     isPristineAtPath,
+    isPristineAtPathByKey,
     hasStructuralChangeUnder,
     getFieldRecord,
     getOriginalAtPath,

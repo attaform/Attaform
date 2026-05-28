@@ -259,13 +259,19 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // shows up here and re-runs the computed.
   const formValue = state.form.value
   const value = state.getValueAtPath(segments)
-  const original = state.originals.get(canonicalizePath(segments).key)?.value
+  // `key` is the canonical key of `segments` (every caller derives it
+  // via `canonicalizePath` already); use it directly instead of
+  // re-canonicalizing on every read.
+  const original = state.originals.get(key)?.value
   // Enumerate active descendant leaves under the container path.
   // The `originals` Map tracks every leaf the form has ever seen;
   // filter via `isPathPrefix` for descendant-membership and via
   // `hasAtPath(formValue, leafSeg)` to keep only the active-variant
   // leaves (DU switches reshape `formValue` wholesale, so this is
-  // the live ground truth).
+  // the live ground truth). The Map's key IS the canonical key for
+  // its entry's segments (every `originals.set` writes via
+  // `canonicalizePath(...).key`), so destructure it off the
+  // iteration tuple rather than re-canonicalizing per leaf.
   let pristine = true
   let blank = true
   let dirty = false
@@ -278,13 +284,16 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   let validating = false
   let updatedAt: string | null = null
   let asyncPending = false
-  for (const [, entry] of state.originals) {
+  for (const [leafKey, entry] of state.originals) {
     if (!isPathPrefix(segments, entry.segments)) continue
     if (segments.length === entry.segments.length) continue // self isn't a descendant
     if (!hasAtPath(formValue, entry.segments)) continue
-    const leafKey = canonicalizePath(entry.segments).key
     const leafRecord = state.fields.get(leafKey)
-    if (!state.isPristineAtPath(entry.segments)) {
+    // The by-key variants of `isPristineAtPath` and
+    // `pathHasAsyncValidation` skip the canonicalize round-trip
+    // (`leafKey` IS the canonical key for `entry.segments`), keeping
+    // the per-leaf walk allocation-free on the meta hot path.
+    if (!state.isPristineAtPathByKey(leafKey, entry.segments)) {
       pristine = false
       dirty = true
     }
@@ -296,7 +305,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (leafRecord?.blurredAfterInteraction === true) blurredAfterInteraction = true
     if (leafRecord?.connected === true) connected = true
     if ((state.fieldValidationCounts.get(leafKey) ?? 0) > 0) validating = true
-    if (state.pathHasAsyncValidation(entry.segments)) asyncPending = true
+    if (state.pathHasAsyncValidationByKey(leafKey, entry.segments)) asyncPending = true
     const ts = leafRecord?.updatedAt
     if (ts !== undefined && ts !== null) {
       // ISO 8601 timestamps sort lexicographically; max-string is

@@ -63,11 +63,12 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
   // PASS2-4 — surface-proxy container path: `form.fields.X = …` / `delete form.fields.X`
   it('form.fields container set + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
+    const fields = api.fields as Record<string, unknown>
     expect(() => {
-      ;(api.fields as Record<string, unknown>).tags = 'whatever'
+      fields['tags'] = 'whatever'
     }).not.toThrow()
     expect(() => {
-      delete (api.fields as Record<string, unknown>).tags
+      delete fields['tags']
     }).not.toThrow()
     app.unmount()
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
@@ -76,11 +77,12 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
   // PASS2-4 — leaf-view path: `form.fields.email.value = …` / `delete form.fields.email.value`
   it('form.fields.<leaf>.value assign + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
+    const leaf = api.fields.email as Record<string, unknown>
     expect(() => {
-      ;(api.fields.email as Record<string, unknown>).value = 'x'
+      leaf['value'] = 'x'
     }).not.toThrow()
     expect(() => {
-      delete (api.fields.email as Record<string, unknown>).value
+      delete leaf['value']
     }).not.toThrow()
     app.unmount()
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
@@ -91,10 +93,10 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     const { api, app } = mount()
     const terminal = api.fields('email') as Record<string, unknown>
     expect(() => {
-      terminal.value = 'x'
+      terminal['value'] = 'x'
     }).not.toThrow()
     expect(() => {
-      delete terminal.value
+      delete terminal['value']
     }).not.toThrow()
     app.unmount()
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
@@ -105,11 +107,12 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
   // and inherits the fix automatically.
   it('form.errors container set + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
+    const errors = api.errors as Record<string, unknown>
     expect(() => {
-      ;(api.errors as Record<string, unknown>).tags = []
+      errors['tags'] = []
     }).not.toThrow()
     expect(() => {
-      delete (api.errors as Record<string, unknown>).tags
+      delete errors['tags']
     }).not.toThrow()
     app.unmount()
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)

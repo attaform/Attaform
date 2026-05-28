@@ -312,29 +312,14 @@ export function createDebouncedWriter(
  * `attaform:${formKey}` — consumers who want a different
  * namespace (multi-tenant app, per-user prefix) pass `persist.key`.
  *
- * The full storage key is `${base}:${fingerprint}` (see
- * `resolveStorageKey`). The base is exposed separately so the
- * orphan-cleanup pass can `listKeys(base)` and prune any entry under
- * an old fingerprint.
+ * The full storage key is composed at the wirePersistence call site
+ * as `${base}:${fingerprint}` so the writer holds the schema's
+ * structural fingerprint directly. The base is exposed separately so
+ * the orphan-cleanup pass can `listKeys(base)` and prune any entry
+ * under an old fingerprint.
  */
 export function resolveStorageKeyBase(config: PersistConfigOptions, formKey: string): string {
   return config.key ?? `${PERSISTENCE_KEY_PREFIX}${formKey}`
-}
-
-/**
- * Resolve the full per-form storage key, composed of the base and the
- * schema's structural fingerprint. The fingerprint suffix gives free
- * automatic invalidation: any structural schema change produces a new
- * fingerprint, so the new mount looks up a fresh key and the old
- * draft becomes an orphan (cleaned up on the same mount via
- * `cleanupOrphanKeys`).
- */
-export function resolveStorageKey(
-  config: PersistConfigOptions,
-  formKey: string,
-  fingerprint: string
-): string {
-  return `${resolveStorageKeyBase(config, formKey)}:${fingerprint}`
 }
 
 /**

@@ -222,6 +222,13 @@ function walk(
     case 'custom':
     case 'template-literal':
     case 'transform':
+    case 'map':
+    case 'symbol':
+    case 'function':
+      // `map` / `symbol` / `function` are rejected at construction by
+      // `assertSupportedKinds`; if a private code path constructs a
+      // walker on them directly fall back to PERMISSIVE (same as the
+      // other opaque kinds).
       return PERMISSIVE
     default:
       return PERMISSIVE

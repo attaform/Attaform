@@ -62,10 +62,10 @@ export const DEFAULT_HISTORY_MAX_SNAPSHOTS = 128
 
 /**
  * Storage-key namespace for persistence. Resolved once at
- * `resolveStorageKey` to `${PERSISTENCE_KEY_PREFIX}${formKey}` unless
- * the consumer passes an explicit `persist.key`. Kept as a separate
- * constant so multi-tenant deployments can audit or reserve their
- * own prefix without grepping for the literal.
+ * `resolveStorageKeyBase` to `${PERSISTENCE_KEY_PREFIX}${formKey}`
+ * unless the consumer passes an explicit `persist.key`. Kept as a
+ * separate constant so multi-tenant deployments can audit or reserve
+ * their own prefix without grepping for the literal.
  */
 export const PERSISTENCE_KEY_PREFIX = 'attaform:'
 

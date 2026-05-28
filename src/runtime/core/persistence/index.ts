@@ -312,34 +312,19 @@ export function createDebouncedWriter(
  * `attaform:${formKey}` — consumers who want a different
  * namespace (multi-tenant app, per-user prefix) pass `persist.key`.
  *
- * The full storage key is `${base}:${fingerprint}` (see
- * `resolveStorageKey`). The base is exposed separately so the
- * orphan-cleanup pass can `listKeys(base)` and prune any entry under
- * an old fingerprint.
+ * The full storage key is composed at the wirePersistence call site
+ * as `${base}:${fingerprint}` so the writer holds the schema's
+ * structural fingerprint directly. The base is exposed separately so
+ * the orphan-cleanup pass can `listKeys(base)` and prune any entry
+ * under an old fingerprint.
  */
 export function resolveStorageKeyBase(config: PersistConfigOptions, formKey: string): string {
   return config.key ?? `${PERSISTENCE_KEY_PREFIX}${formKey}`
 }
 
 /**
- * Resolve the full per-form storage key, composed of the base and the
- * schema's structural fingerprint. The fingerprint suffix gives free
- * automatic invalidation: any structural schema change produces a new
- * fingerprint, so the new mount looks up a fresh key and the old
- * draft becomes an orphan (cleaned up on the same mount via
- * `cleanupOrphanKeys`).
- */
-export function resolveStorageKey(
-  config: PersistConfigOptions,
-  formKey: string,
-  fingerprint: string
-): string {
-  return `${resolveStorageKeyBase(config, formKey)}:${fingerprint}`
-}
-
-/**
- * Delete every attaform-managed key under `base` that's not the current
- * fingerprint key. Sweeps two shapes:
+ * Delete every attaform-managed key under `base` from `adapter`,
+ * skipping any key equal to `keepKey`. Sweeps two shapes:
  *   - Unfingerprinted keys (no `:` suffix at all) — defensive cover
  *     for hand-written or migration-written entries that skipped the
  *     fingerprint suffix.
@@ -348,15 +333,17 @@ export function resolveStorageKey(
  *
  * Exact-or-`:`-prefix match prevents collision with sibling forms
  * whose `config.key` shares a string prefix (e.g. `'my-form'` vs
- * `'my-form-2'`).
+ * `'my-form-2'`). Fire-and-forget; per-key `removeItem` errors are
+ * swallowed and a failing `listKeys` returns silently.
  *
- * Fire-and-forget; never throws. SSR-guarded by the caller (cleanup
- * runs inside `wirePersistence`, which is itself client-only).
+ * Pass `keepKey` to retain the current fingerprint entry; leave it
+ * undefined for an unconditional sweep (used by the cross-store
+ * passes that wipe every attaform-managed key under `base`).
  */
-export async function cleanupOrphanKeys(
+async function removeMatchingKeys(
   adapter: FormStorage,
   base: string,
-  currentKey: string
+  keepKey?: string
 ): Promise<void> {
   let keys: string[]
   try {
@@ -365,13 +352,24 @@ export async function cleanupOrphanKeys(
     return
   }
   for (const key of keys) {
-    if (key === currentKey) continue
-    // Match either the exact base (unfingerprinted key) or an
-    // explicit `:` continuation (stale-fingerprint key).
+    if (key === keepKey) continue
     if (key === base || key.startsWith(`${base}:`)) {
       void adapter.removeItem(key).catch(() => undefined)
     }
   }
+}
+
+/**
+ * Delete every attaform-managed key under `base` that's not the
+ * current fingerprint key. SSR-guarded by the caller (cleanup runs
+ * inside `wirePersistence`, which is itself client-only).
+ */
+export async function cleanupOrphanKeys(
+  adapter: FormStorage,
+  base: string,
+  currentKey: string
+): Promise<void> {
+  await removeMatchingKeys(adapter, base, currentKey)
 }
 
 /**
@@ -407,25 +405,18 @@ export function normalizePersistConfig(input: PersistConfig): PersistConfigOptio
 }
 
 /**
- * Wipe every attaform-managed key under `base` from every standard backend.
- * Fire-and-forget. Used when no `persist:` is configured on the form:
- * a previous deployment may have written entries under this base
- * (any fingerprint), and the dev removing persistence should mean the
- * on-disk artifact is gone too — for every fingerprint that ever ran.
- *
- * Sweeps unfingerprinted keys (no `:` suffix) and fingerprint-
- * suffixed keys equally. Errors per backend are swallowed.
+ * Wipe every attaform-managed key under `base` from every standard
+ * backend. Fire-and-forget. Used when no `persist:` is configured on
+ * the form: a previous deployment may have written entries under this
+ * base (any fingerprint), and the dev removing persistence should
+ * mean the on-disk artifact is gone too — for every fingerprint that
+ * ever ran.
  */
 export async function sweepAllOrphansAcrossStandardStores(base: string): Promise<void> {
   for (const kind of STANDARD_STORAGE_KINDS) {
     try {
       const adapter = await getStorageAdapter(kind)
-      const keys = await adapter.listKeys(base)
-      for (const key of keys) {
-        if (key === base || key.startsWith(`${base}:`)) {
-          void adapter.removeItem(key).catch(() => undefined)
-        }
-      }
+      await removeMatchingKeys(adapter, base)
     } catch {
       // Backend unavailable (Node, Safari private mode, IDB blocked).
     }
@@ -433,9 +424,10 @@ export async function sweepAllOrphansAcrossStandardStores(base: string): Promise
 }
 
 /**
- * Cross-store cleanup. Calls `removeItem(key)` on every standard
- * backend that's NOT the configured one — fire-and-forget. Runs once
- * at form mount.
+ * Cross-store orphan cleanup: wipe every attaform-managed key under
+ * `base` from each standard backend that's NOT the configured one.
+ * Symmetric with `cleanupOrphanKeys` on the configured store — ensures
+ * stale drafts don't survive in stores the dev migrated AWAY from.
  *
  * Why this matters: if a form was persisting to `'local'` and the dev
  * later switches to `'session'` (or a custom encrypted adapter), the
@@ -445,32 +437,10 @@ export async function sweepAllOrphansAcrossStandardStores(base: string): Promise
  * truth for "where the draft lives now"; everything else is hysteresis
  * from past app states and should be wiped.
  *
- * Implementation note: deletion is inlined per-backend rather than going
- * through `getStorageAdapter`. Inlining avoids dynamic-importing the
- * adapter chunks the consumer specifically chose NOT to use — a form
- * configured for `'local'` shouldn't pull the IndexedDB chunk just to
- * sweep it.
- *
- * If `configured` is a custom `FormStorage` adapter, all three standard
- * backends are swept (we don't know which built-in the dev migrated
- * away from, and we can't reach custom adapters by enumeration).
- *
- * Errors are swallowed — cleanup is best-effort. Backend unavailable
- * (Node, Safari private mode, IDB blocked) is also a silent skip.
- */
-/**
- * Cross-store orphan cleanup: wipe every attaform-managed key under `base`
- * from each standard backend that's NOT the configured one. Symmetric
- * with `cleanupOrphanKeys` on the configured store: ensures stale
- * drafts don't survive in stores the dev migrated AWAY from. Sweeps
- * unfingerprinted and stale-fingerprint keys equally.
- *
  * If `configured` is a custom `FormStorage` adapter, all three
  * standard backends are swept (we don't know which built-in the dev
  * migrated away from, and we can't reach custom adapters by
- * enumeration).
- *
- * Fire-and-forget. Per-backend errors swallowed.
+ * enumeration). Fire-and-forget; per-backend errors swallowed.
  */
 export async function sweepNonConfiguredStandardStoresForOrphans(
   configured: FormStorageKind | FormStorage,
@@ -481,12 +451,7 @@ export async function sweepNonConfiguredStandardStoresForOrphans(
     if (kind === configuredKind) continue
     try {
       const adapter = await getStorageAdapter(kind)
-      const keys = await adapter.listKeys(base)
-      for (const key of keys) {
-        if (key === base || key.startsWith(`${base}:`)) {
-          void adapter.removeItem(key).catch(() => undefined)
-        }
-      }
+      await removeMatchingKeys(adapter, base)
     } catch {
       // Backend unavailable.
     }

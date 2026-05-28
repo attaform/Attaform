@@ -454,7 +454,7 @@ export function zodAdapter<
         if (path.length === 0) {
           return getDefaultValuesFromZodSchema(_zodSchema, true, _formKey)
         }
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return undefined
         // STRUCTURAL default: peel `.optional()` / `.nullable()` at the
         // leaf so partial-object writes through optional sub-schemas
@@ -475,29 +475,18 @@ export function zodAdapter<
         if (path.length === 0) {
           return getDefaultValuesFromZodSchema(_zodSchema, false, _formKey)
         }
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return undefined
         return getDefaultValuesFromZodSchema(leaf as z.ZodSchema, false, _formKey)
       },
       arrayShapeAtPath(path) {
         if (path.length === 0) return undefined
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return undefined
-        // Peel transparent wrappers down to the underlying shape.
-        // peelV3Wrappers handles optional / nullable / default /
-        // effects / pipeline / readonly / branded. ZodCatch is left
-        // by that helper for default-value reasons — peel it here
-        // since arrayShapeAtPath only needs the structural kind.
-        let peeled = peelV3Wrappers(leaf)
-        for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
-          if (!isZodSchemaType(peeled, 'ZodCatch')) break
-          const inner = unwrapInner(peeled)
-          if (!inner) break
-          peeled = peelV3Wrappers(inner)
-        }
-        if (isZodSchemaType(peeled, 'ZodTuple')) {
-          return getTupleItems(peeled).length
-        }
+        // The walker preserves the TERMINAL wrapper at the leaf — peel
+        // every transparent wrapper here so we see the structural kind.
+        const peeled = peelAllV3Wrappers(leaf)
+        if (isZodSchemaType(peeled, 'ZodTuple')) return getTupleItems(peeled).length
         if (isZodSchemaType(peeled, 'ZodArray')) return null
         return undefined
       },
@@ -531,17 +520,17 @@ export function zodAdapter<
         // The required-empty check tracks primitive leaves only, so this
         // branch is academic for the call sites that matter.
         if (path.length === 0) return true
-        // walkV3ToLeafSchema descends through structural shapes and peels
-        // wrappers between segments, but preserves the leaf's wrapper at
-        // the path's terminal position — so `path: ['name']` against
+        // The unified walker descends through structural shapes and peels
+        // wrappers between segments while preserving the terminal
+        // wrapper at the path's leaf — `path: ['name']` against
         // `z.object({ name: z.optional(z.string()) })` returns the
         // optional wrapper itself, which is what we need to inspect.
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return false
         return isLeafRequiredV3(leaf)
       },
       getFieldMetaAtPath(path): ResolvedFieldMeta {
-        return resolveFieldMetaAtPathV3(_zodSchema, path)
+        return resolveFieldMetaAtPathV3(_zodSchema, path, _maxRecursionDepth)
       },
 
       getUnionDiscriminatorAtPath(path): UnionDiscriminatorContext | undefined {
@@ -1113,76 +1102,42 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
 }
 
 /**
- * Walk a structured path through a v3 schema, peeling wrappers at each
- * step before descending. Returns the schema at the final segment, or
- * `undefined` if the path doesn't exist in the schema (object key
- * missing, tuple index out of range, leaf with segments remaining).
+ * Peel every transparent wrapper (optional / nullable / default / readonly
+ * / catch / pipeline / branded / effects / lazy) off `schema`. Stops on
+ * the first non-wrapper kind. Used by `arrayShapeAtPath` where we want the
+ * inner structural kind regardless of what the default-value semantic is
+ * — different from `peelV3Wrappers`, which preserves `.catch()` so
+ * `unwrapDefault` can read it directly.
  *
- * Discriminated and plain unions: takes the first matching option (or
- * first option when no match). Matches `validateAtPath`'s first-success
- * semantic at the path-walker layer.
+ * Mirrors v4's `peelAllWrappers` (`zod-v4/adapter.ts`). Bounded by
+ * `MAX_UNWRAP_STEPS` as a runaway guard.
  */
-function walkV3ToLeafSchema(
-  schema: z.ZodTypeAny,
-  segments: readonly (string | number)[]
-): z.ZodTypeAny | undefined {
-  let current: z.ZodTypeAny | undefined = schema
-  let i = 0
-  // Iteration cap prevents pathological unions / lazy loops from hanging.
-  let safetyTicks = 0
-  while (
-    i < segments.length &&
-    current &&
-    safetyTicks < segments.length * MAX_UNWRAP_STEPS + MAX_UNWRAP_STEPS
-  ) {
-    safetyTicks++
-    current = peelV3Wrappers(current)
-    const key = String(segments[i] ?? '')
-
-    if (isZodSchemaType(current, 'ZodObject')) {
-      const shape = getObjectShape(current)
-      current = Object.hasOwn(shape, key) ? shape[key] : undefined
-      i++
-      continue
+function peelAllV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
+  let current: z.ZodTypeAny = schema
+  for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
+    const k = kindOf(current)
+    let inner: z.ZodTypeAny | undefined
+    if (
+      k === 'optional' ||
+      k === 'nullable' ||
+      k === 'default' ||
+      k === 'readonly' ||
+      k === 'catch'
+    ) {
+      inner = unwrapInner(current)
+    } else if (k === 'pipeline') {
+      inner = unwrapPipeIn(current)
+    } else if (k === 'branded') {
+      inner = unwrapBranded(current)
+    } else if (k === 'effects') {
+      inner = unwrapEffectsSource(current)
+    } else if (k === 'lazy') {
+      inner = unwrapLazy(current)
+    } else {
+      return current
     }
-    if (isZodSchemaType(current, 'ZodArray')) {
-      current = getArrayElement(current)
-      i++
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodRecord')) {
-      current = getRecordValueType(current)
-      i++
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodTuple')) {
-      const idx = Number(key)
-      if (!Number.isInteger(idx) || idx < 0) return undefined
-      const item = getTupleItems(current)[idx]
-      if (!item) return undefined
-      current = item
-      i++
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodDiscriminatedUnion')) {
-      const options = getDiscriminatedOptions(current)
-      const matching = options.filter((o) => key in o.shape)
-      const candidates = matching.length > 0 ? matching : options
-      const first = candidates[0]
-      if (!first) return undefined
-      current = first
-      // Don't advance i — re-process this segment within the option.
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodUnion')) {
-      const first = getUnionOptions(current)[0]
-      if (!first) return undefined
-      current = first
-      // Don't advance i — re-process this segment within the option.
-      continue
-    }
-    // Leaf type with segments remaining — can't descend.
-    return undefined
+    if (inner === undefined) return current
+    current = inner
   }
   return current
 }
@@ -2018,14 +1973,20 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
  *   - placeholder: registry → undefined
  *   - meta: registry payload (frozen) — empty object when absent
  *
- * Walks via `walkV3ToLeafSchema` (descends through wrappers
+ * Walks via `getNestedZodSchemasAtPath` (descends through wrappers
  * transparently) then peels the terminal wrapper via `peelV3Wrappers`
  * — symmetric with the v4 walker's terminal behavior.
  */
-function resolveFieldMetaAtPathV3(rootSchema: z.ZodSchema, path: Path): ResolvedFieldMeta {
+function resolveFieldMetaAtPathV3(
+  rootSchema: z.ZodSchema,
+  path: Path,
+  maxRecursionDepth: number
+): ResolvedFieldMeta {
   const lastSegment = path.length === 0 ? '' : (path[path.length - 1] as string | number)
   const target =
-    path.length === 0 ? (rootSchema as z.ZodTypeAny) : walkV3ToLeafSchema(rootSchema, path)
+    path.length === 0
+      ? (rootSchema as z.ZodTypeAny)
+      : getNestedZodSchemasAtPath(rootSchema, path, maxRecursionDepth)[0]
   if (target === undefined) {
     return {
       label: humanize(lastSegment),

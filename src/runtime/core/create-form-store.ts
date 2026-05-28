@@ -2104,16 +2104,31 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
     // Blank bookkeeping. `blank: true` adds the path
     // to the set (the call site declares "this write represents an
-    // empty intent"); any other write removes it (the user typed a
-    // real value or programmatically reassigned). The mark/unmark sit
-    // BEFORE the identity short-circuit so transitions that don't
-    // change storage value (e.g. typing 0 over slim-default 0) still
-    // update the visual / blank state correctly.
+    // empty intent"); any other write removes the exact key. A
+    // container write also drops every descendant blank-mark under
+    // `path` (mirrors the DU-reshape path's `isPathKeyUnder` sweep) —
+    // a write to `addr` replaces every leaf beneath, so any prior
+    // "I'm blank" mark at `addr.zip` is now stale. The arrayOp branch
+    // skips the descendant sweep because `migrateArrayElementState`
+    // relocates per-element blank-marks across the operation's exact
+    // permutation downstream; sweeping ahead of it would delete the
+    // marks the migration needs to carry forward. The mark/unmark
+    // sit BEFORE the identity short-circuit so transitions that
+    // don't change storage value (e.g. typing 0 over slim-default 0)
+    // still update the visual / blank state correctly.
     const pathKey = canonicalizePath(path).key
     if (meta?.blank === true) {
       blankPaths.add(pathKey)
-    } else if (blankPaths.has(pathKey)) {
-      blankPaths.delete(pathKey)
+    } else {
+      if (blankPaths.has(pathKey)) blankPaths.delete(pathKey)
+      if (meta?.arrayOp === undefined) {
+        // Container write at `path` (or root `[]`) — sweep descendants.
+        // `isPathKeyUnder` returns true at root for every non-empty key,
+        // so a root write correctly drops all marks.
+        for (const existingKey of [...blankPaths]) {
+          if (isPathKeyUnder(existingKey, path)) blankPaths.delete(existingKey)
+        }
+      }
     }
 
     // Authored bookkeeping: a setValue is the consumer authoring `path`

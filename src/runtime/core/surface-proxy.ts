@@ -365,6 +365,41 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
           return opts.containerOwnKeys === undefined ? 0 : opts.containerOwnKeys(segments).length
         }
         const childSegs = [...segments, keyToSegment(key)]
+        // Array.prototype pass-through on array-shaped containers
+        // (`form.fields.tags.map`, `form.errors.<array>.forEach`, …).
+        // Pre-fix the schema-descent branch below would treat `'map'`
+        // as a phantom child field and hand back a sub-proxy / leaf
+        // view, because an array schema accepts ANY segment (numeric
+        // or not) at the element position — so `schemaHasPath` is
+        // unconditionally true on array paths and can't be used as the
+        // arbiter here.
+        //
+        // The gate is "isArrayLike AND the key is a non-integer string
+        // present on Array.prototype." Integer-segment keys (`'0'`,
+        // `'1'`, …) still descend so per-element field proxies work.
+        // Non-integer keys on array-shaped paths route to the Array
+        // prototype: read-only methods (`map` / `forEach` / `find` /
+        // `filter` / `slice` / `reduce` / …) work naturally because
+        // they call `this[i]` and `this.length` back through this
+        // `get` trap, which still returns the descended sub-proxy.
+        // Mutating methods (`push` / `pop` / `splice` / …) become
+        // reachable but the proxy's `set` trap (warn-and-noop) blocks
+        // any actual mutation — readonly contract holds, the consumer
+        // gets a dev warn.
+        //
+        // No schema-authority concern: array schemas don't have
+        // literal field names at the element layer (every index shares
+        // one element schema). Object-shaped containers fail the
+        // `isArrayLike` gate, so a record literally containing a field
+        // named `map` still descends through the schema-aware path
+        // below.
+        if (
+          (isArrayLike || opts.isArrayContainer?.(segments) === true) &&
+          typeof keyToSegment(key) === 'string' &&
+          key in Array.prototype
+        ) {
+          return Reflect.get(Array.prototype, key)
+        }
         // Direct method-call coercion (`proxy.toString()` /
         // `proxy.valueOf()`): without intercepting these names, the
         // schema-aware descent below would return a sub-proxy and the

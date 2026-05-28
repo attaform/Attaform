@@ -79,6 +79,7 @@ import {
   getIntersectionLeft,
   getIntersectionRight,
   getLiteralValue,
+  getNativeEnumValues,
   getObjectShape,
   getRecordKeyType,
   getRecordValueType,
@@ -952,12 +953,14 @@ function isStructuralV3Kind(schema: z.ZodTypeAny): boolean {
  * Bounded by `MAX_UNWRAP_STEPS` as a cycle/runaway guard. Returns the
  * original schema unchanged if it has no peelable wrapper.
  *
- * Peeled wrappers:
- *   - `ZodOptional` / `ZodNullable` / `ZodDefault` — `_def.innerType`
- *   - `ZodEffects` — `_def.schema` (the structural source)
- *   - `ZodPipeline` — `_def.in` (input shape; consumers see structural form)
- *   - `ZodReadonly` — `_def.innerType`
- *   - `ZodBranded` — `_def.type`
+ * Peeled wrappers (each kind reads through its matching introspect
+ * accessor — see `./introspect.ts`):
+ *   - `ZodOptional` / `ZodNullable` / `ZodDefault` / `ZodReadonly` —
+ *     `unwrapInner`
+ *   - `ZodEffects` — `unwrapEffectsSource` (structural source)
+ *   - `ZodPipeline` — `unwrapPipeIn` (input shape; consumers see
+ *     structural form)
+ *   - `ZodBranded` — `unwrapBranded`
  *
  * `ZodCatch` is intentionally NOT peeled here — its presence carries
  * load-bearing semantic (the caught fallback), and `unwrapDefault`
@@ -1421,7 +1424,7 @@ function getDefaultValuesFromZodSchema<
 
     // Handle literals
     if (isZodSchemaType(schema, 'ZodLiteral')) {
-      return schema._def.value
+      return getLiteralValue(schema)
     }
 
     // Handle optional
@@ -1431,12 +1434,13 @@ function getDefaultValuesFromZodSchema<
 
     // Handle unions (use the first option as the default)
     if (isZodSchemaType(schema, 'ZodUnion')) {
-      return generateValue(schema._def.options[0])
+      const first = getUnionOptions(schema)[0]
+      return first === undefined ? undefined : generateValue(first)
     }
 
     // Handle tuples
     if (isZodSchemaType(schema, 'ZodTuple')) {
-      return schema._def.items.map((item: z.ZodTypeAny) => generateValue(item))
+      return getTupleItems(schema).map((item) => generateValue(item))
     }
 
     // Handle records
@@ -1447,11 +1451,13 @@ function getDefaultValuesFromZodSchema<
     // Finding ZodDefault here means we should suppress defaults
     // Can only happen if useDefaultSchemaValues is false
     if (isZodSchemaType(schema, 'ZodDefault')) {
-      return generateValue(schema._def.innerType)
+      const inner = unwrapInner(schema)
+      if (inner) return generateValue(inner)
     }
 
     if (isZodSchemaType(schema, 'ZodEffects')) {
-      return generateValue(schema.innerType())
+      const inner = unwrapEffectsSource(schema)
+      if (inner) return generateValue(inner)
     }
 
     if (isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
@@ -1464,13 +1470,11 @@ function getDefaultValuesFromZodSchema<
     // (`useDefaultSchemaValues=false`), the consumer-supplied fallback
     // is the most reasonable construction-time value to surface; the
     // alternative is the inner schema's bare default, which the
-    // .catch() author specifically chose to override.
+    // .catch() author specifically chose to override. `hasCatchValue`
+    // preserves the legitimate-undefined-return path.
     if (isZodSchemaType(schema, 'ZodCatch')) {
-      const catchValue = (schema._def as { catchValue?: (ctx: unknown) => unknown }).catchValue
-      if (typeof catchValue === 'function') {
-        return catchValue({ error: null, input: undefined })
-      }
-      const inner = (schema._def as { innerType?: z.ZodTypeAny }).innerType
+      if (hasCatchValue(schema)) return getCatchDefault(schema)
+      const inner = unwrapInner(schema)
       if (inner) return generateValue(inner)
     }
 
@@ -1478,17 +1482,17 @@ function getDefaultValuesFromZodSchema<
     // pre-existed). Each wraps a single inner schema with no structural
     // impact at value-construction time.
     if (isZodSchemaType(schema, 'ZodReadonly')) {
-      const inner = (schema._def as { innerType?: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(schema)
       if (inner) return generateValue(inner)
     }
     if (isZodSchemaType(schema, 'ZodBranded')) {
-      const inner = (schema._def as { type?: z.ZodTypeAny }).type
+      const inner = unwrapBranded(schema)
       if (inner) return generateValue(inner)
     }
     if (isZodSchemaType(schema, 'ZodPipeline')) {
       // Pipeline transforms in -> out; pre-transform default is the
       // input schema's natural default.
-      const inner = (schema._def as { in?: z.ZodTypeAny }).in
+      const inner = unwrapPipeIn(schema)
       if (inner) return generateValue(inner)
     }
 
@@ -1496,7 +1500,7 @@ function getDefaultValuesFromZodSchema<
     // Resolve the getter once; the inner schema's own ZodOptional /
     // base-case branch terminates the recursion.
     if (isZodSchemaType(schema, 'ZodLazy')) {
-      const inner = (schema._def as { getter?: () => z.ZodTypeAny }).getter?.()
+      const inner = unwrapLazy(schema)
       if (inner) return generateValue(inner)
     }
 
@@ -1505,9 +1509,10 @@ function getDefaultValuesFromZodSchema<
     // `merge` mutates its first arg, so seed an empty record. Leaves on
     // either side replace; nested records merge recursively.
     if (isZodSchemaType(schema, 'ZodIntersection')) {
-      const def = schema._def as { left?: z.ZodTypeAny; right?: z.ZodTypeAny }
-      const left = def.left ? generateValue(def.left) : undefined
-      const right = def.right ? generateValue(def.right) : undefined
+      const leftSchema = getIntersectionLeft(schema)
+      const rightSchema = getIntersectionRight(schema)
+      const left = leftSchema ? generateValue(leftSchema) : undefined
+      const right = rightSchema ? generateValue(rightSchema) : undefined
       return merge({}, left, right)
     }
 
@@ -1517,15 +1522,14 @@ function getDefaultValuesFromZodSchema<
     // number. String enums have no reverse mapping, so every key is
     // valid. Pick the first valid value as the default.
     if (isZodSchemaType(schema, 'ZodNativeEnum')) {
-      const values = (schema._def as { values?: Record<string, unknown> }).values
+      const values = getNativeEnumValues(schema)
       if (values) {
-        const lookup = values as Record<string, unknown>
-        const validKeys = Object.keys(lookup).filter(
-          (k) => typeof lookup[lookup[k] as string] !== 'number'
+        const validKeys = Object.keys(values).filter(
+          (k) => typeof values[values[k] as string] !== 'number'
         )
         if (validKeys.length > 0) {
           const first = validKeys[0]
-          if (first !== undefined) return lookup[first]
+          if (first !== undefined) return values[first]
         }
       }
     }
@@ -1761,7 +1765,8 @@ function stripRootSchema(schema: z.ZodSchema, stripConfig: StripConfig) {
       getStripInstruction(stripConfig.stripZodEffects, _schema) &&
       isZodSchemaType(_schema, 'ZodEffects')
     ) {
-      return recursion(_schema.innerType(), true)
+      const inner = unwrapEffectsSource(_schema)
+      if (inner) return recursion(inner as z.ZodSchema, true)
     }
 
     if (

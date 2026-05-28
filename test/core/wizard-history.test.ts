@@ -5,8 +5,8 @@ import { createWizardHistory } from '../../src/runtime/core/wizard-history'
 /**
  * `createWizardHistory(param)` encapsulates `window.history` for the
  * wizard. The primitive is the only DOM-touching module in the
- * wizard surface — it abstracts pushState / replaceState / popstate
- * behind a small handle, lets the wizard composable stay focused on
+ * wizard surface — it abstracts replaceState / popstate behind a
+ * small handle, lets the wizard composable stay focused on
  * navigation semantics, and stays SSR-safe by returning a no-op
  * handle when `window` is undefined.
  */
@@ -22,17 +22,7 @@ describe('createWizardHistory — primitive', () => {
     window.history.replaceState(null, '', ORIGINAL_URL)
   })
 
-  it('push(key) calls pushState and writes `?step=<key>`', () => {
-    const handle = createWizardHistory('step')
-    const pushSpy = vi.spyOn(window.history, 'pushState')
-    handle.push('cargo')
-    expect(pushSpy).toHaveBeenCalledTimes(1)
-    expect(new URL(window.location.href).searchParams.get('step')).toBe('cargo')
-    pushSpy.mockRestore()
-    handle.dispose()
-  })
-
-  it('replace(key) calls replaceState — no pushState', () => {
+  it('replace(key) calls replaceState and writes `?step=<key>`', () => {
     const handle = createWizardHistory('step')
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
@@ -48,7 +38,7 @@ describe('createWizardHistory — primitive', () => {
   it('read() returns the current step param value (or undefined)', () => {
     const handle = createWizardHistory('step')
     expect(handle.read()).toBeUndefined()
-    handle.push('reference')
+    handle.replace('reference')
     expect(handle.read()).toBe('reference')
     handle.dispose()
   })
@@ -57,8 +47,11 @@ describe('createWizardHistory — primitive', () => {
     const handle = createWizardHistory('step')
     const seen: Array<string | undefined> = []
     handle.subscribe((key) => seen.push(key))
-    handle.push('a')
-    handle.push('b')
+    // Two real pushState writes so `history.back()` has somewhere to go;
+    // the handle itself only ever replaces, but popstate behaviour is
+    // browser-driven and exercised through real navigation entries.
+    window.history.pushState({}, '', `${ORIGINAL_URL}?step=a`)
+    window.history.pushState({}, '', `${ORIGINAL_URL}?step=b`)
     window.history.back()
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(seen[seen.length - 1]).toBe('a')
@@ -69,7 +62,7 @@ describe('createWizardHistory — primitive', () => {
     const handle = createWizardHistory('step')
     const cb = vi.fn()
     handle.subscribe(cb)
-    handle.push('a')
+    handle.replace('a')
     handle.dispose()
     handle.dispose() // idempotent
     window.history.replaceState(null, '', ORIGINAL_URL + '?step=zzz')
@@ -81,7 +74,7 @@ describe('createWizardHistory — primitive', () => {
   it('preserves existing search params when writing the step param', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?ref=email&utm=launch`)
     const handle = createWizardHistory('step')
-    handle.push('cargo')
+    handle.replace('cargo')
     const url = new URL(window.location.href)
     expect(url.searchParams.get('step')).toBe('cargo')
     expect(url.searchParams.get('ref')).toBe('email')

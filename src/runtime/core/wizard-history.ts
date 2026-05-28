@@ -5,11 +5,9 @@
  * coupling.
  *
  * The handle exposes four operations:
- *   - `push(key)` — pushState that records `key` in `?<param>=<key>`
- *     while preserving any other search params already on the URL.
- *   - `replace(key)` — same write, but via replaceState so the
- *     history stack doesn't grow (used for the initial entry and for
- *     `goTo({ replace: true })`).
+ *   - `replace(key)` — write `key` into `?<param>=<key>` via
+ *     replaceState so the history stack doesn't grow. Preserves any
+ *     other search params already on the URL.
  *   - `read()` — read the current step key from the URL, or
  *     `undefined` if the param is absent.
  *   - `subscribe(cb)` — register a popstate listener; the callback
@@ -22,7 +20,6 @@
  */
 
 export type WizardHistoryHandle = {
-  push(key: string): void
   replace(key: string): void
   read(): string | undefined
   subscribe(callback: (key: string | undefined) => void): void
@@ -35,7 +32,6 @@ export type WizardHistoryHandle = {
  * `history: false`. Every method is a safe call-site shim.
  */
 export const NOOP_WIZARD_HISTORY: WizardHistoryHandle = {
-  push() {},
   replace() {},
   read() {
     return undefined
@@ -70,16 +66,15 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
   // sandboxed iframes, and data: URLs. In those, `buildUrl(key)`
   // resolves to a URL whose origin doesn't match the document's
   // (the document inherits the parent's origin, but the synthesized
-  // URL keeps the scheme), and `history.pushState` / `replaceState`
-  // throw `SecurityError`. The user-visible step state still works
-  // — `current` / `goTo()` drive the form via the in-memory wizard
-  // — they just won't appear in the URL bar. Silently swallowing
-  // keeps the preview functional without coupling the library to
+  // URL keeps the scheme), and `history.replaceState` throws
+  // `SecurityError`. The user-visible step state still works —
+  // `current` / `goTo()` drive the form via the in-memory wizard —
+  // they just won't appear in the URL bar. Silently swallowing keeps
+  // the preview functional without coupling the library to
   // embed-detection logic.
-  function safeWriteState(key: string, op: 'push' | 'replace'): void {
+  function safeReplaceState(key: string): void {
     try {
-      const fn = op === 'push' ? window.history.pushState : window.history.replaceState
-      fn.call(window.history, {}, '', buildUrl(key))
+      window.history.replaceState({}, '', buildUrl(key))
     } catch {
       // SecurityError or similar — origin mismatch, sandboxed history,
       // or a host that's locked down the History API. No remediation
@@ -89,13 +84,9 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
   }
 
   return {
-    push(key) {
-      if (disposed) return
-      safeWriteState(key, 'push')
-    },
     replace(key) {
       if (disposed) return
-      safeWriteState(key, 'replace')
+      safeReplaceState(key)
     },
     read() {
       const url = new URL(window.location.href)

@@ -1393,10 +1393,16 @@ function getDefaultValue(
   if (expected === 'object') return {}
   if (expected === 'set') return new Set()
   if (expected === 'date') return new Date()
-  if (expected === 'map') return new Map()
-  if (expected === 'promise') return new Promise((res) => res(undefined))
-  if (expected === 'symbol') return Symbol()
-  if (expected === 'function') return () => undefined
+  // ZodMap / ZodPromise / ZodSymbol / ZodFunction are rejected by
+  // `assertSupportedKinds` at construction (the four entries in
+  // `UNSUPPORTED_TYPE_NAMES` at `assert-supported.ts:34`), so a
+  // ZodInvalidTypeIssue with `expected` set to one of those values
+  // is unreachable through the public adapter surface. The branches
+  // were dead before Phase 9 even started; deleting them now retires
+  // the only synthesisers we had for those values, eliminating the
+  // risk of someone reaching in privately and discovering an
+  // adapter-internal `new Promise` / `Symbol()` instance pinned
+  // against a kind the schema couldn't be.
   if (expected === 'undefined') return undefined
   if (expected === 'unknown') return undefined
   if (expected === 'nan') return Number('nan')

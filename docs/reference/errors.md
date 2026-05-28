@@ -45,15 +45,15 @@ try {
 Branch on the subclass for targeted handling:
 
 ```ts
-import { AttaformError, OutsideSetupError, SensitivePersistFieldError } from 'attaform'
+import { AttaformError, OutsideSetupError, AnonPersistError } from 'attaform'
 
 try {
   // …
 } catch (err) {
   if (err instanceof OutsideSetupError) {
     // Move the call into a Vue setup function
-  } else if (err instanceof SensitivePersistFieldError) {
-    // Drop the { persist: true }, or pass acknowledgeSensitive
+  } else if (err instanceof AnonPersistError) {
+    // Pass a stable `key` so persistence has a deterministic prefix
   } else if (err instanceof AttaformError) {
     // Catch-all
   } else {
@@ -95,10 +95,6 @@ An Attaform API needs the registry attached to a Vue app, but it isn't installed
 ### `ReservedFormKeyError`
 
 The `__atta:` namespace is reserved for internal use; passing a form key starting with `__atta:` throws. Pick a different prefix.
-
-### `SensitivePersistFieldError`
-
-`register(path, { persist: true })` was called for a path matching the resolved `sensitiveNames` list. Either drop the `persist: true`, pass `{ acknowledgeSensitive: true }` for an intentional override, or remove the path from the `sensitiveNames` list. Carries the offending path on `err.path`.
 
 ### `AnonPersistError`
 

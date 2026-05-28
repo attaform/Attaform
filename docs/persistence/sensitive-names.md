@@ -1,6 +1,6 @@
 ---
 title: Sensitive-name protection
-description: A built-in heuristic throws SensitivePersistFieldError at mount if you try to persist a path named password / cvv / ssn. One configurable list gates persistence, multi-tab sync, and the DevTools redact walk.
+description: A built-in heuristic warns and skips the persist opt-in for paths like password / cvv / ssn. One configurable list gates persistence writes and multi-tab broadcasts.
 metaRows:
   - label: Category
     value: Module
@@ -10,19 +10,19 @@ metaRows:
   - label: Override
     value: createAttaform({ defaults: { sensitiveNames } })
     kind: code
-  - label: Bypass per field
+  - label: Acknowledge per field
     value: register(path, { persist: true, acknowledgeSensitive: true })
     kind: code
 ---
 
 # Sensitive-name protection
 
-> A speed bump for the obvious mistakes: opting `password` into client-side storage throws at mount, and the same list gates multi-tab broadcasts and the DevTools redact walk.
+> A speed bump for the obvious mistake: opting `password` into client-side storage warns and skips the opt-in. The secret stays unwritten, which is the safe default. Pass `acknowledgeSensitive: true` if the client-side persistence is intentional.
 
 ::docs-meta-table
 ::
 
-This page is code-only; the demo _is_ the throw, and rendering a thrown setup hook on the docs page would make the docs page itself fail to mount. The mechanism is small enough to read at a glance below.
+Attaform never throws over a recoverable misconfiguration like this. A sensitive-named persist opt-in lands as a one-shot dev warning, the field is dropped from the persist set, and the form mounts cleanly. Devs see the warning during testing and either acknowledge or remove the opt-in; production users never see anything unsafe.
 
 ## The default list
 
@@ -35,24 +35,24 @@ account-number, passport, driver-license, mfa-secret, recovery-code,
 token, secret, api-key, private-key
 ```
 
-Trying to opt one of them into persistence throws `SensitivePersistFieldError` at mount:
+Opting one of them into persistence is a quiet no-op plus a console warning:
 
 ```vue
-<!-- Throws SensitivePersistFieldError -->
+<!-- Warns once in dev; the field is not persisted. -->
 <input v-register="form.register('password', { persist: true })" />
 ```
 
 The match is case-insensitive and ignores separator punctuation: `apiKey`, `api_key`, `api-key`, and `API.KEY` all hit the same `api-key` entry. Slash-separated segments and camelCase boundaries split into words before comparison.
 
-## Bypassing per field
+## Acknowledging per field
 
-If persistence is intentional (custom encrypted adapter, narrow-scope internal tool), pass `acknowledgeSensitive: true`:
+When persistence is intentional (custom encrypted adapter, narrow-scope internal tool, server-managed encryption layer), pass `acknowledgeSensitive: true`:
 
 ```vue
 <input v-register="form.register('password', { persist: true, acknowledgeSensitive: true })" />
 ```
 
-The override silences the throw for that exact register call; it does NOT remove the path from the resolved sensitive-names list, so the same path is still stripped from multi-tab broadcasts and redacted in the DevTools panel.
+The acknowledgement silences the warning for that exact register call and lets the value through to storage. It does NOT remove the path from the resolved sensitive-names list, so the same path stays stripped from multi-tab broadcasts.
 
 Treat `acknowledgeSensitive: true` as a code-review trigger, not a soundness boundary. The heuristic doesn't catch alias-typed paths (`register('pswd' as 'password')`), abbreviated variants not in the list, or schemas with deliberately innocuous keys for sensitive data. Per-field opt-in is the real defense; this is a default to lean against.
 
@@ -72,35 +72,14 @@ createAttaform({
 
 The resolved list applies to every form created by that app. Per-form overrides land via `useForm({ sensitiveNames })`: the same union type, same matching rules.
 
-## One source of truth, three uses
+## One list, two surfaces
 
-The resolved `sensitiveNames` list gates three subsystems:
+The resolved `sensitiveNames` list gates two write paths:
 
-- **Persistence**: `{ persist: true }` against a sensitive path throws.
-- **Multi-tab sync**: matching paths are stripped _outbound_ (the broadcaster never posts them) AND rejected _inbound_ (receivers drop them even if a malicious sender tries to slip them through).
-- **DevTools redact walk**: values on matching paths render as `<redacted>` in the inspector tree.
+- **Persistence**: `{ persist: true }` on a sensitive path warns and skips the opt-in. Container opt-ins shed nested sensitive leaves the same way (`register('payment', { persist: true })` writes `payment.last4` but not `payment.cvv`, even if no one ever directly registered `cvv`). The field stays out of storage unless you acknowledge it.
+- **Multi-tab sync**: matching paths are stripped _outbound_ (the broadcaster never posts them) AND rejected _inbound_ (receivers drop them even if a peer tries to slip them through).
 
-One list, three layers. Extending it once tightens all three.
-
-## Catching the error
-
-If you'd rather log and continue than throw, wrap the throwing register call in a `try` outside the directive. Easiest in `useRegister`-driven custom components:
-
-```ts
-import { SensitivePersistFieldError } from 'attaform'
-
-try {
-  // …
-} catch (err) {
-  if (err instanceof SensitivePersistFieldError) {
-    console.warn('Persistence blocked on sensitive path:', err.path)
-  } else {
-    throw err
-  }
-}
-```
-
-In practice almost no one does this; the throw lands at _mount_, the same time a typo in the schema or a missing key would. Fix it in the call site, not in a try/catch.
+DevTools renders raw values by design. It is a dev-only surface, and redacting across every place a value surfaces (panels, logs, network tabs, breakpoints, source maps) is impractical security theater, not a real safeguard. Don't share your screen with the DevTools panel open over a customer's session.
 
 ## Where to next
 

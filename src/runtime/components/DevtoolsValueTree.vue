@@ -14,9 +14,7 @@
     path?: ReadonlyArray<string | number>
     /**
      * Edit-mode toggle. When `true` and `onEdit` is wired, leaf cells
-     * become click-to-edit. Sensitive (redacted) leaves stay read-only
-     * regardless — overwriting with the literal `[redacted]` string
-     * would destroy the real value.
+     * become click-to-edit. Values render raw (DevTools does not redact).
      */
     editable?: boolean | undefined
     onEdit?: ((path: ReadonlyArray<string | number>, next: unknown) => void) | undefined

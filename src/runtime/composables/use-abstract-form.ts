@@ -36,14 +36,12 @@ import {
   pluckPaths,
   readPersistedPayload,
   resolveStorageKeyBase,
+  stripUnacknowledgedSensitiveLeaves,
   sweepAllOrphansAcrossStandardStores,
   sweepNonConfiguredStandardStoresForOrphans,
   type PersistenceModule,
 } from '../core/persistence'
-import {
-  createIsSensitivePath,
-  createSegmentMatchesSensitive,
-} from '../core/persistence/sensitive-names'
+import { createIsSensitivePath } from '../core/persistence/sensitive-names'
 import { hashStableString } from '../core/hash'
 import { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } from '../core/multi-tab-sync'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
@@ -678,10 +676,6 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   const resolvedSensitiveNames = configuration.sensitiveNames
   const resolvedIsSensitivePath =
     resolvedSensitiveNames === undefined ? undefined : createIsSensitivePath(resolvedSensitiveNames)
-  const resolvedSegmentMatchesSensitive =
-    resolvedSensitiveNames === undefined
-      ? undefined
-      : createSegmentMatchesSensitive(resolvedSensitiveNames)
   const createOptions: Parameters<typeof createFormStore<F, G>>[0] = {
     formKey: key,
     schema,
@@ -719,9 +713,6 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       : {}),
     ...(initialBlankPaths !== undefined ? { initialBlankPaths } : {}),
     ...(resolvedIsSensitivePath !== undefined ? { isSensitivePath: resolvedIsSensitivePath } : {}),
-    ...(resolvedSegmentMatchesSensitive !== undefined
-      ? { segmentMatchesSensitive: resolvedSegmentMatchesSensitive }
-      : {}),
   }
   const state = createFormStore<F, G>(createOptions)
   // Storage type is FormStore<GenericForm>; the lookup above narrows
@@ -959,7 +950,26 @@ function wirePersistence<F extends GenericForm>(
   // storage keys for non-trivial schemas AND leaks the schema's
   // structure into client-side storage. The hash preserves
   // determinism (same schema → same hash) without either downside.
-  const fingerprint = hashStableString(state.schema.fingerprint())
+  // Defensive: some schema shapes make an adapter's fingerprint() throw
+  // (a v3 `z.nativeEnum` spreads the enum object). The library must never
+  // crash a consumer's mount on the persistence path — the multi-tab
+  // channel-name site already degrades the same way. Fall back to a
+  // stable fingerprint-free token: persistence still works, it just
+  // loses automatic schema-change invalidation for this form until the
+  // adapter-side fingerprint fix lands.
+  let fingerprint: string
+  try {
+    fingerprint = hashStableString(state.schema.fingerprint())
+  } catch (err) {
+    if (__DEV__) {
+      console.warn(
+        `[attaform] Could not fingerprint the schema for form '${state.formKey}': ` +
+          `${err instanceof Error ? err.message : String(err)}. Persistence falls back to a ` +
+          `fingerprint-free key, so a schema change won't auto-invalidate a saved draft.`
+      )
+    }
+    fingerprint = 'unfingerprinted'
+  }
   const base = resolveStorageKeyBase(config, state.formKey)
   const key = `${base}:${fingerprint}`
   // Sanitise the persistence debounce — same rules as field validation:
@@ -1024,7 +1034,16 @@ function wirePersistence<F extends GenericForm>(
     // proxies (DATA_CLONE_ERR), and local/session stringify the
     // proxy's own-enumerable keys anyway.
     const rawForm = toRaw(state.form.value)
-    const filteredForm = pluckPaths(rawForm, optedInPaths) as F
+    // Shed sensitive leaves a container opt-in dragged in that weren't
+    // individually acknowledged — they must never reach storage in
+    // cleartext (SEC-1). Directly- or container-acknowledged secrets are
+    // kept; the opt-in gate guarantees a sensitive opted-in path was
+    // acknowledged.
+    const filteredForm = stripUnacknowledgedSensitiveLeaves(
+      pluckPaths(rawForm, optedInPaths),
+      optedInPaths,
+      state.isSensitivePath as (path: Path) => boolean
+    ) as F
     // Build the envelope with the attaform-internal envelope version baked
     // in by `buildPersistedPayload`. Consumers no longer manage `v` —
     // schema-content invalidation lives at the storage-key level via

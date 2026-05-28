@@ -3,7 +3,13 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { applyPatchesForward, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { isPlainRecord } from './path-walker'
-import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
+import {
+  canonicalizePath,
+  isDangerousSegment,
+  type Path,
+  type PathKey,
+  type Segment,
+} from './paths'
 import { slimKindOf } from './slim-primitive-gate'
 
 /**
@@ -116,6 +122,16 @@ const JOIN_COLLECTION_WINDOW_MS = 50
 const SNAPSHOT_TIMEOUT_MS = 200
 /** Max retries for leader-election before giving up and proceeding solo. */
 const MAX_LEADER_ATTEMPTS = 3
+/**
+ * Minimum gap between snapshot replies to the SAME requesting sender.
+ * Each reply is a full-form deep-clone + sensitive-scrub + serialise, so
+ * an unthrottled responder is a CPU-amplification target for a hostile
+ * same-origin tab that spams `requestSnapshot`. A legitimate joiner
+ * sends a leader exactly one request (a lost reply retries the
+ * next-lowest leader, not the same one), so this never drops real
+ * traffic. Comfortably above `SNAPSHOT_TIMEOUT_MS` for that reason.
+ */
+const SNAPSHOT_RESPONSE_MIN_INTERVAL_MS = 500
 
 type SyncMessage<F> =
   | { readonly v: 1; readonly kind: 'hello'; readonly senderId: string }
@@ -176,10 +192,6 @@ function isFileLikeValue(value: unknown): boolean {
   if (typeof File !== 'undefined' && value instanceof File) return true
   if (typeof Blob !== 'undefined' && value instanceof Blob) return true
   return false
-}
-
-function isDangerousSegment(s: Segment): boolean {
-  return s === '__proto__' || s === 'constructor' || s === 'prototype'
 }
 
 function pathContainsDangerousSegment(path: Path): boolean {
@@ -298,10 +310,30 @@ function stripSensitivePathsDeep(
   return out
 }
 
+/** Every element is a string (the on-wire form of a `PathKey`). */
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+/** Every element is a patch-shaped object with an array `path`. */
+function isPatchArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (p) => p !== null && typeof p === 'object' && Array.isArray((p as { path?: unknown }).path)
+    )
+  )
+}
+
 /**
  * Type-guard for incoming messages. Validates the structural shape
  * before dispatch so a hostile sender can't crash the listener with
- * garbage. Rejects messages missing `v` / `kind` / `senderId`.
+ * garbage. Rejects messages missing `v` / `kind` / `senderId`, and
+ * validates the ELEMENT types of the array payloads — a blank-path
+ * array of non-strings (`[null]`) or a patch array of non-patches would
+ * otherwise survive the bare `Array.isArray` check and trip a
+ * downstream walk (`canonicalizePath(null)` throws). The `onmessage`
+ * try/catch is the backstop; this rejects the common shape at the door.
  */
 function isValidSyncMessage(data: unknown): data is SyncMessage<unknown> {
   if (data === null || typeof data !== 'object') return false
@@ -316,12 +348,12 @@ function isValidSyncMessage(data: unknown): data is SyncMessage<unknown> {
     case 'requestSnapshot':
       return typeof m['targetId'] === 'string'
     case 'snapshot':
-      return Array.isArray(m['blankPaths']) && 'form' in m
+      return isStringArray(m['blankPaths']) && 'form' in m
     case 'patches':
       return (
-        Array.isArray(m['formPatches']) &&
-        Array.isArray(m['blankPathsAdded']) &&
-        Array.isArray(m['blankPathsRemoved'])
+        isPatchArray(m['formPatches']) &&
+        isStringArray(m['blankPathsAdded']) &&
+        isStringArray(m['blankPathsRemoved'])
       )
     default:
       return false
@@ -385,6 +417,9 @@ export function createMultiTabSyncModule<F extends GenericForm>(
   // election. Cleared once the joining tab transitions to
   // `'established'` (no further use case for the set).
   const peerIds = new Set<string>()
+  // Last snapshot-reply timestamp per requesting sender — throttles the
+  // expensive scrub+serialise against a spamming peer (SEC-4).
+  const lastSnapshotResponseAt = new Map<string, number>()
   let joinCollectionTimer: ReturnType<typeof setTimeout> | null = null
   let snapshotTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   let leaderAttempts = 0
@@ -582,7 +617,14 @@ export function createMultiTabSyncModule<F extends GenericForm>(
     safePost({ v: PROTOCOL_VERSION, kind: 'announce', senderId })
   }
 
-  function respondToSnapshotRequest(): void {
+  function respondToSnapshotRequest(requesterId: string): void {
+    // Throttle per requester: a hostile tab that learned our senderId
+    // could otherwise spam requests and force a full scrub+serialise on
+    // each. A real joiner only asks once, so this is invisible to it.
+    const now = Date.now()
+    const last = lastSnapshotResponseAt.get(requesterId)
+    if (last !== undefined && now - last < SNAPSHOT_RESPONSE_MIN_INTERVAL_MS) return
+    lastSnapshotResponseAt.set(requesterId, now)
     const scrubbedForm = stripSensitivePathsDeep(state.form.value, [], options.isSensitivePath) as F
     safePost({
       v: PROTOCOL_VERSION,
@@ -595,31 +637,41 @@ export function createMultiTabSyncModule<F extends GenericForm>(
 
   channel.onmessage = (event: MessageEvent): void => {
     if (disposed) return
-    const data = event.data
-    if (!isValidSyncMessage(data)) return
-    const msg = data as SyncMessage<F>
-    // Echo drop — own messages NEVER apply (intra-tab self-loop +
-    // any UA echo behaviour).
-    if (msg.senderId === senderId) return
-    switch (msg.kind) {
-      case 'hello':
-        if (lifecycle !== 'established') return
-        respondToHello()
-        break
-      case 'announce':
-        if (lifecycle === 'joining') peerIds.add(msg.senderId)
-        break
-      case 'requestSnapshot':
-        if (lifecycle !== 'established') return
-        if (msg.targetId !== senderId) return
-        respondToSnapshotRequest()
-        break
-      case 'snapshot':
-        handleSnapshot(msg)
-        break
-      case 'patches':
-        handlePatches(msg)
-        break
+    // Backstop: this callback is invoked by the platform, so any throw
+    // escapes uncaught into the consumer app. A same-origin hostile or
+    // stale-bundle peer can post a message that survives the shape guard
+    // yet trips a downstream walk. Drop it; the channel reconverges on
+    // the next valid message. The library never throws from a callback
+    // it owns.
+    try {
+      const data = event.data
+      if (!isValidSyncMessage(data)) return
+      const msg = data as SyncMessage<F>
+      // Echo drop — own messages NEVER apply (intra-tab self-loop +
+      // any UA echo behaviour).
+      if (msg.senderId === senderId) return
+      switch (msg.kind) {
+        case 'hello':
+          if (lifecycle !== 'established') return
+          respondToHello()
+          break
+        case 'announce':
+          if (lifecycle === 'joining') peerIds.add(msg.senderId)
+          break
+        case 'requestSnapshot':
+          if (lifecycle !== 'established') return
+          if (msg.targetId !== senderId) return
+          respondToSnapshotRequest(msg.senderId)
+          break
+        case 'snapshot':
+          handleSnapshot(msg)
+          break
+        case 'patches':
+          handlePatches(msg)
+          break
+      }
+    } catch {
+      // Malformed / hostile inbound message reached a throwing path.
     }
   }
 

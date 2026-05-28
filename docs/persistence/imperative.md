@@ -39,7 +39,7 @@ A one-shot read-merge-write that:
 - **Bypasses the per-element opt-in gate.** Use it when an explicit user action ("Save draft", `beforeunload`, wizard section boundary) means "save what's on screen now."
 - **Bypasses the debouncer.** Pending writes flush first.
 - **Preserves untouched paths in storage.** A path-scoped call merges into the existing envelope; it does not overwrite siblings.
-- **Throws `SensitivePersistFieldError`** on heuristic-matched paths unless `{ acknowledgeSensitive: true }` is passed.
+- **Warns and no-ops on heuristic-matched paths** unless `{ acknowledgeSensitive: true }` is passed. Sensitive paths without acknowledgement are simply not written; the call resolves cleanly so a misconfig can't take down the app.
 - **No-ops silently** when `persist:` isn't configured on the form. Adding a "Save draft" button to a non-persisted form is a no-cost call.
 
 For "save the whole form," iterate the top-level paths:

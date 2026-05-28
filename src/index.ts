@@ -185,16 +185,11 @@ export {
 } from './runtime/core/paths'
 export type { Path, PathKey, Segment } from './runtime/core/paths'
 
-// DevTools shared primitives — sensitive-name redaction policy and the
-// window-bridge contract the Nuxt overlay panel + iframe page consume
-// at runtime. Exposed so the panel components (shipped as `.vue` files
-// under `dist/runtime/`) can `import { … } from 'attaform'` without
-// brittle relative paths into the bundled chunk layout.
-export {
-  DEVTOOLS_WINDOW_KEY,
-  REDACTED,
-  redactSensitiveLeaves,
-} from './runtime/core/devtools-shared'
+// DevTools window-bridge contract the Nuxt overlay panel + iframe page
+// consume at runtime. Exposed so the panel components (shipped as `.vue`
+// files under `dist/runtime/`) can `import { … } from 'attaform'`
+// without brittle relative paths into the bundled chunk layout.
+export { DEVTOOLS_WINDOW_KEY } from './runtime/core/devtools-shared'
 export type { AttaformDevtoolsBridge } from './runtime/core/devtools-shared'
 
 // Error classes — every library-emitted error extends `AttaformError`, so
@@ -209,7 +204,6 @@ export {
   OutsideSetupError,
   RegistryNotInstalledError,
   ReservedFormKeyError,
-  SensitivePersistFieldError,
   SubmitErrorHandlerError,
 } from './runtime/core/errors'
 
@@ -224,9 +218,10 @@ export { defaultDisplayState } from './runtime/core/display-state'
 //
 //   useForm({ sensitiveNames: [...DEFAULT_SENSITIVE_NAMES, 'mrn'] })
 //
-// The resolved list gates persistence writes, multi-tab sync
-// broadcasts, AND the DevTools redact walk — one configurable source
-// of truth for "what counts as sensitive" across every surface.
+// The resolved list gates persistence writes and multi-tab sync
+// broadcasts — one configurable source of truth for "what counts as
+// sensitive" across those surfaces. (DevTools renders raw values by
+// design; it does not redact.)
 export { DEFAULT_SENSITIVE_NAMES } from './runtime/core/persistence/sensitive-names'
 
 // API-error parser. Pure transformation: takes a server response in

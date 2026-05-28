@@ -121,7 +121,7 @@ What enabling sync expands vs. the no-sync status quo:
 
 ### Defenses (built in, not optional)
 
-- **Sensitive-path filtering, outbound AND inbound.** Paths matching the resolved `sensitiveNames` list are stripped before posting AND rejected on receive. Defense in depth: the wire is never trusted, even when the originating tab "should have" stripped them. The same list gates persistence and the DevTools redact walk; extend per-form or globally:
+- **Sensitive-path filtering, outbound AND inbound.** Paths matching the resolved `sensitiveNames` list are stripped before posting AND rejected on receive. Defense in depth: the wire is never trusted, even when the originating tab "should have" stripped them. The same list also gates persistence opt-ins; extend per-form or globally:
 
   ```ts
   createAttaform({

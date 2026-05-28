@@ -119,5 +119,5 @@ The warnings name the form key and (where applicable) the offending path.
 ## Where to next
 
 - [Storage backends](/docs/persistence/storage-backends): the first of the two gates.
-- [Sensitive-name protection](/docs/persistence/sensitive-names): the heuristic that throws on `password` / `cvv` / `ssn` opt-ins.
+- [Sensitive-name protection](/docs/persistence/sensitive-names): the heuristic that warns and skips the opt-in on `password` / `cvv` / `ssn` paths.
 - [Imperative persistence](/docs/persistence/imperative): `form.persist()` and `form.clearPersistedDraft()` for "Save draft" buttons and explicit cleanup.

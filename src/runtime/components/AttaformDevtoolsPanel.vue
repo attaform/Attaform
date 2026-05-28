@@ -107,7 +107,7 @@
     try {
       const parsed = JSON.parse(key) as unknown[]
       if (Array.isArray(parsed)) {
-        return parsed.map((seg) => (typeof seg === 'number' ? String(seg) : String(seg))).join('.')
+        return parsed.map((seg) => String(seg)).join('.')
       }
     } catch {
       // not JSON, render as-is
@@ -648,7 +648,7 @@
     --atf-string: #86efac;
     --atf-number: #fbbf24;
     --atf-boolean: #f472b6;
-    --atf-redacted: #f87171;
+    --atf-danger: #f87171;
     --atf-muted: #64748b;
     --atf-row-hover: rgba(255, 255, 255, 0.04);
     --atf-error-bg: rgba(248, 113, 113, 0.1);
@@ -680,7 +680,7 @@
       --atf-string: #16a34a;
       --atf-number: #d97706;
       --atf-boolean: #db2777;
-      --atf-redacted: #dc2626;
+      --atf-danger: #dc2626;
       --atf-muted: #94a3b8;
       --atf-row-hover: rgba(15, 23, 42, 0.04);
       --atf-error-bg: rgba(220, 38, 38, 0.08);
@@ -824,7 +824,7 @@
   }
   .atf-badge-error {
     background: var(--atf-error-bg);
-    color: var(--atf-redacted);
+    color: var(--atf-danger);
   }
   .atf-badge-warn {
     background: var(--atf-warn-bg);
@@ -856,7 +856,7 @@
     list-style: none;
     padding: 0;
     margin: 0;
-    color: var(--atf-redacted);
+    color: var(--atf-danger);
     font-size: 12px;
   }
   .atf-error-messages > li + li {
@@ -957,7 +957,7 @@
     color: var(--atf-string);
   }
   .atf-timeline-entry.atf-timeline-reset .atf-timeline-type {
-    color: var(--atf-redacted);
+    color: var(--atf-danger);
   }
   .atf-timeline-detail {
     padding: 0.4rem 0 0.6rem 7.5rem;

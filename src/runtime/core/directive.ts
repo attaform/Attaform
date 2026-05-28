@@ -44,7 +44,7 @@ import type {
 import type { PathKey } from './paths'
 import type { PersistOptInRegistry } from './persistence/opt-in-registry'
 import { getOrAssignElementId } from './persistence/opt-in-registry'
-import { enforceSensitiveCheck } from './persistence/sensitive-names'
+import { allowSensitivePersist } from './persistence/sensitive-names'
 
 /**
  * Symbol slot used by custom directive integrations to install an
@@ -472,8 +472,12 @@ function syncPersistOptIn(
   // the act of OPTING IN that crosses the compliance threshold.
   if (wantsOptIn) {
     const v = value as RegisterValue
-    enforceSensitiveCheck(v.path, v.acknowledgeSensitive, v.isSensitivePath)
-    v.persistOptIns.add(elementId, v.path)
+    // A sensitive-named path opted in without `acknowledgeSensitive` is
+    // warned + skipped (never thrown — this runs in the directive update
+    // path). The unpersisted secret is the safe default.
+    if (allowSensitivePersist(v.path, v.acknowledgeSensitive, v.isSensitivePath)) {
+      v.persistOptIns.add(elementId, v.path)
+    }
   }
 }
 

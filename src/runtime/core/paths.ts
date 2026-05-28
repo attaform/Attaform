@@ -317,3 +317,17 @@ export function isPathPrefix(prefix: readonly Segment[], path: readonly Segment[
   }
   return true
 }
+
+/**
+ * Segments that corrupt an object's prototype chain when used as an
+ * assignment target: `out['__proto__'] = obj` invokes the inherited
+ * `__proto__` setter and silently reassigns `out`'s prototype, while
+ * `constructor` / `prototype` open the adjacent escape hatches. Any walk
+ * that builds an object from UNTRUSTED key/value pairs — persisted-draft
+ * JSON, SSR hydration payloads, cross-tab messages — must skip these
+ * keys before assigning, or a hostile payload rewrites the merged
+ * object's prototype.
+ */
+export function isDangerousSegment(segment: Segment): boolean {
+  return segment === '__proto__' || segment === 'constructor' || segment === 'prototype'
+}

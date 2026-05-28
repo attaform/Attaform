@@ -93,7 +93,6 @@ import {
   OutsideSetupError,
   RegistryNotInstalledError,
   ReservedFormKeyError,
-  SensitivePersistFieldError,
   SubmitErrorHandlerError,
   // Validation-error codes
   AttaformErrorCode,
@@ -112,8 +111,6 @@ import {
   ROOT_PATH_KEY,
   // DevTools shared
   DEVTOOLS_WINDOW_KEY,
-  REDACTED,
-  redactSensitiveLeaves,
 } from 'attaform'
 ```
 

@@ -1283,8 +1283,9 @@ export type UseFormConfiguration<
   maxRecursionDepth?: number
   /**
    * Override the path-segment name stems treated as sensitive for this
-   * form. Sensitive paths are excluded from persistence writes,
-   * multi-tab sync broadcasts, AND the DevTools redact walk.
+   * form. Sensitive paths are excluded from persistence writes and
+   * multi-tab sync broadcasts. (DevTools renders raw values by design;
+   * it does not redact.)
    *
    * Resolution: per-form value (this field) > global default
    * (`createAttaform({ defaults: { sensitiveNames } })`) > library
@@ -1511,9 +1512,10 @@ export type AttaformDefaults = {
   maxRecursionDepth?: number
   /**
    * Override the path-segment name stems treated as sensitive.
-   * Sensitive paths are excluded from persistence writes, multi-tab
-   * sync broadcasts, AND the DevTools redact walk — one configurable
-   * source of truth across every surface.
+   * Sensitive paths are excluded from persistence writes and multi-tab
+   * sync broadcasts — one configurable source of truth across those
+   * surfaces. (DevTools renders raw values by design; it does not
+   * redact.)
    *
    * Library default is `DEFAULT_SENSITIVE_NAMES` (exported from
    * `attaform`); compose to extend:
@@ -1923,9 +1925,10 @@ export type RegisterOptions = {
    * If multiple inputs bind to the same path, the path keeps
    * persisting as long as any opted-in input is mounted.
    *
-   * Throws `SensitivePersistFieldError` when the path looks
-   * sensitive (password / cvv / ssn / token / etc.) unless
-   * `acknowledgeSensitive: true` is also set.
+   * When the path looks sensitive (password / cvv / ssn / token /
+   * etc.) the opt-in is skipped with a one-shot dev warning unless
+   * `acknowledgeSensitive: true` is also set — the field simply isn't
+   * persisted (the secure default). It never throws.
    */
   persist?: boolean
   /**
@@ -2111,7 +2114,7 @@ export type RegisterValue<Value = unknown> = Readonly<{
   /**
    * Resolved sensitive-path predicate honoring this form's
    * `sensitiveNames` cascade. The directive calls this through
-   * `enforceSensitiveCheck` when a `register('path', { persist: true })`
+   * `allowSensitivePersist` when a `register('path', { persist: true })`
    * binding mounts so a per-form custom list (e.g. extending with
    * `'mrn'`) gates persistence enrolment correctly.
    * @internal
@@ -4151,9 +4154,9 @@ export type UseFormReturnType<
    * paths in the persisted draft are preserved (this is a merge,
    * not a replace).
    *
-   * Throws `SensitivePersistFieldError` for sensitive-looking paths
-   * unless you pass `{ acknowledgeSensitive: true }`. No-op when
-   * `useForm({ persist })` wasn't configured.
+   * For sensitive-looking paths, warns once and no-ops unless you pass
+   * `{ acknowledgeSensitive: true }` — it never throws. Also a no-op
+   * when `useForm({ persist })` wasn't configured.
    */
   persist: (path: FlatPath<Form>, options?: { acknowledgeSensitive?: boolean }) => Promise<void>
 

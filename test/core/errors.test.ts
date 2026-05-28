@@ -6,7 +6,6 @@ import {
   OutsideSetupError,
   RegistryNotInstalledError,
   ReservedFormKeyError,
-  SensitivePersistFieldError,
   SubmitErrorHandlerError,
 } from '../../src/runtime/core/errors'
 
@@ -156,7 +155,6 @@ describe('error classes', () => {
       expect(new RegistryNotInstalledError()).toBeInstanceOf(AttaformError)
       expect(new OutsideSetupError()).toBeInstanceOf(AttaformError)
       expect(new ReservedFormKeyError('__atta:foo')).toBeInstanceOf(AttaformError)
-      expect(new SensitivePersistFieldError('password')).toBeInstanceOf(AttaformError)
       expect(new AnonPersistError({ cause: 'no-key' })).toBeInstanceOf(AttaformError)
     })
 

@@ -7,6 +7,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormConfig, UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { AnonPersistError } from '../../src/runtime/core/errors'
+import { resetSensitivePersistWarnDedup } from '../../src/runtime/core/persistence/sensitive-names'
 import { __resetIndexedDbForTests } from '../../src/runtime/core/persistence/indexeddb'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { fingerprintZodSchema } from '../../src/runtime/adapters/zod-v4/fingerprint'
@@ -798,48 +799,49 @@ describe('persistence — sensitive-name heuristic', () => {
     localStorage.clear()
   })
 
-  it('register({ persist: true }) on a sensitive path throws SensitivePersistFieldError', () => {
-    // Mount throws synchronously inside the directive's `created` hook.
-    // Vue surfaces it through the app's errorHandler; install one that
-    // re-throws so the test sees the error.
+  it('register({ persist: true }) on a sensitive path warns and skips persistence (no throw)', () => {
+    // Opting a sensitive-named path into persistence WITHOUT
+    // acknowledgeSensitive:true must NOT throw — a thrown error in the
+    // directive's update path could take down the dev's app. Instead the
+    // opt-in is skipped (the secret stays unpersisted, the secure
+    // default) and a one-shot dev warning is logged.
+    resetSensitivePersistWarnDedup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    let captured: unknown
     const App = defineComponent({
       setup() {
         const api = useForm({
           schema,
-          key: 'sensitive-throw',
-          persist: { storage: 'local', key: 'test-sensitive-throw', debounceMs: 20 },
+          key: 'sensitive-noop',
+          persist: { storage: 'local', key: 'test-sensitive-noop', debounceMs: 20 },
         })
         return () =>
           h('div', [
-            withDirectives(
-              h('input', { type: 'text' }),
-              // password is sensitive; no acknowledge → throw
-              [[vRegister, api.register('password', { persist: true })]]
-            ),
+            withDirectives(h('input', { type: 'text' }), [
+              [vRegister, api.register('password', { persist: true })],
+            ]),
           ])
       },
     })
     const app = createApp(App).use(createAttaform())
-    let captured: unknown
     app.config.errorHandler = (err): void => {
       captured = err
     }
-    // Silence Vue's warn that wraps the unhandled error.
-    app.config.warnHandler = (): void => undefined
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
     apps.push(app)
 
-    expect(captured).toBeInstanceOf(Error)
-    expect((captured as Error).name).toBe('SensitivePersistFieldError')
-    expect((captured as Error).message).toMatch(/sensitive-name pattern/)
-    expect((captured as Error).message).toMatch(/acknowledgeSensitive/)
+    expect(captured).toBeUndefined()
+    expect(warn).toHaveBeenCalled()
+    const messages = warn.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/acknowledgeSensitive/)
+    warn.mockRestore()
   })
 
-  it('acknowledgeSensitive: true on register() bypasses the throw', () => {
-    // Just mount — if the directive's enforceSensitiveCheck fires, the
-    // mount throws. No throw → assertion of clean mount is enough.
+  it('acknowledgeSensitive: true on register() allows the opt-in cleanly', () => {
+    // With acknowledgeSensitive, allowSensitivePersist returns true: the
+    // opt-in is enrolled, no warning, no throw — assert a clean mount.
     const App = defineComponent({
       setup() {
         const api = useForm({
@@ -867,7 +869,9 @@ describe('persistence — sensitive-name heuristic', () => {
     expect(captured).toBeUndefined()
   })
 
-  it('form.persist() on a sensitive path throws (without acknowledge)', async () => {
+  it('form.persist() on a sensitive path warns and no-ops (without acknowledge)', async () => {
+    resetSensitivePersistWarnDedup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const handle: { api?: ApiReturn } = {}
     const App = defineComponent({
       setup() {
@@ -885,7 +889,11 @@ describe('persistence — sensitive-name heuristic', () => {
     app.mount(root)
     apps.push(app)
     await waitUntil(() => (handle.api !== undefined ? true : null))
-    await expect(handle.api?.persist('password')).rejects.toThrow(/sensitive-name pattern/)
+    // Resolves instead of rejecting; the sensitive path is simply not written.
+    await expect(handle.api?.persist('password')).resolves.toBeUndefined()
+    const messages = warn.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/acknowledgeSensitive/)
+    warn.mockRestore()
   })
 
   it('form.persist({ acknowledgeSensitive: true }) on a sensitive path is allowed', async () => {

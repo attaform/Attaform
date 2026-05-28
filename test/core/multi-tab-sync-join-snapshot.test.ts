@@ -581,3 +581,124 @@ describe('multi-tab sync: structural type-mismatch defense', () => {
     expect(formB.values.email).toBe('')
   })
 })
+
+describe('multi-tab sync: hostile-message no-uncaught guard (SEC-3)', () => {
+  // The inbound shape-check recursion is already bounded by the schema
+  // walker's maxRecursionDepth (a pathologically deep snapshot is
+  // dropped, not walked to the bottom). The reachable risk is a THROW
+  // escaping the message handler: isValidSyncMessage only checks that
+  // the blank-path fields are arrays, not their element types, so a
+  // hostile `patches` carrying `blankPathsAdded: [null]` reaches
+  // `canonicalizePath(null)` (Array.from(null) → TypeError) and the
+  // exception escapes the uncaught onmessage handler into the app.
+  it('an established tab survives a malformed hostile patches message', async () => {
+    const uncaught: unknown[] = []
+    const onProcessError = (err: unknown): void => {
+      uncaught.push(err)
+    }
+    const onWindowError = (event: Event): void => {
+      uncaught.push(event)
+    }
+    process.on('uncaughtException', onProcessError)
+    process.on('unhandledRejection', onProcessError)
+    window.addEventListener('error', onWindowError)
+
+    const captureA: { form?: SyncForm } = {}
+    const appA = mountBareApp(() => {
+      captureA.form = useForm({
+        schema,
+        key: 'multitab-hostile-msg',
+        multiTab: true,
+        defaultValues: { email: '', comment: '' },
+      }) as unknown as SyncForm
+    })
+    const formA = captureA.form
+    if (formA === undefined) throw new Error('setup did not capture formA')
+
+    const channelName = getChannelName(appA, 'multitab-hostile-msg')
+    const evil = new BroadcastChannel(channelName)
+    try {
+      await waitForEstablished([appA])
+      evil.postMessage({
+        v: 1,
+        kind: 'patches',
+        senderId: 'evil-malformed',
+        formPatches: [],
+        // Non-string element: passes the array-shape check, then trips
+        // canonicalizePath(null) deep inside handlePatches.
+        blankPathsAdded: [null],
+        blankPathsRemoved: [],
+      })
+      await new Promise((r) => setTimeout(r, 100))
+    } finally {
+      evil.close()
+      process.off('uncaughtException', onProcessError)
+      process.off('unhandledRejection', onProcessError)
+      window.removeEventListener('error', onWindowError)
+    }
+
+    // No exception escaped into the app, and the form is intact.
+    expect(uncaught).toEqual([])
+    expect(formA.values.email).toBe('')
+  })
+})
+
+describe('multi-tab sync: snapshot-request rate limit (SEC-4)', () => {
+  // A hostile same-origin tab learns the leader's senderId from its
+  // `announce`, then spams `requestSnapshot` — each reply is a full-form
+  // deep-clone + sensitive-scrub + serialise, so unthrottled it is a CPU
+  // amplification vector. The leader answers a given sender at most once
+  // per interval; a legit joiner only ever sends one request per leader
+  // (retries move to the next-lowest leader), so the throttle never
+  // drops legitimate traffic.
+  it('answers a spamming sender at most once within the interval', async () => {
+    const captureA: { form?: SyncForm } = {}
+    const appA = mountBareApp(() => {
+      captureA.form = useForm({
+        schema,
+        key: 'multitab-snapshot-spam',
+        multiTab: true,
+        defaultValues: { email: '', comment: '' },
+      }) as unknown as SyncForm
+    })
+    if (captureA.form === undefined) throw new Error('setup did not capture formA')
+    await waitForEstablished([appA])
+
+    const channelName = getChannelName(appA, 'multitab-snapshot-spam')
+    const evil = new BroadcastChannel(channelName)
+    const evilSenderId = 'evil-spammer'
+    let leaderId: string | undefined
+    let snapshotCount = 0
+    evil.onmessage = (event: MessageEvent): void => {
+      const data = event.data as { kind?: string; senderId?: string } | undefined
+      if (data === undefined) return
+      if (data.kind === 'announce') leaderId = data.senderId
+      if (data.kind === 'snapshot') snapshotCount += 1
+    }
+
+    try {
+      // Discover the leader's senderId via the hello/announce exchange.
+      evil.postMessage({ v: 1, kind: 'hello', senderId: evilSenderId })
+      const start = Date.now()
+      while (leaderId === undefined && Date.now() - start < 500) {
+        await new Promise((r) => setTimeout(r, 10))
+      }
+      expect(leaderId).toBeDefined()
+
+      // Spam ten requests back-to-back from the same sender.
+      for (let i = 0; i < 10; i += 1) {
+        evil.postMessage({
+          v: 1,
+          kind: 'requestSnapshot',
+          senderId: evilSenderId,
+          targetId: leaderId,
+        })
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    } finally {
+      evil.close()
+    }
+
+    expect(snapshotCount).toBe(1)
+  })
+})

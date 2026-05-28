@@ -65,7 +65,7 @@ No silent shape mismatches; no manual versioning.
 
 ## Sensitive-name protection
 
-Some path names imply secrets. Attaform's built-in `DEFAULT_SENSITIVE_NAMES` list (`password`, `passwd`, `pwd`, `pin`, `cvv`, `card_number`, `ssn`, `token`, `secret`, `api_key`, and others) throws at mount if you try to persist them.
+Some path names imply secrets. Attaform's built-in `DEFAULT_SENSITIVE_NAMES` list (`password`, `passwd`, `pwd`, `pin`, `cvv`, `card_number`, `ssn`, `token`, `secret`, `api_key`, and others) warns and skips the opt-in at mount if you try to persist them. The field is simply not written, which is the safe default; pass `acknowledgeSensitive: true` to persist anyway.
 
 Compose your own list by extending the default:
 
@@ -79,7 +79,7 @@ createAttaform({
 })
 ```
 
-The resolved list also gates multi-tab sync broadcasts and the DevTools redact walk: one configurable source of truth for "what counts as sensitive."
+The resolved list also gates multi-tab sync broadcasts: one configurable source of truth for "what counts as sensitive" across both write paths. (DevTools renders raw values by design; the list does not gate display.)
 
 ## Imperative control
 

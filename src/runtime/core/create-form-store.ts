@@ -2526,22 +2526,23 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         }
         throw err
       }
-      // Whole-form revalidation on every leaf change. Sub-schema-only
-      // passes leave ancestor refines (and root refines) stale: a
-      // `.refine()` on `z.object({...})` keys its verdict at the
-      // container path, which is neither the leaf nor a descendant of
-      // it, so a leaf-scoped `applySchemaErrorsForSubtree` doesn't
-      // touch it. Running the whole-form pass and writing via
-      // `applySchemaErrorsForSubtree([], ...)` lets every refine at
-      // every depth re-evaluate against the live form value and
-      // replaces every `schemaErrors` key in one go — stale entries
-      // drop, current ones survive. Per-path debounce / abort keys
-      // (above) still coalesce rapid same-leaf typing into one run;
-      // `validateAsync` / `handleSubmit` cancel pending chains so
-      // their authoritative whole-form writes aren't clobbered by
-      // a late SFV resolution.
+      // Per-keystroke scope. When the schema carries no container or
+      // root refine (predicate returns `false` and the schedule is at
+      // a real path), every verdict it can produce lives at the
+      // edited subtree or below — a subtree-scoped pass is sufficient
+      // and the runtime avoids the O(N) whole-form parse on each
+      // keystroke. Predicate `true` (or missing — adapters that don't
+      // implement detection) keeps the conservative whole-form pass
+      // so ancestor refines (cross-field equality, sum constraints,
+      // etc.) still re-evaluate against the live form value. An
+      // empty `path` (root schedule, mount / reset / explicit
+      // whole-form) also folds to whole-form.
+      const subtreeScope = path.length > 0 && schema.hasContainerOrRootRefine?.() === false
+      const scopePath: Path | undefined = subtreeScope ? path : undefined
+      const dataAtScope: unknown = subtreeScope ? getAtPath(form.value, path) : form.value
+      const scopeKey: PathKey = subtreeScope ? canonicalizePath(path).key : ROOT_PATH_KEY
       void Promise.resolve()
-        .then(() => schema.validateAtPath(form.value, undefined))
+        .then(() => schema.validateAtPath(dataAtScope, scopePath))
         .then((response) => {
           if (controller.signal.aborted) return
           // Form-level epoch gate. If a later-scheduled run has
@@ -2560,12 +2561,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // run never advances the snapshot, so a later blur with
           // nothing committed for this path still re-validates instead
           // of falsely skipping against a stale-but-uncommitted anchor.
-          //
-          // Keyed under `ROOT_PATH_KEY` while validation scope is
-          // whole-form. Once CORE-P1a's subtree scope lands, this
-          // becomes the canonical key of the actual commit scope.
           if (effectiveMode === 'blur') {
-            pathSnapshots.set(ROOT_PATH_KEY, structuralSnapshot(form.value))
+            pathSnapshots.set(scopeKey, structuralSnapshot(form.value))
           }
           const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
@@ -2578,7 +2575,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // paths (defaultValues OR schema `.default(...)`) skip the
           // filter; their verdicts ARE legitimate.
           const filtered = filterAuthoredErrors(errors)
-          applySchemaErrorsForSubtree([], filtered)
+          // Subtree-scoped responses carry paths relative to the
+          // subtree; restamp with absolute paths so the storage
+          // convention holds. Whole-form responses are already
+          // absolute — pass through.
+          const restamped: ValidationError[] = subtreeScope
+            ? filtered.map((err) => ({
+                ...err,
+                path: [...path, ...(err.path as Segment[])],
+              }))
+            : filtered
+          applySchemaErrorsForSubtree(scopePath ?? [], restamped)
         })
         .catch(() => {
           // Adapter contract forbids throws — swallow here so a misbehaving

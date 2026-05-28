@@ -170,8 +170,19 @@ export function zodAdapter<
       }
     }
 
+    // Memoised one-shot walk; `hasContainerOrRootRefine` is queried at
+    // every per-keystroke schedule to pick whole-form vs subtree
+    // scope, so the walk pays for itself within the first few
+    // mutations.
+    let containerRefineFlag: boolean | null = null
+
     const abstractSchema: AbstractSchema<Form, GetValueFormType> = {
       fingerprint: () => fingerprintZodSchema(_zodSchema),
+
+      hasContainerOrRootRefine(): boolean {
+        containerRefineFlag ??= v3HasContainerOrRootRefine(_zodSchema)
+        return containerRefineFlag
+      },
       getDefaultValues(config) {
         const defaultValuesWithoutConstraints = getDefaultValuesFromZodSchema(
           _zodSchema,
@@ -1558,6 +1569,177 @@ function hasChecks(schema: z.ZodTypeAny): boolean {
   if (!Array.isArray(checks)) return false
 
   return checks.length > 0
+}
+
+/**
+ * True iff the v3 schema tree carries a refine / transform / preprocess
+ * (`ZodEffects`) whose effect target is a container — Object / Array
+ * / Tuple / Union / DU / Intersection / Record / Map / Set — or the
+ * root itself. Drives the runtime's per-keystroke scope cut: a tree
+ * with leaf-only effects can be re-validated at the edited subtree
+ * alone (subtree pass catches the leaf effect at the same depth);
+ * a container effect can be moved by sibling writes and forces a
+ * whole-form pass.
+ *
+ * Walks via inline `_def` reads (the introspect-chokepoint refactor
+ * lands in Phase 7 and will collapse this into the unified accessor
+ * surface). Transparent wrappers (Optional / Nullable / Default /
+ * Catch / Readonly / Branded / Lazy) peel through to their inner
+ * before container detection — `.refine` on `.optional()` over a
+ * `z.object(...)` is still a root-scoped effect. Pipelines walk both
+ * sides.
+ *
+ * Bias conservative: an unrecognised wrapper or a malformed leaf
+ * returns `false` for THAT node, but the recurse continues, so
+ * nested container effects still surface. False negatives only lose
+ * the perf win; correctness preserved by the caller's whole-form
+ * default when the predicate isn't reached.
+ */
+function v3HasContainerOrRootRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
+  const visited = seen ?? new WeakSet<object>()
+  const candidate = schema as unknown
+  if (typeof candidate !== 'object' || candidate === null) return false
+  if (visited.has(candidate)) return false
+  visited.add(candidate)
+
+  // ZodEffects: refine / transform / preprocess. Peel transparent
+  // wrappers off the inner so `.refine()` applied to `.optional()`
+  // over a container still flags as a container-level effect.
+  if (isZodSchemaType(schema, 'ZodEffects')) {
+    const inner = (schema._def as unknown as { schema?: z.ZodTypeAny }).schema
+    if (inner === undefined) return false
+    if (v3IsContainerAfterWrapperPeel(inner)) return true
+    return v3HasContainerOrRootRefine(inner, visited)
+  }
+
+  // Transparent wrappers: recurse into the inner without flagging.
+  if (
+    isZodSchemaType(schema, 'ZodOptional') ||
+    isZodSchemaType(schema, 'ZodNullable') ||
+    isZodSchemaType(schema, 'ZodDefault') ||
+    isZodSchemaType(schema, 'ZodCatch') ||
+    isZodSchemaType(schema, 'ZodReadonly')
+  ) {
+    const inner = (schema._def as unknown as { innerType?: z.ZodTypeAny }).innerType
+    return inner !== undefined && v3HasContainerOrRootRefine(inner, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodBranded')) {
+    const inner = (schema._def as unknown as { type?: z.ZodTypeAny }).type
+    return inner !== undefined && v3HasContainerOrRootRefine(inner, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodLazy')) {
+    try {
+      const inner = (schema._def as unknown as { getter?: () => z.ZodTypeAny }).getter?.()
+      return inner !== undefined && v3HasContainerOrRootRefine(inner, visited)
+    } catch {
+      return false
+    }
+  }
+  if (isZodSchemaType(schema, 'ZodPipeline')) {
+    const def = schema._def as unknown as { in?: z.ZodTypeAny; out?: z.ZodTypeAny }
+    if (def.in !== undefined && v3HasContainerOrRootRefine(def.in, visited)) return true
+    if (def.out !== undefined && v3HasContainerOrRootRefine(def.out, visited)) return true
+    return false
+  }
+
+  // Container types: recurse into children.
+  if (isZodSchemaType(schema, 'ZodObject')) {
+    const def = schema._def as unknown as {
+      shape?: (() => Record<string, z.ZodTypeAny>) | Record<string, z.ZodTypeAny>
+    }
+    const shape = typeof def.shape === 'function' ? def.shape() : def.shape
+    if (shape !== undefined) {
+      for (const sub of Object.values(shape)) {
+        if (v3HasContainerOrRootRefine(sub, visited)) return true
+      }
+    }
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodArray')) {
+    const elem = (schema._def as unknown as { type?: z.ZodTypeAny }).type
+    return elem !== undefined && v3HasContainerOrRootRefine(elem, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodTuple')) {
+    const items = (schema._def as unknown as { items?: z.ZodTypeAny[] }).items
+    if (items !== undefined) {
+      for (const it of items) {
+        if (v3HasContainerOrRootRefine(it, visited)) return true
+      }
+    }
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
+    const opts = (schema._def as unknown as { options?: z.ZodTypeAny[] }).options
+    if (opts !== undefined) {
+      for (const opt of opts) {
+        if (v3HasContainerOrRootRefine(opt, visited)) return true
+      }
+    }
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodIntersection')) {
+    const def = schema._def as unknown as { left?: z.ZodTypeAny; right?: z.ZodTypeAny }
+    if (def.left !== undefined && v3HasContainerOrRootRefine(def.left, visited)) return true
+    if (def.right !== undefined && v3HasContainerOrRootRefine(def.right, visited)) return true
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodRecord')) {
+    const def = schema._def as unknown as { keyType?: z.ZodTypeAny; valueType?: z.ZodTypeAny }
+    if (def.keyType !== undefined && v3HasContainerOrRootRefine(def.keyType, visited)) return true
+    if (def.valueType !== undefined && v3HasContainerOrRootRefine(def.valueType, visited))
+      return true
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodSet')) {
+    const elem = (schema._def as unknown as { valueType?: z.ZodTypeAny }).valueType
+    return elem !== undefined && v3HasContainerOrRootRefine(elem, visited)
+  }
+
+  // Leaves (ZodString / ZodNumber / ZodBoolean / ZodLiteral / ZodEnum /
+  // ZodNativeEnum / ZodDate / ...) — no descendable structure, no
+  // container effect possible.
+  return false
+}
+
+function v3IsContainerAfterWrapperPeel(schema: z.ZodTypeAny): boolean {
+  let cur: z.ZodTypeAny = schema
+  for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
+    if (
+      isZodSchemaType(cur, 'ZodOptional') ||
+      isZodSchemaType(cur, 'ZodNullable') ||
+      isZodSchemaType(cur, 'ZodDefault') ||
+      isZodSchemaType(cur, 'ZodCatch') ||
+      isZodSchemaType(cur, 'ZodReadonly')
+    ) {
+      const inner = (cur._def as unknown as { innerType?: z.ZodTypeAny }).innerType
+      if (inner === undefined) return false
+      cur = inner
+    } else if (isZodSchemaType(cur, 'ZodBranded')) {
+      const inner = (cur._def as unknown as { type?: z.ZodTypeAny }).type
+      if (inner === undefined) return false
+      cur = inner
+    } else if (isZodSchemaType(cur, 'ZodLazy')) {
+      try {
+        const inner = (cur._def as unknown as { getter?: () => z.ZodTypeAny }).getter?.()
+        if (inner === undefined) return false
+        cur = inner
+      } catch {
+        return false
+      }
+    } else {
+      break
+    }
+  }
+  return (
+    isZodSchemaType(cur, 'ZodObject') ||
+    isZodSchemaType(cur, 'ZodArray') ||
+    isZodSchemaType(cur, 'ZodTuple') ||
+    isZodSchemaType(cur, 'ZodIntersection') ||
+    isZodSchemaType(cur, 'ZodUnion') ||
+    isZodSchemaType(cur, 'ZodDiscriminatedUnion') ||
+    isZodSchemaType(cur, 'ZodRecord') ||
+    isZodSchemaType(cur, 'ZodSet')
+  )
 }
 
 function stripRefinements<T extends z.ZodTypeAny>(schema: T) {

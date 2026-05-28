@@ -42,43 +42,52 @@ async function drainMicrotasks(rounds = 8): Promise<void> {
 
 function buildSchemaV4() {
   const resolvers: Array<(v: boolean) => void> = []
-  const schema = zV4.object({
-    a: zV4.string().refine(
-      (_value) =>
-        new Promise<boolean>((r) => {
-          resolvers.push(r)
-        }),
-      { message: 'a-invalid' }
-    ),
-    b: zV4.string().refine(
-      (_value) =>
-        new Promise<boolean>((r) => {
-          resolvers.push(r)
-        }),
-      { message: 'b-invalid' }
-    ),
-  })
+  // Container refine on the root forces the runtime's per-keystroke
+  // scope to stay whole-form (CORE-P1a's predicate returns `true`)
+  // — which is the regime PASS2-2's cross-path clobber lived in.
+  // The trivial sync `() => true` is enough to flip the predicate
+  // without polluting the resolvers queue.
+  const schema = zV4
+    .object({
+      a: zV4.string().refine(
+        (_value) =>
+          new Promise<boolean>((r) => {
+            resolvers.push(r)
+          }),
+        { message: 'a-invalid' }
+      ),
+      b: zV4.string().refine(
+        (_value) =>
+          new Promise<boolean>((r) => {
+            resolvers.push(r)
+          }),
+        { message: 'b-invalid' }
+      ),
+    })
+    .refine(() => true, { message: 'object-invariant' })
   return { schema, resolvers }
 }
 
 function buildSchemaV3() {
   const resolvers: Array<(v: boolean) => void> = []
-  const schema = zV3.object({
-    a: zV3.string().refine(
-      (_value) =>
-        new Promise<boolean>((r) => {
-          resolvers.push(r)
-        }),
-      { message: 'a-invalid' }
-    ),
-    b: zV3.string().refine(
-      (_value) =>
-        new Promise<boolean>((r) => {
-          resolvers.push(r)
-        }),
-      { message: 'b-invalid' }
-    ),
-  })
+  const schema = zV3
+    .object({
+      a: zV3.string().refine(
+        (_value) =>
+          new Promise<boolean>((r) => {
+            resolvers.push(r)
+          }),
+        { message: 'a-invalid' }
+      ),
+      b: zV3.string().refine(
+        (_value) =>
+          new Promise<boolean>((r) => {
+            resolvers.push(r)
+          }),
+        { message: 'b-invalid' }
+      ),
+    })
+    .refine(() => true, { message: 'object-invariant' })
   return { schema, resolvers }
 }
 
@@ -127,7 +136,7 @@ describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
     const constructionRefines = resolvers.length
     // Construction-time refines (if any) resolve TRUE so they don't
     // contaminate the test's error-map assertions.
-    for (let i = 0; i < constructionRefines; i++) resolvers[i](true)
+    for (let i = 0; i < constructionRefines; i++) resolvers[i]?.(true)
     await drainMicrotasks()
 
     // Edit A first; drain so A's run() reads form.value at the
@@ -147,7 +156,7 @@ describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
 
     // Resolve call-2's refines TRUE first → call 2's validateAtPath
     // promise settles with success → empty error map committed.
-    for (let i = afterAEdit; i < resolvers.length; i++) resolvers[i](true)
+    for (let i = afterAEdit; i < resolvers.length; i++) resolvers[i]?.(true)
     await drainMicrotasks()
     expect(api.errors.a).toEqual([])
     expect(api.errors.b).toEqual([])
@@ -156,7 +165,7 @@ describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
     // failure. Without the epoch gate: applySchemaErrorsForSubtree
     // overwrites the empty map with stale failures. With the gate:
     // call 1 is dropped (myEpoch <= lastCommittedEpoch).
-    for (let i = constructionRefines; i < afterAEdit; i++) resolvers[i](false)
+    for (let i = constructionRefines; i < afterAEdit; i++) resolvers[i]?.(false)
     await drainMicrotasks()
 
     expect(api.errors.a).toEqual([])

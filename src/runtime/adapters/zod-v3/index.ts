@@ -90,6 +90,7 @@ import {
   hasCatchValue,
   hasChecks,
   hasContainerOrRootRefine,
+  kindOf,
   unwrapBranded,
   unwrapEffectsSource,
   unwrapInner,
@@ -120,7 +121,8 @@ export function zodAdapter<
   function getAbstractSchema(
     _formKey: FormKey,
     _zodSchema: FormSchema,
-    _isRootSchema: boolean
+    _isRootSchema: boolean,
+    _maxRecursionDepth: number
   ): AbstractSchema<Form, GetValueFormType> {
     if (_isRootSchema) {
       // Walk the original schema (not the stripped one) so the assert
@@ -161,7 +163,7 @@ export function zodAdapter<
       const candidates =
         path.length === 0
           ? [_zodSchema as z.ZodTypeAny]
-          : (getNestedZodSchemasAtPath(_zodSchema, path) as z.ZodTypeAny[])
+          : (getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth) as z.ZodTypeAny[])
       let matchedUnion: z.ZodTypeAny | undefined
       for (const candidate of candidates) {
         const peeled = peelV3Wrappers(candidate)
@@ -306,7 +308,11 @@ export function zodAdapter<
         // code under one check.
         {
           for (const issue of error.issues) {
-            const schemasAtPath = getNestedZodSchemasAtPath(slimSchema, issue.path)
+            const schemasAtPath = getNestedZodSchemasAtPath(
+              slimSchema,
+              issue.path,
+              _maxRecursionDepth
+            )
             // `set` from lodash accepts a Segment[] directly; keeps the
             // literal-dot case (`['user.name']`) from being flattened
             // into two key accesses. Coerce in case a custom check
@@ -448,7 +454,7 @@ export function zodAdapter<
         if (path.length === 0) {
           return getDefaultValuesFromZodSchema(_zodSchema, true, _formKey)
         }
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return undefined
         // STRUCTURAL default: peel `.optional()` / `.nullable()` at the
         // leaf so partial-object writes through optional sub-schemas
@@ -469,19 +475,19 @@ export function zodAdapter<
         if (path.length === 0) {
           return getDefaultValuesFromZodSchema(_zodSchema, false, _formKey)
         }
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return undefined
         return getDefaultValuesFromZodSchema(leaf as z.ZodSchema, false, _formKey)
       },
       arrayShapeAtPath(path) {
         if (path.length === 0) return undefined
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return undefined
-        // Peel transparent wrappers down to the underlying shape.
-        // peelV3Wrappers handles optional / nullable / default /
-        // effects / pipeline / readonly / branded. ZodCatch is left
-        // by that helper for default-value reasons — peel it here
-        // since arrayShapeAtPath only needs the structural kind.
+        // The walker preserves the TERMINAL wrapper at the leaf — peel
+        // every transparent wrapper here so we see the structural kind.
+        // `peelV3Wrappers` peels Optional / Nullable / Default / Readonly
+        // / Effects / Pipeline / Branded; catch is peeled by hand since
+        // `peelV3Wrappers` preserves it for `unwrapDefault`'s use.
         let peeled = peelV3Wrappers(leaf)
         for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
           if (!isZodSchemaType(peeled, 'ZodCatch')) break
@@ -489,9 +495,7 @@ export function zodAdapter<
           if (!inner) break
           peeled = peelV3Wrappers(inner)
         }
-        if (isZodSchemaType(peeled, 'ZodTuple')) {
-          return getTupleItems(peeled).length
-        }
+        if (isZodSchemaType(peeled, 'ZodTuple')) return getTupleItems(peeled).length
         if (isZodSchemaType(peeled, 'ZodArray')) return null
         return undefined
       },
@@ -509,7 +513,7 @@ export function zodAdapter<
             stripZodEffects: true,
           },
         })
-        const nestedZodSchemas = getNestedZodSchemasAtPath(slimSchema, path)
+        const nestedZodSchemas = getNestedZodSchemasAtPath(slimSchema, path, _maxRecursionDepth)
 
         // Empty list is a valid result for paths the schema doesn't
         // declare — callers (getValue / register / custom introspection)
@@ -517,7 +521,7 @@ export function zodAdapter<
         if (!nestedZodSchemas.length) return []
 
         return nestedZodSchemas.map((n) =>
-          getAbstractSchema(_formKey, n as unknown as FormSchema, false)
+          getAbstractSchema(_formKey, n as unknown as FormSchema, false, _maxRecursionDepth)
         ) as unknown as AbstractSchema<unknown, GetValueFormType>[]
       },
       isRequiredAtPath(path) {
@@ -525,17 +529,17 @@ export function zodAdapter<
         // The required-empty check tracks primitive leaves only, so this
         // branch is academic for the call sites that matter.
         if (path.length === 0) return true
-        // walkV3ToLeafSchema descends through structural shapes and peels
-        // wrappers between segments, but preserves the leaf's wrapper at
-        // the path's terminal position — so `path: ['name']` against
+        // The unified walker descends through structural shapes and peels
+        // wrappers between segments while preserving the terminal
+        // wrapper at the path's leaf — `path: ['name']` against
         // `z.object({ name: z.optional(z.string()) })` returns the
         // optional wrapper itself, which is what we need to inspect.
-        const leaf = walkV3ToLeafSchema(_zodSchema, path)
+        const [leaf] = getNestedZodSchemasAtPath(_zodSchema, path, _maxRecursionDepth)
         if (!leaf) return false
         return isLeafRequiredV3(leaf)
       },
       getFieldMetaAtPath(path): ResolvedFieldMeta {
-        return resolveFieldMetaAtPathV3(_zodSchema, path)
+        return resolveFieldMetaAtPathV3(_zodSchema, path, _maxRecursionDepth)
       },
 
       getUnionDiscriminatorAtPath(path): UnionDiscriminatorContext | undefined {
@@ -563,7 +567,7 @@ export function zodAdapter<
           schema: strippedSchema,
           stripConfig: { stripDefaultValues: true, stripZodEffects: true },
         })
-        const resolved = getNestedZodSchemasAtPath(slimSchema, path)
+        const resolved = getNestedZodSchemasAtPath(slimSchema, path, _maxRecursionDepth)
         // Path doesn't resolve in the schema → no kinds accepted.
         // The gate's membership check rejects every kind against an
         // empty set, blocking writes to typo / unknown paths.
@@ -609,7 +613,11 @@ export function zodAdapter<
           const candidates: z.ZodTypeAny[] =
             prefix.length === 0
               ? [_zodSchema as z.ZodTypeAny]
-              : (getNestedZodSchemasAtPath(_zodSchema, prefix) as z.ZodTypeAny[])
+              : (getNestedZodSchemasAtPath(
+                  _zodSchema,
+                  prefix,
+                  _maxRecursionDepth
+                ) as z.ZodTypeAny[])
           for (const candidate of candidates) {
             if (!isZodSchemaType(candidate, 'ZodEffects')) continue
             if (getEffectsKind(candidate) === 'preprocess') {
@@ -705,7 +713,7 @@ export function zodAdapter<
           // at re-creation sites — appropriate for "here's a
           // permissive shape to seed defaults," wrong for "here's
           // the schema we should validate against."
-          return getNestedZodSchemasAtPath(_zodSchema, p)
+          return getNestedZodSchemasAtPath(_zodSchema, p, _maxRecursionDepth)
         }
 
         function pathNotFound(p: Path): ValidationResponse<GetValueFormType> {
@@ -734,14 +742,13 @@ export function zodAdapter<
     return abstractSchema
   }
 
-  // `options.maxRecursionDepth` is accepted for parity with the v4
-  // adapter and the typed entry-point factory contract. The v3 walks
-  // already carry their own bounded loops (`MAX_UNWRAP_STEPS`), so
-  // today the cap doesn't drive different behaviour — wiring it
-  // through keeps the option-bag honest for future v3 walks that
-  // descend through `z.lazy()`.
+  // `options.maxRecursionDepth` caps `z.lazy(...)` descent in
+  // `getNestedZodSchemasAtPath` — once the walker has crossed
+  // `maxRecursionDepth + 1` lazy boundaries it returns `[]`, so writes
+  // at recursive paths deeper than the cap fall back to a permissive
+  // type gate. Matches the v4 adapter's path-walker contract.
   return (formKey: FormKey, _options: SchemaFactoryOptions) =>
-    getAbstractSchema(formKey, zodSchema, true)
+    getAbstractSchema(formKey, zodSchema, true, _options.maxRecursionDepth)
 }
 
 function zodIssuesToValidationErrors(issues: z.ZodIssue[], formKey: FormKey): ValidationError[] {
@@ -818,76 +825,168 @@ const NO_SCHEMAS_FOUND_AT_PATH_OF_CONCRETE_SCHEMA = (path: (string | number)[], 
 // substitutes, `.refine(...)` runs the predicate). For path = []
 // (no segments) the original schema is returned unchanged so
 // whole-form `validateAtPath` keeps the root's refine intact.
-function getNestedZodSchemasAtPath<Schema extends z.ZodSchema>(
-  zodSchema: Schema,
-  segments: readonly (string | number)[]
-): z.ZodType<unknown, z.ZodTypeDef, unknown>[] {
-  // ZodDiscriminator has multiple schemas in the options array
-  // Check all of them for the key, and probe all possibilities
-  function getOptionSchemasFromDiscriminatorByArbitraryKey<
-    Discriminator extends string,
-    Options extends readonly z.ZodDiscriminatedUnionOption<Discriminator>[],
-  >(schema: z.ZodDiscriminatedUnion<Discriminator, Options>, key: string) {
-    const successfulOptions = []
-    const options = getDiscriminatedOptions(schema)
-    for (const option of options) {
-      if (!(key in option.shape)) continue
-      successfulOptions.push(option as Options[number])
+/**
+ * Walk a structured path through a Zod v3 schema tree and return the
+ * subschema(s) that live at that path.
+ *
+ * - Unions return multiple candidates (caller tries each).
+ * - Discriminated unions filter options to those whose shape contains the
+ *   next segment, so a path into `{ status: 'error', message: string }`
+ *   resolves only to the 'error' branch.
+ * - Wrappers (optional / nullable / default / readonly / catch / effects /
+ *   pipeline / branded) are transparent — the walker descends into the
+ *   inner schema without consuming a path segment.
+ * - Leaf types (string / number / literal / ...) return `[]` when there's
+ *   still path left, so a caller that asked for `firstName.middle` against
+ *   a string schema gets an empty resolution rather than a wrong schema.
+ *
+ * `maxRecursionDepth` caps descent through `z.lazy()`. Once the walker has
+ * crossed `maxRecursionDepth + 1` lazy boundaries it returns `[]`, so
+ * writes at recursive paths deeper than the cap fall back to a permissive
+ * type gate.
+ *
+ * Mirrors v4's `walkSegments` (`zod-v4/path-walker.ts`) — same kind-switch
+ * structure, same Own-property check on objects, same lazy depth gate, so
+ * `getSchemasAtPath` / `getSlimPrimitiveTypesAtPath` / `validateAtPath`
+ * resolve identically across both adapters.
+ */
+function getNestedZodSchemasAtPath(
+  schema: z.ZodTypeAny,
+  segments: readonly (string | number)[],
+  maxRecursionDepth: number
+): z.ZodTypeAny[] {
+  if (segments.length === 0) return [schema]
+  return walkSegments(schema, segments.map(String), maxRecursionDepth, 0)
+}
+
+function walkSegments(
+  schema: z.ZodTypeAny,
+  segments: readonly string[],
+  maxDepth: number,
+  lazyDepth: number
+): z.ZodTypeAny[] {
+  if (segments.length === 0) return [schema]
+  const [head, ...rest] = segments
+  if (head === undefined) return [schema]
+  const kind = kindOf(schema)
+  switch (kind) {
+    case 'object': {
+      const shape = getObjectShape(schema)
+      // Own-property check: `shape` is a plain object whose prototype is
+      // `Object.prototype`, so a bare `shape[head]` for `head ===
+      // 'toString'` / `'valueOf'` / `'hasOwnProperty'` etc. returns the
+      // inherited Function and the walker treats it as a schema. Filter
+      // to OWN keys so unknown segments resolve to "doesn't exist."
+      if (!Object.hasOwn(shape, head)) return []
+      const next = shape[head]
+      return next === undefined ? [] : walkSegments(next, rest, maxDepth, lazyDepth)
     }
-
-    return successfulOptions
-  }
-
-  let currentSchema: z.ZodSchema | undefined = zodSchema
-
-  for (let index = 0; index < segments.length; index++) {
-    const key = String(segments[index] ?? '')
-    if (currentSchema !== undefined) {
-      currentSchema = peelV3Wrappers(currentSchema) as z.ZodSchema
+    case 'array': {
+      const inner = getArrayElement(schema)
+      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
     }
-    if (isZodSchemaType(currentSchema, 'ZodObject')) {
-      const shape = getObjectShape(currentSchema)
-      // Own-property check: a bare `shape[key]` returns
-      // `Object.prototype.toString` etc. for any user lookup of those
-      // keys, which then walks as an "unknown schema" and reports a
-      // permissive slim-primitive set. Filter to OWN keys.
-      currentSchema = Object.hasOwn(shape, key) ? (shape[key] as z.ZodSchema) : undefined
-    } else if (isZodSchemaType(currentSchema, 'ZodArray')) {
-      currentSchema = getArrayElement(currentSchema) as z.ZodSchema
-    } else if (isZodSchemaType(currentSchema, 'ZodSet')) {
-      // Sets aren't position-indexed; the segment is a synthetic
-      // indexer used to query the element type via `[...path, 0]`.
-      currentSchema = getSetValueType(currentSchema) as z.ZodSchema
-    } else if (isZodSchemaType(currentSchema, 'ZodRecord')) {
-      currentSchema = getRecordValueType(currentSchema) as z.ZodSchema
-    } else if (isZodSchemaType(currentSchema, 'ZodDiscriminatedUnion')) {
-      const optionalSchemas = getOptionSchemasFromDiscriminatorByArbitraryKey(currentSchema, key)
-
-      const remainingSegments = segments.slice(index)
-      if (!remainingSegments.length) return optionalSchemas
-
-      // recursively check the option schemas
-      const foundSchemas: z.ZodType<unknown, z.ZodTypeDef, unknown>[] = []
-      for (const optionSchema of optionalSchemas) {
-        getNestedZodSchemasAtPath(optionSchema, remainingSegments).forEach((schema) => {
-          foundSchemas.push(schema)
-        })
-      }
-
-      return foundSchemas
-    } else {
-      // Hit a non-container (leaf primitive, wrapper, union — anything
-      // we don't recognise as descendable) but more segments remain.
-      // The path goes deeper than the schema admits; return empty
-      // so callers (slim-gate, validateAtPath, getDefaultAtPath)
-      // treat it as unresolvable rather than falsely binding to the
-      // last container's leaf. Mirrors v4's path-walker leaf branches.
+    case 'set': {
+      // Sets aren't position-indexed; the head segment is a synthetic
+      // indexer (`[...path, 0]`) used to query the element type. Descend
+      // into the value schema and consume the segment.
+      const inner = getSetValueType(schema)
+      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
+    }
+    case 'record': {
+      const inner = getRecordValueType(schema)
+      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
+    }
+    case 'tuple': {
+      const index = Number(head)
+      if (!Number.isInteger(index)) return []
+      const items = getTupleItems(schema)
+      const item = items[index]
+      return item === undefined ? [] : walkSegments(item, rest, maxDepth, lazyDepth)
+    }
+    case 'union':
+      return getUnionOptions(schema).flatMap((opt) =>
+        walkSegments(opt, segments, maxDepth, lazyDepth)
+      )
+    case 'discriminated-union': {
+      // Filter options whose shape contains this segment. Fallback: if no
+      // option matches (e.g. the discriminator key itself), try every
+      // option. `Object.hasOwn` (not `in`) so `Object.prototype` keys
+      // don't leak.
+      const options = getDiscriminatedOptions(schema)
+      const matching = options.filter((opt) => Object.hasOwn(getObjectShape(opt), head))
+      const candidates = matching.length > 0 ? matching : options
+      return candidates.flatMap((opt) => walkSegments(opt, segments, maxDepth, lazyDepth))
+    }
+    case 'optional':
+    case 'nullable':
+    case 'default':
+    case 'readonly':
+    case 'catch': {
+      // `catch` peels like a wrapper — descend into the inner schema. The
+      // catch fallback only matters at parse time, not path lookup.
+      const inner = unwrapInner(schema)
+      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
+    }
+    case 'branded': {
+      const inner = unwrapBranded(schema)
+      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
+    }
+    case 'effects': {
+      const inner = unwrapEffectsSource(schema)
+      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
+    }
+    case 'pipeline': {
+      const inner = unwrapPipeIn(schema)
+      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
+    }
+    case 'lazy': {
+      // Bump the lazy counter. Past the cap, return [] so callers fall
+      // back to permissive behaviour at recursive paths beyond the cap.
+      if (lazyDepth >= maxDepth) return []
+      const inner = unwrapLazy(schema)
+      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth + 1)
+    }
+    case 'intersection': {
+      // Union of both sides' resolutions — callers try each candidate,
+      // matching parse-time semantics where a value must satisfy both.
+      const left = getIntersectionLeft(schema)
+      const right = getIntersectionRight(schema)
+      const leftResults =
+        left === undefined ? [] : walkSegments(left, segments, maxDepth, lazyDepth)
+      const rightResults =
+        right === undefined ? [] : walkSegments(right, segments, maxDepth, lazyDepth)
+      return [...leftResults, ...rightResults]
+    }
+    // Leaf types — can't descend further. The unsupported kinds
+    // (`promise` / `function` / `map` / `symbol`) are rejected at
+    // adapter construction by `assertSupportedKinds`; this fallthrough
+    // keeps the walker defensive in case construction is skipped (e.g.
+    // a downstream test instantiates a subschema directly).
+    case 'string':
+    case 'number':
+    case 'boolean':
+    case 'bigint':
+    case 'date':
+    case 'enum':
+    case 'native-enum':
+    case 'literal':
+    case 'null':
+    case 'undefined':
+    case 'void':
+    case 'never':
+    case 'any':
+    case 'unknown':
+    case 'nan':
+    case 'promise':
+    case 'function':
+    case 'map':
+    case 'symbol':
       return []
+    default: {
+      const _exhaustive: never = kind
+      throw new Error(`walkSegments (v3): unhandled ZodKind '${_exhaustive as string}'`)
     }
   }
-
-  if (!currentSchema) return []
-  return [currentSchema]
 }
 
 /**
@@ -1007,81 +1106,6 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
       continue
     }
     break
-  }
-  return current
-}
-
-/**
- * Walk a structured path through a v3 schema, peeling wrappers at each
- * step before descending. Returns the schema at the final segment, or
- * `undefined` if the path doesn't exist in the schema (object key
- * missing, tuple index out of range, leaf with segments remaining).
- *
- * Discriminated and plain unions: takes the first matching option (or
- * first option when no match). Matches `validateAtPath`'s first-success
- * semantic at the path-walker layer.
- */
-function walkV3ToLeafSchema(
-  schema: z.ZodTypeAny,
-  segments: readonly (string | number)[]
-): z.ZodTypeAny | undefined {
-  let current: z.ZodTypeAny | undefined = schema
-  let i = 0
-  // Iteration cap prevents pathological unions / lazy loops from hanging.
-  let safetyTicks = 0
-  while (
-    i < segments.length &&
-    current &&
-    safetyTicks < segments.length * MAX_UNWRAP_STEPS + MAX_UNWRAP_STEPS
-  ) {
-    safetyTicks++
-    current = peelV3Wrappers(current)
-    const key = String(segments[i] ?? '')
-
-    if (isZodSchemaType(current, 'ZodObject')) {
-      const shape = getObjectShape(current)
-      current = Object.hasOwn(shape, key) ? shape[key] : undefined
-      i++
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodArray')) {
-      current = getArrayElement(current)
-      i++
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodRecord')) {
-      current = getRecordValueType(current)
-      i++
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodTuple')) {
-      const idx = Number(key)
-      if (!Number.isInteger(idx) || idx < 0) return undefined
-      const item = getTupleItems(current)[idx]
-      if (!item) return undefined
-      current = item
-      i++
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodDiscriminatedUnion')) {
-      const options = getDiscriminatedOptions(current)
-      const matching = options.filter((o) => key in o.shape)
-      const candidates = matching.length > 0 ? matching : options
-      const first = candidates[0]
-      if (!first) return undefined
-      current = first
-      // Don't advance i — re-process this segment within the option.
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodUnion')) {
-      const first = getUnionOptions(current)[0]
-      if (!first) return undefined
-      current = first
-      // Don't advance i — re-process this segment within the option.
-      continue
-    }
-    // Leaf type with segments remaining — can't descend.
-    return undefined
   }
   return current
 }
@@ -1917,14 +1941,20 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
  *   - placeholder: registry → undefined
  *   - meta: registry payload (frozen) — empty object when absent
  *
- * Walks via `walkV3ToLeafSchema` (descends through wrappers
+ * Walks via `getNestedZodSchemasAtPath` (descends through wrappers
  * transparently) then peels the terminal wrapper via `peelV3Wrappers`
  * — symmetric with the v4 walker's terminal behavior.
  */
-function resolveFieldMetaAtPathV3(rootSchema: z.ZodSchema, path: Path): ResolvedFieldMeta {
+function resolveFieldMetaAtPathV3(
+  rootSchema: z.ZodSchema,
+  path: Path,
+  maxRecursionDepth: number
+): ResolvedFieldMeta {
   const lastSegment = path.length === 0 ? '' : (path[path.length - 1] as string | number)
   const target =
-    path.length === 0 ? (rootSchema as z.ZodTypeAny) : walkV3ToLeafSchema(rootSchema, path)
+    path.length === 0
+      ? (rootSchema as z.ZodTypeAny)
+      : getNestedZodSchemasAtPath(rootSchema, path, maxRecursionDepth)[0]
   if (target === undefined) {
     return {
       label: humanize(lastSegment),

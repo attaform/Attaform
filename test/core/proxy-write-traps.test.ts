@@ -114,4 +114,16 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     app.unmount()
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
+
+  // PASS2-12 — defineProperty on `form.values` claimed success silently;
+  // pin the honest signal so a consumer probing the proxy with
+  // `Object.defineProperty` sees the warn at dev time.
+  it('Object.defineProperty on form.values warns in dev', () => {
+    const { api, app } = mount()
+    expect(() => {
+      Object.defineProperty(api.values, 'phantom', { value: 1, configurable: true })
+    }).not.toThrow()
+    app.unmount()
+    expect(warnings.some((w) => w.includes('read-only') && w.includes('phantom'))).toBe(true)
+  })
 })

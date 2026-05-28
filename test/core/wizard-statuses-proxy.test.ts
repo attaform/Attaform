@@ -104,6 +104,22 @@ describe('buildWizardStatusesProxy', () => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
+  // PASS2-12 — defineProperty used to silently `return true`, claiming
+  // success while no property landed. The honest signal is a dev warn
+  // (and still `return true` so strict callers don't throw).
+  it('warns when Object.defineProperty probes the proxy', () => {
+    const warnings: string[] = []
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '))
+    })
+    const { proxy } = makeProxy({ a: pending })
+    expect(() => {
+      Object.defineProperty(proxy, 'phantom', { value: pending, configurable: true })
+    }).not.toThrow()
+    warnSpy.mockRestore()
+    expect(warnings.some((w) => w.includes('read-only') && w.includes('phantom'))).toBe(true)
+  })
+
   it('serializes via toJSON to the current record snapshot', () => {
     const { proxy } = makeProxy({
       a: { valid: true, dirty: false, submitted: false, errorCount: 0 },

@@ -149,6 +149,17 @@ export function buildValuesProxy<F extends GenericForm>(form: Ref<F>): ValuesPro
       }
       return true
     },
-    defineProperty: () => true,
+    // `Object.defineProperty(form.values, key, …)` used to silently
+    // return `true` while no property landed — claimed success on a
+    // call that did nothing. Match the set / delete contract: warn in
+    // dev and still return `true` so strict callers don't throw.
+    defineProperty(_, key) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] form.values is read-only — define of "${String(key)}" was ignored.`
+        )
+      }
+      return true
+    },
   })
 }

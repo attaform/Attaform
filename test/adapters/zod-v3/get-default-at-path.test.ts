@@ -6,9 +6,9 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * Mirror of the v4 adapter's `get-default-at-path.test.ts`. Both adapters
  * MUST resolve the same defaults at the same paths so the runtime's
  * structural-completeness invariant holds identically across them. v3's
- * native path-walker doesn't peel wrappers, so the adapter's
- * `getDefaultAtPath` uses a separate wrapper-peeling walker
- * (`walkV3ToLeafSchema`) — these tests pin parity with v4.
+ * unified path-walker (`getNestedZodSchemasAtPath`, structurally parallel
+ * to v4's `walkSegments`) peels wrappers transparently — these tests pin
+ * parity with v4.
  */
 
 describe('zod v3: getDefaultAtPath', () => {

@@ -102,7 +102,7 @@ describe('zod v3: path-walker parity for union/tuple/intersection/lazy/catch', (
 
   describe('ZodLazy', () => {
     it('descends one lazy layer for a recursive shape', () => {
-      type Tree = { name: string; children?: Tree[] }
+      type Tree = { name: string; children?: Tree[] | undefined }
       const treeSchema: z.ZodType<Tree> = z.lazy(() =>
         z.object({
           name: z.string(),
@@ -118,7 +118,7 @@ describe('zod v3: path-walker parity for union/tuple/intersection/lazy/catch', (
     })
 
     it('caps descent at maxRecursionDepth so recursive paths beyond the cap fall back to permissive', () => {
-      type Tree = { name: string; children?: Tree[] }
+      type Tree = { name: string; children?: Tree[] | undefined }
       const treeSchema: z.ZodType<Tree> = z.lazy(() =>
         z.object({
           name: z.string(),

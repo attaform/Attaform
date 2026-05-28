@@ -1540,6 +1540,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
     migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    // In-flight field-validation counter (`field.validating` mirror).
+    // Same identity reasoning as the other path-keyed maps: the spinner
+    // belongs to the validating element, not the slot. Self-heals on the
+    // next validation pass; this migration just spares the wrong-row
+    // visible flicker in between.
+    migrateMapSubtree(fieldValidationCounts, arrayPath, remap, (count) => count)
     // Nested-array identity: relocate every tracked array sitting under
     // `arrayPath`'s element slots so a nested `v-for :key` stays stable
     // across an outer-array mutation (no token leak, no collision on the

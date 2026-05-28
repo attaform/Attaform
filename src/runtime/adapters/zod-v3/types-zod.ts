@@ -1,38 +1,4 @@
-// import type { NestedType } from '@/utils/types'
 import type { z } from 'zod-v3'
-import type { NestedType } from '../../types/types-core'
-
-// Given potentially wrapped schema type, get deeply wrapped schema matching Zod type
-export type UnwrapZodSchemaToAccessTargetSchemaType<
-  Subject extends z.ZodTypeAny,
-  Target extends z.ZodTypeAny,
-> = Subject extends Target
-  ? Subject
-  : Subject extends z.ZodNullable<infer Child>
-    ? UnwrapZodSchemaToAccessTargetSchemaType<Child, Target>
-    : Subject extends z.ZodOptional<infer Child>
-      ? UnwrapZodSchemaToAccessTargetSchemaType<Child, Target>
-      : Subject extends z.ZodDefault<infer Child>
-        ? UnwrapZodSchemaToAccessTargetSchemaType<Child, Target>
-        : Subject extends z.ZodEffects<infer Child>
-          ? UnwrapZodSchemaToAccessTargetSchemaType<Child, Target>
-          : never
-
-// This explicitly defines the Zod classes that can wrap the subject schema
-export type PossiblyWrappedZodSchema<
-  Subject extends z.ZodTypeAny,
-  Target extends z.ZodTypeAny,
-> = Subject extends Target
-  ? Subject
-  : Subject extends z.ZodNullable<infer NextChild>
-    ? z.ZodNullable<PossiblyWrappedZodSchema<NextChild, Target>>
-    : Subject extends z.ZodOptional<infer NextChild>
-      ? z.ZodOptional<PossiblyWrappedZodSchema<NextChild, Target>>
-      : Subject extends z.ZodDefault<infer NextChild>
-        ? z.ZodDefault<PossiblyWrappedZodSchema<NextChild, Target>>
-        : Subject extends z.ZodEffects<infer NextChild>
-          ? z.ZodEffects<PossiblyWrappedZodSchema<NextChild, Target>>
-          : never
 
 /**
  * Narrow accessor type for Zod v3's internal `_def`. Only useful
@@ -83,8 +49,3 @@ export type TypeWithNullableDynamicKeys<
             }[keyof Options & number]
           : // Fallback to z.infer for all other schemas
               z.infer<Schema> | (CrossedBoundary extends true ? undefined : never)
-
-export type GetValueReturnTypeFromZodSchema<
-  Schema extends z.ZodSchema,
-  FlattenedPath extends string,
-> = NestedType<TypeWithNullableDynamicKeys<Schema>, FlattenedPath>

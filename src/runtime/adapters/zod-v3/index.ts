@@ -18,7 +18,8 @@ import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path, type PathKey } from '../../core/paths'
 import { slimKindOf } from '../../core/slim-primitive-gate'
-import { getFieldMeta } from './field-meta'
+import type { FieldMetaPayload } from '../../core/field-meta'
+import { getFieldMeta, getFieldMetaList } from './field-meta'
 
 // The adapter exchanges dotted-string paths with core at the
 // AbstractSchema boundary (`validateAtPath`, `getSchemasAtPath`).
@@ -2081,10 +2082,244 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
  *   - placeholder: registry → undefined
  *   - meta: registry payload (frozen) — empty object when absent
  *
- * Walks via `getNestedZodSchemasAtPath` (descends through wrappers
- * transparently) then peels the terminal wrapper via `peelV3Wrappers`
- * — symmetric with the v4 walker's terminal behavior.
+ * For schemas registered at multiple paths (shared instance — e.g.
+ * `fieldMeta.add(addr, A); fieldMeta.add(addr, B); z.object({a: addr, b: addr})`),
+ * consults a per-rootSchema path → payload map (`getPathMetaMapV3`)
+ * built by walking the schema tree once, counting per-schema visits,
+ * and pairing them with the registration list in declaration order.
+ * Falls back to the schema-keyed registry for paths the walker can't
+ * statically enumerate (dynamic discriminated-union sub-paths,
+ * record-value paths beyond the canonical '*' slot). Mirrors v4's
+ * `walkForMeta` / `getPathMetaMap` / `consumePayload`
+ * (`adapter.ts:773-989`).
  */
+// Peel every transparent wrapper around a schema to expose its
+// structural inner — Optional / Nullable / Default / Readonly / Catch
+// (catch matters here so registrations on the inner under `.catch(...)`
+// still match) plus Effects / Pipeline / Branded / Lazy. More
+// aggressive than `peelV3Wrappers` which preserves catch for the
+// `unwrapDefault` direct read; the metadata walker needs the
+// structural shape regardless of the catch wrapper. Bounded iteration
+// as a runaway guard for pathological wrappers.
+function peelAllV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
+  let current: z.ZodTypeAny = schema
+  for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
+    let inner: z.ZodTypeAny | undefined
+    if (
+      isZodSchemaType(current, 'ZodOptional') ||
+      isZodSchemaType(current, 'ZodNullable') ||
+      isZodSchemaType(current, 'ZodDefault') ||
+      isZodSchemaType(current, 'ZodReadonly') ||
+      isZodSchemaType(current, 'ZodCatch')
+    ) {
+      inner = unwrapInner(current)
+    } else if (isZodSchemaType(current, 'ZodEffects')) {
+      inner = unwrapEffectsSource(current)
+    } else if (isZodSchemaType(current, 'ZodPipeline')) {
+      inner = unwrapPipeIn(current)
+    } else if (isZodSchemaType(current, 'ZodBranded')) {
+      inner = unwrapBranded(current)
+    } else if (isZodSchemaType(current, 'ZodLazy')) {
+      try {
+        inner = unwrapLazy(current)
+      } catch {
+        return current
+      }
+    } else {
+      return current
+    }
+    if (!inner) return current
+    current = inner
+  }
+  return current
+}
+
+// Per-rootSchema cache of path → payload maps. Build is a single tree
+// walk; lookups are O(1) thereafter. WeakMap keyed on the root schema
+// so entries GC with the form. Mirrors v4's `pathMetaCache`.
+const pathMetaCacheV3 = new WeakMap<z.ZodTypeAny, Map<PathKey, FieldMetaPayload>>()
+
+function getPathMetaMapV3(rootSchema: z.ZodTypeAny): Map<PathKey, FieldMetaPayload> {
+  const cached = pathMetaCacheV3.get(rootSchema)
+  if (cached !== undefined) return cached
+  const map = new Map<PathKey, FieldMetaPayload>()
+  const counters = new Map<z.ZodTypeAny, number>()
+  const lastPathPerSchema = new Map<z.ZodTypeAny, PathKey>()
+  const inProgress = new WeakSet<z.ZodTypeAny>()
+  walkForMetaV3(rootSchema, [], map, counters, lastPathPerSchema, inProgress)
+  // Absorb surplus registrations into the schema's last-visited path
+  // — covers chains like `withMeta(s, {label}).register(fieldMeta, {desc})`
+  // where one path consumes list[0] and list[1] would otherwise go
+  // unread. Mirrors v4's surplus-merge step in `getPathMetaMap`.
+  for (const [schema, lastPath] of lastPathPerSchema) {
+    const list = getFieldMetaList(schema)
+    const consumed = counters.get(schema) ?? 0
+    if (list.length <= consumed) continue
+    const surplus = list
+      .slice(consumed)
+      .reduce<FieldMetaPayload>((acc, p) => ({ ...acc, ...p }), {})
+    const existing = map.get(lastPath) ?? {}
+    map.set(lastPath, { ...existing, ...surplus })
+  }
+  pathMetaCacheV3.set(rootSchema, map)
+  return map
+}
+
+function consumePayloadV3(
+  schema: z.ZodTypeAny,
+  counters: Map<z.ZodTypeAny, number>
+): FieldMetaPayload | undefined {
+  const list = getFieldMetaList(schema)
+  if (list.length === 0) return undefined
+  const idx = counters.get(schema) ?? 0
+  // Clamp to last entry — schemas reused MORE times than they're
+  // registered (e.g. an array element schema registered once, visited
+  // per-index) all share the single registration. Mirrors v4's clamp.
+  const payload = list[Math.min(idx, list.length - 1)]
+  counters.set(schema, idx + 1)
+  return payload
+}
+
+/**
+ * Walk the v3 schema tree from `rootSchema`, emitting a payload for
+ * each path that has registered metadata. For schemas registered at
+ * multiple paths the per-schema counter advances each visit and
+ * selects the i-th payload from the schema's registration list — when
+ * registrations happen in declaration order they pair correctly with
+ * tree-walk order. Mirrors v4's `walkForMeta` shape.
+ *
+ * Visits the schema first (terminal-position registration), then the
+ * peeled inner if different (inner-then-wrap registration). At each
+ * point the FIRST list-payload found wins for that path.
+ */
+function walkForMetaV3(
+  schema: z.ZodTypeAny,
+  path: Path,
+  map: Map<PathKey, FieldMetaPayload>,
+  counters: Map<z.ZodTypeAny, number>,
+  lastPathPerSchema: Map<z.ZodTypeAny, PathKey>,
+  inProgress: WeakSet<z.ZodTypeAny>
+): void {
+  if (inProgress.has(schema)) return
+  inProgress.add(schema)
+  try {
+    const pathKey = canonicalizePath(path).key
+    if (!map.has(pathKey)) {
+      const payload = consumePayloadV3(schema, counters)
+      if (payload !== undefined) {
+        map.set(pathKey, payload)
+        lastPathPerSchema.set(schema, pathKey)
+      }
+    }
+    const peeled = peelAllV3Wrappers(schema)
+    if (peeled !== schema && !map.has(pathKey)) {
+      const payload = consumePayloadV3(peeled, counters)
+      if (payload !== undefined) {
+        map.set(pathKey, payload)
+        lastPathPerSchema.set(peeled, pathKey)
+      }
+    }
+    // Descend
+    if (isZodSchemaType(schema, 'ZodObject')) {
+      const shape = getObjectShape(schema)
+      for (const [key, child] of Object.entries(shape)) {
+        walkForMetaV3(
+          child as z.ZodTypeAny,
+          [...path, key],
+          map,
+          counters,
+          lastPathPerSchema,
+          inProgress
+        )
+      }
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodArray')) {
+      const inner = getArrayElement(schema)
+      if (inner) walkForMetaV3(inner, [...path, 0], map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodTuple')) {
+      const items = getTupleItems(schema)
+      items.forEach((item, i) => {
+        walkForMetaV3(
+          item as z.ZodTypeAny,
+          [...path, i],
+          map,
+          counters,
+          lastPathPerSchema,
+          inProgress
+        )
+      })
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodSet')) {
+      const inner = getSetValueType(schema)
+      if (inner) walkForMetaV3(inner, [...path, 0], map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodRecord')) {
+      const inner = getRecordValueType(schema)
+      if (inner) walkForMetaV3(inner, [...path, '*'], map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
+      for (const opt of getUnionOptions(schema)) {
+        walkForMetaV3(opt as z.ZodTypeAny, path, map, counters, lastPathPerSchema, inProgress)
+      }
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodIntersection')) {
+      const left = getIntersectionLeft(schema)
+      const right = getIntersectionRight(schema)
+      if (left) walkForMetaV3(left, path, map, counters, lastPathPerSchema, inProgress)
+      if (right) walkForMetaV3(right, path, map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (
+      isZodSchemaType(schema, 'ZodOptional') ||
+      isZodSchemaType(schema, 'ZodNullable') ||
+      isZodSchemaType(schema, 'ZodDefault') ||
+      isZodSchemaType(schema, 'ZodReadonly') ||
+      isZodSchemaType(schema, 'ZodCatch')
+    ) {
+      const inner = unwrapInner(schema)
+      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodEffects')) {
+      const inner = unwrapEffectsSource(schema)
+      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodPipeline')) {
+      const inner = unwrapPipeIn(schema)
+      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodBranded')) {
+      const inner = unwrapBranded(schema)
+      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
+      return
+    }
+    if (isZodSchemaType(schema, 'ZodLazy')) {
+      try {
+        const inner = unwrapLazy(schema)
+        if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
+      } catch {
+        // Recursive z.lazy() — the inProgress guard at the top of
+        // walkForMetaV3 stops the descent, but a getter that throws
+        // before reaching that check shouldn't crash the walk.
+      }
+      return
+    }
+    // Leaf kinds — nothing more to descend into; metadata for the path
+    // itself was captured above.
+  } finally {
+    inProgress.delete(schema)
+  }
+}
+
 function resolveFieldMetaAtPathV3(
   rootSchema: z.ZodSchema,
   path: Path,
@@ -2103,13 +2338,16 @@ function resolveFieldMetaAtPathV3(
       meta: Object.freeze({}),
     }
   }
-  // Two-stage lookup mirrors the v4 adapter: try the schema returned
-  // by the walker (the terminal wrapper at leaf paths), then fall
-  // back to the peeled inner so registrations placed before wrapping
-  // still resolve. Whichever style the schema author picked, reads
-  // succeed.
+  // Path-keyed payload map (built once per rootSchema) disambiguates
+  // shared schemas registered at multiple paths. Falls back to the
+  // schema-keyed registry for paths not visited by the walker.
+  const pathMap = getPathMetaMapV3(rootSchema as z.ZodTypeAny)
+  const pathKey = canonicalizePath(path).key
   const peeled = peelV3Wrappers(target)
-  const payload = getFieldMeta(target) ?? (peeled !== target ? getFieldMeta(peeled) : undefined)
+  const payload =
+    pathMap.get(pathKey) ??
+    getFieldMeta(target) ??
+    (peeled !== target ? getFieldMeta(peeled) : undefined)
   const targetDescription =
     typeof (target as { description?: unknown }).description === 'string'
       ? ((target as { description?: string }).description as string)

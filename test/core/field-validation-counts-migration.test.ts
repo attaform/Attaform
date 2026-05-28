@@ -56,7 +56,11 @@ describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm,
       setup() {
         // Anonymous useForm (no `key`) so the FormStore is provided as
         // `kFormContext` to descendants — see use-abstract-form.ts:493.
-        form = useForm({
+        // `useForm` is parameterised across adapters via `describe.each`;
+        // TS sees the v3-or-v4 union and can't reconcile the signatures,
+        // so a loose call cast is the right tool here.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        form = (useForm as any)({
           schema,
           strict: false,
           defaultValues: defaults,

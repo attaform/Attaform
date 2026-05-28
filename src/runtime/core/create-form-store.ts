@@ -548,17 +548,9 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   arrayElementKey(path: Path): string
 
-  // --- reset / clear ---
+  // --- reset ---
   reset(nextDefaultValues?: DeepPartial<WriteShape<F>>): void
   resetField(path: Path): void
-  /**
-   * Wipe `path` (or the whole form when `path === ''`) to the
-   * schema's "appropriate nullish value" — the underlying type's
-   * empty/falsy concrete, with `.default()` / `.catch()` wrappers
-   * INTENTIONALLY skipped. Sugar for
-   * `setValueAtPath(path, schema.getEmptyValueAtPath(path))`.
-   */
-  clear(path: Path): boolean
 
   // --- errors ---
   // Schema-driven writers. Used by the validation pipeline + handleSubmit.
@@ -1548,6 +1540,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
     migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    // In-flight field-validation counter (`field.validating` mirror).
+    // Same identity reasoning as the other path-keyed maps: the spinner
+    // belongs to the validating element, not the slot. Self-heals on the
+    // next validation pass; this migration just spares the wrong-row
+    // visible flicker in between.
+    migrateMapSubtree(fieldValidationCounts, arrayPath, remap, (count) => count)
+    // Nested-array identity: relocate every tracked array sitting under
+    // `arrayPath`'s element slots so a nested `v-for :key` stays stable
+    // across an outer-array mutation (no token leak, no collision on the
+    // new occupant of a vacated slot).
+    arrayIdentity.applyRemap(arrayPath, remap)
   }
 
   // Register a freshly created element (an insert slot, a replace-at target)
@@ -2104,16 +2107,31 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
     // Blank bookkeeping. `blank: true` adds the path
     // to the set (the call site declares "this write represents an
-    // empty intent"); any other write removes it (the user typed a
-    // real value or programmatically reassigned). The mark/unmark sit
-    // BEFORE the identity short-circuit so transitions that don't
-    // change storage value (e.g. typing 0 over slim-default 0) still
-    // update the visual / blank state correctly.
+    // empty intent"); any other write removes the exact key. A
+    // container write also drops every descendant blank-mark under
+    // `path` (mirrors the DU-reshape path's `isPathKeyUnder` sweep) —
+    // a write to `addr` replaces every leaf beneath, so any prior
+    // "I'm blank" mark at `addr.zip` is now stale. The arrayOp branch
+    // skips the descendant sweep because `migrateArrayElementState`
+    // relocates per-element blank-marks across the operation's exact
+    // permutation downstream; sweeping ahead of it would delete the
+    // marks the migration needs to carry forward. The mark/unmark
+    // sit BEFORE the identity short-circuit so transitions that
+    // don't change storage value (e.g. typing 0 over slim-default 0)
+    // still update the visual / blank state correctly.
     const pathKey = canonicalizePath(path).key
     if (meta?.blank === true) {
       blankPaths.add(pathKey)
-    } else if (blankPaths.has(pathKey)) {
-      blankPaths.delete(pathKey)
+    } else {
+      if (blankPaths.has(pathKey)) blankPaths.delete(pathKey)
+      if (meta?.arrayOp === undefined) {
+        // Container write at `path` (or root `[]`) — sweep descendants.
+        // `isPathKeyUnder` returns true at root for every non-empty key,
+        // so a root write correctly drops all marks.
+        for (const existingKey of [...blankPaths]) {
+          if (isPathKeyUnder(existingKey, path)) blankPaths.delete(existingKey)
+        }
+      }
     }
 
     // Authored bookkeeping: a setValue is the consumer authoring `path`
@@ -3018,30 +3036,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }
   }
 
-  // --- Clear ---
-
-  function clear(path: Path): boolean {
-    // `clear` is sugar over `setValueAtPath`: ask the adapter for the
-    // "appropriate nullish value" at this path (the underlying type's
-    // empty/falsy concrete, with `.default()` / `.catch()` wrappers
-    // intentionally skipped) and write it. No bookkeeping that
-    // `setValueAtPath` doesn't already do — variant memory, history,
-    // persistence, and listeners all see this as a regular write.
-    //
-    // `path` is segments (canonical form). An empty segment list
-    // (`[]`) targets the whole form; `['']` targets the empty-string
-    // slot (`form.errors('')` bucket / `form.touch('')` semantics
-    // from #184). The two are NOT interchangeable — special-casing
-    // either would create a maintenance footgun.
-    //
-    // The adapter may legitimately return `undefined` as the empty
-    // value (e.g. `z.string().optional()` — the wrapper's "absent"
-    // marker IS `undefined`). The slim-primitive write gate inside
-    // `setValueAtPath` decides whether that's an acceptable write at
-    // the path — we forward unconditionally and let it adjudicate.
-    return setValueAtPath(path, schema.getEmptyValueAtPath(path))
-  }
-
   // --- Rehydrate ---
   // Imperative re-fire of the captured function-form `defaultValues`
   // factory. Lives on the store so every consumer of the shared key
@@ -3622,7 +3616,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
     reset,
     resetField,
-    clear,
 
     setSchemaErrorsForPath,
     setAllSchemaErrors,

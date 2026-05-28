@@ -4328,7 +4328,7 @@ describe('chaos — persistence: hydrate with invalid discriminator in stored pa
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: {
           form: {
             name: 'Ada',
@@ -4371,7 +4371,7 @@ describe('chaos — persistence: hydrate with invalid discriminator in stored pa
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: {
           form: {
             name: 'Ada',
@@ -4541,7 +4541,7 @@ describe('chaos — persistence: hydrate with invalid discriminator in stored pa
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: {
           form: {
             name: 'Ada',
@@ -4909,7 +4909,7 @@ describe('chaos — persistence + history together', () => {
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: {
           form: { name: 'persisted', notify: { channel: 'email', address: 'p@x.io' } },
         },
@@ -5553,7 +5553,7 @@ describe('chaos — server/client default-value divergence on a DU', () => {
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: {
           form: { name: 'Persisted', notify: { channel: 'sms', number: '5551234' } },
         },
@@ -5621,7 +5621,7 @@ describe('chaos — multi-tab persistence via the storage event', () => {
 
     // Simulate: another tab wrote to the same key.
     const newPayload = JSON.stringify({
-      v: 5,
+      v: 6,
       data: { form: { name: 'tab-B', notify: { channel: 'email', address: 'b@c.io' } } },
     })
     localStorage.setItem(storageKey, newPayload)
@@ -5933,7 +5933,7 @@ describe('chaos — mount then immediately unmount during async hydration', () =
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        v: 5,
+        v: 6,
         data: { form: { name: 'p', notify: { channel: 'email', address: 'p@x.io' } } },
       })
     )

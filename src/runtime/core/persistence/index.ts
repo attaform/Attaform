@@ -12,7 +12,6 @@ import { isPlainRecord, setAtPath, getAtPath } from '../path-walker'
 import {
   isDangerousSegment,
   isPathPrefix,
-  pathKeyToDotted,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -123,15 +122,21 @@ export type PersistedPayload<Form> = {
     readonly schemaErrors?: ReadonlyArray<readonly [string, ValidationError[]]>
     readonly userErrors?: ReadonlyArray<readonly [string, ValidationError[]]>
     /**
-     * Dotted public paths that were in the form's `blankPaths` set at
-     * serialisation time. Optional — forms with no blank paths skip
-     * the field. Replayed into the reactive Set on the next mount so
-     * an accidental refresh preserves the user's "displayed empty"
-     * state across sessions. Introduced in envelope v=3; the on-disk
-     * shape switched from canonical `PathKey` JSON to dotted strings
-     * in v=5.
+     * Canonical `PathKey` JSON entries (`'["profile","bio"]'`) for the
+     * paths that were in the form's `blankPaths` set at serialisation
+     * time. Optional — forms with no blank paths skip the field.
+     * Replayed into the reactive Set on the next mount so an accidental
+     * refresh preserves the user's "displayed empty" state across
+     * sessions. Introduced in envelope v=3.
+     *
+     * The encoding restored the JSON-array shape at v=6 (after a v=5
+     * dotted-string detour) so literal-dot record keys
+     * (`record["foo.bar"]` vs `record.foo.bar`) and integer-looking
+     * record keys (`record["1"]` vs `record[1]`) survive the round-trip
+     * unambiguously — the PathKey carries segment kind, dotted
+     * notation does not.
      */
-    readonly blankPaths?: ReadonlyArray<string>
+    readonly blankPaths?: ReadonlyArray<PathKey>
   }
 }
 
@@ -154,8 +159,17 @@ export type PersistedPayload<Form> = {
  * strings (`'["profile","bio"]'`) to dotted public-path strings
  * (`'profile.bio'`), matching the path notation everywhere else in
  * the public API. v=4 payloads are dropped with a one-time dev-warn.
+ *
+ * v=6: `data.blankPaths` switched BACK to the canonical `PathKey` JSON
+ * shape (`'["profile","bio"]'`). The dotted notation collapses literal-
+ * dot record keys (`record["foo.bar"]` vs. `record.foo.bar`) and
+ * integer-looking record keys (`record["1"]` vs. `record[1]`) onto
+ * the same wire shape, silently flipping the blank-mark onto a sibling
+ * slot on hydrate. The JSON-array carries segment kind, so the
+ * distinction round-trips losslessly. v=5 payloads are dropped with a
+ * one-time dev-warn.
  */
-export const PERSISTED_ENVELOPE_VERSION = 5
+export const PERSISTED_ENVELOPE_VERSION = 6
 
 /**
  * `value` is expected to be a raw `PersistedPayload` (parsed JSON or
@@ -210,21 +224,17 @@ export function buildPersistedPayload<Form>(
   userErrors: ReadonlyMap<string, ValidationError[]>,
   blankPaths?: ReadonlySet<string>
 ): PersistedPayload<Form> {
-  // The blank list is part of the form's restorable UI
-  // state — its visibility doesn't depend on the `include` mode
-  // (which only governs whether errors come along for the ride).
-  // Skip the field when the set is empty so v=5 round-trips with
-  // unchanged minimal payload size for forms that never go empty.
-  // Convert PathKey → dotted at the I/O boundary so the on-disk
-  // shape matches the rest of the public path notation.
-  let transientList: ReadonlyArray<string> | undefined
+  // The blank list is part of the form's restorable UI state — its
+  // visibility doesn't depend on the `include` mode (which only governs
+  // whether errors come along for the ride). Skip the field when the
+  // set is empty so v=6 round-trips with unchanged minimal payload
+  // size for forms that never go empty. The PathKey JSON shape (a
+  // JSON-array string) goes through to disk verbatim so segment kind
+  // survives the round-trip — see [[PASS2-8]] and the v=6 docblock
+  // on `PERSISTED_ENVELOPE_VERSION`.
+  let transientList: ReadonlyArray<PathKey> | undefined
   if (blankPaths !== undefined && blankPaths.size > 0) {
-    const dotted: string[] = []
-    for (const key of blankPaths) {
-      const d = pathKeyToDotted(key as PathKey)
-      if (d !== null) dotted.push(d)
-    }
-    transientList = dotted.length > 0 ? dotted : undefined
+    transientList = [...blankPaths] as PathKey[]
   }
 
   if (include === 'form') {

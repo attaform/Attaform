@@ -761,7 +761,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
     expect(api.values.name).toBe('local-typed')
 
     // Wipe storage to a sentinel, then push a sibling-driven write.
-    const sentinel = JSON.stringify({ v: 5, data: { form: { name: 'sentinel' } } })
+    const sentinel = JSON.stringify({ v: 6, data: { form: { name: 'sentinel' } } })
     localStorage.setItem(persistKey, sentinel)
 
     const external = new BroadcastChannel(channelName)

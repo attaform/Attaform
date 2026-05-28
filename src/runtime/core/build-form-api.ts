@@ -46,7 +46,7 @@ import { PERSISTENCE_MODULE_KEY, type PersistenceModule } from './persistence'
 import { allowSensitivePersist } from './persistence/sensitive-names'
 import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
-import { isUnset } from './unset'
+import { isUnset, unset } from './unset'
 import {
   blankForKind,
   expandUnsetAt,
@@ -225,23 +225,28 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // Whole-form `unset` sentinels (consumer wrote `setValue(unset)`
       // or returned `unset` for some leaf in a function form) flow
       // through the walker — every leaf gets translated, the cleaned
-      // value lands in storage, and the discovered paths are added to
-      // `blankPaths` via direct setValueAtPath calls (the
-      // gate hook handles the bookkeeping).
+      // value lands in storage, and the discovered paths land blank-
+      // marks via same-value `{ blank: true }` writes that hit the
+      // identity short-circuit (bookkeeping-only, no extra history
+      // delta). Order matters: the root write FIRST so the
+      // descendant-sweep in the gate hook doesn't reap the marks we're
+      // about to set. Matching pattern in `writeUnsetAt` below.
       const walked = walkUnsetSentinels(
         next,
         state.schema as unknown as Parameters<typeof walkUnsetSentinels>[1]
       )
-      // Pre-add descendant blank marks to `state.blankPaths` so the
-      // upcoming root write's `applyFormReplacement` captures them in
-      // a single history delta alongside the storage change. The
-      // root-level write itself never marks `[]` (no leaf at root),
-      // so `{blank: true}` is not passed. See `writeUnsetAt` for the
-      // matching mark-routing rationale.
+      const ok = state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
+      if (!ok) return false
       for (const pathKey of walked.paths) {
-        state.blankPaths.add(pathKey)
+        const blankSegments = segmentsForPathKey(pathKey)
+        if (blankSegments === null) continue
+        state.setValueAtPath(
+          blankSegments,
+          state.getValueAtPath(blankSegments),
+          withInstanceMeta({ blank: true })
+        )
       }
-      return state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
+      return true
     }
     const segments = canonicalizePath(pathOrValue as string | Path).segments
     // `unset` at a specific path — direct or returned by the path-form
@@ -730,15 +735,23 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   }
 
   // --- Clear ---
-  // `clear()` wipes the whole form to per-leaf falsy concrete; `clear(path)`
-  // wipes a sub-tree. The `pathInput === undefined` check is what
-  // distinguishes "no arg" (whole-form) from explicit `clear('')`
-  // (the empty-string path slot); canonicalizePath preserves the
-  // distinction (`''` → `['']` segments, undefined never reaches it).
-  // Mirrors `touch`'s arg handling.
+  // `clear()` and `clear(path)` are sugar over `setValue(unset)` /
+  // `setValue(path, unset)` — same storage (the schema's slim default
+  // at every reached primitive leaf, with `.default()` / `.catch()`
+  // wrappers skipped) AND the matching blank-marks so the verbs settle
+  // on identical observable state. The PASS2-S1 alignment closed a
+  // gap where `clear()` silently silenced required-validation by
+  // writing the slim default without the blank-mark (a required
+  // `z.string()` cleared via `clear` quietly passed submit with `''`).
+  // The `pathInput === undefined` check distinguishes "no arg" (whole-
+  // form) from explicit `clear('')` (the empty-string path slot);
+  // canonicalizePath preserves the distinction. Mirrors `touch`'s arg
+  // handling.
   function clear(pathInput?: string | readonly (string | number)[]): boolean {
-    const segments = pathInput === undefined ? ROOT_PATH : canonicalizePath(pathInput).segments
-    return state.clear(segments)
+    if (pathInput === undefined) {
+      return setValueImpl(unset)
+    }
+    return setValueImpl(pathInput as string | Path, unset)
   }
 
   // --- Persistence (imperative APIs) ---

@@ -45,7 +45,7 @@ import { createIsSensitivePath } from '../core/persistence/sensitive-names'
 import { hashStableString } from '../core/hash'
 import { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } from '../core/multi-tab-sync'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
-import { canonicalizePath, coerceToPathKey, type Path, type PathKey } from '../core/paths'
+import { canonicalizePath, type Path, type PathKey } from '../core/paths'
 import { deleteAtPath, getAtPath, setAtPath, isPlainRecord } from '../core/path-walker'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
@@ -1168,14 +1168,12 @@ function wirePersistence<F extends GenericForm>(
         state.originalBlankPaths.delete(k)
       }
       for (const k of payload.data.blankPaths ?? []) {
-        // Persisted blankPaths land on disk in dotted-string form (see
-        // `buildPersistedPayload`'s `pathKeyToDotted` conversion).
-        // `coerceToPathKey` normalises back to the internal PathKey so
-        // every lookup (`.has(canonical)`, dirty diff, persistence
-        // filter) keys on a single representation.
-        const key = coerceToPathKey(k)
-        state.blankPaths.add(key)
-        state.originalBlankPaths.add(key)
+        // v=6 stores blankPaths in the canonical `PathKey` JSON shape,
+        // matching the in-memory representation. No conversion needed
+        // at the I/O boundary — see the v=6 docblock on
+        // `PERSISTED_ENVELOPE_VERSION`.
+        state.blankPaths.add(k)
+        state.originalBlankPaths.add(k)
       }
       if (include === 'form+errors') {
         // Each store rebuilds independently from its persisted entries.

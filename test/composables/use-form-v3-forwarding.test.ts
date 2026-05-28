@@ -127,7 +127,7 @@ describe('v3 useForm forwards opt-in options to useAbstractForm', () => {
     const fp = hashStableString(fingerprintZodSchema(schema))
     expect(key).toBe(`attaform:v3-persist:${fp}`)
     expect(payload).toMatchObject({
-      v: 5,
+      v: 6,
       data: { form: { email: 'alice@example.com' } },
     })
   })

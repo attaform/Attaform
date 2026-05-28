@@ -1,6 +1,7 @@
 import type { WriteMeta } from '../types/types-api'
+import type { IndexRemap } from './array-state-migrate'
 import { canonicalizePath, isPathPrefix, segmentsForPathKey } from './paths'
-import type { Path, PathKey } from './paths'
+import type { Path, PathKey, Segment } from './paths'
 
 type ArrayOp = NonNullable<WriteMeta['arrayOp']>
 
@@ -31,6 +32,17 @@ export type ArrayIdentity = {
   tokenAt(arraySegs: Path, index: number): string
   /** Replay a structural mutation's exact permutation onto the token list. */
   applyOp(arraySegs: Path, op: ArrayOp): void
+  /**
+   * Relocate every tracked array entry sitting under `arrayPath`'s nested
+   * elements along `remap`. Mirrors the path-keyed Map / Set migrations in
+   * `array-state-migrate.ts` so a nested-array's own identity tokens follow
+   * its parent row across an outer-array structural mutation. Without this,
+   * the inner `tokens` / `baselines` entries at `items.<old>.…` would either
+   * leak (the source slot is gone but its entry survives) or collide (the
+   * new occupant at the source slot reads stale tokens belonging to the
+   * departed row).
+   */
+  applyRemap(arrayPath: Path, remap: IndexRemap): void
   /** Realign a tracked array's tokens to its current length by position. */
   realign(arraySegs: Path): void
   /**
@@ -128,6 +140,40 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
           ids[op.index] = allocate()
           return
       }
+    },
+
+    applyRemap(arrayPath, remap) {
+      if (remap.moved.size === 0 && remap.vacated.size === 0 && remap.fresh.size === 0) return
+      // Snapshot then mutate, mirroring `migrateMapSubtree`: a destination
+      // write can't clobber a not-yet-snapshotted source. Walk both maps the
+      // same way; the index segment to rewrite sits at depth `arrayPath.length`.
+      const relocate = (store: Map<PathKey, string[]>): void => {
+        const idxPos = arrayPath.length
+        const snapshots: Array<{ segments: Segment[]; index: number; value: string[] }> = []
+        for (const [key, value] of store) {
+          const segments = segmentsForPathKey(key)
+          if (segments === null) continue
+          if (!isPathPrefix(arrayPath, segments)) continue
+          if (segments.length <= idxPos) continue
+          const idxSeg = segments[idxPos]
+          if (typeof idxSeg !== 'number') continue
+          if (!remap.moved.has(idxSeg) && !remap.vacated.has(idxSeg) && !remap.fresh.has(idxSeg)) {
+            continue
+          }
+          snapshots.push({ segments: [...segments], index: idxSeg, value })
+        }
+        if (snapshots.length === 0) return
+        for (const snap of snapshots) store.delete(canonicalizePath(snap.segments).key)
+        for (const snap of snapshots) {
+          const target = remap.moved.get(snap.index)
+          if (target === undefined) continue // vacated / replaced — already source-deleted; drop
+          const relocated = snap.segments.slice()
+          relocated[idxPos] = target
+          store.set(canonicalizePath(relocated).key, snap.value)
+        }
+      }
+      relocate(tokens)
+      relocate(baselines)
     },
 
     realign(arraySegs) {

@@ -80,12 +80,19 @@ export function buildFieldArrayApi<F extends GenericForm>(
     },
     insert(path, index, value) {
       const next = readArray(path)
-      // splice clamps `index` to `[0, length]`; negative values count from
-      // the end. We pass through untouched — Array semantics are the
-      // consumer's expected behaviour here.
-      next.splice(index, 0, value)
-      const clampedIndex = Math.max(0, Math.min(index, next.length))
-      return writeArray(path, next, { kind: 'insert', index: clampedIndex })
+      // Compute the actual insertion index using JS `splice` semantics
+      // BEFORE the splice runs — negative values count from the end against
+      // the PRE-splice length, positive values clamp to `[0, preLen]`. Then
+      // pass that same index to both `splice` and the recorded `arrayOp`,
+      // so downstream consumers (variant-memory eviction, identity-token
+      // applyOp, per-element migration) act on the slot the element
+      // actually landed in. Pre-fix the recorded `op.index` was clamped
+      // against POST-splice length, which for negative inputs yielded 0
+      // even when splice had placed the element later in the array.
+      const preLen = next.length
+      const insertIndex = index < 0 ? Math.max(0, preLen + index) : Math.min(index, preLen)
+      next.splice(insertIndex, 0, value)
+      return writeArray(path, next, { kind: 'insert', index: insertIndex })
     },
     remove(path, index) {
       const next = readArray(path)

@@ -1,5 +1,28 @@
 import type { AbstractSchema } from '../types/types-api'
+import { __DEV__ } from './dev'
 import { canonicalizePath, type Path, type Segment } from './paths'
+
+/**
+ * Warn-and-noop trap pair shared by every readonly proxy in the surface
+ * layer. Returning `true` keeps strict-mode callers from throwing on
+ * `proxy.x = …` / `delete proxy.x` / `Object.defineProperty(proxy, …)` —
+ * the readonly contract is enforced by the absence of any actual
+ * mutation, not by tripping a host-level `TypeError`. Aligns
+ * `form.fields` / `form.errors` with the warn-and-noop pattern already
+ * in `values-proxy` and `wizard-statuses-proxy`. See PASS2-4 + PASS2-12
+ * for the audit context.
+ */
+function warnReadOnly(
+  surface: string,
+  action: 'write' | 'delete' | 'define',
+  key: PropertyKey
+): void {
+  if (!__DEV__) return
+  const phrase = action === 'write' ? `write to "${String(key)}"` : `${action} of "${String(key)}"`
+  console.warn(
+    `[attaform] ${surface} is read-only — ${phrase} was ignored. Mutate the form via setValue / the directive / field-array helpers instead.`
+  )
+}
 
 /**
  * Leaf-aware callable Proxy machinery shared by `form.values`,
@@ -411,10 +434,25 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         }
       },
       // Block writes at the proxy boundary. Mutations go through
-      // `setValue`, the directive, or the field-array helpers.
-      set: () => false,
-      deleteProperty: () => false,
-      defineProperty: () => false,
+      // `setValue`, the directive, or the field-array helpers. Each
+      // trap returns `true` (warn-and-noop) — returning `false` from a
+      // `set`/`delete`/`defineProperty` trap throws `TypeError` under
+      // strict mode (every ESM / `<script setup>`), which would surface
+      // a host-level exception in consumer code that the library
+      // documents as "writes are ignored." Aligns with the contract on
+      // `form.values` / `wizard.statuses`.
+      set: (_, key) => {
+        warnReadOnly('form.fields / form.errors', 'write', key)
+        return true
+      },
+      deleteProperty: (_, key) => {
+        warnReadOnly('form.fields / form.errors', 'delete', key)
+        return true
+      },
+      defineProperty: (_, key) => {
+        warnReadOnly('form.fields / form.errors', 'define', key)
+        return true
+      },
     })
     containerCache.set(cacheKey, proxy)
     return proxy
@@ -537,9 +575,22 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
           writable: false,
         }
       },
-      set: () => false,
-      deleteProperty: () => false,
-      defineProperty: () => false,
+      // Same warn-and-noop contract as the container traps above.
+      // Returning `true` keeps strict-mode callers from throwing on
+      // `form.fields.email.value = …`; the actual readonly guarantee
+      // is the absence of any mutation, not the host-level reject.
+      set: (_, key) => {
+        warnReadOnly('form.fields.<leaf>', 'write', key)
+        return true
+      },
+      deleteProperty: (_, key) => {
+        warnReadOnly('form.fields.<leaf>', 'delete', key)
+        return true
+      },
+      defineProperty: (_, key) => {
+        warnReadOnly('form.fields.<leaf>', 'define', key)
+        return true
+      },
     })
     leafViewCache.set(cacheKey, proxy)
     return proxy

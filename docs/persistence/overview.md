@@ -79,7 +79,7 @@ createAttaform({
 })
 ```
 
-The resolved list also gates multi-tab sync broadcasts and the DevTools redact walk: one configurable source of truth for "what counts as sensitive."
+The resolved list also gates multi-tab sync broadcasts: one configurable source of truth for "what counts as sensitive" across both write paths. (DevTools renders raw values by design; the list does not gate display.)
 
 ## Imperative control
 

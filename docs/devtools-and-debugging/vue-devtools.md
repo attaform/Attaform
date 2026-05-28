@@ -69,7 +69,7 @@ The wire-up is code-split, so the chunk isn't pulled in when `devtools: false`; 
 
 ## What you see
 
-The Vue DevTools panel surfaces the same data as the [Nuxt panel](/docs/devtools-and-debugging/devtools-panel): form list, editable JSON value tree, schema/user error split, aggregates, and the event timeline. The sensitive-name redact applies identically.
+The Vue DevTools panel surfaces the same data as the [Nuxt panel](/docs/devtools-and-debugging/devtools-panel): form list, editable JSON value tree, schema/user error split, aggregates, and the event timeline. Both surfaces render values raw; DevTools is a dev-only surface, so the sensitive-name list gates persistence and multi-tab broadcasts, not display.
 
 | Surface              | What it is                                                              |
 | -------------------- | ----------------------------------------------------------------------- |
@@ -98,10 +98,10 @@ This is the practical advantage over the Nuxt panel for multi-app monorepos: pic
 
 - **Extension version mismatch.** The Vue DevTools extension and `@vue/devtools-api` evolve in tandem; keep both reasonably current. An outdated extension may not surface newer inspector node types; an outdated peer dep may emit events the extension doesn't render.
 - **Privacy across reloads.** The timeline doesn't persist across reloads; reloading the page wipes the visible history. Persistent debug requires copying events out manually.
-- **Screen-share hygiene.** Values render raw modulo the sensitive-name redact. Same advice as the browser DevTools console: close before sharing the screen.
+- **Screen-share hygiene.** Values render raw. Same advice as the browser DevTools console: close before sharing the screen.
 
 ## Where to next
 
 - [The Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel): the Nuxt-native alternative, same data surface.
 - [Troubleshooting](/docs/devtools-and-debugging/troubleshooting): what to look for in the panels when forms misbehave.
-- [Sensitive-name protection](/docs/persistence/sensitive-names): the list that drives the redact walk shared by both surfaces.
+- [Sensitive-name protection](/docs/persistence/sensitive-names): the list that gates persistence writes and multi-tab broadcasts.

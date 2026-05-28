@@ -82,11 +82,9 @@ A scrollable log of recent events. Each entry shows a timestamp, an event type, 
 
 Capacity is capped at 200 events per session; older entries fall off the back. Hit **clear** to wipe the log mid-debug.
 
-## Sensitive-path redaction
+## Sensitive data and the panel
 
-Values at paths matching the resolved `sensitiveNames` list render as `<redacted>` in the tree, the same list that gates persistence opt-ins and multi-tab broadcasts. Extend it once at the app level via `createAttaform({ defaults: { sensitiveNames } })` and the DevTools panel respects the broader list.
-
-The redaction is render-time only; the panel still reads the underlying value (it has to, the redaction lives between the store and the inspector tree). For deep production-data spelunking on a sensitive surface, use a non-prod environment with synthetic data instead of relying on the redact walk.
+The panel renders form values raw. DevTools is a dev-only surface, and redacting across every place a value surfaces (panels, logs, network tabs, breakpoints, source maps) is impractical security theater, not a real safeguard. For production-data spelunking on a sensitive surface, use a non-prod environment with synthetic data instead. The same list of names ([Sensitive-name protection](/docs/persistence/sensitive-names)) still gates persistence writes and multi-tab broadcasts.
 
 ## What's coming
 
@@ -98,10 +96,10 @@ The redaction is render-time only; the panel still reads the underlying value (i
 
 - **Panel edits bypass your component bindings.** Fine for poking at state during debugging; don't rely on the path mirroring production interaction exactly.
 - **Multi-app setups.** The Nuxt overlay panel reads from the most recent `createAttaform()` install; micro-frontend setups with parallel apps will only see one app's forms in the Nuxt panel. Reach for [Vue DevTools integration](/docs/devtools-and-debugging/vue-devtools) when you need per-app inspection.
-- **Screen-share hygiene.** The panel renders raw values (modulo the sensitive-name redact). Close it before screen-sharing, the same way you'd close the browser DevTools console.
+- **Screen-share hygiene.** The panel renders raw values. Close it before screen-sharing, the same way you'd close the browser DevTools console.
 
 ## Where to next
 
 - [Vue DevTools integration](/docs/devtools-and-debugging/vue-devtools): the alternative for Vite / bare-Vue projects, or as a complement on Nuxt.
 - [Troubleshooting](/docs/devtools-and-debugging/troubleshooting): what the panel surfaces, in narrative form.
-- [Sensitive-name protection](/docs/persistence/sensitive-names): the list the redact walk reads.
+- [Sensitive-name protection](/docs/persistence/sensitive-names): the list that gates persistence writes and multi-tab broadcasts.

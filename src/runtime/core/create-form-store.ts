@@ -27,6 +27,7 @@ import {
   coerceToPathKey,
   FORM_ERRORS_PATH,
   FORM_ERRORS_PATH_KEY,
+  isDangerousSegment,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -205,6 +206,9 @@ function walkDuStubs(
   }
   const out: Record<string, unknown> = {}
   for (const k of Object.keys(rec)) {
+    // SSR hydration payloads are untrusted JSON: skip prototype-
+    // corrupting keys before the bracket-assign reaches `out`.
+    if (isDangerousSegment(k)) continue
     out[k] = walkDuStubs(schema, rec[k], [...path, k], warned)
   }
   return out

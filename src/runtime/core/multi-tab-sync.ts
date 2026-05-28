@@ -3,7 +3,13 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { applyPatchesForward, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { isPlainRecord } from './path-walker'
-import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
+import {
+  canonicalizePath,
+  isDangerousSegment,
+  type Path,
+  type PathKey,
+  type Segment,
+} from './paths'
 import { slimKindOf } from './slim-primitive-gate'
 
 /**
@@ -176,10 +182,6 @@ function isFileLikeValue(value: unknown): boolean {
   if (typeof File !== 'undefined' && value instanceof File) return true
   if (typeof Blob !== 'undefined' && value instanceof Blob) return true
   return false
-}
-
-function isDangerousSegment(s: Segment): boolean {
-  return s === '__proto__' || s === 'constructor' || s === 'prototype'
 }
 
 function pathContainsDangerousSegment(path: Path): boolean {

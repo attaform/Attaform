@@ -10,6 +10,7 @@ import { PERSISTENCE_KEY_PREFIX } from '../defaults'
 import { __DEV__ } from '../dev'
 import { isPlainRecord, setAtPath, getAtPath } from '../path-walker'
 import {
+  isDangerousSegment,
   pathKeyToDotted,
   segmentsForPathKey,
   type Path,
@@ -611,6 +612,10 @@ function mergeDeep(
         if (isPlainRecord(variantDefault)) {
           const out: Record<string, unknown> = { ...variantDefault }
           for (const key of Object.keys(sourceRecord)) {
+            // Untrusted payload: a prototype-corrupting key (`__proto__`
+            // etc.) is `in variantDefault` via inheritance, so it would
+            // pass the variant filter below — reject it up front.
+            if (isDangerousSegment(key)) continue
             if (!(key in variantDefault) && key !== du.discriminatorKey) continue
             out[key] = mergeDeep(out[key], sourceRecord[key], [...path, key], schema)
           }
@@ -625,6 +630,10 @@ function mergeDeep(
   const mergeTarget = target
   const out: Record<string, unknown> = isPlainRecord(mergeTarget) ? { ...mergeTarget } : {}
   for (const key of Object.keys(source)) {
+    // Reject prototype-corrupting keys from untrusted storage / hydration
+    // JSON before the bracket-assign reaches `out`. `out['__proto__'] =`
+    // would reassign the merged object's prototype.
+    if (isDangerousSegment(key)) continue
     out[key] = mergeDeep(out[key], (source as Record<string, unknown>)[key], [...path, key], schema)
   }
   return out

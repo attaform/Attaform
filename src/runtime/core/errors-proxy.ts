@@ -6,6 +6,7 @@ import { getAtPath, hasAtPath } from './path-walker'
 import {
   canonicalizePath,
   FORM_ERRORS_PATH_KEY,
+  isPathPrefix,
   segmentsForPathKey,
   type PathKey,
   type Path,
@@ -124,12 +125,23 @@ export function buildErrorsProxy<F extends GenericForm>(
     // working — the call-form just extends that semantic to
     // containers and dynamic paths.
     resolveCallTarget: (path) => aggregateErrorsAt(state, path),
-    // Mirror `form.fields` enumeration: `Object.keys(form.errors.items)`
-    // and `v-for="(errs, idx) in form.errors.items"` walk the live
-    // array indices / object keys at the path. Iteration yields the
-    // descended sub-proxies (one per live key), so consumers can
-    // `form.errors.items[idx]` straight from the entry.
-    containerOwnKeys: (segments) => liveKeysAtPath(state, segments),
+    // Enumeration unions the live form-data keys at this path with the
+    // first-child segments drawn from every error store. Without the
+    // union, `Object.keys(form.errors)` / `{...form.errors}` /
+    // `v-for="(errs, k) in form.errors"` silently dropped two
+    // important error classes that the dot / call / JSON.stringify
+    // surfaces already exposed:
+    //
+    //   - **Form-level** errors at the synthetic `['']` path (set via
+    //     `setFormErrors` or root cross-field refines).
+    //   - **Server-only** errors at a key the schema doesn't know
+    //     about (`['ghost']`, `['address', 'ghost']`).
+    //
+    // The union closes that gap so `ownKeys` agrees with the rest of
+    // the surface. Active-path filter mirrors `resolveLeaf`:
+    // library-produced verdicts (schema + derived-blank) at unreachable
+    // paths stay hidden; user-supplied errors are unconditional.
+    containerOwnKeys: (segments) => errorAwareContainerKeys(state, segments),
     isArrayContainer: (segments) => isArrayPath(state, segments),
   })
 }
@@ -153,6 +165,65 @@ function liveKeysAtPath<F extends GenericForm>(
   }
   if (typeof value === 'object') return Object.keys(value as Record<string, unknown>)
   return []
+}
+
+/**
+ * Container enumeration that agrees with the other surfaces of
+ * `form.errors`. Walks the live form data at the container path AND
+ * every error store, surfacing the union of first-child segments as
+ * the enumerated keys. Reads happen inside the consumer's active
+ * effect, so Vue tracks both the form Ref AND the reactive
+ * derived-blank Map: an error appearing at a previously-empty path
+ * re-enumerates on the next render.
+ *
+ * Active-path filter parity with `resolveLeaf`: schema + derived-blank
+ * entries at paths the live form value can't reach (inactive DU
+ * variants) stay hidden; user-supplied entries are surfaced
+ * unconditionally so server errors and manual marks at unknown keys
+ * land in `Object.keys` / spread / iteration. The synthetic root
+ * form-level path (`['']`) is exempt from the filter — its slot is
+ * the conventional home for `setFormErrors` and root `.refine()`
+ * results, and has no live-data home by design.
+ */
+function errorAwareContainerKeys<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: readonly Segment[]
+): readonly string[] {
+  const keys = new Set<string>(liveKeysAtPath(state, segments))
+  const formValue = state.form.value
+  const walk = (
+    store: ReadonlyMap<PathKey, ValidationError[]>,
+    applyActivePathFilter: boolean
+  ): void => {
+    for (const [pathKey, errors] of store) {
+      if (errors.length === 0) continue
+      // Synthetic form-level path is `['']`; tracked under the
+      // sentinel PathKey. Only enumerable when materialising at root,
+      // and exempt from the active-path filter (no live-data home).
+      if (pathKey === FORM_ERRORS_PATH_KEY) {
+        if (segments.length === 0) keys.add('')
+        continue
+      }
+      const decoded = segmentsForPathKey(pathKey)
+      if (decoded === null) continue
+      // Strict descendant: equal-length entries don't contribute a
+      // first-child segment to the parent container's enumeration
+      // (their slot is the container itself, surfaced via the
+      // container-self sentinel and the merged leaf bucket).
+      if (decoded.length <= segments.length) continue
+      if (!isPathPrefix(segments, decoded)) continue
+      // Library-produced verdicts at unreachable paths stay hidden so
+      // enumeration agrees with the resolveLeaf filter. User errors
+      // pass through to expose unknown server keys.
+      if (applyActivePathFilter && !hasAtPath(formValue, decoded)) continue
+      const nextSeg = decoded[segments.length] as Segment
+      keys.add(typeof nextSeg === 'number' ? String(nextSeg) : nextSeg)
+    }
+  }
+  walk(state.schemaErrors, true)
+  walk(state.derivedBlankErrors.value, true)
+  walk(state.userErrors, false)
+  return [...keys]
 }
 
 /**

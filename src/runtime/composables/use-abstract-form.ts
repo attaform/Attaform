@@ -41,10 +41,7 @@ import {
   sweepNonConfiguredStandardStoresForOrphans,
   type PersistenceModule,
 } from '../core/persistence'
-import {
-  createIsSensitivePath,
-  createSegmentMatchesSensitive,
-} from '../core/persistence/sensitive-names'
+import { createIsSensitivePath } from '../core/persistence/sensitive-names'
 import { hashStableString } from '../core/hash'
 import { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } from '../core/multi-tab-sync'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
@@ -679,10 +676,6 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   const resolvedSensitiveNames = configuration.sensitiveNames
   const resolvedIsSensitivePath =
     resolvedSensitiveNames === undefined ? undefined : createIsSensitivePath(resolvedSensitiveNames)
-  const resolvedSegmentMatchesSensitive =
-    resolvedSensitiveNames === undefined
-      ? undefined
-      : createSegmentMatchesSensitive(resolvedSensitiveNames)
   const createOptions: Parameters<typeof createFormStore<F, G>>[0] = {
     formKey: key,
     schema,
@@ -720,9 +713,6 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       : {}),
     ...(initialBlankPaths !== undefined ? { initialBlankPaths } : {}),
     ...(resolvedIsSensitivePath !== undefined ? { isSensitivePath: resolvedIsSensitivePath } : {}),
-    ...(resolvedSegmentMatchesSensitive !== undefined
-      ? { segmentMatchesSensitive: resolvedSegmentMatchesSensitive }
-      : {}),
   }
   const state = createFormStore<F, G>(createOptions)
   // Storage type is FormStore<GenericForm>; the lookup above narrows

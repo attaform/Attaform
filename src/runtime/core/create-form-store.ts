@@ -50,10 +50,7 @@ import {
   createPersistOptInRegistry,
   type PersistOptInRegistry,
 } from './persistence/opt-in-registry'
-import {
-  isSensitivePath as defaultIsSensitivePath,
-  segmentMatchesSensitive as defaultSegmentMatchesSensitive,
-} from './persistence/sensitive-names'
+import { isSensitivePath as defaultIsSensitivePath } from './persistence/sensitive-names'
 
 /**
  * Per-form closure state — the single store owned by each `useForm` call.
@@ -815,15 +812,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly isSensitivePath: (path: Path | PathKey | string) => boolean
 
   /**
-   * Single-segment variant of `isSensitivePath`. Used by the DevTools
-   * redact walk to short-circuit whole subtrees the moment any
-   * ancestor segment matches — saving an O(leaves × ancestors) regex
-   * sweep per timeline event. Resolved from the same `sensitiveNames`
-   * cascade as `isSensitivePath`.
-   */
-  readonly segmentMatchesSensitive: (segment: Segment) => boolean
-
-  /**
    * Canonical path keys explicitly opted OUT of multi-tab sync by
    * `register(path, { multiTab: false })`. The sync module's outbound
    * broadcaster strips patches at these paths AND the inbound listener
@@ -964,13 +952,6 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * when omitted, the library-default closure is used.
    */
   readonly isSensitivePath?: ((path: Path | PathKey | string) => boolean) | undefined
-  /**
-   * Pre-resolved single-segment variant of `isSensitivePath`. Paired
-   * with `isSensitivePath` (built from the same resolved list) so the
-   * DevTools redact walk can short-circuit whole subtrees. Optional;
-   * when omitted, the library-default closure is used.
-   */
-  readonly segmentMatchesSensitive?: ((segment: Segment) => boolean) | undefined
   /**
    * SSR prefetch coordination, bound at `buildFreshState` time. Omitted
    * on the client where the queue is never read.
@@ -1236,8 +1217,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // library-default closure. Same predicate gates persistence,
   // multi-tab sync, DevTools.
   const resolvedIsSensitivePath = options.isSensitivePath ?? defaultIsSensitivePath
-  const resolvedSegmentMatchesSensitive =
-    options.segmentMatchesSensitive ?? defaultSegmentMatchesSensitive
 
   // State-scoped teardown hooks. Persistence / history / any other
   // per-state module registers its disposer here so the cleanup is
@@ -3677,7 +3656,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     modules,
     persistOptIns,
     isSensitivePath: resolvedIsSensitivePath,
-    segmentMatchesSensitive: resolvedSegmentMatchesSensitive,
     noSyncPaths,
     incrementNoSyncOptOut,
     decrementNoSyncOptOut,

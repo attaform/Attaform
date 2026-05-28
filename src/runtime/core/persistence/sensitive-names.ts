@@ -203,17 +203,7 @@ export function createIsSensitivePath(
   }
 }
 
-const defaultSegmentMatches = createSegmentMatchesSensitive()
 const defaultIsSensitivePath = createIsSensitivePath()
-
-/**
- * True iff `segment` itself matches the LIBRARY DEFAULT sensitive-name
- * list. For consumer-configurable matching, use
- * `createSegmentMatchesSensitive(list)` to build a per-form closure.
- */
-export function segmentMatchesSensitive(segment: Segment): boolean {
-  return defaultSegmentMatches(segment)
-}
 
 /**
  * True iff any segment of the path matches the LIBRARY DEFAULT

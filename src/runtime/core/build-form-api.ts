@@ -43,7 +43,7 @@ import {
   type PathKey,
 } from './paths'
 import { PERSISTENCE_MODULE_KEY, type PersistenceModule } from './persistence'
-import { enforceSensitiveCheck } from './persistence/sensitive-names'
+import { allowSensitivePersist } from './persistence/sensitive-names'
 import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
 import { isUnset } from './unset'
@@ -748,7 +748,17 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     options?: { acknowledgeSensitive?: boolean }
   ): Promise<void> => {
     const segments = canonicalizePath(pathInput).segments
-    enforceSensitiveCheck(segments, options?.acknowledgeSensitive === true, state.isSensitivePath)
+    // Sensitive path without acknowledgement: warn + skip (never throw —
+    // form.persist() shouldn't reject over a recoverable misconfig).
+    if (
+      !allowSensitivePersist(
+        segments,
+        options?.acknowledgeSensitive === true,
+        state.isSensitivePath
+      )
+    ) {
+      return
+    }
     if (persistence === undefined) return // persist: not configured → silent no-op
     await persistence.writePathImmediately(segments)
   }

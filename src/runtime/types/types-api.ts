@@ -1923,9 +1923,10 @@ export type RegisterOptions = {
    * If multiple inputs bind to the same path, the path keeps
    * persisting as long as any opted-in input is mounted.
    *
-   * Throws `SensitivePersistFieldError` when the path looks
-   * sensitive (password / cvv / ssn / token / etc.) unless
-   * `acknowledgeSensitive: true` is also set.
+   * When the path looks sensitive (password / cvv / ssn / token /
+   * etc.) the opt-in is skipped with a one-shot dev warning unless
+   * `acknowledgeSensitive: true` is also set — the field simply isn't
+   * persisted (the secure default). It never throws.
    */
   persist?: boolean
   /**
@@ -2111,7 +2112,7 @@ export type RegisterValue<Value = unknown> = Readonly<{
   /**
    * Resolved sensitive-path predicate honoring this form's
    * `sensitiveNames` cascade. The directive calls this through
-   * `enforceSensitiveCheck` when a `register('path', { persist: true })`
+   * `allowSensitivePersist` when a `register('path', { persist: true })`
    * binding mounts so a per-form custom list (e.g. extending with
    * `'mrn'`) gates persistence enrolment correctly.
    * @internal
@@ -4151,9 +4152,9 @@ export type UseFormReturnType<
    * paths in the persisted draft are preserved (this is a merge,
    * not a replace).
    *
-   * Throws `SensitivePersistFieldError` for sensitive-looking paths
-   * unless you pass `{ acknowledgeSensitive: true }`. No-op when
-   * `useForm({ persist })` wasn't configured.
+   * For sensitive-looking paths, warns once and no-ops unless you pass
+   * `{ acknowledgeSensitive: true }` — it never throws. Also a no-op
+   * when `useForm({ persist })` wasn't configured.
    */
   persist: (path: FlatPath<Form>, options?: { acknowledgeSensitive?: boolean }) => Promise<void>
 

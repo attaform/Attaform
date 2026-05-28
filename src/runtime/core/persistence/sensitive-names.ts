@@ -1,4 +1,4 @@
-import { SensitivePersistFieldError } from '../errors'
+import { __DEV__ } from '../dev'
 import type { Path, PathKey, Segment } from '../paths'
 
 /**
@@ -225,17 +225,53 @@ export function isSensitivePath(path: Path | PathKey | string): boolean {
 }
 
 /**
- * Throw `SensitivePersistFieldError` if `path` matches sensitivity and
- * `acknowledged` is not true. The optional `isSensitive` predicate
- * lets call sites pass the per-form resolved closure; omit to use the
- * library default list.
+ * Dev-only dedup for the sensitive-persist warning. The directive's
+ * opt-in sync re-runs on every render, so without this a static
+ * sensitive field would warn on every re-render. `null` in production so
+ * the Set allocation tree-shakes out.
  */
-export function enforceSensitiveCheck(
+const warnedSensitivePersist: Set<string> | null = __DEV__ ? new Set<string>() : null
+
+/**
+ * Decide whether `path` may be opted into persistence. A sensitive-named
+ * path opted in WITHOUT `acknowledgeSensitive: true` is refused — the
+ * opt-in is skipped and a one-shot dev warning is logged. The library
+ * never throws here: a misconfigured persist flag must not take down the
+ * consumer's app, and the safe fallback (not persisting the secret) is
+ * exactly the secure default. Returns `true` when the path may persist,
+ * `false` when it was blocked.
+ *
+ * The optional `isSensitive` predicate lets call sites pass the per-form
+ * resolved closure; omit to use the library default list.
+ */
+export function allowSensitivePersist(
   path: Path | PathKey | string,
   acknowledged: boolean,
   isSensitive: (p: Path | PathKey | string) => boolean = defaultIsSensitivePath
-): void {
-  if (acknowledged) return
-  if (!isSensitive(path)) return
-  throw new SensitivePersistFieldError(path)
+): boolean {
+  if (acknowledged) return true
+  if (!isSensitive(path)) return true
+  if (warnedSensitivePersist !== null) {
+    const display = Array.isArray(path) ? path.join('.') : String(path)
+    if (!warnedSensitivePersist.has(display)) {
+      warnedSensitivePersist.add(display)
+      console.warn(
+        `[attaform] Not persisting "${display}" — it matches a sensitive-name pattern ` +
+          `(password / cvv / ssn / token / etc.) and was opted into persistence without ` +
+          '`acknowledgeSensitive: true`. Storing sensitive data in client-side storage is a ' +
+          'compliance risk (PII / PCI-DSS / HIPAA / SOC2). Persist it server-side, or pass ' +
+          '`acknowledgeSensitive: true` to register() / form.persist() if this is intentional.'
+      )
+    }
+  }
+  return false
+}
+
+/**
+ * Test-only: reset the one-shot dedup so subsequent
+ * `allowSensitivePersist` calls warn fresh. Mirrors
+ * `resetInsecureContextWarnDedup`.
+ */
+export function resetSensitivePersistWarnDedup(): void {
+  warnedSensitivePersist?.clear()
 }

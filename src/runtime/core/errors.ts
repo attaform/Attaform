@@ -145,32 +145,6 @@ export class ReservedFormKeyError extends AttaformError {
 // original intent. The richer class supersedes the earlier basic version.)
 
 /**
- * Thrown when `register(path, { persist: true })` or `form.persist(path)`
- * targets a path whose name matches a sensitive-data heuristic
- * (password, cvv, ssn, token, etc.) without an explicit
- * `acknowledgeSensitive: true` override.
- *
- * Sensitive data in client-side storage (localStorage, sessionStorage,
- * IndexedDB) is a compliance risk — it survives logouts, is readable
- * by any same-origin script, and is unencrypted at rest.
- *
- * Fix: pass `acknowledgeSensitive: true` to confirm the persistence
- * is intentional, or persist the data server-side instead.
- */
-export class SensitivePersistFieldError extends AttaformError {
-  constructor(path: ReadonlyArray<string | number> | string) {
-    const display = Array.isArray(path) ? path.join('.') : String(path)
-    super(
-      `[attaform] Refusing to persist "${display}" — this path matches a ` +
-        `sensitive-name pattern (password / cvv / ssn / token / etc.). Storing sensitive ` +
-        `data in client-side storage is a compliance risk (HIPAA / PII / PCI-DSS / SOC2). ` +
-        `Fix: persist this server-side, OR pass \`acknowledgeSensitive: true\` to register() ` +
-        `(or form.persist()) if the client-side persistence is intentional.`
-    )
-  }
-}
-
-/**
  * Thrown when persistence is misconfigured in a way that would either
  * (a) silently drop writes, or (b) namespace storage under a
  * non-deterministic synthetic key — both of which become security bugs

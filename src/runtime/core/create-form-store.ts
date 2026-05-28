@@ -802,7 +802,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * Resolved sensitive-path predicate for THIS form. Honors the
    * cascade (`useForm({ sensitiveNames })` > global default >
    * library `DEFAULT_SENSITIVE_NAMES`). Used by:
-   *  - persistence enforcement (`enforceSensitiveCheck` at write time);
+   *  - the persistence opt-in gate (`allowSensitivePersist`);
    *  - the multi-tab sync module (outbound strip + inbound reject);
    *  - DevTools edit rejection;
    *  - any future surface that needs to flag "this path holds

@@ -209,7 +209,6 @@ export {
   OutsideSetupError,
   RegistryNotInstalledError,
   ReservedFormKeyError,
-  SensitivePersistFieldError,
   SubmitErrorHandlerError,
 } from './runtime/core/errors'
 

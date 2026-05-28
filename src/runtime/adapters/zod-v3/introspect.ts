@@ -438,6 +438,10 @@ export function getDefaultValue(schema: z.ZodTypeAny): unknown {
  * during default-values derivation are rare — if the function throws,
  * we surface `undefined` and let the validate-then-fix loop find a
  * fallback.
+ *
+ * Pairs with `hasCatchValue` for callers that need to distinguish a
+ * legitimate `undefined` return from a missing wrapper; this helper
+ * alone collapses both into `undefined`.
  */
 export function getCatchDefault(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
@@ -448,6 +452,12 @@ export function getCatchDefault(schema: z.ZodTypeAny): unknown {
   } catch {
     return undefined
   }
+}
+
+/** True iff the schema carries a callable `_def.catchValue` (ZodCatch wrapper). */
+export function hasCatchValue(schema: z.ZodTypeAny): boolean {
+  const def = readDef(schema)
+  return typeof def?.catchValue === 'function'
 }
 
 // ---------- Refinement payload ----------

@@ -60,11 +60,38 @@ function constraintsAreSlimValid(slimSchema: z.ZodSchema, constraints: unknown):
 
 import { __DEV__ } from '../../core/dev'
 import { AttaformErrorCode } from '../../core/error-codes'
-import type { TypeWithNullableDynamicKeys, ZodTypeWithInnerType } from './types-zod'
+import type { TypeWithNullableDynamicKeys } from './types-zod'
+// `ZodTypeWithInnerType` lives in types-zod.ts and is re-exported from
+// `attaform/zod-v3` as a narrow accessor type for custom-adapter
+// authors. Phase 7's introspect chokepoint means the v3 adapter no
+// longer reads `_def` directly inline; the public type stays available
+// for downstream consumers writing adapter-shaped code.
 import { assertSupportedKinds } from './assert-supported'
 import { fingerprintZodSchema } from './fingerprint'
 import { isZodSchemaType } from './helpers'
-import { hasContainerOrRootRefine } from './introspect'
+import {
+  getArrayElement,
+  getCatchDefault,
+  getDefaultValue as getDefaultValueFromIntrospect,
+  getDiscriminatedOptions,
+  getDiscriminator,
+  getEffectsKind,
+  getIntersectionLeft,
+  getIntersectionRight,
+  getLiteralValue,
+  getObjectShape,
+  getRecordValueType,
+  getSetValueType,
+  getTupleItems,
+  getTypeName,
+  getUnionOptions,
+  hasCatchValue,
+  hasContainerOrRootRefine,
+  unwrapBranded,
+  unwrapEffectsSource,
+  unwrapInner,
+  unwrapPipeIn,
+} from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 
 let warnedZodCodeMissing = false
@@ -106,7 +133,7 @@ export function zodAdapter<
         stripZodRefinements: true,
       })
       if (!isZodSchemaType(_schema, 'ZodObject')) {
-        const name = (_schema as ZodTypeWithInnerType)._def.typeName
+        const name = getTypeName(_schema)
         throw new Error(`ZodAdapter: expected ZodObject, got ${name}`)
       }
     }
@@ -139,18 +166,15 @@ export function zodAdapter<
         matchedUnion = peeled
       }
       if (matchedUnion === undefined) return undefined
-      const discKey = (
-        matchedUnion as z.ZodDiscriminatedUnion<string, z.ZodDiscriminatedUnionOption<string>[]>
-      )._def.discriminator
-      const options = (
-        matchedUnion as z.ZodDiscriminatedUnion<string, z.ZodDiscriminatedUnionOption<string>[]>
-      )._def.options
+      const discKey = getDiscriminator(matchedUnion)
+      if (discKey === undefined) return undefined
+      const options = getDiscriminatedOptions(matchedUnion)
       const literalSet = new Set<unknown>()
       for (const opt of options) {
         const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
         if (!litSchema) continue
         if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
-        literalSet.add(litSchema._def.value)
+        literalSet.add(getLiteralValue(litSchema))
       }
       return {
         discriminatorKey: discKey,
@@ -159,7 +183,7 @@ export function zodAdapter<
             const litSchema = opt.shape[discKey] as z.ZodTypeAny | undefined
             if (!litSchema) continue
             if (!isZodSchemaType(litSchema, 'ZodLiteral')) continue
-            if (litSchema._def.value === value) {
+            if (getLiteralValue(litSchema) === value) {
               return getDefaultValuesFromZodSchema(opt as unknown as z.ZodSchema, true, _formKey)
             }
           }
@@ -457,13 +481,12 @@ export function zodAdapter<
         let peeled = peelV3Wrappers(leaf)
         for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
           if (!isZodSchemaType(peeled, 'ZodCatch')) break
-          const inner = (peeled._def as { innerType?: z.ZodTypeAny }).innerType
+          const inner = unwrapInner(peeled)
           if (!inner) break
           peeled = peelV3Wrappers(inner)
         }
         if (isZodSchemaType(peeled, 'ZodTuple')) {
-          const items = (peeled._def as { items?: readonly z.ZodTypeAny[] }).items
-          return Array.isArray(items) ? items.length : undefined
+          return getTupleItems(peeled).length
         }
         if (isZodSchemaType(peeled, 'ZodArray')) return null
         return undefined
@@ -585,8 +608,7 @@ export function zodAdapter<
               : (getNestedZodSchemasAtPath(_zodSchema, prefix) as z.ZodTypeAny[])
           for (const candidate of candidates) {
             if (!isZodSchemaType(candidate, 'ZodEffects')) continue
-            const def = candidate._def as { effect?: { type?: string } }
-            if (def.effect?.type === 'preprocess') {
+            if (getEffectsKind(candidate) === 'preprocess') {
               hit = true
               break
             }
@@ -803,10 +825,10 @@ function getNestedZodSchemasAtPath<Schema extends z.ZodSchema>(
     Options extends readonly z.ZodDiscriminatedUnionOption<Discriminator>[],
   >(schema: z.ZodDiscriminatedUnion<Discriminator, Options>, key: string) {
     const successfulOptions = []
-    const options = schema._def.options
+    const options = getDiscriminatedOptions(schema)
     for (const option of options) {
       if (!(key in option.shape)) continue
-      successfulOptions.push(option)
+      successfulOptions.push(option as Options[number])
     }
 
     return successfulOptions
@@ -820,20 +842,20 @@ function getNestedZodSchemasAtPath<Schema extends z.ZodSchema>(
       currentSchema = peelV3Wrappers(currentSchema) as z.ZodSchema
     }
     if (isZodSchemaType(currentSchema, 'ZodObject')) {
-      const shape = currentSchema._def.shape() as z.ZodRawShape
+      const shape = getObjectShape(currentSchema)
       // Own-property check: a bare `shape[key]` returns
       // `Object.prototype.toString` etc. for any user lookup of those
       // keys, which then walks as an "unknown schema" and reports a
       // permissive slim-primitive set. Filter to OWN keys.
-      currentSchema = Object.hasOwn(shape, key) ? shape[key] : undefined
+      currentSchema = Object.hasOwn(shape, key) ? (shape[key] as z.ZodSchema) : undefined
     } else if (isZodSchemaType(currentSchema, 'ZodArray')) {
-      currentSchema = currentSchema._def.type
+      currentSchema = getArrayElement(currentSchema) as z.ZodSchema
     } else if (isZodSchemaType(currentSchema, 'ZodSet')) {
       // Sets aren't position-indexed; the segment is a synthetic
       // indexer used to query the element type via `[...path, 0]`.
-      currentSchema = currentSchema._def.valueType
+      currentSchema = getSetValueType(currentSchema) as z.ZodSchema
     } else if (isZodSchemaType(currentSchema, 'ZodRecord')) {
-      currentSchema = currentSchema._def.valueType
+      currentSchema = getRecordValueType(currentSchema) as z.ZodSchema
     } else if (isZodSchemaType(currentSchema, 'ZodDiscriminatedUnion')) {
       const optionalSchemas = getOptionSchemasFromDiscriminatorByArbitraryKey(currentSchema, key)
 
@@ -882,7 +904,7 @@ function unwrapStructuralLeafV3(schema: z.ZodTypeAny): z.ZodTypeAny {
     if (!(isZodSchemaType(current, 'ZodOptional') || isZodSchemaType(current, 'ZodNullable'))) {
       break
     }
-    const inner = current._def.innerType as z.ZodTypeAny | undefined
+    const inner = unwrapInner(current)
     if (!inner) return current
     if (!isStructuralV3Kind(inner)) break
     current = inner
@@ -944,18 +966,18 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
     if (
       isZodSchemaType(current, 'ZodOptional') ||
       isZodSchemaType(current, 'ZodNullable') ||
-      isZodSchemaType(current, 'ZodDefault')
+      isZodSchemaType(current, 'ZodDefault') ||
+      isZodSchemaType(current, 'ZodReadonly')
     ) {
-      const inner = (current._def as { innerType?: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(current)
       if (!inner) return current
       current = inner
       continue
     }
     if (isZodSchemaType(current, 'ZodEffects')) {
-      // v3 ZodEffects: source schema is at `_def.schema`; v4 parity'd
-      // helpers also expose `.innerType()` on some shapes. Prefer the
+      // v3 ZodEffects: source schema is at `_def.schema`. Prefer the
       // structural source.
-      const inner = (current._def as { schema?: z.ZodTypeAny }).schema
+      const inner = unwrapEffectsSource(current)
       if (!inner) return current
       current = inner
       continue
@@ -965,13 +987,7 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
       // structural traversal, the input schema is the right anchor —
       // it's what the consumer wrote, and the output is a derived
       // shape they don't construct values for directly.
-      const inner = (current._def as { in?: z.ZodTypeAny }).in
-      if (!inner) return current
-      current = inner
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodReadonly')) {
-      const inner = (current._def as { innerType?: z.ZodTypeAny }).innerType
+      const inner = unwrapPipeIn(current)
       if (!inner) return current
       current = inner
       continue
@@ -979,7 +995,7 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
     if (isZodSchemaType(current, 'ZodBranded')) {
       // ZodBranded annotates a brand at the type level; runtime is the
       // wrapped schema unchanged.
-      const inner = (current._def as { type?: z.ZodTypeAny }).type
+      const inner = unwrapBranded(current)
       if (!inner) return current
       current = inner
       continue
@@ -1017,33 +1033,32 @@ function walkV3ToLeafSchema(
     const key = String(segments[i] ?? '')
 
     if (isZodSchemaType(current, 'ZodObject')) {
-      const shape = current._def.shape() as z.ZodRawShape
+      const shape = getObjectShape(current)
       current = Object.hasOwn(shape, key) ? shape[key] : undefined
       i++
       continue
     }
     if (isZodSchemaType(current, 'ZodArray')) {
-      current = current._def.type as z.ZodTypeAny
+      current = getArrayElement(current)
       i++
       continue
     }
     if (isZodSchemaType(current, 'ZodRecord')) {
-      current = current._def.valueType as z.ZodTypeAny
+      current = getRecordValueType(current)
       i++
       continue
     }
     if (isZodSchemaType(current, 'ZodTuple')) {
       const idx = Number(key)
       if (!Number.isInteger(idx) || idx < 0) return undefined
-      const items = current._def.items as readonly z.ZodTypeAny[]
-      const item = items[idx]
+      const item = getTupleItems(current)[idx]
       if (!item) return undefined
       current = item
       i++
       continue
     }
     if (isZodSchemaType(current, 'ZodDiscriminatedUnion')) {
-      const options = current._def.options as readonly z.AnyZodObject[]
+      const options = getDiscriminatedOptions(current)
       const matching = options.filter((o) => key in o.shape)
       const candidates = matching.length > 0 ? matching : options
       const first = candidates[0]
@@ -1053,8 +1068,7 @@ function walkV3ToLeafSchema(
       continue
     }
     if (isZodSchemaType(current, 'ZodUnion')) {
-      const options = current._def.options as readonly z.ZodTypeAny[]
-      const first = options[0]
+      const first = getUnionOptions(current)[0]
       if (!first) return undefined
       current = first
       // Don't advance i — re-process this segment within the option.
@@ -1097,32 +1111,35 @@ function isLeafRequiredV3(schema: z.ZodTypeAny, depth = 0): boolean {
     return false
   }
   // Transparent wrappers — peel and re-check.
-  if (isZodSchemaType(schema, 'ZodReadonly') || isZodSchemaType(schema, 'ZodBranded')) {
-    const inner = (schema._def as { innerType?: z.ZodTypeAny; type?: z.ZodTypeAny }).innerType
-    const branded = (schema._def as { type?: z.ZodTypeAny }).type
-    const next = inner ?? branded
-    return next === undefined ? true : isLeafRequiredV3(next, depth + 1)
+  if (isZodSchemaType(schema, 'ZodReadonly')) {
+    const inner = unwrapInner(schema)
+    return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
+  }
+  if (isZodSchemaType(schema, 'ZodBranded')) {
+    const inner = unwrapBranded(schema)
+    return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
   if (isZodSchemaType(schema, 'ZodPipeline')) {
     // Use the input side: blank is a write-time concern.
-    const inner = (schema._def as { in?: z.ZodTypeAny }).in
+    const inner = unwrapPipeIn(schema)
     return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
   if (isZodSchemaType(schema, 'ZodEffects')) {
-    const inner = (schema._def as { schema?: z.ZodTypeAny }).schema
+    const inner = unwrapEffectsSource(schema)
     return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
   // Union — required only if EVERY branch is required.
   if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
-    const options = (schema._def as { options?: readonly z.ZodTypeAny[] }).options ?? []
+    const options = getUnionOptions(schema)
     if (options.length === 0) return true
     return options.every((opt) => isLeafRequiredV3(opt, depth + 1))
   }
   // Intersection — required if either side rejects empty.
   if (isZodSchemaType(schema, 'ZodIntersection')) {
-    const def = schema._def as { left?: z.ZodTypeAny; right?: z.ZodTypeAny }
-    const leftReq = def.left === undefined ? true : isLeafRequiredV3(def.left, depth + 1)
-    const rightReq = def.right === undefined ? true : isLeafRequiredV3(def.right, depth + 1)
+    const left = getIntersectionLeft(schema)
+    const right = getIntersectionRight(schema)
+    const leftReq = left === undefined ? true : isLeafRequiredV3(left, depth + 1)
+    const rightReq = right === undefined ? true : isLeafRequiredV3(right, depth + 1)
     return leftReq || rightReq
   }
   // Direct primitive / unsupported leaf — required by default.
@@ -1149,25 +1166,27 @@ function unwrapToDiscriminatedUnion(
       isZodSchemaType(currentSchema, 'ZodOptional') ||
       isZodSchemaType(currentSchema, 'ZodNullable')
     ) {
-      currentSchema = (currentSchema._def as { innerType: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(currentSchema)
+      if (!inner) return undefined
+      currentSchema = inner
       continue
     }
     // Newer transparent wrappers — peel through to expose any
     // discriminated union that lives at the structural core.
     if (isZodSchemaType(currentSchema, 'ZodReadonly')) {
-      const inner = (currentSchema._def as { innerType?: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(currentSchema)
       if (!inner) return undefined
       currentSchema = inner
       continue
     }
     if (isZodSchemaType(currentSchema, 'ZodBranded')) {
-      const inner = (currentSchema._def as { type?: z.ZodTypeAny }).type
+      const inner = unwrapBranded(currentSchema)
       if (!inner) return undefined
       currentSchema = inner
       continue
     }
     if (isZodSchemaType(currentSchema, 'ZodPipeline')) {
-      const inner = (currentSchema._def as { in?: z.ZodTypeAny }).in
+      const inner = unwrapPipeIn(currentSchema)
       if (!inner) return undefined
       currentSchema = inner
       continue
@@ -1253,8 +1272,7 @@ function unwrapDefault(schema: z.ZodTypeAny): [unknown, boolean] {
   let current: z.ZodTypeAny = schema
   for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
     if (isZodSchemaType(current, 'ZodDefault')) {
-      const defaultValue = (current._def as { defaultValue: () => unknown }).defaultValue()
-      return [defaultValue, true]
+      return [getDefaultValueFromIntrospect(current), true]
     }
     if (isZodSchemaType(current, 'ZodCatch')) {
       // ZodCatch supplies a fallback value when its inner schema rejects
@@ -1263,52 +1281,55 @@ function unwrapDefault(schema: z.ZodTypeAny): [unknown, boolean] {
       // statement of "this is what to render when nothing else fits."
       // Preserves the value across submit failures, hydration, and
       // history (a `.catch()` should resurface the same fallback).
-      const catchValue = (current._def as { catchValue?: (ctx: unknown) => unknown }).catchValue
-      if (typeof catchValue === 'function') {
-        return [catchValue({ error: null, input: undefined }), true]
-      }
+      // `hasCatchValue` lets us distinguish a legitimate `undefined`
+      // return from a missing wrapper — both surface as `undefined`
+      // from `getCatchDefault` alone.
+      if (hasCatchValue(current)) return [getCatchDefault(current), true]
       // Defensive: fall through to the inner schema if the field is
       // missing on this v3 minor version.
-      const inner = (current._def as { innerType?: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(current)
       if (!inner) break
       current = inner
       continue
     }
     if (isZodSchemaType(current, 'ZodNullable') || isZodSchemaType(current, 'ZodOptional')) {
-      current = (current._def as { innerType: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(current)
+      if (!inner) break
+      current = inner
       continue
     }
     if (isZodSchemaType(current, 'ZodReadonly')) {
-      const inner = (current._def as { innerType?: z.ZodTypeAny }).innerType
+      const inner = unwrapInner(current)
       if (!inner) break
       current = inner
       continue
     }
     if (isZodSchemaType(current, 'ZodBranded')) {
-      const inner = (current._def as { type?: z.ZodTypeAny }).type
+      const inner = unwrapBranded(current)
       if (!inner) break
       current = inner
       continue
     }
     if (isZodSchemaType(current, 'ZodPipeline')) {
-      const inner = (current._def as { in?: z.ZodTypeAny }).in
+      const inner = unwrapPipeIn(current)
       if (!inner) break
       current = inner
       continue
     }
     if (isZodSchemaType(current, 'ZodEffects')) {
-      // ZodEffects's structural source lives at `_def.effect` when the
-      // effect itself was constructed from a ZodType (older v3 shape),
-      // otherwise at `.innerType()` (newer v3). Probe both — whichever
-      // resolves to a ZodTypeAny is the schema we keep unwrapping.
-      const effect = (current._def as { effect?: unknown }).effect
-      if (effect !== null && typeof effect === 'object' && '_def' in effect) {
-        current = effect as z.ZodTypeAny
-        continue
-      }
-      const inner = (current as { innerType?: () => z.ZodTypeAny }).innerType?.()
+      // v3 ZodEffects' structural source lives on `_def.schema`
+      // (preferred); older v3 builds exposed `.innerType()` on the
+      // instance as an alternative resolver. The introspect helper
+      // reads `_def.schema`, and falling back to the instance method
+      // here preserves the historical robustness.
+      const inner = unwrapEffectsSource(current)
       if (inner) {
         current = inner
+        continue
+      }
+      const innerFromMethod = (current as { innerType?: () => z.ZodTypeAny }).innerType?.()
+      if (innerFromMethod) {
+        current = innerFromMethod
         continue
       }
       break
@@ -1535,7 +1556,7 @@ function getSchemaByDiscriminatorKey(
 
   // return first/default option schema if no key is provided
   if (key === undefined) {
-    const options = unionSchema._def.options
+    const options = getDiscriminatedOptions(unionSchema)
     if (!options.length) {
       throw new TypeError('Provided ZodDiscriminatedUnion does not have any options')
     }
@@ -1543,9 +1564,11 @@ function getSchemaByDiscriminatorKey(
   }
 
   // Find the schema with the matching discriminator value
-  return unionSchema._def.options.find((schema: z.ZodObject<z.ZodRawShape>) => {
-    const discriminator = schema.shape[unionSchema._def.discriminator]
-    return discriminator?._def.value === key
+  const discKey = getDiscriminator(unionSchema)
+  if (discKey === undefined) return undefined
+  return getDiscriminatedOptions(unionSchema).find((schema) => {
+    const discriminator = schema.shape[discKey] as z.ZodTypeAny | undefined
+    return discriminator !== undefined && getLiteralValue(discriminator) === key
   })
 }
 

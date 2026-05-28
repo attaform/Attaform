@@ -581,3 +581,64 @@ describe('multi-tab sync: structural type-mismatch defense', () => {
     expect(formB.values.email).toBe('')
   })
 })
+
+describe('multi-tab sync: hostile-message no-uncaught guard (SEC-3)', () => {
+  // The inbound shape-check recursion is already bounded by the schema
+  // walker's maxRecursionDepth (a pathologically deep snapshot is
+  // dropped, not walked to the bottom). The reachable risk is a THROW
+  // escaping the message handler: isValidSyncMessage only checks that
+  // the blank-path fields are arrays, not their element types, so a
+  // hostile `patches` carrying `blankPathsAdded: [null]` reaches
+  // `canonicalizePath(null)` (Array.from(null) → TypeError) and the
+  // exception escapes the uncaught onmessage handler into the app.
+  it('an established tab survives a malformed hostile patches message', async () => {
+    const uncaught: unknown[] = []
+    const onProcessError = (err: unknown): void => {
+      uncaught.push(err)
+    }
+    const onWindowError = (event: Event): void => {
+      uncaught.push(event)
+    }
+    process.on('uncaughtException', onProcessError)
+    process.on('unhandledRejection', onProcessError)
+    window.addEventListener('error', onWindowError)
+
+    const captureA: { form?: SyncForm } = {}
+    const appA = mountBareApp(() => {
+      captureA.form = useForm({
+        schema,
+        key: 'multitab-hostile-msg',
+        multiTab: true,
+        defaultValues: { email: '', comment: '' },
+      }) as unknown as SyncForm
+    })
+    const formA = captureA.form
+    if (formA === undefined) throw new Error('setup did not capture formA')
+
+    const channelName = getChannelName(appA, 'multitab-hostile-msg')
+    const evil = new BroadcastChannel(channelName)
+    try {
+      await waitForEstablished([appA])
+      evil.postMessage({
+        v: 1,
+        kind: 'patches',
+        senderId: 'evil-malformed',
+        formPatches: [],
+        // Non-string element: passes the array-shape check, then trips
+        // canonicalizePath(null) deep inside handlePatches.
+        blankPathsAdded: [null],
+        blankPathsRemoved: [],
+      })
+      await new Promise((r) => setTimeout(r, 100))
+    } finally {
+      evil.close()
+      process.off('uncaughtException', onProcessError)
+      process.off('unhandledRejection', onProcessError)
+      window.removeEventListener('error', onWindowError)
+    }
+
+    // No exception escaped into the app, and the form is intact.
+    expect(uncaught).toEqual([])
+    expect(formA.values.email).toBe('')
+  })
+})

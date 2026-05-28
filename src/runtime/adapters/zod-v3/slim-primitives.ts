@@ -13,23 +13,22 @@ import { isZodSchemaType } from './helpers'
  * `src/runtime/adapters/zod-v4/slim-primitives.ts`.
  */
 
-export const PERMISSIVE_V3: ReadonlySet<SlimPrimitiveKind> =
-  /* @__PURE__ */ new Set<SlimPrimitiveKind>([
-    'string',
-    'number',
-    'boolean',
-    'bigint',
-    'date',
-    'null',
-    'undefined',
-    'object',
-    'array',
-    'symbol',
-    'function',
-    'map',
-    'set',
-    'file',
-  ])
+const PERMISSIVE_V3: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set<SlimPrimitiveKind>([
+  'string',
+  'number',
+  'boolean',
+  'bigint',
+  'date',
+  'null',
+  'undefined',
+  'object',
+  'array',
+  'symbol',
+  'function',
+  'map',
+  'set',
+  'file',
+])
 
 // Module-level frozen leaf singletons; see the v4 file for rationale.
 const KIND_STRING: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['string'])

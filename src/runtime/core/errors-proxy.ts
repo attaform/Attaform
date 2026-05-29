@@ -6,6 +6,7 @@ import { getAtPath, hasAtPath } from './path-walker'
 import {
   canonicalizePath,
   FORM_ERRORS_PATH_KEY,
+  isDangerousSegment,
   isPathPrefix,
   segmentsForPathKey,
   type PathKey,
@@ -348,6 +349,15 @@ function placeAt(
   errors: ValidationError[]
 ): void {
   if (path.length === 0) return
+  // Prototype-pollution guard. Path segments flow from consumer input
+  // (server replies wired through `setFieldErrors` / `setFormErrors`);
+  // a segment of `__proto__` / `constructor` / `prototype` would
+  // otherwise reach the `cursorRecord[key] = ...` writes below and
+  // mutate `Object.prototype` for the whole process. Matches the
+  // SEC-2 shape applied to `mergeDeep` in the persistence layer.
+  for (const seg of path) {
+    if (isDangerousSegment(seg)) return
+  }
   let cursor: Record<string, unknown> | unknown[] = tree
   for (let i = 0; i < path.length - 1; i++) {
     const seg = path[i] as Segment

@@ -339,12 +339,49 @@ export function getCatchDefault(schema: z.ZodType): unknown {
   }
 }
 
+/** True iff the schema carries a callable `z.catch(...)` fallback. */
+export function hasCatchValue(schema: z.ZodType): boolean {
+  const def = readDef(schema)
+  return typeof def?.catchValue === 'function'
+}
+
 export function getDefaultValue(schema: z.ZodType): unknown {
   const def = readDef(schema)
   // In v4, defaultValue is stored as a getter that returns the value directly
   // (v3 stored a function that had to be called). We read the property via
   // normal access so the getter fires.
   return def?.defaultValue
+}
+
+/**
+ * v3-parity stub: Zod v4 folds `z.nativeEnum(E)` into the regular `enum`
+ * kind, so a v4 schema never returns a reverse-mapped values object.
+ * Kept on the introspect surface so the shared `SchemaIntrospector`
+ * contract is uniform between v3 and v4; the core walkers consult this
+ * for the v3-specific native-enum branch and silently skip on v4.
+ */
+export function getNativeEnumValues(_schema: z.ZodType): Record<string, unknown> | undefined {
+  return undefined
+}
+
+/**
+ * v3-parity stub: Zod v4 has no `ZodEffects` wrapper — refinements live
+ * on the schema's `def.checks`, transforms are pipe `def.in`, and
+ * preprocess is pipe-with-transform-on-`in`. Returns undefined so the
+ * shared walkers treat any v4 schema as "no effects source to peel".
+ */
+export function unwrapEffectsSource(_schema: z.ZodType): z.ZodType | undefined {
+  return undefined
+}
+
+/**
+ * v3-parity stub: Zod v4 has no `ZodBranded` wrapper — brand types
+ * carry their brand on the type level only and don't introduce a
+ * runtime wrapper. Returns undefined so the shared walkers treat
+ * any v4 schema as "no branded inner to peel".
+ */
+export function unwrapBranded(_schema: z.ZodType): z.ZodType | undefined {
+  return undefined
 }
 
 /** True if the schema's `def` carries refinement checks (e.g. `.min(3)`). */

@@ -28,23 +28,34 @@ import {
   containsAsyncRefine,
   containsAsyncTransform,
   getArrayElement,
+  getCatchDefault,
+  getDefaultValue,
   getDiscriminatedOptions,
   getDiscriminator,
+  getEnumValues,
   getIntersectionLeft,
   getIntersectionRight,
+  getLazyGetter,
   getLiteralValues,
+  getNativeEnumValues,
   getObjectShape,
+  getRecordKeyType,
   getRecordValueType,
   getSetValueType,
   getTupleItems,
   getUnionOptions,
+  hasCatchValue,
   hasContainerOrRootRefine,
   isCoercePrimitive,
   isPreprocessNode,
   kindOf,
+  unwrapBranded,
+  unwrapEffectsSource,
   unwrapInner,
   unwrapLazy,
   unwrapPipe,
+  unwrapPipeIn,
+  unwrapPipeOut,
 } from './introspect'
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
@@ -292,6 +303,32 @@ const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
   containsAsyncRefine: (schema) => containsAsyncRefine(schema),
   containsAsyncTransform: (schema) => containsAsyncTransform(schema),
   hasContainerOrRootRefine: (schema) => hasContainerOrRootRefine(schema),
+
+  // Walker accessors (D2 / D3 / D5).
+  getArrayElement: (schema) => {
+    if (kindOf(schema) !== 'array') return undefined
+    return getArrayElement(schema as z.ZodArray)
+  },
+  getSetValueType: (schema) => (kindOf(schema) === 'set' ? getSetValueType(schema) : undefined),
+  getRecordKeyType: (schema) =>
+    kindOf(schema) === 'record' ? getRecordKeyType(schema) : undefined,
+  getRecordValueType: (schema) =>
+    kindOf(schema) === 'record' ? getRecordValueType(schema) : undefined,
+  getUnionOptions: (schema) => getUnionOptions(schema),
+  getIntersectionLeft: (schema) => getIntersectionLeft(schema),
+  getIntersectionRight: (schema) => getIntersectionRight(schema),
+  getEnumValues: (schema) => getEnumValues(schema),
+  getNativeEnumValues: (schema) => getNativeEnumValues(schema),
+  unwrapInner: (schema) => unwrapInner(schema),
+  unwrapBranded: (schema) => unwrapBranded(schema),
+  unwrapEffectsSource: (schema) => unwrapEffectsSource(schema),
+  unwrapPipeIn: (schema) => unwrapPipeIn(schema),
+  unwrapPipeOut: (schema) => unwrapPipeOut(schema),
+  unwrapLazy: (schema) => unwrapLazy(schema),
+  getLazyGetter: (schema) => getLazyGetter(schema),
+  getDefaultValue: (schema) => getDefaultValue(schema),
+  getCatchDefault: (schema) => getCatchDefault(schema),
+  hasCatchValue: (schema) => hasCatchValue(schema),
 }
 
 /**

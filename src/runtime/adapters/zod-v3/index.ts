@@ -122,6 +122,7 @@ import {
   getEffectsKind,
   getIntersectionLeft,
   getIntersectionRight,
+  getLazyGetter,
   getLiteralValue,
   getLiteralValues,
   getNativeEnumValues,
@@ -143,6 +144,7 @@ import {
   unwrapInner,
   unwrapLazy,
   unwrapPipeIn,
+  unwrapPipeOut,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 import { stripAsyncChecks } from './strip-async'
@@ -216,6 +218,30 @@ const V3_INTROSPECTOR: SchemaIntrospector<z.ZodTypeAny> = {
   containsAsyncRefine: (schema) => containsAsyncRefine(schema),
   containsAsyncTransform: (schema) => containsAsyncTransform(schema),
   hasContainerOrRootRefine: (schema) => hasContainerOrRootRefine(schema),
+
+  // Walker accessors (D2 / D3 / D5).
+  getArrayElement: (schema) => getArrayElement(schema),
+  getSetValueType: (schema) => getSetValueType(schema),
+  getRecordKeyType: (schema) => getRecordKeyType(schema),
+  getRecordValueType: (schema) => getRecordValueType(schema),
+  getUnionOptions: (schema) => getUnionOptions(schema),
+  getIntersectionLeft: (schema) => getIntersectionLeft(schema),
+  getIntersectionRight: (schema) => getIntersectionRight(schema),
+  getEnumValues: (schema) => {
+    if (!isZodSchemaType(schema, 'ZodEnum')) return []
+    return (schema as z.ZodEnum<[string, ...string[]]>).options
+  },
+  getNativeEnumValues: (schema) => getNativeEnumValues(schema),
+  unwrapInner: (schema) => unwrapInner(schema),
+  unwrapBranded: (schema) => unwrapBranded(schema),
+  unwrapEffectsSource: (schema) => unwrapEffectsSource(schema),
+  unwrapPipeIn: (schema) => unwrapPipeIn(schema),
+  unwrapPipeOut: (schema) => unwrapPipeOut(schema),
+  unwrapLazy: (schema) => unwrapLazy(schema),
+  getLazyGetter: (schema) => getLazyGetter(schema),
+  getDefaultValue: (schema) => getDefaultValueFromIntrospect(schema),
+  getCatchDefault: (schema) => getCatchDefault(schema),
+  hasCatchValue: (schema) => hasCatchValue(schema),
 }
 
 /**

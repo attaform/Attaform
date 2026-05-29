@@ -318,7 +318,23 @@ export default [
     // reclaims when the per-adapter walkers collapse behind a single
     // `createAbstractSchema(introspector)` factory. Measured at
     // 61.06 KB.
-    limit: '62 KB',
+    //
+    // Raised 62 → 63 KB on the v3-async-contract branch (Phase 10 of
+    // the audit-remediation series, ADAPT-A1 / D14 + D2 + D3 + D4).
+    // v3 picks up the async-detection walkers (isAsyncEffect /
+    // containsAsyncRefine / containsAsyncTransform) on the introspect
+    // shim, a memoised `needsAsyncValidation` on the adapter, the
+    // strip-async module (`stripAsyncChecks` + per-kind `carry*`
+    // helpers for arrays / sets / objects), the restructured strict
+    // `getDefaultValues` that parses against the real schema with
+    // stripAsyncChecks fallback (Path A: try-parse, strip-on-throw,
+    // no side effects on user predicates), and the
+    // `validatorThrewResponse` wrap on every `safeParseAsync` call
+    // inside `validateAtPath` (D4 — closes the no-uncaught-exceptions
+    // gap). The unified zod.mjs absorbs the full v3 delta. Phase 12
+    // dedup reclaims the introspect-walker duplication. Measured at
+    // 62.33 KB.
+    limit: '63 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -461,7 +477,29 @@ export default [
     // 54.01 KB; symmetry with v4's 54 KB cap broke by 0.32 KB this
     // phase — accept the temporary asymmetry rather than padding v4
     // to match. Phase 12 dedup is the structural answer.
-    limit: '55 KB',
+    //
+    // Raised 55 → 56 KB on the v3-async-contract branch (Phase 10 of
+    // the audit-remediation series, ADAPT-A1 / D14 + D2 + D3 + D4).
+    // v3 picks up isAsyncEffect / containsAsyncRefine /
+    // containsAsyncTransform on the introspect shim (~120 LOC of
+    // walker mirroring v4's pattern), a memoised
+    // `needsAsyncValidation` on the adapter, the new strip-async
+    // module (`stripAsyncChecks` + per-kind `carry*` helpers for
+    // arrays / sets / objects, ~250 LOC), the restructured strict
+    // `getDefaultValues` that parses against the real schema with
+    // `stripAsyncChecks` fallback (Path A: try-parse, strip-on-throw,
+    // no side effects on user predicates), and the
+    // `validatorThrewResponse` wrap on every `safeParseAsync` call
+    // inside `validateAtPath` (closes the no-uncaught-exceptions gap
+    // for refine / transform / preprocess throws on v3). Phase 12
+    // dedup reclaims when the v3 + v4 async walkers collapse behind
+    // the shared `createAbstractSchema(introspector)` factory.
+    // Measured at 55.06 KB; symmetry with v4's 54 KB cap drift to
+    // 1.37 KB this phase. Accept the temporary asymmetry rather than
+    // padding v4 to match — the v3 walker semantic asymmetry (sync
+    // refines wrap an async-capable closure; v3 cannot statically
+    // distinguish) is intrinsic to v3's runtime and won't reverse.
+    limit: '56 KB',
     gzip: true,
     ignore: ['zod', 'lodash-es'],
     modifyEsbuildConfig: asEsm,

@@ -224,6 +224,27 @@ export function wirePersistence<F extends GenericForm>(
       })
     : () => undefined
 
+  // Tab-close / bfcache-eviction flush (PASS2-13). The debounced
+  // writer holds the last ≤debounceMs of edits before commit; without
+  // a synchronous trigger, those keystrokes vanish when the user
+  // closes the tab inside the debounce window. `pagehide` is the
+  // modern recommendation — fires on bfcache eviction (where
+  // `beforeunload` doesn't, since the page is preserved) AND on
+  // tab-close. Sync-storage adapters (localStorage, sessionStorage)
+  // commit inside the same task before the browser kills the JS
+  // context; IDB transactions are best-effort.
+  //
+  // SSR guard: `window` is undefined during server rendering. The
+  // listener attaches client-side only; SSR mounts complete their
+  // own dispose path before the response flushes.
+  const handlePageHide = (): void => {
+    if (isDisposed()) return
+    void writer.flush()
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', handlePageHide)
+  }
+
   // Async setup: resolve the adapter, then read back the persisted
   // payload. If the caller unmounts before this finishes, `disposed`
   // is true — the restore is skipped.
@@ -457,6 +478,9 @@ export function wirePersistence<F extends GenericForm>(
     if (isDisposed() || inFlightFinalFlush !== null) return
     unsubscribeChange()
     unsubscribeSuccess()
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', handlePageHide)
+    }
     // CRITICAL: flush BEFORE flipping `disposed`. The previous order
     // (set disposed=true, then call writer.flush()) caused the writer
     // closure to bail immediately, silently dropping the last

@@ -310,9 +310,10 @@ function buildV4Services<
     fingerprint: (schema) => fingerprintZodSchema(schema),
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
-    // v4 doesn't pre-strip before slim-kind queries — the path walker
-    // already peels every transparent wrapper inline.
-    getNestedSchemasForSlimQuery: (schema, path, maxRecursionDepth) =>
+    // v4 doesn't pre-strip for the slim-mode walk — its path walker
+    // already peels every transparent wrapper inline, so the slim and
+    // unstripped walks coincide.
+    getNestedSchemasInSlimMode: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
     slimPrimitivesOf: (schema, maxRecursionDepth) => slimPrimitivesOf(schema, maxRecursionDepth),
     deriveDefault: (schema, useDefault, maxRecursionDepth) =>

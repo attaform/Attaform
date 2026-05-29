@@ -214,13 +214,16 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    */
   getNestedSchemasAtPath(schema: Schema, path: Path, maxRecursionDepth: number): Schema[]
   /**
-   * v3 strips refinements / defaults before walking for slim-kind
-   * queries (`getSlimPrimitiveTypesAtPath`); v4 walks the original
-   * schema. Both eventually feed `slimPrimitivesOf` per candidate;
-   * this service exists so each adapter controls its own pre-walk
-   * normalisation.
+   * "Slim-mode" path walk — the variant `getSlimPrimitiveTypesAtPath`
+   * and `getSchemasAtPath` consume. v3 strips refinements / defaults /
+   * optional / nullable / effects off the root before walking, so the
+   * yielded candidates reflect the slim shape (matches what the slim-
+   * primitive gate sees and what consumers expect when introspecting
+   * sub-schemas). v4 walks the original schema and aliases this to
+   * `getNestedSchemasAtPath` — its path walker already inlines the
+   * wrapper peeling.
    */
-  getNestedSchemasForSlimQuery(schema: Schema, path: Path, maxRecursionDepth: number): Schema[]
+  getNestedSchemasInSlimMode(schema: Schema, path: Path, maxRecursionDepth: number): Schema[]
   /** Returns the slim-primitive accept-set of a single sub-schema. */
   slimPrimitivesOf(schema: Schema, maxRecursionDepth: number): Set<SlimPrimitiveKind>
   /**
@@ -467,7 +470,13 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     getSchemasAtPath(path) {
-      const resolved = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
+      // Slim-mode walk: v3 strips refinements / defaults / wrappers off
+      // the root so the yielded sub-schemas reflect the slim shape (the
+      // shape the slim-primitive gate consults). v4 aliases the slim
+      // and unstripped walks to the same call. The factory uses one
+      // hook for both `getSlimPrimitiveTypesAtPath` and
+      // `getSchemasAtPath` — same v3 strip semantic, same v4 alias.
+      const resolved = services.getNestedSchemasInSlimMode(rootSchema, path, maxRecursionDepth)
       // Empty list is a valid result for paths the schema doesn't
       // declare — callers (getValue / register / custom introspection)
       // treat `[]` as "no sub-schema here". No warning needed.
@@ -478,7 +487,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     getSlimPrimitiveTypesAtPath(path): Set<SlimPrimitiveKind> {
       // Empty path is the root form: always an object.
       if (path.length === 0) return new Set<SlimPrimitiveKind>(['object'])
-      const resolved = services.getNestedSchemasForSlimQuery(rootSchema, path, maxRecursionDepth)
+      const resolved = services.getNestedSchemasInSlimMode(rootSchema, path, maxRecursionDepth)
       // Path doesn't resolve in the schema → no kinds accepted. The
       // gate's membership check rejects every kind against an empty
       // set, blocking writes to typo / unknown paths.

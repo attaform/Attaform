@@ -48,7 +48,8 @@ import type {
   WizardRestoreState,
   WizardSubmitContext,
 } from '../types/types-wizard'
-import type { FormKey, OnInvalidSubmitPolicy, ValidationResponse } from '../types/types-api'
+import type { FormKey, UseFormReturnType, ValidationResponse } from '../types/types-api'
+import type { GenericForm } from '../types/types-core'
 
 /** Default URL search param when the consumer doesn't supply a custom
  *  `restore` / `persist` pair. */
@@ -74,30 +75,38 @@ const NOOP_VALID_STATUS: FormStatus = {
   errorCount: 0,
 }
 
-/** Subset of the form's surface the wizard reads for status + values. */
-type StatusSourceForm = {
-  readonly meta: {
-    readonly valid: boolean
-    readonly dirty: boolean
-    readonly submitted: boolean
-    readonly errorCount: number
-    readonly errors: ReadonlyArray<{
-      readonly path: ReadonlyArray<string | number>
-      readonly message: string
-      readonly code?: string
-    }>
-    readonly updatedAt: string | null
-  }
-  readonly values: unknown
-}
+/**
+ * Subset of the form's surface the wizard reads for status + values.
+ * Picked off the public `UseFormReturnType` so additions on the form
+ * side don't drift this slice (and so a removal/rename trips the type
+ * checker instead of leaking silently through a hand-redeclared shape).
+ */
+type StatusSourceForm = Pick<UseFormReturnType<GenericForm>, 'meta' | 'values'>
 
-/** Subset of the form's surface the wizard's submission walk exercises. */
-type SubmissionSourceForm = StatusSourceForm & {
-  activate(): Promise<void>
-  process(): Promise<ValidationResponse<unknown>>
-  applyInvalidSubmitPolicy(policy?: OnInvalidSubmitPolicy): void
-  reset(): void
-  readonly hydrateError: { readonly message: string } | null | undefined
+/**
+ * Subset of the form's surface the wizard's submission walk exercises.
+ * Picked off `UseFormReturnType` for the same drift-detection reason as
+ * `StatusSourceForm`.
+ */
+type SubmissionSourceForm = Pick<
+  UseFormReturnType<GenericForm>,
+  'meta' | 'values' | 'activate' | 'process' | 'applyInvalidSubmitPolicy' | 'reset' | 'hydrateError'
+>
+
+/**
+ * Internal helpers that center the `AnyForm → UseFormReturnType` cast.
+ * The wizard's slot surface is intentionally narrow (`AnyForm` —
+ * `{ readonly key: FormKey }`) to avoid forcing contravariant
+ * unification across participating forms; at runtime every form is
+ * the full `UseFormReturnType`. These helpers do the one-way coercion
+ * in a single place per surface so call sites read as a typed access
+ * instead of a `as unknown as` chain (W-COUPLE-1).
+ */
+function asStatusSource(form: AnyForm): StatusSourceForm {
+  return form as unknown as StatusSourceForm
+}
+function asSubmissionSource(form: AnyForm): SubmissionSourceForm {
+  return form as unknown as SubmissionSourceForm
 }
 
 /**
@@ -479,7 +488,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function valuesFor(form: AnyForm): ComputedRef<unknown> {
     const cached = valuesCache.get(form.key)
     if (cached !== undefined) return cached
-    const source = form as unknown as StatusSourceForm
+    const source = asStatusSource(form)
     const computedValues = computed(() => source.values)
     valuesCache.set(form.key, computedValues)
     return computedValues
@@ -489,7 +498,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function errorsFor(form: AnyForm): ComputedRef<readonly AggregateError[]> {
     const cached = errorsCache.get(form.key)
     if (cached !== undefined) return cached
-    const source = form as unknown as StatusSourceForm
+    const source = asStatusSource(form)
     const computedErrors = computed<readonly AggregateError[]>(() => {
       if (!isFormReady(form.key)) return []
       const errors = source.meta?.errors ?? []
@@ -588,7 +597,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function statusFor(form: AnyForm): ComputedRef<FormStatus> {
     const cached = statusCache.get(form.key)
     if (cached !== undefined) return cached
-    const source = form as unknown as StatusSourceForm
+    const source = asStatusSource(form)
     const computedStatus = computed<FormStatus>(() => {
       if (isFormReady(form.key)) {
         const meta = source.meta
@@ -821,7 +830,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // client-side contract.
   if (!registry.ssr) {
     for (const step of compiledSteps.value) {
-      const source = step.form as unknown as SubmissionSourceForm
+      const source = asSubmissionSource(step.form)
       if (typeof source.activate === 'function') void source.activate()
     }
   }
@@ -900,7 +909,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // --- Navigation internals --------------------------------------------
 
   function activateForm(form: AnyForm): void {
-    const source = form as unknown as SubmissionSourceForm
+    const source = asSubmissionSource(form)
     if (typeof source.activate === 'function') {
       void source.activate()
     }
@@ -1016,7 +1025,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   }
 
   async function processOne(form: AnyForm): Promise<ValidationResponse<unknown>> {
-    const full = form as unknown as SubmissionSourceForm
+    const full = asSubmissionSource(form)
     let activationFailure: string | undefined
     try {
       if (typeof full.activate === 'function') await full.activate()
@@ -1122,8 +1131,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
             if (processed !== undefined && processed.success === true) {
               valuesMap[step.key] = processed.data
             } else {
-              const source = step.form as unknown as StatusSourceForm
-              valuesMap[step.key] = source.values
+              valuesMap[step.key] = asStatusSource(step.form).values
             }
           }
           const ctx = buildSubmitContext(valuesMap, currentKey, final)
@@ -1146,14 +1154,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
             if (firstFailedKey !== undefined && isCompiledKey(firstFailedKey)) {
               moveTo(firstFailedKey)
               await nextTick()
-              const failedForm = formsRecord.value[firstFailedKey] as unknown as
-                | SubmissionSourceForm
-                | undefined
-              if (
-                failedForm !== undefined &&
-                typeof failedForm.applyInvalidSubmitPolicy === 'function'
-              ) {
-                failedForm.applyInvalidSubmitPolicy()
+              const failedForm = formsRecord.value[firstFailedKey]
+              if (failedForm !== undefined) {
+                const failedSource = asSubmissionSource(failedForm)
+                if (typeof failedSource.applyInvalidSubmitPolicy === 'function') {
+                  failedSource.applyInvalidSubmitPolicy()
+                }
               }
             }
           }
@@ -1176,7 +1182,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     // reboot, not a soft rewind.
     lazyEpoch.value += 1
     for (const step of compiledSteps.value) {
-      const full = step.form as unknown as SubmissionSourceForm
+      const full = asSubmissionSource(step.form)
       if (typeof full.reset === 'function') full.reset()
     }
     const firstStep = compiledSteps.value[0]

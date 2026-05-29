@@ -10,6 +10,7 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
+import { applyDuStubs } from './du-stubs'
 import { createArrayIdentity } from './array-identity'
 import {
   changedIndices,
@@ -27,7 +28,6 @@ import {
   coerceToPathKey,
   FORM_ERRORS_PATH,
   FORM_ERRORS_PATH_KEY,
-  isDangerousSegment,
   isPathPrefix,
   ROOT_PATH_KEY,
   segmentsForPathKey,
@@ -143,74 +143,6 @@ function warnMalformedHydration(formKey: FormKey, kind: string, rawKey: string):
     `[attaform] hydration: skipping malformed ${kind} entry at key '${rawKey}' on form '${formKey}'. ` +
       `This usually means the SSR bundle is on a different version than the client (rolling deploy / stale cache).`
   )
-}
-
-function applyDuStubs(
-  schema: AbstractSchema<unknown, unknown>,
-  data: unknown,
-  options: { warn?: boolean; basePath?: Path } = {}
-): unknown {
-  const warned = options.warn === true ? new Set<string>() : undefined
-  return walkDuStubs(schema, data, options.basePath ?? [], warned)
-}
-
-function walkDuStubs(
-  schema: AbstractSchema<unknown, unknown>,
-  value: unknown,
-  path: Path,
-  warned: Set<string> | undefined
-): unknown {
-  if (value === null || value === undefined || typeof value !== 'object') return value
-  if (
-    value instanceof Date ||
-    value instanceof RegExp ||
-    value instanceof Map ||
-    value instanceof Set ||
-    typeof value === 'function'
-  ) {
-    return value
-  }
-  if (Array.isArray(value)) {
-    return value.map((item, i) => walkDuStubs(schema, item, [...path, i], warned))
-  }
-  const rec = value as Record<string, unknown>
-  const du = schema.getUnionDiscriminatorAtPath(path)
-  if (du !== undefined) {
-    const discValue = rec[du.discriminatorKey]
-    if (discValue !== undefined && !du.isVariantSelected(discValue)) {
-      // Kind-blank stub (`''` / `0` / `0n` / `false` / `null`) is the
-      // intentional "no variant selected yet" signal from
-      // `expandUnsetAt` — don't warn. The warn is for typo-style bugs
-      // where the user wrote `kind: 'BAD'` and got a stub by accident.
-      const isKindBlank =
-        discValue === '' ||
-        discValue === 0 ||
-        discValue === 0n ||
-        discValue === false ||
-        discValue === null
-      if (!isKindBlank && warned !== undefined && __DEV__) {
-        const dotted = path.map((s) => String(s)).join('.') || '(root)'
-        const key = `${dotted}::${String(discValue)}`
-        if (!warned.has(key)) {
-          warned.add(key)
-          console.warn(
-            `[attaform] defaultValues at '${dotted}' carries discriminator ` +
-              `'${du.discriminatorKey}=${JSON.stringify(discValue)}' which isn't a known variant. ` +
-              `Form mounts in a stub holding only the discriminator key. Validation will surface the mismatch.`
-          )
-        }
-      }
-      return { [du.discriminatorKey]: discValue }
-    }
-  }
-  const out: Record<string, unknown> = {}
-  for (const k of Object.keys(rec)) {
-    // SSR hydration payloads are untrusted JSON: skip prototype-
-    // corrupting keys before the bracket-assign reaches `out`.
-    if (isDangerousSegment(k)) continue
-    out[k] = walkDuStubs(schema, rec[k], [...path, k], warned)
-  }
-  return out
 }
 
 /** Per-path DOM element tracking. Client-only. */

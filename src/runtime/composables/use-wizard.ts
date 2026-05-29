@@ -279,10 +279,20 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return { configurable: true, enumerable: true, writable: false, value: form }
     },
   })
-  const slotCtx = computed<WizardCtx>(() => ({
+  // Shared slot-resolution context. Built as a plain object with
+  // `currentKey` exposed as a getter so the `activeKey` dep is
+  // established only when a slot body actually reads `ctx.currentKey`
+  // — every navigation writes `activeKey`, so reading it eagerly
+  // (e.g. via a wrapping `computed`) would thread the dep through
+  // every bare function slot and re-fire the entire compile pass on
+  // each `next` / `back` / `goTo`. The getter form lets `lazy()` and
+  // bare function slots opt into the active-step dep individually.
+  const slotCtx: WizardCtx = {
     forms: slotForms,
-    currentKey: activeKey.value === '' ? undefined : activeKey.value,
-  }))
+    get currentKey() {
+      return activeKey.value === '' ? undefined : activeKey.value
+    },
+  }
 
   /**
    * Resolve a single raw slot to a participating form, or `undefined`
@@ -331,19 +341,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // subscribes to `lazyEpoch` so `reset()` can invalidate every cache
   // in one move, and to whatever reactive reads its own resolver makes
   // (Vue's standard dep tracking). The closure over `idx` and `marker`
-  // pins this computed to a specific slot in `rawSteps`.
-  //
-  // The ctx object is built inline with `currentKey` as a getter so
-  // the resolver only establishes an `activeKey` dep when it actually
-  // reads `ctx.currentKey` — reading the wizard's wider `slotCtx`
-  // computed would thread activeKey through every lazy slot's deps
-  // and re-fire on navigation regardless of the resolver's intent.
-  const lazyCtx: WizardCtx = {
-    forms: slotForms,
-    get currentKey() {
-      return activeKey.value === '' ? undefined : activeKey.value
-    },
-  }
+  // pins this computed to a specific slot in `rawSteps`. Lazy slots
+  // and bare function slots share `slotCtx` — the same getter-style
+  // object — so the `activeKey` dep is opt-in per resolver body for
+  // both slot kinds.
   for (let i = 0; i < rawSteps.length; i++) {
     const slot = rawSteps[i]
     if (isLazyMarker(slot)) {
@@ -353,7 +354,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         idx,
         computed(() => {
           void lazyEpoch.value
-          return marker.resolve(lazyCtx)
+          return marker.resolve(slotCtx)
         })
       )
     }
@@ -361,14 +362,17 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // The compiled step list. Function slots re-evaluate on every read
   // of their reactive deps; lazy slots run through their own memoized
-  // computed; string slots cache their noop forms.
+  // computed; string slots cache their noop forms. The compile pass
+  // itself has no `activeKey` dep — each function-slot body
+  // contributes its own deps through `slotCtx.currentKey`'s getter,
+  // so navigation only re-fires the slots that actually look at the
+  // active step.
   const compiledSteps = computed<readonly CompiledStep[]>(() => {
-    const ctx = slotCtx.value
     const out: CompiledStep[] = []
     const seen = new Set<FormKey>()
     for (let i = 0; i < rawSteps.length; i++) {
       const slot = rawSteps[i] as StepSlot
-      const form = resolveSlot(slot, i, ctx)
+      const form = resolveSlot(slot, i, slotCtx)
       if (form === undefined) continue
       if (seen.has(form.key)) {
         if (__DEV__) {

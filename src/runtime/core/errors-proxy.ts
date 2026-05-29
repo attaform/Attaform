@@ -6,7 +6,6 @@ import { getAtPath, hasAtPath } from './path-walker'
 import {
   canonicalizePath,
   FORM_ERRORS_PATH_KEY,
-  isDangerousSegment,
   isPathPrefix,
   segmentsForPathKey,
   type PathKey,
@@ -250,7 +249,17 @@ function materializeErrors<F extends GenericForm>(
   // string-keyed object, producing `{ "0": {…} }` for an array path
   // and breaking shape parity with `form.values`.
   const liveContainer = getAtPath(state.form.value, containerSegments)
-  const tree: Record<string, unknown> | unknown[] = Array.isArray(liveContainer) ? [] : {}
+  // Object.create(null) for the object case so the tree is incapable
+  // of routing a `__proto__` / `constructor` / `prototype` segment
+  // onto `Object.prototype` no matter what `setFieldErrors` /
+  // `setFormErrors` hands `placeAt`. Legitimate fields named
+  // `prototype` (e.g. an architecture firm tracking building
+  // prototypes) land at their declared path; the pollution arrow has
+  // nowhere to land because prototype-less containers don't inherit
+  // the `__proto__` accessor.
+  const tree: Record<string, unknown> | unknown[] = Array.isArray(liveContainer)
+    ? []
+    : Object.create(null)
 
   // Two store classes with different visibility rules. Schema +
   // derived-blank: library-produced verdicts; filter out paths the
@@ -349,15 +358,6 @@ function placeAt(
   errors: ValidationError[]
 ): void {
   if (path.length === 0) return
-  // Prototype-pollution guard. Path segments flow from consumer input
-  // (server replies wired through `setFieldErrors` / `setFormErrors`);
-  // a segment of `__proto__` / `constructor` / `prototype` would
-  // otherwise reach the `cursorRecord[key] = ...` writes below and
-  // mutate `Object.prototype` for the whole process. Matches the
-  // SEC-2 shape applied to `mergeDeep` in the persistence layer.
-  for (const seg of path) {
-    if (isDangerousSegment(seg)) return
-  }
   let cursor: Record<string, unknown> | unknown[] = tree
   for (let i = 0; i < path.length - 1; i++) {
     const seg = path[i] as Segment
@@ -366,7 +366,14 @@ function placeAt(
     const cursorRecord = cursor as Record<string, unknown>
     let child = cursorRecord[key]
     if (child === null || child === undefined || typeof child !== 'object') {
-      child = typeof nextSeg === 'number' ? [] : {}
+      // Object.create(null) for intermediate containers — pairs with
+      // the tree-root construction in `materializeErrors`. Keeps
+      // `__proto__` / `constructor` / `prototype` as ordinary own-
+      // property keys with no path to `Object.prototype`. Numeric
+      // next-segments still produce arrays so the live-shape mirror
+      // (object root → object containers, array root → array
+      // containers) is preserved.
+      child = typeof nextSeg === 'number' ? [] : Object.create(null)
       cursorRecord[key] = child
     }
     cursor = child as Record<string, unknown> | unknown[]

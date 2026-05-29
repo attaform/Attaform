@@ -9,14 +9,7 @@ import type {
 import { PERSISTENCE_KEY_PREFIX } from '../defaults'
 import { __DEV__ } from '../dev'
 import { isPlainRecord, setAtPath, getAtPath } from '../path-walker'
-import {
-  isDangerousSegment,
-  isPathPrefix,
-  segmentsForPathKey,
-  type Path,
-  type PathKey,
-  type Segment,
-} from '../paths'
+import { isPathPrefix, segmentsForPathKey, type Path, type PathKey, type Segment } from '../paths'
 
 /**
  * Public-ish handle returned by `wirePersistence`. Lives on
@@ -660,12 +653,17 @@ function mergeDeep(
       if (sourceDisc !== undefined) {
         const variantDefault = du.getVariantDefault(sourceDisc)
         if (isPlainRecord(variantDefault)) {
-          const out: Record<string, unknown> = { ...variantDefault }
+          // Prototype-less merge target. The `out[key] = ...` write
+          // below cannot reach `Object.prototype` even if `key` is
+          // `__proto__` from a hostile persisted payload, because a
+          // prototype-less object has no `__proto__` accessor — the
+          // assignment is a plain own-property write. The variant-
+          // filter below (`key in variantDefault`) still excludes
+          // prototype-corrupting keys for the DU-variant case unless
+          // the schema legitimately declares them, in which case the
+          // consumer's variant carries the value through unmolested.
+          const out: Record<string, unknown> = Object.assign(Object.create(null), variantDefault)
           for (const key of Object.keys(sourceRecord)) {
-            // Untrusted payload: a prototype-corrupting key (`__proto__`
-            // etc.) is `in variantDefault` via inheritance, so it would
-            // pass the variant filter below — reject it up front.
-            if (isDangerousSegment(key)) continue
             if (!(key in variantDefault) && key !== du.discriminatorKey) continue
             out[key] = mergeDeep(out[key], sourceRecord[key], [...path, key], schema)
           }
@@ -678,12 +676,17 @@ function mergeDeep(
     }
   }
   const mergeTarget = target
-  const out: Record<string, unknown> = isPlainRecord(mergeTarget) ? { ...mergeTarget } : {}
+  // Prototype-less merge target. `out['__proto__'] = ...` on a
+  // prototype-less object is a plain own-property write, not the
+  // accessor that would reassign the object's prototype, so a
+  // `__proto__` key smuggled into the persisted JSON cannot
+  // pollute `Object.prototype` regardless of what walks through.
+  // Legitimate `prototype` / `constructor` / `__proto__` fields in
+  // a consumer schema persist and restore at their declared path.
+  const out: Record<string, unknown> = isPlainRecord(mergeTarget)
+    ? Object.assign(Object.create(null), mergeTarget)
+    : Object.create(null)
   for (const key of Object.keys(source)) {
-    // Reject prototype-corrupting keys from untrusted storage / hydration
-    // JSON before the bracket-assign reaches `out`. `out['__proto__'] =`
-    // would reassign the merged object's prototype.
-    if (isDangerousSegment(key)) continue
     out[key] = mergeDeep(out[key], (source as Record<string, unknown>)[key], [...path, key], schema)
   }
   return out

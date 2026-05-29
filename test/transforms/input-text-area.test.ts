@@ -212,24 +212,28 @@ describe('inputTextAreaNodeTransform', () => {
         `<input type="checkbox" :true-value="'subscribe'" v-register="newsletter" />`
       )
       // The scalar leg should compare against 'subscribe', not ''.
-      // We assert the literal appears in an equality position
-      // immediately followed by `)` (the scalar branch's closing).
-      expect(code).toMatch(/===\s*\('subscribe'\)/)
+      // DIR-F4: the scalar branch routes both sides through `String(...)`
+      // before comparing — mirroring the runtime `looseEqual` so SSR and
+      // hydration agree on the rendered `checked` state.
+      expect(code).toMatch(/===\s*String\(\('subscribe'\)\)/)
     })
 
     it('uses literal `true` as the scalar equality target when no value / true-value', () => {
       const code = compileWithTransform(`<input type="checkbox" v-register="agreed" />`)
       // Boolean checkbox: the scalar branch must compare against
       // `true`, not `''` (which would always evaluate false against
-      // `false`/`true` model values).
-      expect(code).toMatch(/===\s*\(true\)/)
+      // `false`/`true` model values). DIR-F4 routes via String() to
+      // match runtime `looseEqual` semantics.
+      expect(code).toMatch(/===\s*String\(\(true\)\)/)
     })
 
     it('uses value= as the scalar equality target on radio', () => {
       // Radio model is always scalar; the option-value (`value=`)
       // IS the right discriminator there.
       const code = compileWithTransform(`<input type="radio" value="apple" v-register="fruit" />`)
-      expect(code).toMatch(/===\s*\("apple"\)/)
+      // DIR-F4 routes via String() so a typed-numeric / boolean radio
+      // model agrees with the runtime's `looseEqual` verdict at SSR.
+      expect(code).toMatch(/===\s*String\(\("apple"\)\)/)
     })
 
     it('checkbox group keeps option-value for the array/Set legs', () => {

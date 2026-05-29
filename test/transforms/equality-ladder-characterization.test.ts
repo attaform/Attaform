@@ -11,27 +11,21 @@ import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transform
 import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
 
 /**
- * DIR-F4 characterization. The Array→`.includes` / Set→`.has` / scalar→`===`
- * decision ladder is encoded three times — once each in
- * `input-text-area-transform.ts`, `select-transform.ts`, and at runtime in
- * `directive.ts` (`setChecked` / `setSelected`). The two compile-time
- * emitters diverge in their scalar branch:
+ * DIR-F4 characterization. The Array→`.includes` / Set→`.has` / scalar→
+ * coerced `String() === String()` decision ladder is encoded three times
+ * — once each in `input-text-area-transform.ts`, `select-transform.ts`,
+ * and at runtime in `directive.ts` (`setChecked` / `setSelected`). Both
+ * compile-time emitters now route primitives through `String(...)`
+ * before comparing, mirroring the runtime `looseEqual` behaviour. Pre-
+ * fix the input-text-area scalar branch used strict `===`, so an SSR
+ * `<input type="radio" value="2">` × `z.number()` + model `2` rendered
+ * unchecked (`2 === "2"` → false) and then flipped to checked on
+ * hydration via `looseEqual` — a one-tick flicker.
  *
- *   - `input-text-area-transform`: strict `===` between `innerRef.value`
- *     and the raw scalar target.
- *   - `select-transform`:           coerced `String(...) === String(...)`.
- *
- * The runtime uses Vue's `looseEqual`, which routes primitives through
- * `String(...)` (so it agrees with the select transform on a canonical
- * `<option value="1">` × `z.number()` + model `1`, but disagrees with the
- * input-text-area transform on the equivalent `<input type="radio" value="1">`
- * × `z.number()` + model `1`).
- *
- * Pin both ladders at the source-string level AND at the SSR-output level
- * so the divergence surfaces as a single failing assertion the moment
- * either branch shifts. Updating the ladder in a future commit will need
- * to touch these pins explicitly, which is the point — silent drift is
- * what got us here.
+ * Pin both ladders at the source-string level AND at the SSR-output
+ * level so a future drift surfaces as a single failing assertion.
+ * Updating the ladder will need to touch these pins explicitly, which
+ * is the point — silent drift is what got us here in the first place.
  */
 
 function compileInputTextArea(template: string): string {
@@ -51,17 +45,18 @@ function compileSelect(template: string): string {
 }
 
 describe('DIR-F4 compile-time emitter ladders', () => {
-  it('input-text-area emits a strict `===` against the raw scalar target', () => {
+  it('input-text-area emits a coerced `String(...) === String(...)` for the scalar branch', () => {
     const code = compileInputTextArea(
       `<input type="radio" v-register="form.register('size')" value="2" />`
     )
     // The radio branch lands the option-value as `"2"` (the static
-    // attribute, rendered as a quoted JS string literal). The synthesized
-    // equality expression is strict `===` against that literal.
-    expect(code).toContain('innerRef?.value === ("2")')
-    // It does NOT route through String() for primitives — that's the
-    // crux of the divergence with the select transform below.
-    expect(code).not.toMatch(/String\(\([^)]*innerRef\?\.value\)\)\s*===\s*String/)
+    // attribute, rendered as a quoted JS string literal). Post-fix the
+    // synthesized equality expression routes both sides through String()
+    // to mirror the runtime `looseEqual` behaviour for primitives.
+    expect(code).toMatch(/String\(.+?\?\.innerRef\?\.value\)\s*===\s*String\(\("2"\)\)/)
+    // It does NOT use strict `===` on the raw scalar target anymore —
+    // that was the source of the SSR/CSR mismatch.
+    expect(code).not.toMatch(/innerRef\?\.value\s*===\s*\("2"\)/)
   })
 
   it('select emits a coerced `String(...) === String(...)` for the scalar branch', () => {
@@ -83,12 +78,9 @@ describe('DIR-F4 compile-time emitter ladders', () => {
  * `1`, and assert SSR emits the `selected` attribute (matching what
  * `setSelected` would do at CSR time).
  *
- * Add the symmetric radio case to surface the strict-vs-coerced
- * divergence: same shape (`z.number()` + `value="2"` + model `2`), but
- * the input-text-area transform's strict `===` against the raw `"2"`
- * string literal evaluates to `false` at SSR. The runtime `setChecked`
- * routes through `looseEqual(applyCoerce("2"), 2) === true`, so the
- * DOM flips to checked on hydration. Visible flicker.
+ * The symmetric radio case proves the post-fix parity: same shape
+ * (`z.number()` + `value="2"` + model `2`) and SSR now emits `checked`.
+ * Pre-fix this rendered unchecked and flipped to checked on hydration.
  */
 function makeTemplateModule(template: string, nodeTransforms: NodeTransform[]): Vue.Component {
   const result = baseCompile(template, {
@@ -132,21 +124,14 @@ describe('DIR-F4 SSR-output verdict', () => {
     expect(html).not.toMatch(/<option[^>]*value="2"[^>]*selected/)
   })
 
-  it('CHARACTERIZATION (current bug): radio with z.number() × value="2" DOES NOT emit SSR `checked` despite model === 2', async () => {
+  it('radio with z.number() × value="2" emits SSR `checked` when model === 2 (post-fix parity)', async () => {
     const html = await ssr(`<input type="radio" v-register="form.register('size')" value="2" />`, [
       inputTextAreaNodeTransform,
     ])
-    // PRE-FIX behaviour — the strict `===` against the string literal
-    // `"2"` evaluates to `false` at SSR even though the runtime's
-    // `looseEqual(applyCoerce("2"), 2)` returns `true`. The input
-    // therefore SSRs unchecked and flips to checked on hydration — a
-    // visible flicker.
-    //
-    // This assertion documents the current diverged behaviour. If a
-    // future fix unifies the input-text-area ladder with the select
-    // ladder (or with the runtime `looseEqual`), this test flips and
-    // the assertion below will need to update. That's the intended
-    // gate — the divergence is no longer silent.
-    expect(html).not.toMatch(/\bchecked\b/)
+    // Post-fix the scalar branch coerces via String(...), so the SSR
+    // pass evaluates `String(2) === String("2")` → true → emits
+    // `checked`. The runtime `setChecked` ends at the same verdict via
+    // `looseEqual(applyCoerce("2"), 2) === true`. No hydration flicker.
+    expect(html).toMatch(/\bchecked\b/)
   })
 })

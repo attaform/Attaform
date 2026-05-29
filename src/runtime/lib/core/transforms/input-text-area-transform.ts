@@ -64,7 +64,7 @@ function generateEqualityExpression(
   // Discriminator selection:
   //   - Array model     → membership of the option-value (e.g. value="apple")
   //   - Set model       → membership of the option-value
-  //   - Scalar model    → equality with the scalar-equality target
+  //   - Scalar model    → coerced String() equality with the scalar target
   //
   // The scalar target differs from the option-value for two checkbox
   // shapes that the directive's runtime `setChecked` already handles
@@ -75,6 +75,17 @@ function generateEqualityExpression(
   //
   // For radio inputs the model is always scalar and the discriminator
   // IS the option-value, so `optionValue === scalarTarget` there.
+  //
+  // The scalar branch routes both sides through `String(...)` to mirror
+  // the runtime `setChecked` path, which uses Vue's `looseEqual` —
+  // looseEqual coerces primitives via `String(...)` before comparing.
+  // Without the coerce, SSR on `<input type="radio" value="2">` bound
+  // to a `z.number()` model of `2` evaluated `2 === "2"` → `false` and
+  // emitted unchecked HTML, then the runtime's `looseEqual(2, applyCoerce("2"))`
+  // returned `true` on hydration and flipped to checked — a one-tick
+  // visible flicker (DIR-F4). The `typeof !== 'object'` guard preserves
+  // current behaviour for non-array / non-Set object models, which both
+  // ladders fall through this scalar branch with no realistic match.
   return [
     'Array.isArray((',
     ...registerValueArr,
@@ -91,11 +102,13 @@ function generateEqualityExpression(
     ')?.innerRef?.value?.has(',
     ...optionValueArr,
     ') : ',
-    '((',
+    '(typeof (',
     ...registerValueArr,
-    ')?.innerRef?.value === (',
+    ")?.innerRef?.value !== 'object' && String((",
+    ...registerValueArr,
+    ')?.innerRef?.value) === String((',
     ...scalarTargetArr,
-    '))',
+    ')))',
   ]
 }
 

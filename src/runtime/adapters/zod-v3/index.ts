@@ -820,7 +820,13 @@ export function zodAdapter<
 
         async function runAsync(): Promise<ValidationResponse<GetValueFormType>> {
           if (path === undefined) {
-            const { success, data: successData, error } = await _zodSchema.safeParseAsync(data)
+            let result: ReturnType<typeof _zodSchema.safeParse>
+            try {
+              result = await _zodSchema.safeParseAsync(data)
+            } catch (err) {
+              return validatorThrewResponse(err, [])
+            }
+            const { success, data: successData, error } = result
             return success
               ? { data: successData, success, errors: undefined, formKey: _formKey }
               : {
@@ -836,7 +842,13 @@ export function zodAdapter<
           // async side effects on a value only one branch should see.
           const accumulatedErrors: z.ZodError<unknown>[] = []
           for (const nestedSchema of nestedZodSchemas) {
-            const { data: successData, success, error } = await nestedSchema.safeParseAsync(data)
+            let result: ReturnType<typeof nestedSchema.safeParse>
+            try {
+              result = await nestedSchema.safeParseAsync(data)
+            } catch (err) {
+              return validatorThrewResponse(err, path)
+            }
+            const { data: successData, success, error } = result
             if (!success) {
               accumulatedErrors.push(error)
               continue
@@ -844,6 +856,37 @@ export function zodAdapter<
             return { data: successData, errors: undefined, success: true, formKey: _formKey }
           }
           return aggregatedFailure(accumulatedErrors)
+        }
+
+        // User code inside `z.preprocess` / `.refine` / `.transform`
+        // can throw (sync) or reject (async). Zod does NOT wrap these
+        // into issues; they propagate out of `safeParseAsync` as a
+        // real throw / rejection. Without this catch the throw would
+        // bubble through `validateAtPath` into the runtime's submit /
+        // change-mode pipelines as either a `submitError`
+        // (handleSubmit) or an unhandled rejection
+        // (scheduleFieldValidation), and the consumer would never see
+        // a path-scoped error message. Mirrors v4's
+        // `validatorThrewResponse` (`zod-v4/adapter.ts:727-746`).
+        function validatorThrewResponse(
+          err: unknown,
+          errPath: Path
+        ): ValidationResponse<GetValueFormType> {
+          const message =
+            err instanceof Error ? err.message : typeof err === 'string' ? err : 'Validator threw'
+          return {
+            data: undefined,
+            errors: [
+              {
+                message,
+                path: [...errPath],
+                formKey: _formKey,
+                code: AttaformErrorCode.ValidatorThrew,
+              },
+            ],
+            success: false,
+            formKey: _formKey,
+          }
         }
 
         function nestedSchemasAtPath(p: Path): z.ZodTypeAny[] {

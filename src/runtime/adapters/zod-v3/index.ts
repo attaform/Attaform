@@ -107,6 +107,8 @@ import { assertSupportedKinds } from './assert-supported'
 import { fingerprintZodSchema } from './fingerprint'
 import { isZodSchemaType } from './helpers'
 import {
+  containsAsyncRefine,
+  containsAsyncTransform,
   getArrayElement,
   getCatchDefault,
   getDefaultValue as getDefaultValueFromIntrospect,
@@ -255,9 +257,21 @@ export function zodAdapter<
     // scope, so the walk pays for itself within the first few
     // mutations.
     let containerRefineFlag: boolean | null = null
+    // Same lazy-memo pattern as the container-refine flag.
+    // `needsAsyncValidation` is queried at construction by the store to
+    // gate `firstValidationDone` + the construction-time async seed,
+    // and possibly again from devtools; one tree traversal earns its
+    // keep across the adapter's lifetime.
+    let asyncValidationFlag: boolean | null = null
 
     const abstractSchema: AbstractSchema<Form, GetValueFormType> = {
       fingerprint: () => fingerprintZodSchema(_zodSchema),
+
+      needsAsyncValidation(): boolean {
+        asyncValidationFlag ??=
+          containsAsyncRefine(_zodSchema) || containsAsyncTransform(_zodSchema)
+        return asyncValidationFlag
+      },
 
       hasContainerOrRootRefine(): boolean {
         containerRefineFlag ??= hasContainerOrRootRefine(_zodSchema)

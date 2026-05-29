@@ -384,12 +384,96 @@ export function assertZodVersion(schema: unknown): void {
 }
 
 /**
+ * Generalized depth-first walk over Zod v4's schema tree. The visitor
+ * decides per-node whether the predicate fires; this walker handles
+ * recursion through every descendable `def.*` child (innerType, element,
+ * pipe in/out, intersection sides, record key/value, object shape, DU
+ * entries, union options, tuple items, lazy getter).
+ *
+ * First `visit(node) === true` short-circuits the whole walk. The
+ * shared `WeakSet<object>` guards against cycles (lazy schemas whose
+ * resolver returns the SAME instance on repeat calls). The lazy
+ * resolver invocation is wrapped in try/catch because some
+ * recursively-defined schemas throw before their inner is constructed
+ * — treated as no-match for that branch and walk continues.
+ *
+ * Three top-level predicates (`containsAsyncRefine`,
+ * `containsAsyncTransform`, `hasContainerOrRootRefine`) all express
+ * "walk the tree, short-circuit on first hit" — the walker hosts that
+ * shape once, the predicates contribute only the per-node test.
+ */
+export function walkSchemaTree(
+  schema: z.ZodType,
+  visit: (node: z.ZodType) => boolean,
+  seen?: WeakSet<object>
+): boolean {
+  const visited = seen ?? new WeakSet<object>()
+  // Defensive guard: sub-adapters cast through `as` and a malformed leaf
+  // could land here as a non-object. The TS signature claims object, but
+  // runtime safety beats the conditional-narrowing lint complaint.
+  const candidate = schema as unknown
+  if (typeof candidate !== 'object' || candidate === null) return false
+  if (visited.has(candidate)) return false
+  visited.add(candidate)
+
+  if (visit(schema)) return true
+
+  const def = readDef(schema)
+  if (def === undefined) return false
+
+  if (def.innerType !== undefined && walkSchemaTree(def.innerType as z.ZodType, visit, visited)) {
+    return true
+  }
+  if (def.element !== undefined && walkSchemaTree(def.element as z.ZodType, visit, visited)) {
+    return true
+  }
+  if (def.in !== undefined && walkSchemaTree(def.in as z.ZodType, visit, visited)) return true
+  if (def.out !== undefined && walkSchemaTree(def.out as z.ZodType, visit, visited)) return true
+  if (def.left !== undefined && walkSchemaTree(def.left as z.ZodType, visit, visited)) return true
+  if (def.right !== undefined && walkSchemaTree(def.right as z.ZodType, visit, visited)) return true
+  if (def.keyType !== undefined && walkSchemaTree(def.keyType as z.ZodType, visit, visited)) {
+    return true
+  }
+  if (def.valueType !== undefined && walkSchemaTree(def.valueType as z.ZodType, visit, visited)) {
+    return true
+  }
+  if (def.shape !== undefined) {
+    for (const sub of Object.values(def.shape)) {
+      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+    }
+  }
+  if (def.entries !== undefined) {
+    for (const sub of Object.values(def.entries)) {
+      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+    }
+  }
+  if (def.options !== undefined) {
+    for (const sub of def.options) {
+      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+    }
+  }
+  if (def.items !== undefined) {
+    for (const sub of def.items) {
+      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+    }
+  }
+  if (typeof def.getter === 'function') {
+    try {
+      const inner = def.getter() as z.ZodType
+      if (walkSchemaTree(inner, visit, visited)) return true
+    } catch {
+      // Lazy schemas may throw on resolution before their referenced
+      // schema is constructed; treat as no match and continue.
+    }
+  }
+
+  return false
+}
+
+/**
  * True iff any refinement check on the schema (or any descendant
- * subschema) is async. Detection: walks the tree once, peeling
- * wrappers (optional/nullable/default/readonly/catch/pipe), descending
- * into containers (object props, array element, tuple items, union
- * options, intersection sides, lazy getter, record key/value), and
- * inspecting each `def.checks[].def.fn` for
+ * subschema) is async. Detection: walks the tree once via
+ * `walkSchemaTree`, inspecting each `def.checks[].def.fn` for
  * `constructor.name === 'AsyncFunction'`. Direct `async (v) => …`
  * refinements are caught; sync functions that happen to return a
  * Promise (rare; we'd recommend marking them `async`) are NOT.
@@ -402,78 +486,16 @@ export function assertZodVersion(schema: unknown): void {
  * precise) and cost only one extra microtask of validation work.
  */
 export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
-  const visited = seen ?? new WeakSet<object>()
-  // Defensive guard: sub-adapters cast through `as` and a malformed leaf
-  // could land here as a non-object. The TS signature claims object, but
-  // runtime safety beats the conditional-narrowing lint complaint.
-  const candidate = schema as unknown
-  if (typeof candidate !== 'object' || candidate === null) return false
-  if (visited.has(candidate)) return false
-  visited.add(candidate)
-
-  const checks = getChecks(schema)
-  for (const check of checks) {
-    if (isAsyncCheck(check)) return true
-  }
-
-  const def = readDef(schema)
-  if (def === undefined) return false
-
-  if (def.innerType !== undefined && containsAsyncRefine(def.innerType as z.ZodType, visited)) {
-    return true
-  }
-  if (def.element !== undefined && containsAsyncRefine(def.element as z.ZodType, visited)) {
-    return true
-  }
-  if (def.in !== undefined && containsAsyncRefine(def.in as z.ZodType, visited)) {
-    return true
-  }
-  if (def.out !== undefined && containsAsyncRefine(def.out as z.ZodType, visited)) {
-    return true
-  }
-  if (def.left !== undefined && containsAsyncRefine(def.left as z.ZodType, visited)) {
-    return true
-  }
-  if (def.right !== undefined && containsAsyncRefine(def.right as z.ZodType, visited)) {
-    return true
-  }
-  if (def.keyType !== undefined && containsAsyncRefine(def.keyType as z.ZodType, visited)) {
-    return true
-  }
-  if (def.valueType !== undefined && containsAsyncRefine(def.valueType as z.ZodType, visited)) {
-    return true
-  }
-  if (def.shape !== undefined) {
-    for (const sub of Object.values(def.shape)) {
-      if (containsAsyncRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.entries !== undefined) {
-    for (const sub of Object.values(def.entries)) {
-      if (containsAsyncRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.options !== undefined) {
-    for (const sub of def.options) {
-      if (containsAsyncRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.items !== undefined) {
-    for (const sub of def.items) {
-      if (containsAsyncRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (typeof def.getter === 'function') {
-    try {
-      const inner = def.getter() as z.ZodType
-      if (containsAsyncRefine(inner, visited)) return true
-    } catch {
-      // Lazy schemas may throw on resolution before their referenced
-      // schema is constructed; treat as no async refine and move on.
-    }
-  }
-
-  return false
+  return walkSchemaTree(
+    schema,
+    (node) => {
+      for (const check of getChecks(node)) {
+        if (isAsyncCheck(check)) return true
+      }
+      return false
+    },
+    seen
+  )
 }
 
 /**
@@ -494,101 +516,31 @@ export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): 
  *
  * Bias conservative: a missed wrapper variant or an exotic `def`
  * shape we don't yet recognise returns false ONLY for that node,
- * but the recursive descent continues, so a container refine
+ * but `walkSchemaTree`'s descent continues, so a container refine
  * nested inside still triggers `true`. Unknown wrappers we forget
  * to peel only lose the perf win, never correctness.
  */
 export function hasContainerOrRootRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
-  const visited = seen ?? new WeakSet<object>()
-  const candidate = schema as unknown
-  if (typeof candidate !== 'object' || candidate === null) return false
-  if (visited.has(candidate)) return false
-  visited.add(candidate)
-
-  const def = readDef(schema)
-  if (def === undefined) return false
-
-  // A node is a "container" iff it owns descendable structure. Refines
-  // / checks on such a node fire only when the container is the parse
-  // scope — a leaf-scoped subtree pass beneath it never re-runs them.
-  const isContainer =
-    def.shape !== undefined ||
-    def.entries !== undefined ||
-    def.element !== undefined ||
-    def.options !== undefined ||
-    def.items !== undefined ||
-    def.keyType !== undefined ||
-    def.valueType !== undefined ||
-    def.left !== undefined ||
-    def.right !== undefined
-
-  if (isContainer) {
-    const checks = getChecks(schema)
-    if (checks.length > 0) return true
-  }
-
-  if (
-    def.innerType !== undefined &&
-    hasContainerOrRootRefine(def.innerType as z.ZodType, visited)
-  ) {
-    return true
-  }
-  if (def.element !== undefined && hasContainerOrRootRefine(def.element as z.ZodType, visited)) {
-    return true
-  }
-  if (def.in !== undefined && hasContainerOrRootRefine(def.in as z.ZodType, visited)) {
-    return true
-  }
-  if (def.out !== undefined && hasContainerOrRootRefine(def.out as z.ZodType, visited)) {
-    return true
-  }
-  if (def.left !== undefined && hasContainerOrRootRefine(def.left as z.ZodType, visited)) {
-    return true
-  }
-  if (def.right !== undefined && hasContainerOrRootRefine(def.right as z.ZodType, visited)) {
-    return true
-  }
-  if (def.keyType !== undefined && hasContainerOrRootRefine(def.keyType as z.ZodType, visited)) {
-    return true
-  }
-  if (
-    def.valueType !== undefined &&
-    hasContainerOrRootRefine(def.valueType as z.ZodType, visited)
-  ) {
-    return true
-  }
-  if (def.shape !== undefined) {
-    for (const sub of Object.values(def.shape)) {
-      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.entries !== undefined) {
-    for (const sub of Object.values(def.entries)) {
-      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.options !== undefined) {
-    for (const sub of def.options) {
-      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.items !== undefined) {
-    for (const sub of def.items) {
-      if (hasContainerOrRootRefine(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (typeof def.getter === 'function') {
-    try {
-      const inner = def.getter() as z.ZodType
-      if (hasContainerOrRootRefine(inner, visited)) return true
-    } catch {
-      // Lazy schemas may throw before their inner is constructed;
-      // treat as no detection and let the caller's conservative
-      // default apply.
-    }
-  }
-
-  return false
+  return walkSchemaTree(
+    schema,
+    (node) => {
+      const def = readDef(node)
+      if (def === undefined) return false
+      const isContainer =
+        def.shape !== undefined ||
+        def.entries !== undefined ||
+        def.element !== undefined ||
+        def.options !== undefined ||
+        def.items !== undefined ||
+        def.keyType !== undefined ||
+        def.valueType !== undefined ||
+        def.left !== undefined ||
+        def.right !== undefined
+      if (!isContainer) return false
+      return getChecks(node).length > 0
+    },
+    seen
+  )
 }
 
 /**
@@ -610,76 +562,17 @@ export function hasContainerOrRootRefine(schema: z.ZodType, seen?: WeakSet<objec
  * to the post-mount `safeParseAsync` pass.
  */
 export function containsAsyncTransform(schema: z.ZodType, seen?: WeakSet<object>): boolean {
-  const visited = seen ?? new WeakSet<object>()
-  const candidate = schema as unknown
-  if (typeof candidate !== 'object' || candidate === null) return false
-  if (visited.has(candidate)) return false
-  visited.add(candidate)
-
-  const def = readDef(schema)
-  if (def === undefined) return false
-
-  if (
-    typeof def.transform === 'function' &&
-    (def.transform as { constructor: { name: string } }).constructor.name === 'AsyncFunction'
-  ) {
-    return true
-  }
-
-  if (def.innerType !== undefined && containsAsyncTransform(def.innerType as z.ZodType, visited)) {
-    return true
-  }
-  if (def.element !== undefined && containsAsyncTransform(def.element as z.ZodType, visited)) {
-    return true
-  }
-  if (def.in !== undefined && containsAsyncTransform(def.in as z.ZodType, visited)) {
-    return true
-  }
-  if (def.out !== undefined && containsAsyncTransform(def.out as z.ZodType, visited)) {
-    return true
-  }
-  if (def.left !== undefined && containsAsyncTransform(def.left as z.ZodType, visited)) {
-    return true
-  }
-  if (def.right !== undefined && containsAsyncTransform(def.right as z.ZodType, visited)) {
-    return true
-  }
-  if (def.keyType !== undefined && containsAsyncTransform(def.keyType as z.ZodType, visited)) {
-    return true
-  }
-  if (def.valueType !== undefined && containsAsyncTransform(def.valueType as z.ZodType, visited)) {
-    return true
-  }
-  if (def.shape !== undefined) {
-    for (const sub of Object.values(def.shape)) {
-      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.entries !== undefined) {
-    for (const sub of Object.values(def.entries)) {
-      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.options !== undefined) {
-    for (const sub of def.options) {
-      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (def.items !== undefined) {
-    for (const sub of def.items) {
-      if (containsAsyncTransform(sub as z.ZodType, visited)) return true
-    }
-  }
-  if (typeof def.getter === 'function') {
-    try {
-      const inner = def.getter() as z.ZodType
-      if (containsAsyncTransform(inner, visited)) return true
-    } catch {
-      // Lazy schemas may throw on resolution; treat as no async transform.
-    }
-  }
-
-  return false
+  return walkSchemaTree(
+    schema,
+    (node) => {
+      const def = readDef(node)
+      if (def === undefined) return false
+      const fn = def.transform
+      if (typeof fn !== 'function') return false
+      return (fn as { constructor: { name: string } }).constructor.name === 'AsyncFunction'
+    },
+    seen
+  )
 }
 
 interface ZodCheckInternals {

@@ -1,28 +1,6 @@
 import type { AbstractSchema } from '../types/types-api'
-import { __DEV__ } from './dev'
 import { canonicalizePath, type Path, type Segment } from './paths'
-
-/**
- * Warn-and-noop trap pair shared by every readonly proxy in the surface
- * layer. Returning `true` keeps strict-mode callers from throwing on
- * `proxy.x = …` / `delete proxy.x` / `Object.defineProperty(proxy, …)` —
- * the readonly contract is enforced by the absence of any actual
- * mutation, not by tripping a host-level `TypeError`. Aligns
- * `form.fields` / `form.errors` with the warn-and-noop pattern already
- * in `values-proxy` and `wizard-statuses-proxy`. See PASS2-4 + PASS2-12
- * for the audit context.
- */
-function warnReadOnly(
-  surface: string,
-  action: 'write' | 'delete' | 'define',
-  key: PropertyKey
-): void {
-  if (!__DEV__) return
-  const phrase = action === 'write' ? `write to "${String(key)}"` : `${action} of "${String(key)}"`
-  console.warn(
-    `[attaform] ${surface} is read-only — ${phrase} was ignored. Mutate the form via setValue / the directive / field-array helpers instead.`
-  )
-}
+import { makeReadonlyCoercion, warnReadOnly } from './proxy-readonly-helpers'
 
 /**
  * Leaf-aware callable Proxy machinery shared by `form.values`,
@@ -266,25 +244,17 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
     // form Ref) are tracked inside the consumer's active effect — the
     // proxy itself is cached per-path, but its serialised form is
     // computed fresh on every stringify, so there is no staleness.
-    //
-    // - `valueOf` follows `Object.prototype.valueOf` semantics: return
-    //   the receiver (the proxy itself, via dynamic `this`). Returning
-    //   a non-primitive keeps OrdinaryToPrimitive's `valueOf` →
-    //   `toString` fallback well-formed for any code path that
-    //   bypasses our `Symbol.toPrimitive` shortcut.
-    // - `toString` returns `JSON.stringify(materialised)` so direct
-    //   method calls produce the same string as operator coercion.
-    // - `Symbol.toPrimitive('number')` always returns `NaN` — a
-    //   container has no meaningful number coercion.
+    // `makeReadonlyCoercion` sets up the standard `toString` (JSON),
+    // `valueOf` (identity), `toJSON`, and `Symbol.toPrimitive` quartet
+    // shared with every other readonly callable proxy.
     const snapshotContainer = (): unknown =>
       opts.materializeContainer === undefined ? {} : opts.materializeContainer(segments)
-    const containerToJSON = (): unknown => snapshotContainer()
-    const containerToString = (): string => JSON.stringify(snapshotContainer())
-    function containerValueOf(this: unknown): unknown {
-      return this
-    }
-    const containerToPrimitive = (hint: string): string | number =>
-      hint === 'number' ? NaN : containerToString()
+    const {
+      toString: containerToString,
+      valueOf: containerValueOf,
+      toJSON: containerToJSON,
+      toPrimitive: containerToPrimitive,
+    } = makeReadonlyCoercion(snapshotContainer)
 
     // Target shape: Array for array-shaped paths so `Array.isArray(proxy)`
     // is true and Vue's `renderList` takes its indexed-array branch
@@ -512,7 +482,8 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
     // handlers. Reads through `resolveLeaf` and `readLeafKey` happen at
     // call time inside the consumer's active effect, so Vue's dependency
     // tracking captures the leaf's reactive deps (the
-    // `ComputedRef<FieldState>` for fields).
+    // `ComputedRef<FieldState>` for fields). The standard four-handler
+    // coercion quartet is provided by `makeReadonlyCoercion`.
     const snapshotLeaf = (): Record<string, unknown> => {
       const leaf = opts.resolveLeaf(segments)
       const snapshot: Record<string, unknown> = {}
@@ -521,12 +492,12 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
       }
       return snapshot
     }
-    const leafToString = (): string => JSON.stringify(snapshotLeaf())
-    function leafValueOf(this: unknown): unknown {
-      return this
-    }
-    const leafToPrimitive = (hint: string): string | number =>
-      hint === 'number' ? NaN : leafToString()
+    const {
+      toString: leafToString,
+      valueOf: leafValueOf,
+      toJSON: leafToJSONHandler,
+      toPrimitive: leafToPrimitive,
+    } = makeReadonlyCoercion(snapshotLeaf)
 
     const target = (() => {}) as unknown as SurfaceProxy
     const proxy = new Proxy(target, {
@@ -565,7 +536,7 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // every leaf-key value at the moment of the call. Lets SSR
         // templates stringify `form.fields.<leaf>` straight into the
         // hydration payload.
-        if (key === 'toJSON') return snapshotLeaf
+        if (key === 'toJSON') return leafToJSONHandler
         // Reads inside the trap stay inside the consumer's active effect —
         // `resolveLeaf` returns a `ComputedRef` (for fields) and `.value`
         // is read inside `readLeafKey`, so Vue's dep tracking captures

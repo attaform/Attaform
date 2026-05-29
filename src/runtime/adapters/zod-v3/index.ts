@@ -15,10 +15,9 @@ import type {
 import {
   createAbstractSchema,
   type AbstractSchemaServices,
-  type SchemaIntrospector,
-  type SharedZodKind,
 } from '../../core/abstract-schema-factory'
 import { getAtPath, isPlainRecord, setAtPath } from '../../core/path-walker'
+import { walkPathSegments } from '../../core/walk-path-segments'
 import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path, type PathKey } from '../../core/paths'
@@ -112,7 +111,6 @@ import { assertSupportedKinds } from './assert-supported'
 import { fingerprintZodSchema } from './fingerprint'
 import { isZodSchemaType } from './helpers'
 import {
-  containsAsyncRefine,
   containsAsyncTransform,
   getArrayElement,
   getCatchDefault,
@@ -122,9 +120,7 @@ import {
   getEffectsKind,
   getIntersectionLeft,
   getIntersectionRight,
-  getLazyGetter,
   getLiteralValue,
-  getLiteralValues,
   getNativeEnumValues,
   getObjectShape,
   getRecordKeyType,
@@ -135,19 +131,16 @@ import {
   getUnionOptions,
   hasCatchValue,
   hasChecks,
-  hasContainerOrRootRefine,
   isCoercePrimitive,
-  isPreprocessNode,
-  kindOf,
   unwrapBranded,
   unwrapEffectsSource,
   unwrapInner,
   unwrapLazy,
   unwrapPipeIn,
-  unwrapPipeOut,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 import { stripAsyncChecks } from './strip-async'
+import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
 
@@ -199,49 +192,6 @@ export function zodAdapter<
       formKey,
       options
     )
-}
-
-/**
- * Module-level `SchemaIntrospector` for the v3 adapter. Pure schema
- * accessors with no closure state — shared across every \`useForm()\`
- * that ships a v3 schema. Mirrors the v4 \`V4_INTROSPECTOR\` shape.
- */
-const V3_INTROSPECTOR: SchemaIntrospector<z.ZodTypeAny> = {
-  kindOf: (schema) => kindOf(schema) as SharedZodKind | string,
-  getObjectShape: (schema) => getObjectShape(schema),
-  getTupleItems: (schema) => getTupleItems(schema),
-  getDiscriminatedOptions: (schema) => getDiscriminatedOptions(schema) as readonly z.ZodTypeAny[],
-  getDiscriminator: (schema) => getDiscriminator(schema),
-  getLiteralValues: (schema) => getLiteralValues(schema),
-  isPreprocessNode: (schema) => isPreprocessNode(schema),
-  isCoercePrimitive: (schema) => isCoercePrimitive(schema),
-  containsAsyncRefine: (schema) => containsAsyncRefine(schema),
-  containsAsyncTransform: (schema) => containsAsyncTransform(schema),
-  hasContainerOrRootRefine: (schema) => hasContainerOrRootRefine(schema),
-
-  // Walker accessors (D2 / D3 / D5).
-  getArrayElement: (schema) => getArrayElement(schema),
-  getSetValueType: (schema) => getSetValueType(schema),
-  getRecordKeyType: (schema) => getRecordKeyType(schema),
-  getRecordValueType: (schema) => getRecordValueType(schema),
-  getUnionOptions: (schema) => getUnionOptions(schema),
-  getIntersectionLeft: (schema) => getIntersectionLeft(schema),
-  getIntersectionRight: (schema) => getIntersectionRight(schema),
-  getEnumValues: (schema) => {
-    if (!isZodSchemaType(schema, 'ZodEnum')) return []
-    return (schema as z.ZodEnum<[string, ...string[]]>).options
-  },
-  getNativeEnumValues: (schema) => getNativeEnumValues(schema),
-  unwrapInner: (schema) => unwrapInner(schema),
-  unwrapBranded: (schema) => unwrapBranded(schema),
-  unwrapEffectsSource: (schema) => unwrapEffectsSource(schema),
-  unwrapPipeIn: (schema) => unwrapPipeIn(schema),
-  unwrapPipeOut: (schema) => unwrapPipeOut(schema),
-  unwrapLazy: (schema) => unwrapLazy(schema),
-  getLazyGetter: (schema) => getLazyGetter(schema),
-  getDefaultValue: (schema) => getDefaultValueFromIntrospect(schema),
-  getCatchDefault: (schema) => getCatchDefault(schema),
-  hasCatchValue: (schema) => hasCatchValue(schema),
 }
 
 /**
@@ -401,137 +351,7 @@ function getNestedZodSchemasAtPath(
   maxRecursionDepth: number
 ): z.ZodTypeAny[] {
   if (segments.length === 0) return [schema]
-  return walkSegments(schema, segments.map(String), maxRecursionDepth, 0)
-}
-
-function walkSegments(
-  schema: z.ZodTypeAny,
-  segments: readonly string[],
-  maxDepth: number,
-  lazyDepth: number
-): z.ZodTypeAny[] {
-  if (segments.length === 0) return [schema]
-  const [head, ...rest] = segments
-  if (head === undefined) return [schema]
-  const kind = kindOf(schema)
-  switch (kind) {
-    case 'object': {
-      const shape = getObjectShape(schema)
-      // Own-property check: `shape` is a plain object whose prototype is
-      // `Object.prototype`, so a bare `shape[head]` for `head ===
-      // 'toString'` / `'valueOf'` / `'hasOwnProperty'` etc. returns the
-      // inherited Function and the walker treats it as a schema. Filter
-      // to OWN keys so unknown segments resolve to "doesn't exist."
-      if (!Object.hasOwn(shape, head)) return []
-      const next = shape[head]
-      return next === undefined ? [] : walkSegments(next, rest, maxDepth, lazyDepth)
-    }
-    case 'array': {
-      const inner = getArrayElement(schema)
-      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
-    }
-    case 'set': {
-      // Sets aren't position-indexed; the head segment is a synthetic
-      // indexer (`[...path, 0]`) used to query the element type. Descend
-      // into the value schema and consume the segment.
-      const inner = getSetValueType(schema)
-      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
-    }
-    case 'record': {
-      const inner = getRecordValueType(schema)
-      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
-    }
-    case 'tuple': {
-      const index = Number(head)
-      if (!Number.isInteger(index)) return []
-      const items = getTupleItems(schema)
-      const item = items[index]
-      return item === undefined ? [] : walkSegments(item, rest, maxDepth, lazyDepth)
-    }
-    case 'union':
-      return getUnionOptions(schema).flatMap((opt) =>
-        walkSegments(opt, segments, maxDepth, lazyDepth)
-      )
-    case 'discriminated-union': {
-      // Filter options whose shape contains this segment. Fallback: if no
-      // option matches (e.g. the discriminator key itself), try every
-      // option. `Object.hasOwn` (not `in`) so `Object.prototype` keys
-      // don't leak.
-      const options = getDiscriminatedOptions(schema)
-      const matching = options.filter((opt) => Object.hasOwn(getObjectShape(opt), head))
-      const candidates = matching.length > 0 ? matching : options
-      return candidates.flatMap((opt) => walkSegments(opt, segments, maxDepth, lazyDepth))
-    }
-    case 'optional':
-    case 'nullable':
-    case 'default':
-    case 'readonly':
-    case 'catch': {
-      // `catch` peels like a wrapper — descend into the inner schema. The
-      // catch fallback only matters at parse time, not path lookup.
-      const inner = unwrapInner(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'branded': {
-      const inner = unwrapBranded(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'effects': {
-      const inner = unwrapEffectsSource(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'pipeline': {
-      const inner = unwrapPipeIn(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'lazy': {
-      // Bump the lazy counter. Past the cap, return [] so callers fall
-      // back to permissive behaviour at recursive paths beyond the cap.
-      if (lazyDepth >= maxDepth) return []
-      const inner = unwrapLazy(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth + 1)
-    }
-    case 'intersection': {
-      // Union of both sides' resolutions — callers try each candidate,
-      // matching parse-time semantics where a value must satisfy both.
-      const left = getIntersectionLeft(schema)
-      const right = getIntersectionRight(schema)
-      const leftResults =
-        left === undefined ? [] : walkSegments(left, segments, maxDepth, lazyDepth)
-      const rightResults =
-        right === undefined ? [] : walkSegments(right, segments, maxDepth, lazyDepth)
-      return [...leftResults, ...rightResults]
-    }
-    // Leaf types — can't descend further. The unsupported kinds
-    // (`promise` / `function` / `map` / `symbol`) are rejected at
-    // adapter construction by `assertSupportedKinds`; this fallthrough
-    // keeps the walker defensive in case construction is skipped (e.g.
-    // a downstream test instantiates a subschema directly).
-    case 'string':
-    case 'number':
-    case 'boolean':
-    case 'bigint':
-    case 'date':
-    case 'enum':
-    case 'native-enum':
-    case 'literal':
-    case 'null':
-    case 'undefined':
-    case 'void':
-    case 'never':
-    case 'any':
-    case 'unknown':
-    case 'nan':
-    case 'promise':
-    case 'function':
-    case 'map':
-    case 'symbol':
-      return []
-    default: {
-      const _exhaustive: never = kind
-      throw new Error(`walkSegments (v3): unhandled ZodKind '${_exhaustive as string}'`)
-    }
-  }
+  return walkPathSegments(schema, segments.map(String), V3_INTROSPECTOR, maxRecursionDepth, 0)
 }
 
 /**

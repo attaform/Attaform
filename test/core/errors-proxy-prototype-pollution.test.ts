@@ -3,18 +3,29 @@
  * Prototype-pollution gate for `placeAt` (errors-proxy.ts).
  *
  * `setFieldErrors` accepts a `path` from consumer input — server
- * replies, manual marks. Without a guard, a path whose first segment
+ * replies, manual marks. Without protection, a path whose first segment
  * is `__proto__` reaches `placeAt`'s `cursorRecord[lastKey] = errors`
- * writes (errors-proxy.ts:360,368, CodeQL alerts #12 and #13, rule
- * `js/prototype-polluting-assignment`). The two-segment shape
- * `['__proto__', 'polluted']` walks via `tree.__proto__` straight onto
- * `Object.prototype` and assigns the global there, breaking every
- * object in the process.
+ * write and pollutes `Object.prototype` for the whole process (CodeQL
+ * alerts #12 and #13, rule `js/prototype-polluting-assignment`).
  *
- * The guard at the top of `placeAt` matches the SEC-2 shape from the
- * persistence layer's `mergeDeep` — `isDangerousSegment` rejects
- * `__proto__`, `constructor`, and `prototype`, and the whole placement
- * is dropped.
+ * The fix sanitises the storage shape, not the input. The error-tree
+ * containers are allocated via `Object.create(null)` so a `__proto__`
+ * segment is just another own-property key with no path to
+ * `Object.prototype`. Legitimate fields named `prototype` (an
+ * architecture firm tracking building prototypes, a JS-tooling form
+ * mentioning `__proto__` literally) land their errors at the declared
+ * path the consumer asked for, instead of being silently dropped by a
+ * dangerous-segment guard.
+ *
+ * Each special-key case asserts two invariants in sequence:
+ *   1. Positive roundtrip — the errors are present in the materialised
+ *      error tree at the path the consumer set them at. Probed via
+ *      `form.errors.toJSON()` because the `form.errors(path)` callable
+ *      applies the active-path filter for unreachable paths (correct
+ *      for the schema-error case it's tuned for, irrelevant for raw
+ *      placement verification here).
+ *   2. No pollution — a fresh plain `{}` does NOT inherit the canary
+ *      property, confirming the write never reached `Object.prototype`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z as zV4 } from 'zod'
@@ -42,7 +53,17 @@ const adapters = [
 // `{}` without disturbing global state for unrelated suites.
 const SENTINEL = 'attaformProtoPollutionCanary'
 
-describe.each(adapters)('errors-proxy `placeAt` prototype-pollution guard — $name', ({ mount }) => {
+type ErrorTree = Record<string, unknown>
+
+function materialisedErrorTree(api: { errors: unknown }): ErrorTree {
+  const errors = api.errors as { toJSON?: () => ErrorTree }
+  if (typeof errors.toJSON !== 'function') {
+    throw new Error('form.errors did not expose toJSON — surface-proxy contract changed')
+  }
+  return errors.toJSON()
+}
+
+describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', ({ mount }) => {
   beforeEach(() => {
     // Pre-test invariant: the canary must NOT be present. A leaked
     // pollution from earlier in the test process would otherwise
@@ -52,64 +73,96 @@ describe.each(adapters)('errors-proxy `placeAt` prototype-pollution guard — $n
   })
 
   afterEach(() => {
-    // Defensive cleanup: even though the fix should prevent any
-    // mutation, scrub the canary so a leak from a regression never
+    // Defensive cleanup: even though the prototype-less tree should
+    // prevent any mutation, scrub the canary so a regression never
     // bleeds into the rest of the suite.
     delete (Object.prototype as Record<string, unknown>)[SENTINEL]
   })
 
-  it("setFieldErrors with path: ['__proto__', X] does not pollute Object.prototype", () => {
+  it("['__proto__', X] lands at the declared path AND does not pollute Object.prototype", () => {
     const { api, app } = mount()
+    const message = 'legit field literally named __proto__'
     api.setFieldErrors([
       {
         path: ['__proto__', SENTINEL],
-        message: 'attempted pollution',
+        message,
         formKey: api.key,
         code: 'atta:server',
       },
     ])
-    // Reading `form.errors` triggers materialisation, which is the
-    // codepath that invokes `placeAt`. Without that read, the guard
-    // is never exercised.
-    void api.errors
+
+    // Positive roundtrip — the materialised tree carries the entry as
+    // a plain own-property pair on prototype-less containers, so
+    // bracket access lands exactly where the consumer set the path.
+    const tree = materialisedErrorTree(api)
+    const protoSlot = tree['__proto__'] as ErrorTree | undefined
+
+    // Negative invariant — Object.prototype is unchanged. A plain `{}`
+    // probe inherits nothing because the tree's `__proto__` slot is a
+    // regular own property on a prototype-less container, not the
+    // accessor that would walk into Object.prototype.
     const probe: Record<string, unknown> = {}
+
     app.unmount()
+
+    expect(protoSlot).toBeDefined()
+    expect(protoSlot?.[SENTINEL]).toEqual(
+      expect.arrayContaining([expect.objectContaining({ message })])
+    )
     expect(probe[SENTINEL]).toBeUndefined()
   })
 
-  it("setFieldErrors with path: ['constructor', X] does not surface on plain objects", () => {
+  it("['constructor', X] lands at the declared path AND does not pollute Object.prototype", () => {
     const { api, app } = mount()
+    const message = 'legit field literally named constructor'
     api.setFieldErrors([
       {
         path: ['constructor', SENTINEL],
-        message: 'attempted pollution',
+        message,
         formKey: api.key,
         code: 'atta:server',
       },
     ])
-    void api.errors
+
+    const tree = materialisedErrorTree(api)
+    const ctorSlot = tree['constructor'] as ErrorTree | undefined
     const probe: Record<string, unknown> = {}
+
     app.unmount()
+
+    expect(ctorSlot).toBeDefined()
+    expect(ctorSlot?.[SENTINEL]).toEqual(
+      expect.arrayContaining([expect.objectContaining({ message })])
+    )
     expect(probe[SENTINEL]).toBeUndefined()
   })
 
-  it("setFieldErrors with path: ['prototype', X] does not surface on plain objects", () => {
+  it("['prototype', X] lands at the declared path AND does not pollute Object.prototype", () => {
     const { api, app } = mount()
+    const message = 'building-A spec mismatch (architecture firm prototype field)'
     api.setFieldErrors([
       {
         path: ['prototype', SENTINEL],
-        message: 'attempted pollution',
+        message,
         formKey: api.key,
         code: 'atta:server',
       },
     ])
-    void api.errors
+
+    const tree = materialisedErrorTree(api)
+    const protoSlot = tree['prototype'] as ErrorTree | undefined
     const probe: Record<string, unknown> = {}
+
     app.unmount()
+
+    expect(protoSlot).toBeDefined()
+    expect(protoSlot?.[SENTINEL]).toEqual(
+      expect.arrayContaining([expect.objectContaining({ message })])
+    )
     expect(probe[SENTINEL]).toBeUndefined()
   })
 
-  it('setFormErrors at the synthetic root path is unaffected by the guard', () => {
+  it('setFormErrors at the synthetic root path still lands at the form level', () => {
     const { api, app } = mount()
     api.setFormErrors([{ message: 'root-level error' }])
     const formLevel = api.errors('')

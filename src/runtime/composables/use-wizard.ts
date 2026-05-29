@@ -434,6 +434,42 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out
   })
 
+  // "Form ready?" gate — `true` once a participating form's defaults
+  // have applied (sync defaults at construction, or async factory
+  // settle complete). Reads through the registry's per-store flag,
+  // not through the public `form.ready` getter, because the latter
+  // would activate dormant lazy factories the wizard hasn't asked
+  // for. Hoisted so `errorsFor` and `statusFor` share one definition
+  // of the gate (W-DUP-2 dedup).
+  function isFormReady(key: FormKey): boolean {
+    const store = registry.forms.get(key)
+    return store?.defaultsResolved.value === true
+  }
+
+  // Lift a per-form error into the wizard's aggregate shape. `err`
+  // may arrive without `formKey` (e.g. entries from `form.meta.errors`,
+  // which are pre-scoped to the form) or with it (`ValidationError`
+  // entries from `processOne`'s result). Centralising the lift dedups
+  // the construction shared by `allErrors` and `collectErrors`
+  // (W-DUP-1).
+  function toAggregateError(
+    err: {
+      readonly path: ReadonlyArray<string | number>
+      readonly message: string
+      readonly code?: string
+      readonly formKey?: FormKey
+    },
+    fallbackKey: FormKey
+  ): AggregateError {
+    const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
+      formKey: err.formKey ?? fallbackKey,
+      path: err.path,
+      message: err.message,
+    }
+    if (err.code !== undefined) entry.code = err.code
+    return entry
+  }
+
   // Per-key memoization for `allValues` / `allErrors`. One field edit
   // on form A only invalidates form A's slot; templates reading
   // `wizard.allErrors.formB` stay cached. Mirrors `statusCache` below
@@ -455,20 +491,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (cached !== undefined) return cached
     const source = form as unknown as StatusSourceForm
     const computedErrors = computed<readonly AggregateError[]>(() => {
-      const store = registry.forms.get(form.key)
-      const resolved = store?.defaultsResolved.value === true
-      if (!resolved) return []
+      if (!isFormReady(form.key)) return []
       const errors = source.meta?.errors ?? []
       const list: AggregateError[] = []
-      for (const err of errors) {
-        const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
-          formKey: form.key,
-          path: err.path,
-          message: err.message,
-        }
-        if (err.code !== undefined) entry.code = err.code
-        list.push(entry)
-      }
+      for (const err of errors) list.push(toAggregateError(err, form.key))
       return list
     })
     errorsCache.set(form.key, computedErrors)
@@ -564,9 +590,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (cached !== undefined) return cached
     const source = form as unknown as StatusSourceForm
     const computedStatus = computed<FormStatus>(() => {
-      const store = registry.forms.get(form.key)
-      const resolved = store?.defaultsResolved.value === true
-      if (resolved) {
+      if (isFormReady(form.key)) {
         const meta = source.meta
         if (meta !== undefined && meta !== null) {
           return {
@@ -1027,15 +1051,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     for (const step of compiledSteps.value) {
       const processed = results.get(step.key)
       if (processed === undefined || processed.success === true) continue
-      for (const err of processed.errors) {
-        const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
-          formKey: err.formKey,
-          path: err.path,
-          message: err.message,
-        }
-        if (err.code !== undefined) entry.code = err.code
-        out.push(entry)
-      }
+      for (const err of processed.errors) out.push(toAggregateError(err, step.key))
     }
     return out
   }

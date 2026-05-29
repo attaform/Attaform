@@ -107,6 +107,8 @@ import { assertSupportedKinds } from './assert-supported'
 import { fingerprintZodSchema } from './fingerprint'
 import { isZodSchemaType } from './helpers'
 import {
+  containsAsyncRefine,
+  containsAsyncTransform,
   getArrayElement,
   getCatchDefault,
   getDefaultValue as getDefaultValueFromIntrospect,
@@ -137,6 +139,7 @@ import {
   unwrapPipeIn,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
+import { stripAsyncChecks } from './strip-async'
 
 let warnedZodCodeMissing = false
 
@@ -255,9 +258,21 @@ export function zodAdapter<
     // scope, so the walk pays for itself within the first few
     // mutations.
     let containerRefineFlag: boolean | null = null
+    // Same lazy-memo pattern as the container-refine flag.
+    // `needsAsyncValidation` is queried at construction by the store to
+    // gate `firstValidationDone` + the construction-time async seed,
+    // and possibly again from devtools; one tree traversal earns its
+    // keep across the adapter's lifetime.
+    let asyncValidationFlag: boolean | null = null
 
     const abstractSchema: AbstractSchema<Form, GetValueFormType> = {
       fingerprint: () => fingerprintZodSchema(_zodSchema),
+
+      needsAsyncValidation(): boolean {
+        asyncValidationFlag ??=
+          containsAsyncRefine(_zodSchema) || containsAsyncTransform(_zodSchema)
+        return asyncValidationFlag
+      },
 
       hasContainerOrRootRefine(): boolean {
         containerRefineFlag ??= hasContainerOrRootRefine(_zodSchema)
@@ -294,29 +309,107 @@ export function zodAdapter<
           rawDefaultValues = config.constraints
         }
 
-        // `safeParse` throws synchronously when the schema contains an
-        // async refine ("Async refinement encountered during synchronous
-        // parse"). Async refines can't be surfaced synchronously
-        // regardless — the abstract `getDefaultValues` contract is sync.
-        // Degrade gracefully: treat the schema as if it parsed cleanly,
-        // so the form mounts. The first user mutation kicks off
-        // `validateAtPath`, which uses `safeParseAsync`.
-        //
-        // Note on parity with the v4 adapter: v4 ships a sync-only
-        // retry path (`stripAsyncChecks`) so sync refinement errors
-        // on `defaultValues` still seed at construction even when an
-        // async sibling poisons the sync entry point. v3 carries the
-        // same conceptual bug, but its slim-schema strategy strips
-        // ALL `ZodEffects` wrappers at construction time and v3
-        // stores refinements in a wrapper whose sync-vs-async
-        // character can only be observed at parse time (not via
-        // static introspection — the wrapper itself is a regular
-        // function regardless of the user's predicate). Lifting v3
-        // to v4's seeding contract requires either a probe-and-parse
-        // detection scheme (with user-predicate side-effect risk) or
-        // a slim-schema redesign that preserves effects in strict
-        // mode. Both are larger work items than this fix targets and
-        // are tracked for follow-up.
+        // Strict-mode path: parse against the REAL schema so refines
+        // and container / leaf checks (`.min(n)` / `.max(n)` /
+        // `.email()` etc.) seed at construction. Mirrors v4
+        // (`zod-v4/adapter.ts:365-422`). The lax-mode validate-then-fix
+        // loop below stays untouched — it's the right shape for
+        // "seed a permissive partial state at mount."
+        if ((config.strict ?? true) !== false) {
+          // Async transforms can't be stripped: the transform's output
+          // shape is load-bearing for the inner schema's input. Skip
+          // the strict pass entirely; the post-mount async pass picks
+          // up verdicts via `safeParseAsync`.
+          if (containsAsyncTransform(_zodSchema)) {
+            return {
+              data: rawDefaultValues as Form,
+              errors: undefined,
+              success: true,
+              formKey: _formKey,
+            }
+          }
+
+          try {
+            const strictResult = _zodSchema.safeParse(rawDefaultValues)
+            if (strictResult.success) {
+              // Storage holds the pre-transform `z.input` view, so we
+              // return the raw defaults (already filled by
+              // `getDefaultValuesFromZodSchema`) rather than
+              // `strictResult.data` (the post-transform `z.output`).
+              // For schemas without `.transform()` the two coincide;
+              // for schemas with one the storage stays the honest input
+              // view that `form.values` reflects. Matches v4 (:407).
+              return {
+                data: rawDefaultValues as Form,
+                errors: undefined,
+                success: true,
+                formKey: _formKey,
+              }
+            }
+            return {
+              data: rawDefaultValues as Form,
+              errors: zodIssuesToValidationErrors(strictResult.error.issues, _formKey),
+              success: false,
+              formKey: _formKey,
+            }
+          } catch (err) {
+            // Distinguish the v3 async-detect throw from a generic
+            // user-validator throw at construction. The async-detect
+            // throw is a standard `Error` with message
+            // `"Async refinement encountered during synchronous
+            // parse..."`. On that path strip every `ZodEffects` (sync
+            // + async — v3 can't tell apart at the predicate level,
+            // see `strip-async.ts` docblock) and re-parse to surface
+            // container + leaf-check seeds.
+            const isAsyncDetect =
+              err instanceof Error && err.message.includes('Async refinement encountered')
+            if (isAsyncDetect) {
+              try {
+                const strippedResult = stripAsyncChecks(_zodSchema).safeParse(rawDefaultValues)
+                if (strippedResult.success) {
+                  return {
+                    data: rawDefaultValues as Form,
+                    errors: undefined,
+                    success: true,
+                    formKey: _formKey,
+                  }
+                }
+                return {
+                  data: rawDefaultValues as Form,
+                  errors: zodIssuesToValidationErrors(strippedResult.error.issues, _formKey),
+                  success: false,
+                  formKey: _formKey,
+                }
+              } catch {
+                // Defensive floor: the stripped schema also threw
+                // (e.g. a sync refine that itself throws). Mount
+                // cleanly; the post-mount async pass is the source of
+                // truth for any verdict this code path can't surface.
+                return {
+                  data: rawDefaultValues as Form,
+                  errors: undefined,
+                  success: true,
+                  formKey: _formKey,
+                }
+              }
+            }
+            // Non-async throw at construction (user validator threw a
+            // raw exception): defensive floor, matches v4's catch
+            // (`adapter.ts:415-422`).
+            return {
+              data: rawDefaultValues as Form,
+              errors: undefined,
+              success: true,
+              formKey: _formKey,
+            }
+          }
+        }
+
+        // Lax mode: validate-then-fix loop. The slim schema's
+        // structural shape is what the loop patches against — any
+        // throw collapses to mount-clean success. The existing
+        // try/catch is the slim equivalent of the strict-mode
+        // defensive floor above.
         let parseResult: ReturnType<typeof slimSchema.safeParse>
         try {
           parseResult = slimSchema.safeParse(rawDefaultValues)
@@ -473,36 +566,15 @@ export function zodAdapter<
         // the defaulted shape, bigint edge cases), return the partial
         // data instead of throwing. Matches the v4 adapter's lax
         // semantics — a partially-valid initial state is preferable
-        // to a mount-time exception.
+        // to a mount-time exception. Strict mode short-circuited
+        // earlier via the real-schema parse path, so reaching here
+        // implies `config.strict === false`.
         const secondParse = slimSchema.safeParse(fixedData)
         const finalData = secondParse.success ? secondParse.data : fixedData
-
-        if ((config.strict ?? true) === false) {
-          return {
-            data: finalData as Form,
-            errors: undefined,
-            success: true,
-            formKey: _formKey,
-          }
-        }
-
-        // Strict mode: if the second parse succeeded, the fix-up loop
-        // reconciled the data and the issues from the first parse no
-        // longer apply. Report success. Only surface the first-parse
-        // issues when the fix-up couldn't resolve them.
-        if (secondParse.success) {
-          return {
-            data: finalData as Form,
-            errors: undefined,
-            success: true,
-            formKey: _formKey,
-          }
-        }
-
         return {
           data: finalData as Form,
-          errors: zodIssuesToValidationErrors(error.issues, _formKey),
-          success: false,
+          errors: undefined,
+          success: true,
           formKey: _formKey,
         }
       },
@@ -748,7 +820,13 @@ export function zodAdapter<
 
         async function runAsync(): Promise<ValidationResponse<GetValueFormType>> {
           if (path === undefined) {
-            const { success, data: successData, error } = await _zodSchema.safeParseAsync(data)
+            let result: ReturnType<typeof _zodSchema.safeParse>
+            try {
+              result = await _zodSchema.safeParseAsync(data)
+            } catch (err) {
+              return validatorThrewResponse(err, [])
+            }
+            const { success, data: successData, error } = result
             return success
               ? { data: successData, success, errors: undefined, formKey: _formKey }
               : {
@@ -764,7 +842,13 @@ export function zodAdapter<
           // async side effects on a value only one branch should see.
           const accumulatedErrors: z.ZodError<unknown>[] = []
           for (const nestedSchema of nestedZodSchemas) {
-            const { data: successData, success, error } = await nestedSchema.safeParseAsync(data)
+            let result: ReturnType<typeof nestedSchema.safeParse>
+            try {
+              result = await nestedSchema.safeParseAsync(data)
+            } catch (err) {
+              return validatorThrewResponse(err, path)
+            }
+            const { data: successData, success, error } = result
             if (!success) {
               accumulatedErrors.push(error)
               continue
@@ -772,6 +856,37 @@ export function zodAdapter<
             return { data: successData, errors: undefined, success: true, formKey: _formKey }
           }
           return aggregatedFailure(accumulatedErrors)
+        }
+
+        // User code inside `z.preprocess` / `.refine` / `.transform`
+        // can throw (sync) or reject (async). Zod does NOT wrap these
+        // into issues; they propagate out of `safeParseAsync` as a
+        // real throw / rejection. Without this catch the throw would
+        // bubble through `validateAtPath` into the runtime's submit /
+        // change-mode pipelines as either a `submitError`
+        // (handleSubmit) or an unhandled rejection
+        // (scheduleFieldValidation), and the consumer would never see
+        // a path-scoped error message. Mirrors v4's
+        // `validatorThrewResponse` (`zod-v4/adapter.ts:727-746`).
+        function validatorThrewResponse(
+          err: unknown,
+          errPath: Path
+        ): ValidationResponse<GetValueFormType> {
+          const message =
+            err instanceof Error ? err.message : typeof err === 'string' ? err : 'Validator threw'
+          return {
+            data: undefined,
+            errors: [
+              {
+                message,
+                path: [...errPath],
+                formKey: _formKey,
+                code: AttaformErrorCode.ValidatorThrew,
+              },
+            ],
+            success: false,
+            formKey: _formKey,
+          }
         }
 
         function nestedSchemasAtPath(p: Path): z.ZodTypeAny[] {

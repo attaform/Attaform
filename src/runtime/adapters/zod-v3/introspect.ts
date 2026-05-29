@@ -366,6 +366,194 @@ export function isCoercePrimitive(schema: z.ZodTypeAny): boolean {
   return readDef(schema)?.coerce === true
 }
 
+/**
+ * True iff a `ZodEffects` carries an `async` predicate.
+ *
+ * Detection asymmetry vs v4 (intrinsic to v3's runtime model):
+ *
+ *  - `.transform(asyncFn)` and `z.preprocess(asyncFn, …)` store the
+ *    user fn directly at `_def.effect.transform` — its
+ *    `constructor.name === 'AsyncFunction'` is the standard runtime
+ *    signal and matches v4's `isAsyncCheck` shape.
+ *  - `.refine(asyncFn, …)` wraps the user predicate inside a sync
+ *    `(val, ctx) => { const result = check(val); if (result
+ *    instanceof Promise) return result.then(…) }` closure — the
+ *    wrapper's `constructor.name` is always `'Function'`, and the
+ *    user fn is captured in the closure with no static accessor.
+ *    Async-ness is observable only at parse time (via the
+ *    "Async refinement encountered during synchronous parse" throw).
+ *
+ * So this predicate reliably flags **async transforms / preprocesses
+ * only**. For refinement effects it returns `false` regardless of the
+ * underlying user fn's async-ness — callers must combine it with
+ * `containsAsyncRefine` (which is conservative, treating every
+ * refinement effect as potentially async) and the try-parse fallback
+ * inside `stripAsyncChecks` to handle refine-side async detection.
+ */
+export function isAsyncEffect(schema: z.ZodTypeAny): boolean {
+  const def = readDef(schema)
+  const effect = def?.effect
+  if (effect === undefined) return false
+  // Refinement wrappers are always sync at the outer layer; the user
+  // fn lives in the closure and isn't statically observable.
+  if (effect.type === 'refinement') return false
+  const fn = effect.transform
+  if (typeof fn !== 'function') return false
+  return (fn as { constructor: { name: string } }).constructor.name === 'AsyncFunction'
+}
+
+/**
+ * True iff the v3 schema tree carries a `.refine` anywhere — sync or
+ * async. Conservative by design: v3's `.refine` wraps the user
+ * predicate inside a sync closure (see `isAsyncEffect`), so we cannot
+ * tell sync from async without invoking the wrapper. Every refinement
+ * effect counts as "potentially async" so the runtime never misses
+ * the post-mount async pass.
+ *
+ * Drives the adapter's `needsAsyncValidation` together with
+ * `containsAsyncTransform`. The strict-mode `getDefaultValues` path
+ * pairs this conservative flag with a try-parse fallback inside
+ * `stripAsyncChecks`: when the sync parse throws the "Async
+ * refinement encountered" error, the stripped tree drops every
+ * `ZodEffects` (no static sync/async split possible) and the parse
+ * retries to surface container / leaf-check seeds.
+ *
+ * Cost on pure-sync-refine schemas: one extra post-mount async pass
+ * (a `safeParseAsync` of identical shape to the sync parse). No
+ * observable consumer-side error semantics change beyond timing.
+ *
+ * Mirrors `zod-v4/introspect.ts:404 containsAsyncRefine` in role; the
+ * v4 walker is exact (per-check `isAsyncCheck`), the v3 walker is
+ * conservative. Same name preserved so Phase 12's
+ * `createAbstractSchema` factory can fold both adapters' surfaces
+ * together.
+ */
+export function containsAsyncRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
+  return walkForAsync(schema, 'refinement', seen ?? new WeakSet<object>())
+}
+
+/**
+ * True iff the v3 schema tree carries an `async` `.transform` or
+ * `z.preprocess`. Statically accurate — the user's async fn is stored
+ * directly at `_def.effect.transform`, and `isAsyncEffect` reads its
+ * `constructor.name` exactly like v4's `isAsyncCheck`.
+ *
+ * Gates the strict `getDefaultValues` path independently of
+ * `containsAsyncRefine`: async transforms cannot be stripped because
+ * the transform's output shape is load-bearing for the inner schema's
+ * input, so the strict pass skips entirely and defers to the
+ * post-mount `safeParseAsync` pass.
+ *
+ * Mirrors `zod-v4/introspect.ts:612 containsAsyncTransform`.
+ */
+export function containsAsyncTransform(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
+  return walkForAsync(schema, 'transform-or-preprocess', seen ?? new WeakSet<object>())
+}
+
+type AsyncWalkTarget = 'refinement' | 'transform-or-preprocess'
+
+function walkForAsync(
+  schema: z.ZodTypeAny,
+  target: AsyncWalkTarget,
+  visited: WeakSet<object>
+): boolean {
+  const candidate = schema as unknown
+  if (typeof candidate !== 'object' || candidate === null) return false
+  if (visited.has(candidate)) return false
+  visited.add(candidate)
+
+  // ZodEffects: refinement effects count as "potentially async"
+  // unconditionally (v3 wraps the user fn in a sync closure); transform
+  // / preprocess effects require an actual AsyncFunction at the user
+  // payload (statically detectable). Recurse through the source schema
+  // either way so nested effects deeper in the tree still surface.
+  if (isZodSchemaType(schema, 'ZodEffects')) {
+    const kind = getEffectsKind(schema)
+    if (target === 'refinement' && kind === 'refinement') return true
+    if (
+      target === 'transform-or-preprocess' &&
+      (kind === 'transform' || kind === 'preprocess') &&
+      isAsyncEffect(schema)
+    ) {
+      return true
+    }
+    const inner = unwrapEffectsSource(schema)
+    return inner !== undefined && walkForAsync(inner, target, visited)
+  }
+
+  // Transparent wrappers: recurse without flagging.
+  if (
+    isZodSchemaType(schema, 'ZodOptional') ||
+    isZodSchemaType(schema, 'ZodNullable') ||
+    isZodSchemaType(schema, 'ZodDefault') ||
+    isZodSchemaType(schema, 'ZodCatch') ||
+    isZodSchemaType(schema, 'ZodReadonly')
+  ) {
+    const inner = unwrapInner(schema)
+    return inner !== undefined && walkForAsync(inner, target, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodBranded')) {
+    const inner = unwrapBranded(schema)
+    return inner !== undefined && walkForAsync(inner, target, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodLazy')) {
+    const inner = unwrapLazy(schema)
+    return inner !== undefined && walkForAsync(inner, target, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodPipeline')) {
+    const inSide = unwrapPipeIn(schema)
+    if (inSide !== undefined && walkForAsync(inSide, target, visited)) return true
+    const outSide = unwrapPipeOut(schema)
+    if (outSide !== undefined && walkForAsync(outSide, target, visited)) return true
+    return false
+  }
+
+  // Container types: recurse into children.
+  if (isZodSchemaType(schema, 'ZodObject')) {
+    for (const sub of Object.values(getObjectShape(schema))) {
+      if (walkForAsync(sub, target, visited)) return true
+    }
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodArray')) {
+    const elem = getArrayElement(schema)
+    return elem !== undefined && walkForAsync(elem, target, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodTuple')) {
+    for (const it of getTupleItems(schema)) {
+      if (walkForAsync(it, target, visited)) return true
+    }
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
+    for (const opt of getUnionOptions(schema)) {
+      if (walkForAsync(opt, target, visited)) return true
+    }
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodIntersection')) {
+    const left = getIntersectionLeft(schema)
+    if (left !== undefined && walkForAsync(left, target, visited)) return true
+    const right = getIntersectionRight(schema)
+    if (right !== undefined && walkForAsync(right, target, visited)) return true
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodRecord')) {
+    const keyType = getRecordKeyType(schema)
+    if (keyType !== undefined && walkForAsync(keyType, target, visited)) return true
+    const valueType = getRecordValueType(schema)
+    if (valueType !== undefined && walkForAsync(valueType, target, visited)) return true
+    return false
+  }
+  if (isZodSchemaType(schema, 'ZodSet')) {
+    const elem = getSetValueType(schema)
+    return elem !== undefined && walkForAsync(elem, target, visited)
+  }
+
+  // Leaves and unrecognised wrappers: nothing to descend into.
+  return false
+}
+
 /** ZodPipeline input schema. */
 export function unwrapPipeIn(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)

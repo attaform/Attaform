@@ -187,6 +187,39 @@ describe('zod v3 adapter — getDefaultValues', () => {
     expect((result.data as { tags: Set<string> }).tags.size).toBe(0)
   })
 
+  it('needsAsyncValidation: true for a schema with an async transform', () => {
+    const schema = z.object({
+      name: z.string().transform(async (v) => Promise.resolve(`${v}!`)),
+    })
+    const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+    expect(adapter.needsAsyncValidation?.()).toBe(true)
+  })
+
+  it('needsAsyncValidation: true for a schema with any refinement (sync or async, conservative)', () => {
+    // v3 can't statically distinguish a sync refine from an async one
+    // (`.refine` wraps the user fn in a sync closure). The flag is
+    // intentionally conservative so the post-mount async pass always
+    // fires when refines exist.
+    const asyncRefine = z.object({
+      name: z.string().refine(async () => Promise.resolve(true), 'unreachable'),
+    })
+    const syncRefine = z.object({
+      name: z.string().refine(() => true, 'unreachable'),
+    })
+    expect(zodAdapter(asyncRefine)('a', { maxRecursionDepth: 64 }).needsAsyncValidation?.()).toBe(
+      true
+    )
+    expect(zodAdapter(syncRefine)('b', { maxRecursionDepth: 64 }).needsAsyncValidation?.()).toBe(
+      true
+    )
+  })
+
+  it('needsAsyncValidation: false for a schema with no ZodEffects at all', () => {
+    const schema = z.object({ name: z.string(), age: z.number() })
+    const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+    expect(adapter.needsAsyncValidation?.()).toBe(false)
+  })
+
   it('async-refine schema regression: form mounts cleanly via lax fallback', () => {
     // Pin: schemas containing async refines must not crash the
     // adapter at construction. The sync `safeParse` throws on the

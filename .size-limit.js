@@ -381,7 +381,24 @@ export default [
     // / default-values / strip (3 sites) / path-walker / fingerprint /
     // walkForMeta / slim-primitives (SF6). Measured at 53.69 KB; the
     // 54 KB symmetry with zod-v3.mjs maintained without a bump.
-    limit: '54 KB',
+    //
+    // Raised 54 → 55 KB on the adapter-factory-part-2 branch (Phase 12
+    // part 2 of the audit-remediation series, ADAPT-D2 + D3 + D5).
+    // The three inner walkers (deriveDefault / slimPrimitives /
+    // walkPathSegments) lifted into `core/walk-*` modules dispatched
+    // through `SchemaIntrospector`. Net structure: v3 + v4 collectively
+    // shrunk by ~600 LOC and gain a shared `core/walk-derive-default.ts`
+    // (~440 LOC) + `core/walk-slim-primitives.ts` (~270 LOC) +
+    // `core/walk-path-segments.ts` (~170 LOC) + `core/merge-deep.ts`
+    // (~40 LOC), plus extension of the SchemaIntrospector contract by
+    // 19 walker-accessor members and a `walker-introspector.ts` const
+    // file per adapter. The shared-chunk allocator pulls a chunk of
+    // the walker infrastructure into v4's closure; combined with the
+    // catch-precedence service knob and the `peelEmbeddedDefault` /
+    // `hasDeclaredDefaultInChain` helpers + chain-peel pre-check at
+    // every node visit, that adds ~600 B to v4's gzipped surface.
+    // Measured at 54.57 KB.
+    limit: '55 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

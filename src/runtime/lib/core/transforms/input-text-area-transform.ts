@@ -1,56 +1,17 @@
 import type {
-  AttributeNode,
   CompoundExpressionNode,
   DirectiveNode,
-  ExpressionNode,
   NodeTransform,
   PlainElementNode,
-  RootNode,
   SourceLocation,
-  TemplateChildNode,
 } from '@vue/compiler-core'
 import { createCompoundExpression, NodeTypes } from '@vue/compiler-core'
-
-type SummarizedProp = {
-  key: string
-  value: string | CompoundExpressionNode['children']
-}
-
-function getSummarizedProps(node: RootNode | TemplateChildNode) {
-  if (!('props' in node)) return []
-  const props = node.props
-
-  const summarizedProps = props.reduce<SummarizedProp[]>((acc, currProp) => {
-    if (currProp.type === NodeTypes.ATTRIBUTE) {
-      const key = currProp.name
-      const value = currProp.value?.content ?? ''
-      return [...acc, { key, value: renderAsStatic(value, true) }]
-    }
-
-    if (currProp.exp === undefined) return acc
-    const key = currProp.arg
-      ? getSummarizedPropValue(currProp.arg)
-      : renderAsStatic(currProp.name, true)
-    if (typeof key !== 'string') return acc // key must always be a string
-    const value = getSummarizedPropValue(currProp.exp)
-
-    return [...acc, { key, value }]
-  }, [])
-
-  return summarizedProps
-}
-
-function renderAsStatic(val: string, isStatic: boolean) {
-  return isStatic ? `"${val}"` : val
-}
-
-function getSummarizedPropValue(exp: ExpressionNode): SummarizedProp['value'] {
-  if (exp.type === NodeTypes.SIMPLE_EXPRESSION) {
-    return renderAsStatic(exp.content, exp.isStatic)
-  }
-
-  return exp.children
-}
+import {
+  getSummarizedProps,
+  isExactKey,
+  removePropsByName,
+  type SummarizedProp,
+} from './_shared-props'
 
 function generateEqualityExpression(
   registerValue: SummarizedProp['value'],
@@ -110,36 +71,6 @@ function generateEqualityExpression(
     ...scalarTargetArr,
     ')))',
   ]
-}
-
-function removePropsByName(props: (AttributeNode | DirectiveNode)[], propNames: string[]) {
-  const removePropIndices: number[] = []
-  for (let index = 0; index < props.length; index++) {
-    const prop = props[index]
-    if (!prop) continue
-
-    if (
-      propNames.includes(prop.name) ||
-      ('arg' in prop && prop.arg && 'content' in prop.arg && propNames.includes(prop.arg.content))
-    ) {
-      removePropIndices.push(index) // store index to remove later, don't mutate variable while looping through it
-    }
-  }
-
-  for (const index of removePropIndices.sort((a, z) => z - a)) {
-    props.splice(index, 1) // index runs from high to low, so this works
-  }
-}
-
-// Exact prop-name match. Pre-rewrite used .includes('register') / .includes('value') /
-// .includes('type') which false-positived on any user prop whose name contained those
-// substrings (e.g. `data-register-id`, `valueFoo`, `prototype`, `:registerField`).
-function isExactKey(summarizedKey: string, name: string): boolean {
-  // Summarized keys come in three shapes depending on prop type:
-  //   attribute       -> "name"          (from getSummarizedProps)
-  //   v-bind:name="x" -> "\"name\""      (quoted via renderAsStatic)
-  //   static v-prefix -> "\"name\""
-  return summarizedKey === name || summarizedKey === `"${name}"`
 }
 
 /**

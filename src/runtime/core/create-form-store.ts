@@ -322,6 +322,15 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly defaultValuesFactory: Ref<(() => unknown | Promise<unknown>) | undefined>
   /**
+   * `true` when this store carries an SSR prefetch queue (server path
+   * where `state.activate()` must enqueue intent before deciding
+   * whether to fire). The flag lets `buildFormApi` skip the lazy
+   * activation gate for forms with no factory AND no SSR prefetch —
+   * the common client-side case where `gated()` is otherwise pure
+   * reactive overhead on every public method call.
+   */
+  readonly hasSsrPrefetch: boolean
+  /**
    * `true` once the form's effective defaults have been applied —
    * sync `defaultValues` at construction, or async factory whose
    * settle completed. Stays `false` for dormant lazy forms until they
@@ -3425,6 +3434,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     hydrating,
     hydrateError,
     defaultValuesFactory,
+    hasSsrPrefetch: ssrPrefetch !== undefined,
     defaultsResolved,
     activated,
     activationPromise,

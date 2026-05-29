@@ -890,8 +890,20 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // so the first reactive interaction kicks the captured factory. The
   // activation promise is intentionally ignored — recursive activates,
   // factory rejections, and SSR awaiting are coordinated on `state`.
+  //
+  // Fast path: forms with no `defaultValuesFactory` AND no SSR
+  // prefetch queue have nothing for `state.activate()` to do. The
+  // factory is captured exactly once at `useAbstractForm` time
+  // (BEFORE this closure runs), so absence here means absence
+  // forever; SSR prefetch is bound at `buildFreshState` and is
+  // never set client-side. Short-circuiting `gated` to identity in
+  // that combined case saves one closure allocation per public-
+  // method binding AND one reactive ref read per method call, which
+  // adds up across the ~30 gated methods in the API surface.
+  const needsLazyGate = state.defaultValuesFactory.value !== undefined || state.hasSsrPrefetch
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function gated<F extends (...args: any[]) => any>(fn: F): F {
+    if (!needsLazyGate) return fn
     return ((...args: Parameters<F>) => {
       void state.activate()
       return fn(...args)

@@ -1,5 +1,8 @@
 import { computed, type ComputedRef } from 'vue'
-import { __DEV__ } from './dev'
+import {
+  buildCallableReadonlySnapshotProxy,
+  type CallableReadonlySnapshotProxy,
+} from './callable-readonly-snapshot-proxy'
 import type { FormStatus, WizardStatusesProxy } from '../types/types-wizard'
 
 /**
@@ -26,9 +29,10 @@ import type { FormStatus, WizardStatusesProxy } from '../types/types-wizard'
  *     record so `JSON.stringify(wizard.statuses)` serializes the
  *     active status set.
  *
- * Topology note: one level deep (no nested chaining), so this is
- * roughly half the LOC of `form.values`' proxy — no path-walking,
- * no canonicalisation, no recursive descent.
+ * Topology note: one level deep (no nested chaining), so this surface
+ * is roughly half the bespoke logic of `form.values`' proxy — no
+ * path-walking, no canonicalisation, no recursive descent. The
+ * shared trap layer lives in `buildCallableReadonlySnapshotProxy`.
  */
 export function buildWizardStatusesProxy<S extends Record<string, FormStatus>>(
   statuses: Record<keyof S, ComputedRef<FormStatus>>
@@ -41,79 +45,16 @@ export function buildWizardStatusesProxy<S extends Record<string, FormStatus>>(
     return result as S
   })
 
-  const target = (() => {}) as unknown as WizardStatusesProxy<S>
-
-  const proxyToString = (): string => JSON.stringify(snapshot.value)
-  const proxyToPrimitive = (hint: string): string | number =>
-    hint === 'number' ? NaN : proxyToString()
-
-  return new Proxy(target, {
-    apply(_, __, args: unknown[]): unknown {
-      const key = args[0] as string | undefined
-      if (key === undefined) return snapshot.value
-      const computedEntry = statuses[key as keyof S] as ComputedRef<FormStatus> | undefined
-      if (computedEntry === undefined) return undefined
-      return computedEntry.value
-    },
-    get(_, key: string | symbol): unknown {
-      if (typeof key === 'symbol') {
-        if (key === Symbol.toPrimitive) return proxyToPrimitive
-        return Reflect.get(target, key)
-      }
-      if (key === 'toJSON') return () => snapshot.value
-      if (key === 'toString') return proxyToString
-      if (key === 'valueOf')
-        return function (this: unknown): unknown {
-          return this
-        }
-      const computedEntry = statuses[key as keyof S] as ComputedRef<FormStatus> | undefined
-      if (computedEntry === undefined) return undefined
-      return computedEntry.value
-    },
-    has(_, key: string | symbol): boolean {
-      if (typeof key === 'symbol') return Reflect.has(target, key)
-      return Object.hasOwn(statuses, key)
-    },
-    ownKeys(): ArrayLike<string | symbol> {
-      return Object.keys(statuses)
-    },
-    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
-      if (typeof key === 'symbol') return undefined
-      const computedEntry = statuses[key as keyof S] as ComputedRef<FormStatus> | undefined
-      if (computedEntry === undefined) return undefined
-      return {
-        configurable: true,
-        enumerable: true,
-        writable: false,
-        value: computedEntry.value,
-      }
-    },
-    set(_, key) {
-      if (__DEV__) {
-        console.warn(
-          `[attaform] wizard.statuses is read-only — write to "${String(key)}" was ignored. Statuses derive from each form's meta; mutate the underlying form instead.`
-        )
-      }
-      return true
-    },
-    deleteProperty(_, key) {
-      if (__DEV__) {
-        console.warn(
-          `[attaform] wizard.statuses is read-only — delete of "${String(key)}" was ignored.`
-        )
-      }
-      return true
-    },
-    // Mirrors set / delete: warn in dev and return `true` (returning
-    // `false` would throw in strict mode). Previous `() => true`
-    // claimed success silently.
-    defineProperty(_, key) {
-      if (__DEV__) {
-        console.warn(
-          `[attaform] wizard.statuses is read-only — define of "${String(key)}" was ignored.`
-        )
-      }
-      return true
-    },
-  })
+  return buildCallableReadonlySnapshotProxy<S>({
+    surface: 'wizard.statuses',
+    snapshot: () => snapshot.value,
+    resolveKey: (key) => (statuses[key as keyof S] as ComputedRef<FormStatus> | undefined)?.value,
+    // Single-key callable form. Strings stringify naturally; non-
+    // string args coerce via `String(arg)` and miss the lookup, which
+    // resolves to `undefined` (consistent with property-access).
+    resolveCall: (arg) =>
+      (statuses[String(arg) as keyof S] as ComputedRef<FormStatus> | undefined)?.value,
+    ownKeys: () => Object.keys(statuses),
+    hasKey: (key) => Object.hasOwn(statuses, key),
+  }) as WizardStatusesProxy<S> & CallableReadonlySnapshotProxy<S>
 }

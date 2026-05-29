@@ -1,5 +1,8 @@
 import { computed, readonly, type Ref } from 'vue'
-import { __DEV__ } from './dev'
+import {
+  buildCallableReadonlySnapshotProxy,
+  type CallableReadonlySnapshotProxy,
+} from './callable-readonly-snapshot-proxy'
 import { canonicalizePath, type Path } from './paths'
 import type { GenericForm } from '../types/types-core'
 
@@ -55,35 +58,27 @@ export type ValuesProxy<F> = ((path?: string | Path) => unknown) & Readonly<F>
  *     (`Symbol(__v_isRef)`, `Symbol(__v_isReadonly)`, etc.) and
  *     iteration symbols resolve against the function target, not
  *     the schema-aware branch.
+ *
+ * Built atop `buildCallableReadonlySnapshotProxy`: the surface only
+ * supplies the path-descent / live-keys hooks; the trap topology
+ * (apply / get / has / ownKeys / warn-and-noop writes) is shared with
+ * `wizard.statuses`.
  */
 export function buildValuesProxy<F extends GenericForm>(form: Ref<F>): ValuesProxy<F> {
   const inner = computed(() => readonly(form.value))
 
-  // Arrow-function target: callable (typeof === 'function', `apply`
-  // trap fires) but no non-configurable `prototype` to satisfy the
-  // ownKeys Proxy invariant.
-  const target = (() => {}) as unknown as ValuesProxy<F>
-
-  // Coerce-to-primitive: Vue's `toDisplayString` (powering `{{ expr }}`)
-  // falls back to `String(val)` whenever `typeof val === 'function'`,
-  // which is true for our callable-proxy target. Without this trap,
-  // `{{ form.values }}` lands at `Function.prototype.toString` and
-  // renders `"() => {}"`. JSON.stringify already works via `toJSON`
-  // below; this trap reaches the SAME data through the template path
-  // (and `String(form.values)`), so the two surfaces agree.
-  const valuesToString = (): string => JSON.stringify(inner.value)
-  const valuesToPrimitive = (hint: string): string | number =>
-    hint === 'number' ? NaN : valuesToString()
-
-  return new Proxy(target, {
-    apply(_, __, args: unknown[]): unknown {
-      const arg = args[0] as string | Path | undefined
-      // No-arg: return the whole form value (the readonly root proxy).
-      if (arg === undefined) return inner.value
-      // Dynamic path: walk segments through the readonly proxy. Each
-      // step reads through the proxy's own get traps so dependency
-      // tracking propagates at every level.
-      const { segments } = canonicalizePath(arg)
+  return buildCallableReadonlySnapshotProxy<F>({
+    surface: 'form.values',
+    snapshot: () => inner.value as F,
+    // Read through the readonly proxy at access time so Vue's
+    // dependency tracking lands inside the consumer's active effect
+    // — `inner.value[key]` is what triggers per-key tracking.
+    resolveKey: (key) => (inner.value as Record<string, unknown>)[key],
+    // Dynamic path: walk segments through the readonly proxy. Each
+    // step reads through the proxy's own get traps so dependency
+    // tracking propagates at every level.
+    resolveCall: (arg) => {
+      const { segments } = canonicalizePath(arg as string | Path)
       let cursor: unknown = inner.value
       for (const seg of segments) {
         if (cursor === null || cursor === undefined) return undefined
@@ -91,75 +86,12 @@ export function buildValuesProxy<F extends GenericForm>(form: Ref<F>): ValuesPro
       }
       return cursor
     },
-    get(_, key: string | symbol): unknown {
-      // Symbol passthrough — Vue's reactivity sigils resolve here.
-      // `Symbol.toPrimitive` is the one symbol we intercept: it's
-      // what `String(proxy)` / template-literal coercion / Vue's
-      // `toDisplayString` end up calling for callables.
-      if (typeof key === 'symbol') {
-        if (key === Symbol.toPrimitive) return valuesToPrimitive
-        return Reflect.get(target, key)
-      }
-      // toJSON: serialise the inner readonly proxy. JSON.stringify
-      // checks for toJSON before checking typeof, so the callable
-      // proxy serialises to the actual form data.
-      if (key === 'toJSON') return () => inner.value
-      // toString / valueOf: direct method-call coercion. Mirrors the
-      // Symbol.toPrimitive path so `form.values.toString()` and
-      // `String(form.values)` produce the same JSON snapshot.
-      if (key === 'toString') return valuesToString
-      if (key === 'valueOf')
-        return function (this: unknown): unknown {
-          return this
-        }
-      // Property access: delegate to the readonly proxy. Vue's
-      // dependency tracking captures the read inside the consumer's
-      // active effect.
-      return (inner.value as Record<string, unknown>)[key]
-    },
-    has(_, key: string | symbol): boolean {
-      if (typeof key === 'symbol') return Reflect.has(target, key)
-      return Reflect.has(inner.value as object, key)
-    },
-    ownKeys(): ArrayLike<string | symbol> {
-      return Reflect.ownKeys(inner.value as object)
-    },
-    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+    ownKeys: () => Reflect.ownKeys(inner.value as object) as string[],
+    hasKey: (key) => Reflect.has(inner.value as object, key),
+    describeKey: (key) => {
       const desc = Reflect.getOwnPropertyDescriptor(inner.value as object, key)
       if (desc !== undefined) desc.configurable = true
       return desc
     },
-    // Match Vue's `readonly()` semantics: writes warn (in dev) and
-    // silently noop (return true). Returning false would throw
-    // TypeError in strict-mode consumers, surprising users who
-    // assigned through the proxy and expected it to be ignored.
-    set(_, key) {
-      if (__DEV__) {
-        console.warn(
-          `[attaform] form.values is read-only — write to "${String(key)}" was ignored. Use form.setValue / the directive / field-array helpers instead.`
-        )
-      }
-      return true
-    },
-    deleteProperty(_, key) {
-      if (__DEV__) {
-        console.warn(
-          `[attaform] form.values is read-only — delete of "${String(key)}" was ignored.`
-        )
-      }
-      return true
-    },
-    // `Object.defineProperty(form.values, key, …)` used to silently
-    // return `true` while no property landed — claimed success on a
-    // call that did nothing. Match the set / delete contract: warn in
-    // dev and still return `true` so strict callers don't throw.
-    defineProperty(_, key) {
-      if (__DEV__) {
-        console.warn(
-          `[attaform] form.values is read-only — define of "${String(key)}" was ignored.`
-        )
-      }
-      return true
-    },
-  })
+  }) as ValuesProxy<F> & CallableReadonlySnapshotProxy<F>
 }

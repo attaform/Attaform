@@ -434,38 +434,105 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out
   })
 
-  const allValues = computed<Readonly<Record<FormKey, unknown>>>(() => {
-    const out: Record<FormKey, unknown> = {}
-    for (const step of compiledSteps.value) {
-      const source = step.form as unknown as StatusSourceForm
-      out[step.key] = source.values
-    }
-    return out
-  })
+  // Per-key memoization for `allValues` / `allErrors`. One field edit
+  // on form A only invalidates form A's slot; templates reading
+  // `wizard.allErrors.formB` stay cached. Mirrors `statusCache` below
+  // — the audit's COMP-W2 finding flagged the whole-record
+  // re-evaluation each per-step computed used to do.
+  const valuesCache = new Map<FormKey, ComputedRef<unknown>>()
+  function valuesFor(form: AnyForm): ComputedRef<unknown> {
+    const cached = valuesCache.get(form.key)
+    if (cached !== undefined) return cached
+    const source = form as unknown as StatusSourceForm
+    const computedValues = computed(() => source.values)
+    valuesCache.set(form.key, computedValues)
+    return computedValues
+  }
 
-  const allErrors = computed<Readonly<Record<FormKey, readonly AggregateError[]>>>(() => {
-    const out: Record<FormKey, readonly AggregateError[]> = {}
-    for (const step of compiledSteps.value) {
-      const source = step.form as unknown as StatusSourceForm
-      const list: AggregateError[] = []
-      const store = registry.forms.get(step.key)
+  const errorsCache = new Map<FormKey, ComputedRef<readonly AggregateError[]>>()
+  function errorsFor(form: AnyForm): ComputedRef<readonly AggregateError[]> {
+    const cached = errorsCache.get(form.key)
+    if (cached !== undefined) return cached
+    const source = form as unknown as StatusSourceForm
+    const computedErrors = computed<readonly AggregateError[]>(() => {
+      const store = registry.forms.get(form.key)
       const resolved = store?.defaultsResolved.value === true
-      if (resolved) {
-        const errors = source.meta?.errors ?? []
-        for (const err of errors) {
-          const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
-            formKey: step.key,
-            path: err.path,
-            message: err.message,
-          }
-          if (err.code !== undefined) entry.code = err.code
-          list.push(entry)
+      if (!resolved) return []
+      const errors = source.meta?.errors ?? []
+      const list: AggregateError[] = []
+      for (const err of errors) {
+        const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
+          formKey: form.key,
+          path: err.path,
+          message: err.message,
         }
+        if (err.code !== undefined) entry.code = err.code
+        list.push(entry)
       }
-      out[step.key] = list
-    }
-    return out
-  })
+      return list
+    })
+    errorsCache.set(form.key, computedErrors)
+    return computedErrors
+  }
+
+  // Identity-stable Proxy surfaces backed by the per-key caches.
+  // `get` and `getOwnPropertyDescriptor` delegate to the per-key
+  // ComputedRef, so reads track only the form they target; `ownKeys`
+  // and `has` use `formsRecord` so iteration order matches the
+  // compiled step list.
+  const allValues = new Proxy({} as Record<FormKey, unknown>, {
+    get(_, key: string | symbol): unknown {
+      if (typeof key !== 'string') return undefined
+      const form = formsRecord.value[key]
+      if (form === undefined) return undefined
+      return valuesFor(form).value
+    },
+    has(_, key: string | symbol): boolean {
+      if (typeof key !== 'string') return false
+      return formsRecord.value[key] !== undefined
+    },
+    ownKeys(): ArrayLike<string | symbol> {
+      return Object.keys(formsRecord.value)
+    },
+    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsRecord.value[key]
+      if (form === undefined) return undefined
+      return {
+        configurable: true,
+        enumerable: true,
+        writable: false,
+        value: valuesFor(form).value,
+      }
+    },
+  }) as Readonly<Record<FormKey, unknown>>
+
+  const allErrors = new Proxy({} as Record<FormKey, readonly AggregateError[]>, {
+    get(_, key: string | symbol): readonly AggregateError[] | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsRecord.value[key]
+      if (form === undefined) return undefined
+      return errorsFor(form).value
+    },
+    has(_, key: string | symbol): boolean {
+      if (typeof key !== 'string') return false
+      return formsRecord.value[key] !== undefined
+    },
+    ownKeys(): ArrayLike<string | symbol> {
+      return Object.keys(formsRecord.value)
+    },
+    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsRecord.value[key]
+      if (form === undefined) return undefined
+      return {
+        configurable: true,
+        enumerable: true,
+        writable: false,
+        value: errorsFor(form).value,
+      }
+    },
+  }) as Readonly<Record<FormKey, readonly AggregateError[]>>
 
   // --- Statuses proxy + seed --------------------------------------------
 
@@ -1159,12 +1226,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return count.value
     },
     statuses,
-    get allValues(): Readonly<Record<FormKey, unknown>> {
-      return allValues.value
-    },
-    get allErrors(): Readonly<Record<FormKey, readonly AggregateError[]>> {
-      return allErrors.value
-    },
+    allValues,
+    allErrors,
     get progress(): number {
       return progress.value
     },

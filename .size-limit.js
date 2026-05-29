@@ -398,7 +398,19 @@ export default [
     // `hasDeclaredDefaultInChain` helpers + chain-peel pre-check at
     // every node visit, that adds ~600 B to v4's gzipped surface.
     // Measured at 54.57 KB.
-    limit: '55 KB',
+    //
+    // Raised 55 → 56 KB on the file-extraction branch (Phase 17 of
+    // the audit-remediation series). Three real fixes ship in this
+    // phase that add bytes: PASS2-13 attaches a `pagehide` flush
+    // listener for tab-close edit survival, PASS2-S2 adds the
+    // per-write generation counter + drain loop to
+    // `createDebouncedWriter`, and CORE-P3 collapses
+    // `form.meta`'s 28 computed wrappers to inline getters (slightly
+    // less compressible). The structural extractions
+    // (variant-memory, array-bookkeeping, DU-stubs, ARIA, file,
+    // lifecycle, wirePersistence) are net-neutral. Measured at
+    // 55.14 KB.
+    limit: '56 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -516,7 +528,14 @@ export default [
     // padding v4 to match — the v3 walker semantic asymmetry (sync
     // refines wrap an async-capable closure; v3 cannot statically
     // distinguish) is intrinsic to v3's runtime and won't reverse.
-    limit: '56 KB',
+    //
+    // Raised 56 → 57 KB on the file-extraction branch (Phase 17 of
+    // the audit-remediation series). Tracks the same three new fixes
+    // that pushed v4 from 55 → 56 KB: PASS2-13 `pagehide` flush,
+    // PASS2-S2 drain race fix in `createDebouncedWriter`, and
+    // CORE-P3 `form.meta` computed→getter collapse. Measured at
+    // 56.22 KB.
+    limit: '57 KB',
     gzip: true,
     ignore: ['zod', 'lodash-es'],
     modifyEsbuildConfig: asEsm,

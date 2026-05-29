@@ -233,6 +233,79 @@ export type DeepPartial<T> = T extends Primitive // Base case for primitive type
       : T
 
 /**
+ * Shared descent body backing `NestedType` and `NestedReadType`. The
+ * recursion is identical — segment-by-segment, distributing over
+ * union members via `KeyofUnion` / `ValueOfUnion`. The two walkers
+ * diverge only at the leaf:
+ *
+ * - `TaintArrayCrossings extends false` (`NestedType` mode): leaves
+ *   are returned untouched. Used by strict write-side APIs that need
+ *   the exact resolved type (`setValue`'s value parameter,
+ *   `form.fields.<path>`'s state map).
+ * - `TaintArrayCrossings extends true` (`NestedReadType` mode): leaves
+ *   are widened with `| undefined` whenever any segment in the walk
+ *   was numeric (array index). Reflects the runtime possibility of an
+ *   out-of-bounds read.
+ *
+ * `_Tainted` propagates the array-crossing under taint mode; under
+ * strict mode it stays `false` through every recursion arm. Both
+ * arms strip nullishness at the root (`_RootValue = NonNullable<…>`)
+ * — the prior `NestedType.FilterOutNullishTypesDuringRecursion` flag
+ * was vestigial, never overridden from the outside.
+ *
+ * Not part of the stable consumer surface — reach for `NestedType` or
+ * `NestedReadType` directly.
+ */
+export type NestedTypeBuilder<
+  RootValue,
+  FlattenedPath extends string,
+  TaintArrayCrossings extends boolean,
+  _Tainted extends boolean = false,
+  _RootValue = NonNullable<RootValue>,
+> =
+  IsObjectOrArray<_RootValue> extends false
+    ? never
+    : FlattenedPath extends `${infer Key}.${infer Rest}`
+      ? Key extends `${number}`
+        ? Key extends KeyofUnion<_RootValue>
+          ? NestedTypeBuilder<
+              ValueOfUnion<_RootValue, Key>,
+              Rest,
+              TaintArrayCrossings,
+              TaintArrayCrossings extends true ? true : _Tainted
+            >
+          : Key extends `${infer NumericKey extends number}`
+            ? NumericKey extends KeyofUnion<_RootValue>
+              ? NestedTypeBuilder<
+                  ValueOfUnion<_RootValue, NumericKey>,
+                  Rest,
+                  TaintArrayCrossings,
+                  TaintArrayCrossings extends true ? true : _Tainted
+                >
+              : never
+            : never
+        : Key extends KeyofUnion<_RootValue>
+          ? NestedTypeBuilder<ValueOfUnion<_RootValue, Key>, Rest, TaintArrayCrossings, _Tainted>
+          : never
+      : FlattenedPath extends `${number}`
+        ? FlattenedPath extends KeyofUnion<_RootValue>
+          ? TaintArrayCrossings extends true
+            ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
+            : ValueOfUnion<_RootValue, FlattenedPath>
+          : FlattenedPath extends `${infer NumericKey extends number}`
+            ? NumericKey extends KeyofUnion<_RootValue>
+              ? TaintArrayCrossings extends true
+                ? ValueOfUnion<_RootValue, NumericKey> | undefined
+                : ValueOfUnion<_RootValue, NumericKey>
+              : never
+            : never
+        : FlattenedPath extends KeyofUnion<_RootValue>
+          ? _Tainted extends true
+            ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
+            : ValueOfUnion<_RootValue, FlattenedPath>
+          : never
+
+/**
  * Resolve the type at a dotted-string path inside `RootValue`. Used
  * by the strict (write-side) APIs to derive the type at a path:
  *
@@ -245,47 +318,20 @@ export type DeepPartial<T> = T extends Primitive // Base case for primitive type
  * useful value type (vs. silently collapsing to `never` because
  * `keyof (A|B|C)` would be the intersection of all variants' keys).
  *
+ * Composed over `NestedTypeBuilder` with array-crossing tainting OFF,
+ * so leaves return their exact resolved type. The companion
+ * `NestedReadType` shares the same recursion body but enables
+ * tainting for read-side APIs.
+ *
  * TypeScript caps conditional-type recursion at around 50 levels;
  * paths deeper than that resolve to `never`. Real form schemas
  * never reach this depth.
  */
-export type NestedType<
+export type NestedType<RootValue, FlattenedPath extends string> = NestedTypeBuilder<
   RootValue,
-  FlattenedPath extends string,
-  FilterOutNullishTypesDuringRecursion extends boolean = true,
-  _RootValue = FilterOutNullishTypesDuringRecursion extends false
-    ? RootValue
-    : NonNullable<RootValue>,
-> =
-  IsObjectOrArray<_RootValue> extends false
-    ? never
-    : FlattenedPath extends `${infer Key}.${infer Rest}`
-      ? Key extends `${number}`
-        ? Key extends KeyofUnion<_RootValue>
-          ? NestedType<ValueOfUnion<_RootValue, Key>, Rest, FilterOutNullishTypesDuringRecursion>
-          : Key extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? NestedType<
-                  ValueOfUnion<_RootValue, NumericKey>,
-                  Rest,
-                  FilterOutNullishTypesDuringRecursion
-                >
-              : never
-            : never
-        : Key extends KeyofUnion<_RootValue>
-          ? NestedType<ValueOfUnion<_RootValue, Key>, Rest, FilterOutNullishTypesDuringRecursion>
-          : never
-      : FlattenedPath extends `${number}`
-        ? FlattenedPath extends KeyofUnion<_RootValue>
-          ? ValueOfUnion<_RootValue, FlattenedPath>
-          : FlattenedPath extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? ValueOfUnion<_RootValue, NumericKey>
-              : never
-            : never
-        : FlattenedPath extends KeyofUnion<_RootValue>
-          ? ValueOfUnion<_RootValue, FlattenedPath>
-          : never
+  FlattenedPath,
+  false
+>
 
 /**
  * Implementation-detail primitive-leaf marker used by `DeepPartial`
@@ -320,39 +366,11 @@ export type IsTuple<T extends readonly unknown[]> = number extends T['length'] ?
  * `register(path).innerRef` so the compile-time type honours the
  * runtime possibility of a missing array position.
  */
-export type NestedReadType<
+export type NestedReadType<RootValue, FlattenedPath extends string> = NestedTypeBuilder<
   RootValue,
-  FlattenedPath extends string,
-  _Tainted extends boolean = false,
-  _RootValue = NonNullable<RootValue>,
-> =
-  IsObjectOrArray<_RootValue> extends false
-    ? never
-    : FlattenedPath extends `${infer Key}.${infer Rest}`
-      ? Key extends `${number}`
-        ? Key extends KeyofUnion<_RootValue>
-          ? NestedReadType<ValueOfUnion<_RootValue, Key>, Rest, true>
-          : Key extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? NestedReadType<ValueOfUnion<_RootValue, NumericKey>, Rest, true>
-              : never
-            : never
-        : Key extends KeyofUnion<_RootValue>
-          ? NestedReadType<ValueOfUnion<_RootValue, Key>, Rest, _Tainted>
-          : never
-      : FlattenedPath extends `${number}`
-        ? FlattenedPath extends KeyofUnion<_RootValue>
-          ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
-          : FlattenedPath extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? ValueOfUnion<_RootValue, NumericKey> | undefined
-              : never
-            : never
-        : FlattenedPath extends KeyofUnion<_RootValue>
-          ? _Tainted extends true
-            ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
-            : ValueOfUnion<_RootValue, FlattenedPath>
-          : never
+  FlattenedPath,
+  true
+>
 
 /**
  * Filter FlatPath<Form> down to the subset of paths whose resolved leaf

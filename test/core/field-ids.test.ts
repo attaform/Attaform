@@ -62,6 +62,19 @@ describe('readableFormKeyStem', () => {
       expect(readableFormKeyStem(key)).toMatch(/^[A-Za-z0-9_-]+$/)
     }
   })
+
+  // The trailing-trim regex used to be `-+$`, an unanchored repeat that
+  // CodeQL's `js/polynomial-redos` query flags as O(n²) worst-case.
+  // A consumer-supplied form key with a long internal hyphen run would
+  // pin the regex engine; the negative-lookbehind form linearises it.
+  it('linearises on a pathological internal hyphen run', () => {
+    const pathological = `a${'-'.repeat(1_000_000)}b`
+    const t0 = performance.now()
+    const stem = readableFormKeyStem(pathological)
+    const elapsed = performance.now() - t0
+    expect(stem).toBe(pathological)
+    expect(elapsed).toBeLessThan(250)
+  })
 })
 
 describe('computeFieldIdentity', () => {

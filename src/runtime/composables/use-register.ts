@@ -123,6 +123,17 @@ let warnedOutsideSetup = false
  * `bind` pass. The `has` / `ownKeys` traps cooperate with
  * `'innerRef' in rv` / `Object.keys(rv)` — including the
  * `isRegisterValue` type guard the directive uses.
+ *
+ * Perf trade-off (DIR-F11): every read traverses the `get` trap, so
+ * a tight hot loop reading `rv.innerRef.value` pays a per-read trap
+ * cost. The hybrid Proxy is what lets `useRegister` return a single
+ * value that's BOTH a `Ref<RegisterValue|undefined>` (for `v-register
+ * ="rv"`) AND a `RegisterValue`-shaped object (for script-setup
+ * `rv.path`). Replacing the proxy with an object built per
+ * `useRegister` would either lose the lazy `ref`-unwrap behaviour or
+ * recreate the union shape with per-property getters anyway — net
+ * trap cost would stay. The audit flagged this as minor; the DX win
+ * is the justification for keeping it.
  */
 function makeRegisterValueProxy<V>(
   capturedRegisterValue: Ref<RegisterValue<V> | undefined>
@@ -209,7 +220,7 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
 
   const refreshAndStripBridgeAttrs = (): void => {
     const rawAttrs = instance.attrs as Record<string, unknown>
-    // Primary path: the compile-time `selectNodeTransform` injected a
+    // Primary path: the compile-time `componentBridgeTransform` injected a
     // `:registerValue` bridge prop on the host component, which Vue's
     // `initProps` lands in `instance.attrs.registerValue`. Capture
     // only when the key is present; the strip below removes it from
@@ -257,7 +268,7 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
   // server-side template read would otherwise misrender. Vue's
   // `setupComponent` runs `initProps` (which populates
   // `instance.attrs.registerValue` from the parent's `:registerValue`
-  // binding injected by `selectNodeTransform`) before `setup()` runs,
+  // binding injected by `componentBridgeTransform`) before `setup()` runs,
   // so the sync read sees the correct value on both server and client.
   // The `onBeforeMount` hook stays as defence in depth against any
   // re-population that could happen after setup (e.g. from a parent's

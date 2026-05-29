@@ -5,7 +5,7 @@ import * as Vue from 'vue'
 import { createSSRApp, defineComponent } from 'vue'
 import { useForm, useRegister } from '../../src'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transforms/v-register-preamble-transform'
 import { fakeSchema } from '../utils/fake-schema'
@@ -34,13 +34,13 @@ import { fakeSchema } from '../utils/fake-schema'
 type Form = { email: string; password: string; color: string }
 
 function compileWithTransforms(template: string): (this: unknown, ctx: unknown) => unknown {
-  // Full transform stack — `selectNodeTransform` is what injects
+  // Full transform stack — `componentBridgeTransform` is what injects
   // `:registerValue` on a `<MyChild v-register="...">` component vnode,
   // and that's the binding `useRegister` reads back via
   // `instance.attrs.registerValue`. Without it the parent's directive
   // never reaches the child as a prop.
   const result = baseCompile(template, {
-    nodeTransforms: [selectNodeTransform, vRegisterPreambleTransform, vRegisterHintTransform],
+    nodeTransforms: [componentBridgeTransform, vRegisterPreambleTransform, vRegisterHintTransform],
     mode: 'function',
     prefixIdentifiers: true,
     hoistStatic: false,

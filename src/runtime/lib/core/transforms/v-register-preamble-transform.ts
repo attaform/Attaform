@@ -8,6 +8,7 @@ import {
   type RootNode,
   type SimpleExpressionNode,
 } from '@vue/compiler-core'
+import { flattenExpression } from './_shared-props'
 
 /**
  * `vRegisterPreambleTransform` — closes the render-order edge that
@@ -201,32 +202,6 @@ function hasVForDirective(node: ElementNode): boolean {
     if (prop.type === NodeTypes.DIRECTIVE && prop.name === 'for') return true
   }
   return false
-}
-
-/**
- * Flatten an ExpressionNode to its source text. The compiler-core AST
- * stores expressions either as a SimpleExpressionNode (one piece of
- * text) or a CompoundExpressionNode (a list of strings + nested
- * SimpleExpressionNodes interleaved, which is what `processExpression`
- * produces when prefixing identifiers). We can serialise either back
- * to source by concatenating the textual content.
- */
-function flattenExpression(exp: ExpressionNode): string {
-  if (exp.type === NodeTypes.SIMPLE_EXPRESSION) return exp.content
-  let out = ''
-  for (const child of exp.children) {
-    if (typeof child === 'string') {
-      out += child
-      continue
-    }
-    if (typeof child === 'symbol') continue
-    if ('content' in child) {
-      out += child.content
-      continue
-    }
-    out += flattenExpression(child as ExpressionNode)
-  }
-  return out
 }
 
 /**

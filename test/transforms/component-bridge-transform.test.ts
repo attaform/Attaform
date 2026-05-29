@@ -1,6 +1,6 @@
 import { baseCompile } from '@vue/compiler-core'
 import { describe, expect, it } from 'vitest'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 
 /**
  * Compile a template through @vue/compiler-core with the select
@@ -14,7 +14,7 @@ import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/selec
 
 function compileWithTransform(template: string): string {
   const result = baseCompile(template, {
-    nodeTransforms: [selectNodeTransform],
+    nodeTransforms: [componentBridgeTransform],
     mode: 'module',
   })
   return result.code
@@ -29,7 +29,7 @@ function countSelectedBindings(code: string): number {
   return (code.match(/\bselected:/g) ?? []).length
 }
 
-describe('selectNodeTransform — `:value` injection on the select element', () => {
+describe('componentBridgeTransform — `:value` injection on the select element', () => {
   // Patching `select.value` on a `<select multiple>` runs the spec's
   // value-setter loop and DESELECTS every option whose value isn't
   // case-equal to the new string. Our `displayValue.value` for an
@@ -70,7 +70,7 @@ describe('selectNodeTransform — `:value` injection on the select element', () 
   })
 })
 
-describe('selectNodeTransform — option value fallback (D3)', () => {
+describe('componentBridgeTransform — option value fallback (D3)', () => {
   it('binds :selected on options that already have an explicit value=', () => {
     const code = compileWithTransform(
       `<select v-register="fruit"><option value="apple">Apple</option></select>`
@@ -138,7 +138,7 @@ describe('selectNodeTransform — option value fallback (D3)', () => {
   })
 })
 
-describe('selectNodeTransform — E1 source-location fidelity', () => {
+describe('componentBridgeTransform — E1 source-location fidelity', () => {
   it('preserves a non-zero source location on the injected :value binding', () => {
     // Pad the template so the <select> doesn't sit at line/column 0
     // — this lets us assert that the injected directive's loc matches
@@ -147,7 +147,7 @@ describe('selectNodeTransform — E1 source-location fidelity', () => {
     // baseCompile preserves AST node `loc` fields; we walk the AST and
     // confirm the `:value` directive on the select has the select's loc.
     const result = baseCompile(template, {
-      nodeTransforms: [selectNodeTransform],
+      nodeTransforms: [componentBridgeTransform],
       mode: 'module',
     })
     const root = result.ast as unknown as { children: { tag?: string; children?: unknown[] }[] }

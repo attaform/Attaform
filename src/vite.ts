@@ -37,8 +37,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
+import { componentBridgeTransform } from './runtime/lib/core/transforms/component-bridge-transform'
 import { inputTextAreaNodeTransform } from './runtime/lib/core/transforms/input-text-area-transform'
-import { selectNodeTransform } from './runtime/lib/core/transforms/select-transform'
 import { vRegisterHintTransform } from './runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from './runtime/lib/core/transforms/v-register-preamble-transform'
 import { transformSsrAccessed } from './runtime/lib/core/transforms/ssr-accessed-transform'
@@ -183,7 +183,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
         // when injected at the root.
         api.options.template.compilerOptions.nodeTransforms = [
           ...existing,
-          selectNodeTransform,
+          componentBridgeTransform,
           inputTextAreaNodeTransform,
           vRegisterPreambleTransform,
           vRegisterHintTransform,

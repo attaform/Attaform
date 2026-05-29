@@ -739,7 +739,7 @@ describe('useRegister — strips bridge keys from attrs (no inheritAttrs needed)
   })
 
   /**
-   * The select-transform's component branch injects `:value` and
+   * The component-bridge-transform's component branch injects `:value` and
    * `:registerValue` on the parent's component vnode so `useRegister`
    * can read them. Those are non-prop attrs from the child's
    * perspective; without intervention they fall through to the

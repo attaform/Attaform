@@ -13,127 +13,71 @@ import {
   type SourceLocation,
   type TemplateChildNode,
 } from '@vue/compiler-core'
-
-type SummarizedProp = {
-  key: string
-  value: string | CompoundExpressionNode['children']
-}
-
-function getSummarizedProps(node: RootNode | TemplateChildNode) {
-  if (!('props' in node)) return []
-  const props = node.props
-
-  const summarizedProps = props.reduce<SummarizedProp[]>((acc, currProp) => {
-    if (currProp.type === NodeTypes.ATTRIBUTE) {
-      const key = currProp.name
-      const value = currProp.value?.content ?? ''
-      return [...acc, { key, value: renderAsStatic(value, true) }]
-    }
-
-    if (currProp.exp === undefined) return acc
-    const key = currProp.arg
-      ? getSummarizedPropValue(currProp.arg)
-      : renderAsStatic(currProp.name, true)
-    if (typeof key !== 'string') return acc // key must always be a string
-    const value = getSummarizedPropValue(currProp.exp)
-
-    return [...acc, { key, value }]
-  }, [])
-
-  return summarizedProps
-}
-
-function renderAsStatic(val: string, isStatic: boolean) {
-  return isStatic ? `"${val}"` : val
-}
-
-function getSummarizedPropValue(exp: ExpressionNode): SummarizedProp['value'] {
-  if (exp.type === NodeTypes.SIMPLE_EXPRESSION) {
-    return renderAsStatic(exp.content, exp.isStatic)
-  }
-
-  return exp.children
-}
+import {
+  flattenExpression,
+  getSummarizedProps,
+  isExactKey,
+  removePropsByName,
+  type SummarizedProp,
+} from './_shared-props'
 
 function generateEqualityExpression(
   selectValue: SummarizedProp['value'],
   optionValue: SummarizedProp['value'],
   previousOptionExpressions: CompoundExpressionNode['children'][]
-) {
-  function getExpressionNodeChildren(
-    _selectValue: SummarizedProp['value'],
-    _optionValue: SummarizedProp['value'],
-    _previousOptionExpressions: CompoundExpressionNode['children'][]
-  ): CompoundExpressionNode['children'] {
-    const multipleExpression = _previousOptionExpressions?.[0] // this should always exist
-    if (multipleExpression === undefined) {
-      // this should NEVER happen
-      throw new Error(
-        'Programming error: `multiple` expression for `select` node not generated while transforming AST'
-      )
-    }
-
-    const optExpressions = _previousOptionExpressions.slice(1)
-
-    // for `multiple`="false", we ONLY execute latest expression if all past expressions were falsy
-    const noMultipleOptExpressions = optExpressions.reduce<CompoundExpressionNode['children']>(
-      (acc, curr, index) => {
-        if (index === 0) {
-          acc.push('(')
-        }
-
-        acc.push(...curr) // all expressions from last operation were grouped into an array
-        if (index < optExpressions.length - 1) {
-          acc.push(' || ')
-        }
-
-        if (index === optExpressions.length - 1) {
-          acc.push(')')
-        }
-
-        return acc
-      },
-      []
+): CompoundExpressionNode['children'] {
+  const multipleExpression = previousOptionExpressions?.[0] // this should always exist
+  if (multipleExpression === undefined) {
+    // this should NEVER happen
+    throw new Error(
+      'Programming error: `multiple` expression for `select` node not generated while transforming AST'
     )
+  }
 
-    const selectValueArr = Array.isArray(_selectValue) ? _selectValue : [_selectValue]
-    const optionValueArr = Array.isArray(_optionValue) ? _optionValue : [_optionValue]
+  const optExpressions = previousOptionExpressions.slice(1)
 
-    function getImplicitTrueMultipleExpression(expression: CompoundExpressionNode['children']) {
-      // Identify user passing in `multiple` as an implied truthy prop
-      if (expression.length === 1 && expression[0] === '') return [`true`]
-      return expression
-    }
+  // for `multiple`="false", we ONLY execute latest expression if all past expressions were falsy
+  const noMultipleOptExpressions = optExpressions.reduce<CompoundExpressionNode['children']>(
+    (acc, curr, index) => {
+      if (index === 0) {
+        acc.push('(')
+      }
 
-    // capture the current expression for the next round
-    _previousOptionExpressions.push(['(', ...selectValueArr, ') === (', ...optionValueArr, ')'])
-    // Single-select branch String-coerces both sides to mirror the
-    // runtime directive's `looseEqual`-style match — a typed-numeric
-    // model (`z.number()`) matches `<option value="1">` at SSR time.
-    // The `typeof !== 'object'` guard preserves the pre-existing
-    // "array model on a single-select doesn't match" behaviour: an
-    // array stringifies to its joined elements, which would otherwise
-    // false-positive against a single-element option.
-    // The multi-select branch keeps `innerRef.value` because Array
-    // / Set models need findIndex / membership iteration.
-    if (!noMultipleOptExpressions.length) {
-      return [
-        '(',
-        ...getImplicitTrueMultipleExpression(multipleExpression),
-        `) ? ((`,
-        ...selectValueArr,
-        `)?.innerRef?.value?.findIndex?.(el => el === (`,
-        ...optionValueArr,
-        `)) > -1) : (typeof (`,
-        ...selectValueArr,
-        `)?.innerRef?.value !== 'object' && String((`,
-        ...selectValueArr,
-        `)?.innerRef?.value) === String((`,
-        ...optionValueArr,
-        `)))`,
-      ]
-    }
+      acc.push(...curr) // all expressions from last operation were grouped into an array
+      if (index < optExpressions.length - 1) {
+        acc.push(' || ')
+      }
 
+      if (index === optExpressions.length - 1) {
+        acc.push(')')
+      }
+
+      return acc
+    },
+    []
+  )
+
+  const selectValueArr = Array.isArray(selectValue) ? selectValue : [selectValue]
+  const optionValueArr = Array.isArray(optionValue) ? optionValue : [optionValue]
+
+  function getImplicitTrueMultipleExpression(expression: CompoundExpressionNode['children']) {
+    // Identify user passing in `multiple` as an implied truthy prop
+    if (expression.length === 1 && expression[0] === '') return [`true`]
+    return expression
+  }
+
+  // capture the current expression for the next round
+  previousOptionExpressions.push(['(', ...selectValueArr, ') === (', ...optionValueArr, ')'])
+  // Single-select branch String-coerces both sides to mirror the
+  // runtime directive's `looseEqual`-style match — a typed-numeric
+  // model (`z.number()`) matches `<option value="1">` at SSR time.
+  // The `typeof !== 'object'` guard preserves the pre-existing
+  // "array model on a single-select doesn't match" behaviour: an
+  // array stringifies to its joined elements, which would otherwise
+  // false-positive against a single-element option.
+  // The multi-select branch keeps `innerRef.value` because Array
+  // / Set models need findIndex / membership iteration.
+  if (!noMultipleOptExpressions.length) {
     return [
       '(',
       ...getImplicitTrueMultipleExpression(multipleExpression),
@@ -141,19 +85,33 @@ function generateEqualityExpression(
       ...selectValueArr,
       `)?.innerRef?.value?.findIndex?.(el => el === (`,
       ...optionValueArr,
-      `)) > -1) : ((`,
-      ...noMultipleOptExpressions, // if true, we already found the relevant option
-      `) ? false : (typeof (`,
+      `)) > -1) : (typeof (`,
       ...selectValueArr,
       `)?.innerRef?.value !== 'object' && String((`,
       ...selectValueArr,
       `)?.innerRef?.value) === String((`,
       ...optionValueArr,
-      `))))`,
+      `)))`,
     ]
   }
 
-  return getExpressionNodeChildren(selectValue, optionValue, previousOptionExpressions)
+  return [
+    '(',
+    ...getImplicitTrueMultipleExpression(multipleExpression),
+    `) ? ((`,
+    ...selectValueArr,
+    `)?.innerRef?.value?.findIndex?.(el => el === (`,
+    ...optionValueArr,
+    `)) > -1) : ((`,
+    ...noMultipleOptExpressions, // if true, we already found the relevant option
+    `) ? false : (typeof (`,
+    ...selectValueArr,
+    `)?.innerRef?.value !== 'object' && String((`,
+    ...selectValueArr,
+    `)?.innerRef?.value) === String((`,
+    ...optionValueArr,
+    `))))`,
+  ]
 }
 
 function extractMultipleFromSelectSummarizedProps(
@@ -174,49 +132,6 @@ function extractMultipleFromSelectSummarizedProps(
   // attempt to convert expression within string into boolean
   // if undefined, make value `true` because of `<input multiple />` usage
   return typeof value === 'string' ? value.replace(/'|"/g, '') : (value ?? 'true')
-}
-
-function removePropsByName(props: (AttributeNode | DirectiveNode)[], propNames: string[]) {
-  const removePropIndices: number[] = []
-  for (let index = 0; index < props.length; index++) {
-    const prop = props[index]
-    if (!prop) continue
-
-    if (
-      propNames.includes(prop.name) ||
-      ('arg' in prop && prop.arg && 'content' in prop.arg && propNames.includes(prop.arg.content))
-    ) {
-      removePropIndices.push(index) // store index to remove later, don't mutate variable while looping through it
-    }
-  }
-
-  for (const index of removePropIndices.sort((a, z) => z - a)) {
-    props.splice(index, 1) // index runs from high to low, so this works
-  }
-}
-
-function flattenCompoundExpression(node: CompoundExpressionNode): string {
-  let result = ''
-
-  for (const child of node.children) {
-    if (typeof child === 'string') {
-      result += child
-    } else if (typeof child === 'symbol') {
-      continue
-    } else if (child.type === NodeTypes.SIMPLE_EXPRESSION) {
-      result += child.content
-    } else if (child.type === NodeTypes.COMPOUND_EXPRESSION) {
-      result += flattenCompoundExpression(child)
-    }
-  }
-
-  return result
-}
-
-// Exact prop-name match. Pre-rewrite used .includes('register') / .includes('value')
-// which false-positived on user props with those substrings in their names.
-function isExactKey(summarizedKey: string, name: string): boolean {
-  return summarizedKey === name || summarizedKey === `"${name}"`
 }
 
 // Whitelist of node types that contain iterable child nodes. Used by
@@ -286,16 +201,25 @@ function inferOptionValueFromChildren(node: TemplateChildNode | RootNode): strin
 }
 
 /**
- * Vue compiler node transform for `<select v-register>` and any
- * component that wraps a select. Injects the `:value` /
- * `:registerValue` bridge bindings the runtime directive needs to
- * pre-mark selected options at SSR time.
+ * Vue compiler node transform that bridges `v-register` into the
+ * downstream binding shapes its consumers expect:
  *
- * Wired automatically by `attaform/vite` and
- * `attaform/nuxt`. Use directly only when integrating with
- * a custom bundler.
+ *   - `<select v-register>` — injects `:value` (single-select) and
+ *     per-`<option>` `:selected` so the runtime directive can pre-mark
+ *     selected options at SSR time.
+ *   - `<MyComponent v-register>` and kebab-case custom-element hosts
+ *     — injects a `:registerValue` bridge prop so `useRegister` inside
+ *     the child sees the parent's RegisterValue (the binding the audit
+ *     called out as the transform's "fires on every component" path).
+ *
+ * Wired automatically by `attaform/vite` and `attaform/nuxt`. Use
+ * directly only when integrating with a custom bundler.
+ *
+ * Renamed from `selectNodeTransform` (DIR-F6): the original name read
+ * as a `<select>`-only transform, but the component-bridge path is
+ * load-bearing for every `useRegister` consumer.
  */
-export const selectNodeTransform: NodeTransform = (node, context) => {
+export const componentBridgeTransform: NodeTransform = (node, context) => {
   // Snapshot every prop array we're about to mutate so a throw
   // mid-traversal rewinds to the pre-transform state. Without this,
   // a partial transform leaves the template with some `<option
@@ -483,10 +407,7 @@ export const selectNodeTransform: NodeTransform = (node, context) => {
         ')?.displayValue.value',
       ])
 
-      const simpleExpression = createSimpleExpression(
-        flattenCompoundExpression(initExpression),
-        false
-      )
+      const simpleExpression = createSimpleExpression(flattenExpression(initExpression), false)
       // `processExpression` can throw on malformed identifiers or
       // exotic expression shapes. Pre-fix, the throw bubbled to the
       // outer try/catch, which then ran the snapshot-restore path AND
@@ -499,7 +420,7 @@ export const selectNodeTransform: NodeTransform = (node, context) => {
         outputExp = processExpression(simpleExpression, { ...context, prefixIdentifiers: false })
       } catch (err) {
         console.error(
-          '[attaform] select transform: processExpression failed; falling back to the unprocessed expression.',
+          '[attaform] component-bridge transform: processExpression failed; falling back to the unprocessed expression.',
           err
         )
         outputExp = simpleExpression
@@ -571,6 +492,6 @@ export const selectNodeTransform: NodeTransform = (node, context) => {
       target.splice(0, target.length, ...snapshot)
     }
 
-    console.error('[attaform] select transform failed, skipping:', err)
+    console.error('[attaform] component-bridge transform failed, skipping:', err)
   }
 }

@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transforms/v-register-preamble-transform'
 import { waitUntil } from '../utils/form-harness'
@@ -44,7 +44,7 @@ function compileTemplateToRender(template: string): (...args: unknown[]) => unkn
     mode: 'function',
     prefixIdentifiers: false,
     nodeTransforms: [
-      selectNodeTransform,
+      componentBridgeTransform,
       inputTextAreaNodeTransform,
       vRegisterPreambleTransform,
       vRegisterHintTransform,

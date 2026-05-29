@@ -15,7 +15,7 @@
  * live in the implementation plan and in `docs/multistep/ssr.md`.
  */
 import { parse as parseSfc, babelParse } from '@vue/compiler-sfc'
-import type { RootNode, TemplateChildNode } from '@vue/compiler-core'
+import { NodeTypes, type RootNode, type TemplateChildNode } from '@vue/compiler-core'
 
 interface BabelNode {
   readonly type: string
@@ -228,11 +228,11 @@ function collectTemplateReferences(
     if ('children' in node && Array.isArray(node.children)) {
       for (const child of node.children as TemplateChildNode[]) visit(child)
     }
-    if (node.type === 5 /* INTERPOLATION */) {
+    if (node.type === NodeTypes.INTERPOLATION) {
       collectFromExpression(node.content, candidates, referenced)
-    } else if (node.type === 1 /* ELEMENT */ && Array.isArray(node.props)) {
+    } else if (node.type === NodeTypes.ELEMENT && Array.isArray(node.props)) {
       for (const prop of node.props) {
-        if (prop.type === 7 /* DIRECTIVE */) {
+        if (prop.type === NodeTypes.DIRECTIVE) {
           if (prop.exp !== undefined && prop.exp !== null) {
             collectFromExpression(prop.exp, candidates, referenced)
           }
@@ -261,13 +261,13 @@ function collectFromExpression(
   if (expr === null || expr === undefined) return
   if (typeof expr !== 'object') return
   const node = expr as ExpressionLike
-  if (node.type === 4 /* SIMPLE_EXPRESSION */ && typeof node.content === 'string') {
+  if (node.type === NodeTypes.SIMPLE_EXPRESSION && typeof node.content === 'string') {
     for (const name of candidates) {
       if (matchesIdentifier(node.content, name)) out.add(name)
     }
     return
   }
-  if (node.type === 8 /* COMPOUND_EXPRESSION */ && Array.isArray(node.children)) {
+  if (node.type === NodeTypes.COMPOUND_EXPRESSION && Array.isArray(node.children)) {
     for (const child of node.children) collectFromExpression(child, candidates, out)
   }
 }

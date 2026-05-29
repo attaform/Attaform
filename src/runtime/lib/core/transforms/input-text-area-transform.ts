@@ -1,56 +1,17 @@
 import type {
-  AttributeNode,
   CompoundExpressionNode,
   DirectiveNode,
-  ExpressionNode,
   NodeTransform,
   PlainElementNode,
-  RootNode,
   SourceLocation,
-  TemplateChildNode,
 } from '@vue/compiler-core'
 import { createCompoundExpression, NodeTypes } from '@vue/compiler-core'
-
-type SummarizedProp = {
-  key: string
-  value: string | CompoundExpressionNode['children']
-}
-
-function getSummarizedProps(node: RootNode | TemplateChildNode) {
-  if (!('props' in node)) return []
-  const props = node.props
-
-  const summarizedProps = props.reduce<SummarizedProp[]>((acc, currProp) => {
-    if (currProp.type === NodeTypes.ATTRIBUTE) {
-      const key = currProp.name
-      const value = currProp.value?.content ?? ''
-      return [...acc, { key, value: renderAsStatic(value, true) }]
-    }
-
-    if (currProp.exp === undefined) return acc
-    const key = currProp.arg
-      ? getSummarizedPropValue(currProp.arg)
-      : renderAsStatic(currProp.name, true)
-    if (typeof key !== 'string') return acc // key must always be a string
-    const value = getSummarizedPropValue(currProp.exp)
-
-    return [...acc, { key, value }]
-  }, [])
-
-  return summarizedProps
-}
-
-function renderAsStatic(val: string, isStatic: boolean) {
-  return isStatic ? `"${val}"` : val
-}
-
-function getSummarizedPropValue(exp: ExpressionNode): SummarizedProp['value'] {
-  if (exp.type === NodeTypes.SIMPLE_EXPRESSION) {
-    return renderAsStatic(exp.content, exp.isStatic)
-  }
-
-  return exp.children
-}
+import {
+  getSummarizedProps,
+  isExactKey,
+  removePropsByName,
+  type SummarizedProp,
+} from './_shared-props'
 
 function generateEqualityExpression(
   registerValue: SummarizedProp['value'],
@@ -64,7 +25,7 @@ function generateEqualityExpression(
   // Discriminator selection:
   //   - Array model     → membership of the option-value (e.g. value="apple")
   //   - Set model       → membership of the option-value
-  //   - Scalar model    → equality with the scalar-equality target
+  //   - Scalar model    → coerced String() equality with the scalar target
   //
   // The scalar target differs from the option-value for two checkbox
   // shapes that the directive's runtime `setChecked` already handles
@@ -75,6 +36,17 @@ function generateEqualityExpression(
   //
   // For radio inputs the model is always scalar and the discriminator
   // IS the option-value, so `optionValue === scalarTarget` there.
+  //
+  // The scalar branch routes both sides through `String(...)` to mirror
+  // the runtime `setChecked` path, which uses Vue's `looseEqual` —
+  // looseEqual coerces primitives via `String(...)` before comparing.
+  // Without the coerce, SSR on `<input type="radio" value="2">` bound
+  // to a `z.number()` model of `2` evaluated `2 === "2"` → `false` and
+  // emitted unchecked HTML, then the runtime's `looseEqual(2, applyCoerce("2"))`
+  // returned `true` on hydration and flipped to checked — a one-tick
+  // visible flicker (DIR-F4). The `typeof !== 'object'` guard preserves
+  // current behaviour for non-array / non-Set object models, which both
+  // ladders fall through this scalar branch with no realistic match.
   return [
     'Array.isArray((',
     ...registerValueArr,
@@ -91,42 +63,32 @@ function generateEqualityExpression(
     ')?.innerRef?.value?.has(',
     ...optionValueArr,
     ') : ',
-    '((',
+    '(typeof (',
     ...registerValueArr,
-    ')?.innerRef?.value === (',
+    ")?.innerRef?.value !== 'object' && String((",
+    ...registerValueArr,
+    ')?.innerRef?.value) === String((',
     ...scalarTargetArr,
-    '))',
+    ')))',
   ]
 }
 
-function removePropsByName(props: (AttributeNode | DirectiveNode)[], propNames: string[]) {
-  const removePropIndices: number[] = []
-  for (let index = 0; index < props.length; index++) {
-    const prop = props[index]
-    if (!prop) continue
-
-    if (
-      propNames.includes(prop.name) ||
-      ('arg' in prop && prop.arg && 'content' in prop.arg && propNames.includes(prop.arg.content))
-    ) {
-      removePropIndices.push(index) // store index to remove later, don't mutate variable while looping through it
-    }
-  }
-
-  for (const index of removePropIndices.sort((a, z) => z - a)) {
-    props.splice(index, 1) // index runs from high to low, so this works
-  }
-}
-
-// Exact prop-name match. Pre-rewrite used .includes('register') / .includes('value') /
-// .includes('type') which false-positived on any user prop whose name contained those
-// substrings (e.g. `data-register-id`, `valueFoo`, `prototype`, `:registerField`).
-function isExactKey(summarizedKey: string, name: string): boolean {
-  // Summarized keys come in three shapes depending on prop type:
-  //   attribute       -> "name"          (from getSummarizedProps)
-  //   v-bind:name="x" -> "\"name\""      (quoted via renderAsStatic)
-  //   static v-prefix -> "\"name\""
-  return summarizedKey === name || summarizedKey === `"${name}"`
+/**
+ * Parse a one-line JS string literal from `text`. Returns `null` for
+ * any non-literal source (dynamic expression, compound, mismatched
+ * quotes); on a match returns the quote character and the inner
+ * payload separately so callers can disambiguate template literals
+ * with interpolations from literal-static strings.
+ *
+ * Doesn't attempt to handle escaped quotes inside the literal — a
+ * value containing escaped quotes is vanishingly rare in the prop
+ * shapes the transforms inspect (HTML attribute values, type names).
+ * Callers that can't prove safety on `null` should bail conservatively.
+ */
+function parseStaticStringLiteral(text: string): { quote: string; inner: string } | null {
+  const literalMatch = /^(["'`])(.*)\1$/.exec(text.trim())
+  if (literalMatch === null) return null
+  return { quote: literalMatch[1] as string, inner: literalMatch[2] as string }
 }
 
 /**
@@ -143,11 +105,9 @@ function isExactKey(summarizedKey: string, name: string): boolean {
  */
 function isStaticTypeOneOf(value: SummarizedProp['value'], names: readonly string[]): boolean {
   if (Array.isArray(value)) return false
-  const trimmed = value.trim()
-  const literalMatch = /^(["'`])(.*)\1$/.exec(trimmed)
-  if (literalMatch === null) return false
-  const inner = (literalMatch[2] as string).toLowerCase()
-  return names.includes(inner)
+  const parsed = parseStaticStringLiteral(value)
+  if (parsed === null) return false
+  return names.includes(parsed.inner.toLowerCase())
 }
 
 /**
@@ -165,21 +125,14 @@ function isStaticTypeOneOf(value: SummarizedProp['value'], names: readonly strin
  */
 function couldResolveToFileType(value: SummarizedProp['value']): boolean {
   if (Array.isArray(value)) return true
-  const trimmed = value.trim()
-  // Match a one-line JS string literal: '...', "...", or `...`. Doesn't
-  // attempt to handle escaped quotes inside the literal — a `type` prop
-  // containing escaped quotes is vanishingly rare and falling through to
-  // "could be file" here is the safe direction anyway.
-  const literalMatch = /^(["'`])(.*)\1$/.exec(trimmed)
-  if (literalMatch === null) return true // dynamic expression — can't prove safe
-  const quote = literalMatch[1] as string
-  const inner = literalMatch[2] as string
+  const parsed = parseStaticStringLiteral(value)
+  if (parsed === null) return true // dynamic expression — can't prove safe
   // Template literals with interpolations resolve at runtime.
-  if (quote === '`' && inner.includes('${')) return true
+  if (parsed.quote === '`' && parsed.inner.includes('${')) return true
   // The HTML spec matches `type` ASCII case-insensitively, so
   // `<input type="FILE">` behaves identically to `<input type="file">`.
   // Compare lower-cased so we catch both.
-  return inner.toLowerCase() === 'file'
+  return parsed.inner.toLowerCase() === 'file'
 }
 
 /**

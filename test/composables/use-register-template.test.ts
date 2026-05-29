@@ -10,7 +10,7 @@ import { useRegister } from '../../src/runtime/composables/use-register'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transforms/v-register-preamble-transform'
 import { waitUntil } from '../utils/form-harness'
@@ -27,7 +27,7 @@ import { waitUntil } from '../utils/form-harness'
  * v-register on a DOM input) works as one piece.
  *
  * The compiler stack mirrors `src/vite.ts`'s production order:
- *   1. selectNodeTransform — injects :value + :registerValue on
+ *   1. componentBridgeTransform — injects :value + :registerValue on
  *      <Component v-register> nodes; parent-side bridge
  *   2. inputTextAreaNodeTransform — text-input compile-time hooks
  *   3. vRegisterPreambleTransform — preamble for v-register
@@ -52,7 +52,7 @@ function compileTemplateToRender(template: string): (...args: unknown[]) => unkn
     mode: 'function',
     prefixIdentifiers: false,
     nodeTransforms: [
-      selectNodeTransform,
+      componentBridgeTransform,
       inputTextAreaNodeTransform,
       vRegisterPreambleTransform,
       vRegisterHintTransform,
@@ -92,7 +92,7 @@ describe('useRegister — template-compiled v-register reaches inner input', () 
     })
 
     // Parent SFC equivalent: <Child v-register="form.register('email')" />.
-    // The select-transform's component branch fires on `<Child>`,
+    // The component-bridge-transform's component branch fires on `<Child>`,
     // injects `:value` and `:registerValue` props. At runtime,
     // useRegister captures registerValue and strips both bridge keys
     // from instance.attrs (no DOM leak on the wrapper).

@@ -14,6 +14,7 @@ import { captureUserCallSite } from './dev-stack-trace'
 import { AnonPersistError } from './errors'
 import { extractSchemaFields } from './extract-schema-fields'
 import { computeFieldIdentity } from './field-ids'
+import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 import { PERSISTENCE_MODULE_KEY } from './persistence'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
@@ -67,8 +68,6 @@ const EMPTY_TRANSFORMS: ReadonlyArray<RegisterTransform> = Object.freeze([])
  * - Cross-form isolation is by construction: every call to `buildRegister`
  *   closes over a FormStore<F> unique to one form.
  */
-
-const INTERACTIVE_TAG_NAMES = new Set(['INPUT', 'SELECT', 'TEXTAREA'])
 
 // `Symbol.for(...)` so duplicate copies of attaform agree on the
 // element-property key for stashed focus/blur handlers — see

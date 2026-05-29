@@ -1,7 +1,7 @@
 import { baseCompile } from '@vue/compiler-core'
 import { describe, expect, it } from 'vitest'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transforms/v-register-preamble-transform'
 
@@ -17,7 +17,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  * refactor might want to address.
  *
  * Production pipeline order (`src/vite.ts`):
- *   1. selectNodeTransform
+ *   1. componentBridgeTransform
  *   2. inputTextAreaNodeTransform
  *   3. vRegisterPreambleTransform
  *   4. vRegisterHintTransform
@@ -29,7 +29,7 @@ type NodeTransformList = NonNullable<CompilerOptions['nodeTransforms']>
 function compileFull(template: string): string {
   return baseCompile(template, {
     nodeTransforms: [
-      selectNodeTransform,
+      componentBridgeTransform,
       inputTextAreaNodeTransform,
       vRegisterPreambleTransform,
       vRegisterHintTransform,
@@ -110,7 +110,7 @@ describe('v-register on Vue components — AST behaviour', () => {
     it('emits no synthetic :value binding when only this transform runs', () => {
       // The transform's tag check is `node.tag === 'input' || 'textarea'`
       // — component tags are NEITHER. Result: this transform contributes
-      // nothing for a component. (selectNodeTransform DOES fire on
+      // nothing for a component. (componentBridgeTransform DOES fire on
       // components — see the next describe block.)
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         inputTextAreaNodeTransform,
@@ -130,7 +130,7 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('selectNodeTransform — fires on EVERY component with v-register (surprising ⚠)', () => {
+  describe('componentBridgeTransform — fires on EVERY component with v-register (surprising ⚠)', () => {
     it('injects :value="reg.displayValue.value" + :registerValue="reg" as component props', () => {
       // The transform's branch `node.tagType === ElementTypes.COMPONENT`
       // makes ANY component with v-register a transform target — even
@@ -141,7 +141,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // <select> natively; the component branch reuses the prop-name
       // contract `<select>` doesn't know about.
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
-        selectNodeTransform,
+        componentBridgeTransform,
       ])
       expect(code).toContain('displayValue')
       // Both keys appear in the generated component-prop object.
@@ -162,7 +162,7 @@ describe('v-register on Vue components — AST behaviour', () => {
            <option value="admin">Admin</option>
            <option value="user">User</option>
          </MyCustomSelect>`,
-        [selectNodeTransform]
+        [componentBridgeTransform]
       )
       // The component itself gets the value + registerValue prop pair.
       expect(code).toContain('displayValue')
@@ -180,7 +180,7 @@ describe('v-register on Vue components — AST behaviour', () => {
         `<select v-register="form.register('role')">
            <option value="admin">Admin</option>
          </select>`,
-        [selectNodeTransform]
+        [componentBridgeTransform]
       )
       expect(code).toContain('innerRef')
       expect(code).toMatch(/selected:\s*\(/)
@@ -188,15 +188,15 @@ describe('v-register on Vue components — AST behaviour', () => {
 
     it('does NOT fire on a component without v-register', () => {
       // Bound by the early-out `registerIndex < 0`.
-      const code = compileWith(`<MyInput :value="x" />`, [selectNodeTransform])
+      const code = compileWith(`<MyInput :value="x" />`, [componentBridgeTransform])
       expect(code).not.toContain('innerRef')
       expect(code).not.toContain('registerValue:')
     })
 
     it('PascalCase + self-closing PascalCase hit the component branch', () => {
-      const pascal = compileWith(`<MyInput v-register="reg" />`, [selectNodeTransform])
+      const pascal = compileWith(`<MyInput v-register="reg" />`, [componentBridgeTransform])
       const explicitClose = compileWith(`<MyInput v-register="reg"></MyInput>`, [
-        selectNodeTransform,
+        componentBridgeTransform,
       ])
       for (const code of [pascal, explicitClose]) {
         expect(code).toContain('displayValue')
@@ -216,7 +216,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // Components without a Vue component definition see them as DOM
       // attributes — the documented assignKey escape hatch covers
       // that case.
-      const code = compileWith(`<my-input v-register="reg" />`, [selectNodeTransform])
+      const code = compileWith(`<my-input v-register="reg" />`, [componentBridgeTransform])
       expect(code).toContain('displayValue')
       expect(code).toContain('registerValue:')
       expect(code).toContain('_directive_register')
@@ -230,7 +230,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // the explicit guard documents the conservative stance and
       // catches a hypothetical `<form-something v-register>` future
       // mistake.
-      const code = compileWith(`<form v-register="reg" />`, [selectNodeTransform])
+      const code = compileWith(`<form v-register="reg" />`, [componentBridgeTransform])
       expect(code).not.toContain('displayValue')
       expect(code).not.toContain('registerValue:')
     })
@@ -250,14 +250,14 @@ describe('v-register on Vue components — AST behaviour', () => {
       ).not.toThrow()
     })
 
-    it('combines select-transform component-prop injection + hint wrapper + preamble hoist', () => {
+    it('combines component-bridge-transform component-prop injection + hint wrapper + preamble hoist', () => {
       const code = compileFull(
         `<div>
            <pre>{{ form.fields.email }}</pre>
            <MyInput v-register="form.register('email')" />
          </div>`
       )
-      // selectNodeTransform contributed value: + registerValue:
+      // componentBridgeTransform contributed value: + registerValue:
       expect(code).toContain('displayValue')
       expect(code).toContain('registerValue:')
       // vRegisterHintTransform wrapped the directive expression.
@@ -277,7 +277,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // checkbox/radio equality branch of inputTextAreaNodeTransform's
       // ternary (the runtime takes the value branch for text inputs,
       // but Vue's static codegen emits both legs). Component takes the
-      // displayValue path through selectNodeTransform's component
+      // displayValue path through componentBridgeTransform's component
       // branch — no innerRef on that side.
       const innerRefHits = code.match(/innerRef/g)?.length ?? 0
       expect(innerRefHits).toBeGreaterThanOrEqual(1)
@@ -322,7 +322,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       expect(hits).toBe(1)
     })
 
-    it('select-transform on a component IS idempotent under duplicate registration', () => {
+    it('component-bridge-transform on a component IS idempotent under duplicate registration', () => {
       // The component branch carries an already-applied marker so a
       // doubly-registered transform pipeline only injects the
       // `:value` + `:registerValue` props once. This protects against
@@ -330,8 +330,8 @@ describe('v-register on Vue components — AST behaviour', () => {
       // transform twice; without the marker, the duplicate output is
       // valid (last write wins) but bloats the generated render.
       const code = compileWith(`<MyInput v-register="reg" />`, [
-        selectNodeTransform,
-        selectNodeTransform,
+        componentBridgeTransform,
+        componentBridgeTransform,
       ])
       const valueHits = code.match(/value:\s*\(.*\)\?\.displayValue\.value/g)?.length ?? 0
       const regValueHits = code.match(/registerValue:/g)?.length ?? 0

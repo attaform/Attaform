@@ -28,6 +28,7 @@ import type { DirectiveBinding, DirectiveHook, ObjectDirective, VNode } from 'vu
 import { effectScope, isRef, nextTick, warn, watch } from 'vue'
 import { REGISTER_OWNER_MARKER } from '../composables/use-register'
 import { __DEV__ } from './dev'
+import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import type {
   CustomDirectiveRegisterAssignerFn,
   DisplayState,
@@ -210,7 +211,7 @@ function isDefaultAssigner(fn: unknown): boolean {
  * the next input event fires, the user's assigner is in place.
  */
 function shouldBailListener(el: HTMLElement): boolean {
-  if (SUPPORTED_TAGS.has(el.tagName)) return false
+  if (INTERACTIVE_TAG_NAMES.has(el.tagName)) return false
   return isDefaultAssigner((el as unknown as { [k: symbol]: unknown })[assignKey])
 }
 
@@ -1418,7 +1419,6 @@ function getCheckboxValue(
 // reach the child instance via `binding.instance` — that's the
 // page/parent component, whose `subTree` is the outer element tree,
 // not the child component vnode directly).
-const SUPPORTED_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
 // One-shot dev-warn dedupe so a v-for over 100 unsupported elements
 // produces one warning, not 100. Keyed by element identity (WeakSet
@@ -1568,7 +1568,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     if (
       __DEV__ &&
       warnedUnsupportedElements !== null &&
-      !SUPPORTED_TAGS.has(el.tagName) &&
+      !INTERACTIVE_TAG_NAMES.has(el.tagName) &&
       !warnedUnsupportedElements.has(el)
     ) {
       void nextTick(() => {

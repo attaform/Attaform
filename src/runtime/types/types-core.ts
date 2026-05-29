@@ -477,6 +477,37 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
           : T
 
 /**
+ * Walk `T` and add `| Unset` at every primitive leaf (except symbol /
+ * null / undefined), every opaque leaf (`Date`, `RegExp`, `Map`,
+ * `Set`, functions), and every container position (object, tuple,
+ * array). The recursion topology mirrors `WriteShape<T>` exactly —
+ * `DefaultValuesShape<T>` is then a 1-line composition.
+ *
+ * Symbol / null / undefined leaves pass through untouched so the
+ * runtime sentinel doesn't pollute leaf semantics it has no business
+ * carrying. Container positions widen so a single `unset` at any
+ * level recursively marks every descendant primitive blank.
+ *
+ * Not part of the stable consumer-facing surface — reach for
+ * `DefaultValuesShape` instead.
+ */
+export type AugmentWithUnset<T> = T extends string | number | boolean | bigint
+  ? T | Unset
+  : T extends symbol | null | undefined
+    ? T
+    : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | ((...args: never) => unknown)
+      ? T | Unset
+      : T extends readonly [unknown, ...unknown[]]
+        ? { -readonly [K in keyof T]: AugmentWithUnset<T[K]> } | Unset
+        : T extends ReadonlyArray<infer U>
+          ? IsTuple<T> extends true
+            ? { -readonly [K in keyof T]: AugmentWithUnset<T[K]> } | Unset
+            : Array<AugmentWithUnset<U>> | Unset
+          : T extends object
+            ? { [K in keyof T]: AugmentWithUnset<T[K]> } | Unset
+            : T
+
+/**
  * Like `WriteShape<T>`, but additionally widens every primitive leaf
  * (`string`, `number`, `boolean`, `bigint`) to admit `Unset` — the
  * brand-typed sentinel consumers pass to indicate "this leaf starts
@@ -489,8 +520,10 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
  * descendant blank, so `defaultValues: { profile: unset }` and
  * `setValue('cargo', unset)` typecheck cleanly.
  *
- * The recursion mirrors `WriteShape<T>` exactly so `defaultValues`
- * stays compatible at every nested position. Tuple positions,
+ * Composed as `AugmentWithUnset<WriteShape<T>>`: stage 1 widens
+ * primitive literals, stage 2 adds `| Unset` everywhere — the prior
+ * inline walker hand-synced this in a single body. The composition
+ * stays compatible at every nested position; tuple positions,
  * unbounded arrays, and nested records all flow through unchanged.
  *
  * Example:
@@ -501,36 +534,7 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
  * Used by `UseFormConfiguration.defaultValues`, `setValue`'s value
  * parameter, and `reset`'s parameter.
  */
-export type DefaultValuesShape<T> = T extends
-  | string
-  | number
-  | boolean
-  | bigint
-  | symbol
-  | null
-  | undefined
-  ? T extends string
-    ? string | Unset
-    : T extends number
-      ? number | Unset
-      : T extends boolean
-        ? boolean | Unset
-        : T extends bigint
-          ? bigint | Unset
-          : T extends symbol
-            ? symbol
-            : T
-  : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | ((...args: never) => unknown)
-    ? T | Unset
-    : T extends readonly [unknown, ...unknown[]]
-      ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
-      : T extends ReadonlyArray<infer U>
-        ? IsTuple<T> extends true
-          ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
-          : Array<DefaultValuesShape<U>> | Unset
-        : T extends object
-          ? { [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
-          : T
+export type DefaultValuesShape<T> = AugmentWithUnset<WriteShape<T>>
 
 /**
  * Single-walker fusion of `DeepPartial` and `DefaultValuesShape` — the

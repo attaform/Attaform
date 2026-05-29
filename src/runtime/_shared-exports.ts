@@ -53,7 +53,7 @@ export { injectWizard } from './composables/inject-wizard'
 export type { InjectWizardInput } from './composables/inject-wizard'
 export { lazy } from './core/wizard-lazy'
 export type {
-  AggregateError,
+  WizardAggregateError,
   AnyForm,
   CompiledStep,
   FormStatus,

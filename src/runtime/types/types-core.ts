@@ -15,6 +15,65 @@ export type IsObjectOrArray<T> = T extends GenericForm
     : false
 
 /**
+ * Shared recursion body backing `PartialFlatPath` and `RegisterFlatPath`.
+ * One walk over `Form`; `Mode` controls whether intermediate container
+ * paths are emitted alongside their reachable leaves.
+ *
+ * - `'partial'`: emit every container path (object containers, nested-
+ *   object array roots, array-of-object element containers). Used by
+ *   `setValue` / `form.values.<path>` / every read-side API that needs
+ *   to address a container.
+ * - `'register'`: skip container paths. `v-register` binds onto a
+ *   leaf-backing native element (`<input>`, `<select>`, `<textarea>`),
+ *   so container paths aren't registrable. Primitive arrays still
+ *   admit the array-root path under both modes (multi-select and
+ *   grouped-checkbox bindings register onto the array itself).
+ *
+ * Both walkers were independent recursions before; threading `Mode`
+ * through one body keeps the surface guarded by a single source of
+ * truth, and `PartialFlatPath` / `RegisterFlatPath` stay byte-
+ * identical to the prior hand-written walks (see
+ * `test/types/flat-path-walker.test.ts`).
+ */
+export type FlatPathBuilder<
+  Form,
+  Mode extends 'partial' | 'register',
+  Key extends keyof Form = keyof Form,
+> =
+  IsObjectOrArray<Form> extends true
+    ? Key extends string
+      ? Form[Key] extends infer Value
+        ? Value extends Array<infer ArrayItem>
+          ? IsObjectOrArray<ArrayItem> extends true
+            ? Mode extends 'partial'
+              ?
+                  | `${Key}`
+                  | `${Key}.${number}`
+                  | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+              : `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+            : `${Key}` | `${Key}.${number}`
+          : Value extends GenericForm
+            ? Mode extends 'partial'
+              ? `${Key}` | `${Key}.${FlatPathBuilder<Value, Mode>}`
+              : `${Key}.${FlatPathBuilder<Value, Mode>}`
+            : `${Key}`
+        : never
+      : Key extends number
+        ?
+            | `${Key}`
+            | (Form[Key] extends GenericForm
+                ? `${Key}.${FlatPathBuilder<Form[Key], Mode>}`
+                : Form[Key] extends Array<infer ArrayItem>
+                  ? IsObjectOrArray<ArrayItem> extends true
+                    ? Mode extends 'partial'
+                      ? `${Key}.${number}` | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+                      : `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+                    : `${Key}.${number}`
+                  : never)
+        : never
+    : never
+
+/**
  * Implementation detail backing `FlatPath` in its default
  * (partial-path) mode. Exported so `rollup-plugin-dts` preserves it
  * as a named alias in the bundled `.d.ts` rather than inlining the
@@ -24,28 +83,11 @@ export type IsObjectOrArray<T> = T extends GenericForm
  * when multiple complex forms share a scope. Consumers should reach
  * for `FlatPath` instead; this alias is not part of the stable surface.
  */
-export type PartialFlatPath<Form, Key extends keyof Form = keyof Form> =
-  IsObjectOrArray<Form> extends true
-    ? Key extends string
-      ? Form[Key] extends infer Value
-        ? Value extends Array<infer ArrayItem>
-          ? `${Key}` | `${Key}.${number}` | `${Key}.${number}.${PartialFlatPath<ArrayItem>}`
-          : Value extends GenericForm
-            ? `${Key}` | `${Key}.${PartialFlatPath<Value>}`
-            : `${Key}`
-        : never
-      : Key extends number
-        ?
-            | `${Key}`
-            | (Form[Key] extends GenericForm
-                ? `${Key}.${PartialFlatPath<Form[Key]>}`
-                : Form[Key] extends Array<infer ArrayItem>
-                  ? IsObjectOrArray<ArrayItem> extends true
-                    ? `${Key}.${number}` | `${Key}.${number}.${PartialFlatPath<ArrayItem>}`
-                    : `${Key}.${number}`
-                  : never)
-        : never
-    : never
+export type PartialFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPathBuilder<
+  Form,
+  'partial',
+  Key
+>
 
 // FlatPath Generic Gotchas:
 //
@@ -191,6 +233,79 @@ export type DeepPartial<T> = T extends Primitive // Base case for primitive type
       : T
 
 /**
+ * Shared descent body backing `NestedType` and `NestedReadType`. The
+ * recursion is identical — segment-by-segment, distributing over
+ * union members via `KeyofUnion` / `ValueOfUnion`. The two walkers
+ * diverge only at the leaf:
+ *
+ * - `TaintArrayCrossings extends false` (`NestedType` mode): leaves
+ *   are returned untouched. Used by strict write-side APIs that need
+ *   the exact resolved type (`setValue`'s value parameter,
+ *   `form.fields.<path>`'s state map).
+ * - `TaintArrayCrossings extends true` (`NestedReadType` mode): leaves
+ *   are widened with `| undefined` whenever any segment in the walk
+ *   was numeric (array index). Reflects the runtime possibility of an
+ *   out-of-bounds read.
+ *
+ * `_Tainted` propagates the array-crossing under taint mode; under
+ * strict mode it stays `false` through every recursion arm. Both
+ * arms strip nullishness at the root (`_RootValue = NonNullable<…>`)
+ * — the prior `NestedType.FilterOutNullishTypesDuringRecursion` flag
+ * was vestigial, never overridden from the outside.
+ *
+ * Not part of the stable consumer surface — reach for `NestedType` or
+ * `NestedReadType` directly.
+ */
+export type NestedTypeBuilder<
+  RootValue,
+  FlattenedPath extends string,
+  TaintArrayCrossings extends boolean,
+  _Tainted extends boolean = false,
+  _RootValue = NonNullable<RootValue>,
+> =
+  IsObjectOrArray<_RootValue> extends false
+    ? never
+    : FlattenedPath extends `${infer Key}.${infer Rest}`
+      ? Key extends `${number}`
+        ? Key extends KeyofUnion<_RootValue>
+          ? NestedTypeBuilder<
+              ValueOfUnion<_RootValue, Key>,
+              Rest,
+              TaintArrayCrossings,
+              TaintArrayCrossings extends true ? true : _Tainted
+            >
+          : Key extends `${infer NumericKey extends number}`
+            ? NumericKey extends KeyofUnion<_RootValue>
+              ? NestedTypeBuilder<
+                  ValueOfUnion<_RootValue, NumericKey>,
+                  Rest,
+                  TaintArrayCrossings,
+                  TaintArrayCrossings extends true ? true : _Tainted
+                >
+              : never
+            : never
+        : Key extends KeyofUnion<_RootValue>
+          ? NestedTypeBuilder<ValueOfUnion<_RootValue, Key>, Rest, TaintArrayCrossings, _Tainted>
+          : never
+      : FlattenedPath extends `${number}`
+        ? FlattenedPath extends KeyofUnion<_RootValue>
+          ? TaintArrayCrossings extends true
+            ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
+            : ValueOfUnion<_RootValue, FlattenedPath>
+          : FlattenedPath extends `${infer NumericKey extends number}`
+            ? NumericKey extends KeyofUnion<_RootValue>
+              ? TaintArrayCrossings extends true
+                ? ValueOfUnion<_RootValue, NumericKey> | undefined
+                : ValueOfUnion<_RootValue, NumericKey>
+              : never
+            : never
+        : FlattenedPath extends KeyofUnion<_RootValue>
+          ? _Tainted extends true
+            ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
+            : ValueOfUnion<_RootValue, FlattenedPath>
+          : never
+
+/**
  * Resolve the type at a dotted-string path inside `RootValue`. Used
  * by the strict (write-side) APIs to derive the type at a path:
  *
@@ -203,47 +318,20 @@ export type DeepPartial<T> = T extends Primitive // Base case for primitive type
  * useful value type (vs. silently collapsing to `never` because
  * `keyof (A|B|C)` would be the intersection of all variants' keys).
  *
+ * Composed over `NestedTypeBuilder` with array-crossing tainting OFF,
+ * so leaves return their exact resolved type. The companion
+ * `NestedReadType` shares the same recursion body but enables
+ * tainting for read-side APIs.
+ *
  * TypeScript caps conditional-type recursion at around 50 levels;
  * paths deeper than that resolve to `never`. Real form schemas
  * never reach this depth.
  */
-export type NestedType<
+export type NestedType<RootValue, FlattenedPath extends string> = NestedTypeBuilder<
   RootValue,
-  FlattenedPath extends string,
-  FilterOutNullishTypesDuringRecursion extends boolean = true,
-  _RootValue = FilterOutNullishTypesDuringRecursion extends false
-    ? RootValue
-    : NonNullable<RootValue>,
-> =
-  IsObjectOrArray<_RootValue> extends false
-    ? never
-    : FlattenedPath extends `${infer Key}.${infer Rest}`
-      ? Key extends `${number}`
-        ? Key extends KeyofUnion<_RootValue>
-          ? NestedType<ValueOfUnion<_RootValue, Key>, Rest, FilterOutNullishTypesDuringRecursion>
-          : Key extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? NestedType<
-                  ValueOfUnion<_RootValue, NumericKey>,
-                  Rest,
-                  FilterOutNullishTypesDuringRecursion
-                >
-              : never
-            : never
-        : Key extends KeyofUnion<_RootValue>
-          ? NestedType<ValueOfUnion<_RootValue, Key>, Rest, FilterOutNullishTypesDuringRecursion>
-          : never
-      : FlattenedPath extends `${number}`
-        ? FlattenedPath extends KeyofUnion<_RootValue>
-          ? ValueOfUnion<_RootValue, FlattenedPath>
-          : FlattenedPath extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? ValueOfUnion<_RootValue, NumericKey>
-              : never
-            : never
-        : FlattenedPath extends KeyofUnion<_RootValue>
-          ? ValueOfUnion<_RootValue, FlattenedPath>
-          : never
+  FlattenedPath,
+  false
+>
 
 /**
  * Implementation-detail primitive-leaf marker used by `DeepPartial`
@@ -278,39 +366,11 @@ export type IsTuple<T extends readonly unknown[]> = number extends T['length'] ?
  * `register(path).innerRef` so the compile-time type honours the
  * runtime possibility of a missing array position.
  */
-export type NestedReadType<
+export type NestedReadType<RootValue, FlattenedPath extends string> = NestedTypeBuilder<
   RootValue,
-  FlattenedPath extends string,
-  _Tainted extends boolean = false,
-  _RootValue = NonNullable<RootValue>,
-> =
-  IsObjectOrArray<_RootValue> extends false
-    ? never
-    : FlattenedPath extends `${infer Key}.${infer Rest}`
-      ? Key extends `${number}`
-        ? Key extends KeyofUnion<_RootValue>
-          ? NestedReadType<ValueOfUnion<_RootValue, Key>, Rest, true>
-          : Key extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? NestedReadType<ValueOfUnion<_RootValue, NumericKey>, Rest, true>
-              : never
-            : never
-        : Key extends KeyofUnion<_RootValue>
-          ? NestedReadType<ValueOfUnion<_RootValue, Key>, Rest, _Tainted>
-          : never
-      : FlattenedPath extends `${number}`
-        ? FlattenedPath extends KeyofUnion<_RootValue>
-          ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
-          : FlattenedPath extends `${infer NumericKey extends number}`
-            ? NumericKey extends KeyofUnion<_RootValue>
-              ? ValueOfUnion<_RootValue, NumericKey> | undefined
-              : never
-            : never
-        : FlattenedPath extends KeyofUnion<_RootValue>
-          ? _Tainted extends true
-            ? ValueOfUnion<_RootValue, FlattenedPath> | undefined
-            : ValueOfUnion<_RootValue, FlattenedPath>
-          : never
+  FlattenedPath,
+  true
+>
 
 /**
  * Filter FlatPath<Form> down to the subset of paths whose resolved leaf
@@ -435,6 +495,37 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
           : T
 
 /**
+ * Walk `T` and add `| Unset` at every primitive leaf (except symbol /
+ * null / undefined), every opaque leaf (`Date`, `RegExp`, `Map`,
+ * `Set`, functions), and every container position (object, tuple,
+ * array). The recursion topology mirrors `WriteShape<T>` exactly —
+ * `DefaultValuesShape<T>` is then a 1-line composition.
+ *
+ * Symbol / null / undefined leaves pass through untouched so the
+ * runtime sentinel doesn't pollute leaf semantics it has no business
+ * carrying. Container positions widen so a single `unset` at any
+ * level recursively marks every descendant primitive blank.
+ *
+ * Not part of the stable consumer-facing surface — reach for
+ * `DefaultValuesShape` instead.
+ */
+export type AugmentWithUnset<T> = T extends string | number | boolean | bigint
+  ? T | Unset
+  : T extends symbol | null | undefined
+    ? T
+    : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | ((...args: never) => unknown)
+      ? T | Unset
+      : T extends readonly [unknown, ...unknown[]]
+        ? { -readonly [K in keyof T]: AugmentWithUnset<T[K]> } | Unset
+        : T extends ReadonlyArray<infer U>
+          ? IsTuple<T> extends true
+            ? { -readonly [K in keyof T]: AugmentWithUnset<T[K]> } | Unset
+            : Array<AugmentWithUnset<U>> | Unset
+          : T extends object
+            ? { [K in keyof T]: AugmentWithUnset<T[K]> } | Unset
+            : T
+
+/**
  * Like `WriteShape<T>`, but additionally widens every primitive leaf
  * (`string`, `number`, `boolean`, `bigint`) to admit `Unset` — the
  * brand-typed sentinel consumers pass to indicate "this leaf starts
@@ -447,8 +538,10 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
  * descendant blank, so `defaultValues: { profile: unset }` and
  * `setValue('cargo', unset)` typecheck cleanly.
  *
- * The recursion mirrors `WriteShape<T>` exactly so `defaultValues`
- * stays compatible at every nested position. Tuple positions,
+ * Composed as `AugmentWithUnset<WriteShape<T>>`: stage 1 widens
+ * primitive literals, stage 2 adds `| Unset` everywhere — the prior
+ * inline walker hand-synced this in a single body. The composition
+ * stays compatible at every nested position; tuple positions,
  * unbounded arrays, and nested records all flow through unchanged.
  *
  * Example:
@@ -459,36 +552,7 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
  * Used by `UseFormConfiguration.defaultValues`, `setValue`'s value
  * parameter, and `reset`'s parameter.
  */
-export type DefaultValuesShape<T> = T extends
-  | string
-  | number
-  | boolean
-  | bigint
-  | symbol
-  | null
-  | undefined
-  ? T extends string
-    ? string | Unset
-    : T extends number
-      ? number | Unset
-      : T extends boolean
-        ? boolean | Unset
-        : T extends bigint
-          ? bigint | Unset
-          : T extends symbol
-            ? symbol
-            : T
-  : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | ((...args: never) => unknown)
-    ? T | Unset
-    : T extends readonly [unknown, ...unknown[]]
-      ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
-      : T extends ReadonlyArray<infer U>
-        ? IsTuple<T> extends true
-          ? { -readonly [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
-          : Array<DefaultValuesShape<U>> | Unset
-        : T extends object
-          ? { [K in keyof T]: DefaultValuesShape<T[K]> } | Unset
-          : T
+export type DefaultValuesShape<T> = AugmentWithUnset<WriteShape<T>>
 
 /**
  * Single-walker fusion of `DeepPartial` and `DefaultValuesShape` — the

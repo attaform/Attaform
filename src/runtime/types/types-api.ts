@@ -12,8 +12,8 @@ import type {
   DefaultValuesInput,
   DefaultValuesShape,
   FlatPath,
+  FlatPathBuilder,
   GenericForm,
-  IsObjectOrArray,
   IsUnion,
   JoinSegments,
   KeyofUnion,
@@ -1789,31 +1789,15 @@ export type MetaTrackerValue = {
 // items (string / number / boolean / bigint) expose BOTH the array root
 // AND `${Key}.${number}` so multi-select and multi-checkbox bindings
 // can register at the array root; arrays of objects expose only the
-// indexed-and-deeper paths.
-export type RegisterFlatPath<Form, Key extends keyof Form = keyof Form> =
-  IsObjectOrArray<Form> extends true
-    ? Key extends string
-      ? Form[Key] extends infer Value
-        ? Value extends Array<infer ArrayItem>
-          ? IsObjectOrArray<ArrayItem> extends true
-            ? `${Key}.${number}.${RegisterFlatPath<ArrayItem>}`
-            : `${Key}` | `${Key}.${number}`
-          : Value extends GenericForm
-            ? `${Key}.${RegisterFlatPath<Value>}`
-            : `${Key}`
-        : never
-      : Key extends number
-        ?
-            | `${Key}`
-            | (Form[Key] extends GenericForm
-                ? `${Key}.${RegisterFlatPath<Form[Key]>}`
-                : Form[Key] extends Array<infer ArrayItem>
-                  ? IsObjectOrArray<ArrayItem> extends true
-                    ? `${Key}.${number}.${RegisterFlatPath<ArrayItem>}`
-                    : `${Key}` | `${Key}.${number}`
-                  : never)
-        : never
-    : never
+// indexed-and-deeper paths. Sourced from the shared `FlatPathBuilder`
+// recursion in `types-core.ts`; the `'register'` mode skips container
+// paths because `v-register` only binds onto leaf-backing native
+// elements (`<input>` / `<select>` / `<textarea>`).
+export type RegisterFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPathBuilder<
+  Form,
+  'register',
+  Key
+>
 
 /**
  * Sync transformation applied to a field's value as user input flows

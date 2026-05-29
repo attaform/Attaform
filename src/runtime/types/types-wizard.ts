@@ -62,7 +62,7 @@ export type FormStatus = {
  * entry carries the formKey + path tuple so consumers can route to the
  * offending field from a wizard-wide error summary.
  */
-export type AggregateError = {
+export type WizardAggregateError = {
   readonly formKey: FormKey
   readonly path: ReadonlyArray<string | number>
   readonly message: string
@@ -232,7 +232,7 @@ export type WizardOnSubmit = (ctx: WizardSubmitContext) => void | Promise<void>
  * validation and activation failures (`atta:activation-failed`). Sync
  * or async; the returned promise gates `wizard.submitting`.
  */
-export type WizardOnError = (errors: readonly AggregateError[]) => void | Promise<void>
+export type WizardOnError = (errors: readonly WizardAggregateError[]) => void | Promise<void>
 
 /**
  * Options for `useWizard({ steps, … })`. `steps` is the only required
@@ -475,7 +475,7 @@ export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArra
   readonly count: number
   readonly statuses: WizardStatusesProxy<Record<string, FormStatus>>
   readonly allValues: Readonly<Record<FormKey, unknown>>
-  readonly allErrors: Readonly<Record<FormKey, readonly AggregateError[]>>
+  readonly allErrors: Readonly<Record<FormKey, readonly WizardAggregateError[]>>
   readonly progress: number
   readonly canAdvance: boolean
   readonly canGoBack: boolean

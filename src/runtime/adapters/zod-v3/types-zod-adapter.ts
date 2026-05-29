@@ -1,47 +1,4 @@
 import type { z } from 'zod-v3'
-import type {
-  CoercionRegistry,
-  FormKey,
-  HistoryConfig,
-  OnInvalidSubmitPolicy,
-  PersistConfig,
-  ValidateOnConfig,
-} from '../../types/types-api'
-
-/**
- * Configuration object for the Zod v3 `useForm` overload. Same
- * shape as the schema-agnostic `UseFormConfiguration`, but with
- * `schema` constrained to a `z.ZodObject` (or wrapped form).
- */
-export type UseFormConfigurationWithZod<
-  Schema extends z.ZodType<unknown>,
-  DefaultValues,
-  K extends FormKey = FormKey,
-> = ValidateOnConfig & {
-  /** A Zod v3 `ZodObject` schema (or one wrapped in `.optional()` / `.nullable()` / `.default()` / `.refine()`). */
-  schema: Schema extends z.ZodType<unknown>
-    ? UnwrapZodObject<Schema> extends z.ZodObject<z.ZodRawShape>
-      ? Schema
-      : never
-    : never
-  // Optional — matches the core `UseFormConfiguration`. Omit for
-  // one-off forms; pass a string when the form needs identity (shared
-  // state, distant lookup, persistence default, DevTools label). See
-  // types-api.ts for the full rationale. Literal preserved on
-  // `form.key` for typed discrimination.
-  key?: K
-  // See `UseFormConfiguration.defaultValues` for the trichotomy
-  // semantics. Plain value resolves at construction; sync/async
-  // function defers (function-form factories surface via
-  // `form.hydrating` / `form.hydrateError`).
-  defaultValues?: DefaultValues | (() => DefaultValues) | (() => Promise<DefaultValues>)
-  strict?: boolean
-  onInvalidSubmit?: OnInvalidSubmitPolicy
-  persist?: PersistConfig
-  history?: HistoryConfig
-  rememberVariants?: boolean
-  coerce?: boolean | CoercionRegistry
-}
 
 /**
  * Peel `.optional()` / `.nullable()` / `.default()` / `.refine()` /

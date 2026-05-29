@@ -6,14 +6,32 @@ import type {
   FormKey,
   UseFormReturnType,
   UseFormConfiguration,
+  ValidateOnConfig,
 } from '../types/types-api'
 import type { DefaultValuesInput, GenericForm } from '../types/types-core'
-import type {
-  UnwrapZodObject,
-  UseFormConfigurationWithZod,
-} from '../adapters/zod-v3/types-zod-adapter'
+import type { UnwrapZodObject } from '../adapters/zod-v3/types-zod-adapter'
 import type { StorageShape } from '../adapters/zod-v3/types-storage-shape'
 import { useAbstractForm } from './use-abstract-form'
+
+/**
+ * `FormOf` / `OutOf` / `ReadOf` factor the three identical-shape
+ * conditionals out of the zod-typed `useForm` signature. The bundled
+ * `.d.ts` then carries one alias per shape rather than re-inlining
+ * `z.input<UnwrapZodObject<Schema>> extends GenericForm ? … : never`
+ * four times — the pattern that produces TS2589 ("Type instantiation
+ * is excessively deep") on consumer call sites with complex schemas
+ * (discriminated unions, refines, deep `.register()` chains). Mirrors
+ * the v4 adapter's own `FormOf`/`OutOf`/`ReadOf` aliases verbatim so
+ * v3 and v4 carry the same per-call depth cost.
+ */
+type FormOf<Schema extends z.ZodObject<z.ZodRawShape>> =
+  z.input<UnwrapZodObject<Schema>> extends GenericForm ? z.input<UnwrapZodObject<Schema>> : never
+type OutOf<Schema extends z.ZodObject<z.ZodRawShape>> =
+  z.output<UnwrapZodObject<Schema>> extends GenericForm ? z.output<UnwrapZodObject<Schema>> : never
+type ReadOf<Schema extends z.ZodObject<z.ZodRawShape>> =
+  StorageShape<UnwrapZodObject<Schema>> extends GenericForm
+    ? StorageShape<UnwrapZodObject<Schema>>
+    : never
 
 /**
  * Create a form bound to a custom `AbstractSchema` adapter.
@@ -65,26 +83,18 @@ export function useForm<
  *
  * For Zod v4, import from `attaform/zod` instead.
  */
-export function useForm<
-  Schema extends z.ZodObject<z.ZodRawShape>,
-  GetValueFormType extends GenericForm = z.output<UnwrapZodObject<Schema>> extends GenericForm
-    ? z.output<UnwrapZodObject<Schema>>
-    : never,
-  K extends FormKey = FormKey,
->(
-  configuration: UseFormConfigurationWithZod<
-    Schema,
-    DefaultValuesInput<z.input<UnwrapZodObject<Schema>>>,
-    K
-  >
-): UseFormReturnType<
-  z.input<UnwrapZodObject<Schema>>,
-  GetValueFormType,
-  StorageShape<UnwrapZodObject<Schema>> extends GenericForm
-    ? StorageShape<UnwrapZodObject<Schema>>
-    : never,
-  K
->
+export function useForm<Schema extends z.ZodObject<z.ZodRawShape>, K extends FormKey = FormKey>(
+  configuration: Omit<
+    UseFormConfiguration<
+      FormOf<Schema>,
+      OutOf<Schema>,
+      AbstractSchema<FormOf<Schema>, OutOf<Schema>>,
+      DefaultValuesInput<FormOf<Schema>>,
+      K
+    >,
+    'schema' | 'validateOn' | 'debounceMs'
+  > & { schema: Schema } & ValidateOnConfig
+): UseFormReturnType<FormOf<Schema>, OutOf<Schema>, ReadOf<Schema>, K>
 // Untyped impl signature. The two overloads above are the public typed
 // contract; this signature exists only so the body has somewhere to
 // land. Keeping it untyped severs the overload-vs-impl reconciliation

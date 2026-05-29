@@ -210,7 +210,23 @@ export function buildRegister<F extends GenericForm>(
       if (typed !== null && typeof raw === 'number' && parseFloat(typed) === raw) {
         return typed
       }
-      return String(raw)
+      // Container-path misuse degrades gracefully: a consumer who
+      // bound v-register at an object/array path (e.g.
+      // `api.register('payment' as 'payment.last4', …)` to bypass the
+      // type system) gets the same `[object Object]` placeholder
+      // `String({})` produced pre-proto-less-storage. After the
+      // backing store flipped to prototype-less containers,
+      // `String(Object.create(null))` throws "Cannot convert object
+      // to primitive value" because there's no `toString` on the
+      // chain; catching falls back to the canonical
+      // `Object.prototype.toString` output so the directive's
+      // mounted hook never propagates the throw into the consumer's
+      // render.
+      try {
+        return String(raw)
+      } catch {
+        return Object.prototype.toString.call(raw)
+      }
     }) as Readonly<Ref<string>>
 
     // Slim default precomputed at register-time. The schema is fixed

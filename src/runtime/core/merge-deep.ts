@@ -25,7 +25,19 @@ export function mergeDeep(base: unknown, override: unknown): unknown {
   if (!isPlainRecord(override)) return override
   if (!isPlainRecord(base)) return override
 
-  const result: Record<string, unknown> = { ...base }
+  // Prototype-less merge target. `result[key] = ...` on a prototype-
+  // less object is a plain own-property write even when `key` is
+  // `__proto__`, so an `override` carrying a literal `__proto__`
+  // own property (e.g. from JSON-parsed adapter defaults that round-
+  // tripped through storage) cannot reassign the result's prototype.
+  // Legitimate consumer-schema fields named `prototype` /
+  // `constructor` / `__proto__` flow through default-value
+  // derivation alongside every other key. Spread carries `base`'s
+  // own properties via `CopyDataProperties`, which bypasses the
+  // prototype setter, so the spread + `Object.assign` pairing
+  // preserves the prototype-less shape regardless of `base`'s
+  // ancestry.
+  const result: Record<string, unknown> = Object.assign(Object.create(null), base)
   for (const key of Object.keys(override)) {
     const oVal = override[key]
     const bVal = base[key]

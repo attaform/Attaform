@@ -38,6 +38,15 @@ type ZodTypeMap = {
   ZodIntersection: z.ZodIntersection<z.ZodTypeAny, z.ZodTypeAny>
   ZodLazy: z.ZodLazy<z.ZodTypeAny>
   ZodNativeEnum: z.ZodNativeEnum<z.EnumLike>
+  // Leaf-only kinds carried for D5 / D6 / D9 — the adapter's
+  // `generateValue` and `isLeafRequiredV3` branch on these to fold
+  // them into their schema-valid empty value (`NaN` / `undefined`)
+  // rather than the warn-path's `null`.
+  ZodNaN: z.ZodNaN
+  ZodVoid: z.ZodVoid
+  ZodAny: z.ZodAny
+  ZodUnknown: z.ZodUnknown
+  ZodNever: z.ZodNever
 }
 
 /**

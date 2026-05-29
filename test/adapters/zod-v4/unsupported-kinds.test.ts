@@ -45,6 +45,40 @@ describe('zod-v4 adapter — unsupported kinds rejected at construction', () => 
     }
   })
 
+  it('z.map throws UnsupportedSchemaError — Maps have no obvious form representation', () => {
+    const schema = z.object({ index: z.map(z.string(), z.number()) })
+    expect(() => zodV4Adapter(schema)).toThrow(UnsupportedSchemaError)
+    try {
+      zodV4Adapter(schema)
+    } catch (err) {
+      expect(err).toBeInstanceOf(UnsupportedSchemaError)
+      expect((err as Error).message).toContain("'map'")
+      expect((err as Error).message).toContain("'index'")
+    }
+  })
+
+  it('z.symbol throws UnsupportedSchemaError — symbols are not JSON-serialisable', () => {
+    const schema = z.object({ tag: z.symbol() })
+    expect(() => zodV4Adapter(schema)).toThrow(UnsupportedSchemaError)
+    try {
+      zodV4Adapter(schema)
+    } catch (err) {
+      expect((err as Error).message).toContain("'symbol'")
+      expect((err as Error).message).toContain("'tag'")
+    }
+  })
+
+  it('z.function throws UnsupportedSchemaError — function-valued fields have no meaningful initial state', () => {
+    const schema = z.object({ cb: z.function() })
+    expect(() => zodV4Adapter(schema)).toThrow(UnsupportedSchemaError)
+    try {
+      zodV4Adapter(schema)
+    } catch (err) {
+      expect((err as Error).message).toContain("'function'")
+      expect((err as Error).message).toContain("'cb'")
+    }
+  })
+
   it('recursive z.lazy() mounts without throwing — adapter walks cap descent via maxRecursionDepth', () => {
     // Classic self-referential: getter resolves back to the same lazy.
     // Pre-B2 this threw `UnsupportedSchemaError` at adapter construction;

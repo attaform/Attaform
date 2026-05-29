@@ -966,6 +966,9 @@ function walkForMeta(
       case 'template-literal':
       case 'transform':
       case 'file':
+      case 'map':
+      case 'symbol':
+      case 'function':
         return
     }
   } finally {

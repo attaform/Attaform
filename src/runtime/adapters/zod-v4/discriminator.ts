@@ -9,17 +9,22 @@ import {
 } from './introspect'
 
 /**
- * Peel optional/nullable/default/pipe/intersection wrappers off a schema,
- * returning the innermost discriminated union — or `undefined` if none is
- * found. Used by the default-values walker and the discriminator-aware
- * reshape so that e.g.
+ * Peel optional/nullable/default/readonly/catch/pipe/intersection
+ * wrappers off a schema, returning the innermost discriminated union —
+ * or `undefined` if none is found. Used by the default-values walker
+ * and the discriminator-aware reshape so that e.g.
  *
  *   z.discriminatedUnion('status', [...]).optional().default({...})
+ *   z.discriminatedUnion('kind', [...]).catch({ kind: 'a', ... })
  *   z.intersection(z.discriminatedUnion('kind', [...]), sharedSchema)
  *
- * still reach the DU. Intersections with a DU on EXACTLY ONE side resolve
- * to that side; intersections of two distinct DUs are ambiguous and
- * return `undefined` so the runtime falls back to plain writes.
+ * still reach the DU. Catch is load-bearing here: the fallback exists
+ * to fail open to a usable variant, so the runtime must still know
+ * which variant the catch-default selects (otherwise it falls back to
+ * a plain write and the variant-aware reshape never fires).
+ * Intersections with a DU on EXACTLY ONE side resolve to that side;
+ * intersections of two distinct DUs are ambiguous and return
+ * `undefined` so the runtime falls back to plain writes.
  */
 export function unwrapToDiscriminatedUnion(schema: z.ZodType): z.ZodType | undefined {
   let current: z.ZodType = schema
@@ -28,7 +33,13 @@ export function unwrapToDiscriminatedUnion(schema: z.ZodType): z.ZodType | undef
     const kind = kindOf(current)
     if (kind === 'discriminated-union') return current
     let next: z.ZodType | undefined
-    if (kind === 'optional' || kind === 'nullable' || kind === 'default' || kind === 'readonly') {
+    if (
+      kind === 'optional' ||
+      kind === 'nullable' ||
+      kind === 'default' ||
+      kind === 'readonly' ||
+      kind === 'catch'
+    ) {
       next = unwrapInner(current)
     } else if (kind === 'pipe') {
       next = unwrapPipe(current)

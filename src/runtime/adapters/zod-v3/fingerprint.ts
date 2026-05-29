@@ -29,7 +29,11 @@ interface V3Def {
   readonly items?: readonly V3Schema[]
   readonly options?: readonly V3Schema[]
   readonly discriminator?: string
-  readonly values?: readonly unknown[]
+  // ZodEnum stores its admitted values as an array; ZodNativeEnum
+  // stores them as the enum OBJECT (`{Red: 'red', '0': 'Red'}` for a
+  // numeric enum). The fingerprint walker handles the two shapes in
+  // separate branches.
+  readonly values?: readonly unknown[] | Record<string, unknown>
   readonly value?: unknown
   readonly innerType?: V3Schema
   readonly defaultValue?: () => unknown
@@ -40,6 +44,12 @@ interface V3Def {
   readonly left?: V3Schema
   readonly right?: V3Schema
   readonly catchValue?: () => unknown
+  // ZodPipeline stores its input + output sides on `in` / `out`
+  // respectively — NOT on `schema`. The pre-fix walker read `schema`
+  // (always `undefined`) and emitted `ZodPipeline(?)` for every
+  // pipeline.
+  readonly in?: V3Schema
+  readonly out?: V3Schema
 }
 
 const cyclicSentinel = '<cyclic>'
@@ -102,15 +112,37 @@ function computeFingerprint(
     case 'ZodLiteral':
       return `ZodLiteral:${canonicalStringify(def.value)}`
 
-    case 'ZodEnum':
-    case 'ZodNativeEnum': {
-      const values = (def.values ?? []) as readonly unknown[]
+    case 'ZodEnum': {
+      // ZodEnum stores its admitted values as an array on `_def.values`.
+      // Sort + canonicalStringify for a deterministic fingerprint.
+      const values = Array.isArray(def.values) ? def.values : []
       const sorted = [...values].sort((a, b) => {
         const as = String(a)
         const bs = String(b)
         return as < bs ? -1 : as > bs ? 1 : 0
       })
-      return `${kind}:${canonicalStringify(sorted)}`
+      return `ZodEnum:${canonicalStringify(sorted)}`
+    }
+
+    case 'ZodNativeEnum': {
+      // ZodNativeEnum stores the enum OBJECT on `_def.values` (e.g.
+      // `{Red: 'red'}` for a string enum or `{A: 0, '0': 'A'}` for a
+      // numeric enum). The pre-fix walker shared the ZodEnum branch
+      // which did `[...values]` — that throws `TypeError: not
+      // iterable` on the object. Use `Object.values` to extract the
+      // admitted runtime members; numeric enums include their
+      // reverse-mapped string keys, which is fine for fingerprint
+      // determinism (both forms are valid Zod inputs).
+      const values =
+        def.values && typeof def.values === 'object' && !Array.isArray(def.values)
+          ? Object.values(def.values)
+          : []
+      const sorted = [...values].sort((a, b) => {
+        const as = String(a)
+        const bs = String(b)
+        return as < bs ? -1 : as > bs ? 1 : 0
+      })
+      return `ZodNativeEnum:${canonicalStringify(sorted)}`
     }
 
     case 'ZodObject': {
@@ -118,7 +150,13 @@ function computeFingerprint(
       const sortedEntries = Object.entries(shape)
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([k, v]) => `${JSON.stringify(k)}:${recurse(v)}`)
-      return `ZodObject{${sortedEntries.join(',')}}`
+      // Object-level `formatChecks` matches v4's `object{…}${formatChecks(schema)}`
+      // (`fingerprint.ts:148`). ZodObject rarely carries `_def.checks`
+      // in v3 — the call is structurally for parity rather than
+      // expected-to-fire — but consumers who reach through a custom
+      // ZodObject builder that stores extra constraints get them
+      // surfaced symmetrically.
+      return `ZodObject{${sortedEntries.join(',')}}${formatChecks(def.checks)}`
     }
 
     case 'ZodArray':
@@ -186,8 +224,13 @@ function computeFingerprint(
     }
 
     case 'ZodPipeline': {
-      // Internally `z.pipe(a, b)` — `.in` and `.out` live on the def.
-      const inner = def.schema
+      // Internally `z.pipe(a, b)` — `.in` and `.out` live on the def
+      // (NOT `.schema`). The pre-fix walker read `def.schema`
+      // (undefined for a pipeline) so every pipeline collapsed to
+      // `ZodPipeline(?)`. Read the input side first (mirrors v4's
+      // `unwrapPipe` which returns `in ?? out`); the output side is
+      // a derived shape rather than a consumer-authored schema.
+      const inner = def.in ?? def.out
       return inner === undefined ? 'ZodPipeline(?)' : `ZodPipeline(${recurse(inner)})`
     }
 
@@ -215,15 +258,37 @@ function computeFingerprint(
       return `ZodIntersection(${parts.join('&')})`
     }
 
+    case 'ZodSet': {
+      // ZodSet stores its element type on `_def.valueType` (same slot
+      // ZodRecord uses for its value type). The pre-fix walker fell
+      // through to the opaque default branch, so `z.set(z.string())`
+      // and `z.set(z.number())` collapsed to the same `ZodSet:*`.
+      // Mirrors v4's `set<element>${formatChecks(schema)}`.
+      const inner = def.valueType
+      return inner === undefined
+        ? 'ZodSet(?)'
+        : `ZodSet<${recurse(inner)}>${formatChecks(def.checks)}`
+    }
+
+    case 'ZodBranded': {
+      // ZodBranded stores its inner on `_def.type` (the v3 quirk; v4's
+      // brand is type-only). The pre-fix walker fell through to the
+      // opaque default branch and lost the inner's shape entirely, so
+      // `z.string().brand<'A'>()` and `z.number().brand<'B'>()`
+      // collapsed to the same `ZodBranded:*`. Brand annotations are
+      // type-level only at runtime, so emit just the inner's
+      // fingerprint with a transparent wrapper.
+      const inner = def.type
+      return inner === undefined ? 'ZodBranded(?)' : `ZodBranded(${recurse(inner)})`
+    }
+
     // Structural opacity — schemas whose runtime behaviour isn't
     // introspectable via `_def` fall here. Still distinguishable
     // from other kinds by the returned string.
     case 'ZodPromise':
     case 'ZodFunction':
     case 'ZodMap':
-    case 'ZodSet':
     case 'ZodSymbol':
-    case 'ZodBranded':
     default:
       return `${kind}:*`
   }

@@ -50,6 +50,13 @@ export type ZodKind =
   | 'template-literal'
   | 'transform'
   | 'file'
+  // Enumerated so `assert-supported.ts` can reject them at construction
+  // (none are form-representable — see the rationale on `UNSUPPORTED`).
+  // Without explicit cases they would fall to `'unknown'` and the assert
+  // step would treat them as opaque leaves.
+  | 'map'
+  | 'symbol'
+  | 'function'
 
 // Narrow accessor for the unstable `def` surface. All reads from this
 // object go through helpers below — never inline.
@@ -177,6 +184,12 @@ export function kindOf(schema: unknown): ZodKind {
       return 'template-literal'
     case 'file':
       return 'file'
+    case 'map':
+      return 'map'
+    case 'symbol':
+      return 'symbol'
+    case 'function':
+      return 'function'
     default:
       return 'unknown'
   }

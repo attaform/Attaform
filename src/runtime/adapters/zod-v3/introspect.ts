@@ -96,6 +96,11 @@ interface ZodV3InternalShape {
     catchValue?: (ctx: { error: unknown; input: unknown }) => unknown
     // Refinement payload.
     checks?: readonly unknown[]
+    // `z.coerce.X()` flags the wrapped primitive's def with `coerce:
+    // true` — the constructor returns a ZodString / ZodNumber / etc.
+    // schema rather than a separate wrapper, and the flag drives Zod's
+    // own safeParse to cast the input. Used by `isCoercePrimitive`.
+    coerce?: boolean
   }
 }
 
@@ -347,6 +352,20 @@ export function getEffectsKind(
   return undefined
 }
 
+/**
+ * Detect `z.coerce.X()` — a primitive schema (ZodString / ZodNumber /
+ * etc.) carrying `_def.coerce === true`. v3 stores coerce as a flag on
+ * the wrapped primitive's def rather than as a separate wrapper, so
+ * the schema's typeName is just `ZodString` / `ZodNumber` / etc.; the
+ * caller still wants to know it's a coerce slot (default-derivation
+ * leaves the slot `undefined`; the slim-primitive write gate accepts
+ * raw consumer writes verbatim through the coerce subtree). Mirrors
+ * v4's `isCoercePrimitive`.
+ */
+export function isCoercePrimitive(schema: z.ZodTypeAny): boolean {
+  return readDef(schema)?.coerce === true
+}
+
 /** ZodPipeline input schema. */
 export function unwrapPipeIn(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
@@ -399,6 +418,22 @@ export function getLazyGetter(schema: z.ZodTypeAny): (() => unknown) | undefined
 export function getLiteralValue(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
   return def?.value
+}
+
+/**
+ * Read every value a `z.literal(...)` admits as an array. v3 stores
+ * single-value literals as `_def.value` (the value itself) and
+ * multi-value literals (`z.literal(['a','b'])`) as `_def.value` set to
+ * the array. Returning a unified array shape lets callers iterate
+ * without branching on `Array.isArray(_def.value)`. Mirrors v4's
+ * `getLiteralValues` (`introspect.ts:238`).
+ */
+export function getLiteralValues(schema: z.ZodTypeAny): readonly unknown[] {
+  const def = readDef(schema)
+  const v = def?.value
+  if (Array.isArray(v)) return v
+  if (v === undefined) return []
+  return [v]
 }
 
 /**

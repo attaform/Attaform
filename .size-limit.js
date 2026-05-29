@@ -298,7 +298,27 @@ export default [
     // (PRs #278-#281): same shared core chunk (displayState, field
     // ids + aria, form.list / form.record + FieldState.key,
     // identity-keyed state migration). Measured at 58.04 KB.
-    limit: '60 KB',
+    //
+    // Raised 60 → 62 KB on the v3-per-method-parity branch (Phase 9
+    // of the audit-remediation series, closing D5–D19 + SF1/3/4/5/7/8
+    // + B1). The unified `attaform/zod` entry bundles both adapters,
+    // so it absorbs every byte added on both sides — v3 picks up
+    // walkForMeta / pathMetaCache (D13 / SF3), mergeDeepV3 + setAtPath
+    // (D19), an expanded unwrapToDiscriminatedUnion with catch +
+    // intersection descent (D11), getLiteralValues (D12), generateValue
+    // branches for NaN / void / any / unknown / never (D5 / D6),
+    // isCoercePrimitive + hasDeclaredDefaultInChainV3 + preprocess
+    // detection (D8), and fingerprint patches for nativeEnum /
+    // pipeline / set / branded / object-checks (SF1 / SF4 / SF5 / SF7
+    // / SF8 / D17). v4 picks up the symmetric catch peel in
+    // unwrapToDiscriminatedUnion (D11) plus `'map' | 'symbol' |
+    // 'function'` enumeration in ZodKind / kindOf / assert-supported
+    // / default-values / strip (3 sites) / path-walker / fingerprint /
+    // walkForMeta / slim-primitives (SF6). Phase 12 ADAPT-D1 dedup
+    // reclaims when the per-adapter walkers collapse behind a single
+    // `createAbstractSchema(introspector)` factory. Measured at
+    // 61.06 KB.
+    limit: '62 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -337,6 +357,14 @@ export default [
     //
     // Raised 51 → 54 KB tracking index.mjs's validation-signals bump
     // (PRs #278-#281): same shared core chunk. Measured at 52.27 KB.
+    //
+    // Held at 54 KB through Phase 9 of the audit-remediation series
+    // — v4 picked up the symmetric catch peel in
+    // unwrapToDiscriminatedUnion (D11) plus `'map' | 'symbol' |
+    // 'function'` enumeration across ZodKind / kindOf / assert-supported
+    // / default-values / strip (3 sites) / path-walker / fingerprint /
+    // walkForMeta / slim-primitives (SF6). Measured at 53.69 KB; the
+    // 54 KB symmetry with zod-v3.mjs maintained without a bump.
     limit: '54 KB',
     gzip: true,
     ignore: ['zod'],
@@ -414,7 +442,26 @@ export default [
     // into one and reclaim this slot and more. Matches v4's 54 KB
     // cap exactly — symmetry is honest, both adapters carry the
     // same surface area now. Measured at 53.24 KB.
-    limit: '54 KB',
+    //
+    // Raised 54 → 55 KB on the v3-per-method-parity branch (Phase 9
+    // of the audit-remediation series, closing D5–D19 + SF1/3/4/5/7/8
+    // + B1). v3 picks up walkForMeta / pathMetaCache / consumePayload
+    // / peelAllV3Wrappers (D13 / SF3), mergeDeepV3 (D19), an expanded
+    // unwrapToDiscriminatedUnion with catch + intersection descent +
+    // effects peel (D11), getLiteralValues (D12), generateValue
+    // branches for NaN / void / any / unknown / never (D5 / D6),
+    // isCoercePrimitive + hasDeclaredDefaultInChainV3 + preprocess
+    // detection in generateValue and isPreprocessOrCoerceLeaf (D8),
+    // resolved.every all-vs-first union semantic in isRequiredAtPath
+    // (D10), ZodVoid in isLeafRequiredV3 (D9), and fingerprint patches
+    // for nativeEnum / pipeline / set / branded / object-checks
+    // (SF1 / SF4 / SF5 / SF7 / SF8 / D17). Phase 12 ADAPT-D1 dedup
+    // reclaims when the per-adapter walkers collapse behind a single
+    // `createAbstractSchema(introspector)` factory. Measured at
+    // 54.01 KB; symmetry with v4's 54 KB cap broke by 0.32 KB this
+    // phase — accept the temporary asymmetry rather than padding v4
+    // to match. Phase 12 dedup is the structural answer.
+    limit: '55 KB',
     gzip: true,
     ignore: ['zod', 'lodash-es'],
     modifyEsbuildConfig: asEsm,

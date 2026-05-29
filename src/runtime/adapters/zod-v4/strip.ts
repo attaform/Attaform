@@ -175,6 +175,9 @@ export function stripRefinements(schema: z.ZodType): z.ZodType {
     case 'template-literal':
     case 'transform':
     case 'file':
+    case 'map':
+    case 'symbol':
+    case 'function':
       return schema
     default: {
       // Compile-time exhaustiveness pin. If `ZodKind` grows a new
@@ -344,6 +347,9 @@ export function stripAsyncChecks(schema: z.ZodType): z.ZodType {
       case 'template-literal':
       case 'transform':
       case 'file':
+      case 'map':
+      case 'symbol':
+      case 'function':
         return s
       default: {
         const _exhaustive: never = kind
@@ -537,6 +543,9 @@ function walkSlim(
     case 'promise':
     case 'custom':
     case 'template-literal':
+    case 'map':
+    case 'symbol':
+    case 'function':
       return schema
     case 'lazy': {
       // Past the cap, leave the original lazy in place. The slim schema

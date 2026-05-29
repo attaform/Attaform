@@ -264,12 +264,15 @@ function defaultForKind(
     case 'custom':
     case 'template-literal':
     case 'transform':
-      // `promise`/`custom`/`template-literal` are rejected by
-      // `assertSupportedKinds` at adapter construction, so this branch
-      // is unreachable through the public surface. `transform` is the
-      // input side of a `z.preprocess(fn, inner)` and has no own
-      // default — callers walk to `inner` via the surrounding pipe.
-      // Kept for exhaustive switch safety when `deriveDefault` is
+    case 'map':
+    case 'symbol':
+    case 'function':
+      // `promise`/`custom`/`template-literal`/`map`/`symbol`/`function`
+      // are rejected by `assertSupportedKinds` at adapter construction,
+      // so these branches are unreachable through the public surface.
+      // `transform` is the input side of a `z.preprocess(fn, inner)` and
+      // has no own default — callers walk to `inner` via the surrounding
+      // pipe. Kept for exhaustive switch safety when `deriveDefault` is
       // called directly in tests.
       return undefined
     case 'file':

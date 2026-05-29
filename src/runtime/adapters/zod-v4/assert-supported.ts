@@ -19,15 +19,30 @@ import {
 } from './introspect'
 
 /**
- * Kinds the adapter does not implement. `z.promise(...)`, `z.custom(...)`,
- * and `z.templateLiteral(...)` can't be represented as form values
- * (Promise-valued fields have no meaningful initial state; custom
- * predicates have no derivable default; template-literal schemas parse
- * strings against a pattern that has no obvious "empty" form). The
- * adapter rejects them at construction so the failure surfaces at
- * `useForm(...)` rather than as a mystery `undefined` at render time.
+ * Kinds the adapter does not implement.
+ *
+ * - `z.promise(...)`, `z.custom(...)`, and `z.templateLiteral(...)` carry
+ *   no form-representable initial value: Promise-valued fields have no
+ *   meaningful starting state, custom predicates have no derivable
+ *   default, and template-literal schemas parse strings against a
+ *   pattern that has no obvious "empty" form.
+ * - `z.map(...)`, `z.symbol()`, and `z.function(...)` are equally
+ *   unrepresentable: Maps have no obvious form encoding, symbols are
+ *   not JSON-serialisable so persistence and SSR round-trip would
+ *   silently drop them, and functions have no meaningful initial state.
+ *   Matches the v3 adapter's symmetric rejection list.
+ *
+ * The adapter rejects all six at construction so the failure surfaces
+ * at `useForm(...)` rather than as a mystery `undefined` at render time.
  */
-const UNSUPPORTED: readonly ZodKind[] = ['promise', 'custom', 'template-literal']
+const UNSUPPORTED: readonly ZodKind[] = [
+  'promise',
+  'custom',
+  'template-literal',
+  'map',
+  'symbol',
+  'function',
+]
 
 function labelPath(path: readonly string[]): string {
   return path.length === 0 ? '<root>' : path.join('.')
@@ -151,6 +166,9 @@ export function assertSupportedKinds(
     case 'template-literal':
     case 'transform':
     case 'file':
+    case 'map':
+    case 'symbol':
+    case 'function':
       return
     default: {
       const _exhaustive: never = kind

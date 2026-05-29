@@ -67,10 +67,21 @@ async function main() {
   }
 
   // The sitemap is small (one entry per public page), regex
-  // extraction is enough — no XML parser dependency.
+  // extraction is enough — no XML parser dependency. Each candidate is
+  // parsed via `new URL` and asserted against the production HOST so a
+  // sneaky entry like `https://www.attaform.com.evil.com/` (which
+  // satisfies a byte-prefix check) gets rejected. Closes CodeQL alert
+  // #15 (rule js/file-access-to-http).
   const urls = Array.from(sitemap.matchAll(/<loc>([^<]+)<\/loc>/g))
     .map((match) => match[1].trim())
-    .filter((url) => url.startsWith(`https://${HOST}/`))
+    .filter((url) => {
+      try {
+        const u = new URL(url)
+        return u.protocol === 'https:' && u.host === HOST
+      } catch {
+        return false
+      }
+    })
 
   if (urls.length === 0) {
     console.warn('[indexnow] sitemap parsed but no matching URLs found; skipping ping')

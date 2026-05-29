@@ -1,0 +1,156 @@
+import { effectScope, watch, type VNode } from 'vue'
+import type { DisplayState, RegisterValue } from '../types/types-api'
+
+/**
+ * The aria attributes the directive keeps in sync with the field's
+ * gated display state. Each is managed independently so authoring one
+ * (e.g. a hand-written `aria-describedby`) never disables the others.
+ */
+const MANAGED_ARIA_ATTRS = [
+  'aria-invalid',
+  'aria-busy',
+  'aria-required',
+  'aria-describedby',
+] as const
+
+/**
+ * Per-element symbol slots. `ariaLockKey` records which managed attrs
+ * the author wrote (off-limits for the binding's lifetime);
+ * `ariaScopeKey` holds the teardown for the reactive watch. Both
+ * `Symbol.for(...)` so duplicate copies of attaform agree on the slot.
+ */
+const ariaLockKey: unique symbol = Symbol.for('attaform:aria-locks')
+const ariaScopeKey: unique symbol = Symbol.for('attaform:aria-scope')
+export type AriaCarrier = HTMLElement & {
+  [ariaLockKey]?: Set<string>
+  [ariaScopeKey]?: () => void
+}
+
+const EMPTY_ARIA_LOCKS: ReadonlySet<string> = new Set()
+
+/**
+ * "Respect your markup": detect authored aria attributes at the vnode
+ * props level rather than the DOM, so a dynamic `:aria-invalid="x"` is
+ * caught even when `x` is falsy at mount. Locks only ever accumulate —
+ * once an attribute is authored, the directive leaves it alone for the
+ * binding's lifetime.
+ */
+export function mergeAriaLocks(el: AriaCarrier, vnode: VNode): Set<string> {
+  let locks = el[ariaLockKey]
+  if (locks === undefined) {
+    locks = new Set<string>()
+    el[ariaLockKey] = locks
+  }
+  const props = vnode.props
+  if (props !== null) {
+    for (const attr of MANAGED_ARIA_ATTRS) {
+      if (attr in props) locks.add(attr)
+    }
+  }
+  return locks
+}
+
+function setAriaAttr(el: HTMLElement, attr: string, value: string | null): void {
+  if (value === null) el.removeAttribute(attr)
+  else el.setAttribute(attr, value)
+}
+
+/**
+ * The desired value for one managed aria attribute given the binding's
+ * required flag and gated display state, or `null` when the attribute
+ * should be absent. Shared by the DOM path (`applyAria`) so the
+ * screen-reader signal stays in lockstep with the visible error state.
+ * Binding to the gated display state (not raw `errors`) keeps the
+ * signal honest about whether the consumer's `getDisplayState`
+ * predicate has admitted the verdict for surfacing.
+ */
+function resolveAriaValue(attr: string, rv: RegisterValue, ds: DisplayState): string | null {
+  switch (attr) {
+    case 'aria-invalid':
+      return ds === 'error' ? 'true' : null
+    case 'aria-busy':
+      return ds === 'pending' ? 'true' : null
+    case 'aria-required':
+      return rv.isRequired === true ? 'true' : null
+    case 'aria-describedby':
+      return ds === 'error' && rv.aria?.errorId !== undefined ? rv.aria.errorId : null
+    default:
+      return null
+  }
+}
+
+/**
+ * Reflect the binding's gated display state onto the unmanaged aria
+ * attributes. Each managed attr is set or removed independently.
+ */
+export function applyAria(el: AriaCarrier, rv: RegisterValue): void {
+  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
+  const ds = rv.ariaDisplayState.value
+  for (const attr of MANAGED_ARIA_ATTRS) {
+    if (!locks.has(attr)) setAriaAttr(el, attr, resolveAriaValue(attr, rv, ds))
+  }
+}
+
+/**
+ * Begin managing aria for a binding: lock authored attrs, paint the
+ * initial state, and watch `ariaDisplayState` in its own effect scope
+ * so async validation ticks update the attributes even when no parent
+ * re-render fires. No-op when this binding has aria disabled.
+ */
+export function setupAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode): void {
+  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  mergeAriaLocks(el, vnode)
+  applyAria(el, rv)
+  const displayState = rv.ariaDisplayState
+  const scope = effectScope(true)
+  scope.run(() => {
+    watch(displayState, () => applyAria(el, rv), { flush: 'post' })
+  })
+  el[ariaScopeKey] = (): void => scope.stop()
+}
+
+/**
+ * Compute the aria props that should be emitted into the rendered
+ * markup for an SSR / static render. Mirrors `applyAria`'s computation
+ * but returns a props bag instead of mutating the DOM, so Vue's
+ * `getSSRProps` directive hook can pass the same managed attributes
+ * through the server's render pipeline. Authored attrs are honoured at
+ * the vnode-prop level (the same source of truth `mergeAriaLocks`
+ * reads on the client). Returns `undefined` when the binding has no
+ * aria opt-in to mirror the directive contract that "no aria" means
+ * "no SSR props."
+ */
+export function getSSRAriaProps(
+  rv: RegisterValue,
+  vnode: VNode | null
+): Record<string, string> | undefined {
+  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return undefined
+  const props = vnode?.props ?? null
+  const ds = rv.ariaDisplayState.value
+  const out: Record<string, string> = {}
+  for (const attr of MANAGED_ARIA_ATTRS) {
+    if (props !== null && attr in props) continue
+    const value = resolveAriaValue(attr, rv, ds)
+    if (value !== null) out[attr] = value
+  }
+  return out
+}
+
+/**
+ * Stop managing aria: tear down the watch and clear only the attributes
+ * the directive set (authored attrs stay). Gated on an active scope so
+ * a binding that never managed aria leaves the element's attributes
+ * untouched.
+ */
+export function teardownAria(el: AriaCarrier): void {
+  const stop = el[ariaScopeKey]
+  if (stop === undefined) return
+  stop()
+  delete el[ariaScopeKey]
+  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
+  for (const attr of MANAGED_ARIA_ATTRS) {
+    if (!locks.has(attr)) el.removeAttribute(attr)
+  }
+  delete el[ariaLockKey]
+}

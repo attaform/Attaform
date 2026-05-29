@@ -28,10 +28,17 @@ import type { DirectiveBinding, DirectiveHook, ObjectDirective, VNode } from 'vu
 import { effectScope, isRef, nextTick, warn, watch } from 'vue'
 import { REGISTER_OWNER_MARKER } from '../composables/use-register'
 import { __DEV__ } from './dev'
+import {
+  applyAria,
+  getSSRAriaProps,
+  mergeAriaLocks,
+  setupAria,
+  teardownAria,
+  type AriaCarrier,
+} from './directive-aria'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import type {
   CustomDirectiveRegisterAssignerFn,
-  DisplayState,
   InternalRegisterValue,
   RegisterCheckboxCustomDirective,
   RegisterModelDynamicCustomDirective,
@@ -1427,118 +1434,6 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
   ? new WeakSet<HTMLElement>()
   : null
 
-// The aria attributes the directive keeps in sync with the field's
-// gated display state. Each is managed independently so authoring one
-// (e.g. a hand-written `aria-describedby`) never disables the others.
-const MANAGED_ARIA_ATTRS = [
-  'aria-invalid',
-  'aria-busy',
-  'aria-required',
-  'aria-describedby',
-] as const
-
-// Per-element symbol slots. `ariaLockKey` records which managed attrs
-// the author wrote (off-limits for the binding's lifetime);
-// `ariaScopeKey` holds the teardown for the reactive watch. Both
-// `Symbol.for(...)` so duplicate copies of attaform agree on the slot.
-const ariaLockKey: unique symbol = Symbol.for('attaform:aria-locks')
-const ariaScopeKey: unique symbol = Symbol.for('attaform:aria-scope')
-type AriaCarrier = HTMLElement & {
-  [ariaLockKey]?: Set<string>
-  [ariaScopeKey]?: () => void
-}
-
-const EMPTY_ARIA_LOCKS: ReadonlySet<string> = new Set()
-
-// "Respect your markup": detect authored aria attributes at the vnode
-// props level rather than the DOM, so a dynamic `:aria-invalid="x"` is
-// caught even when `x` is falsy at mount. Locks only ever accumulate —
-// once an attribute is authored, the directive leaves it alone for the
-// binding's lifetime.
-function mergeAriaLocks(el: AriaCarrier, vnode: VNode): Set<string> {
-  let locks = el[ariaLockKey]
-  if (locks === undefined) {
-    locks = new Set<string>()
-    el[ariaLockKey] = locks
-  }
-  const props = vnode.props
-  if (props !== null) {
-    for (const attr of MANAGED_ARIA_ATTRS) {
-      if (attr in props) locks.add(attr)
-    }
-  }
-  return locks
-}
-
-function setAriaAttr(el: HTMLElement, attr: string, value: string | null): void {
-  if (value === null) el.removeAttribute(attr)
-  else el.setAttribute(attr, value)
-}
-
-// The desired value for one managed aria attribute given the binding's
-// required flag and gated display state, or `null` when the attribute
-// should be absent. Shared by the DOM path (`applyAria`) and the SSR
-// path (`getSSRProps`) so the two can never drift. Binding to the gated
-// display state (not raw `errors`) keeps the screen-reader signal in
-// lockstep with the visible error state.
-function resolveAriaValue(attr: string, rv: RegisterValue, ds: DisplayState): string | null {
-  switch (attr) {
-    case 'aria-invalid':
-      return ds === 'error' ? 'true' : null
-    case 'aria-busy':
-      return ds === 'pending' ? 'true' : null
-    case 'aria-required':
-      return rv.isRequired === true ? 'true' : null
-    case 'aria-describedby':
-      return ds === 'error' && rv.aria?.errorId !== undefined ? rv.aria.errorId : null
-    default:
-      return null
-  }
-}
-
-// Reflect the binding's gated display state onto the unmanaged aria
-// attributes. Each managed attr is set or removed independently.
-function applyAria(el: AriaCarrier, rv: RegisterValue): void {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
-  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
-  const ds = rv.ariaDisplayState.value
-  for (const attr of MANAGED_ARIA_ATTRS) {
-    if (!locks.has(attr)) setAriaAttr(el, attr, resolveAriaValue(attr, rv, ds))
-  }
-}
-
-// Begin managing aria for a binding: lock authored attrs, paint the
-// initial state, and watch `ariaDisplayState` in its own effect scope
-// so async validation ticks update the attributes even when no parent
-// re-render fires. No-op when this binding has aria disabled.
-function setupAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode): void {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
-  mergeAriaLocks(el, vnode)
-  applyAria(el, rv)
-  const displayState = rv.ariaDisplayState
-  const scope = effectScope(true)
-  scope.run(() => {
-    watch(displayState, () => applyAria(el, rv), { flush: 'post' })
-  })
-  el[ariaScopeKey] = (): void => scope.stop()
-}
-
-// Stop managing aria: tear down the watch and clear only the attributes
-// the directive set (authored attrs stay). Gated on an active scope so
-// a binding that never managed aria leaves the element's attributes
-// untouched.
-function teardownAria(el: AriaCarrier): void {
-  const stop = el[ariaScopeKey]
-  if (stop === undefined) return
-  stop()
-  delete el[ariaScopeKey]
-  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
-  for (const attr of MANAGED_ARIA_ATTRS) {
-    if (!locks.has(attr)) el.removeAttribute(attr)
-  }
-  delete el[ariaLockKey]
-}
-
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   created(el, binding, vnode) {
     // Per-element persist opt-in is reconciled at the dynamic level so
@@ -1679,24 +1574,14 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   // describedby matches the client after hydration.
   getSSRProps(binding, vnode) {
     const rv = binding.value
-    if (!isRegisterValue(rv) || rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) {
-      return undefined
-    }
+    if (!isRegisterValue(rv)) return undefined
     // Vue passes `null` for the vnode in the compiled SSR directive-props
     // helper (string-based SSR has no vnode object), and the real vnode
     // in the runtime `withDirectives` path. The vnode-level authored
     // lockout is therefore only available client-side and on the runtime
     // SSR path; under compiled SSR an authored aria attribute can't be
     // detected here, and the client directive reconciles it on hydration.
-    const props = (vnode as VNode | null)?.props ?? null
-    const ds = rv.ariaDisplayState.value
-    const out: Record<string, string> = {}
-    for (const attr of MANAGED_ARIA_ATTRS) {
-      if (props !== null && attr in props) continue
-      const value = resolveAriaValue(attr, rv, ds)
-      if (value !== null) out[attr] = value
-    }
-    return out
+    return getSSRAriaProps(rv, (vnode as VNode | null) ?? null)
   },
 }
 

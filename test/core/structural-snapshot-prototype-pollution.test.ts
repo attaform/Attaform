@@ -89,6 +89,7 @@ describe('structuralSnapshot proto-less containers', () => {
     const snap = structuralSnapshot(source) as Record<string, unknown>
 
     expect(Array.isArray(snap['items'])).toBe(true)
-    expect((snap['items'] as Array<{ name: string }>)[0].name).toBe('a')
+    const items = snap['items'] as Array<{ name: string }>
+    expect(items[0]?.name).toBe('a')
   })
 })

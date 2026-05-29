@@ -104,7 +104,8 @@ describe('setAtPath proto-less intermediates', () => {
     const items = root['items']
     expect(Array.isArray(items)).toBe(true)
     const first = (items as Array<Record<string, unknown>>)[0]
+    expect(first).toBeDefined()
     expect(Object.getPrototypeOf(first)).toBeNull()
-    expect(first['name']).toBe('first')
+    expect(first?.['name']).toBe('first')
   })
 })

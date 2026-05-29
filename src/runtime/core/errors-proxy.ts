@@ -12,6 +12,7 @@ import {
   type Path,
   type Segment,
 } from './paths'
+import { isArrayPath, liveKeysAtPath } from './proxy-live-keys'
 import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
 
 /**
@@ -147,27 +148,6 @@ export function buildErrorsProxy<F extends GenericForm>(
 }
 
 /**
- * Live keys for the form data at a container path. Powers
- * iteration over the errors surface (`Object.keys(form.errors.items)`,
- * `v-for` over per-index error arrays). Reads happen inside the
- * consumer's active effect so `state.form.value` is tracked.
- */
-function liveKeysAtPath<F extends GenericForm>(
-  state: FormStore<F, GenericForm>,
-  segments: readonly Segment[]
-): readonly string[] {
-  const value = getAtPath(state.form.value, segments)
-  if (value === null || value === undefined) return []
-  if (Array.isArray(value)) {
-    const keys = new Array<string>(value.length)
-    for (let i = 0; i < value.length; i += 1) keys[i] = String(i)
-    return keys
-  }
-  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>)
-  return []
-}
-
-/**
  * Container enumeration that agrees with the other surfaces of
  * `form.errors`. Walks the live form data at the container path AND
  * every error store, surfacing the union of first-child segments as
@@ -224,23 +204,6 @@ function errorAwareContainerKeys<F extends GenericForm>(
   walk(state.derivedBlankErrors.value, true)
   walk(state.userErrors, false)
   return [...keys]
-}
-
-/**
- * Whether the path resolves to an array container RIGHT NOW. Live
- * form value is the source of truth so discriminated-union variant
- * switches that swap shape at the same path produce a freshly-
- * targeted container proxy on the next read. The container cache
- * keys off this predicate (see `containerProxyAt` in
- * surface-proxy.ts), so a shape flip surfaces a freshly-targeted
- * proxy on the next read through `form.errors.X`.
- */
-function isArrayPath<F extends GenericForm>(
-  state: FormStore<F, GenericForm>,
-  segments: readonly Segment[]
-): boolean {
-  if (segments.length === 0) return false
-  return Array.isArray(getAtPath(state.form.value, segments))
 }
 
 /**

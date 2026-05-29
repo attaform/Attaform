@@ -11,6 +11,7 @@ import type {
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
 import { applyDuStubs } from './du-stubs'
+import { cloneVariantSnapshot, createVariantMemory } from './variant-memory'
 import { createArrayIdentity } from './array-identity'
 import {
   changedIndices,
@@ -979,41 +980,6 @@ function stripSymbolsDeep(value: unknown): unknown {
 }
 
 /**
- * Deep-clone a value read out of the live reactive form tree, for the
- * variant-memory snapshot. Calls `toRaw` at every level to bypass
- * Vue's on-demand reactivity wrapping, preserves `BigInt`, `Date`,
- * `Map`, `Set` natively (Zod can validate these at leaves), and
- * recurses through plain arrays + objects. Detached from the form's
- * reactive graph, so a later `form.value = nextForm` doesn't mutate
- * the snapshot.
- */
-function cloneVariantSnapshot(value: unknown): unknown {
-  if (value === null || typeof value !== 'object') return value
-  const raw = toRaw(value as object)
-  if (raw instanceof Date) return new Date(raw.getTime())
-  if (raw instanceof Map) {
-    const out = new Map<unknown, unknown>()
-    for (const [k, v] of raw.entries()) out.set(cloneVariantSnapshot(k), cloneVariantSnapshot(v))
-    return out
-  }
-  if (raw instanceof Set) {
-    const out = new Set<unknown>()
-    for (const v of raw) out.add(cloneVariantSnapshot(v))
-    return out
-  }
-  if (raw instanceof RegExp) return new RegExp(raw.source, raw.flags)
-  if (Array.isArray(raw)) {
-    const out: unknown[] = new Array(raw.length)
-    for (let i = 0; i < raw.length; i++) out[i] = cloneVariantSnapshot(raw[i])
-    return out
-  }
-  const src = raw as Record<string, unknown>
-  const out: Record<string, unknown> = {}
-  for (const k of Object.keys(src)) out[k] = cloneVariantSnapshot(src[k])
-  return out
-}
-
-/**
  * Walk the consumer's `defaultValues` argument and stamp every leaf path
  * as "consumer-authored." Even an explicit `undefined` at a leaf counts:
  * the consumer named the path, so any verdict against that undefined IS
@@ -1387,57 +1353,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // form.value), and is cleared on `reset()` / whole-form replace /
   // `resetField` of an ancestor of the union path. Disabled when
   // `rememberVariants === false`.
-  type VariantSnapshot = {
-    readonly value: unknown
-    readonly blankPaths: ReadonlyArray<PathKey>
-  }
-  const variantMemory = new Map<PathKey, Map<unknown, VariantSnapshot>>()
-
-  function clearVariantMemoryUnderPath(arrayPath: Path): void {
-    for (const memKey of [...variantMemory.keys()]) {
-      const segs = segmentsForPathKey(memKey)
-      if (segs === null) continue
-      if (isPathPrefix(arrayPath, segs)) variantMemory.delete(memKey)
-    }
-  }
-
-  function clearVariantMemoryAtArrayIndices(
-    arrayPath: Path,
-    indexFilter: (idx: number) => boolean
-  ): void {
-    for (const memKey of [...variantMemory.keys()]) {
-      const segs = segmentsForPathKey(memKey)
-      if (segs === null) continue
-      if (!isPathPrefix(arrayPath, segs)) continue
-      if (segs.length <= arrayPath.length) continue
-      const idxSeg = segs[arrayPath.length]
-      if (typeof idxSeg !== 'number') continue
-      if (indexFilter(idxSeg)) variantMemory.delete(memKey)
-    }
-  }
-
-  function applyArrayOpToMemory(arrayPath: Path, op: NonNullable<WriteMeta['arrayOp']>): void {
-    switch (op.kind) {
-      case 'insert':
-      case 'remove':
-        // Every index at or past the touched slot now refers to a
-        // different element (shifted up by an insert, down by a remove).
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= op.index)
-        return
-      case 'move': {
-        const lo = Math.min(op.from, op.to)
-        const hi = Math.max(op.from, op.to)
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= lo && i <= hi)
-        return
-      }
-      case 'swap':
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i === op.a || i === op.b)
-        return
-      case 'replace-at':
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i === op.index)
-        return
-    }
-  }
+  const variantMemory = createVariantMemory()
 
   // Relocate per-element state so it follows an element across a structural
   // mutation rather than bleeding onto the new occupant of the element's old
@@ -2178,10 +2094,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       for (const freshIndex of remap.fresh) seedFreshElement(path, freshIndex)
       dropSchemaErrorsAtChangedIndices(path, remap)
       abortValidationAtVacatedIndices(path, remap)
-      applyArrayOpToMemory(path, meta.arrayOp)
+      variantMemory.applyArrayOp(path, meta.arrayOp)
       arrayIdentity.applyOp(path, meta.arrayOp)
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {
-      clearVariantMemoryUnderPath(path)
+      variantMemory.clearUnderPath(path)
       arrayIdentity.realign(path)
     }
     const effectiveModeAfterWrite = meta?.instance?.validateOn ?? fieldValidationMode
@@ -2261,20 +2177,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         for (const k of blankPaths) {
           if (isPathKeyUnder(k, parentPath)) outgoingBlanks.push(k)
         }
-        let memoryForUnion = variantMemory.get(parentKey)
-        if (memoryForUnion === undefined) {
-          memoryForUnion = new Map<unknown, VariantSnapshot>()
-          variantMemory.set(parentKey, memoryForUnion)
-        }
-        memoryForUnion.set(oldDiscValue, {
+        variantMemory.recordOutgoing(parentKey, oldDiscValue, {
           value: currentValue,
           blankPaths: outgoingBlanks,
         })
       }
       // Look up INCOMING. Stored value is already a deep clone — safe
       // to use directly without re-cloning.
-      const memoryForUnion = variantMemory.get(parentKey)
-      const restored = memoryForUnion?.get(newDiscValue)
+      const restored = variantMemory.lookupIncoming(parentKey, newDiscValue)
       if (restored !== undefined) {
         baseline = restored.value
         restoredBlanks = [...restored.blankPaths]
@@ -3402,13 +3312,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // reset subtree (e.g. union at ['notify'] for resetField('notify.address'))
     // is intentionally preserved — the snapshot self-corrects on the
     // next switch-out.
-    for (const memKey of [...variantMemory.keys()]) {
-      const memSegments = segmentsForPathKey(memKey)
-      if (memSegments === null) continue
-      if (isPathPrefix(targetSegments, memSegments)) {
-        variantMemory.delete(memKey)
-      }
-    }
+    variantMemory.clearUnderPath(targetSegments)
 
     // Storage restore: leaf > container > nothing.
     //

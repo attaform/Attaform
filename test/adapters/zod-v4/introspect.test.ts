@@ -2,13 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
   assertZodVersion,
+  containsAsyncRefine,
+  containsAsyncTransform,
   getArrayElement,
+  getChecks,
   getDefaultValue,
   getEnumValues,
   getLiteralValues,
   getObjectShape,
   getTupleItems,
   getUnionOptions,
+  hasChecks,
+  hasContainerOrRootRefine,
+  isAsyncCheck,
   kindOf,
   unwrapInner,
 } from '../../../src/runtime/adapters/zod-v4/introspect'
@@ -94,6 +100,231 @@ describe('accessors', () => {
   it('getDefaultValue returns the configured default', () => {
     expect(getDefaultValue(z.string().default('hi'))).toBe('hi')
     expect(getDefaultValue(z.number().default(42))).toBe(42)
+  })
+})
+
+describe('checks payload', () => {
+  it('hasChecks / getChecks reflect the schema refinement list', () => {
+    expect(hasChecks(z.string())).toBe(false)
+    expect(hasChecks(z.string().min(3))).toBe(true)
+    expect(getChecks(z.string().min(3))).toHaveLength(1)
+    expect(getChecks(z.string())).toHaveLength(0)
+  })
+})
+
+describe('isAsyncCheck', () => {
+  it('flags an async refine check and clears a sync one', () => {
+    // v4 stores refines in `def.checks[].def.fn`; isAsyncCheck reads
+    // the fn's `constructor.name` exactly like the v3 introspect's
+    // ZodEffects walker.
+    const asyncChecks = getChecks(z.string().refine(async () => Promise.resolve(true)))
+    const syncChecks = getChecks(z.string().refine(() => true))
+    expect(asyncChecks).toHaveLength(1)
+    expect(syncChecks).toHaveLength(1)
+    expect(isAsyncCheck(asyncChecks[0])).toBe(true)
+    expect(isAsyncCheck(syncChecks[0])).toBe(false)
+  })
+
+  it('returns false for non-check inputs', () => {
+    expect(isAsyncCheck(null)).toBe(false)
+    expect(isAsyncCheck({})).toBe(false)
+    expect(isAsyncCheck({ _def: { fn: 'not a function' } })).toBe(false)
+  })
+})
+
+describe('hasContainerOrRootRefine', () => {
+  it('returns false for a flat schema with only leaf refines', () => {
+    const schema = z.object({
+      name: z.string().refine((v) => v.length > 0, 'name-invalid'),
+      age: z.number().refine((v) => v >= 0, 'age-invalid'),
+    })
+    expect(hasContainerOrRootRefine(schema)).toBe(false)
+  })
+
+  it('returns true when the root carries a refine', () => {
+    const schema = z
+      .object({ name: z.string(), other: z.string() })
+      .refine(() => true, 'root-invariant')
+    expect(hasContainerOrRootRefine(schema)).toBe(true)
+  })
+
+  it('returns true when a nested container carries a refine', () => {
+    const schema = z.object({
+      profile: z.object({ first: z.string() }).refine(() => true, 'profile-invariant'),
+    })
+    expect(hasContainerOrRootRefine(schema)).toBe(true)
+  })
+
+  it('returns true for a refine through optional/nullable to a container', () => {
+    const schema = z.object({
+      payment: z
+        .object({ card: z.string() })
+        .refine(() => true, 'card-invariant')
+        .optional(),
+    })
+    expect(hasContainerOrRootRefine(schema)).toBe(true)
+  })
+
+  it('returns true for a refine on a union / discriminated-union container', () => {
+    const u = z.union([z.string(), z.number()]).refine(() => true, 'either')
+    const du = z
+      .discriminatedUnion('kind', [
+        z.object({ kind: z.literal('a'), v: z.string() }),
+        z.object({ kind: z.literal('b'), v: z.number() }),
+      ])
+      .refine(() => true, 'cross-cut')
+    expect(hasContainerOrRootRefine(u)).toBe(true)
+    expect(hasContainerOrRootRefine(du)).toBe(true)
+  })
+
+  it('returns true for a refine on intersection / record / set', () => {
+    const intersect = z
+      .intersection(z.object({ a: z.string() }), z.object({ b: z.string() }))
+      .refine(() => true)
+    const rec = z.record(z.string(), z.number()).refine(() => true)
+    const set = z.set(z.string()).refine(() => true)
+    expect(hasContainerOrRootRefine(intersect)).toBe(true)
+    expect(hasContainerOrRootRefine(rec)).toBe(true)
+    expect(hasContainerOrRootRefine(set)).toBe(true)
+  })
+
+  it('returns true for a refine on an array container', () => {
+    const schema = z.object({
+      tags: z.array(z.string()).refine((arr) => arr.length > 0, 'non-empty'),
+    })
+    expect(hasContainerOrRootRefine(schema)).toBe(true)
+  })
+
+  it('handles cycles without recursing forever', () => {
+    type N = { name: string; child?: N }
+    const node: z.ZodType<N> = z.lazy(() =>
+      z.object({ name: z.string(), child: z.lazy(() => node).optional() })
+    )
+    // The lazy resolver builds new instances per call; this only proves
+    // the walker terminates rather than diverging. False is correct here:
+    // no refines anywhere.
+    expect(hasContainerOrRootRefine(node)).toBe(false)
+  })
+})
+
+describe('containsAsyncRefine', () => {
+  it('flags an async leaf refine at the root', () => {
+    expect(containsAsyncRefine(z.string().refine(async () => Promise.resolve(true)))).toBe(true)
+  })
+
+  it('clears a sync-only schema (v4 reads checks exactly)', () => {
+    // v4 is more precise than v3 — sync refines do NOT trip the flag
+    // because `isAsyncCheck` reads the user fn's constructor.name.
+    expect(containsAsyncRefine(z.string().refine(() => true))).toBe(false)
+    expect(containsAsyncRefine(z.string())).toBe(false)
+    expect(containsAsyncRefine(z.object({ name: z.string(), age: z.number() }))).toBe(false)
+  })
+
+  it('flags an async refine nested under containers and wrappers', () => {
+    const nested = z.object({
+      profile: z
+        .object({
+          tags: z.array(
+            z
+              .string()
+              .refine(async () => Promise.resolve(true))
+              .optional()
+          ),
+        })
+        .nullable(),
+    })
+    expect(containsAsyncRefine(nested)).toBe(true)
+  })
+
+  it('does not flag a bare async transform (that’s the transform walker’s domain)', () => {
+    expect(
+      containsAsyncRefine(z.object({ x: z.string().transform(async (v) => Promise.resolve(v)) }))
+    ).toBe(false)
+  })
+
+  it('flags through pipe / intersection / discriminated-union / record / set', () => {
+    const pipe = z.pipe(
+      z.string(),
+      z.string().refine(async () => Promise.resolve(true))
+    )
+    const intersect = z.intersection(
+      z.object({ a: z.string() }),
+      z.object({ b: z.string().refine(async () => Promise.resolve(true)) })
+    )
+    const du = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a'), v: z.string() }),
+      z.object({ kind: z.literal('b'), v: z.string().refine(async () => Promise.resolve(true)) }),
+    ])
+    const rec = z.record(
+      z.string(),
+      z.string().refine(async () => Promise.resolve(true))
+    )
+    const set = z.set(z.string().refine(async () => Promise.resolve(true)))
+    expect(containsAsyncRefine(pipe)).toBe(true)
+    expect(containsAsyncRefine(intersect)).toBe(true)
+    expect(containsAsyncRefine(du)).toBe(true)
+    expect(containsAsyncRefine(rec)).toBe(true)
+    expect(containsAsyncRefine(set)).toBe(true)
+  })
+
+  it('flags through a lazy recursive schema (one hop)', () => {
+    type N = { name: string; child?: N }
+    const node: z.ZodType<N> = z.lazy(() =>
+      z.object({
+        name: z.string().refine(async () => Promise.resolve(true)),
+        child: z.lazy(() => node).optional(),
+      })
+    )
+    expect(containsAsyncRefine(node)).toBe(true)
+  })
+})
+
+describe('containsAsyncTransform', () => {
+  it('flags an async transform / preprocess at the root', () => {
+    expect(containsAsyncTransform(z.string().transform(async (v) => Promise.resolve(v)))).toBe(true)
+    expect(containsAsyncTransform(z.preprocess(async (v) => Promise.resolve(v), z.string()))).toBe(
+      true
+    )
+  })
+
+  it('does not flag sync transforms / preprocess', () => {
+    expect(containsAsyncTransform(z.string().transform((v) => v))).toBe(false)
+    expect(containsAsyncTransform(z.preprocess((v) => v, z.string()))).toBe(false)
+  })
+
+  it('does not flag refines (sync or async) — the refine walker’s domain', () => {
+    expect(containsAsyncTransform(z.string().refine(async () => Promise.resolve(true)))).toBe(false)
+    expect(containsAsyncTransform(z.string().refine(() => true))).toBe(false)
+  })
+
+  it('flags an async transform nested under union options', () => {
+    const schema = z.object({
+      payload: z.union([z.string(), z.string().transform(async (v) => Promise.resolve(`${v}!`))]),
+    })
+    expect(containsAsyncTransform(schema)).toBe(true)
+  })
+
+  it('flags through intersection / record / set / lazy', () => {
+    const intersect = z.intersection(
+      z.object({ a: z.string() }),
+      z.object({ b: z.string().transform(async (v) => Promise.resolve(v)) })
+    )
+    const rec = z.record(
+      z.string(),
+      z.string().transform(async (v) => Promise.resolve(v))
+    )
+    const set = z.set(z.string().transform(async (v) => Promise.resolve(v)))
+    type N = { v: string; child?: N }
+    const node: z.ZodType<N> = z.lazy(() =>
+      z.object({
+        v: z.string().transform(async (v) => Promise.resolve(v)),
+        child: z.lazy(() => node).optional(),
+      })
+    )
+    expect(containsAsyncTransform(intersect)).toBe(true)
+    expect(containsAsyncTransform(rec)).toBe(true)
+    expect(containsAsyncTransform(set)).toBe(true)
+    expect(containsAsyncTransform(node)).toBe(true)
   })
 })
 

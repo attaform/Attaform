@@ -196,7 +196,7 @@ describe('hasContainerOrRootRefine', () => {
   })
 
   it('handles cycles without recursing forever', () => {
-    type N = { name: string; child?: N }
+    type N = { name: string; child?: N | undefined }
     const node: z.ZodType<N> = z.lazy(() =>
       z.object({ name: z.string(), child: z.lazy(() => node).optional() })
     )
@@ -268,7 +268,7 @@ describe('containsAsyncRefine', () => {
   })
 
   it('flags through a lazy recursive schema (one hop)', () => {
-    type N = { name: string; child?: N }
+    type N = { name: string; child?: N | undefined }
     const node: z.ZodType<N> = z.lazy(() =>
       z.object({
         name: z.string().refine(async () => Promise.resolve(true)),
@@ -314,7 +314,7 @@ describe('containsAsyncTransform', () => {
       z.string().transform(async (v) => Promise.resolve(v))
     )
     const set = z.set(z.string().transform(async (v) => Promise.resolve(v)))
-    type N = { v: string; child?: N }
+    type N = { v: string; child?: N | undefined }
     const node: z.ZodType<N> = z.lazy(() =>
       z.object({
         v: z.string().transform(async (v) => Promise.resolve(v)),

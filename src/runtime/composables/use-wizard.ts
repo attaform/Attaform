@@ -410,10 +410,22 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return -1
   })
 
+  // `currentStep` and `activeForm` resolve through the same
+  // `activeIndex`-aware lookup so they can never disagree on which
+  // step the wizard is on. A function slot that previously
+  // resolved to the active form and now returns `undefined` drops
+  // the matching index to `-1`; both reads then fall back to the
+  // first compiled step uniformly (W-BRITTLE-1). Pre-fix
+  // `currentStep` trusted `activeKey` verbatim and could return the
+  // dropped form's key while `activeForm` fell back to the first
+  // compiled step.
   const currentStep = computed<FormKey | undefined>(() => {
-    const key = activeKey.value
-    if (key !== '') return key
-    const first = compiledSteps.value[0]
+    const list = compiledSteps.value
+    const idx = activeIndex.value
+    if (idx >= 0 && idx < list.length) {
+      return (list[idx] as CompiledStep).key
+    }
+    const first = list[0]
     return first === undefined ? undefined : first.key
   })
 

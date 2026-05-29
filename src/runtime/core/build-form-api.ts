@@ -600,25 +600,60 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // `form.fields().dirty`, and `form.fields([]).dirty` all read
   // identical aggregated state.
   const rootFieldState = getRootFieldStateAt([] as Path)
+  // FieldState fields surface as getters on a plain object passed
+  // through `reactive(...)`. The original layout wrapped each of the
+  // ~28 mirrored fields in a `computed(() => rootFieldState.value.X)`,
+  // which double-memoises a single property read — the underlying
+  // `rootFieldState` IS already a computed, so its `.value` is
+  // memoised by Vue's reactive graph; the outer computed adds no
+  // extra dep-tracking value, only a wrapper allocation per mount
+  // (~30 per useForm). Getters compose with `reactive()`'s Proxy
+  // `get` trap: a read triggers the trap, the trap calls the
+  // getter, the getter reads `rootFieldState.value.X`, and the
+  // dep-tracking lands on the underlying computed exactly as before.
+  // `watch(() => form.meta.dirty, …)` collects the same dependency
+  // graph either way.
   const formMeta = readonly(
     reactive({
-      // FieldState fields — read through one shared root computed. Each
-      // property accesses `rootFieldState.value[X]`, so any descendant
-      // change re-evaluates the root computed once (Vue's reactive
-      // graph dedupes the dependent re-renders).
-      value: computed(() => rootFieldState.value.value),
-      original: computed(() => rootFieldState.value.original),
-      pristine: computed(() => rootFieldState.value.pristine),
-      dirty: computed(() => rootFieldState.value.dirty),
-      focused: computed(() => rootFieldState.value.focused),
-      blurred: computed(() => rootFieldState.value.blurred),
-      touched: computed(() => rootFieldState.value.touched),
-      interacted: computed(() => rootFieldState.value.interacted),
-      blurredAfterInteraction: computed(() => rootFieldState.value.blurredAfterInteraction),
-      connected: computed(() => rootFieldState.value.connected),
-      element: computed(() => rootFieldState.value.element),
-      elements: computed(() => rootFieldState.value.elements),
-      updatedAt: computed(() => rootFieldState.value.updatedAt),
+      get value() {
+        return rootFieldState.value.value
+      },
+      get original() {
+        return rootFieldState.value.original
+      },
+      get pristine() {
+        return rootFieldState.value.pristine
+      },
+      get dirty() {
+        return rootFieldState.value.dirty
+      },
+      get focused() {
+        return rootFieldState.value.focused
+      },
+      get blurred() {
+        return rootFieldState.value.blurred
+      },
+      get touched() {
+        return rootFieldState.value.touched
+      },
+      get interacted() {
+        return rootFieldState.value.interacted
+      },
+      get blurredAfterInteraction() {
+        return rootFieldState.value.blurredAfterInteraction
+      },
+      get connected() {
+        return rootFieldState.value.connected
+      },
+      get element() {
+        return rootFieldState.value.element
+      },
+      get elements() {
+        return rootFieldState.value.elements
+      },
+      get updatedAt() {
+        return rootFieldState.value.updatedAt
+      },
       // Whole-form validating mirrors the LIFECYCLE counter
       // (`state.activeValidations`) ORed with any per-leaf validation
       // in flight (via `rootFieldState.validating`). A submit-time
@@ -641,21 +676,51 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // FieldState surface, so `form.meta.displayState` matches
       // `form.fields().displayState` exactly — the predicate runs once
       // at the root and the result is shared.
-      displayState: computed(() => rootFieldState.value.displayState),
-      showErrors: computed(() => rootFieldState.value.showErrors),
-      showPending: computed(() => rootFieldState.value.showPending),
-      showSuccess: computed(() => rootFieldState.value.showSuccess),
-      showIdle: computed(() => rootFieldState.value.showIdle),
-      firstError: computed(() => rootFieldState.value.firstError),
-      path: computed(() => rootFieldState.value.path),
-      id: computed(() => rootFieldState.value.id),
-      aria: computed(() => rootFieldState.value.aria),
-      key: computed(() => rootFieldState.value.key),
-      blank: computed(() => rootFieldState.value.blank),
-      label: computed(() => rootFieldState.value.label),
-      description: computed(() => rootFieldState.value.description),
-      placeholder: computed(() => rootFieldState.value.placeholder),
-      meta: computed(() => rootFieldState.value.meta),
+      get displayState() {
+        return rootFieldState.value.displayState
+      },
+      get showErrors() {
+        return rootFieldState.value.showErrors
+      },
+      get showPending() {
+        return rootFieldState.value.showPending
+      },
+      get showSuccess() {
+        return rootFieldState.value.showSuccess
+      },
+      get showIdle() {
+        return rootFieldState.value.showIdle
+      },
+      get firstError() {
+        return rootFieldState.value.firstError
+      },
+      get path() {
+        return rootFieldState.value.path
+      },
+      get id() {
+        return rootFieldState.value.id
+      },
+      get aria() {
+        return rootFieldState.value.aria
+      },
+      get key() {
+        return rootFieldState.value.key
+      },
+      get blank() {
+        return rootFieldState.value.blank
+      },
+      get label() {
+        return rootFieldState.value.label
+      },
+      get description() {
+        return rootFieldState.value.description
+      },
+      get placeholder() {
+        return rootFieldState.value.placeholder
+      },
+      get meta() {
+        return rootFieldState.value.meta
+      },
       // Lifecycle (form-level only — not on FieldState).
       submitting,
       submissionAttempts,
@@ -664,7 +729,9 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // Scalar mirror over the array — meta is a single sticky surface
       // for both templates and `useWizard`'s `FormStatus`, so the
       // projection lives here.
-      errorCount: computed(() => metaErrors.value.length),
+      get errorCount() {
+        return metaErrors.value.length
+      },
       submitted,
       // Per-`useForm()`-call identity. Stable for one mount; new on
       // re-mount; orthogonal to `form.key` (which is the user-supplied

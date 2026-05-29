@@ -11,6 +11,7 @@
  */
 import type { z } from 'zod'
 import type { SlimPrimitiveKind } from '../../types/types-api'
+import { slimKindOf } from '../../core/slim-primitive-gate'
 import {
   getEnumValues,
   getIntersectionLeft,
@@ -138,7 +139,7 @@ function walk(
     case 'literal': {
       const values = getLiteralValues(schema)
       const out = new Set<SlimPrimitiveKind>()
-      for (const v of values) out.add(slimKindOfRaw(v))
+      for (const v of values) out.add(slimKindOf(v))
       return out.size === 0 ? PERMISSIVE : out
     }
     case 'object':
@@ -232,33 +233,5 @@ function walk(
       return PERMISSIVE
     default:
       return PERMISSIVE
-  }
-}
-
-function slimKindOfRaw(value: unknown): SlimPrimitiveKind {
-  if (value === null) return 'null'
-  if (value === undefined) return 'undefined'
-  if (Array.isArray(value)) return 'array'
-  if (value instanceof Date) return 'date'
-  const t = typeof value
-  switch (t) {
-    case 'string':
-      return 'string'
-    case 'number':
-      return 'number'
-    case 'boolean':
-      return 'boolean'
-    case 'bigint':
-      return 'bigint'
-    case 'symbol':
-      return 'symbol'
-    case 'undefined':
-      return 'undefined'
-    case 'object':
-      return 'object'
-    case 'function':
-      return 'function'
-    default:
-      return 'object'
   }
 }

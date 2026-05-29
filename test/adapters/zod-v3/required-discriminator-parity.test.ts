@@ -101,9 +101,13 @@ describe('zod v3: required + discriminator parity (D9 / D10 / D11 / D12)', () =>
 
   describe('multi-value literal discriminator (D12)', () => {
     it('z.literal(["a","b"]) registers every literal value as a selectable variant', () => {
+      // v3's `z.literal` type narrows to a single `Primitive` but
+      // the runtime accepts an array as the value-set form. Cast at
+      // the construction site so the test can exercise the v3 + v4
+      // semantic parity D12 exists to enforce.
       const schema = z.object({
         value: z.discriminatedUnion('kind', [
-          z.object({ kind: z.literal(['a', 'b']), x: z.string() }),
+          z.object({ kind: z.literal(['a', 'b'] as unknown as string), x: z.string() }),
           z.object({ kind: z.literal('c'), y: z.number() }),
         ]),
       })

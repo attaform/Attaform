@@ -23,15 +23,15 @@ describe('zod v3: shared-instance field-meta per-path disambiguation (D13 / SF3)
     const schema = z.object({ pickup: addr, delivery: addr })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
 
-    const pickup = adapter.getFieldMetaAtPath(['pickup'])
-    const delivery = adapter.getFieldMetaAtPath(['delivery'])
+    const pickup = adapter.getFieldMetaAtPath?.(['pickup'])
+    const delivery = adapter.getFieldMetaAtPath?.(['delivery'])
 
     // Declaration order matches walk order, so the first registration
     // binds to the first encountered path (`pickup`) and the second
     // binds to `delivery`. Without per-path disambiguation both paths
     // would resolve to whichever registration won the last-write race.
-    expect(pickup.label).toBe('Pickup')
-    expect(delivery.label).toBe('Delivery')
+    expect(pickup?.label).toBe('Pickup')
+    expect(delivery?.label).toBe('Delivery')
   })
 
   it('a single registration on a shared schema still resolves at both paths', () => {
@@ -40,11 +40,11 @@ describe('zod v3: shared-instance field-meta per-path disambiguation (D13 / SF3)
     const schema = z.object({ home: addr, work: addr })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
 
-    expect(adapter.getFieldMetaAtPath(['home']).label).toBe('Address')
+    expect(adapter.getFieldMetaAtPath?.(['home']).label).toBe('Address')
     // Schemas reused MORE times than they're registered should share
     // the single registration (mirrors v4's `Math.min(idx, list.length-1)`
     // clamp). Without the clamp the second visit would fall back to
     // `humanize('work')` → 'Work'.
-    expect(adapter.getFieldMetaAtPath(['work']).label).toBe('Address')
+    expect(adapter.getFieldMetaAtPath?.(['work']).label).toBe('Address')
   })
 })

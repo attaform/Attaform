@@ -17,8 +17,8 @@ describe('zod v4: shared-instance field-meta per-path disambiguation', () => {
     const schema = z.object({ pickup: addr, delivery: addr })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
 
-    expect(adapter.getFieldMetaAtPath(['pickup']).label).toBe('Pickup')
-    expect(adapter.getFieldMetaAtPath(['delivery']).label).toBe('Delivery')
+    expect(adapter.getFieldMetaAtPath?.(['pickup']).label).toBe('Pickup')
+    expect(adapter.getFieldMetaAtPath?.(['delivery']).label).toBe('Delivery')
   })
 
   it('a single registration on a shared schema still resolves at both paths', () => {
@@ -27,7 +27,7 @@ describe('zod v4: shared-instance field-meta per-path disambiguation', () => {
     const schema = z.object({ home: addr, work: addr })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
 
-    expect(adapter.getFieldMetaAtPath(['home']).label).toBe('Address')
-    expect(adapter.getFieldMetaAtPath(['work']).label).toBe('Address')
+    expect(adapter.getFieldMetaAtPath?.(['home']).label).toBe('Address')
+    expect(adapter.getFieldMetaAtPath?.(['work']).label).toBe('Address')
   })
 })

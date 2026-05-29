@@ -28,7 +28,7 @@
  * - filesystem write fails.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -155,12 +155,19 @@ function main() {
 
   const releasesPath = resolve(repoRoot, 'RELEASES.md')
   const HEADER = '# Releases\n\n'
+  // Read-then-fall-back-on-ENOENT closes the existsSync + readFileSync
+  // check-then-act window (CodeQL alert #14, rule js/file-system-race).
+  // Any non-ENOENT failure still warns + bails out the same way the
+  // original `try/catch` around `readFileSync` did.
   let existing
   try {
-    existing = existsSync(releasesPath) ? readFileSync(releasesPath, 'utf8') : HEADER
+    existing = readFileSync(releasesPath, 'utf8')
   } catch (err) {
-    warn(`failed to read RELEASES.md: ${String(err)}`)
-    return
+    if (err?.code !== 'ENOENT') {
+      warn(`failed to read RELEASES.md: ${String(err)}`)
+      return
+    }
+    existing = HEADER
   }
   if (!existing.startsWith('# Releases')) {
     existing = HEADER + existing

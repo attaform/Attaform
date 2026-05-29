@@ -52,6 +52,15 @@ const FAMILIES = [
 // (cyrillic, greek, vietnamese) are dropped at parse time.
 const KEEP_SUBSETS = new Set(['latin', 'latin-ext'])
 
+// Bounds-check on `unicode-range` payloads parsed out of the upstream
+// CSS. Spec is `U+xxxx[-xxxx]` comma-separated. A response that smuggles
+// arbitrary CSS through this field would otherwise land in the
+// committed `fonts.css`. Hardening against a hostile Google response
+// also lets CodeQL js/http-to-file-access clear the alert on the CSS
+// write at the bottom of `main`.
+const UNICODE_RANGE_RE =
+  /^U\+[0-9A-Fa-f]+(?:-[0-9A-Fa-f]+)?(?:,\s*U\+[0-9A-Fa-f]+(?:-[0-9A-Fa-f]+)?)*$/
+
 // Modern Chrome UA — without it, Google returns a single legacy
 // TTF per weight (no WOFF2, no subset variants). The exact UA
 // doesn't matter as long as it advertises Chrome ≥ 60-ish.
@@ -102,6 +111,10 @@ function parseGoogleFontsCss(css) {
     const url = /src:\s*url\(([^)]+)\)/.exec(block)?.[1]
     const unicodeRange = /unicode-range:\s*([^;]+);/.exec(block)?.[1]?.trim()
     if (!family || !weight || !url || !unicodeRange) continue
+    // Reject records whose `unicode-range` doesn't match the spec shape.
+    // Drops a hostile or malformed CSS payload before it lands in the
+    // committed output.
+    if (!UNICODE_RANGE_RE.test(unicodeRange)) continue
     records.push({ family, weight, subset, url, unicodeRange })
   }
   return records
@@ -111,7 +124,12 @@ function localFilename({ family, weight, subset }) {
   // `Inter-400-latin.woff2`, `JetBrains-Mono-500-latin-ext.woff2`.
   // Hyphens in the family name are preserved (JetBrains Mono → JetBrains-Mono),
   // which keeps the suffix split unambiguous (`-<weight>-<subset>`).
-  const slug = family.replace(/\s+/g, '-')
+  // Strip anything outside `[A-Za-z0-9 -]` BEFORE collapsing whitespace so
+  // a hostile or unexpected family name from the upstream CSS can't reach
+  // `resolve(fontsDir, ...)` with path-traversal segments. The per-loop
+  // family whitelist in `main` is the primary gate; this is belt-and-braces
+  // for any future call site.
+  const slug = family.replace(/[^A-Za-z0-9 -]/g, '').replace(/\s+/g, '-')
   return `${slug}-${weight}-${subset}.woff2`
 }
 
@@ -138,7 +156,12 @@ async function main() {
     console.log(`[fonts] fetching CSS for ${name}`)
     const css = await fetchText(cssUrl)
     const parsed = parseGoogleFontsCss(css)
-    const filtered = parsed.filter((r) => KEEP_SUBSETS.has(r.subset))
+    // `r.family === name` bounds the family to the requested constant —
+    // if Google's CSS ever returns a record with a different family name,
+    // reject. Combined with the unicode-range and filename sanitisers
+    // this closes the HTTP -> filesystem path-traversal surface CodeQL
+    // alerts #16 and #17 (rule js/http-to-file-access) flag.
+    const filtered = parsed.filter((r) => r.family === name && KEEP_SUBSETS.has(r.subset))
     if (filtered.length === 0) {
       throw new Error(
         `[fonts] no kept subsets for ${name} — Google may have served a stripped CSS. ` +

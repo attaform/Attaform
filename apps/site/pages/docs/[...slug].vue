@@ -12,9 +12,7 @@
   // visitor straight into the in-browser editor with the right file
   // open (anonymous viewers see a "fork to edit" prompt; signed-in
   // contributors get the editor immediately).
-  const editUrl = computed(
-    () => `https://github.com/attaform/attaform/edit/main${route.path.replace('/docs', '/docs')}.md`
-  )
+  const editUrl = computed(() => `https://github.com/attaform/attaform/edit/main${route.path}.md`)
 
   const { data: page } = await useAsyncData(`content-${route.path}`, () =>
     queryCollection('docs').path(route.path).first()

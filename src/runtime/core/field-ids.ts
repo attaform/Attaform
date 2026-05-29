@@ -22,7 +22,12 @@ const TOKEN_LENGTH = 7
  */
 export function readableFormKeyStem(formKey: string): string {
   if (formKey === '' || formKey.startsWith(ANONYMOUS_FORM_KEY_PREFIX)) return ANON_STEM
-  const sanitized = formKey.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
+  // The trailing-trim branch uses a negative lookbehind so it can only
+  // start matching at the boundary BEFORE a run of hyphens. The naive
+  // `-+$` shape (CodeQL js/polynomial-redos) tries to start matching at
+  // every position in a long internal hyphen run and walks to `$` from
+  // each, giving O(n²) worst-case on inputs like `a---…---b`.
+  const sanitized = formKey.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|(?<!-)-+$/g, '')
   return sanitized === '' ? ANON_STEM : sanitized
 }
 

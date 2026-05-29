@@ -15,6 +15,65 @@ export type IsObjectOrArray<T> = T extends GenericForm
     : false
 
 /**
+ * Shared recursion body backing `PartialFlatPath` and `RegisterFlatPath`.
+ * One walk over `Form`; `Mode` controls whether intermediate container
+ * paths are emitted alongside their reachable leaves.
+ *
+ * - `'partial'`: emit every container path (object containers, nested-
+ *   object array roots, array-of-object element containers). Used by
+ *   `setValue` / `form.values.<path>` / every read-side API that needs
+ *   to address a container.
+ * - `'register'`: skip container paths. `v-register` binds onto a
+ *   leaf-backing native element (`<input>`, `<select>`, `<textarea>`),
+ *   so container paths aren't registrable. Primitive arrays still
+ *   admit the array-root path under both modes (multi-select and
+ *   grouped-checkbox bindings register onto the array itself).
+ *
+ * Both walkers were independent recursions before; threading `Mode`
+ * through one body keeps the surface guarded by a single source of
+ * truth, and `PartialFlatPath` / `RegisterFlatPath` stay byte-
+ * identical to the prior hand-written walks (see
+ * `test/types/flat-path-walker.test.ts`).
+ */
+export type FlatPathBuilder<
+  Form,
+  Mode extends 'partial' | 'register',
+  Key extends keyof Form = keyof Form,
+> =
+  IsObjectOrArray<Form> extends true
+    ? Key extends string
+      ? Form[Key] extends infer Value
+        ? Value extends Array<infer ArrayItem>
+          ? IsObjectOrArray<ArrayItem> extends true
+            ? Mode extends 'partial'
+              ?
+                  | `${Key}`
+                  | `${Key}.${number}`
+                  | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+              : `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+            : `${Key}` | `${Key}.${number}`
+          : Value extends GenericForm
+            ? Mode extends 'partial'
+              ? `${Key}` | `${Key}.${FlatPathBuilder<Value, Mode>}`
+              : `${Key}.${FlatPathBuilder<Value, Mode>}`
+            : `${Key}`
+        : never
+      : Key extends number
+        ?
+            | `${Key}`
+            | (Form[Key] extends GenericForm
+                ? `${Key}.${FlatPathBuilder<Form[Key], Mode>}`
+                : Form[Key] extends Array<infer ArrayItem>
+                  ? IsObjectOrArray<ArrayItem> extends true
+                    ? Mode extends 'partial'
+                      ? `${Key}.${number}` | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+                      : `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+                    : `${Key}.${number}`
+                  : never)
+        : never
+    : never
+
+/**
  * Implementation detail backing `FlatPath` in its default
  * (partial-path) mode. Exported so `rollup-plugin-dts` preserves it
  * as a named alias in the bundled `.d.ts` rather than inlining the
@@ -24,28 +83,11 @@ export type IsObjectOrArray<T> = T extends GenericForm
  * when multiple complex forms share a scope. Consumers should reach
  * for `FlatPath` instead; this alias is not part of the stable surface.
  */
-export type PartialFlatPath<Form, Key extends keyof Form = keyof Form> =
-  IsObjectOrArray<Form> extends true
-    ? Key extends string
-      ? Form[Key] extends infer Value
-        ? Value extends Array<infer ArrayItem>
-          ? `${Key}` | `${Key}.${number}` | `${Key}.${number}.${PartialFlatPath<ArrayItem>}`
-          : Value extends GenericForm
-            ? `${Key}` | `${Key}.${PartialFlatPath<Value>}`
-            : `${Key}`
-        : never
-      : Key extends number
-        ?
-            | `${Key}`
-            | (Form[Key] extends GenericForm
-                ? `${Key}.${PartialFlatPath<Form[Key]>}`
-                : Form[Key] extends Array<infer ArrayItem>
-                  ? IsObjectOrArray<ArrayItem> extends true
-                    ? `${Key}.${number}` | `${Key}.${number}.${PartialFlatPath<ArrayItem>}`
-                    : `${Key}.${number}`
-                  : never)
-        : never
-    : never
+export type PartialFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPathBuilder<
+  Form,
+  'partial',
+  Key
+>
 
 // FlatPath Generic Gotchas:
 //

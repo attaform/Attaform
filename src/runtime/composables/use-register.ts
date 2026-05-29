@@ -123,6 +123,17 @@ let warnedOutsideSetup = false
  * `bind` pass. The `has` / `ownKeys` traps cooperate with
  * `'innerRef' in rv` / `Object.keys(rv)` — including the
  * `isRegisterValue` type guard the directive uses.
+ *
+ * Perf trade-off (DIR-F11): every read traverses the `get` trap, so
+ * a tight hot loop reading `rv.innerRef.value` pays a per-read trap
+ * cost. The hybrid Proxy is what lets `useRegister` return a single
+ * value that's BOTH a `Ref<RegisterValue|undefined>` (for `v-register
+ * ="rv"`) AND a `RegisterValue`-shaped object (for script-setup
+ * `rv.path`). Replacing the proxy with an object built per
+ * `useRegister` would either lose the lazy `ref`-unwrap behaviour or
+ * recreate the union shape with per-property getters anyway — net
+ * trap cost would stay. The audit flagged this as minor; the DX win
+ * is the justification for keeping it.
  */
 function makeRegisterValueProxy<V>(
   capturedRegisterValue: Ref<RegisterValue<V> | undefined>

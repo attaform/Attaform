@@ -4,6 +4,7 @@ import type {
   DirectiveNode,
   ExpressionNode,
   RootNode,
+  SimpleExpressionNode,
   TemplateChildNode,
 } from '@vue/compiler-core'
 import { NodeTypes } from '@vue/compiler-core'
@@ -128,4 +129,42 @@ export function removePropsByName(
  */
 export function isExactKey(summarizedKey: string, name: string): boolean {
   return summarizedKey === name || summarizedKey === `"${name}"`
+}
+
+/**
+ * Flatten an ExpressionNode (`SimpleExpressionNode` |
+ * `CompoundExpressionNode`) back to its source-text string. Compound
+ * nodes carry a list of strings interleaved with nested expression
+ * nodes — concatenate the textual content to reconstruct the source.
+ *
+ * Single source of truth for the select transform's per-`<option>`
+ * processExpression input AND the v-register preamble transform's
+ * pre-wrap binding capture. Both call sites built equivalent inline
+ * helpers; the consolidation prevents drift in how a future Vue node-
+ * type addition gets handled.
+ *
+ * Children that aren't string / SIMPLE / COMPOUND (symbols from the
+ * codegen helper indices; node types added in a future Vue) are
+ * dropped silently — the serialized text is for downstream parsing,
+ * not faithful round-trip.
+ */
+export function flattenExpression(exp: ExpressionNode): string {
+  if (exp.type === NodeTypes.SIMPLE_EXPRESSION) return exp.content
+  let out = ''
+  for (const child of exp.children) {
+    if (typeof child === 'string') {
+      out += child
+      continue
+    }
+    if (typeof child === 'symbol') continue
+    const node = child as ExpressionNode | SimpleExpressionNode
+    if (node.type === NodeTypes.SIMPLE_EXPRESSION) {
+      out += node.content
+      continue
+    }
+    if (node.type === NodeTypes.COMPOUND_EXPRESSION) {
+      out += flattenExpression(node)
+    }
+  }
+  return out
 }

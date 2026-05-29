@@ -14,6 +14,7 @@ import {
   type TemplateChildNode,
 } from '@vue/compiler-core'
 import {
+  flattenExpression,
   getSummarizedProps,
   isExactKey,
   removePropsByName,
@@ -131,24 +132,6 @@ function extractMultipleFromSelectSummarizedProps(
   // attempt to convert expression within string into boolean
   // if undefined, make value `true` because of `<input multiple />` usage
   return typeof value === 'string' ? value.replace(/'|"/g, '') : (value ?? 'true')
-}
-
-function flattenCompoundExpression(node: CompoundExpressionNode): string {
-  let result = ''
-
-  for (const child of node.children) {
-    if (typeof child === 'string') {
-      result += child
-    } else if (typeof child === 'symbol') {
-      continue
-    } else if (child.type === NodeTypes.SIMPLE_EXPRESSION) {
-      result += child.content
-    } else if (child.type === NodeTypes.COMPOUND_EXPRESSION) {
-      result += flattenCompoundExpression(child)
-    }
-  }
-
-  return result
 }
 
 // Whitelist of node types that contain iterable child nodes. Used by
@@ -415,10 +398,7 @@ export const selectNodeTransform: NodeTransform = (node, context) => {
         ')?.displayValue.value',
       ])
 
-      const simpleExpression = createSimpleExpression(
-        flattenCompoundExpression(initExpression),
-        false
-      )
+      const simpleExpression = createSimpleExpression(flattenExpression(initExpression), false)
       // `processExpression` can throw on malformed identifiers or
       // exotic expression shapes. Pre-fix, the throw bubbled to the
       // outer try/catch, which then ran the snapshot-restore path AND

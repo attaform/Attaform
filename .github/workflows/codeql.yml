@@ -1,0 +1,127 @@
+name: CodeQL
+
+# Runs GitHub's CodeQL static analysis against the repository's
+# JavaScript / TypeScript source on every PR, every push to main, and
+# weekly to catch new query rules shipped upstream by the CodeQL team.
+#
+# Background:
+#   CodeQL is GitHub's first-party SAST engine. It parses source into a
+#   semantic database, runs query packs against that database, and
+#   uploads SARIF results to Code Scanning. Findings appear in the
+#   Security tab and inline on PR diffs, and the OpenSSF Scorecard
+#   reads the presence of a CodeQL workflow as a SAST 0 -> 10 signal.
+#
+# Why on this repository:
+#   Attaform publishes to npm and is consumed downstream by Cubic
+#   Housing (govt customer). A standing SAST gate that runs on every
+#   change closes the last remaining 0/10 dimension on the Scorecard
+#   report and gives downstream consumers a first-party "no known
+#   high-severity SAST findings on main" signal alongside the existing
+#   dependency-review + scorecard + workflow-lint workflows.
+#
+# Why `security-extended` (not `code-scanning` / `security-and-quality`):
+#   - `code-scanning` is the default and is conservative — high
+#     precision, lower recall.
+#   - `security-extended` adds the higher-recall security queries
+#     (prototype pollution, regex DoS, taint-flow chains that need
+#     more context). Right trade-off for a library whose inputs
+#     (schemas, persisted JSON, multi-tab messages) cross a trust
+#     boundary into consumer apps.
+#   - `security-and-quality` adds maintainability / code-smell queries
+#     on top. Out of scope here — the 17-phase audit-remediation
+#     series just covered the quality lane; CodeQL is dedicated to the
+#     security lane.
+#
+# Why `build-mode: none`:
+#   JavaScript / TypeScript is interpreted from source — CodeQL can
+#   build the database directly from the working tree without running
+#   any consumer build step. `none` skips autobuild's "try to figure
+#   out how to compile this" guessing, which is the right answer for
+#   every JS/TS project and the documented best practice.
+#
+# Where findings show up:
+#   SARIF is uploaded to GitHub Code Scanning. Findings surface in:
+#     - the Security tab (Code scanning alerts)
+#     - inline on PR diffs (per-line annotations)
+#     - the workflow run's check status
+#   See https://docs.github.com/code-security/code-scanning
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+  schedule:
+    # Tuesday 03:00 UTC. Offset from the existing security cron slots
+    # (scorecard Mon 09:00, peer-matrix Mon 06:00) so the runner queue
+    # isn't competing with itself; mid-week so a new finding lands
+    # before the typical Friday review pass.
+    - cron: '0 3 * * 2'
+  workflow_dispatch:
+
+# Workflow-level default: zero scopes. The `analyze` job below grants
+# only the exact scopes it consumes. Matches the pedantic
+# least-privilege posture set by `scorecard.yml` — narrower than
+# `read-all`, which would grant read on every scope regardless of
+# whether the job uses it.
+permissions: {}
+
+# Cancel superseded runs on the same ref. A new commit on a PR
+# supersedes the prior analysis (the latest commit's SARIF is what
+# reviewers act on); concurrent push-to-main runs land on a different
+# ref (`refs/heads/main`) and don't interfere.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # CodeQL JS/TS on a ~38k LOC repo finishes in ~6-10min; a 30min ceiling catches a runaway analysis without flagging healthy runs.
+    permissions:
+      security-events: write # Upload SARIF results to Code Scanning. Required by `codeql-action/analyze`.
+      contents: read # Checkout the source under analysis.
+      actions: read # Read workflow context against the analyzed commit (recommended by upstream codeql-action README; no-op on public repos but kept for parity with `scorecard.yml` and `workflow-lint.yml`).
+      packages: read # Documented by the codeql-action README as required when the analyzed code imports from a private GHCR package. No-op on this public repo, but kept for parity with upstream guidance.
+
+    strategy:
+      fail-fast: false
+      # Single-language matrix structure (currently just
+      # `javascript-typescript`) is the upstream-recommended shape: it
+      # keeps the workflow file ready to fan out across additional
+      # languages in the future without restructuring the job.
+      matrix:
+        language: ['javascript-typescript']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Drop GITHUB_TOKEN from .git/config after checkout. CodeQL
+          # reads source from the working tree only — it never needs
+          # git credentials attached for fetch/push. Same rationale as
+          # every other workflow in this directory.
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        with:
+          languages: ${{ matrix.language }}
+          # `none` skips autobuild. JavaScript / TypeScript is
+          # interpreted from source — CodeQL extracts directly from
+          # the working tree without invoking any consumer build step.
+          build-mode: none
+          # `security-extended` is the higher-recall security suite
+          # (see the workflow-level comment block above for rationale
+          # vs `code-scanning` / `security-and-quality`).
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        with:
+          # Category disambiguates results in Code Scanning when
+          # multiple analyses run against the same commit. The
+          # per-language suffix is the upstream-recommended pattern
+          # for a matrixed CodeQL workflow.
+          category: '/language:${{ matrix.language }}'

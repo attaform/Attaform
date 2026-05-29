@@ -8,7 +8,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * `wizard.allErrors` exposes each form's validation errors under its
- * step key. Shape: `Record<FormKey, readonly AggregateError[]>`.
+ * step key. Shape: `Record<FormKey, readonly WizardAggregateError[]>`.
  *
  * Each entry carries `{ formKey, path, message, code? }` so a wizard-
  * wide summary screen can render "Step Cargo > weight: weight required"

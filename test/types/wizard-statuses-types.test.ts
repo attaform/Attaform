@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest'
 import type {
-  AggregateError,
+  WizardAggregateError,
   FormStatus,
   WizardStatusesProxy,
 } from '../../src/runtime/types/types-wizard'
@@ -11,7 +11,7 @@ import type {
  * the `defaultStatuses` seed option are loosely keyed
  * (`Record<string, FormStatus>`) — cross-component graphs threaded
  * through `injectWizard` lose lexical key knowledge, so the public
- * surface settles on the loose shape. `AggregateError` is the
+ * surface settles on the loose shape. `WizardAggregateError` is the
  * flattened shape returned by `wizard.allErrors`. `WizardStatusesProxy`
  * mirrors the call-or-read pattern from `form.values` but at a single
  * depth.
@@ -27,8 +27,8 @@ describe('wizard status types', () => {
     }>()
   })
 
-  it('AggregateError carries formKey / path / message / optional code', () => {
-    expectTypeOf<AggregateError>().toEqualTypeOf<{
+  it('WizardAggregateError carries formKey / path / message / optional code', () => {
+    expectTypeOf<WizardAggregateError>().toEqualTypeOf<{
       readonly formKey: string
       readonly path: ReadonlyArray<string | number>
       readonly message: string

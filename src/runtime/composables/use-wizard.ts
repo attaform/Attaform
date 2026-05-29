@@ -29,7 +29,7 @@ import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
 import { useAbstractForm, type AmbientProvideEntry } from './use-abstract-form'
 import type {
   ActiveFormOf,
-  AggregateError,
+  WizardAggregateError,
   AnyForm,
   CompiledStep,
   CurrentStepOf,
@@ -473,7 +473,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // entries from `processOne`'s result). Centralising the lift dedups
   // the construction shared by `allErrors` and `collectErrors`
   // (W-DUP-1).
-  function toAggregateError(
+  function toWizardAggregateError(
     err: {
       readonly path: ReadonlyArray<string | number>
       readonly message: string
@@ -481,8 +481,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       readonly formKey?: FormKey
     },
     fallbackKey: FormKey
-  ): AggregateError {
-    const entry: { -readonly [P in keyof AggregateError]: AggregateError[P] } = {
+  ): WizardAggregateError {
+    const entry: { -readonly [P in keyof WizardAggregateError]: WizardAggregateError[P] } = {
       formKey: err.formKey ?? fallbackKey,
       path: err.path,
       message: err.message,
@@ -506,16 +506,16 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return computedValues
   }
 
-  const errorsCache = new Map<FormKey, ComputedRef<readonly AggregateError[]>>()
-  function errorsFor(form: AnyForm): ComputedRef<readonly AggregateError[]> {
+  const errorsCache = new Map<FormKey, ComputedRef<readonly WizardAggregateError[]>>()
+  function errorsFor(form: AnyForm): ComputedRef<readonly WizardAggregateError[]> {
     const cached = errorsCache.get(form.key)
     if (cached !== undefined) return cached
     const source = asStatusSource(form)
-    const computedErrors = computed<readonly AggregateError[]>(() => {
+    const computedErrors = computed<readonly WizardAggregateError[]>(() => {
       if (!isFormReady(form.key)) return []
       const errors = source.meta?.errors ?? []
-      const list: AggregateError[] = []
-      for (const err of errors) list.push(toAggregateError(err, form.key))
+      const list: WizardAggregateError[] = []
+      for (const err of errors) list.push(toWizardAggregateError(err, form.key))
       return list
     })
     errorsCache.set(form.key, computedErrors)
@@ -554,8 +554,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     },
   }) as Readonly<Record<FormKey, unknown>>
 
-  const allErrors = new Proxy({} as Record<FormKey, readonly AggregateError[]>, {
-    get(_, key: string | symbol): readonly AggregateError[] | undefined {
+  const allErrors = new Proxy({} as Record<FormKey, readonly WizardAggregateError[]>, {
+    get(_, key: string | symbol): readonly WizardAggregateError[] | undefined {
       if (typeof key !== 'string') return undefined
       const form = formsRecord.value[key]
       if (form === undefined) return undefined
@@ -579,7 +579,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         value: errorsFor(form).value,
       }
     },
-  }) as Readonly<Record<FormKey, readonly AggregateError[]>>
+  }) as Readonly<Record<FormKey, readonly WizardAggregateError[]>>
 
   // --- Statuses proxy + seed --------------------------------------------
 
@@ -1067,12 +1067,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   function collectErrors(
     results: ReadonlyMap<FormKey, ValidationResponse<unknown>>
-  ): AggregateError[] {
-    const out: AggregateError[] = []
+  ): WizardAggregateError[] {
+    const out: WizardAggregateError[] = []
     for (const step of compiledSteps.value) {
       const processed = results.get(step.key)
       if (processed === undefined || processed.success === true) continue
-      for (const err of processed.errors) out.push(toAggregateError(err, step.key))
+      for (const err of processed.errors) out.push(toWizardAggregateError(err, step.key))
     }
     return out
   }

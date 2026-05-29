@@ -74,6 +74,24 @@ function generateEqualityExpression(
 }
 
 /**
+ * Parse a one-line JS string literal from `text`. Returns `null` for
+ * any non-literal source (dynamic expression, compound, mismatched
+ * quotes); on a match returns the quote character and the inner
+ * payload separately so callers can disambiguate template literals
+ * with interpolations from literal-static strings.
+ *
+ * Doesn't attempt to handle escaped quotes inside the literal — a
+ * value containing escaped quotes is vanishingly rare in the prop
+ * shapes the transforms inspect (HTML attribute values, type names).
+ * Callers that can't prove safety on `null` should bail conservatively.
+ */
+function parseStaticStringLiteral(text: string): { quote: string; inner: string } | null {
+  const literalMatch = /^(["'`])(.*)\1$/.exec(text.trim())
+  if (literalMatch === null) return null
+  return { quote: literalMatch[1] as string, inner: literalMatch[2] as string }
+}
+
+/**
  * Returns true iff the type prop's value is the static-attribute literal
  * matching one of `names` (case-insensitive). Used to detect static
  * `type="checkbox"` / `type="radio"` shapes where the `value` attribute
@@ -87,11 +105,9 @@ function generateEqualityExpression(
  */
 function isStaticTypeOneOf(value: SummarizedProp['value'], names: readonly string[]): boolean {
   if (Array.isArray(value)) return false
-  const trimmed = value.trim()
-  const literalMatch = /^(["'`])(.*)\1$/.exec(trimmed)
-  if (literalMatch === null) return false
-  const inner = (literalMatch[2] as string).toLowerCase()
-  return names.includes(inner)
+  const parsed = parseStaticStringLiteral(value)
+  if (parsed === null) return false
+  return names.includes(parsed.inner.toLowerCase())
 }
 
 /**
@@ -109,21 +125,14 @@ function isStaticTypeOneOf(value: SummarizedProp['value'], names: readonly strin
  */
 function couldResolveToFileType(value: SummarizedProp['value']): boolean {
   if (Array.isArray(value)) return true
-  const trimmed = value.trim()
-  // Match a one-line JS string literal: '...', "...", or `...`. Doesn't
-  // attempt to handle escaped quotes inside the literal — a `type` prop
-  // containing escaped quotes is vanishingly rare and falling through to
-  // "could be file" here is the safe direction anyway.
-  const literalMatch = /^(["'`])(.*)\1$/.exec(trimmed)
-  if (literalMatch === null) return true // dynamic expression — can't prove safe
-  const quote = literalMatch[1] as string
-  const inner = literalMatch[2] as string
+  const parsed = parseStaticStringLiteral(value)
+  if (parsed === null) return true // dynamic expression — can't prove safe
   // Template literals with interpolations resolve at runtime.
-  if (quote === '`' && inner.includes('${')) return true
+  if (parsed.quote === '`' && parsed.inner.includes('${')) return true
   // The HTML spec matches `type` ASCII case-insensitively, so
   // `<input type="FILE">` behaves identically to `<input type="file">`.
   // Compare lower-cased so we catch both.
-  return inner.toLowerCase() === 'file'
+  return parsed.inner.toLowerCase() === 'file'
 }
 
 /**

@@ -273,6 +273,18 @@ export function isCoercePrimitive(schema: z.ZodType): boolean {
   return readDef(schema)?.coerce === true
 }
 
+/**
+ * Detect `z.preprocess(fn, inner)` — v4 desugars this to a pipe whose
+ * `def.in` is a `ZodTransform`. The factory's `isPreprocessOrCoerceLeaf`
+ * consults this alongside `isCoercePrimitive` to gate raw consumer
+ * writes verbatim through the wrapped subtree.
+ */
+export function isPreprocessNode(schema: z.ZodType): boolean {
+  if (kindOf(schema) !== 'pipe') return false
+  const pipeIn = unwrapPipeIn(schema)
+  return pipeIn !== undefined && kindOf(pipeIn) === 'transform'
+}
+
 /** Output side of a pipe — the inner schema in `z.preprocess(fn, inner)`. */
 export function unwrapPipeOut(schema: z.ZodType): z.ZodType | undefined {
   const def = readDef(schema)

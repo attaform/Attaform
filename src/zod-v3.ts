@@ -28,37 +28,13 @@
  */
 
 export { useForm } from './runtime/composables/use-form'
-export { injectForm } from './runtime/composables/use-form-context'
-export { useRegister } from './runtime/composables/use-register'
-export type { UseRegisterReturn } from './runtime/composables/use-register'
-export { useWizard } from './runtime/composables/use-wizard'
-export { injectWizard } from './runtime/composables/inject-wizard'
-export type { InjectWizardInput } from './runtime/composables/inject-wizard'
-export { lazy } from './runtime/core/wizard-lazy'
-export type {
-  AggregateError,
-  AnyForm,
-  CompiledStep,
-  FormStatus,
-  LazyMarker,
-  StepSlot,
-  UseWizardReturnType,
-  WizardCtx,
-  WizardCtxForm,
-  WizardOnError,
-  WizardOnSubmit,
-  WizardOptions,
-  WizardPersistFn,
-  WizardRestoreFn,
-  WizardRestoreState,
-  WizardStatusesProxy,
-  WizardSubmitContext,
-} from './runtime/types/types-wizard'
+// Shared wizard / register / error-code / unset surface — common to
+// every entry, single source under `runtime/_shared-exports.ts`.
+// `injectForm` ships from here too for discoverability alongside
+// `useForm` (the helper itself is schema-agnostic).
+export * from './runtime/_shared-exports'
 export { zodAdapter } from './runtime/adapters/zod-v3'
 export { isZodSchemaType } from './runtime/adapters/zod-v3/helpers'
-export { AttaformErrorCode } from './runtime/core/error-codes'
-export { unset, isUnset } from './runtime/core/unset'
-export type { Unset } from './runtime/core/unset'
 export type {
   TypeWithNullableDynamicKeys,
   ZodTypeWithInnerType,

@@ -37,62 +37,15 @@ export { escapeForInlineScript } from './runtime/core/serialize-script'
 // schema-agnostic core.
 export { useAbstractForm as useForm } from './runtime/composables/use-abstract-form'
 
-// Re-export for nested components that want to reach the nearest
-// ancestor form (or an arbitrary form by key) without prop-threading.
-// The consumer supplies the `Form` generic — see the composable's
-// docblock for the type-erasure reasoning.
-export { injectForm } from './runtime/composables/use-form-context'
-
-// Multistep-form orchestrator. Composes existing `useForm` instances
-// into a wizard with navigation, status aggregation, and activation
-// lifecycle. See the composable's docblock for invariants.
-export { useWizard } from './runtime/composables/use-wizard'
-export { injectWizard } from './runtime/composables/inject-wizard'
-export type { InjectWizardInput } from './runtime/composables/inject-wizard'
-export { lazy } from './runtime/core/wizard-lazy'
-export type {
-  AnyForm,
-  AggregateError,
-  CompiledStep,
-  FormStatus,
-  LazyMarker,
-  StepSlot,
-  UseWizardReturnType,
-  WizardCtx,
-  WizardCtxForm,
-  WizardOnError,
-  WizardOnSubmit,
-  WizardOptions,
-  WizardPersistFn,
-  WizardRestoreFn,
-  WizardRestoreState,
-  WizardStatusesProxy,
-  WizardSubmitContext,
-} from './runtime/types/types-wizard'
-
-// Ambient bridge for components that wrap a single field and want to
-// re-bind v-register onto an inner native element. For wrappers that
-// bind multiple fields (compound forms), prefer `injectForm`.
-export { useRegister } from './runtime/composables/use-register'
-export type { UseRegisterReturn } from './runtime/composables/use-register'
+// Shared wizard / register / error-code / unset / injectForm surface —
+// single source under `runtime/_shared-exports.ts`, re-exported
+// verbatim from every entry.
+export * from './runtime/_shared-exports'
 
 // The v-register directive (registered automatically by createAttaform,
 // but exported for advanced consumers who install directives themselves).
 export { vRegister, isRegisterValue, assignKey } from './runtime/core/directive'
 export { defaultCoercionRules, defineCoercion } from './runtime/core/schema-coerce'
-
-// The `unset` sentinel — pass in `defaultValues`, `setValue`, or `reset`
-// to mark a primitive leaf as displayed-empty while storage holds the
-// slim default. See `src/runtime/core/unset.ts` for the full docblock.
-export { unset, isUnset } from './runtime/core/unset'
-export type { Unset } from './runtime/core/unset'
-
-// Stable error-code identifiers for library-emitted ValidationErrors.
-// Use in tests and error-routing UI in place of brittle message-string
-// matching. `atta:` prefix denotes the framework-agnostic core; the Zod
-// adapter emits `zod:` codes (computed from `issue.code`) and consumer
-// codes use whatever prefix the consumer picks (`api:`, `auth:`, etc.).
-export { AttaformErrorCode } from './runtime/core/error-codes'
 
 // Public types
 export type {

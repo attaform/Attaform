@@ -2314,8 +2314,24 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // run never advances the snapshot, so a later blur with
           // nothing committed for this path still re-validates instead
           // of falsely skipping against a stale-but-uncommitted anchor.
+          //
+          // Snapshot scope = validation scope: under subtree-scoped
+          // commits (CORE-P1a), only the subtree-at-`path` participates
+          // in the blur dedup, so cloning the whole form just to throw
+          // away unused branches is wasted work proportional to (form
+          // size − subtree size). Read the live subtree directly from
+          // `form.value` (matching the original "snapshot at commit
+          // time" semantics, where the post-async write may differ
+          // from `dataAtScope` captured before the await) and clone
+          // only that. The blur reader subtracts the snapshot's
+          // scope segments from the blur path to project back into
+          // the stored subtree. Whole-form scope (`scopePath ===
+          // undefined`) stores the full clone, identical to the
+          // prior behaviour for that branch.
           if (effectiveMode === 'blur') {
-            pathSnapshots.set(scopeKey, structuralSnapshot(form.value))
+            const snapshotSource =
+              scopePath !== undefined ? getAtPath(form.value, scopePath) : form.value
+            pathSnapshots.set(scopeKey, structuralSnapshot(snapshotSource))
           }
           const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
@@ -2791,11 +2807,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // entry; under subtree scope (CORE-P1a) the closest ancestor
       // entry is the one this leaf was actually validated under.
       let snapshot: unknown | undefined = undefined
+      let snapshotScopeLength = 0
       for (let i = path.length; i >= 0; i--) {
         const ancestorKey = canonicalizePath(path.slice(0, i)).key
         const entry = pathSnapshots.get(ancestorKey)
         if (entry !== undefined) {
           snapshot = entry
+          snapshotScopeLength = i
           break
         }
       }
@@ -2805,8 +2823,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         // `prefix` only labels emitted patch paths, it doesn't scope
         // the walk. Subtree extraction is what makes a sibling-only
         // edit between blurs (this path unchanged) read as
-        // `changed === false`.
-        const snapshotSubtree = getAtPath(snapshot, path)
+        // `changed === false`. The snapshot itself is already scoped
+        // to its commit's `scopePath` (length tracked above), so the
+        // blur path needs the scope prefix subtracted before
+        // descending into the stored subtree.
+        const relPath = path.slice(snapshotScopeLength)
+        const snapshotSubtree = getAtPath(snapshot, relPath)
         const liveSubtree = getAtPath(form.value, path)
         changed = false
         diffAndApply(snapshotSubtree, liveSubtree, path, () => {

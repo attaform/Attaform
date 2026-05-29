@@ -8,12 +8,12 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 
 /**
  * DIR-F4 characterization. The Array→`.includes` / Set→`.has` / scalar→
  * coerced `String() === String()` decision ladder is encoded three times
- * — once each in `input-text-area-transform.ts`, `select-transform.ts`,
+ * — once each in `input-text-area-transform.ts`, `component-bridge-transform.ts`,
  * and at runtime in `directive.ts` (`setChecked` / `setSelected`). Both
  * compile-time emitters now route primitives through `String(...)`
  * before comparing, mirroring the runtime `looseEqual` behaviour. Pre-
@@ -38,7 +38,7 @@ function compileInputTextArea(template: string): string {
 
 function compileSelect(template: string): string {
   const result = baseCompile(template, {
-    nodeTransforms: [selectNodeTransform],
+    nodeTransforms: [componentBridgeTransform],
     mode: 'module',
   })
   return result.code
@@ -114,7 +114,7 @@ describe('DIR-F4 SSR-output verdict', () => {
   it('select with z.number() × <option value="1"> emits SSR `selected` (matches setSelected verdict)', async () => {
     const html = await ssr(
       `<select v-register="form.register('age')"><option value="1">one</option><option value="2">two</option></select>`,
-      [selectNodeTransform]
+      [componentBridgeTransform]
     )
     // The single-select branch coerces via String(), so the SSR pass
     // sees `"1" === "1"` and emits `selected` on the matching option.

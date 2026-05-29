@@ -19,7 +19,7 @@ import { waitUntil } from '../utils/form-harness'
  *     compiles SFCs with its own pipeline; attaform-vite isn't wired
  *     in, so `<MyWrapper v-register="form.register('email')" />`
  *     never gets the `:registerValue` bridge prop injected by
- *     `selectNodeTransform`. The child's useRegister() sees no bridge
+ *     `componentBridgeTransform`. The child's useRegister() sees no bridge
  *     attr and falls back to `undefined`, so the inner input never
  *     wires up — typing has no effect.
  *
@@ -46,7 +46,7 @@ const schema = z.object({ email: z.string(), name: z.string() })
 
 function compileTemplateWithoutTransforms(template: string): (...args: unknown[]) => unknown {
   // Crucially: no `nodeTransforms` array. This is what a stock Vue
-  // compile looks like — no `selectNodeTransform`, no
+  // compile looks like — no `componentBridgeTransform`, no
   // `inputTextAreaNodeTransform`, no `vRegisterPreambleTransform`, no
   // `vRegisterHintTransform`. Mirrors the @vue/repl playground's
   // compile path and the bare-bundler scenario.
@@ -66,7 +66,7 @@ describe('useRegister — works without attaform compile-time transforms', () =>
     document.body.innerHTML = ''
   })
 
-  it('captures the parent v-register binding without the selectNodeTransform bridge prop', async () => {
+  it('captures the parent v-register binding without the componentBridgeTransform bridge prop', async () => {
     const captured: { api?: UseFormReturn<typeof schema>; childRv?: unknown } = {}
 
     const Child = defineComponent({

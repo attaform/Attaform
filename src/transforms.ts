@@ -11,7 +11,7 @@
  * transforms to Vue's template compiler manually:
  *
  *   import {
- *     selectNodeTransform,
+ *     componentBridgeTransform,
  *     inputTextAreaNodeTransform,
  *     vRegisterPreambleTransform,
  *     vRegisterHintTransform,
@@ -25,7 +25,7 @@
  * into the preamble's collected text.
  */
 
+export { componentBridgeTransform } from './runtime/lib/core/transforms/component-bridge-transform'
 export { inputTextAreaNodeTransform } from './runtime/lib/core/transforms/input-text-area-transform'
-export { selectNodeTransform } from './runtime/lib/core/transforms/select-transform'
 export { vRegisterHintTransform } from './runtime/lib/core/transforms/v-register-hint-transform'
 export { vRegisterPreambleTransform } from './runtime/lib/core/transforms/v-register-preamble-transform'

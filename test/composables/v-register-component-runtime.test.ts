@@ -42,7 +42,7 @@ type MountReturn = {
  *
  * The bridge props (`registerValue: rv` + `value: rv.innerRef.value`)
  * are passed alongside the directive — this mirrors the AST output of
- * `selectNodeTransform`'s component branch so the runtime test
+ * `componentBridgeTransform`'s component branch so the runtime test
  * exercises the same prop / attr surface a compiled template would
  * produce. Tests that don't read these props are unaffected.
  */

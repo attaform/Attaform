@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { resolveConfig, type Plugin, type ResolvedConfig } from 'vite'
 import { attaform } from '../../src/vite'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transforms/v-register-preamble-transform'
 
@@ -91,7 +91,7 @@ describe('attaform/vite — node-transform wiring', () => {
   it('registers all four compile-time transforms on @vitejs/plugin-vue', async () => {
     const config = await resolveWithRoot([vue(), attaform()], zodV4Root)
     const transforms = readVueNodeTransforms(config)
-    expect(transforms).toContain(selectNodeTransform)
+    expect(transforms).toContain(componentBridgeTransform)
     expect(transforms).toContain(inputTextAreaNodeTransform)
     expect(transforms).toContain(vRegisterPreambleTransform)
     expect(transforms).toContain(vRegisterHintTransform)
@@ -119,7 +119,7 @@ describe('attaform/vite — node-transform wiring', () => {
     const transforms = readVueNodeTransforms(config)
     const occurrences = (target: unknown): number =>
       transforms.reduce<number>((n, t) => (t === target ? n + 1 : n), 0)
-    expect(occurrences(selectNodeTransform)).toBe(1)
+    expect(occurrences(componentBridgeTransform)).toBe(1)
     expect(occurrences(inputTextAreaNodeTransform)).toBe(1)
     expect(occurrences(vRegisterPreambleTransform)).toBe(1)
     expect(occurrences(vRegisterHintTransform)).toBe(1)

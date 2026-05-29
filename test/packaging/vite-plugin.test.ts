@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveConfig, type Plugin, type ResolvedConfig } from 'vite'
 import { attaform } from '../../src/vite'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
-import { selectNodeTransform } from '../../src/runtime/lib/core/transforms/select-transform'
+import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 
 /**
  * Integration coverage for `attaform/vite`. The plugin mutates
@@ -44,7 +44,7 @@ describe('attaform/vite — plugin registration', () => {
     // Reference identity — the plugin must register OUR transform functions,
     // not wrappers. This rules out a regression where a bundler (e.g.
     // unbuild) accidentally wraps the export.
-    expect(nodeTransforms).toContain(selectNodeTransform)
+    expect(nodeTransforms).toContain(componentBridgeTransform)
     expect(nodeTransforms).toContain(inputTextAreaNodeTransform)
   })
 
@@ -66,7 +66,7 @@ describe('attaform/vite — plugin registration', () => {
     const api = getVueApi(config)
     const nodeTransforms = api?.options?.template?.compilerOptions?.nodeTransforms ?? []
     expect(nodeTransforms).toContain(sentinel)
-    expect(nodeTransforms).toContain(selectNodeTransform)
+    expect(nodeTransforms).toContain(componentBridgeTransform)
     expect(nodeTransforms).toContain(inputTextAreaNodeTransform)
   })
 
@@ -83,7 +83,7 @@ describe('attaform/vite — plugin registration', () => {
     const config = await resolveWith([vue(), attaform(), attaform()])
     const api = getVueApi(config)
     const nodeTransforms = api?.options?.template?.compilerOptions?.nodeTransforms ?? []
-    const selectCount = nodeTransforms.filter((t) => t === selectNodeTransform).length
+    const selectCount = nodeTransforms.filter((t) => t === componentBridgeTransform).length
     const inputCount = nodeTransforms.filter((t) => t === inputTextAreaNodeTransform).length
     expect(selectCount).toBe(1)
     expect(inputCount).toBe(1)

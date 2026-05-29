@@ -209,7 +209,7 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
 
   const refreshAndStripBridgeAttrs = (): void => {
     const rawAttrs = instance.attrs as Record<string, unknown>
-    // Primary path: the compile-time `selectNodeTransform` injected a
+    // Primary path: the compile-time `componentBridgeTransform` injected a
     // `:registerValue` bridge prop on the host component, which Vue's
     // `initProps` lands in `instance.attrs.registerValue`. Capture
     // only when the key is present; the strip below removes it from
@@ -257,7 +257,7 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
   // server-side template read would otherwise misrender. Vue's
   // `setupComponent` runs `initProps` (which populates
   // `instance.attrs.registerValue` from the parent's `:registerValue`
-  // binding injected by `selectNodeTransform`) before `setup()` runs,
+  // binding injected by `componentBridgeTransform`) before `setup()` runs,
   // so the sync read sees the correct value on both server and client.
   // The `onBeforeMount` hook stays as defence in depth against any
   // re-population that could happen after setup (e.g. from a parent's

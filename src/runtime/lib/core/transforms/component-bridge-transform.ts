@@ -201,16 +201,25 @@ function inferOptionValueFromChildren(node: TemplateChildNode | RootNode): strin
 }
 
 /**
- * Vue compiler node transform for `<select v-register>` and any
- * component that wraps a select. Injects the `:value` /
- * `:registerValue` bridge bindings the runtime directive needs to
- * pre-mark selected options at SSR time.
+ * Vue compiler node transform that bridges `v-register` into the
+ * downstream binding shapes its consumers expect:
  *
- * Wired automatically by `attaform/vite` and
- * `attaform/nuxt`. Use directly only when integrating with
- * a custom bundler.
+ *   - `<select v-register>` — injects `:value` (single-select) and
+ *     per-`<option>` `:selected` so the runtime directive can pre-mark
+ *     selected options at SSR time.
+ *   - `<MyComponent v-register>` and kebab-case custom-element hosts
+ *     — injects a `:registerValue` bridge prop so `useRegister` inside
+ *     the child sees the parent's RegisterValue (the binding the audit
+ *     called out as the transform's "fires on every component" path).
+ *
+ * Wired automatically by `attaform/vite` and `attaform/nuxt`. Use
+ * directly only when integrating with a custom bundler.
+ *
+ * Renamed from `selectNodeTransform` (DIR-F6): the original name read
+ * as a `<select>`-only transform, but the component-bridge path is
+ * load-bearing for every `useRegister` consumer.
  */
-export const selectNodeTransform: NodeTransform = (node, context) => {
+export const componentBridgeTransform: NodeTransform = (node, context) => {
   // Snapshot every prop array we're about to mutate so a throw
   // mid-traversal rewinds to the pre-transform state. Without this,
   // a partial transform leaves the template with some `<option
@@ -411,7 +420,7 @@ export const selectNodeTransform: NodeTransform = (node, context) => {
         outputExp = processExpression(simpleExpression, { ...context, prefixIdentifiers: false })
       } catch (err) {
         console.error(
-          '[attaform] select transform: processExpression failed; falling back to the unprocessed expression.',
+          '[attaform] component-bridge transform: processExpression failed; falling back to the unprocessed expression.',
           err
         )
         outputExp = simpleExpression
@@ -483,6 +492,6 @@ export const selectNodeTransform: NodeTransform = (node, context) => {
       target.splice(0, target.length, ...snapshot)
     }
 
-    console.error('[attaform] select transform failed, skipping:', err)
+    console.error('[attaform] component-bridge transform failed, skipping:', err)
   }
 }

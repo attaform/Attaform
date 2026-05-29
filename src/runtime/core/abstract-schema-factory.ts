@@ -178,6 +178,93 @@ export interface SchemaIntrospector<Schema> {
    * subtree validation catches the same verdicts as a whole-form pass.
    */
   hasContainerOrRootRefine(schema: Schema): boolean
+
+  // ---------------------------------------------------------------------
+  // Walker accessors — consumed by the shared `core/walk-*` walkers (D2 /
+  // D3 / D5) so the path-walking / slim-primitive / default-derivation
+  // shapes don't fork per adapter. v3 / v4 each expose the full surface;
+  // members not applicable to one adapter return `undefined` (kept on the
+  // contract so the walkers don't branch on adapter identity).
+  // ---------------------------------------------------------------------
+
+  /** Element schema of a `z.array(...)`. Undefined for non-arrays / malformed defs. */
+  getArrayElement(schema: Schema): Schema | undefined
+  /** Element schema of a `z.set(...)`. Undefined for non-sets / malformed defs. */
+  getSetValueType(schema: Schema): Schema | undefined
+  /** Key schema of a `z.record(K, V)`. Undefined for non-records / single-arg records. */
+  getRecordKeyType(schema: Schema): Schema | undefined
+  /** Value schema of a `z.record(...)`. Undefined for non-records / malformed defs. */
+  getRecordValueType(schema: Schema): Schema | undefined
+  /** Option array of a `z.union(...)`. Empty for non-unions. */
+  getUnionOptions(schema: Schema): readonly Schema[]
+  /** Left side of a `z.intersection(L, R)`. Undefined for non-intersections. */
+  getIntersectionLeft(schema: Schema): Schema | undefined
+  /** Right side of a `z.intersection(L, R)`. Undefined for non-intersections. */
+  getIntersectionRight(schema: Schema): Schema | undefined
+  /** Values of a `z.enum(...)`. Empty for non-enums. */
+  getEnumValues(schema: Schema): readonly (string | number)[]
+  /**
+   * Raw reverse-mapped values object of a `z.nativeEnum(E)`. v3 returns
+   * the TS enum object directly; v4 always returns `undefined` because
+   * v4 folds nativeEnum into the regular `enum` kind.
+   */
+  getNativeEnumValues(schema: Schema): Record<string, unknown> | undefined
+
+  /**
+   * Inner schema of any wrapper exposing `def.innerType` — Optional /
+   * Nullable / Default / Readonly / Catch in both v3 and v4. Branded
+   * (v3-only) uses `def.type` instead — see `unwrapBranded`. Returns
+   * `undefined` when no inner is available.
+   */
+  unwrapInner(schema: Schema): Schema | undefined
+  /**
+   * v3-only: `ZodBranded`'s inner schema (`_def.type`). Returns
+   * `undefined` on v4 (no branded wrapper) and on non-branded schemas.
+   */
+  unwrapBranded(schema: Schema): Schema | undefined
+  /**
+   * v3-only: structural source of a `ZodEffects` (refine / transform /
+   * preprocess) — `_def.schema`. Returns `undefined` on v4 (no
+   * ZodEffects wrapper; effects live as pipe sides / leaf checks).
+   */
+  unwrapEffectsSource(schema: Schema): Schema | undefined
+  /** Input side of v4's `z.pipe(IN, OUT)` (also v3's `z.pipeline(...)`). */
+  unwrapPipeIn(schema: Schema): Schema | undefined
+  /** Output side of a pipe — undefined on v3's `ZodEffects`. */
+  unwrapPipeOut(schema: Schema): Schema | undefined
+  /**
+   * Inner schema of a `z.lazy(() => inner)`. Each call invokes the
+   * getter fresh; if the getter throws (recursive cycle resolved before
+   * its target is constructed) returns `undefined`.
+   */
+  unwrapLazy(schema: Schema): Schema | undefined
+  /**
+   * Getter function reference of a `z.lazy()` wrapper — used by walkers
+   * that track cycle identity by the getter rather than its result
+   * (each call returns a distinct schema instance).
+   */
+  getLazyGetter(schema: Schema): (() => unknown) | undefined
+
+  /**
+   * Resolve a `z.default(...)` wrapper to its declared default value.
+   * v3 stores the default as a thunk (`() => value`); v4 stores it as
+   * a getter that returns the value directly. Both adapters return the
+   * resolved value here.
+   */
+  getDefaultValue(schema: Schema): unknown
+  /**
+   * Resolve a `z.catch(inner, val)` wrapper to its fallback value.
+   * The catch slot stores a `(ctx) => value` function; both adapters
+   * invoke it with a placeholder context and surface `undefined` if
+   * the consumer's function throws.
+   */
+  getCatchDefault(schema: Schema): unknown
+  /**
+   * True iff the schema carries a callable `z.catch(...)` fallback.
+   * Lets callers distinguish "no catch wrapper" from "catch wrapper
+   * whose value happens to be `undefined`."
+   */
+  hasCatchValue(schema: Schema): boolean
 }
 
 /**

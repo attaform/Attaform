@@ -10,8 +10,6 @@ import type {
 import {
   createAbstractSchema,
   type AbstractSchemaServices,
-  type SchemaIntrospector,
-  type SharedZodKind,
 } from '../../core/abstract-schema-factory'
 import { getFieldMeta, getFieldMetaList } from './field-meta'
 import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
@@ -29,18 +27,13 @@ import {
   containsAsyncTransform,
   getArrayElement,
   getDiscriminatedOptions,
-  getDiscriminator,
   getIntersectionLeft,
   getIntersectionRight,
-  getLiteralValues,
   getObjectShape,
   getRecordValueType,
   getSetValueType,
   getTupleItems,
   getUnionOptions,
-  hasContainerOrRootRefine,
-  isCoercePrimitive,
-  isPreprocessNode,
   kindOf,
   unwrapInner,
   unwrapLazy,
@@ -49,6 +42,7 @@ import {
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
 import { stripAsyncChecks } from './strip'
+import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
  * Zod v4 adapter — implements `AbstractSchema` against Zod v4's public
@@ -273,25 +267,6 @@ export function zodV4Adapter<
       formKey,
       options
     )
-}
-
-/**
- * Module-level `SchemaIntrospector` for the v4 adapter. Pure schema
- * accessors with no closure state — shared across every `useForm()`
- * that ships a v4 schema.
- */
-const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
-  kindOf: (schema) => kindOf(schema) as SharedZodKind | string,
-  getObjectShape: (schema) => getObjectShape(schema as z.ZodObject),
-  getTupleItems: (schema) => getTupleItems(schema),
-  getDiscriminatedOptions: (schema) => getDiscriminatedOptions(schema) as readonly z.ZodType[],
-  getDiscriminator: (schema) => getDiscriminator(schema),
-  getLiteralValues: (schema) => getLiteralValues(schema),
-  isPreprocessNode: (schema) => isPreprocessNode(schema),
-  isCoercePrimitive: (schema) => isCoercePrimitive(schema),
-  containsAsyncRefine: (schema) => containsAsyncRefine(schema),
-  containsAsyncTransform: (schema) => containsAsyncTransform(schema),
-  hasContainerOrRootRefine: (schema) => hasContainerOrRootRefine(schema),
 }
 
 /**

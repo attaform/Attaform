@@ -15,10 +15,14 @@ import type {
 import {
   createAbstractSchema,
   type AbstractSchemaServices,
-  type SchemaIntrospector,
-  type SharedZodKind,
 } from '../../core/abstract-schema-factory'
 import { getAtPath, isPlainRecord, setAtPath } from '../../core/path-walker'
+import { walkPathSegments } from '../../core/walk-path-segments'
+import {
+  deriveDefaultWalk,
+  peelEmbeddedDefault,
+  NO_EMBEDDED_DEFAULT,
+} from '../../core/walk-derive-default'
 import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path, type PathKey } from '../../core/paths'
@@ -112,19 +116,13 @@ import { assertSupportedKinds } from './assert-supported'
 import { fingerprintZodSchema } from './fingerprint'
 import { isZodSchemaType } from './helpers'
 import {
-  containsAsyncRefine,
   containsAsyncTransform,
   getArrayElement,
-  getCatchDefault,
-  getDefaultValue as getDefaultValueFromIntrospect,
   getDiscriminatedOptions,
   getDiscriminator,
-  getEffectsKind,
   getIntersectionLeft,
   getIntersectionRight,
   getLiteralValue,
-  getLiteralValues,
-  getNativeEnumValues,
   getObjectShape,
   getRecordKeyType,
   getRecordValueType,
@@ -132,12 +130,7 @@ import {
   getTupleItems,
   getTypeName,
   getUnionOptions,
-  hasCatchValue,
   hasChecks,
-  hasContainerOrRootRefine,
-  isCoercePrimitive,
-  isPreprocessNode,
-  kindOf,
   unwrapBranded,
   unwrapEffectsSource,
   unwrapInner,
@@ -146,6 +139,7 @@ import {
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 import { stripAsyncChecks } from './strip-async'
+import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
 
@@ -197,25 +191,6 @@ export function zodAdapter<
       formKey,
       options
     )
-}
-
-/**
- * Module-level `SchemaIntrospector` for the v3 adapter. Pure schema
- * accessors with no closure state — shared across every \`useForm()\`
- * that ships a v3 schema. Mirrors the v4 \`V4_INTROSPECTOR\` shape.
- */
-const V3_INTROSPECTOR: SchemaIntrospector<z.ZodTypeAny> = {
-  kindOf: (schema) => kindOf(schema) as SharedZodKind | string,
-  getObjectShape: (schema) => getObjectShape(schema),
-  getTupleItems: (schema) => getTupleItems(schema),
-  getDiscriminatedOptions: (schema) => getDiscriminatedOptions(schema) as readonly z.ZodTypeAny[],
-  getDiscriminator: (schema) => getDiscriminator(schema),
-  getLiteralValues: (schema) => getLiteralValues(schema),
-  isPreprocessNode: (schema) => isPreprocessNode(schema),
-  isCoercePrimitive: (schema) => isCoercePrimitive(schema),
-  containsAsyncRefine: (schema) => containsAsyncRefine(schema),
-  containsAsyncTransform: (schema) => containsAsyncTransform(schema),
-  hasContainerOrRootRefine: (schema) => hasContainerOrRootRefine(schema),
 }
 
 /**
@@ -375,137 +350,7 @@ function getNestedZodSchemasAtPath(
   maxRecursionDepth: number
 ): z.ZodTypeAny[] {
   if (segments.length === 0) return [schema]
-  return walkSegments(schema, segments.map(String), maxRecursionDepth, 0)
-}
-
-function walkSegments(
-  schema: z.ZodTypeAny,
-  segments: readonly string[],
-  maxDepth: number,
-  lazyDepth: number
-): z.ZodTypeAny[] {
-  if (segments.length === 0) return [schema]
-  const [head, ...rest] = segments
-  if (head === undefined) return [schema]
-  const kind = kindOf(schema)
-  switch (kind) {
-    case 'object': {
-      const shape = getObjectShape(schema)
-      // Own-property check: `shape` is a plain object whose prototype is
-      // `Object.prototype`, so a bare `shape[head]` for `head ===
-      // 'toString'` / `'valueOf'` / `'hasOwnProperty'` etc. returns the
-      // inherited Function and the walker treats it as a schema. Filter
-      // to OWN keys so unknown segments resolve to "doesn't exist."
-      if (!Object.hasOwn(shape, head)) return []
-      const next = shape[head]
-      return next === undefined ? [] : walkSegments(next, rest, maxDepth, lazyDepth)
-    }
-    case 'array': {
-      const inner = getArrayElement(schema)
-      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
-    }
-    case 'set': {
-      // Sets aren't position-indexed; the head segment is a synthetic
-      // indexer (`[...path, 0]`) used to query the element type. Descend
-      // into the value schema and consume the segment.
-      const inner = getSetValueType(schema)
-      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
-    }
-    case 'record': {
-      const inner = getRecordValueType(schema)
-      return inner === undefined ? [] : walkSegments(inner, rest, maxDepth, lazyDepth)
-    }
-    case 'tuple': {
-      const index = Number(head)
-      if (!Number.isInteger(index)) return []
-      const items = getTupleItems(schema)
-      const item = items[index]
-      return item === undefined ? [] : walkSegments(item, rest, maxDepth, lazyDepth)
-    }
-    case 'union':
-      return getUnionOptions(schema).flatMap((opt) =>
-        walkSegments(opt, segments, maxDepth, lazyDepth)
-      )
-    case 'discriminated-union': {
-      // Filter options whose shape contains this segment. Fallback: if no
-      // option matches (e.g. the discriminator key itself), try every
-      // option. `Object.hasOwn` (not `in`) so `Object.prototype` keys
-      // don't leak.
-      const options = getDiscriminatedOptions(schema)
-      const matching = options.filter((opt) => Object.hasOwn(getObjectShape(opt), head))
-      const candidates = matching.length > 0 ? matching : options
-      return candidates.flatMap((opt) => walkSegments(opt, segments, maxDepth, lazyDepth))
-    }
-    case 'optional':
-    case 'nullable':
-    case 'default':
-    case 'readonly':
-    case 'catch': {
-      // `catch` peels like a wrapper — descend into the inner schema. The
-      // catch fallback only matters at parse time, not path lookup.
-      const inner = unwrapInner(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'branded': {
-      const inner = unwrapBranded(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'effects': {
-      const inner = unwrapEffectsSource(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'pipeline': {
-      const inner = unwrapPipeIn(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth)
-    }
-    case 'lazy': {
-      // Bump the lazy counter. Past the cap, return [] so callers fall
-      // back to permissive behaviour at recursive paths beyond the cap.
-      if (lazyDepth >= maxDepth) return []
-      const inner = unwrapLazy(schema)
-      return inner === undefined ? [] : walkSegments(inner, segments, maxDepth, lazyDepth + 1)
-    }
-    case 'intersection': {
-      // Union of both sides' resolutions — callers try each candidate,
-      // matching parse-time semantics where a value must satisfy both.
-      const left = getIntersectionLeft(schema)
-      const right = getIntersectionRight(schema)
-      const leftResults =
-        left === undefined ? [] : walkSegments(left, segments, maxDepth, lazyDepth)
-      const rightResults =
-        right === undefined ? [] : walkSegments(right, segments, maxDepth, lazyDepth)
-      return [...leftResults, ...rightResults]
-    }
-    // Leaf types — can't descend further. The unsupported kinds
-    // (`promise` / `function` / `map` / `symbol`) are rejected at
-    // adapter construction by `assertSupportedKinds`; this fallthrough
-    // keeps the walker defensive in case construction is skipped (e.g.
-    // a downstream test instantiates a subschema directly).
-    case 'string':
-    case 'number':
-    case 'boolean':
-    case 'bigint':
-    case 'date':
-    case 'enum':
-    case 'native-enum':
-    case 'literal':
-    case 'null':
-    case 'undefined':
-    case 'void':
-    case 'never':
-    case 'any':
-    case 'unknown':
-    case 'nan':
-    case 'promise':
-    case 'function':
-    case 'map':
-    case 'symbol':
-      return []
-    default: {
-      const _exhaustive: never = kind
-      throw new Error(`walkSegments (v3): unhandled ZodKind '${_exhaustive as string}'`)
-    }
-  }
+  return walkPathSegments(schema, segments.map(String), V3_INTROSPECTOR, maxRecursionDepth, 0)
 }
 
 /**
@@ -854,363 +699,36 @@ function getDefaultValue(
   return undefined
 }
 
-function unwrapDefault(schema: z.ZodTypeAny): [unknown, boolean] {
-  // Iterative peel: a chain of `.refine()` calls produces a deep
-  // ZodEffects(ZodEffects(...)) tree, and stack-based recursion runs
-  // out before MAX_UNWRAP_STEPS does. The bound also acts as a
-  // self-reference guard for pathological lazy loops.
-  let current: z.ZodTypeAny = schema
-  for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
-    if (isZodSchemaType(current, 'ZodDefault')) {
-      return [getDefaultValueFromIntrospect(current), true]
-    }
-    if (isZodSchemaType(current, 'ZodCatch')) {
-      // ZodCatch supplies a fallback value when its inner schema rejects
-      // parse. For default extraction the caught fallback IS the
-      // construction-time default — it's the consumer's explicit
-      // statement of "this is what to render when nothing else fits."
-      // Preserves the value across submit failures, hydration, and
-      // history (a `.catch()` should resurface the same fallback).
-      // `hasCatchValue` lets us distinguish a legitimate `undefined`
-      // return from a missing wrapper — both surface as `undefined`
-      // from `getCatchDefault` alone.
-      if (hasCatchValue(current)) return [getCatchDefault(current), true]
-      // Defensive: fall through to the inner schema if the field is
-      // missing on this v3 minor version.
-      const inner = unwrapInner(current)
-      if (!inner) break
-      current = inner
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodNullable') || isZodSchemaType(current, 'ZodOptional')) {
-      const inner = unwrapInner(current)
-      if (!inner) break
-      current = inner
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodReadonly')) {
-      const inner = unwrapInner(current)
-      if (!inner) break
-      current = inner
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodBranded')) {
-      const inner = unwrapBranded(current)
-      if (!inner) break
-      current = inner
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodPipeline')) {
-      const inner = unwrapPipeIn(current)
-      if (!inner) break
-      current = inner
-      continue
-    }
-    if (isZodSchemaType(current, 'ZodEffects')) {
-      // v3 ZodEffects' structural source lives on `_def.schema`
-      // (preferred); older v3 builds exposed `.innerType()` on the
-      // instance as an alternative resolver. The introspect helper
-      // reads `_def.schema`, and falling back to the instance method
-      // here preserves the historical robustness.
-      const inner = unwrapEffectsSource(current)
-      if (inner) {
-        current = inner
-        continue
-      }
-      const innerFromMethod = (current as { innerType?: () => z.ZodTypeAny }).innerType?.()
-      if (innerFromMethod) {
-        current = innerFromMethod
-        continue
-      }
-      break
-    }
-    break
-  }
-  return [null, false]
-}
-
-/**
- * Walk through transparent wrappers (Optional / Nullable / Readonly /
- * Catch) looking for a `ZodDefault` in the chain. Used by the preprocess
- * branch of `generateValue` to decide whether the inner has a
- * consumer-declared default the adapter should honor (return the inner
- * walk) or whether the slot is fully consumer-owned (return `undefined`).
- * Mirrors v4's `hasDeclaredDefaultInChain`.
- *
- * Bounded loop matches the surrounding `unwrapDefault`/`unwrapTo*`
- * patterns — a deeper wrapper stack is almost certainly a recursive
- * cycle, not legitimate schema construction.
- */
-function hasDeclaredDefaultInChainV3(schema: z.ZodTypeAny): boolean {
-  let current: z.ZodTypeAny | undefined = schema
-  for (let i = 0; i < 32; i++) {
-    if (current === undefined) return false
-    if (isZodSchemaType(current, 'ZodDefault')) return true
-    if (
-      isZodSchemaType(current, 'ZodOptional') ||
-      isZodSchemaType(current, 'ZodNullable') ||
-      isZodSchemaType(current, 'ZodReadonly') ||
-      isZodSchemaType(current, 'ZodCatch')
-    ) {
-      current = unwrapInner(current)
-      continue
-    }
-    return false
-  }
-  return false
-}
-
 function getDefaultValuesFromZodSchema<
   FormSchema extends z.ZodSchema,
   Form extends z.infer<FormSchema>,
 >(formSchema: FormSchema, useDefaultSchemaValues: boolean, formKey: FormKey): Form {
-  // Recursive function to generate the initial value based on schema type
-  function generateValue(schema: z.ZodTypeAny): unknown {
-    // Recursive helper to unwrap layers and detect ZodDefault
-    // Check if the schema (or any wrapped version) has a ZodDefault
-    if (useDefaultSchemaValues) {
-      const [defaultValue, foundDefaultValue] = unwrapDefault(schema)
-      if (foundDefaultValue) {
-        return defaultValue // Prioritize the 1st default value (if it exists)
-      }
-    }
-
-    // `z.coerce.X()` flags the wrapped primitive's def with `coerce:
-    // true`; the consumer's input pre-conversion shape is unknown so
-    // synthesising the primitive's slim concrete (`''` / `0` / etc.)
-    // would claim a value the consumer never supplied. Leave the slot
-    // `undefined` so `defaultValues` or a later `setValue` owns what
-    // lands in storage. A consumer-declared `.default(x)` on the coerce
-    // primitive was already honored by the `unwrapDefault` check above.
-    // Mirrors v4's `isCoercePrimitive` early-return.
-    if (isCoercePrimitive(schema)) return undefined
-
-    // Handle nullable
-    if (isZodSchemaType(schema, 'ZodNullable')) {
-      return null // No default, so return null
-    }
-
-    // Handle objects
-    if (isZodSchemaType(schema, 'ZodObject')) {
-      const shape = schema.shape
-      return Object.keys(shape).reduce<Record<string, unknown>>((acc, key) => {
-        acc[key] = generateValue(shape[key])
-        return acc
-      }, {})
-    }
-
-    // Handle arrays
-    if (isZodSchemaType(schema, 'ZodArray')) {
-      return []
-    }
-
-    // Handle strings
-    if (isZodSchemaType(schema, 'ZodString')) {
-      return ''
-    }
-
-    // Handle numbers
-    if (isZodSchemaType(schema, 'ZodNumber')) {
-      return 0
-    }
-
-    // Handle bigints — must be a bigint literal; z.bigint() rejects
-    // number 0. Without this branch we fall through to the warn-path
-    // and the fix-up loop has to reconcile it via getDefaultValue.
-    if (isZodSchemaType(schema, 'ZodBigInt')) {
-      return 0n
-    }
-
-    // Handle dates — matches v4's `new Date(0)` so SSR round-trip is
-    // deterministic across server + client.
-    if (isZodSchemaType(schema, 'ZodDate')) {
-      return new Date(0)
-    }
-
-    // Handle booleans
-    if (isZodSchemaType(schema, 'ZodBoolean')) {
-      return false
-    }
-
-    // Handle enums
-    if (isZodSchemaType(schema, 'ZodEnum')) {
-      return schema.options[0]
-    }
-
-    // Handle null
-    if (isZodSchemaType(schema, 'ZodNull')) {
+  // Thin wrapper around the shared `deriveDefaultWalk` core walker;
+  // v3 and v4 dispatch through the same body via their respective
+  // `SchemaIntrospector` instance. See `core/walk-derive-default.ts`
+  // for the per-kind dispatch rules and the `peelEmbeddedDefault`
+  // chain-walk that previously lived here as `unwrapDefault`.
+  //
+  // `maxRecursionDepth` is the historical v3 cap (64); the v3
+  // adapter doesn't thread the consumer-supplied cap into this
+  // call site — every existing v3 test passes against the embedded
+  // 64-cap so the dedup preserves the prior behavior.
+  return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64, {
+    unsupportedKindFallback: (schema) => {
+      console.warn(
+        `[attaform] zod-v3 adapter: unsupported schema kind ` +
+          `'${(schema as { constructor?: { name?: string } }).constructor?.name ?? 'unknown'}' ` +
+          `on form '${formKey}'. Defaulting the field to null. ` +
+          `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
+      )
       return null
-    }
-
-    // Handle undefined
-    if (isZodSchemaType(schema, 'ZodUndefined')) {
-      return undefined
-    }
-
-    // Handle literals
-    if (isZodSchemaType(schema, 'ZodLiteral')) {
-      return getLiteralValue(schema)
-    }
-
-    // Handle optional
-    if (isZodSchemaType(schema, 'ZodOptional')) {
-      return undefined
-    }
-
-    // Handle unions (use the first option as the default)
-    if (isZodSchemaType(schema, 'ZodUnion')) {
-      const first = getUnionOptions(schema)[0]
-      return first === undefined ? undefined : generateValue(first)
-    }
-
-    // Handle tuples
-    if (isZodSchemaType(schema, 'ZodTuple')) {
-      return getTupleItems(schema).map((item) => generateValue(item))
-    }
-
-    // Handle records
-    if (isZodSchemaType(schema, 'ZodRecord')) {
-      return {}
-    }
-
-    // Finding ZodDefault here means we should suppress defaults
-    // Can only happen if useDefaultSchemaValues is false
-    if (isZodSchemaType(schema, 'ZodDefault')) {
-      const inner = unwrapInner(schema)
-      if (inner) return generateValue(inner)
-    }
-
-    if (isZodSchemaType(schema, 'ZodEffects')) {
-      const inner = unwrapEffectsSource(schema)
-      // `z.preprocess(fn, _)` declares an input normalizer; the input
-      // side is the user-supplied `fn` and the slot has no canonical
-      // empty value the adapter can honestly synthesise. Mirror v4's
-      // pipe-with-transform case: when the inner carries a consumer-
-      // declared default it takes priority (recurse so the `unwrapDefault`
-      // check at the top of `generateValue` picks it up under
-      // `useDefaultSchemaValues`, or the inner `ZodDefault` branch
-      // resolves to the leaf empty under strict mode); otherwise leave
-      // the slot `undefined`. `refinement` / `transform` keep the
-      // original behavior — they wrap a real source schema.
-      if (getEffectsKind(schema) === 'preprocess') {
-        if (inner && hasDeclaredDefaultInChainV3(inner)) return generateValue(inner)
-        return undefined
-      }
-      if (inner) return generateValue(inner)
-    }
-
-    if (isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
-      const discriminantKey = undefined // select default option schema
-      const discriminantSchema = getSchemaByDiscriminatorKey(schema, discriminantKey)
-      return generateValue(discriminantSchema as z.ZodTypeAny)
-    }
-
-    // ZodCatch — even when default extraction is suppressed
-    // (`useDefaultSchemaValues=false`), the consumer-supplied fallback
-    // is the most reasonable construction-time value to surface; the
-    // alternative is the inner schema's bare default, which the
-    // .catch() author specifically chose to override. `hasCatchValue`
-    // preserves the legitimate-undefined-return path.
-    if (isZodSchemaType(schema, 'ZodCatch')) {
-      if (hasCatchValue(schema)) return getCatchDefault(schema)
-      const inner = unwrapInner(schema)
-      if (inner) return generateValue(inner)
-    }
-
-    // Newer transparent wrappers (v3.23+ for Pipeline/Readonly; Branded
-    // pre-existed). Each wraps a single inner schema with no structural
-    // impact at value-construction time.
-    if (isZodSchemaType(schema, 'ZodReadonly')) {
-      const inner = unwrapInner(schema)
-      if (inner) return generateValue(inner)
-    }
-    if (isZodSchemaType(schema, 'ZodBranded')) {
-      const inner = unwrapBranded(schema)
-      if (inner) return generateValue(inner)
-    }
-    if (isZodSchemaType(schema, 'ZodPipeline')) {
-      // Pipeline transforms in -> out; pre-transform default is the
-      // input schema's natural default.
-      const inner = unwrapPipeIn(schema)
-      if (inner) return generateValue(inner)
-    }
-
-    // ZodLazy — recursive schemas (comment trees, file system shapes).
-    // Resolve the getter once; the inner schema's own ZodOptional /
-    // base-case branch terminates the recursion.
-    if (isZodSchemaType(schema, 'ZodLazy')) {
-      const inner = unwrapLazy(schema)
-      if (inner) return generateValue(inner)
-    }
-
-    // ZodIntersection — `z.intersection(A, B)` must satisfy both sides
-    // at parse time, so the merged shape carries both halves' defaults.
-    // `mergeDeepV3` (NOT lodash `merge`) so leaves replace wholesale and
-    // explicit `null` overrides survive — matches v4's intersection
-    // branch (`default-values.ts:228-244`).
-    if (isZodSchemaType(schema, 'ZodIntersection')) {
-      const leftSchema = getIntersectionLeft(schema)
-      const rightSchema = getIntersectionRight(schema)
-      const left = leftSchema ? generateValue(leftSchema) : undefined
-      const right = rightSchema ? generateValue(rightSchema) : undefined
-      return mergeDeepV3(left, right)
-    }
-
-    // ZodNativeEnum — TS-enum-backed selects. Numeric enums get
-    // reverse-mapped (`enum E { A }` → `{ A: 0, '0': 'A' }`); the valid
-    // runtime members are the keys whose VALUE'S key isn't itself a
-    // number. String enums have no reverse mapping, so every key is
-    // valid. Pick the first valid value as the default.
-    if (isZodSchemaType(schema, 'ZodNativeEnum')) {
-      const values = getNativeEnumValues(schema)
-      if (values) {
-        const validKeys = Object.keys(values).filter(
-          (k) => typeof values[values[k] as string] !== 'number'
-        )
-        if (validKeys.length > 0) {
-          const first = validKeys[0]
-          if (first !== undefined) return values[first]
-        }
-      }
-    }
-
-    // ZodSet — empty Set; populated entries would have to reach into
-    // the element schema's defaults, but a Set's only meaningful
-    // empty state is `new Set()`.
-    if (isZodSchemaType(schema, 'ZodSet')) {
-      return new Set()
-    }
-
-    // ZodNaN — the only valid value `z.nan()` accepts is `NaN`. v4
-    // returns `NaN` here; mirror that so the default seeds a schema-
-    // valid slot instead of falling through to the warn-path.
-    if (isZodSchemaType(schema, 'ZodNaN')) {
-      return NaN
-    }
-
-    // `z.void()` / `z.any()` / `z.unknown()` / `z.never()` carry no
-    // canonical empty value beyond `undefined`. v4 returns `undefined`
-    // for all four; returning `null` here (the warn-path fallback)
-    // misrepresented the slot and triggered a noisy console warning for
-    // a schema kind we can actually handle.
-    if (
-      isZodSchemaType(schema, 'ZodVoid') ||
-      isZodSchemaType(schema, 'ZodAny') ||
-      isZodSchemaType(schema, 'ZodUnknown') ||
-      isZodSchemaType(schema, 'ZodNever')
-    ) {
-      return undefined
-    }
-
-    console.warn(
-      `[attaform] zod-v3 adapter: unsupported schema kind ` +
-        `'${schema.constructor.name}' on form '${formKey}'. Defaulting the field to null. ` +
-        `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
-    )
-    return null
-  }
-
-  return generateValue(formSchema) as unknown as Form
+    },
+    // v3 historically surfaces the `.catch(v)` fallback even when
+    // `useDefaultSchemaValues=false`. Pinned by
+    // `test/adapters/zod-v3/wrappers.test.ts` ('surfaces the catch
+    // fallback even when useDefaultSchemaValues is false').
+    catchOnUseDefaultFalse: 'preserveCatch',
+  }) as Form
 }
 // helpful tip: discriminator option schemas are always zod objects (because of discriminant key)
 function getSchemaByDiscriminatorKey(
@@ -2113,10 +1631,13 @@ function runStrictGetDefaultsV3<Form>(
 
       // Wrong-primitive issues with non-invalid_type codes (e.g.,
       // invalid_enum_value where the offending value is a number
-      // against a string-enum). Fall back to the schema's default.
-      const [defaultValue, found] = unwrapDefault(schemaAtPath)
-      if (found) {
-        fixedData = setAtPath(fixedData, path, defaultValue) as Record<string, unknown>
+      // against a string-enum). Fall back to the schema's default —
+      // peel the wrapper chain for an embedded `ZodDefault` /
+      // `ZodCatch.fallback`. Mirrors the chain-peel that
+      // `deriveDefaultWalk` runs at the top of every node visit.
+      const peeled = peelEmbeddedDefault(schemaAtPath as z.ZodTypeAny, V3_INTROSPECTOR)
+      if (peeled !== NO_EMBEDDED_DEFAULT) {
+        fixedData = setAtPath(fixedData, path, peeled) as Record<string, unknown>
         continue
       }
       // Last-ditch: derive a default for the schema kind at this path.

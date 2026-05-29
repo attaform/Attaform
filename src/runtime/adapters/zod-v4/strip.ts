@@ -208,6 +208,29 @@ export function stripRefinements(schema: z.ZodType): z.ZodType {
  * operation) and `getSlimSchema` (configurable peeling for default
  * derivation): this is a tree-walk that filters by sync/async at
  * every check site.
+ *
+ * Adapter-divergence note (Phase 12 part 2 / ADAPT-D4 deferred):
+ * this stays per-adapter rather than dedup-ing into a shared core
+ * walker. The structural skeleton (recurse + rebuild containers +
+ * wrappers + carry container-level constraints) is parallel to v3's
+ * `zod-v3/strip-async.ts:stripAsyncChecks`, but the per-check filter
+ * is irreducibly asymmetric:
+ *
+ *  - v4 filters by `isAsyncCheck(check)` at every check site — v4
+ *    knows the user fn directly (`check.def.fn.constructor.name`).
+ *    Sync refines survive the rebuild.
+ *  - v3 cannot statically distinguish sync from async `.refine(fn)`
+ *    because v3 wraps the user fn inside a sync closure that hides
+ *    `constructor.name`. v3 therefore drops EVERY `ZodEffects` it
+ *    encounters, losing sync refine seeding in mixed forms.
+ *
+ * A unified walker would need to either parameterise the rebuild
+ * with `shouldKeepCheck` AND `shouldDropWrapperWholesale` AND
+ * `rebuildLeaf` AND `rebuildContainer` services — which yields a
+ * walker bigger than the two it replaces — or special-case the v3
+ * effects-dropping at the call site, defeating the dedup. The
+ * docblocks on both files cross-reference so future readers see
+ * the deliberate asymmetry.
  */
 export function stripAsyncChecks(schema: z.ZodType): z.ZodType {
   const config: StripConfigInternal = {

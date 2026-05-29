@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod-v3'
 import {
   assertZodVersion,
+  containsAsyncRefine,
+  containsAsyncTransform,
   getArrayElement,
   getCatchDefault,
   getChecks,
@@ -23,6 +25,7 @@ import {
   getUnionOptions,
   hasChecks,
   hasContainerOrRootRefine,
+  isAsyncEffect,
   isContainerAfterWrapperPeel,
   kindOf,
   unwrapBranded,
@@ -268,6 +271,103 @@ describe('hasContainerOrRootRefine', () => {
     expect(isContainerAfterWrapperPeel(z.object({}).optional())).toBe(true)
     expect(isContainerAfterWrapperPeel(z.array(z.string()).nullable())).toBe(true)
     expect(isContainerAfterWrapperPeel(z.string().optional())).toBe(false)
+  })
+})
+
+describe('isAsyncEffect', () => {
+  it('flags an async transform / preprocess; sync siblings clear', () => {
+    const asyncTransform = z.string().transform(async (v) => Promise.resolve(`${v}!`))
+    const asyncPreprocess = z.preprocess(async (v) => Promise.resolve(v), z.string())
+    const syncTransform = z.string().transform((v) => `${v}!`)
+    expect(isAsyncEffect(asyncTransform)).toBe(true)
+    expect(isAsyncEffect(asyncPreprocess)).toBe(true)
+    expect(isAsyncEffect(syncTransform)).toBe(false)
+  })
+
+  it('returns false for refinement effects regardless of the user fn (v3 wraps refines sync)', () => {
+    // v3's `.refine` stores a sync wrapper at `_def.effect.refinement`
+    // that closes over the user predicate. The user fn's async-ness is
+    // not statically observable; `isAsyncEffect` returns `false` for
+    // refinement effects unconditionally. `containsAsyncRefine` is the
+    // conservative full-tree probe (true for any refine).
+    expect(isAsyncEffect(z.string().refine(async () => Promise.resolve(true), 'x'))).toBe(false)
+    expect(isAsyncEffect(z.string().refine(() => true, 'x'))).toBe(false)
+  })
+
+  it('returns false for non-ZodEffects schemas', () => {
+    expect(isAsyncEffect(z.string())).toBe(false)
+    expect(isAsyncEffect(z.object({ x: z.string() }))).toBe(false)
+  })
+})
+
+describe('containsAsyncRefine', () => {
+  it('flags any leaf refine at the root — sync or async (v3 conservative)', () => {
+    // v3 cannot statically distinguish sync from async refines; both
+    // are treated as "potentially async" so the runtime never misses
+    // the post-mount async pass.
+    expect(containsAsyncRefine(z.string().refine(async () => Promise.resolve(true)))).toBe(true)
+    expect(containsAsyncRefine(z.string().refine(() => true))).toBe(true)
+  })
+
+  it('flags a refine nested under containers and wrappers', () => {
+    const nested = z.object({
+      profile: z
+        .object({
+          tags: z.array(
+            z
+              .string()
+              .refine(() => true)
+              .optional()
+          ),
+        })
+        .nullable(),
+    })
+    expect(containsAsyncRefine(nested)).toBe(true)
+  })
+
+  it('returns false for schemas without any ZodEffects refinements', () => {
+    expect(containsAsyncRefine(z.string())).toBe(false)
+    expect(containsAsyncRefine(z.object({ name: z.string(), age: z.number() }))).toBe(false)
+    // A bare transform (no refinement effects) doesn't trip the flag.
+    expect(
+      containsAsyncRefine(z.object({ x: z.string().transform(async (v) => Promise.resolve(v)) }))
+    ).toBe(false)
+  })
+
+  it('flags through ZodPipeline and ZodBranded wrappers', () => {
+    const pipeline = z.string().pipe(z.string().refine(() => true))
+    const branded = z
+      .string()
+      .refine(() => true)
+      .brand<'Tag'>()
+    expect(containsAsyncRefine(pipeline)).toBe(true)
+    expect(containsAsyncRefine(branded)).toBe(true)
+  })
+})
+
+describe('containsAsyncTransform', () => {
+  it('flags an async transform / preprocess at the root', () => {
+    expect(containsAsyncTransform(z.string().transform(async (v) => Promise.resolve(v)))).toBe(true)
+    expect(containsAsyncTransform(z.preprocess(async (v) => Promise.resolve(v), z.string()))).toBe(
+      true
+    )
+  })
+
+  it('does not flag sync transforms / preprocess', () => {
+    expect(containsAsyncTransform(z.string().transform((v) => v))).toBe(false)
+    expect(containsAsyncTransform(z.preprocess((v) => v, z.string()))).toBe(false)
+  })
+
+  it('does not flag refinements (sync or async) — those are the refine walker’s domain', () => {
+    expect(containsAsyncTransform(z.string().refine(async () => Promise.resolve(true)))).toBe(false)
+    expect(containsAsyncTransform(z.string().refine(() => true))).toBe(false)
+  })
+
+  it('flags an async transform nested under union options', () => {
+    const schema = z.object({
+      payload: z.union([z.string(), z.string().transform(async (v) => Promise.resolve(`${v}!`))]),
+    })
+    expect(containsAsyncTransform(schema)).toBe(true)
   })
 })
 

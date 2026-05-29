@@ -334,7 +334,17 @@ export function structuralSnapshot<T>(value: T): T {
     return out as unknown as T
   }
   const src = value as Record<string, unknown>
-  const out: Record<string, unknown> = {}
+  // Prototype-less snapshot container — pairs with the proto-less
+  // intermediates `setAtPath` allocates. With both lined up, a form
+  // value carrying a legitimate `__proto__` / `constructor` /
+  // `prototype` own property survives the snapshot pass: `out[k] = …`
+  // is an own-property write on every step regardless of `k`, instead
+  // of routing through the inherited `[[Set]]` accessor at a literal
+  // `__proto__` key. `Object.keys` enumerates own enumerable keys on
+  // both the source and the destination identically, so consumers
+  // reading `prev` see the same shape they would have read off
+  // `form.value` directly.
+  const out: Record<string, unknown> = Object.create(null)
   for (const k of Object.keys(src)) {
     out[k] = structuralSnapshot(src[k])
   }

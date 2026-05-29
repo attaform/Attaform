@@ -24,81 +24,59 @@ function generateEqualityExpression(
   selectValue: SummarizedProp['value'],
   optionValue: SummarizedProp['value'],
   previousOptionExpressions: CompoundExpressionNode['children'][]
-) {
-  function getExpressionNodeChildren(
-    _selectValue: SummarizedProp['value'],
-    _optionValue: SummarizedProp['value'],
-    _previousOptionExpressions: CompoundExpressionNode['children'][]
-  ): CompoundExpressionNode['children'] {
-    const multipleExpression = _previousOptionExpressions?.[0] // this should always exist
-    if (multipleExpression === undefined) {
-      // this should NEVER happen
-      throw new Error(
-        'Programming error: `multiple` expression for `select` node not generated while transforming AST'
-      )
-    }
-
-    const optExpressions = _previousOptionExpressions.slice(1)
-
-    // for `multiple`="false", we ONLY execute latest expression if all past expressions were falsy
-    const noMultipleOptExpressions = optExpressions.reduce<CompoundExpressionNode['children']>(
-      (acc, curr, index) => {
-        if (index === 0) {
-          acc.push('(')
-        }
-
-        acc.push(...curr) // all expressions from last operation were grouped into an array
-        if (index < optExpressions.length - 1) {
-          acc.push(' || ')
-        }
-
-        if (index === optExpressions.length - 1) {
-          acc.push(')')
-        }
-
-        return acc
-      },
-      []
+): CompoundExpressionNode['children'] {
+  const multipleExpression = previousOptionExpressions?.[0] // this should always exist
+  if (multipleExpression === undefined) {
+    // this should NEVER happen
+    throw new Error(
+      'Programming error: `multiple` expression for `select` node not generated while transforming AST'
     )
+  }
 
-    const selectValueArr = Array.isArray(_selectValue) ? _selectValue : [_selectValue]
-    const optionValueArr = Array.isArray(_optionValue) ? _optionValue : [_optionValue]
+  const optExpressions = previousOptionExpressions.slice(1)
 
-    function getImplicitTrueMultipleExpression(expression: CompoundExpressionNode['children']) {
-      // Identify user passing in `multiple` as an implied truthy prop
-      if (expression.length === 1 && expression[0] === '') return [`true`]
-      return expression
-    }
+  // for `multiple`="false", we ONLY execute latest expression if all past expressions were falsy
+  const noMultipleOptExpressions = optExpressions.reduce<CompoundExpressionNode['children']>(
+    (acc, curr, index) => {
+      if (index === 0) {
+        acc.push('(')
+      }
 
-    // capture the current expression for the next round
-    _previousOptionExpressions.push(['(', ...selectValueArr, ') === (', ...optionValueArr, ')'])
-    // Single-select branch String-coerces both sides to mirror the
-    // runtime directive's `looseEqual`-style match — a typed-numeric
-    // model (`z.number()`) matches `<option value="1">` at SSR time.
-    // The `typeof !== 'object'` guard preserves the pre-existing
-    // "array model on a single-select doesn't match" behaviour: an
-    // array stringifies to its joined elements, which would otherwise
-    // false-positive against a single-element option.
-    // The multi-select branch keeps `innerRef.value` because Array
-    // / Set models need findIndex / membership iteration.
-    if (!noMultipleOptExpressions.length) {
-      return [
-        '(',
-        ...getImplicitTrueMultipleExpression(multipleExpression),
-        `) ? ((`,
-        ...selectValueArr,
-        `)?.innerRef?.value?.findIndex?.(el => el === (`,
-        ...optionValueArr,
-        `)) > -1) : (typeof (`,
-        ...selectValueArr,
-        `)?.innerRef?.value !== 'object' && String((`,
-        ...selectValueArr,
-        `)?.innerRef?.value) === String((`,
-        ...optionValueArr,
-        `)))`,
-      ]
-    }
+      acc.push(...curr) // all expressions from last operation were grouped into an array
+      if (index < optExpressions.length - 1) {
+        acc.push(' || ')
+      }
 
+      if (index === optExpressions.length - 1) {
+        acc.push(')')
+      }
+
+      return acc
+    },
+    []
+  )
+
+  const selectValueArr = Array.isArray(selectValue) ? selectValue : [selectValue]
+  const optionValueArr = Array.isArray(optionValue) ? optionValue : [optionValue]
+
+  function getImplicitTrueMultipleExpression(expression: CompoundExpressionNode['children']) {
+    // Identify user passing in `multiple` as an implied truthy prop
+    if (expression.length === 1 && expression[0] === '') return [`true`]
+    return expression
+  }
+
+  // capture the current expression for the next round
+  previousOptionExpressions.push(['(', ...selectValueArr, ') === (', ...optionValueArr, ')'])
+  // Single-select branch String-coerces both sides to mirror the
+  // runtime directive's `looseEqual`-style match — a typed-numeric
+  // model (`z.number()`) matches `<option value="1">` at SSR time.
+  // The `typeof !== 'object'` guard preserves the pre-existing
+  // "array model on a single-select doesn't match" behaviour: an
+  // array stringifies to its joined elements, which would otherwise
+  // false-positive against a single-element option.
+  // The multi-select branch keeps `innerRef.value` because Array
+  // / Set models need findIndex / membership iteration.
+  if (!noMultipleOptExpressions.length) {
     return [
       '(',
       ...getImplicitTrueMultipleExpression(multipleExpression),
@@ -106,19 +84,33 @@ function generateEqualityExpression(
       ...selectValueArr,
       `)?.innerRef?.value?.findIndex?.(el => el === (`,
       ...optionValueArr,
-      `)) > -1) : ((`,
-      ...noMultipleOptExpressions, // if true, we already found the relevant option
-      `) ? false : (typeof (`,
+      `)) > -1) : (typeof (`,
       ...selectValueArr,
       `)?.innerRef?.value !== 'object' && String((`,
       ...selectValueArr,
       `)?.innerRef?.value) === String((`,
       ...optionValueArr,
-      `))))`,
+      `)))`,
     ]
   }
 
-  return getExpressionNodeChildren(selectValue, optionValue, previousOptionExpressions)
+  return [
+    '(',
+    ...getImplicitTrueMultipleExpression(multipleExpression),
+    `) ? ((`,
+    ...selectValueArr,
+    `)?.innerRef?.value?.findIndex?.(el => el === (`,
+    ...optionValueArr,
+    `)) > -1) : ((`,
+    ...noMultipleOptExpressions, // if true, we already found the relevant option
+    `) ? false : (typeof (`,
+    ...selectValueArr,
+    `)?.innerRef?.value !== 'object' && String((`,
+    ...selectValueArr,
+    `)?.innerRef?.value) === String((`,
+    ...optionValueArr,
+    `))))`,
+  ]
 }
 
 function extractMultipleFromSelectSummarizedProps(

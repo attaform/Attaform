@@ -284,6 +284,34 @@ describe('persistence — localStorage backend', () => {
     await wait(40)
     expect(localStorage.getItem(fpKey('test-noclear'))).not.toBeNull()
   })
+
+  it('flushes pending writes on pagehide so tab-close edits survive (PASS2-13)', async () => {
+    // The debounce is set well above the test's waitUntil deadline so
+    // the natural timer can't ride in to rescue the test — only the
+    // `pagehide` flush path can persist within the window we poll.
+    const { app, api, type } = mountForm({
+      storage: 'local',
+      key: 'test-pagehide',
+      debounceMs: 5000,
+    })
+    apps.push(app)
+    await waitUntil(() => (api.values.email === '' ? true : null))
+    type('email', 'bob@example.com')
+    // Pre-check: nothing landed yet under the natural debounce window.
+    expect(localStorage.getItem(fpKey('test-pagehide'))).toBeNull()
+    // Simulate the modern tab-close path (bfcache eviction + tab-close
+    // both fire `pagehide`; `beforeunload` is deprecated for this).
+    window.dispatchEvent(new Event('pagehide'))
+    // Poll with a tight deadline — well under the debounce — so a
+    // natural timer flush can't be the source of truth here.
+    const raw = await waitUntil(
+      () => localStorage.getItem(fpKey('test-pagehide')),
+      300 /* timeoutMs */
+    )
+    expect(raw).not.toBeNull()
+    const payload = JSON.parse(raw as string) as { data: { form: { email: string } } }
+    expect(payload.data.form.email).toBe('bob@example.com')
+  })
 })
 
 /**

@@ -10,14 +10,15 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
+import { applyDuStubs } from './du-stubs'
+import { cloneVariantSnapshot, createVariantMemory } from './variant-memory'
 import { createArrayIdentity } from './array-identity'
 import {
-  changedIndices,
-  migrateMapSubtree,
-  migrateSetSubtree,
-  remapForOp,
-} from './array-state-migrate'
-import type { IndexRemap } from './array-state-migrate'
+  createArrayBookkeeping,
+  type ArrayBookkeeping,
+  type FieldValidationEntry,
+} from './array-bookkeeping'
+import { remapForOp } from './array-state-migrate'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
@@ -27,7 +28,6 @@ import {
   coerceToPathKey,
   FORM_ERRORS_PATH,
   FORM_ERRORS_PATH_KEY,
-  isDangerousSegment,
   isPathPrefix,
   ROOT_PATH_KEY,
   segmentsForPathKey,
@@ -143,74 +143,6 @@ function warnMalformedHydration(formKey: FormKey, kind: string, rawKey: string):
     `[attaform] hydration: skipping malformed ${kind} entry at key '${rawKey}' on form '${formKey}'. ` +
       `This usually means the SSR bundle is on a different version than the client (rolling deploy / stale cache).`
   )
-}
-
-function applyDuStubs(
-  schema: AbstractSchema<unknown, unknown>,
-  data: unknown,
-  options: { warn?: boolean; basePath?: Path } = {}
-): unknown {
-  const warned = options.warn === true ? new Set<string>() : undefined
-  return walkDuStubs(schema, data, options.basePath ?? [], warned)
-}
-
-function walkDuStubs(
-  schema: AbstractSchema<unknown, unknown>,
-  value: unknown,
-  path: Path,
-  warned: Set<string> | undefined
-): unknown {
-  if (value === null || value === undefined || typeof value !== 'object') return value
-  if (
-    value instanceof Date ||
-    value instanceof RegExp ||
-    value instanceof Map ||
-    value instanceof Set ||
-    typeof value === 'function'
-  ) {
-    return value
-  }
-  if (Array.isArray(value)) {
-    return value.map((item, i) => walkDuStubs(schema, item, [...path, i], warned))
-  }
-  const rec = value as Record<string, unknown>
-  const du = schema.getUnionDiscriminatorAtPath(path)
-  if (du !== undefined) {
-    const discValue = rec[du.discriminatorKey]
-    if (discValue !== undefined && !du.isVariantSelected(discValue)) {
-      // Kind-blank stub (`''` / `0` / `0n` / `false` / `null`) is the
-      // intentional "no variant selected yet" signal from
-      // `expandUnsetAt` — don't warn. The warn is for typo-style bugs
-      // where the user wrote `kind: 'BAD'` and got a stub by accident.
-      const isKindBlank =
-        discValue === '' ||
-        discValue === 0 ||
-        discValue === 0n ||
-        discValue === false ||
-        discValue === null
-      if (!isKindBlank && warned !== undefined && __DEV__) {
-        const dotted = path.map((s) => String(s)).join('.') || '(root)'
-        const key = `${dotted}::${String(discValue)}`
-        if (!warned.has(key)) {
-          warned.add(key)
-          console.warn(
-            `[attaform] defaultValues at '${dotted}' carries discriminator ` +
-              `'${du.discriminatorKey}=${JSON.stringify(discValue)}' which isn't a known variant. ` +
-              `Form mounts in a stub holding only the discriminator key. Validation will surface the mismatch.`
-          )
-        }
-      }
-      return { [du.discriminatorKey]: discValue }
-    }
-  }
-  const out: Record<string, unknown> = {}
-  for (const k of Object.keys(rec)) {
-    // SSR hydration payloads are untrusted JSON: skip prototype-
-    // corrupting keys before the bracket-assign reaches `out`.
-    if (isDangerousSegment(k)) continue
-    out[k] = walkDuStubs(schema, rec[k], [...path, k], warned)
-  }
-  return out
 }
 
 /** Per-path DOM element tracking. Client-only. */
@@ -389,6 +321,15 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * plain-value forms. Read by `form.rehydrate()`.
    */
   readonly defaultValuesFactory: Ref<(() => unknown | Promise<unknown>) | undefined>
+  /**
+   * `true` when this store carries an SSR prefetch queue (server path
+   * where `state.activate()` must enqueue intent before deciding
+   * whether to fire). The flag lets `buildFormApi` skip the lazy
+   * activation gate for forms with no factory AND no SSR prefetch —
+   * the common client-side case where `gated()` is otherwise pure
+   * reactive overhead on every public method call.
+   */
+  readonly hasSsrPrefetch: boolean
   /**
    * `true` once the form's effective defaults have been applied —
    * sync `defaultValues` at construction, or async factory whose
@@ -1047,41 +988,6 @@ function stripSymbolsDeep(value: unknown): unknown {
 }
 
 /**
- * Deep-clone a value read out of the live reactive form tree, for the
- * variant-memory snapshot. Calls `toRaw` at every level to bypass
- * Vue's on-demand reactivity wrapping, preserves `BigInt`, `Date`,
- * `Map`, `Set` natively (Zod can validate these at leaves), and
- * recurses through plain arrays + objects. Detached from the form's
- * reactive graph, so a later `form.value = nextForm` doesn't mutate
- * the snapshot.
- */
-function cloneVariantSnapshot(value: unknown): unknown {
-  if (value === null || typeof value !== 'object') return value
-  const raw = toRaw(value as object)
-  if (raw instanceof Date) return new Date(raw.getTime())
-  if (raw instanceof Map) {
-    const out = new Map<unknown, unknown>()
-    for (const [k, v] of raw.entries()) out.set(cloneVariantSnapshot(k), cloneVariantSnapshot(v))
-    return out
-  }
-  if (raw instanceof Set) {
-    const out = new Set<unknown>()
-    for (const v of raw) out.add(cloneVariantSnapshot(v))
-    return out
-  }
-  if (raw instanceof RegExp) return new RegExp(raw.source, raw.flags)
-  if (Array.isArray(raw)) {
-    const out: unknown[] = new Array(raw.length)
-    for (let i = 0; i < raw.length; i++) out[i] = cloneVariantSnapshot(raw[i])
-    return out
-  }
-  const src = raw as Record<string, unknown>
-  const out: Record<string, unknown> = {}
-  for (const k of Object.keys(src)) out[k] = cloneVariantSnapshot(src[k])
-  return out
-}
-
-/**
  * Walk the consumer's `defaultValues` argument and stamp every leaf path
  * as "consumer-authored." Even an explicit `undefined` at a leaf counts:
  * the consumer named the path, so any verdict against that undefined IS
@@ -1163,15 +1069,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     defaultValue: DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS,
   })
 
-  type FieldValidationEntry = {
-    controller: AbortController
-    timer: ReturnType<typeof setTimeout> | null
-    // `true` once the chain's `.finally` has decremented the counters
-    // for this entry. `cancelFieldValidation` checks this flag to avoid
-    // double-decrementing a chain that already settled but whose entry
-    // is still in the map waiting to be replaced by the next schedule.
-    settled: boolean
-  }
   const fieldValidationState = new Map<PathKey, FieldValidationEntry>()
 
   // Plain Sets (not reactive) — these fire imperative callbacks; no
@@ -1455,168 +1352,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // form.value), and is cleared on `reset()` / whole-form replace /
   // `resetField` of an ancestor of the union path. Disabled when
   // `rememberVariants === false`.
-  type VariantSnapshot = {
-    readonly value: unknown
-    readonly blankPaths: ReadonlyArray<PathKey>
-  }
-  const variantMemory = new Map<PathKey, Map<unknown, VariantSnapshot>>()
-
-  function clearVariantMemoryUnderPath(arrayPath: Path): void {
-    for (const memKey of [...variantMemory.keys()]) {
-      const segs = segmentsForPathKey(memKey)
-      if (segs === null) continue
-      if (isPathPrefix(arrayPath, segs)) variantMemory.delete(memKey)
-    }
-  }
-
-  function clearVariantMemoryAtArrayIndices(
-    arrayPath: Path,
-    indexFilter: (idx: number) => boolean
-  ): void {
-    for (const memKey of [...variantMemory.keys()]) {
-      const segs = segmentsForPathKey(memKey)
-      if (segs === null) continue
-      if (!isPathPrefix(arrayPath, segs)) continue
-      if (segs.length <= arrayPath.length) continue
-      const idxSeg = segs[arrayPath.length]
-      if (typeof idxSeg !== 'number') continue
-      if (indexFilter(idxSeg)) variantMemory.delete(memKey)
-    }
-  }
-
-  function applyArrayOpToMemory(arrayPath: Path, op: NonNullable<WriteMeta['arrayOp']>): void {
-    switch (op.kind) {
-      case 'insert':
-      case 'remove':
-        // Every index at or past the touched slot now refers to a
-        // different element (shifted up by an insert, down by a remove).
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= op.index)
-        return
-      case 'move': {
-        const lo = Math.min(op.from, op.to)
-        const hi = Math.max(op.from, op.to)
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i >= lo && i <= hi)
-        return
-      }
-      case 'swap':
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i === op.a || i === op.b)
-        return
-      case 'replace-at':
-        clearVariantMemoryAtArrayIndices(arrayPath, (i) => i === op.index)
-        return
-    }
-  }
-
-  // Relocate per-element state so it follows an element across a structural
-  // mutation rather than bleeding onto the new occupant of the element's old
-  // index. Driven by the operation's exact permutation, not by the consumer-
-  // facing identity token — the token is a downstream reader, not the source
-  // of truth. Every non-derived per-element fact moves:
-  //
-  //   - `fields`: touched / focused / blurred / connection bookkeeping, plus
-  //     the record's embedded `path`.
-  //   - `userErrors`: consumer-set errors, plus each error's embedded `path`.
-  //   - `blankPaths`: the cleared-field display flag.
-  //   - `originals` / `originalBlankPaths`: the per-element dirty baseline, so
-  //     a moved element keeps its OWN dirty verdict instead of inheriting the
-  //     slot's. A structural change (reorder / insert / removal) still dirties
-  //     the form through the identity tracker's order comparison
-  //     (`hasStructuralChangeUnder`), which the positional baseline can no
-  //     longer surface once it travels with the element.
-  //
-  // Derived state (schema verdicts, validation counts) is not relocated; it
-  // is dropped and recomputed by revalidation.
-  function migrateArrayElementState(arrayPath: Path, remap: IndexRemap): void {
-    if (remap.moved.size === 0 && remap.vacated.size === 0) return
-    migrateMapSubtree(fields, arrayPath, remap, (record, segments) => ({
-      ...record,
-      path: segments,
-    }))
-    migrateMapSubtree(userErrors, arrayPath, remap, (errors, segments) =>
-      errors.map((error) => ({ ...error, path: [...segments] }))
-    )
-    migrateMapSubtree(originals, arrayPath, remap, (record, segments) => ({
-      segments,
-      value: record.value,
-    }))
-    migrateSetSubtree(blankPaths, arrayPath, remap)
-    migrateSetSubtree(originalBlankPaths, arrayPath, remap)
-    // In-flight field-validation counter (`field.validating` mirror).
-    // Same identity reasoning as the other path-keyed maps: the spinner
-    // belongs to the validating element, not the slot. Self-heals on the
-    // next validation pass; this migration just spares the wrong-row
-    // visible flicker in between.
-    migrateMapSubtree(fieldValidationCounts, arrayPath, remap, (count) => count)
-    // Nested-array identity: relocate every tracked array sitting under
-    // `arrayPath`'s element slots so a nested `v-for :key` stays stable
-    // across an outer-array mutation (no token leak, no collision on the
-    // new occupant of a vacated slot).
-    arrayIdentity.applyRemap(arrayPath, remap)
-  }
-
-  // Register a freshly created element (an insert slot, a replace-at target)
-  // the way `applyFormReplacement` registers an appended one: walk its leaves
-  // and seed an absence baseline in `originals` (so the new element reads
-  // dirty, like an append) plus a field record. Migration has already
-  // relocated the prior occupant's state off this slot's keys and deleted
-  // them; without this the new element would be invisible to `touch` and read
-  // pristine, since `originals` is the leaf registry both consult.
-  function seedFreshElement(arrayPath: Path, freshIndex: number): void {
-    const elementPath: Path = [...arrayPath, freshIndex]
-    const now = new Date().toISOString()
-    diffAndApply(undefined, getAtPath(form.value, elementPath), elementPath, (patch) => {
-      if (patch.kind !== 'added') return
-      const { key } = canonicalizePath(patch.path)
-      if (!originals.has(key)) originals.set(key, { segments: patch.path, value: undefined })
-      touchFieldRecord(key, patch.path, { updatedAt: now })
-    })
-  }
-
-  // Schema verdicts are derived, not relocated: after a structural mutation
-  // the entries at changed indices describe the slots' prior occupants. Drop
-  // them synchronously so a stale verdict can't show for the frame before a
-  // 'change'-mode revalidation repopulates — and so it doesn't linger at all
-  // under a `validateOn` that won't revalidate on this write. The next pass
-  // rewrites the whole subtree from the live value.
-  function dropSchemaErrorsAtChangedIndices(arrayPath: Path, remap: IndexRemap): void {
-    const changed = changedIndices(remap)
-    if (changed.size === 0) return
-    const idxPos = arrayPath.length
-    for (const key of [...schemaErrors.keys()]) {
-      const segs = segmentsForPathKey(key)
-      if (segs === null) continue
-      if (!isPathPrefix(arrayPath, segs)) continue
-      if (segs.length <= idxPos) continue
-      const idx = segs[idxPos]
-      if (typeof idx === 'number' && changed.has(idx)) schemaErrors.delete(key)
-    }
-  }
-
-  // A removed element's slot is gone. Abort any field validation still in
-  // flight for its leaves so a late async resolution can't write a verdict at
-  // a dead index, and release the pending counters so `meta.validating`
-  // reflects the removal at once. Mirrors the per-entry half of
-  // `cancelFieldValidation`, scoped to the vacated indices.
-  function abortValidationAtVacatedIndices(arrayPath: Path, remap: IndexRemap): void {
-    if (remap.vacated.size === 0) return
-    const idxPos = arrayPath.length
-    for (const [key, entry] of [...fieldValidationState]) {
-      const segs = segmentsForPathKey(key)
-      if (segs === null) continue
-      if (!isPathPrefix(arrayPath, segs)) continue
-      if (segs.length <= idxPos) continue
-      const idx = segs[idxPos]
-      if (typeof idx !== 'number' || !remap.vacated.has(idx)) continue
-      if (entry.timer !== null) {
-        clearTimeout(entry.timer)
-      } else if (!entry.settled) {
-        activeValidations.value = Math.max(0, activeValidations.value - 1)
-        decFieldValidation(key)
-      }
-      entry.controller.abort()
-      fieldValidationState.delete(key)
-    }
-  }
+  const variantMemory = createVariantMemory()
 
   // Schema-declaration ordinal map for `form.meta.errors` sort order.
   // Plain (non-reactive) Map: it's mutated lazily from inside the
@@ -1926,6 +1662,29 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         patch.blurredAfterInteraction ?? current?.blurredAfterInteraction ?? false,
     })
   }
+
+  // Array-bookkeeping factory: relocate per-element field / error /
+  // blank / originals state, seed freshly created elements, drop stale
+  // schema verdicts at changed indices, abort in-flight validation at
+  // vacated indices. Owns no state of its own — every dep is a
+  // reference into the surrounding store, so the bookkeeping's
+  // lifecycle exactly matches the host.
+  const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
+    form,
+    fields,
+    elements,
+    userErrors,
+    originals,
+    blankPaths,
+    originalBlankPaths,
+    fieldValidationCounts,
+    fieldValidationState,
+    schemaErrors,
+    activeValidations,
+    arrayIdentity,
+    touchFieldRecord,
+    decFieldValidation,
+  })
 
   function applyFormReplacement(next: F, meta?: WriteMeta): void {
     const prev = form.value
@@ -2242,14 +2001,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // replacement seeds at shifted destinations with each moved element's
       // true baseline.
       const remap = remapForOp(meta.arrayOp, oldArrayLength)
-      migrateArrayElementState(path, remap)
-      for (const freshIndex of remap.fresh) seedFreshElement(path, freshIndex)
-      dropSchemaErrorsAtChangedIndices(path, remap)
-      abortValidationAtVacatedIndices(path, remap)
-      applyArrayOpToMemory(path, meta.arrayOp)
+      arrayBookkeeping.migrateElementState(path, remap)
+      for (const freshIndex of remap.fresh) arrayBookkeeping.seedFreshElement(path, freshIndex)
+      arrayBookkeeping.dropSchemaErrorsAtChangedIndices(path, remap)
+      arrayBookkeeping.abortValidationAtVacatedIndices(path, remap)
+      variantMemory.applyArrayOp(path, meta.arrayOp)
       arrayIdentity.applyOp(path, meta.arrayOp)
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {
-      clearVariantMemoryUnderPath(path)
+      variantMemory.clearUnderPath(path)
       arrayIdentity.realign(path)
     }
     const effectiveModeAfterWrite = meta?.instance?.validateOn ?? fieldValidationMode
@@ -2329,20 +2088,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         for (const k of blankPaths) {
           if (isPathKeyUnder(k, parentPath)) outgoingBlanks.push(k)
         }
-        let memoryForUnion = variantMemory.get(parentKey)
-        if (memoryForUnion === undefined) {
-          memoryForUnion = new Map<unknown, VariantSnapshot>()
-          variantMemory.set(parentKey, memoryForUnion)
-        }
-        memoryForUnion.set(oldDiscValue, {
+        variantMemory.recordOutgoing(parentKey, oldDiscValue, {
           value: currentValue,
           blankPaths: outgoingBlanks,
         })
       }
       // Look up INCOMING. Stored value is already a deep clone — safe
       // to use directly without re-cloning.
-      const memoryForUnion = variantMemory.get(parentKey)
-      const restored = memoryForUnion?.get(newDiscValue)
+      const restored = variantMemory.lookupIncoming(parentKey, newDiscValue)
       if (restored !== undefined) {
         baseline = restored.value
         restoredBlanks = [...restored.blankPaths]
@@ -2561,8 +2314,24 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // run never advances the snapshot, so a later blur with
           // nothing committed for this path still re-validates instead
           // of falsely skipping against a stale-but-uncommitted anchor.
+          //
+          // Snapshot scope = validation scope: under subtree-scoped
+          // commits (CORE-P1a), only the subtree-at-`path` participates
+          // in the blur dedup, so cloning the whole form just to throw
+          // away unused branches is wasted work proportional to (form
+          // size − subtree size). Read the live subtree directly from
+          // `form.value` (matching the original "snapshot at commit
+          // time" semantics, where the post-async write may differ
+          // from `dataAtScope` captured before the await) and clone
+          // only that. The blur reader subtracts the snapshot's
+          // scope segments from the blur path to project back into
+          // the stored subtree. Whole-form scope (`scopePath ===
+          // undefined`) stores the full clone, identical to the
+          // prior behaviour for that branch.
           if (effectiveMode === 'blur') {
-            pathSnapshots.set(scopeKey, structuralSnapshot(form.value))
+            const snapshotSource =
+              scopePath !== undefined ? getAtPath(form.value, scopePath) : form.value
+            pathSnapshots.set(scopeKey, structuralSnapshot(snapshotSource))
           }
           const errors = response.success ? [] : response.errors
           // Drop schema verdicts at preprocess / coerce paths whose
@@ -3038,11 +2807,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // entry; under subtree scope (CORE-P1a) the closest ancestor
       // entry is the one this leaf was actually validated under.
       let snapshot: unknown | undefined = undefined
+      let snapshotScopeLength = 0
       for (let i = path.length; i >= 0; i--) {
         const ancestorKey = canonicalizePath(path.slice(0, i)).key
         const entry = pathSnapshots.get(ancestorKey)
         if (entry !== undefined) {
           snapshot = entry
+          snapshotScopeLength = i
           break
         }
       }
@@ -3052,8 +2823,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         // `prefix` only labels emitted patch paths, it doesn't scope
         // the walk. Subtree extraction is what makes a sibling-only
         // edit between blurs (this path unchanged) read as
-        // `changed === false`.
-        const snapshotSubtree = getAtPath(snapshot, path)
+        // `changed === false`. The snapshot itself is already scoped
+        // to its commit's `scopePath` (length tracked above), so the
+        // blur path needs the scope prefix subtracted before
+        // descending into the stored subtree.
+        const relPath = path.slice(snapshotScopeLength)
+        const snapshotSubtree = getAtPath(snapshot, relPath)
         const liveSubtree = getAtPath(form.value, path)
         changed = false
         diffAndApply(snapshotSubtree, liveSubtree, path, () => {
@@ -3470,13 +3245,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // reset subtree (e.g. union at ['notify'] for resetField('notify.address'))
     // is intentionally preserved — the snapshot self-corrects on the
     // next switch-out.
-    for (const memKey of [...variantMemory.keys()]) {
-      const memSegments = segmentsForPathKey(memKey)
-      if (memSegments === null) continue
-      if (isPathPrefix(targetSegments, memSegments)) {
-        variantMemory.delete(memKey)
-      }
-    }
+    variantMemory.clearUnderPath(targetSegments)
 
     // Storage restore: leaf > container > nothing.
     //
@@ -3687,6 +3456,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     hydrating,
     hydrateError,
     defaultValuesFactory,
+    hasSsrPrefetch: ssrPrefetch !== undefined,
     defaultsResolved,
     activated,
     activationPromise,

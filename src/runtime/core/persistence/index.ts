@@ -276,6 +276,22 @@ export function createDebouncedWriter(
 } {
   let timer: ReturnType<typeof setTimeout> | null = null
   let pending: Promise<void> | null = null
+  // Per-write generation counter (PASS2-S2). Each `runWrite` call
+  // captures its generation; the inline `.finally` only nulls the
+  // shared `pending` when its capture still matches the live counter.
+  // Without this guard, an older write's settle silently nullified
+  // `pending` even when a newer write had replaced it, and any
+  // `flush()` awaiting the OLD pending then resolved before the
+  // newer write settled — an early drain signal even though no
+  // bytes were lost (each write is a full idempotent snapshot).
+  let writeGeneration = 0
+
+  function runWrite(): void {
+    const gen = ++writeGeneration
+    pending = write().finally(() => {
+      if (writeGeneration === gen) pending = null
+    })
+  }
 
   function schedule(): void {
     if (timer !== null) clearTimeout(timer)
@@ -283,16 +299,12 @@ export function createDebouncedWriter(
     // rather than punting through `setTimeout(fn, 0)` (which queues a
     // macrotask and the browser clamps to ~4 ms anyway).
     if (debounceMs === 0) {
-      pending = write().finally(() => {
-        pending = null
-      })
+      runWrite()
       return
     }
     timer = setTimeout(() => {
       timer = null
-      pending = write().finally(() => {
-        pending = null
-      })
+      runWrite()
     }, debounceMs)
   }
 
@@ -300,11 +312,19 @@ export function createDebouncedWriter(
     if (timer !== null) {
       clearTimeout(timer)
       timer = null
-      pending = write().finally(() => {
-        pending = null
-      })
+      runWrite()
     }
-    if (pending !== null) await pending
+    // Drain-loop: if a new `schedule()` lands while we're awaiting an
+    // older `pending`, the latest pending might be a different promise
+    // by the time the older one settles. Re-read `pending` after the
+    // await and keep looping until it goes null (or stabilises on the
+    // same promise across an await tick — guards against an infinite
+    // loop if a sync arm immediately re-schedules during the await).
+    while (pending !== null) {
+      const awaited = pending
+      await awaited
+      if (pending === awaited) break
+    }
   }
 
   function cancel(): void {

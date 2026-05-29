@@ -155,6 +155,71 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
+   * Shared shell for the imperative validation paths (`validateAsync`,
+   * `process`). Handles the path-segment resolution, the
+   * `activeValidations` increment/decrement (Math.max-guarded against
+   * a sync watcher throw between increment and refinement), the
+   * adapter-throw → structured-failure translation, and the optional
+   * pre-validate cancellation + post-validate schema-error commit
+   * that distinguishes `validateAsync` from `process`. Callers
+   * post-process the refinement themselves (the blank-class
+   * composition, the data strip — both unique to their public
+   * contract).
+   *
+   * The discriminated `ok` branch lets each caller preserve the
+   * exact behavior on adapter throw: `validateAsync` and `process`
+   * historically returned the adapter-throw response verbatim, never
+   * folding `derivedBlankErrors` into it, so the helper returns the
+   * raw `adapterThrowResponse` for the failure leg.
+   */
+  type ImperativeValidationOptions = {
+    cancelInFlight: boolean
+    commitToSchemaErrors: boolean
+  }
+  type ImperativeValidationResult =
+    | { ok: true; refinement: ValidationResponse<Out>; segments: Path | undefined }
+    | { ok: false; error: ValidationResponse<Out> }
+  async function runImperativeValidation(
+    pathInput: string | Path | undefined,
+    config: ImperativeValidationOptions
+  ): Promise<ImperativeValidationResult> {
+    const segments = pathInput === undefined ? undefined : toSegments(pathInput)
+    const dataAtPath = segments === undefined ? state.form.value : state.getValueAtPath(segments)
+    try {
+      state.activeValidations.value += 1
+      // Abort any in-flight per-field validation runs so their late
+      // writes can't clobber the authoritative imperative result.
+      // Mirrors handleSubmit's pre-validate cancellation.
+      if (config.cancelInFlight) state.cancelFieldValidation()
+      const refinement = await runRefinementValidation(dataAtPath, segments)
+      // Commit the refinement to schemaErrors at the validated scope.
+      // The adapter emits issue paths relative to the sub-schema it
+      // parsed (`[]` for a leaf; whole-form pass emits absolute paths
+      // already), so re-stamp with `segments` to land at canonical
+      // store keys. `applySchemaErrorsForSubtree` replaces every key
+      // under the scope so stale entries drop and current ones
+      // survive in their original insertion slots.
+      if (config.commitToSchemaErrors) {
+        const scopePath: Path = segments ?? []
+        const errors = refinement.success ? [] : refinement.errors
+        const reStamped =
+          segments === undefined
+            ? errors
+            : errors.map((err) => ({
+                ...err,
+                path: [...segments, ...(err.path as Segment[])],
+              }))
+        state.applySchemaErrorsForSubtree(scopePath, reStamped)
+      }
+      return { ok: true, refinement, segments }
+    } catch (err) {
+      return { ok: false, error: adapterThrowResponse(err) }
+    } finally {
+      state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
+    }
+  }
+
+  /**
    * Imperative one-shot validation. Doesn't subscribe to form reactivity;
    * each call runs validation once against the current form snapshot.
    * Used by consumers who want to `await` a single validation run — the
@@ -170,47 +235,12 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   async function validateAsync(
     pathInput?: string | Path
   ): Promise<ValidationResponseWithoutValue<F>> {
-    const segments = pathInput === undefined ? undefined : toSegments(pathInput)
-    const dataAtPath = segments === undefined ? state.form.value : state.getValueAtPath(segments)
-    // Increment lives INSIDE the try so a sync watcher on
-    // `meta.validating` that throws can't leak `activeValidations`. The
-    // finally still decrements (Math.max guards the partial-increment
-    // underflow case). Adapter throws (or any throw inside the
-    // pipeline — sync watcher boom, malformed schema) get translated
-    // into a structured failure response with the `AdapterThrew` code
-    // instead of rejecting the promise. A misbehaving adapter must not
-    // be allowed to wreck the consumer's await chain or leak a raw
-    // exception into UI code.
-    try {
-      state.activeValidations.value += 1
-      // Abort any in-flight per-field validation runs so their late
-      // writes can't clobber the authoritative imperative result.
-      // Mirrors handleSubmit's pre-validate cancellation.
-      state.cancelFieldValidation()
-      const refinement = await runRefinementValidation(dataAtPath, segments)
-      // Commit the refinement to schemaErrors at the validated scope.
-      // The adapter emits issue paths relative to the sub-schema it
-      // parsed (`[]` for a leaf; whole-form pass emits absolute paths
-      // already), so re-stamp with `segments` to land at canonical
-      // store keys. `applySchemaErrorsForSubtree` replaces every key
-      // under the scope so stale entries drop and current ones
-      // survive in their original insertion slots.
-      const scopePath: Path = segments ?? []
-      const errors = refinement.success ? [] : refinement.errors
-      const reStamped =
-        segments === undefined
-          ? errors
-          : errors.map((err) => ({
-              ...err,
-              path: [...segments, ...(err.path as Segment[])],
-            }))
-      state.applySchemaErrorsForSubtree(scopePath, reStamped)
-      return stripData(composeWithDerivedBlank(refinement, segments))
-    } catch (err) {
-      return adapterThrowResponse(err)
-    } finally {
-      state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-    }
+    const result = await runImperativeValidation(pathInput, {
+      cancelInFlight: true,
+      commitToSchemaErrors: true,
+    })
+    if (!result.ok) return result.error
+    return stripData(composeWithDerivedBlank(result.refinement, result.segments))
   }
 
   /**
@@ -233,23 +263,24 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    * The path-scoped variant mirrors `validateAsync(path?)` —
    * `process('email')` returns the parsed value at that path only.
    *
+   * Unlike `validateAsync`, `process` does NOT cancel in-flight
+   * field validation and does NOT commit the parsed result to
+   * `schemaErrors` — `process` is a pure read of "what would the
+   * parsed form look like right now", independent of the live
+   * `form.errors` surface.
+   *
    * Like `validateAsync`, this never rejects on adapter misbehavior:
    * a throwing adapter (or any pipeline failure) lands in the
    * response as a `success: false, errors: [{ code: AdapterThrew }]`
    * shape so the library stays robust against a bad adapter.
    */
   async function process(pathInput?: string | Path): Promise<ValidationResponse<Out>> {
-    const segments = pathInput === undefined ? undefined : toSegments(pathInput)
-    const dataAtPath = segments === undefined ? state.form.value : state.getValueAtPath(segments)
-    try {
-      state.activeValidations.value += 1
-      const refinement = await runRefinementValidation(dataAtPath, segments)
-      return composeWithDerivedBlank(refinement, segments)
-    } catch (err) {
-      return adapterThrowResponse(err)
-    } finally {
-      state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-    }
+    const result = await runImperativeValidation(pathInput, {
+      cancelInFlight: false,
+      commitToSchemaErrors: false,
+    })
+    if (!result.ok) return result.error
+    return composeWithDerivedBlank(result.refinement, result.segments)
   }
 
   /**

@@ -25,13 +25,27 @@ import {
   looseToNumber,
 } from './vue-shared-shim'
 import type { DirectiveBinding, DirectiveHook, ObjectDirective, VNode } from 'vue'
-import { effectScope, isRef, nextTick, warn, watch } from 'vue'
+import { isRef, nextTick, warn } from 'vue'
 import { REGISTER_OWNER_MARKER } from '../composables/use-register'
 import { __DEV__ } from './dev'
+import {
+  applyAria,
+  getSSRAriaProps,
+  mergeAriaLocks,
+  setupAria,
+  teardownAria,
+  type AriaCarrier,
+} from './directive-aria'
+import { vRegisterFile } from './directive-file'
+import {
+  syncElementRegistration,
+  syncMultiTabOptOut,
+  syncPersistOptIn,
+} from './directive-lifecycle'
+import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import type {
   CustomDirectiveRegisterAssignerFn,
-  DisplayState,
   InternalRegisterValue,
   RegisterCheckboxCustomDirective,
   RegisterModelDynamicCustomDirective,
@@ -43,9 +57,7 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import type { PathKey } from './paths'
-import type { PersistOptInRegistry } from './persistence/opt-in-registry'
 import { getOrAssignElementId } from './persistence/opt-in-registry'
-import { allowSensitivePersist } from './persistence/sensitive-names'
 
 /**
  * Symbol slot used by custom directive integrations to install an
@@ -69,24 +81,6 @@ import { allowSensitivePersist } from './persistence/sensitive-names'
 // directive registration came from. Same reasoning for `listenersKey`
 // and `DEFAULT_ASSIGNER_TAG` below.
 export const assignKey: unique symbol = Symbol.for('attaform:assign-key')
-
-/**
- * Per-element bag of listener tuples added by the active directive
- * variant in `created`. `vRegisterDynamic.beforeUnmount` drains the bag
- * so reused elements (KeepAlive, v-show) don't accumulate orphaned
- * handlers across activation cycles.
- */
-const listenersKey: unique symbol = Symbol.for('attaform:directive-listeners')
-
-type TrackedListener = {
-  event: string
-  handler: EventListener
-  // Explicitly `undefined`-able so `exactOptionalPropertyTypes` lets us
-  // stash tuples where the caller didn't pass options.
-  options: EventListenerOptions | undefined
-}
-
-type ListenerCarrier = { [listenersKey]?: TrackedListener[] }
 
 /**
  * Type guard for a `RegisterValue`. Returns `true` when `val` looks
@@ -113,31 +107,6 @@ export function isRegisterValue<Value = unknown>(val: unknown): val is RegisterV
 }
 
 type ComposingTarget = (EventTarget & { composing: boolean }) | null
-function addEventListener(
-  el: Element,
-  event: string,
-  handler: EventListener,
-  options?: EventListenerOptions
-): void {
-  el.addEventListener(event, handler, options)
-  // Stash the tuple on the element so `beforeUnmount` can detach it.
-  // A bare `addEventListener` without tracking would leak across
-  // KeepAlive re-activations where the DOM node is reused.
-  const carrier = el as ListenerCarrier
-  const bag = carrier[listenersKey] ?? []
-  bag.push({ event, handler, options })
-  carrier[listenersKey] = bag
-}
-
-function removeTrackedListeners(el: Element): void {
-  const carrier = el as ListenerCarrier
-  const bag = carrier[listenersKey]
-  if (bag === undefined) return
-  for (const { event, handler, options } of bag) {
-    el.removeEventListener(event, handler, options)
-  }
-  delete carrier[listenersKey]
-}
 
 /**
  * Write the directive-private `lastTypedForm` ref. Lives on the
@@ -420,144 +389,6 @@ const getModelAssigner = (
   return defaultAssigner
 }
 
-/**
- * Idempotent reconciliation of a single element's opt-in across the
- * directive lifecycle. Called from `created` (oldValue undefined),
- * `beforeUpdate` (oldValue the previous RegisterValue), and as a
- * convenience from `beforeUnmount` (value undefined).
- *
- * Handles every transition: persist flag flipping in either direction,
- * `register()` path changing (e.g. dynamic v-for index), and the
- * cross-form / cross-SFC case where `register()` returns a value bound
- * to a different FormStore (different `persistOptIns` instance).
- */
-function syncPersistOptIn(
-  el: HTMLElement,
-  value: unknown,
-  oldValue: unknown,
-  vnodeType: unknown
-): void {
-  const wasOptedIn = isRegisterValue(oldValue) && oldValue.persist === true
-  // File inputs can't survive a reload — `input.files` is read-only at
-  // the browser layer, so even a perfect base64 round-trip couldn't
-  // restore the picked file. The registry carve-out lives here so the
-  // path never enters `optedInPaths`, never reaches the serializer, and
-  // a separate `vRegisterFile` hook can surface the one-time dev warn
-  // pointing consumers at the upload-on-select pattern.
-  //
-  // Detection consults `vnode.props.type` (passed in) first, then
-  // `el.type` as a fallback. During `created`, Vue may not have
-  // patched the `type` property onto the element yet — the vnode's
-  // prop is the authoritative pre-patch source. On `beforeUpdate` the
-  // element is fully patched and `el.type` agrees.
-  const isFileInput =
-    el.tagName === 'INPUT' && (vnodeType === 'file' || (el as HTMLInputElement).type === 'file')
-  const wantsOptIn = !isFileInput && isRegisterValue(value) && value.persist === true
-  if (!wasOptedIn && !wantsOptIn) return
-  const elementId = getOrAssignElementId(el)
-  // Detach the old opt-in unless every dimension matches (persist still
-  // requested, same canonical path, same registry instance).
-  if (wasOptedIn) {
-    const old = oldValue as RegisterValue
-    const samePathAndRegistry =
-      wantsOptIn &&
-      (value as RegisterValue).path === old.path &&
-      (value as RegisterValue).persistOptIns === old.persistOptIns
-    if (!samePathAndRegistry) {
-      old.persistOptIns.remove(elementId, old.path)
-    }
-  }
-  // Attach the new opt-in. `add` is idempotent, so if oldValue already
-  // had the same (path, registry) we just re-touch the same entry.
-  // The sensitive-name check fires here (not on every keystroke) — it's
-  // the act of OPTING IN that crosses the compliance threshold.
-  if (wantsOptIn) {
-    const v = value as RegisterValue
-    // A sensitive-named path opted in without `acknowledgeSensitive` is
-    // warned + skipped (never thrown — this runs in the directive update
-    // path). The unpersisted secret is the safe default.
-    if (allowSensitivePersist(v.path, v.acknowledgeSensitive, v.isSensitivePath)) {
-      v.persistOptIns.add(elementId, v.path)
-    }
-  }
-}
-
-/**
- * Reconcile the multi-tab sync OPT-OUT (`register('path',
- * { multiTab: false })`) across binding lifecycle transitions.
- * Symmetric with `syncPersistOptIn` for the multi-tab dimension.
- *
- * The RV's `markNoSync` / `unmarkNoSync` closures are pre-bound to
- * the canonical path key + the FormStore's ref-counted opt-out
- * registry (see `state.incrementNoSyncOptOut`). When `multiTab !==
- * false`, both closures are `undefined` and this function noops on
- * the hot path.
- *
- * Handles every transition:
- *   - undefined → opted-out: increment
- *   - opted-out → undefined: decrement
- *   - opted-out → opted-out (same path): no-op (idempotent)
- *   - opted-out → opted-out (path changed): decrement old, increment new
- */
-function syncMultiTabOptOut(value: unknown, oldValue: unknown): void {
-  const wasOptedOut = isRegisterValue(oldValue) && oldValue.unmarkNoSync !== undefined
-  const wantsOptOut = isRegisterValue(value) && value.markNoSync !== undefined
-  if (!wasOptedOut && !wantsOptOut) return
-  if (wasOptedOut) {
-    const old = oldValue as RegisterValue
-    const samePath = wantsOptOut && (value as RegisterValue).path === old.path
-    if (!samePath) old.unmarkNoSync?.()
-  }
-  if (wantsOptOut) {
-    const v = value as RegisterValue
-    const samePathOld = wasOptedOut && (oldValue as RegisterValue).path === v.path
-    if (!samePathOld) v.markNoSync?.()
-  }
-}
-
-/**
- * Migrate the element's registration entry across binding-value
- * transitions. Symmetric with `syncPersistOptIn` for the
- * persistence opt-in dimension; this one tracks element-to-path
- * registration the form's element map relies on for
- * `getFieldState(path).meta.connected`, `focusFirstError`, and
- * `scrollToFirstError`.
- *
- * Cases:
- *   - undefined → undefined: nothing to do.
- *   - undefined → RV: register the new RV's element (the per-tag
- *     `created` hook skipped this when the binding mounted with an
- *     undefined value, so we have to catch up here).
- *   - RV → undefined: deregister the old RV's element.
- *   - RV → RV (same path + same form): no-op. `register('foo')`
- *     returns a fresh closure on every parent re-render; without
- *     the early-out, every tick would deregister-and-re-register
- *     the element, thrashing the `connected` flag.
- *   - RV → RV (different path or different form): deregister old,
- *     register new. Covers dynamic-path templates
- *     (`v-register="form.register(\`item.${i}\`)"`) and the
- *     cross-form case where a wrapper component switches the
- *     `registerValue` it forwards.
- */
-function syncElementRegistration(el: HTMLElement, value: unknown, oldValue: unknown): void {
-  const wasRegistered = isRegisterValue(oldValue)
-  const isRegistered = isRegisterValue(value)
-  if (!wasRegistered && !isRegistered) return
-
-  if (wasRegistered && isRegistered) {
-    const old = oldValue
-    const next = value
-    if (old.path === next.path && old.persistOptIns === next.persistOptIns) return
-  }
-
-  if (wasRegistered) {
-    oldValue.deregisterElement(el)
-  }
-  if (isRegistered) {
-    value.registerElement(el)
-  }
-}
-
 function onCompositionStart(e: Event) {
   const target = e.target as ComposingTarget
   if (!target) return
@@ -626,16 +457,6 @@ function setAssignFunction(
 
 // We are exporting the v-model runtime directly as vnode hooks so that it can
 // be tree-shaken in case v-model is never used.
-// First genuine user-input event flips the field's sticky `interacted`
-// bit — the signal `defaultDisplayState` reads to keep a clean
-// tab-through quiet while still engaging validation the moment the user
-// edits. Routed only through these DOM listeners, so hydration and
-// programmatic setValue never trip it. Idempotent and store-guarded on
-// the RegisterValue side.
-function noteInteraction(value: unknown): void {
-  if (isRegisterValue(value)) value.markInteracted()
-}
-
 const vRegisterText: RegisterTextCustomDirective = {
   created(el, { value, modifiers: { lazy, trim, number } }, vnode) {
     const castToNumber = number === true || vnode.props?.['type'] === 'number'
@@ -643,7 +464,7 @@ const vRegisterText: RegisterTextCustomDirective = {
       value.registerElement(el)
       setAssignFunction(el, vnode, value)
     }
-    addEventListener(el, lazy === true ? 'change' : 'input', (e) => {
+    addTrackedListener(el, lazy === true ? 'change' : 'input', (e) => {
       // Bail if this listener was attached on a non-supported root
       // (a `<label>` / `<div>` etc.) AND the assigner is the default.
       // The bubbled-write bug fires here without this guard: a
@@ -812,7 +633,7 @@ const vRegisterText: RegisterTextCustomDirective = {
       }
     })
     if (trim === true || castToNumber) {
-      addEventListener(el, 'change', () => {
+      addTrackedListener(el, 'change', () => {
         if (shouldBailListener(el)) return
         // Mirror Vue's `castValue(el.value, trim, castToNumber)` so the
         // visible DOM normalizes after blur for both modifiers — without
@@ -865,13 +686,13 @@ const vRegisterText: RegisterTextCustomDirective = {
       })
     }
     if (lazy !== true) {
-      addEventListener(el, 'compositionstart', onCompositionStart)
-      addEventListener(el, 'compositionend', onCompositionEnd)
+      addTrackedListener(el, 'compositionstart', onCompositionStart)
+      addTrackedListener(el, 'compositionend', onCompositionEnd)
       // Safari < 10.2 & UIWebView doesn't fire compositionend when
       // switching focus before confirming composition choice
       // this also fixes the issue where some browsers e.g. iOS Chrome
       // fires "change" instead of "input" on autocomplete.
-      addEventListener(el, 'change', onCompositionEnd)
+      addTrackedListener(el, 'change', onCompositionEnd)
     }
     // `.number` × text input — block non-numeric characters at the
     // DOM layer so `el.value` never holds garbage. Native
@@ -888,7 +709,7 @@ const vRegisterText: RegisterTextCustomDirective = {
     // normally and the directive's `compositionend` handler catches
     // the final value.
     if (number === true && vnode.props?.['type'] !== 'number') {
-      addEventListener(el, 'beforeinput', (e) => {
+      addTrackedListener(el, 'beforeinput', (e) => {
         const ev = e as InputEvent
         if (
           ev.inputType !== 'insertText' &&
@@ -975,7 +796,7 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
 
     value.registerElement(el)
     setAssignFunction(el, vnode, value)
-    addEventListener(el, 'change', () => {
+    addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
       const modelValue = value.innerRef.value ?? []
@@ -1130,7 +951,7 @@ const vRegisterRadio: RegisterRadioCustomDirective = {
 
     value.registerElement(el)
     setAssignFunction(el, vnode, value)
-    addEventListener(el, 'change', () => {
+    addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
       el[assignKey]?.(getValue(el))
@@ -1193,7 +1014,7 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
 
     value.registerElement(el)
     const isSetModel = isSet(value.innerRef.value)
-    addEventListener(el, 'change', () => {
+    addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
       const selectedVal = Array.prototype.filter
@@ -1427,118 +1248,6 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
   ? new WeakSet<HTMLElement>()
   : null
 
-// The aria attributes the directive keeps in sync with the field's
-// gated display state. Each is managed independently so authoring one
-// (e.g. a hand-written `aria-describedby`) never disables the others.
-const MANAGED_ARIA_ATTRS = [
-  'aria-invalid',
-  'aria-busy',
-  'aria-required',
-  'aria-describedby',
-] as const
-
-// Per-element symbol slots. `ariaLockKey` records which managed attrs
-// the author wrote (off-limits for the binding's lifetime);
-// `ariaScopeKey` holds the teardown for the reactive watch. Both
-// `Symbol.for(...)` so duplicate copies of attaform agree on the slot.
-const ariaLockKey: unique symbol = Symbol.for('attaform:aria-locks')
-const ariaScopeKey: unique symbol = Symbol.for('attaform:aria-scope')
-type AriaCarrier = HTMLElement & {
-  [ariaLockKey]?: Set<string>
-  [ariaScopeKey]?: () => void
-}
-
-const EMPTY_ARIA_LOCKS: ReadonlySet<string> = new Set()
-
-// "Respect your markup": detect authored aria attributes at the vnode
-// props level rather than the DOM, so a dynamic `:aria-invalid="x"` is
-// caught even when `x` is falsy at mount. Locks only ever accumulate —
-// once an attribute is authored, the directive leaves it alone for the
-// binding's lifetime.
-function mergeAriaLocks(el: AriaCarrier, vnode: VNode): Set<string> {
-  let locks = el[ariaLockKey]
-  if (locks === undefined) {
-    locks = new Set<string>()
-    el[ariaLockKey] = locks
-  }
-  const props = vnode.props
-  if (props !== null) {
-    for (const attr of MANAGED_ARIA_ATTRS) {
-      if (attr in props) locks.add(attr)
-    }
-  }
-  return locks
-}
-
-function setAriaAttr(el: HTMLElement, attr: string, value: string | null): void {
-  if (value === null) el.removeAttribute(attr)
-  else el.setAttribute(attr, value)
-}
-
-// The desired value for one managed aria attribute given the binding's
-// required flag and gated display state, or `null` when the attribute
-// should be absent. Shared by the DOM path (`applyAria`) and the SSR
-// path (`getSSRProps`) so the two can never drift. Binding to the gated
-// display state (not raw `errors`) keeps the screen-reader signal in
-// lockstep with the visible error state.
-function resolveAriaValue(attr: string, rv: RegisterValue, ds: DisplayState): string | null {
-  switch (attr) {
-    case 'aria-invalid':
-      return ds === 'error' ? 'true' : null
-    case 'aria-busy':
-      return ds === 'pending' ? 'true' : null
-    case 'aria-required':
-      return rv.isRequired === true ? 'true' : null
-    case 'aria-describedby':
-      return ds === 'error' && rv.aria?.errorId !== undefined ? rv.aria.errorId : null
-    default:
-      return null
-  }
-}
-
-// Reflect the binding's gated display state onto the unmanaged aria
-// attributes. Each managed attr is set or removed independently.
-function applyAria(el: AriaCarrier, rv: RegisterValue): void {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
-  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
-  const ds = rv.ariaDisplayState.value
-  for (const attr of MANAGED_ARIA_ATTRS) {
-    if (!locks.has(attr)) setAriaAttr(el, attr, resolveAriaValue(attr, rv, ds))
-  }
-}
-
-// Begin managing aria for a binding: lock authored attrs, paint the
-// initial state, and watch `ariaDisplayState` in its own effect scope
-// so async validation ticks update the attributes even when no parent
-// re-render fires. No-op when this binding has aria disabled.
-function setupAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode): void {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
-  mergeAriaLocks(el, vnode)
-  applyAria(el, rv)
-  const displayState = rv.ariaDisplayState
-  const scope = effectScope(true)
-  scope.run(() => {
-    watch(displayState, () => applyAria(el, rv), { flush: 'post' })
-  })
-  el[ariaScopeKey] = (): void => scope.stop()
-}
-
-// Stop managing aria: tear down the watch and clear only the attributes
-// the directive set (authored attrs stay). Gated on an active scope so
-// a binding that never managed aria leaves the element's attributes
-// untouched.
-function teardownAria(el: AriaCarrier): void {
-  const stop = el[ariaScopeKey]
-  if (stop === undefined) return
-  stop()
-  delete el[ariaScopeKey]
-  const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
-  for (const attr of MANAGED_ARIA_ATTRS) {
-    if (!locks.has(attr)) el.removeAttribute(attr)
-  }
-  delete el[ariaLockKey]
-}
-
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   created(el, binding, vnode) {
     // Per-element persist opt-in is reconciled at the dynamic level so
@@ -1679,182 +1388,14 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   // describedby matches the client after hydration.
   getSSRProps(binding, vnode) {
     const rv = binding.value
-    if (!isRegisterValue(rv) || rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) {
-      return undefined
-    }
+    if (!isRegisterValue(rv)) return undefined
     // Vue passes `null` for the vnode in the compiled SSR directive-props
     // helper (string-based SSR has no vnode object), and the real vnode
     // in the runtime `withDirectives` path. The vnode-level authored
     // lockout is therefore only available client-side and on the runtime
     // SSR path; under compiled SSR an authored aria attribute can't be
     // detected here, and the client directive reconciles it on hydration.
-    const props = (vnode as VNode | null)?.props ?? null
-    const ds = rv.ariaDisplayState.value
-    const out: Record<string, string> = {}
-    for (const attr of MANAGED_ARIA_ATTRS) {
-      if (props !== null && attr in props) continue
-      const value = resolveAriaValue(attr, rv, ds)
-      if (value !== null) out[attr] = value
-    }
-    return out
-  },
-}
-
-// True for any value the file directive treats as "no file selected":
-// `null`, `undefined`, the empty array (multi-input cleared), and an
-// empty `FileList`. Strict equality short-circuits the common cases;
-// the FileList check covers the case where a host wrote the live DOM
-// FileList back into storage (rare, but cheap to handle).
-function isBlankFileValue(value: unknown): boolean {
-  if (value === null || value === undefined) return true
-  if (Array.isArray(value) && value.length === 0) return true
-  if (typeof FileList !== 'undefined' && value instanceof FileList && value.length === 0)
-    return true
-  return false
-}
-
-// Read the current selection off a file input and reshape to the
-// directive's canonical storage form: `File[]` when the element has the
-// `multiple` attribute, `File | null` otherwise. `el.files` is `null`
-// on programmatically-detached inputs and the FileList is empty when
-// the user picked nothing — both collapse to the blank shape.
-function readFilesFromInput(el: HTMLInputElement): File[] | File | null {
-  const files = el.files
-  if (el.multiple) {
-    return files === null ? [] : Array.from(files)
-  }
-  if (files === null || files.length === 0) return null
-  return files.item(0)
-}
-
-// Per-form dedupe for the persisted-file-input dev warning. Keyed on
-// the form's `PersistOptInRegistry` (every form has its own instance)
-// so the warning fires once per (form, path) — a single noisy hint
-// during development rather than per-mount, per-keystroke noise.
-const warnedPersistedFileForms: WeakMap<PersistOptInRegistry, Set<PathKey>> | null = __DEV__
-  ? new WeakMap<PersistOptInRegistry, Set<PathKey>>()
-  : null
-
-function maybeWarnPersistedFile(value: RegisterValue): void {
-  if (!__DEV__ || warnedPersistedFileForms === null) return
-  if (value.persist !== true) return
-  let warnedPaths = warnedPersistedFileForms.get(value.persistOptIns)
-  if (warnedPaths === undefined) {
-    warnedPaths = new Set<PathKey>()
-    warnedPersistedFileForms.set(value.persistOptIns, warnedPaths)
-  }
-  if (warnedPaths.has(value.path)) return
-  warnedPaths.add(value.path)
-  warn(
-    `[attaform] register('${value.path}', { persist: true }) on <input type="file"> — ` +
-      `files can't ride a refresh (browsers block programmatic writes to ` +
-      `<input type="file">), so this path won't be saved. For long-lived ` +
-      `flows, upload on selection and persist the resulting URL or ID in a ` +
-      `sibling string field.`
-  )
-}
-
-// Real `v-register` variant for `<input type="file">`. Reads
-// `event.target.files` into form state as `File | null` (single) or
-// `File[]` (multiple). Storage is the canonical blank shape (`null` /
-// `[]`) when no file is selected, with the path marked in
-// `blankPaths` so the friendly "No value supplied" error surfaces
-// through `derivedBlankErrors` on required-file fields — same channel
-// as required numbers / bigints.
-//
-// The persistence carve-out lives in `syncPersistOptIn`: file paths
-// never enter `persistOptIns`, never serialize, never rehydrate. The
-// `beforeUpdate` hook keeps the DOM in lockstep with storage by
-// clearing `el.value` when storage transitions to blank — the only
-// programmatic write browsers permit on file inputs.
-// Symbol slot for the per-element effect-scope teardown function. The
-// blank-resync watcher inside `created` runs in its own scope so we
-// can stop it on `beforeUnmount` without depending on the surrounding
-// component still being alive.
-const fileScopeKey: unique symbol = Symbol.for('attaform:file-scope')
-type FileScopeCarrier = { [fileScopeKey]?: () => void }
-
-const vRegisterFile: RegisterModelDynamicCustomDirective = {
-  created(el, { value }) {
-    if (!isRegisterValue(value)) return
-    // `resolveDynamicModel` routes here only when `el.tagName === 'INPUT'`
-    // and `el.type === 'file'`. The variant union type widens to include
-    // select/textarea, so narrow once per hook.
-    const input = el as HTMLInputElement
-    value.registerElement(input)
-    maybeWarnPersistedFile(value)
-
-    // Seed the blank-path channel on register. Storage shape gets
-    // canonicalised to `null` / `[]` whenever the consumer's default
-    // is loosely blank (e.g. `undefined` for a non-nullable
-    // `z.file()` schema), so reads return a uniform shape regardless
-    // of how the user expressed "optional file" in their schema.
-    const currentRaw = value.innerRef.value
-    if (isBlankFileValue(currentRaw)) {
-      const blankShape: File[] | null = input.multiple ? [] : null
-      value.setValueWithInternalPath(blankShape, { blank: true })
-    }
-
-    addEventListener(input, 'change', () => {
-      noteInteraction(value)
-      const next = readFilesFromInput(input)
-      const blank = isBlankFileValue(next)
-      value.setValueWithInternalPath(next, blank ? { blank: true } : undefined)
-    })
-
-    // Watch storage for programmatic transitions to the blank shape
-    // (`form.clear(path)` / `form.reset()` / hydrate). Re-mark the
-    // path blank and clear the DOM input. `beforeUpdate` covers the
-    // common parent-re-render case; this watcher catches storage
-    // mutations that don't trigger a parent re-render. Runs in its
-    // own effect scope so we can stop it from `beforeUnmount`
-    // independent of the surrounding component.
-    const scope = effectScope(true)
-    scope.run(() => {
-      watch(
-        value.innerRef,
-        (next) => {
-          if (!isBlankFileValue(next)) return
-          value.setValueWithInternalPath(next, { blank: true })
-          if (input.value !== '') input.value = ''
-        },
-        { flush: 'post' }
-      )
-    })
-    ;(input as FileScopeCarrier)[fileScopeKey] = (): void => scope.stop()
-  },
-  beforeUpdate(el, { value }) {
-    if (!isRegisterValue(value)) return
-    const input = el as HTMLInputElement
-    // Storage → DOM + blankPaths sync. Two responsibilities:
-    //
-    //   1. Clear the DOM input when storage went blank
-    //      (`form.clear(path)` / `form.reset()` / hydrate). `el.value
-    //      = ''` is the one programmatic mutation browsers allow on
-    //      `<input type="file">`.
-    //
-    //   2. Re-mark the path blank in the store so `derivedBlankErrors`
-    //      keeps firing the friendly "No value supplied" message after
-    //      programmatic clears. `form.clear` writes the schema's empty
-    //      value (`null`) but doesn't propagate `meta.blank: true`, so
-    //      the path would otherwise drift out of `blankPaths`. The
-    //      store's `Set.add` is idempotent, and identity-equal writes
-    //      don't trigger re-renders — safe to call on every update.
-    const currentRaw = value.innerRef.value
-    if (isBlankFileValue(currentRaw)) {
-      value.setValueWithInternalPath(currentRaw, { blank: true })
-      if (input.value !== '') input.value = ''
-    }
-  },
-  beforeUnmount(el, { value }) {
-    removeTrackedListeners(el)
-    const stop = (el as FileScopeCarrier)[fileScopeKey]
-    if (stop !== undefined) {
-      stop()
-      delete (el as FileScopeCarrier)[fileScopeKey]
-    }
-    if (!isRegisterValue(value)) return
-    value.deregisterElement(el)
+    return getSSRAriaProps(rv, (vnode as VNode | null) ?? null)
   },
 }
 

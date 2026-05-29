@@ -160,7 +160,16 @@ export type ValidateOptions = {
   sync?: boolean
 }
 
-type GetDefaultValuesConfig<Form> = {
+/**
+ * Configuration passed to `AbstractSchema.getDefaultValues`. Adapters
+ * receive `useDefaultSchemaValues` (honor `.default(x)` wrappers vs.
+ * empty/falsy fallbacks), an optional `strict` mode (refinement
+ * preservation), and an optional `constraints` overlay merged into the
+ * derived defaults so the runtime can stamp user-supplied defaults at
+ * construction. Exported so adapter authors can co-implement the
+ * service contract.
+ */
+export type GetDefaultValuesConfig<Form> = {
   useDefaultSchemaValues: boolean
   /**
    * Whether to keep schema refinements when deriving slim defaults.

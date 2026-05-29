@@ -1,5 +1,6 @@
 import type { z } from 'zod-v3'
 import type { SlimPrimitiveKind } from '../../types/types-api'
+import { slimKindOf } from '../../core/slim-primitive-gate'
 import { isZodSchemaType } from './helpers'
 
 /**
@@ -92,7 +93,7 @@ function walk(schema: z.ZodTypeAny, depth: number): ReadonlySet<SlimPrimitiveKin
   }
   if (isZodSchemaType(schema, 'ZodLiteral')) {
     const value = (schema as z.ZodLiteral<unknown>).value
-    return new Set([slimKindOfRawV3(value)])
+    return new Set([slimKindOf(value)])
   }
   if (isZodSchemaType(schema, 'ZodObject') || typeName === 'ZodRecord') {
     return KIND_OBJECT
@@ -163,32 +164,4 @@ function walk(schema: z.ZodTypeAny, depth: number): ReadonlySet<SlimPrimitiveKin
   if (typeName === 'ZodAny' || typeName === 'ZodUnknown') return PERMISSIVE_V3
 
   return PERMISSIVE_V3
-}
-
-function slimKindOfRawV3(value: unknown): SlimPrimitiveKind {
-  if (value === null) return 'null'
-  if (value === undefined) return 'undefined'
-  if (Array.isArray(value)) return 'array'
-  if (value instanceof Date) return 'date'
-  const t = typeof value
-  switch (t) {
-    case 'string':
-      return 'string'
-    case 'number':
-      return 'number'
-    case 'boolean':
-      return 'boolean'
-    case 'bigint':
-      return 'bigint'
-    case 'symbol':
-      return 'symbol'
-    case 'function':
-      return 'function'
-    case 'undefined':
-      return 'undefined'
-    case 'object':
-      return 'object'
-    default:
-      return 'object'
-  }
 }

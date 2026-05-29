@@ -367,6 +367,18 @@ export function isCoercePrimitive(schema: z.ZodTypeAny): boolean {
 }
 
 /**
+ * Detect `z.preprocess(fn, inner)` — v3 wraps preprocess in a
+ * `ZodEffects` with `effect.type === 'preprocess'`. The factory's
+ * `isPreprocessOrCoerceLeaf` consults this alongside
+ * `isCoercePrimitive` to gate raw consumer writes verbatim through the
+ * wrapped subtree.
+ */
+export function isPreprocessNode(schema: z.ZodTypeAny): boolean {
+  if (!isZodSchemaType(schema, 'ZodEffects')) return false
+  return getEffectsKind(schema) === 'preprocess'
+}
+
+/**
  * True iff a `ZodEffects` carries an `async` predicate.
  *
  * Detection asymmetry vs v4 (intrinsic to v3's runtime model):

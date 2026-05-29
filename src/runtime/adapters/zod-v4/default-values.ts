@@ -1,335 +1,63 @@
 import type { z } from 'zod'
-import { getAtPath, isPlainRecord, setAtPath } from '../../core/path-walker'
+import { getAtPath, setAtPath } from '../../core/path-walker'
 import { slimKindOf } from '../../core/slim-primitive-gate'
+import { mergeDeep } from '../../core/merge-deep'
+import { deriveDefaultWalk } from '../../core/walk-derive-default'
 import { getDiscriminatedUnionFirstOption, unwrapToDiscriminatedUnion } from './discriminator'
 import { slimPrimitivesOf } from './slim-primitives'
 import {
-  getCatchDefault,
-  getDefaultValue,
   getDiscriminatedOptions,
-  getEnumValues,
-  getIntersectionLeft,
-  getIntersectionRight,
-  getLiteralValues,
-  getObjectShape,
-  getTupleItems,
   getUnionOptions,
   isCoercePrimitive,
   kindOf,
-  unwrapInner,
-  unwrapLazy,
   unwrapPipeIn,
-  unwrapPipeOut,
-  type ZodKind,
 } from './introspect'
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { getSlimSchema } from './strip'
+import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
- * Walks transparent wrappers (`.optional()` / `.nullable()` / `.readonly()`
- * / `.catch()`) until it hits a `ZodDefault` or a non-wrapper leaf. Used
- * by the pipe branch to decide whether a preprocess-wrapped inner
- * carries a consumer-declared default; if so, the walker walks the
- * inner normally and honors that default, otherwise it returns
- * `undefined` so the slot waits for `defaultValues` / `setValue`.
+ * Derive a default value for any Zod v4 schema.
  *
- * Bounded loop matches the `unwrapToDiscriminatedUnion` pattern — a
- * deeper wrapper stack is almost certainly a recursive cycle, not
- * legitimate schema construction.
- */
-function hasDeclaredDefaultInChain(schema: z.ZodType): boolean {
-  let current: z.ZodType | undefined = schema
-  for (let i = 0; i < 32; i++) {
-    if (current === undefined) return false
-    const k = kindOf(current)
-    if (k === 'default') return true
-    if (k === 'optional' || k === 'nullable' || k === 'readonly' || k === 'catch') {
-      current = unwrapInner(current)
-      continue
-    }
-    return false
-  }
-  return false
-}
-
-/**
- * Derive a default value for any Zod v4 schema. Mirrors v3's walker but
- * routes through the introspect helpers so `def.*` access stays
- * chokepointed. When `useDefault` is false, `.default(x)` wrappers are
- * skipped so the walker produces the underlying leaf's empty value
- * instead — useful when the caller wants a "blank" initial state rather
- * than the schema's declared defaults.
+ * Thin wrapper around the shared `deriveDefaultWalk` core walker —
+ * v3 and v4 dispatch through the same body via their respective
+ * `SchemaIntrospector` instance. See `core/walk-derive-default.ts`
+ * for the per-kind dispatch rules, including the
+ * `peelEmbeddedDefault` chain-walk that closes the v3↔v4 parity gap
+ * on `Optional(Default('x'))` / `Nullable(Default('x'))` / etc.
+ *
+ * When `useDefault` is false, `.default(x)` wrappers are skipped so
+ * the walker produces the underlying leaf's empty value instead —
+ * useful when the caller wants a "blank" initial state rather than
+ * the schema's declared defaults.
  *
  * `maxRecursionDepth` caps descent through `z.lazy()`: the counter
- * bumps only when the walker crosses a lazy boundary, so non-recursive
- * deep structural nesting is unaffected. Once `lazyDepth > maxDepth`
- * the walker returns `undefined` for the recursive node — the seed
- * value comes from `defaultValues` instead.
+ * bumps only when the walker crosses a lazy boundary.
  */
 export function deriveDefault(
   schema: z.ZodType,
   useDefault: boolean,
   maxRecursionDepth: number
 ): unknown {
-  return defaultForKind(kindOf(schema), schema, useDefault, maxRecursionDepth, 0)
+  return deriveDefaultWalk(schema, useDefault, V4_INTROSPECTOR, maxRecursionDepth, {
+    // v4 has an exhaustive switch against `SchemaIntrospector.kindOf`;
+    // unknown kinds genuinely shouldn't appear, so return undefined.
+    unsupportedKindFallback: () => undefined,
+    // v4 historically recurses into the inner on `useDefault=false`
+    // so a `.catch(v)` slot returns the leaf empty rather than the
+    // fallback. Pinned by `test/adapters/zod-v4/unsupported-kinds.test.ts`
+    // (`z.catch falls through to inner leaf default when useDefault=false`).
+    catchOnUseDefaultFalse: 'recurseInner',
+  })
 }
 
-function defaultForKind(
-  kind: ZodKind,
-  schema: z.ZodType,
-  useDefault: boolean,
-  maxDepth: number,
-  lazyDepth: number
-): unknown {
-  // Schema-side input normalizers (`z.coerce.X()` as a coerce-flagged
-  // primitive; `z.preprocess(fn, _)` as a pipe-with-transform-on-in
-  // handled in the 'pipe' branch below) declare a write boundary the
-  // runtime cannot honestly synthesise a default for. Leave the slot
-  // `undefined` so the consumer's `defaultValues` or a later `setValue`
-  // owns what lands in storage. Without this, the walker fell through
-  // to the primitive's slim concrete (`''`, `0`, `false`, …) and
-  // claimed a value the consumer never supplied.
-  if (isCoercePrimitive(schema)) return undefined
-  switch (kind) {
-    case 'object': {
-      const shape = getObjectShape(schema as z.ZodObject)
-      const out: Record<string, unknown> = {}
-      for (const [key, subSchema] of Object.entries(shape)) {
-        out[key] = defaultForKind(kindOf(subSchema), subSchema, useDefault, maxDepth, lazyDepth)
-      }
-      return out
-    }
-    case 'default': {
-      if (useDefault) return getDefaultValue(schema)
-      const inner = unwrapInner(schema)
-      return inner === undefined
-        ? undefined
-        : defaultForKind(kindOf(inner), inner, useDefault, maxDepth, lazyDepth)
-    }
-    case 'optional':
-      return undefined
-    case 'nullable':
-      return null
-    case 'readonly': {
-      const inner = unwrapInner(schema)
-      return inner === undefined
-        ? undefined
-        : defaultForKind(kindOf(inner), inner, useDefault, maxDepth, lazyDepth)
-    }
-    case 'pipe': {
-      // `z.preprocess(fn, inner)` desugars to a pipe whose `in` is a
-      // ZodTransform (the user-supplied `fn`); the input shape is
-      // genuinely unknown until the consumer writes. Two sub-cases:
-      //
-      //   - Inner schema carries a consumer-declared default
-      //     (`z.preprocess(fn, z.string().default('hello'))`): honor
-      //     it. The consumer wrote the default themselves, so storage
-      //     starts there.
-      //   - No declared default on the inner: leave the slot
-      //     `undefined` so `defaultValues` or a later `setValue` owns
-      //     what lands in storage. Synthesising the inner's slim
-      //     concrete (`''` / `0` / etc.) would claim a value the
-      //     consumer never supplied.
-      const inn = unwrapPipeIn(schema)
-      if (inn !== undefined && kindOf(inn) === 'transform') {
-        const out = unwrapPipeOut(schema)
-        if (out !== undefined && hasDeclaredDefaultInChain(out)) {
-          return defaultForKind(kindOf(out), out, useDefault, maxDepth, lazyDepth)
-        }
-        return undefined
-      }
-      // `.transform(fn)` (transform on output) and generic / codec
-      // pipes still have a real source on the input side; peel to it
-      // for the source default.
-      const out = unwrapPipeOut(schema)
-      const real =
-        inn !== undefined && kindOf(inn) !== 'transform'
-          ? inn
-          : out !== undefined && kindOf(out) !== 'transform'
-            ? out
-            : (inn ?? out)
-      return real === undefined
-        ? undefined
-        : defaultForKind(kindOf(real), real, useDefault, maxDepth, lazyDepth)
-    }
-    case 'array':
-      return []
-    case 'set':
-      return new Set()
-    case 'record':
-      return {}
-    case 'tuple': {
-      const items = getTupleItems(schema)
-      return items.map((item) =>
-        defaultForKind(kindOf(item), item, useDefault, maxDepth, lazyDepth)
-      )
-    }
-    case 'union': {
-      const options = getUnionOptions(schema)
-      const first = options[0]
-      return first === undefined
-        ? undefined
-        : defaultForKind(kindOf(first), first, useDefault, maxDepth, lazyDepth)
-    }
-    case 'discriminated-union': {
-      const first = getDiscriminatedUnionFirstOption(schema)
-      return first === undefined
-        ? undefined
-        : defaultForKind(kindOf(first), first, useDefault, maxDepth, lazyDepth)
-    }
-    case 'string':
-      return ''
-    case 'number':
-      return 0
-    case 'bigint':
-      // z.bigint() strictly rejects numbers; the default must be a bigint
-      // literal. Using `0` here causes default-values derivation to fail
-      // the schema's own validation.
-      return 0n
-    case 'boolean':
-      return false
-    case 'date':
-      return new Date(0)
-    case 'null':
-      return null
-    case 'undefined':
-      return undefined
-    case 'enum': {
-      const values = getEnumValues(schema)
-      return values[0]
-    }
-    case 'literal': {
-      const values = getLiteralValues(schema)
-      return values[0]
-    }
-    case 'nan':
-      return NaN
-    case 'lazy': {
-      // Bump the lazy counter ONLY here — structural recursion doesn't
-      // accumulate. Past the cap, return undefined so a recursive node
-      // ends in a non-fatal blank; `defaultValues` (consumer-supplied)
-      // is the authority for what the seed should be at the recursive
-      // boundary anyway.
-      if (lazyDepth >= maxDepth) return undefined
-      // `z.lazy()` runs a user-supplied getter; a getter that throws
-      // (cyclic reference resolved before its target is constructed,
-      // user bug, etc.) shouldn't crash form construction. Mirror the
-      // try/catch precedent in `introspect.ts:containsAsyncRefine`.
-      let inner: z.ZodType | undefined
-      try {
-        inner = unwrapLazy(schema)
-      } catch {
-        return undefined
-      }
-      return inner === undefined
-        ? undefined
-        : defaultForKind(kindOf(inner), inner, useDefault, maxDepth, lazyDepth + 1)
-    }
-    case 'intersection': {
-      const left = getIntersectionLeft(schema)
-      const right = getIntersectionRight(schema)
-      const l =
-        left === undefined
-          ? undefined
-          : defaultForKind(kindOf(left), left, useDefault, maxDepth, lazyDepth)
-      const r =
-        right === undefined
-          ? undefined
-          : defaultForKind(kindOf(right), right, useDefault, maxDepth, lazyDepth)
-      // `mergeDeep` prefers `right` where both sides carry a plain-record
-      // value at a key, and returns `right` wholesale when either side is
-      // a leaf. That matches parse-time semantics: an intersection of
-      // `{ a }` and `{ b }` must satisfy both, so the merged shape carries
-      // both keys' defaults.
-      return mergeDeep(l, r)
-    }
-    case 'catch': {
-      // Catch wraps a schema with a fallback value used when parsing
-      // fails. For `useDefault=true` the catch value *is* the best
-      // default — it's the authoritative "fresh" value the consumer
-      // declared. For `useDefault=false` fall through to the inner
-      // walker so the leaf's empty value wins (matches the default/
-      // prefault branch's semantics).
-      if (useDefault) return getCatchDefault(schema)
-      const inner = unwrapInner(schema)
-      return inner === undefined
-        ? undefined
-        : defaultForKind(kindOf(inner), inner, useDefault, maxDepth, lazyDepth)
-    }
-    case 'any':
-    case 'unknown':
-    case 'void':
-    case 'never':
-    case 'promise':
-    case 'custom':
-    case 'template-literal':
-    case 'transform':
-    case 'map':
-    case 'symbol':
-    case 'function':
-      // `promise`/`custom`/`template-literal`/`map`/`symbol`/`function`
-      // are rejected by `assertSupportedKinds` at adapter construction,
-      // so these branches are unreachable through the public surface.
-      // `transform` is the input side of a `z.preprocess(fn, inner)` and
-      // has no own default — callers walk to `inner` via the surrounding
-      // pipe. Kept for exhaustive switch safety when `deriveDefault` is
-      // called directly in tests.
-      return undefined
-    case 'file':
-      // `z.file()` has no canonical "empty file" — the user picks one
-      // through the directive's change handler. `null` is the storage
-      // blank value the directive canonicalises to on register / clear;
-      // emitting `null` here keeps `getEmptyValueAtPath` aligned with
-      // what `form.clear(path)` writes.
-      return null
-    default: {
-      const _exhaustive: never = kind
-      throw new Error(`deriveDefault: unhandled ZodKind '${_exhaustive as string}'`)
-    }
-  }
-}
+// `defaultForKind` body lifted to `core/walk-derive-default.ts`; this
+// module now just adapts the result to the v4-specific
+// `getDefaultValuesFromZodSchema` validate-then-fix loop.
 
-/**
- * Merge `override` into `base` recursively, preferring override leaves.
- *
- * Leaf semantics (anything not a plain `{}` record is a leaf):
- *   - `null` override → replaces base (a deliberate "clear this field" signal)
- *   - `undefined` override at a key the consumer NAMED (`Object.keys`
- *     returns it) → replaces base. The consumer asked for "this slot
- *     starts undefined," which is a distinct signal from "no entry at
- *     this key."
- *   - primitives, arrays, `Date`, `Map`, class instances → replace wholesale
- *
- * Only plain records on BOTH sides recurse. The previous implementation
- * walked any `typeof === 'object'` value, which collapsed `Date`/`Map`
- * overrides into `{}` and silently swallowed `null` overrides intended
- * to clear a nullable default.
- */
-export function mergeDeep(base: unknown, override: unknown): unknown {
-  if (override === undefined) return base
-  // Non-plain-record overrides are leaves and replace base wholesale.
-  // (null, primitives, arrays, Date, Map, class instances all land here.)
-  if (!isPlainRecord(override)) return override
-  // Override is a plain record but base isn't — leaf-replacement again.
-  if (!isPlainRecord(base)) return override
-
-  const result: Record<string, unknown> = { ...base }
-  for (const key of Object.keys(override)) {
-    const oVal = override[key]
-    const bVal = base[key]
-    // Recurse only when BOTH sides are plain records; otherwise treat
-    // the override as a leaf. `Object.keys` returns OWN enumerable
-    // keys, so a key with an explicit `undefined` value lands here too
-    // — and the consumer's choice to name the path overrides the
-    // base's value, mirroring the way an explicit `null` would.
-    if (isPlainRecord(oVal) && isPlainRecord(bVal)) {
-      result[key] = mergeDeep(bVal, oVal)
-    } else {
-      result[key] = oVal
-    }
-  }
-  return result
-}
+// `mergeDeep` lifted to `core/merge-deep.ts` so v3 and v4 share one
+// body. Re-exported below as `mergeDeep` for backwards-compatible
+// internal callers (the v4 strict-mode flow still consults it).
 
 export type GetDefaultValuesOptions = {
   schema: z.ZodObject

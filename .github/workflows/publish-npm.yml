@@ -264,6 +264,19 @@ jobs:
           # permission on this job (declared above) is what lets npm
           # mint that token.
           registry-url: 'https://registry.npmjs.org/'
+          # Disable setup-node's package-manager-cache auto-detection.
+          # By default, setup-node honours `package.json#packageManager`
+          # (currently `pnpm@11.3.0`) and mounts the pnpm cache into the
+          # job. That cache surface is shared across workflow runs —
+          # a poisoned entry from an earlier run could ride
+          # `--frozen-lockfile`'s integrity check (pnpm rejects mismatched
+          # hashes, but defence-in-depth wins here) and reach the
+          # publish artifact. The validate job's setup-node keeps the
+          # cache for CI throughput; this job eats the install cost
+          # (~30s) for cache-free reproducibility, matching zizmor's
+          # `cache-poisoning` audit recommendation for steps that
+          # publish runtime artifacts.
+          package-manager-cache: false
 
       # No `npm install -g npm@latest` step. pnpm 11 dropped the
       # npm-CLI publish fallback in favor of pnpm's native publish

@@ -394,6 +394,23 @@ jobs:
           '
           echo "PR_BODY_PATH=$RUNNER_TEMP/pr-body.md" >> "$GITHUB_ENV"
 
+      - name: Ensure release-pr label exists
+        # `gh pr create --label` rejects unknown labels with
+        # `could not add label: 'release-pr' not found`, which would
+        # require a one-time `gh label create` against the repo before
+        # the workflow could open its first PR. `--force` makes this
+        # idempotent: first run creates, every run after no-op-updates
+        # color + description. Self-bootstrapping the label keeps the
+        # workflow free of out-of-repo prerequisites.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh label create release-pr \
+            --description "Mechanical version-bump PR opened by release-pr.yml" \
+            --color 0E8A16 \
+            --force
+
       - name: Open release PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

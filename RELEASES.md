@@ -1,5 +1,17 @@
 # Releases
 
+## v0.20.1 — 2026-05-30
+
+## What's Changed
+* chore(scorecard): ship .bestpractices.json + generator for the OpenSSF form by @ozzyfromspace in https://github.com/attaform/Attaform/pull/315
+* docs(readme): add the OpenSSF Best Practices passing badge by @ozzyfromspace in https://github.com/attaform/Attaform/pull/316
+* fix(security): repair the null-proto leak through the SSR payload (#314) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/317
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.20.0...v0.20.1
+
+---
+
 ## v0.20.0 — 2026-05-30
 
 ## What's Changed

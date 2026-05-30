@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Changed
+
+- **Publish pipeline is now PR-driven and idempotent.** The release
+  flow splits into two workflows: `release-pr.yml` (`workflow_dispatch`,
+  opens a release PR with the version bump plus `CHANGELOG` /
+  `RELEASES.md` updates) and `publish-npm.yml` (fires on push to main
+  once the PR merges, or via manual `workflow_dispatch` for off-latest
+  hotfixes and recovery). The publish workflow runs a three-way
+  precheck (`npm view attaform@<v>`, `git ls-remote --tags origin
+  v<v>`, `gh release view v<v>`) and gates each side-effect step on
+  its specific output, so re-running after a successful publish is a
+  clean noop and a half-finished publish recovers on re-dispatch.
+  Aligns with the repo's `main protection` ruleset (PR-only branch
+  updates, 10 required status checks, no bypass actors).
+
+- **Repository URL casing normalized to `attaform/Attaform`.**
+  `package.json#repository.url`, `bugs.url`, and every in-app GitHub
+  link move from the lowercase `attaform/attaform` form to the
+  canonical mixed-case spelling. GitHub case-folds at the redirect
+  layer so prior links still resolved, but `npm view attaform
+  repository` and the npmjs.com sidebar now read the canonical name.
+
 ### Fixed
 
 - **Form values, snapshots, and every consumer-observable surface
@@ -1532,81 +1554,81 @@ benchmarks against FormKit / VeeValidate / react-hook-form.
 
 ## Compare
 
-[compare changes](https://github.com/attaform/attaform/compare/v0.5.0...HEAD)
+[compare changes](https://github.com/attaform/Attaform/compare/v0.5.0...HEAD)
 
 ### 🚀 Enhancements
 
-- Reactive field-error store + setFieldErrorsFromApi helper ([#107](https://github.com/attaform/attaform/pull/107))
-- ⚠️  HandleSubmit returns a submit handler instead of running immediately ([#108](https://github.com/attaform/attaform/pull/108))
-- Phase 0 — max TS strictness, canonical paths, SSR primitives, typed errors ([6157a26](https://github.com/attaform/attaform/commit/6157a26))
-- Phase 1a — diff-apply walker + keystroke benchmark (7.6x-10.6x faster) ([16a0193](https://github.com/attaform/attaform/commit/16a0193))
-- Phase 1b.1 — structured-path get/set primitives ([1fcd2a8](https://github.com/attaform/attaform/commit/1fcd2a8))
-- Phase 1b.2 — hydrate-api-errors with structured result shape ([8e89513](https://github.com/attaform/attaform/commit/8e89513))
-- Phase 1b.3 — createFormState, the single per-form closure ([872471d](https://github.com/attaform/attaform/commit/872471d))
-- Phase 1b.4 — API factories for register, field-state, process-form ([79458f1](https://github.com/attaform/attaform/commit/79458f1))
-- Phase 2.1 — registry, plugin factory, serialization, directive move ([8c45fb0](https://github.com/attaform/attaform/commit/8c45fb0))
-- Phase 2.2 — wire use-abstract-form to createFormState + registry ([204440a](https://github.com/attaform/attaform/commit/204440a))
-- Phase 3 — AST + directive hardening (substring match, file input, shim, cleanup) ([d9f5185](https://github.com/attaform/attaform/commit/d9f5185))
-- Phase 4a — packaging restructure, multi-entry build, new subpaths ([6c8ef1d](https://github.com/attaform/attaform/commit/6c8ef1d))
-- Phase 4a + 4b — multi-entry build, dual zod v3/v4 adapters ([492577a](https://github.com/attaform/attaform/commit/492577a))
-- Phase 5 — bare-Vue SSR end-to-end test (@vue/server-renderer) ([c8a4471](https://github.com/attaform/attaform/commit/c8a4471))
-- ⚠️  Phase 7.2 — require explicit `key` at the type level ([584239e](https://github.com/attaform/attaform/commit/584239e))
-- Phase 7.6 — v4 adapter parity with v3 (validate-then-fix, DU, strip) ([acdb63d](https://github.com/attaform/attaform/commit/acdb63d))
-- Phase 8.2 — form-level isDirty and isValid computed aggregates ([0633b6d](https://github.com/attaform/attaform/commit/0633b6d))
-- Phase 8.3 — expose isSubmitting/submitCount/submitError from handleSubmit ([d0fed7f](https://github.com/attaform/attaform/commit/d0fed7f))
-- Phase 8.4 — reset() and resetField(path) restore form state ([48de785](https://github.com/attaform/attaform/commit/48de785))
-- Phase 8.5 — typed array helpers (append/remove/swap/move/...) + recipe ([3de1298](https://github.com/attaform/attaform/commit/3de1298))
+- Reactive field-error store + setFieldErrorsFromApi helper ([#107](https://github.com/attaform/Attaform/pull/107))
+- ⚠️  HandleSubmit returns a submit handler instead of running immediately ([#108](https://github.com/attaform/Attaform/pull/108))
+- Phase 0 — max TS strictness, canonical paths, SSR primitives, typed errors ([6157a26](https://github.com/attaform/Attaform/commit/6157a26))
+- Phase 1a — diff-apply walker + keystroke benchmark (7.6x-10.6x faster) ([16a0193](https://github.com/attaform/Attaform/commit/16a0193))
+- Phase 1b.1 — structured-path get/set primitives ([1fcd2a8](https://github.com/attaform/Attaform/commit/1fcd2a8))
+- Phase 1b.2 — hydrate-api-errors with structured result shape ([8e89513](https://github.com/attaform/Attaform/commit/8e89513))
+- Phase 1b.3 — createFormState, the single per-form closure ([872471d](https://github.com/attaform/Attaform/commit/872471d))
+- Phase 1b.4 — API factories for register, field-state, process-form ([79458f1](https://github.com/attaform/Attaform/commit/79458f1))
+- Phase 2.1 — registry, plugin factory, serialization, directive move ([8c45fb0](https://github.com/attaform/Attaform/commit/8c45fb0))
+- Phase 2.2 — wire use-abstract-form to createFormState + registry ([204440a](https://github.com/attaform/Attaform/commit/204440a))
+- Phase 3 — AST + directive hardening (substring match, file input, shim, cleanup) ([d9f5185](https://github.com/attaform/Attaform/commit/d9f5185))
+- Phase 4a — packaging restructure, multi-entry build, new subpaths ([6c8ef1d](https://github.com/attaform/Attaform/commit/6c8ef1d))
+- Phase 4a + 4b — multi-entry build, dual zod v3/v4 adapters ([492577a](https://github.com/attaform/Attaform/commit/492577a))
+- Phase 5 — bare-Vue SSR end-to-end test (@vue/server-renderer) ([c8a4471](https://github.com/attaform/Attaform/commit/c8a4471))
+- ⚠️  Phase 7.2 — require explicit `key` at the type level ([584239e](https://github.com/attaform/Attaform/commit/584239e))
+- Phase 7.6 — v4 adapter parity with v3 (validate-then-fix, DU, strip) ([acdb63d](https://github.com/attaform/Attaform/commit/acdb63d))
+- Phase 8.2 — form-level isDirty and isValid computed aggregates ([0633b6d](https://github.com/attaform/Attaform/commit/0633b6d))
+- Phase 8.3 — expose isSubmitting/submitCount/submitError from handleSubmit ([d0fed7f](https://github.com/attaform/Attaform/commit/d0fed7f))
+- Phase 8.4 — reset() and resetField(path) restore form state ([48de785](https://github.com/attaform/Attaform/commit/48de785))
+- Phase 8.5 — typed array helpers (append/remove/swap/move/...) + recipe ([3de1298](https://github.com/attaform/Attaform/commit/3de1298))
 
 ### 🔥 Performance
 
-- Flag the package as `sideEffects: false` for tree-shaking ([3636b19](https://github.com/attaform/attaform/commit/3636b19))
+- Flag the package as `sideEffects: false` for tree-shaking ([3636b19](https://github.com/attaform/Attaform/commit/3636b19))
 
 ### 🩹 Fixes
 
-- **exports:** Drop null values and fix missing .js extension ([#106](https://github.com/attaform/attaform/pull/106))
-- Phase 8.1 — release FormState from the registry on scope dispose ([8fc9436](https://github.com/attaform/attaform/commit/8fc9436))
+- **exports:** Drop null values and fix missing .js extension ([#106](https://github.com/attaform/Attaform/pull/106))
+- Phase 8.1 — release FormState from the registry on scope dispose ([8fc9436](https://github.com/attaform/Attaform/commit/8fc9436))
 
 ### 💅 Refactors
 
-- Phase 2.3 — delete pre-rewrite composables, utils, and directive plugins ([7fa8479](https://github.com/attaform/attaform/commit/7fa8479))
-- Phase 7.1 — remove dead surface ([d049fd7](https://github.com/attaform/attaform/commit/d049fd7))
-- Phase 7.4 — tighten ESLint exemptions to zero disables ([e7c9248](https://github.com/attaform/attaform/commit/e7c9248))
-- Phase 7.5 — rewrite-zod-aliases script → rollup-plugin-alias ([56261af](https://github.com/attaform/attaform/commit/56261af))
+- Phase 2.3 — delete pre-rewrite composables, utils, and directive plugins ([7fa8479](https://github.com/attaform/Attaform/commit/7fa8479))
+- Phase 7.1 — remove dead surface ([d049fd7](https://github.com/attaform/Attaform/commit/d049fd7))
+- Phase 7.4 — tighten ESLint exemptions to zero disables ([e7c9248](https://github.com/attaform/Attaform/commit/e7c9248))
+- Phase 7.5 — rewrite-zod-aliases script → rollup-plugin-alias ([56261af](https://github.com/attaform/Attaform/commit/56261af))
 
 ### 📖 Documentation
 
-- Surface reactive field-errors API in Features list ([#111](https://github.com/attaform/attaform/pull/111))
-- Phase 6 — README rewrite for the multi-target shape ([4bd4611](https://github.com/attaform/attaform/commit/4bd4611))
-- Phase 8.7 — API reference, recipes, and migration notes ([864a32d](https://github.com/attaform/attaform/commit/864a32d))
+- Surface reactive field-errors API in Features list ([#111](https://github.com/attaform/Attaform/pull/111))
+- Phase 6 — README rewrite for the multi-target shape ([4bd4611](https://github.com/attaform/Attaform/commit/4bd4611))
+- Phase 8.7 — API reference, recipes, and migration notes ([864a32d](https://github.com/attaform/Attaform/commit/864a32d))
 
 ### 📦 Build
 
-- Silence the last two unbuild warnings (zod-v3, @nuxt/schema) ([d319f1c](https://github.com/attaform/attaform/commit/d319f1c))
+- Silence the last two unbuild warnings (zod-v3, @nuxt/schema) ([d319f1c](https://github.com/attaform/Attaform/commit/d319f1c))
 
 ### 🏡 Chore
 
-- **dev:** Dist-rebuild watcher for consumer-side iteration via pnpm link ([#109](https://github.com/attaform/attaform/pull/109))
-- Phase 7.7 — CI gates for bundle size, coverage, bench regression ([16088de](https://github.com/attaform/attaform/commit/16088de))
-- Phase 7.3 — playground migrated to /zod subpath ([d273d36](https://github.com/attaform/attaform/commit/d273d36))
-- Silence npm warnings in husky hooks via `pnpm exec` ([3c2b900](https://github.com/attaform/attaform/commit/3c2b900))
+- **dev:** Dist-rebuild watcher for consumer-side iteration via pnpm link ([#109](https://github.com/attaform/Attaform/pull/109))
+- Phase 7.7 — CI gates for bundle size, coverage, bench regression ([16088de](https://github.com/attaform/Attaform/commit/16088de))
+- Phase 7.3 — playground migrated to /zod subpath ([d273d36](https://github.com/attaform/Attaform/commit/d273d36))
+- Silence npm warnings in husky hooks via `pnpm exec` ([3c2b900](https://github.com/attaform/Attaform/commit/3c2b900))
 
 ### ✅ Tests
 
-- Phase 7.8 — Vite plugin resolution + transforms registration coverage ([42dc662](https://github.com/attaform/attaform/commit/42dc662))
-- Phase 7.9 — Nuxt SSR payload round-trip for server-written values ([2b61e56](https://github.com/attaform/attaform/commit/2b61e56))
-- Phase 7.10 — property-based tests for diff-apply, paths, api-errors ([cee5b1b](https://github.com/attaform/attaform/commit/cee5b1b))
-- **packaging:** Skip exports checks when dist contains Nuxt stubs ([698209e](https://github.com/attaform/attaform/commit/698209e))
-- Add type-inference tests; fix register generic; shuffle tests in CI ([d980198](https://github.com/attaform/attaform/commit/d980198))
+- Phase 7.8 — Vite plugin resolution + transforms registration coverage ([42dc662](https://github.com/attaform/Attaform/commit/42dc662))
+- Phase 7.9 — Nuxt SSR payload round-trip for server-written values ([2b61e56](https://github.com/attaform/Attaform/commit/2b61e56))
+- Phase 7.10 — property-based tests for diff-apply, paths, api-errors ([cee5b1b](https://github.com/attaform/Attaform/commit/cee5b1b))
+- **packaging:** Skip exports checks when dist contains Nuxt stubs ([698209e](https://github.com/attaform/Attaform/commit/698209e))
+- Add type-inference tests; fix register generic; shuffle tests in CI ([d980198](https://github.com/attaform/Attaform/commit/d980198))
 
 ### 🤖 CI
 
-- Sign publish-workflow version-bump commits with GPG ([#110](https://github.com/attaform/attaform/pull/110))
-- Phase 8.6 — run full pnpm check on every PR across the Node matrix ([200fe46](https://github.com/attaform/attaform/commit/200fe46))
+- Sign publish-workflow version-bump commits with GPG ([#110](https://github.com/attaform/Attaform/pull/110))
+- Phase 8.6 — run full pnpm check on every PR across the Node matrix ([200fe46](https://github.com/attaform/Attaform/commit/200fe46))
 
 #### ⚠️ Breaking Changes
 
-- ⚠️  HandleSubmit returns a submit handler instead of running immediately ([#108](https://github.com/attaform/attaform/pull/108))
-- ⚠️  Phase 7.2 — require explicit `key` at the type level ([584239e](https://github.com/attaform/attaform/commit/584239e))
+- ⚠️  HandleSubmit returns a submit handler instead of running immediately ([#108](https://github.com/attaform/Attaform/pull/108))
+- ⚠️  Phase 7.2 — require explicit `key` at the type level ([584239e](https://github.com/attaform/Attaform/commit/584239e))
 
 ### ❤️ Contributors
 

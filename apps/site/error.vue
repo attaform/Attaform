@@ -30,7 +30,7 @@
     const body = encodeURIComponent(
       `I hit a 404 while browsing attaform.com.\n\nURL: ${route.pathname}\nReferrer: (paste here if you came from a link)`
     )
-    return `https://github.com/attaform/attaform/issues/new?title=${title}&body=${body}`
+    return `https://github.com/attaform/Attaform/issues/new?title=${title}&body=${body}`
   })
 
   function clearAndGoHome() {

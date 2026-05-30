@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/attaform/attaform"
+    "url": "https://github.com/attaform/Attaform"
   },
   "homepage": "https://attaform.com",
   "scripts": {
@@ -52,7 +52,7 @@
   "description": "A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.",
   "author": "Oswald Chisala",
   "bugs": {
-    "url": "https://github.com/attaform/attaform/issues"
+    "url": "https://github.com/attaform/Attaform/issues"
   },
   "exports": {
     ".": {

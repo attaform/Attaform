@@ -93,7 +93,7 @@
               {{ link.label }}
             </NuxtLink>
             <a
-              href="https://github.com/attaform/attaform"
+              href="https://github.com/attaform/Attaform"
               target="_blank"
               rel="noopener noreferrer"
               class="rounded-md px-3 py-2 text-sm font-medium text-fg-muted transition-colors duration-(--duration-fast) ease-(--ease-out-quart) hover:bg-surface hover:text-fg"
@@ -205,7 +205,7 @@
             <span>{{ link.label }}</span>
           </NuxtLink>
           <a
-            href="https://github.com/attaform/attaform"
+            href="https://github.com/attaform/Attaform"
             target="_blank"
             rel="noopener noreferrer"
             class="inline-flex items-center gap-2 rounded-md px-3 py-3 text-base font-medium text-fg-muted transition-colors duration-(--duration-fast) ease-(--ease-out-quart) hover:bg-surface hover:text-fg"

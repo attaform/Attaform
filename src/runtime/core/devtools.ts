@@ -110,7 +110,7 @@ export async function setupAttaformDevtools(
       id: INSPECTOR_ID,
       label: 'Attaform',
       packageName: 'attaform',
-      homepage: 'https://github.com/attaform/attaform',
+      homepage: 'https://github.com/attaform/Attaform',
       app,
       componentStateTypes: ['Attaform form'],
     },

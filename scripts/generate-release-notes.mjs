@@ -112,14 +112,19 @@ function main() {
     log('no previous v-tag found — seeding first entry')
   }
 
-  const repo = process.env.GITHUB_REPOSITORY ?? 'attaform/attaform'
+  const repo = process.env.GITHUB_REPOSITORY ?? 'attaform/Attaform'
+  // `target_commitish` defaults to `main` for the regular publish path.
+  // The PR-driven release workflow sets `RELEASE_NOTES_TARGET_REF` to
+  // its `target_branch` input so off-latest hotfix releases (PR range
+  // lives on `hotfix/v0`, not `main`) get the right PR-grouped notes.
+  const targetCommitish = process.env.RELEASE_NOTES_TARGET_REF ?? 'main'
   const args = [
     'api',
     `repos/${repo}/releases/generate-notes`,
     '-f',
     `tag_name=${newTag}`,
     '-f',
-    'target_commitish=main',
+    `target_commitish=${targetCommitish}`,
   ]
   if (previousTag !== '') {
     args.push('-f', `previous_tag_name=${previousTag}`)

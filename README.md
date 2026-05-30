@@ -3,7 +3,7 @@
 [![npm version][npm-version-src]][npm-version-href]
 [![npm downloads][npm-downloads-src]][npm-downloads-href]
 [![License][license-src]][license-href]
-[![Node.js Test Suite](https://github.com/attaform/attaform/actions/workflows/matrix.yml/badge.svg)](https://github.com/attaform/attaform/actions/workflows/matrix.yml)
+[![Node.js Test Suite](https://github.com/attaform/Attaform/actions/workflows/matrix.yml/badge.svg)](https://github.com/attaform/Attaform/actions/workflows/matrix.yml)
 [![OpenSSF Scorecard][scorecard-src]][scorecard-href]
 [![OpenSSF Best Practices][cii-src]][cii-href]
 [![Nuxt][nuxt-src]][nuxt-href]

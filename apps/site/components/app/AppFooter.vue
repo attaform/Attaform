@@ -22,9 +22,9 @@
     {
       heading: 'Community',
       links: [
-        { label: 'GitHub', href: 'https://github.com/attaform/attaform' },
+        { label: 'GitHub', href: 'https://github.com/attaform/Attaform' },
         { label: 'npm', href: 'https://npmjs.com/package/attaform' },
-        { label: 'Issues', href: 'https://github.com/attaform/attaform/issues' },
+        { label: 'Issues', href: 'https://github.com/attaform/Attaform/issues' },
       ],
     },
     {
@@ -32,15 +32,15 @@
       links: [
         {
           label: 'Changelog',
-          href: 'https://github.com/attaform/attaform/blob/main/CHANGELOG.md',
+          href: 'https://github.com/attaform/Attaform/blob/main/CHANGELOG.md',
         },
         {
           label: 'Releases',
-          href: 'https://github.com/attaform/attaform/releases',
+          href: 'https://github.com/attaform/Attaform/releases',
         },
         {
           label: 'License',
-          href: 'https://github.com/attaform/attaform/blob/main/LICENSE',
+          href: 'https://github.com/attaform/Attaform/blob/main/LICENSE',
         },
       ],
     },
@@ -72,7 +72,7 @@
                the brand block heading. The dot is the same warm hue
                (no animate-ping here — that's the hero's job). -->
           <a
-            href="https://github.com/attaform/attaform/releases"
+            href="https://github.com/attaform/Attaform/releases"
             target="_blank"
             rel="noopener noreferrer"
             class="mt-1 inline-flex items-center gap-2 self-start rounded-full bg-warm-soft px-2.5 py-1 text-xs font-medium text-warm-soft-fg transition-colors duration-(--duration-fast) hover:bg-warm-soft/80"

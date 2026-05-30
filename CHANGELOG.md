@@ -2,7 +2,254 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+A seventeen-phase codebase audit closes out, with prototype-pollution
+defense flipped from input rejection to prototype-less storage so
+legitimate schema fields named `prototype` / `constructor` /
+`__proto__` round-trip end-to-end. The v3 adapter reaches parity with
+v4 across union / tuple / intersection / lazy / catch descent, default
+seeding, async validation, and typed-config field surface. The
+validation lifecycle gets concurrent-validation epoch guards and
+subtree-scoped revalidation; array mutations preserve per-element
+state and identity. CodeQL SAST runs on every push, every PR, and a
+weekly cron; GitHub Releases now carry SLSA build-provenance
+attestations alongside npm's `--provenance`.
+
+### Breaking
+
+- **`SensitivePersistFieldError` / `REDACTED` / `redactSensitiveLeaves`
+  removed.** A `useForm` with `persist: true` and unacknowledged
+  sensitive paths now warns and skips persistence opt-in (was: threw
+  `SensitivePersistFieldError` on mount). Nested sensitive leaves
+  inside opt-in containers are scrubbed from persisted payloads rather
+  than throwing. Acknowledge with `acknowledgeSensitive` to opt in
+  explicitly. The three exports above are gone; if you imported them
+  to assert against the throw, drop the catch.
+
+- **`WizardAggregateError` renames `AggregateError`.** The wizard's
+  aggregate-throw class no longer shadows the JS built-in. Import
+  `WizardAggregateError` from `attaform` instead of the prior
+  `AggregateError`. `instanceof` checks against `globalThis.AggregateError`
+  now resolve to the JS built-in, as they should.
+
+- **`componentBridgeTransform` renames `selectNodeTransform`.** The
+  build-time transform that bridges schema-driven controls keeps the
+  same shape and surface, but the name reflects what it does rather
+  than the specific control it started with. Update any direct import
+  to use the new name.
+
+- **`NestedType` / `NestedReadType` signatures simplified.** The
+  recursive walker types drop their internal accumulator parameters
+  (`PartialFlatPath`, `StorageLeaf`, etc. inferred internally). If you
+  reached for these generics directly, the call site collapses to the
+  schema-and-key form; the inference-first DX surface is unchanged.
+
+- **v3 `useForm` generic signature collapses to `<Schema, K>`.**
+  Matching v4's shape so a single inference flow covers both adapters.
+  Runtime config (`getDisplayState`, `maxRecursionDepth`,
+  `sensitiveNames`, `multiTab`, `autoAria`) was already forwarded at
+  runtime; the v3 type now accepts them too. If you fully expanded the
+  prior generic-arg list explicitly, trim it.
+
+- **Multi-tab snapshot replies are rate-limited (500 ms per sender).**
+  A flood of `request-snapshot` messages from a single tab no longer
+  produces a corresponding flood of replies. The reply is best-effort
+  per sender; the next request from the same sender after the window
+  is honoured normally. Inbound message handling is tightened (invalid
+  shapes are dropped silently rather than thrown).
+
+### Added
+
+- **v3 `needsAsyncValidation` method.** v3's `AbstractSchema` exposes
+  the same memoised async-detection method v4 has. Strict-mode
+  default-value seeding now parses the real schema (seeded from
+  container + leaf checks) rather than synthesising an empty record.
+  User-validator throws inside `validateAtPath` are wrapped as
+  `atta:validator-threw` errors, matching v4's error contract.
+
+- **`AbstractSchema.hasContainerOrRootRefine?(): boolean`.** Optional
+  adapter hook that lets per-keystroke validation scope to the edited
+  subtree when a schema has no container or root refines. Defaults
+  conservatively (whole-form) when the hook is absent. Implemented on
+  both v3 and v4 with their own introspect chokepoints. Custom adapter
+  authors can opt in for a measurable keystroke-validation throughput
+  win on schemas without container refines.
+
+- **CodeQL SAST workflow.** `.github/workflows/codeql.yml` runs the
+  `security-extended` query suite for JavaScript / TypeScript on every
+  push to `main`, every PR, and a weekly Tuesday cron. SARIF lands in
+  the repo's Security tab; PR runs annotate diffs inline.
+
+- **SLSA build-provenance attestations on GitHub Releases.** Each
+  release tag now ships with a Sigstore-backed `.intoto.jsonl` bundle
+  as a release asset, alongside npm's existing `--provenance`
+  attestation. Verify with
+  `gh attestation verify ./attaform-X.Y.Z.tgz --repo attaform/Attaform`
+  or `npm audit signatures`. Govt-customer / supply-chain-policy
+  auditors get both verification paths against a single OIDC trust
+  root.
+
+### Fixed
+
+- **Concurrent async validations no longer clobber by resolution
+  order.** A form-level epoch counter advances on every new validation
+  pass; in-flight pass results from a stale epoch are dropped. The
+  per-path snapshot map plus subtree-scoped blur dedup eliminates the
+  spurious whole-form revalidation that fired on every sibling edit;
+  `reset()` clears the snapshot map and epoch counters cleanly. Async
+  probes don't re-fire when the user refocuses without editing.
+
+- **`setValue('container', value)` resolves descendant blank-marks.**
+  A write to a container path now correctly clears blank-marks on
+  every descendant the new value covers, so required-field validation
+  fires consistently for the newly-populated leaves. `form.clear(path)`
+  also marks the path blank so required validation isn't silenced after
+  a clear. `insert(arr, idx, v)` records the correct post-splice index
+  in the path mapping.
+
+- **Per-element state stays with the element across nested arrays.**
+  Nested `v-for :key="row.key"` is stable across `move`, `swap`,
+  `insert`, `remove`, and `replace` at any depth. Per-element value,
+  baseline, dirty / touched, errors, and blank state all relocate with
+  the element rather than staying behind on the slot index.
+
+- **v3 path-walker descends through union / tuple / intersection /
+  lazy / catch.** `validateAtPath`, `getDefaultAtPath`,
+  `getEmptyValueAtPath`, `arrayShapeAtPath`, `isRequiredAtPath`, and
+  `getFieldMetaAtPath` on the v3 adapter now match v4's behaviour at
+  every combinator. Earlier paths into a `z.union([z.object({...}),
+  z.object({...})])` returned the empty default and skipped
+  validation; they now resolve through the matching branch correctly.
+
+- **v3 default values match v4 across edge cases.** `z.nan()` now
+  defaults to `NaN` (was `null`). `z.void()`, `z.any()`, `z.unknown()`,
+  and `z.never()` default to `undefined`. `z.preprocess` and `z.coerce`
+  leave default ownership to the consumer rather than inventing one.
+  `z.void()` is no longer marked required. A union is required when
+  *any* branch is required (was: first-branch-only). The discriminated
+  union resolver descends through `z.catch` and `z.intersection`.
+  Multi-value discriminators (`z.literal([...])`) are recognised.
+  Shared sub-schemas at multiple paths disambiguate via fingerprint
+  (set / branded / nativeEnum / pipeline are distinguished). On v4,
+  `Optional(Default('x'))` now returns `'x'` (was `undefined`);
+  `z.map`, `z.symbol`, and `z.function` are rejected at construction
+  to match v3's reach.
+
+- **v3 typed-config field surface.** `useForm` on v3 accepts
+  `getDisplayState`, `maxRecursionDepth`, `sensitiveNames`, `multiTab`,
+  and `autoAria` at the type level. Runtime already forwarded them;
+  this closes the surfaced-config gap so v3 consumers see the same
+  IDE autocomplete v4 consumers do.
+
+- **`form.fields.X = …` / `delete form.fields.X` warn-and-noop.**
+  Direct writes to the field-state proxy used to throw `TypeError` on
+  some surfaces and pass silently on others. Both now produce a
+  one-shot dev-warn and noop. `Object.defineProperty` against the
+  proxy is also a warn-and-noop now. `Object.keys(form.errors)`
+  includes the synthetic form-level bucket and server-only keys so an
+  iteration sees everything errors holds. `form.fields.<array>` calls
+  through to the real `Array.prototype` for read-only methods like
+  `.map` / `.filter` / `.reduce`, instead of returning a phantom proxy
+  that mis-iterates.
+
+- **`getDisplayState` consumer throws no longer crash the form.** A
+  throw from a user-supplied `getDisplayState` produces a one-shot
+  dev-warn and falls back to the `defaultDisplayState` value for that
+  field. Matches the library's `feedback-no-uncaught-exceptions`
+  posture across the rest of the runtime.
+
+- **Wizard `currentStep` returns a sensible key when a function slot
+  drops the active step mid-flight.** A bare-function step that
+  re-evaluates to an empty list (after a navigation that depended on
+  schema state) used to leave `currentStep` pointing at a now-missing
+  key. It now returns the first compiled step's key, matching the
+  list-after-drop. `wizard.allValues` and `wizard.allErrors` are
+  identity-stable proxy references; a single form edit no longer
+  re-evaluates the whole record.
+
+- **SSR hydration matches for `<input type="radio">` + `z.number()`.**
+  The interactive-tag coercion ladder treats `"2"` (from the DOM) and
+  `2` (from the schema) as equivalent for `:checked`. Earlier this
+  triggered a hydration flicker on every radio bound to a numeric
+  model.
+
+- **Persistence flushes on `pagehide`.** A pending debounced write
+  drains before the document is hidden / unloaded, closing edit-loss
+  on tab close + bfcache eviction. The overlapping-debounced-write
+  drain race is closed with a per-write generation counter so a stale
+  in-flight write can't overwrite a fresher one.
+
+- **Persistence envelope v5 → v6.** Persisted payloads now round-trip
+  record keys that contain literal `.` characters without ambiguity
+  against path notation. v5 payloads are read once and rewritten on
+  next save.
+
+### Security
+
+- **Prototype-pollution defense flipped to prototype-less storage.**
+  Every container the runtime allocates (defaults, `setValue` writes,
+  snapshots, persistence restore, multi-tab sync, undo / redo, variant
+  snapshots, schema-driven walks) is rooted at `Object.create(null)`,
+  not `Object.prototype`. `Object.prototype` is structurally
+  unreachable from any form-container write. The shape is also
+  permissive of legitimate consumer fields: a form whose schema has a
+  field literally named `prototype` (or `constructor`, or
+  `__proto__`) now round-trips through every surface (errors,
+  persistence, multi-tab, history) without rejection. Sanitise the
+  storage, not the input.
+
+- **CodeQL findings closed.** The first CodeQL pass surfaced six
+  findings; all six are fixed. Polynomial-ReDoS in
+  `readableFormKeyStem` regex is anchored. `placeAt` silently drops
+  path segments matching `__proto__` / `constructor` / `prototype`
+  rather than placing into them. A TOCTOU race in
+  `scripts/generate-release-notes.mjs` is closed (existsSync +
+  readFileSync collapsed into a try/catch on `ENOENT`). Untrusted
+  HTTP→FS data flow in `apps/site/scripts/download-fonts.mjs` is
+  bounded (family whitelist, filename sanitisation, unicode-range
+  validation). FS→HTTP data flow in
+  `apps/site/scripts/indexnow-ping.mjs` is bounded (URL parse +
+  host / protocol assertion replaces byte-prefix check). The identity
+  replacement in `apps/site/pages/docs/[...slug].vue` is dropped (it
+  was a refactor leftover).
+
+- **Multi-tab `onmessage` never throws.** Inbound message validation
+  is tightened so a malformed peer message is dropped silently rather
+  than crashing the listener.
+
+- **Sensitive-leaf scrubbing.** A container-level persistence opt-in
+  no longer leaks unacknowledged sensitive leaves (cvv, cardNumber,
+  ssn, etc.) to disk. The scrub layer walks every persisted subtree
+  and removes leaves whose path matches a sensitive name without an
+  explicit acknowledgement.
+
+- **Dockerfile pinned to `@sha256:`.**
+  `FROM node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920`.
+  The previous tag-only `FROM` was the last open Scorecard
+  Pinned-Dependencies gap.
+
+- **GitHub Releases carry SLSA build-provenance.** See the matching
+  Added entry; this is the supply-chain side of the same change.
+
+### Internal
+
+A seventeen-phase audit-remediation sweep closes out. Dead types
+removed (`FormSummary` family, `DOMFieldState` family, `MetaTracker`
+family, `FormErrorStore`, plus internal-only `markTouched` and
+`resolveStorageKey`). Inner walkers unified behind shared core
+modules (`walk-derive-default`, `walk-slim-primitives`,
+`walk-path-segments`, `FlatPathBuilder`, `AugmentWithUnset<WriteShape>`,
+`NestedTypeBuilder`). Five readonly proxy files deduplicated behind
+`buildCallableReadonlySnapshotProxy`. v3 introspect routed through a
+single chokepoint matching v4's 35-method accessor surface. Wizard
+bare-function-slot compile pass decoupled from the navigation
+pointer (no longer re-runs per `next` / `back` / `goTo`). Three
+"monster" files split: `create-form-store.ts` 3687→3300 LOC,
+`directive.ts` 1929→1470 LOC, `use-abstract-form.ts` 1485→970 LOC.
+tsc instantiations down ~4,400 in net; bundle size neutral or
+favourable across every entry. Persistence module extracted to its
+own folder. 39 new characterisation tests pin behaviour across the
+unified walkers so future changes can't silently desync between
+modes.
 
 ## v0.19.0
 ### Breaking

@@ -52,6 +52,7 @@
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import { mergeDeep } from './merge-deep'
+import { safeAssign } from './safe-assign'
 
 export interface DeriveDefaultContext<Schema> {
   /**
@@ -201,14 +202,20 @@ export function deriveDefaultWalk<Schema>(
   switch (kind) {
     case 'object': {
       const shape = intro.getObjectShape(schema)
-      // Prototype-less default container, matching the rest of the
-      // runtime's value-write pipeline. The default flows directly into
-      // `form.values`; allocating it proto-less here keeps the entire
-      // initial-value tree structurally identical to what `setAtPath`
-      // and `mergeDeep` produce.
-      const out: Record<string, unknown> = Object.create(null)
+      // Default container carries `Object.prototype`. The default
+      // flows directly into `form.values`; matching the rest of the
+      // value-write pipeline keeps the initial tree consistent with
+      // what `setAtPath` and `mergeDeep` produce. Schema field names
+      // can legitimately include `__proto__` (an architecture firm
+      // tracking prototypes; a Zod schema with `z.object({ __proto__: … })`);
+      // `safeAssign` lands such a key as an own data property.
+      const out: Record<string, unknown> = {}
       for (const [key, subSchema] of Object.entries(shape)) {
-        out[key] = deriveDefaultWalk(subSchema, useDefault, intro, maxDepth, ctx, lazyDepth)
+        safeAssign(
+          out,
+          key,
+          deriveDefaultWalk(subSchema, useDefault, intro, maxDepth, ctx, lazyDepth)
+        )
       }
       return out
     }

@@ -1,6 +1,7 @@
 import { toRaw } from 'vue'
 import type { WriteMeta } from '../types/types-api'
 import { isPathPrefix, segmentsForPathKey, type Path, type PathKey } from './paths'
+import { safeAssign } from './safe-assign'
 
 /**
  * Per-(union-path, outgoing-disc-value) snapshot stashed on a
@@ -146,10 +147,11 @@ export function cloneVariantSnapshot(value: unknown): unknown {
     return out
   }
   const src = raw as Record<string, unknown>
-  // Prototype-less variant snapshot. Variant memos restore back into
-  // `form.values` on union-switch reshape; matching the proto-less
-  // shape keeps the round-trip structurally identical.
-  const out: Record<string, unknown> = Object.create(null)
-  for (const k of Object.keys(src)) out[k] = cloneVariantSnapshot(src[k])
+  // Variant snapshots restore back into `form.values` on union-switch
+  // reshape; the container carries `Object.prototype` so the
+  // round-trip matches the rest of the value-write pipeline.
+  // `safeAssign` lands a `__proto__` key as an own data property.
+  const out: Record<string, unknown> = {}
+  for (const k of Object.keys(src)) safeAssign(out, k, cloneVariantSnapshot(src[k]))
   return out
 }

@@ -19,32 +19,36 @@
  * `mergeDeep` / `mergeDeepV3` bodies lived per-adapter.
  */
 import { isPlainRecord } from './path-walker'
+import { safeAssign, safeOwnRead } from './safe-assign'
 
 export function mergeDeep(base: unknown, override: unknown): unknown {
   if (override === undefined) return base
   if (!isPlainRecord(override)) return override
   if (!isPlainRecord(base)) return override
 
-  // Prototype-less merge target. `result[key] = ...` on a prototype-
-  // less object is a plain own-property write even when `key` is
-  // `__proto__`, so an `override` carrying a literal `__proto__`
-  // own property (e.g. from JSON-parsed adapter defaults that round-
-  // tripped through storage) cannot reassign the result's prototype.
-  // Legitimate consumer-schema fields named `prototype` /
-  // `constructor` / `__proto__` flow through default-value
-  // derivation alongside every other key. Spread carries `base`'s
-  // own properties via `CopyDataProperties`, which bypasses the
-  // prototype setter, so the spread + `Object.assign` pairing
-  // preserves the prototype-less shape regardless of `base`'s
-  // ancestry.
-  const result: Record<string, unknown> = Object.assign(Object.create(null), base)
+  // Object spread carries `base`'s own properties through the
+  // spec's `CreateDataProperty` step, which bypasses the
+  // `__proto__` setter — so a `base` carrying a literal
+  // `__proto__` own property (e.g. from JSON-parsed adapter
+  // defaults that round-tripped through storage) survives the
+  // spread without reassigning the result's prototype. The
+  // per-key reads route through `safeOwnRead` so a
+  // `key === '__proto__'` doesn't resolve via the inherited
+  // accessor on the regular target. The per-key `safeAssign` lands
+  // an `override`'s `__proto__` entry as an own data property via
+  // `Object.defineProperty`; every other key takes the plain
+  // bracket-assign branch. Legitimate consumer-schema fields named
+  // `prototype` / `constructor` / `__proto__` flow through default-
+  // value derivation alongside every other key, and
+  // `Object.prototype` stays untouched.
+  const result: Record<string, unknown> = { ...base }
   for (const key of Object.keys(override)) {
-    const oVal = override[key]
-    const bVal = base[key]
+    const oVal = safeOwnRead(override, key)
+    const bVal = safeOwnRead(base, key)
     if (isPlainRecord(oVal) && isPlainRecord(bVal)) {
-      result[key] = mergeDeep(bVal, oVal)
+      safeAssign(result, key, mergeDeep(bVal, oVal))
     } else {
-      result[key] = oVal
+      safeAssign(result, key, oVal)
     }
   }
   return result

@@ -1,6 +1,7 @@
 import type { AbstractSchema } from '../types/types-api'
 import { __DEV__ } from './dev'
 import { type Path } from './paths'
+import { safeAssign } from './safe-assign'
 
 /**
  * Walk an `initialData` / restored payload and collapse any object whose
@@ -17,11 +18,12 @@ import { type Path } from './paths'
  * variant transitions) without sharing state across calls.
  *
  * SSR hydration payloads (third-party storage JSON) flow through the
- * same walker. Pollution defense is structural: every intermediate
- * container is allocated via `Object.create(null)` so the `out[k] =
- * …` write is a plain own-property assignment regardless of `k`.
- * Legitimate fields literally named `prototype` / `constructor` /
- * `__proto__` round-trip the same way every other key does.
+ * same walker. Pollution defense routes every untrusted-key write
+ * through `safeAssign`, which uses `Object.defineProperty` for the
+ * `__proto__` key (own data property, no chain mutation) and plain
+ * bracket-assign for every other key. Legitimate fields literally
+ * named `prototype` / `constructor` / `__proto__` round-trip the same
+ * way every other key does.
  *
  * `warn: true` opts in to a `__DEV__`-only one-shot per
  * `(dotted-path, disc-value)` console warning when a non-blank
@@ -85,24 +87,22 @@ function walkDuStubs(
           )
         }
       }
-      // The disc-only stub also uses a prototype-less container so a
-      // schema whose discriminator key happens to be `__proto__` /
-      // `constructor` / `prototype` (vanishingly rare, but possible
-      // via `z.discriminatedUnion('prototype', …)`) lands the disc
-      // value as an ordinary own-property pair.
-      const stub: Record<string, unknown> = Object.create(null)
-      stub[du.discriminatorKey] = discValue
+      // The disc-only stub routes the discriminator-key write through
+      // `safeAssign` so a schema using `z.discriminatedUnion('__proto__', …)`
+      // (vanishingly rare, but possible) lands the disc value as an
+      // own data property instead of invoking the inherited setter.
+      const stub: Record<string, unknown> = {}
+      safeAssign(stub, du.discriminatorKey, discValue)
       return stub
     }
   }
-  // Prototype-less SSR-walk container. Pairs with the `setAtPath` and
-  // persistence merges already proto-less, so an SSR payload carrying
-  // a legitimate `__proto__` / `constructor` / `prototype` own
-  // property (or a hostile one) lands as a plain own-property pair
-  // with no path to `Object.prototype`.
-  const out: Record<string, unknown> = Object.create(null)
+  // SSR-walk container. The `safeAssign` per key lands a literal
+  // `__proto__` segment as an own data property; every other key
+  // takes the plain bracket-assign branch. A hostile payload carrying
+  // `__proto__` can't reassign the container's prototype chain.
+  const out: Record<string, unknown> = {}
   for (const k of Object.keys(rec)) {
-    out[k] = walkDuStubs(schema, rec[k], [...path, k], warned)
+    safeAssign(out, k, walkDuStubs(schema, rec[k], [...path, k], warned))
   }
   return out
 }

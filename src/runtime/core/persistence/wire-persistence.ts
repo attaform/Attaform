@@ -364,9 +364,8 @@ export function wirePersistence<F extends GenericForm>(
     if (isDisposed()) return
     const raw = await adapter.getItem(key)
     const existing = readPersistedPayload<F>(raw)
-    const baseForm = existing?.data.form ?? (Object.create(null) as F)
     const value = getAtPath(toRaw(state.form.value), path)
-    const nextForm = setAtPath(baseForm, path, value) as F
+    const nextForm = setAtPath(existing?.data.form ?? {}, path, value) as F
     // Refresh this path's blank entry — and any descendants
     // — while preserving entries for OTHER paths the previous mount
     // persisted. Non-leaf writes (`writePathImmediately('user')`)

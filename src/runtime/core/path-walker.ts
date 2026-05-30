@@ -1,4 +1,5 @@
 import type { Path, Segment } from './paths'
+import { safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
 
 /**
  * The minimal slice of `AbstractSchema` the structural-completeness
@@ -123,21 +124,21 @@ function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: numb
     return arr
   }
 
-  // Prototype-less intermediate. `rec['__proto__'] = …` on a plain
-  // `{}` would invoke the `Set` accessor inherited from
-  // `Object.prototype` and reassign the prototype chain. On a
-  // prototype-less object that accessor doesn't exist, so the write
-  // is a plain own-property assignment. Schema fields literally
-  // named `__proto__` / `constructor` / `prototype` now round-trip
+  // Object spread carries existing own properties through
+  // `CopyDataProperties` — the spec step uses `CreateDataProperty`,
+  // which bypasses the `__proto__` setter accessor inherited from
+  // `Object.prototype`. So a previously-set `__proto__` own data
+  // property survives a re-spread when intermediate copy-on-write
+  // occurs, and the spread doesn't reassign the prototype chain.
+  // For the imperative own-property write at the head segment we
+  // route through `safeAssign`: a literal `__proto__` segment becomes
+  // a defineProperty call (own data property), while every other key
+  // takes the plain bracket-assign branch. Schema fields literally
+  // named `__proto__` / `constructor` / `prototype` round-trip
   // through `setValue` / `applyPatchesForward` / history undo-redo
-  // alongside every other key. Spread carries existing own properties
-  // through `CopyDataProperties` (the spec step bypasses the
-  // prototype setter), so a previously-set `__proto__` own property
-  // survives a re-spread when intermediate copy-on-write occurs.
-  const rec: Record<string, unknown> = isPlainRecord(root)
-    ? Object.assign(Object.create(null), root)
-    : Object.create(null)
-  rec[head] = setAtPathOffset(rec[head], path, value, nextOffset)
+  // alongside every other key, with no path to `Object.prototype`.
+  const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
+  safeAssign(rec, head, setAtPathOffset(safeOwnRead(rec, head), path, value, nextOffset))
   return rec
 }
 
@@ -185,9 +186,13 @@ function deleteAtPathOffset(root: unknown, path: Path, offset: number): unknown 
     delete rec[head]
     return rec
   }
-  if (!(head in root)) return root
+  // Own-property existence check — `'__proto__' in root` would
+  // otherwise resolve via the inherited accessor and report `true`
+  // for every regular target, materializing a phantom delete-path on
+  // a slot the consumer never wrote.
+  if (!safeOwnHas(root, head)) return root
   const rec: Record<string, unknown> = { ...root }
-  rec[head] = deleteAtPathOffset(rec[head], path, nextOffset)
+  safeAssign(rec, head, deleteAtPathOffset(safeOwnRead(rec, head), path, nextOffset))
   return rec
 }
 
@@ -349,20 +354,25 @@ function mergeStructuralImpl(
       return consumer
     }
     let mutated = false
-    // Prototype-less merge target, matching `setAtPath` and `mergeDeep`
-    // elsewhere in the runtime. Spread via `Object.assign` copies
-    // consumer's own properties as own properties on the proto-less
-    // container, so the merged tree stays structurally consistent
-    // with every other allocator.
-    const out: Record<string, unknown> = Object.assign(Object.create(null), consumer)
+    // Merge target carries `Object.prototype`, matching `setAtPath` and
+    // `mergeDeep` elsewhere in the runtime. Object spread uses
+    // `CreateDataProperty` per the spec, which bypasses the inherited
+    // `__proto__` setter so a consumer carrying a literal `__proto__`
+    // own property survives the spread without reassigning the result's
+    // prototype chain.
+    const out: Record<string, unknown> = { ...consumer }
     // Fill schema-default keys that are MISSING from consumer (key
     // not present at all). An explicit `consumer[key] = undefined`
     // means the consumer named the slot empty on purpose — distinct
     // from omitting the key — and the schema default doesn't override
     // it.
     for (const key of Object.keys(defaultValue)) {
-      if (!(key in consumer)) {
-        const defAtKey = defaultValue[key]
+      // Own-property check — `'__proto__' in consumer` would always
+      // be `true` for a regular consumer record, falsely declaring
+      // "consumer wrote here" and skipping the default-fill for a
+      // legitimate `__proto__` schema field.
+      if (!safeOwnHas(consumer, key)) {
+        const defAtKey = safeOwnRead(defaultValue, key)
         // Recurse so that filling produces a structurally-complete
         // sub-tree (covers nested-object defaults that themselves
         // contain wrappers / unions).
@@ -370,7 +380,7 @@ function mergeStructuralImpl(
         const filled = mergeStructuralImpl(schema, scratch, undefined, defAtKey)
         scratch.pop()
         if (filled !== undefined) {
-          out[key] = filled
+          safeAssign(out, key, filled)
           mutated = true
         }
       }
@@ -382,13 +392,13 @@ function mergeStructuralImpl(
     // default for an undefined consumer), erasing the consumer's
     // explicit empty.
     for (const key of Object.keys(consumer)) {
-      const cVal = consumer[key]
+      const cVal = safeOwnRead(consumer, key)
       if (cVal === undefined) continue
       scratch.push(key)
-      const merged = mergeStructuralImpl(schema, scratch, cVal, defaultValue[key])
+      const merged = mergeStructuralImpl(schema, scratch, cVal, safeOwnRead(defaultValue, key))
       scratch.pop()
       if (merged !== cVal) {
-        out[key] = merged
+        safeAssign(out, key, merged)
         mutated = true
       }
     }

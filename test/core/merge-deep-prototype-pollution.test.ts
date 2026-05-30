@@ -71,9 +71,16 @@ describe('mergeDeep proto-less default-value derivation', () => {
     expect(merged.constructor.who).toBe('override-crew')
   })
 
-  it('produces a prototype-less result', () => {
+  it('produces an Object.prototype-backed result that responds to `.hasOwnProperty()`', () => {
     const merged = mergeDeep({ a: 1 }, { b: 2 }) as Record<string, unknown>
-    expect(Object.getPrototypeOf(merged)).toBeNull()
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype)
+    // Direct `.hasOwnProperty(...)` is the consumer pattern this test
+    // guards against; routing through `Object.prototype.hasOwnProperty.call`
+    // would erase the regression.
+    // eslint-disable-next-line no-prototype-builtins
+    expect(merged.hasOwnProperty('a')).toBe(true)
+    // eslint-disable-next-line no-prototype-builtins
+    expect(merged.hasOwnProperty('b')).toBe(true)
     expect(merged['a']).toBe(1)
     expect(merged['b']).toBe(2)
   })

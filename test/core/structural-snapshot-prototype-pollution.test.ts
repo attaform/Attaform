@@ -66,13 +66,24 @@ describe('structuralSnapshot proto-less containers', () => {
     expect(probe[SENTINEL]).toBeUndefined()
   })
 
-  it('every snapshot container is prototype-less', () => {
+  it('every snapshot container carries Object.prototype and responds to `.hasOwnProperty()`', () => {
     const source = { a: { b: { c: 1 } } }
     const snap = structuralSnapshot(source) as Record<string, unknown>
 
-    expect(Object.getPrototypeOf(snap)).toBeNull()
-    expect(Object.getPrototypeOf(snap['a'])).toBeNull()
-    expect(Object.getPrototypeOf((snap['a'] as Record<string, unknown>)['b'])).toBeNull()
+    expect(Object.getPrototypeOf(snap)).toBe(Object.prototype)
+    // Direct `.hasOwnProperty(...)` is the consumer pattern this test
+    // guards against; routing through `Object.prototype.hasOwnProperty.call`
+    // would erase the regression.
+    // eslint-disable-next-line no-prototype-builtins
+    expect(snap.hasOwnProperty('a')).toBe(true)
+    const a = snap['a'] as Record<string, unknown>
+    expect(Object.getPrototypeOf(a)).toBe(Object.prototype)
+    // eslint-disable-next-line no-prototype-builtins
+    expect(a.hasOwnProperty('b')).toBe(true)
+    const b = a['b'] as Record<string, unknown>
+    expect(Object.getPrototypeOf(b)).toBe(Object.prototype)
+    // eslint-disable-next-line no-prototype-builtins
+    expect(b.hasOwnProperty('c')).toBe(true)
   })
 
   it('reference identity changes (deep clone is still deep)', () => {

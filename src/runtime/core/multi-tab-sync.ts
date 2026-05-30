@@ -4,6 +4,7 @@ import type { FormStore } from './create-form-store'
 import { applyPatchesForward, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { isPlainRecord } from './path-walker'
 import { canonicalizePath, type Path, type PathKey } from './paths'
+import { safeAssign } from './safe-assign'
 import { slimKindOf } from './slim-primitive-gate'
 
 /**
@@ -284,20 +285,22 @@ function stripSensitivePathsDeep(
   }
   const proto = Object.getPrototypeOf(value)
   if (proto !== Object.prototype && proto !== null) return value
-  // Prototype-less scrub container — mirrors the proto-less allocator
-  // in `structuralSnapshot` so a form value carrying a legitimate
-  // `__proto__` / `constructor` / `prototype` own property (the
-  // post-`setAtPath` shape) flows through the scrub without routing
-  // through the inherited `[[Set]]` accessor at the destination.
-  const out: Record<string, unknown> = Object.create(null)
+  // Scrub container mirrors `structuralSnapshot`'s allocator. The
+  // outgoing snapshot is passed through `structuredClone` by
+  // `BroadcastChannel.postMessage` before crossing the tab boundary
+  // (which would discard the prototype anyway), but matching the rest
+  // of the runtime's `Object.prototype` shape keeps the in-process
+  // shape consistent. `safeAssign` lands a literal `__proto__` key as
+  // an own data property regardless of the source.
+  const out: Record<string, unknown> = {}
   const src = value as Record<string, unknown>
   for (const key of Object.keys(src)) {
     const childPath = [...pathSoFar, key]
     if (isSensitivePath(childPath)) {
-      out[key] = undefined
+      safeAssign(out, key, undefined)
       continue
     }
-    out[key] = stripSensitivePathsDeep(src[key], childPath, isSensitivePath)
+    safeAssign(out, key, stripSensitivePathsDeep(src[key], childPath, isSensitivePath))
   }
   return out
 }

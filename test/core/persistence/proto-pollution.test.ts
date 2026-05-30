@@ -13,20 +13,16 @@ import { fakeSchema } from '../../utils/fake-schema'
  * own data property by spec; the SSR DU-stub walk (`walkDuStubs`)
  * accepts paths from SSR hydration payloads with the same surface area.
  *
- * The persistence-side defense is now structural: `mergeDeep` allocates
- * its merge target via `Object.create(null)`, so any `out['__proto__']
- * = …` write that the iteration produces is a plain own-property
- * write with no path to `Object.prototype`. Legitimate schema fields
- * named `prototype` / `constructor` / `__proto__` (an architecture
- * firm tracking building prototypes; a construction-management form
- * naming the construction crew; a JS-tooling form that mentions
- * `__proto__` literally) land at the declared path the consumer
- * asked for.
- *
- * The SSR DU-stub walk still uses the SEC-2-era input-rejection guard
- * (`isDangerousSegment`) — the same proto-less treatment is queued
- * as a follow-up PR alongside the rest of the broader sweep. The
- * test below pins the current du-stubs contract until then.
+ * The persistence-side defense routes every untrusted-key write through
+ * `safeAssign`, which uses `Object.defineProperty` for the `__proto__`
+ * key so the write lands as an own data property on a regular
+ * `Object.prototype`-backed target. The result still responds to
+ * `.hasOwnProperty()` / `in` / serializer walkers (issue #314 is the
+ * companion test of this property). Legitimate schema fields named
+ * `prototype` / `constructor` / `__proto__` (an architecture firm
+ * tracking building prototypes; a construction-management form naming
+ * the construction crew; a JS-tooling form that mentions `__proto__`
+ * literally) land at the declared path the consumer asked for.
  */
 
 type Bag = { name: string; nested: { a: string } }
@@ -55,17 +51,17 @@ describe('SEC-2 — persistence hydration merge resists prototype pollution', ()
     // Global cleanliness — the SEC-2 invariant.
     expect(readGlobalProp('polluted')).toBeUndefined()
 
-    // Prototype-less merge target — the structural fix that makes
-    // `out['__proto__'] = …` a plain own-property write. The probe-
-    // probe (`merged['polluted']`) is undefined because the tree's
-    // `__proto__` slot is an own property, not an accessor that walks
-    // into Object.prototype.
-    expect(Object.getPrototypeOf(merged)).toBeNull()
+    // Merge target carries `Object.prototype` so consumer-observable
+    // surfaces work (`.hasOwnProperty` / `in` / serializer walkers).
+    // The `__proto__` own data property shadows the inherited
+    // accessor for reads, so `merged.polluted` doesn't traverse into
+    // the (now untouched) prototype chain.
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype)
     expect(merged['polluted']).toBeUndefined()
+    const protoDescriptor = Object.getOwnPropertyDescriptor(merged, '__proto__')
+    expect(protoDescriptor).toBeDefined()
+    expect(protoDescriptor?.value).toEqual({ polluted: 1 })
 
-    // `isPlainRecord` accepts both `proto === null` (Object.create(null))
-    // and `proto === Object.prototype`, so downstream consumers
-    // continue to treat the result as a plain record.
     expect(isPlainRecord(merged)).toBe(true)
 
     // Legit field still merges.
@@ -79,22 +75,22 @@ describe('SEC-2 — persistence hydration merge resists prototype pollution', ()
     // Global cleanliness — the SEC-2 invariant.
     expect(readGlobalProp('polluted')).toBeUndefined()
 
-    // The merge target is prototype-less, so `constructor` lands as
-    // an ordinary own-property pair instead of being silently dropped.
-    // The structural defense still holds because the descended
-    // container is also prototype-less — there is no accessor walk
-    // that reaches Object.prototype.prototype regardless of how deep
-    // the payload nests these key names.
-    expect(Object.getPrototypeOf(merged)).toBeNull()
+    // Result carries `Object.prototype`. The `constructor` /
+    // `prototype` keys land as own data properties that shadow the
+    // inherited slots; subsequent reads stop at the own data and
+    // never traverse into `Object.prototype.constructor.prototype`.
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype)
     expect(isPlainRecord(merged)).toBe(true)
+    expect(Object.prototype.hasOwnProperty.call(merged, 'constructor')).toBe(true)
   })
 
   it('SSR DU-stub walk keeps Object.prototype clean despite a __proto__ hydration key', () => {
-    // `walkDuStubs` is now proto-less too: a hostile `__proto__` in
-    // the SSR hydration payload lands as an ordinary own-property
-    // pair on the prototype-less form-value container, and the global
-    // prototype stays untouched. Mirrors the structural defense in
-    // `setAtPath` and the persistence merge.
+    // `walkDuStubs` routes every key write through `safeAssign`: a
+    // hostile `__proto__` in the SSR hydration payload lands as an
+    // own data property on the form-value container, and the global
+    // prototype stays untouched. Container carries `Object.prototype`
+    // so downstream `.hasOwnProperty()` walkers (issue #314 surface)
+    // continue to work.
     const hostile = JSON.parse('{"__proto__":{"polluted":1},"name":"x","nested":{"a":"y"}}')
     const state = createFormStore<Bag>({
       formKey: 'sec2-ssr',
@@ -105,10 +101,7 @@ describe('SEC-2 — persistence hydration merge resists prototype pollution', ()
 
     // The SEC-2 invariant.
     expect(readGlobalProp('polluted')).toBeUndefined()
-    // Prototype-less form-value container — `__proto__` is an own
-    // property at the top level (mirrors what `setValue` would
-    // produce for a legitimate `__proto__` schema field).
-    expect(Object.getPrototypeOf(raw)).toBeNull()
+    expect(Object.getPrototypeOf(raw)).toBe(Object.prototype)
     expect(raw['polluted']).toBeUndefined()
     // Defaults still merged through (name + nested came through SSR
     // alongside the special-key smuggle).

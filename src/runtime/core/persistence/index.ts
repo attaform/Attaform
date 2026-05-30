@@ -10,6 +10,7 @@ import { PERSISTENCE_KEY_PREFIX } from '../defaults'
 import { __DEV__ } from '../dev'
 import { isPlainRecord, setAtPath, getAtPath } from '../path-walker'
 import { isPathPrefix, segmentsForPathKey, type Path, type PathKey, type Segment } from '../paths'
+import { safeAssign, safeOwnHas, safeOwnRead } from '../safe-assign'
 
 /**
  * Public-ish handle returned by `wirePersistence`. Lives on
@@ -555,14 +556,16 @@ export function stripUnacknowledgedSensitiveLeaves(
     if (value === null || typeof value !== 'object') return value
     if (Array.isArray(value)) return value.map((item, i) => walk([...path, i], item))
     if (!isPlainRecord(value)) return value
-    // Prototype-less scrub container, matching the rest of the
-    // persistence layer's allocators. The sensitive-leaf scrub feeds
-    // back into the persisted payload, so the shape stays consistent
-    // with what `mergeDeep` would produce on the way back in.
-    const out: Record<string, unknown> = Object.create(null)
+    // Scrub container carries `Object.prototype` plus `safeAssign`
+    // for the per-key write so a hostile persisted payload landing a
+    // literal `__proto__` key is written as an own data property, not
+    // through the inherited setter. The sensitive-leaf scrub feeds
+    // back into the persisted payload; shape stays consistent with
+    // what `mergeDeep` produces on the way back in.
+    const out: Record<string, unknown> = {}
     for (const key of Object.keys(value as Record<string, unknown>)) {
       const walked = walk([...path, key], (value as Record<string, unknown>)[key])
-      if (walked !== undefined) out[key] = walked
+      if (walked !== undefined) safeAssign(out, key, walked)
     }
     return out
   }
@@ -657,19 +660,33 @@ function mergeDeep(
       if (sourceDisc !== undefined) {
         const variantDefault = du.getVariantDefault(sourceDisc)
         if (isPlainRecord(variantDefault)) {
-          // Prototype-less merge target. The `out[key] = ...` write
-          // below cannot reach `Object.prototype` even if `key` is
-          // `__proto__` from a hostile persisted payload, because a
-          // prototype-less object has no `__proto__` accessor — the
-          // assignment is a plain own-property write. The variant-
-          // filter below (`key in variantDefault`) still excludes
-          // prototype-corrupting keys for the DU-variant case unless
-          // the schema legitimately declares them, in which case the
-          // consumer's variant carries the value through unmolested.
-          const out: Record<string, unknown> = Object.assign(Object.create(null), variantDefault)
+          // Object spread carries `variantDefault`'s own properties
+          // via `CreateDataProperty`, bypassing the inherited
+          // `__proto__` setter — so a variant default that legitimately
+          // declares `__proto__` is copied through without reassigning
+          // the result's prototype chain. Per-key writes route through
+          // `safeAssign`: a literal `__proto__` key from a hostile
+          // persisted payload (when the variant declares it) lands as
+          // an own data property. The variant-filter below
+          // (`key in variantDefault`) still excludes prototype-
+          // corrupting keys for the DU-variant case unless the schema
+          // legitimately declares them.
+          const out: Record<string, unknown> = { ...variantDefault }
           for (const key of Object.keys(sourceRecord)) {
-            if (!(key in variantDefault) && key !== du.discriminatorKey) continue
-            out[key] = mergeDeep(out[key], sourceRecord[key], [...path, key], schema)
+            // Own-property check — the variant-filter must treat
+            // inherited slots as absent so `'__proto__' in variantDefault`
+            // doesn't smuggle a hostile payload key into the merge.
+            if (!safeOwnHas(variantDefault, key) && key !== du.discriminatorKey) continue
+            safeAssign(
+              out,
+              key,
+              mergeDeep(
+                safeOwnRead(out, key),
+                safeOwnRead(sourceRecord, key),
+                [...path, key],
+                schema
+              )
+            )
           }
           return out
         }
@@ -680,18 +697,25 @@ function mergeDeep(
     }
   }
   const mergeTarget = target
-  // Prototype-less merge target. `out['__proto__'] = ...` on a
-  // prototype-less object is a plain own-property write, not the
-  // accessor that would reassign the object's prototype, so a
-  // `__proto__` key smuggled into the persisted JSON cannot
-  // pollute `Object.prototype` regardless of what walks through.
+  // Object spread carries `mergeTarget`'s own properties via
+  // `CreateDataProperty`, which bypasses the `__proto__` setter
+  // inherited from `Object.prototype`. The per-key `safeAssign` lands
+  // a literal `__proto__` key smuggled into the persisted JSON as an
+  // own data property here too, with no path to `Object.prototype`.
   // Legitimate `prototype` / `constructor` / `__proto__` fields in
   // a consumer schema persist and restore at their declared path.
-  const out: Record<string, unknown> = isPlainRecord(mergeTarget)
-    ? Object.assign(Object.create(null), mergeTarget)
-    : Object.create(null)
+  const out: Record<string, unknown> = isPlainRecord(mergeTarget) ? { ...mergeTarget } : {}
   for (const key of Object.keys(source)) {
-    out[key] = mergeDeep(out[key], (source as Record<string, unknown>)[key], [...path, key], schema)
+    safeAssign(
+      out,
+      key,
+      mergeDeep(
+        safeOwnRead(out, key),
+        safeOwnRead(source as Record<string, unknown>, key),
+        [...path, key],
+        schema
+      )
+    )
   }
   return out
 }

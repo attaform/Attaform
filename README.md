@@ -5,6 +5,7 @@
 [![License][license-src]][license-href]
 [![Node.js Test Suite](https://github.com/attaform/attaform/actions/workflows/matrix.yml/badge.svg)](https://github.com/attaform/attaform/actions/workflows/matrix.yml)
 [![OpenSSF Scorecard][scorecard-src]][scorecard-href]
+[![OpenSSF Best Practices][cii-src]][cii-href]
 [![Nuxt][nuxt-src]][nuxt-href]
 
 A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.
@@ -195,5 +196,7 @@ MIT; see [LICENSE](./LICENSE).
 [license-href]: https://npmjs.com/package/attaform
 [scorecard-src]: https://img.shields.io/ossf-scorecard/github.com/attaform/Attaform?label=OpenSSF%20Scorecard&style=flat&colorA=020420&colorB=00DC82
 [scorecard-href]: https://securityscorecards.dev/viewer/?uri=github.com/attaform/Attaform
+[cii-src]: https://img.shields.io/cii/level/13042?label=OpenSSF%20Best%20Practices&style=flat&colorA=020420&colorB=00DC82
+[cii-href]: https://www.bestpractices.dev/projects/13042
 [nuxt-src]: https://img.shields.io/badge/Nuxt-020420?logo=nuxt.js
 [nuxt-href]: https://nuxt.com

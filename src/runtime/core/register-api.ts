@@ -213,15 +213,16 @@ export function buildRegister<F extends GenericForm>(
       // Container-path misuse degrades gracefully: a consumer who
       // bound v-register at an object/array path (e.g.
       // `api.register('payment' as 'payment.last4', …)` to bypass the
-      // type system) gets the same `[object Object]` placeholder
-      // `String({})` produced pre-proto-less-storage. After the
-      // backing store flipped to prototype-less containers,
-      // `String(Object.create(null))` throws "Cannot convert object
-      // to primitive value" because there's no `toString` on the
-      // chain; catching falls back to the canonical
-      // `Object.prototype.toString` output so the directive's
-      // mounted hook never propagates the throw into the consumer's
-      // render.
+      // type system) gets the `[object Object]` placeholder
+      // `String({})` produces. Runtime values now carry
+      // `Object.prototype` so `String(raw)` succeeds for normal
+      // container shapes, but a consumer can still hand us a
+      // null-prototype value (e.g. a `defaultValues` literal made via
+      // `Object.create(null)`); for those, `String(raw)` throws
+      // "Cannot convert object to primitive value". The catch falls
+      // back to the canonical `Object.prototype.toString` output so
+      // the directive's mounted hook never propagates the throw into
+      // the consumer's render.
       try {
         return String(raw)
       } catch {

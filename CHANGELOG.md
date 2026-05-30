@@ -2,7 +2,24 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **Form values, snapshots, and every consumer-observable surface
+  carry `Object.prototype`.** `form.values`, `form.record(path)`,
+  `form.errors`, and the `renderAttaformState` SSR payload now respond
+  cleanly to `.hasOwnProperty(...)` / `in` / `Object.keys` from
+  third-party payload walkers (devalue reducers, JSON serializers,
+  loggers, devtools probes). The prototype-pollution defense flips
+  from `Object.create(null)` containers to a `safeAssign` helper that
+  uses `Object.defineProperty` for the `__proto__` key specifically;
+  `safeOwnRead` / `safeOwnHas` defend the read side against the
+  inherited accessor. Legitimate consumer-schema fields named
+  `prototype` / `constructor` / `__proto__` still round-trip through
+  `setValue`, persistence, history, and SSR alongside every other
+  key, and `Object.prototype` stays untouched. A standing diagnostic
+  (`test/core/runtime-no-null-proto-in-src.test.ts`) fails any future
+  PR that reintroduces the idiom. Closes the SSR hydration mismatch
+  observed when `@pinia/nuxt` is installed alongside attaform.
 
 ## v0.20.0
 A seventeen-phase codebase audit closes out, with prototype-pollution

@@ -46,6 +46,7 @@ import { PERSISTENCE_MODULE_KEY, type PersistenceModule } from './persistence'
 import { allowSensitivePersist } from './persistence/sensitive-names'
 import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
+import { safeAssign } from './safe-assign'
 import { isUnset, unset } from './unset'
 import {
   blankForKind,
@@ -1008,12 +1009,15 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       return EMPTY_FIELD_RECORD
     }
-    // Prototype-less record container — matches the runtime's
-    // value-tree shape so a frozen `record()` view's prototype chain
-    // doesn't diverge from the live data it mirrors.
-    const out: Record<string, unknown> = Object.create(null)
+    // Container carries `Object.prototype` so a third-party walker
+    // reading the frozen view (`.hasOwnProperty(...)`, `in`, JSON
+    // serializer with a reducer) sees the standard chain. The keys
+    // come from the live form value, which can include a literal
+    // `__proto__` own property after a `setValue('record.__proto__', …)`
+    // write — `safeAssign` lands it as an own data property here.
+    const out: Record<string, unknown> = {}
     for (const key of Object.keys(value as Record<string, unknown>)) {
-      out[key] = callTerminal(`${path}.${key}`)
+      safeAssign(out, key, callTerminal(`${path}.${key}`))
     }
     return Object.freeze(out)
   }

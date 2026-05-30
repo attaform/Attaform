@@ -1,6 +1,7 @@
 import type { AbstractSchema } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
+import { safeAssign } from './safe-assign'
 import { isUnset } from './unset'
 
 /**
@@ -134,12 +135,12 @@ function walk(
     ) {
       for (const k of Object.keys(slim as object)) allKeys.add(k)
     }
-    // Prototype-less container, matching the rest of the runtime's
-    // value-write pipeline. Schema keys can't be literal `__proto__`,
-    // so this is principle alignment rather than a new pollution gate;
-    // it keeps the walker's output structurally identical to
-    // `setAtPath`'s so a value flowing through both stays one shape.
-    const out: Record<string, unknown> = Object.create(null)
+    // Container carries `Object.prototype` and writes route through
+    // `safeAssign` so a consumer schema using a literal `__proto__`
+    // key (unusual but legal) lands as an own data property here too.
+    // Output stays structurally identical to `setAtPath`'s so a value
+    // flowing through both surfaces the same shape.
+    const out: Record<string, unknown> = {}
     let mutated = allKeys.size !== inputKeys.length
     for (const key of allKeys) {
       const orig = (input as Record<string, unknown>)[key]
@@ -150,12 +151,12 @@ function walk(
       // for the schema-error filter (the path lands in
       // `authoredPaths` and validation runs against undefined).
       if (orig === undefined && inputKeysSet.has(key)) {
-        out[key] = undefined
+        safeAssign(out, key, undefined)
         mutated = true
         continue
       }
       const walked = walk(orig, [...segments, key], schema, paths)
-      out[key] = walked
+      safeAssign(out, key, walked)
       if (walked !== orig) mutated = true
     }
     return mutated ? out : input
@@ -197,9 +198,13 @@ export function walkUnspecified(slim: unknown, segments: Segment[], paths: PathK
   // tuple-shaped fixed arrays opt-in via explicit per-element `unset`.
   if (Array.isArray(slim)) return slim
   if (slim !== null && typeof slim === 'object') {
-    const out: Record<string, unknown> = Object.create(null)
+    const out: Record<string, unknown> = {}
     for (const key of Object.keys(slim as object)) {
-      out[key] = walkUnspecified((slim as Record<string, unknown>)[key], [...segments, key], paths)
+      safeAssign(
+        out,
+        key,
+        walkUnspecified((slim as Record<string, unknown>)[key], [...segments, key], paths)
+      )
     }
     return out
   }
@@ -273,11 +278,11 @@ function substitute(
   }
   if (typeof input === 'object') {
     let mutated = false
-    const out: Record<string, unknown> = Object.create(null)
+    const out: Record<string, unknown> = {}
     for (const key of Object.keys(input as object)) {
       const orig = (input as Record<string, unknown>)[key]
       const walked = substitute(orig, [...segments, key], schema, paths)
-      out[key] = walked
+      safeAssign(out, key, walked)
       if (walked !== orig) mutated = true
     }
     return mutated ? out : input

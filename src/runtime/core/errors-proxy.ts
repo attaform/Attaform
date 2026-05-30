@@ -13,6 +13,7 @@ import {
   type Segment,
 } from './paths'
 import { isArrayPath, liveKeysAtPath } from './proxy-live-keys'
+import { safeAssign, safeOwnRead } from './safe-assign'
 import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
 
 /**
@@ -249,17 +250,14 @@ function materializeErrors<F extends GenericForm>(
   // string-keyed object, producing `{ "0": {…} }` for an array path
   // and breaking shape parity with `form.values`.
   const liveContainer = getAtPath(state.form.value, containerSegments)
-  // Object.create(null) for the object case so the tree is incapable
-  // of routing a `__proto__` / `constructor` / `prototype` segment
-  // onto `Object.prototype` no matter what `setFieldErrors` /
-  // `setFormErrors` hands `placeAt`. Legitimate fields named
-  // `prototype` (e.g. an architecture firm tracking building
-  // prototypes) land at their declared path; the pollution arrow has
-  // nowhere to land because prototype-less containers don't inherit
-  // the `__proto__` accessor.
-  const tree: Record<string, unknown> | unknown[] = Array.isArray(liveContainer)
-    ? []
-    : Object.create(null)
+  // Object case carries `Object.prototype` so any consumer reading
+  // the materialized tree directly (or via the errors callable Proxy
+  // when a third-party walker bypasses Vue's instrumentation) sees a
+  // standard prototype chain. The `safeAssign` calls in `placeAt`
+  // land a literal `__proto__` segment as an own data property; no
+  // matter what `setFieldErrors` / `setFormErrors` hands in, the
+  // pollution arrow can't reassign the container's prototype.
+  const tree: Record<string, unknown> | unknown[] = Array.isArray(liveContainer) ? [] : {}
 
   // Two store classes with different visibility rules. Schema +
   // derived-blank: library-produced verdicts; filter out paths the
@@ -364,23 +362,27 @@ function placeAt(
     const nextSeg = path[i + 1] as Segment
     const key = typeof seg === 'number' ? String(seg) : seg
     const cursorRecord = cursor as Record<string, unknown>
-    let child = cursorRecord[key]
+    // `safeOwnRead` here is load-bearing: a literal `__proto__`
+    // segment on a freshly-allocated `{}` tree node would otherwise
+    // resolve via the inherited accessor to `Object.prototype` and
+    // skip the allocation branch, leaking the prototype as the
+    // descent cursor for the next iteration's write.
+    let child = safeOwnRead(cursorRecord, key)
     if (child === null || child === undefined || typeof child !== 'object') {
-      // Object.create(null) for intermediate containers — pairs with
-      // the tree-root construction in `materializeErrors`. Keeps
-      // `__proto__` / `constructor` / `prototype` as ordinary own-
-      // property keys with no path to `Object.prototype`. Numeric
-      // next-segments still produce arrays so the live-shape mirror
-      // (object root → object containers, array root → array
-      // containers) is preserved.
-      child = typeof nextSeg === 'number' ? [] : Object.create(null)
-      cursorRecord[key] = child
+      // Intermediate containers mirror `materializeErrors`' tree root.
+      // Numeric next-segments still produce arrays so the live-shape
+      // mirror (object root → object containers, array root → array
+      // containers) is preserved. `safeAssign` at the parent slot lands
+      // a literal `__proto__` key as an own data property, with no
+      // path to `Object.prototype`.
+      child = typeof nextSeg === 'number' ? [] : {}
+      safeAssign(cursorRecord, key, child)
     }
     cursor = child as Record<string, unknown> | unknown[]
   }
   const lastSeg = path[path.length - 1] as Segment
   const lastKey = typeof lastSeg === 'number' ? String(lastSeg) : lastSeg
   const cursorRecord = cursor as Record<string, unknown>
-  const existing = cursorRecord[lastKey]
-  cursorRecord[lastKey] = Array.isArray(existing) ? [...existing, ...errors] : errors
+  const existing = safeOwnRead(cursorRecord, lastKey)
+  safeAssign(cursorRecord, lastKey, Array.isArray(existing) ? [...existing, ...errors] : errors)
 }

@@ -1,5 +1,6 @@
 import { deleteAtPath, setAtPath } from './path-walker'
 import type { Path, Segment } from './paths'
+import { safeAssign, safeOwnRead } from './safe-assign'
 
 /**
  * Structural diff/apply walker. Used by the state layer to emit per-leaf
@@ -233,7 +234,8 @@ export function applyChangedKeys(target: unknown, source: unknown): boolean {
     }
     for (const k of changedFirstSegments) {
       if (typeof k === 'symbol') continue
-      t[String(k)] = s[String(k)]
+      const key = String(k)
+      safeAssign(t, key, safeOwnRead(s, key))
     }
   }
   return true
@@ -334,19 +336,16 @@ export function structuralSnapshot<T>(value: T): T {
     return out as unknown as T
   }
   const src = value as Record<string, unknown>
-  // Prototype-less snapshot container — pairs with the proto-less
-  // intermediates `setAtPath` allocates. With both lined up, a form
-  // value carrying a legitimate `__proto__` / `constructor` /
-  // `prototype` own property survives the snapshot pass: `out[k] = …`
-  // is an own-property write on every step regardless of `k`, instead
-  // of routing through the inherited `[[Set]]` accessor at a literal
-  // `__proto__` key. `Object.keys` enumerates own enumerable keys on
-  // both the source and the destination identically, so consumers
-  // reading `prev` see the same shape they would have read off
-  // `form.value` directly.
-  const out: Record<string, unknown> = Object.create(null)
+  // Snapshot container carries `Object.prototype` so consumer code
+  // walking `prev` with `.hasOwnProperty(...)` / `in` / Object.keys
+  // gets the shape it expects. The per-key `safeOwnRead` resolves
+  // a literal `__proto__` key to its own data slot rather than
+  // through the inherited accessor; `safeAssign` then defines it as
+  // an own data property on `out` instead of routing through the
+  // inherited setter. Every other key takes the plain branch.
+  const out: Record<string, unknown> = {}
   for (const k of Object.keys(src)) {
-    out[k] = structuralSnapshot(src[k])
+    safeAssign(out, k, structuralSnapshot(safeOwnRead(src, k)))
   }
   return out as unknown as T
 }

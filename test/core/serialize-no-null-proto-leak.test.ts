@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/* eslint-disable @typescript-eslint/no-unsafe-member-access,
+                  @typescript-eslint/no-unsafe-call -- the
+   pinia-shouldHydrate simulation deliberately invokes
+   `node.hasOwnProperty(...)` on dynamically-typed payload nodes; routing
+   through typed wrappers would erase the regression we're guarding. */
 /**
  * Regression gate for issue #314 — the SSR payload `renderAttaformState`
  * produces must not carry null-prototype objects.
@@ -30,6 +35,7 @@
  * a future regression that reintroduces null-proto on the snapshot
  * surface gets caught at the same boundary the dogfooder hit.
  */
+import { stringify as devalueStringify } from 'devalue'
 import { describe, expect, it } from 'vitest'
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, defineComponent, h } from 'vue'
@@ -125,11 +131,70 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
 
       it('walking the snapshot with hasOwnProperty never throws', async () => {
         const snapshot = await buildSnapshot()
-        // This is the same call shape `@pinia/nuxt`'s `shouldHydrate`
-        // reducer runs against every node of the SSR payload during
-        // devalue serialization — the exact path that 500s in
-        // production. A walker is sufficient here; pulling devalue in
-        // as a devDep just to wrap one call wouldn't add coverage.
+        // Hand-rolled walker for the simple case. Same call shape as
+        // pinia's `shouldHydrate`, fast, no extra dependencies.
+        expect(() => probeHasOwnPropertyEverywhere(snapshot)).not.toThrow()
+      })
+
+      it('round-trips through devalue with a pinia-style `shouldHydrate` reducer', async () => {
+        const snapshot = await buildSnapshot()
+        // Reproduces `@pinia/nuxt`'s payload-plugin shape exactly:
+        // `definePayloadReducer('skipHydrate', (data) => !shouldHydrate(data) && 1)`,
+        // where pinia's `shouldHydrate` does
+        // `!isPlainObject(obj) || !obj.hasOwnProperty(skipHydrateSymbol)`.
+        // devalue invokes this reducer on every node it visits during
+        // `stringify`, so the throw — when it happens — propagates out
+        // of `devalue.stringify` exactly as it propagates out of Nuxt's
+        // payload serialization in production.
+        const skipHydrateSymbol = Symbol.for('pinia:skipHydrate')
+        const isPlainObject = (obj: unknown): obj is Record<string, unknown> =>
+          obj !== null &&
+          typeof obj === 'object' &&
+          Object.prototype.toString.call(obj) === '[object Object]'
+        const shouldHydrate = (obj: unknown): boolean => {
+          if (!isPlainObject(obj)) return true
+          // eslint-disable-next-line no-prototype-builtins
+          return !(obj as Record<string | symbol, unknown>).hasOwnProperty(
+            skipHydrateSymbol as unknown as string
+          )
+        }
+        const skipHydrateReducer = (data: unknown): unknown =>
+          !shouldHydrate(data) ? 1 : undefined
+
+        expect(() => devalueStringify(snapshot, { skipHydrate: skipHydrateReducer })).not.toThrow()
+      })
+
+      it('a consumer-supplied null-prototype `defaultValues` is reparented before reaching the payload', async () => {
+        // Edge case: a consumer who hands attaform a literal
+        // `Object.create(null)` shape (rare, but legal) shouldn't be
+        // able to smuggle a null-prototype object into the SSR
+        // payload through the back door. The merge pipeline
+        // (`mergeStructural` / `mergeDeep` / `structuralSnapshot` /
+        // `applyDuStubs`) all build fresh `Object.prototype`-backed
+        // containers, so this case round-trips safe.
+        const nullProtoDefaults: Record<string, unknown> = Object.create(null)
+        nullProtoDefaults['email'] = 'ada@example.com'
+        const nullProtoProfile: Record<string, unknown> = Object.create(null)
+        nullProtoProfile['name'] = 'Ada'
+        nullProtoProfile['bio'] = 'Engineer'
+        nullProtoDefaults['profile'] = nullProtoProfile
+
+        const App = defineComponent({
+          setup() {
+            ;(fixture.useForm as typeof useForm)({
+              schema: fixture.schema as never,
+              key: 'serialize-null-proto-consumer-edge',
+              defaultValues: nullProtoDefaults as never,
+            })
+            return () => h('div')
+          },
+        })
+        const app = createSSRApp(App).use(createAttaform({ ssr: true }))
+        await renderToString(app)
+        const snapshot = renderAttaformState(app)
+        // The walker assertion stands in for every consumer surface —
+        // the snapshot must be safe even when the consumer's input was
+        // null-prototype.
         expect(() => probeHasOwnPropertyEverywhere(snapshot)).not.toThrow()
       })
 

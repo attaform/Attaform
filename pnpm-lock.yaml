@@ -98,6 +98,9 @@ importers:
       chokidar-cli:
         specifier: ^3.0.0
         version: 3.0.0
+      devalue:
+        specifier: ^5.8.1
+        version: 5.8.1
       eslint:
         specifier: ^10.2.1
         version: 10.4.0(jiti@2.7.0)

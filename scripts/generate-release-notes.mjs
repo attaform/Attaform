@@ -155,7 +155,30 @@ function main() {
     return
   }
 
-  const date = new Date().toISOString().slice(0, 10)
+  // HEAD committer date rather than `new Date()` so the release entry
+  // is deterministic across dispatches for a given target_branch HEAD.
+  // release-pr.yml's `Classify dispatch state` step byte-matches the
+  // local bump against any existing `release/v<version>` on origin
+  // (tree-hash equality); an entry date that drifted day-to-day would
+  // break the adoption recovery loop on dispatches that happen on a
+  // different calendar day than the first attempt. HEAD here is
+  // target_branch's tip — `pnpm version --no-git-tag-version` has not
+  // yet created the bump commit.
+  let date
+  try {
+    date = execFileSync('git', ['log', '-1', '--pretty=%cI', 'HEAD'], {
+      encoding: 'utf8',
+    })
+      .trim()
+      .slice(0, 10)
+  } catch (err) {
+    warn(`git log HEAD date lookup failed: ${String(err)}`)
+    return
+  }
+  if (date === '') {
+    warn('git log HEAD date returned empty; skipping')
+    return
+  }
   const entry = `## ${newTag} — ${date}\n\n${body}\n\n---\n\n`
 
   const releasesPath = resolve(repoRoot, 'RELEASES.md')

@@ -221,34 +221,6 @@ jobs:
           fi
           echo "dist_tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Re-dispatch detection
-        # If `release/v<version>` already exists on origin, the prior
-        # dispatch either:
-        #   (a) succeeded and the PR is still open → noop, link the PR
-        #   (b) succeeded, the PR was closed/merged → stale branch needs
-        #       manual cleanup, fail with explicit guidance
-        # Without this check, the `git push origin release/v<version>`
-        # step below would fail with a non-fast-forward error and leave
-        # an unactionable error in the log.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
-          GH_REPOSITORY: ${{ github.repository }}
-          GH_SERVER_URL: ${{ github.server_url }}
-        run: |
-          set -euo pipefail
-          BRANCH="release/v$NEXT_VERSION"
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-            PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
-            if [ -n "$PR_NUMBER" ]; then
-              PR_URL="${GH_SERVER_URL}/${GH_REPOSITORY}/pull/${PR_NUMBER}"
-              echo "::notice title=Release PR already open::PR #$PR_NUMBER for $BRANCH is open at $PR_URL — nothing to do."
-              exit 0
-            fi
-            echo "::error::Branch '$BRANCH' exists on origin but no open PR is associated. Either reopen the closed PR, or clean up the stale branch with: gh api -X DELETE repos/${GH_REPOSITORY}/git/refs/heads/${BRANCH}"
-            exit 1
-          fi
-
       - name: Configure git identity
         # github-actions[bot] attribution. When the PR is squash-merged,
         # the resulting commit on main is web-flow signed by GitHub
@@ -329,7 +301,92 @@ jobs:
           git diff --cached --name-only | sort -u
           git commit -m "chore(release): v${NEXT_VERSION}" -m "Bumps the package to v${NEXT_VERSION} with \`publishConfig.tag=${DIST_TAG}\`. Promotes the CHANGELOG Unreleased section and prepends a RELEASES.md entry. When merged, \`publish-npm.yml\` runs an idempotent precheck and publishes \`attaform@${NEXT_VERSION}\` to npm under the \`${DIST_TAG}\` dist-tag."
 
+      - name: Classify dispatch state
+        id: classify
+        # The bump steps above always produce a local `release/v<version>`
+        # branch with the bump commit. This step inspects the matching
+        # state on origin and decides what to do with the local result:
+        #
+        #   (1) No branch on origin.
+        #         mode=fresh. Push the local branch, open the PR.
+        #   (2) Branch on origin + open PR.
+        #         mode=noop. The prior dispatch already landed everything;
+        #         discard the local bump.
+        #   (3) Branch on origin + no PR + remote tree == local tree.
+        #         mode=adopt. The remote branch is byte-identical to what
+        #         this run just produced (same files, same contents, same
+        #         modes), so it is the artifact of a prior dispatch that
+        #         died before opening the PR. Skip the push, open the
+        #         missing PR against the existing remote branch.
+        #   (4) Branch on origin + no PR + remote tree != local tree.
+        #         Fail with a tree-diff dump. Either a stale branch from
+        #         an abandoned attempt, or a hand-pushed branch with
+        #         contents the workflow did not produce. The user makes
+        #         the call (delete vs. investigate). Refusing adoption
+        #         here is the defense: a malicious actor with write
+        #         access cannot pre-stage `release/v<next>` with a
+        #         backdoored tree and wait for the workflow to merge and
+        #         publish it.
+        #
+        # Tree-hash equality (`git rev-parse <ref>^{tree}`) is the
+        # byte-identity check. Two refs with the same tree SHA are
+        # guaranteed identical for every file, file mode, and directory
+        # structure they contain (git's content-addressed storage gives
+        # us this for free). Commit metadata (author, timestamps, parent)
+        # is NOT in the tree object, so author-email forgery cannot fake
+        # a tree match.
+        #
+        # Adoption requires the bump steps to be deterministic across
+        # dispatches. `pnpm version` + `promote-changelog.mjs` already
+        # are; `generate-release-notes.mjs` uses HEAD's committer date
+        # (not `new Date()`) so RELEASES.md is also deterministic for a
+        # given target_branch HEAD. If the auto-notes API response varies
+        # between runs (PR title edited, label changed), adoption fails
+        # closed; the user cleans up and re-dispatches.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$NEXT_VERSION"
+
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "mode=fresh" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; pushing the local bump and opening the PR."
+            exit 0
+          fi
+
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$PR_NUMBER" ]; then
+            PR_URL="${GH_SERVER_URL}/${GH_REPOSITORY}/pull/${PR_NUMBER}"
+            echo "mode=noop" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release PR already open::PR #$PR_NUMBER for $BRANCH is open at $PR_URL; discarding local bump and exiting."
+            exit 0
+          fi
+
+          git fetch --depth=1 origin "$BRANCH"
+          LOCAL_TREE=$(git rev-parse HEAD^{tree})
+          REMOTE_TREE=$(git rev-parse FETCH_HEAD^{tree})
+
+          if [ "$LOCAL_TREE" = "$REMOTE_TREE" ]; then
+            echo "mode=adopt" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Adopting existing branch::$BRANCH already has the byte-identical bump on origin (tree=$LOCAL_TREE) but no open PR; skipping push, opening the missing PR."
+            exit 0
+          fi
+
+          {
+            echo "::error::Branch '$BRANCH' exists on origin but its tree ($REMOTE_TREE) does not byte-match what this run just produced ($LOCAL_TREE)."
+            echo "::error::Diff (local HEAD vs. origin/$BRANCH):"
+            git --no-pager diff --stat HEAD FETCH_HEAD 2>&1 | sed 's/^/::error::  /' || true
+            echo "::error::Either a stale branch from an abandoned attempt, or a hand-pushed branch with contents this workflow did not produce."
+            echo "::error::Clean up the branch via the GitHub Branches UI (trash icon on '$BRANCH') and re-dispatch, or investigate the divergence."
+          }
+          exit 1
+
       - name: Push release branch
+        if: steps.classify.outputs.mode == 'fresh'
         env:
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
         run: |
@@ -337,6 +394,7 @@ jobs:
           git push origin "release/v$NEXT_VERSION"
 
       - name: Build PR body
+        if: steps.classify.outputs.mode != 'noop'
         # Build the PR body to a file via Node (no shell interpolation)
         # rather than a heredoc with dispatch-input interpolation —
         # eliminates the template-injection footprint that a heredoc
@@ -395,6 +453,7 @@ jobs:
           echo "PR_BODY_PATH=$RUNNER_TEMP/pr-body.md" >> "$GITHUB_ENV"
 
       - name: Ensure release-pr label exists
+        if: steps.classify.outputs.mode != 'noop'
         # `gh pr create --label` rejects unknown labels with
         # `could not add label: 'release-pr' not found`, which would
         # require a one-time `gh label create` against the repo before
@@ -412,6 +471,7 @@ jobs:
             --force
 
       - name: Open release PR
+        if: steps.classify.outputs.mode != 'noop'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}

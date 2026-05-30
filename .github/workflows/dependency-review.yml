@@ -71,23 +71,39 @@ jobs:
           # Post a human-readable summary as a PR comment so reviewers see
           # the diff without clicking into the Actions log.
           comment-summary-in-pr: on-failure
-          # License policy — deny copyleft licenses that would legally
-          # contaminate a library published under MIT. Consumers bundle
-          # npm packages statically (via Vite / Webpack / Rollup), so the
-          # "dynamic linking" exception that usually makes LGPL OK for
-          # *applications* does NOT apply here — LGPL contamination in a
-          # bundled JS library is equivalent to GPL. Hence LGPL is on the
-          # deny list too. SPDX 3.0+ deprecated the suffix-less forms
-          # (`GPL-3.0`, `AGPL-3.0`, etc.); only the `-only` / `-or-later`
-          # variants are listed.
+          # License policy: allowlist of permissive (plus MPL-2.0 weak
+          # copyleft) SPDX identifiers safe to bundle into an MIT-licensed
+          # library. Any PR-introduced dependency with a license not on
+          # this list fails the check. The action upstream deprecated the
+          # `deny-licenses` blocklist option (issue 997) because blocklists
+          # are unbounded: new copyleft and commercial-restrictive licenses
+          # keep appearing, and a missed entry silently passes. The
+          # permissive set is finite, explicit, and reviewable.
+          #
+          # Strong copyleft (GPL, AGPL, LGPL) is intentionally omitted.
+          # npm consumers bundle packages statically (via Vite, Webpack,
+          # Rollup), so the LGPL dynamic-linking exception that usually
+          # makes LGPL safe for applications does NOT apply to bundled JS.
+          # MPL-2.0 stays in: its copyleft is file-scoped, not derivative-
+          # work-scoped, so it does not contaminate the bundle.
+          #
           # Consumers' own license audits remain their responsibility;
           # this is a belt-and-braces check at dependency-introduction time.
-          deny-licenses: >-
-            AGPL-1.0-only, AGPL-1.0-or-later,
-            AGPL-3.0-only, AGPL-3.0-or-later,
-            GPL-1.0-only, GPL-1.0-or-later,
-            GPL-2.0-only, GPL-2.0-or-later,
-            GPL-3.0-only, GPL-3.0-or-later,
-            LGPL-2.0-only, LGPL-2.0-or-later,
-            LGPL-2.1-only, LGPL-2.1-or-later,
-            LGPL-3.0-only, LGPL-3.0-or-later
+          allow-licenses: >-
+            0BSD,
+            Apache-2.0,
+            BSD-2-Clause,
+            BSD-3-Clause,
+            BlueOak-1.0.0,
+            CC-BY-3.0,
+            CC-BY-4.0,
+            CC0-1.0,
+            ISC,
+            MIT,
+            MIT-0,
+            MPL-2.0,
+            PostgreSQL,
+            Python-2.0,
+            Unlicense,
+            WTFPL,
+            Zlib

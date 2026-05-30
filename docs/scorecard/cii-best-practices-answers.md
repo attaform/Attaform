@@ -417,15 +417,16 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 ## Submission checklist
 
-1. Open <https://www.bestpractices.dev/projects/new>
-2. Sign in with GitHub (the OAuth flow links the badge to the maintainer's identity)
-3. Enter the project URL: `https://github.com/attaform/Attaform`
-4. Use this file as the answer key. For each criterion:
-   - Select **Met** / **Unmet** / **N/A** matching the answer above
-   - Paste the URL/evidence into the form's URL field
-   - Paste the notes (verbatim or summarised) into the form's justification field
-5. Submit. The form's status flips to "passing" once every MUST and most SHOULD criteria are marked Met or N/A.
-6. After approval (usually same-day for clean submissions), file a follow-up PR adding the badge image + link to README.md:
+The repo ships a generated `.bestpractices.json` at the root. bestpractices.dev auto-discovers it and pre-fills the form, so submission collapses to a review pass.
+
+1. Confirm `.bestpractices.json` is up to date: `node scripts/build-bestpractices-json.mjs` should produce no diff.
+2. Open <https://www.bestpractices.dev/projects/new>.
+3. Sign in with GitHub (the OAuth flow links the badge to the maintainer's identity).
+4. Enter the project URL: `https://github.com/attaform/Attaform`.
+5. Open each of the six sections in order (`BASICS` → `CHANGE_CONTROL` → `REPORTING` → `QUALITY` → `SECURITY` → `ANALYSIS`). The first edit per section triggers the auto-fill from `.bestpractices.json`. Spot-check the pre-filled answers against the table above.
+6. Click **Save (and continue) 🤖** at the bottom of each section.
+7. The form's status flips to "passing" once every MUST and most SHOULD criteria are Met or N/A. The pre-fill produces that state by design; if the badge meter doesn't move, find the offending criterion in the upstream form and trace the value back to the markdown above.
+8. After approval (usually same-day for clean submissions), file a follow-up PR adding the badge image + link to README.md:
 
    ```markdown
    [![CII Best Practices](https://www.bestpractices.dev/projects/<id>/badge)](https://www.bestpractices.dev/projects/<id>)
@@ -440,4 +441,10 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 ## Maintenance
 
-The OpenSSF badge state revalidates yearly. When the renewal prompt arrives, walk this file top-to-bottom and update any URL or rationale that's drifted (e.g. file path moves, new SECURITY.md commitments). The form re-saves answers; only changes need editing.
+The OpenSSF badge state revalidates yearly. When the renewal prompt arrives, walk this file top-to-bottom and update any URL or rationale that's drifted (e.g. file path moves, new SECURITY.md commitments), then regenerate `.bestpractices.json`:
+
+```bash
+node scripts/build-bestpractices-json.mjs
+```
+
+Commit the regenerated JSON alongside the markdown edits. bestpractices.dev re-reads the file on the next form save; only changed criteria need clicking through.

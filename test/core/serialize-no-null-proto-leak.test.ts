@@ -1,9 +1,4 @@
 // @vitest-environment jsdom
-/* eslint-disable @typescript-eslint/no-unsafe-member-access,
-                  @typescript-eslint/no-unsafe-call -- the
-   pinia-shouldHydrate simulation deliberately invokes
-   `node.hasOwnProperty(...)` on dynamically-typed payload nodes; routing
-   through typed wrappers would erase the regression we're guarding. */
 /**
  * Regression gate for issue #314 — the SSR payload `renderAttaformState`
  * produces must not carry null-prototype objects.
@@ -162,6 +157,156 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
           !shouldHydrate(data) ? 1 : undefined
 
         expect(() => devalueStringify(snapshot, { skipHydrate: skipHydrateReducer })).not.toThrow()
+      })
+
+      it('a deeply-nested null-prototype leaf in `defaultValues` is reparented before reaching the payload', async () => {
+        // Probe: `{ some: { nested: { path: { to: { this: Object.create(null) } } } } }`
+        // — the null-proto sits four levels deep, not at the root.
+        // Schema declares a matching nested shape so the merge has a
+        // chance to walk into the null-proto. We assert the snapshot
+        // is fully safe regardless of where the null-proto appears.
+        const innerNullProto: Record<string, unknown> = Object.create(null)
+        innerNullProto['leaf'] = 'value-at-null-proto-leaf'
+        const innerNullProtoNested: Record<string, unknown> = Object.create(null)
+        innerNullProtoNested['deeper'] = 'value-deeper-at-null-proto'
+        innerNullProto['nested'] = innerNullProtoNested
+
+        const NestedSchema = (
+          fixture.useForm === useForm
+            ? z.object({
+                email: z.string(),
+                some: z.object({
+                  nested: z.object({
+                    path: z.object({
+                      to: z.object({
+                        this: z.object({
+                          leaf: z.string(),
+                          nested: z.object({ deeper: z.string() }),
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              })
+            : zV3.object({
+                email: zV3.string(),
+                some: zV3.object({
+                  nested: zV3.object({
+                    path: zV3.object({
+                      to: zV3.object({
+                        this: zV3.object({
+                          leaf: zV3.string(),
+                          nested: zV3.object({ deeper: zV3.string() }),
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              })
+        ) as never
+
+        const defaults = {
+          email: 'ada@example.com',
+          some: { nested: { path: { to: { this: innerNullProto } } } },
+        }
+
+        const App = defineComponent({
+          setup() {
+            ;(fixture.useForm as typeof useForm)({
+              schema: NestedSchema,
+              key: 'serialize-null-proto-nested-leaf',
+              defaultValues: defaults as never,
+            })
+            return () => h('div')
+          },
+        })
+        const app = createSSRApp(App).use(createAttaform({ ssr: true }))
+        await renderToString(app)
+        const snapshot = renderAttaformState(app)
+
+        // The walker stands in for any third-party payload walker
+        // (pinia-style or otherwise) — every node must respond.
+        expect(() => probeHasOwnPropertyEverywhere(snapshot)).not.toThrow()
+
+        // Also walk the snapshot and assert every plain-object node
+        // carries `Object.prototype`. This catches the case where a
+        // null-proto leaf is preserved by reference (no copy step) and
+        // would otherwise crash a third-party reducer.
+        const walk = (value: unknown): void => {
+          if (value === null || value === undefined) return
+          if (Array.isArray(value)) {
+            value.forEach(walk)
+            return
+          }
+          if (typeof value !== 'object') return
+          if (Object.prototype.toString.call(value) !== '[object Object]') return
+          expect(Object.getPrototypeOf(value)).toBe(Object.prototype)
+          for (const key of Object.keys(value as Record<string, unknown>)) {
+            walk((value as Record<string, unknown>)[key])
+          }
+        }
+        walk(snapshot)
+      })
+
+      it('a null-prototype value at a stowaway (`z.unknown()`) schema path is reparented before reaching the payload', async () => {
+        // Worst-case probe: the consumer's null-prototype value sits
+        // at a schema path declared as `z.unknown()`, meaning the
+        // merge pipeline has no shape to walk into. The
+        // `mergeStructuralImpl` early-return at this branch (when
+        // `defaultValue` is non-record) would naively pass the
+        // consumer's reference through unchanged — but the downstream
+        // `structuralSnapshot` in `createFormStore` rebuilds every
+        // descendable container as a fresh `Object.prototype`-backed
+        // record, so the null-proto can't survive to the snapshot.
+        const stowaway: Record<string, unknown> = Object.create(null)
+        stowaway['hidden'] = 'value'
+        const nestedStowaway: Record<string, unknown> = Object.create(null)
+        nestedStowaway['x'] = 1
+        stowaway['nested'] = nestedStowaway
+
+        const StowawaySchema = (
+          fixture.useForm === useForm
+            ? z.object({
+                email: z.string(),
+                opaque: z.unknown(),
+              })
+            : zV3.object({
+                email: zV3.string(),
+                opaque: zV3.unknown(),
+              })
+        ) as never
+
+        const stowawayDefaults = { email: 'ada@example.com', opaque: stowaway }
+        const App = defineComponent({
+          setup() {
+            ;(fixture.useForm as typeof useForm)({
+              schema: StowawaySchema,
+              key: 'serialize-null-proto-stowaway',
+              defaultValues: stowawayDefaults as never,
+            })
+            return () => h('div')
+          },
+        })
+        const app = createSSRApp(App).use(createAttaform({ ssr: true }))
+        await renderToString(app)
+        const snapshot = renderAttaformState(app)
+
+        expect(() => probeHasOwnPropertyEverywhere(snapshot)).not.toThrow()
+
+        const walk = (value: unknown): void => {
+          if (value === null || value === undefined) return
+          if (Array.isArray(value)) {
+            value.forEach(walk)
+            return
+          }
+          if (typeof value !== 'object') return
+          if (Object.prototype.toString.call(value) !== '[object Object]') return
+          expect(Object.getPrototypeOf(value)).toBe(Object.prototype)
+          for (const key of Object.keys(value as Record<string, unknown>)) {
+            walk((value as Record<string, unknown>)[key])
+          }
+        }
+        walk(snapshot)
       })
 
       it('a consumer-supplied null-prototype `defaultValues` is reparented before reaching the payload', async () => {

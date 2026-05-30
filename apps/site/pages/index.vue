@@ -221,7 +221,7 @@
       <UiContainer size="xl">
         <div class="flex max-w-4xl flex-col items-start gap-8 py-24 md:py-32">
           <a
-            href="https://github.com/attaform/attaform/releases"
+            href="https://github.com/attaform/Attaform/releases"
             target="_blank"
             rel="noopener noreferrer"
             class="reveal-step group inline-flex items-center gap-2 rounded-full border border-warm/30 bg-bg/80 py-1 pr-2 pl-3 text-sm font-medium text-fg-muted shadow-xs backdrop-blur transition-[color,border-color,background-color] duration-(--duration-fast) hover:border-accent/40 hover:text-fg"
@@ -279,7 +279,7 @@
               <ArrowRight class="h-5 w-5" :stroke-width="2.25" />
             </UiButton>
             <UiButton to="/demos" size="xl" variant="secondary">Try it live</UiButton>
-            <UiButton href="https://github.com/attaform/attaform" size="xl" variant="ghost">
+            <UiButton href="https://github.com/attaform/Attaform" size="xl" variant="ghost">
               <UiBrandGithub class="h-5 w-5" />
               <span>GitHub</span>
             </UiButton>

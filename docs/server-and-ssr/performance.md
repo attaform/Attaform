@@ -19,7 +19,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-This page is reference material; no demo. CI runs the benchmark suite under [`bench/`](https://github.com/attaform/attaform/tree/main/bench) on every PR, so the numbers below come from a known-good environment and ride alongside the code.
+This page is reference material; no demo. CI runs the benchmark suite under [`bench/`](https://github.com/attaform/Attaform/tree/main/bench) on every PR, so the numbers below come from a known-good environment and ride alongside the code.
 
 ## Measured numbers
 
@@ -47,7 +47,7 @@ A 60 fps frame is **16.7 ms**. Single-keystroke work clears the budget by three 
 
 ## Hot-path characteristics
 
-- **Keystrokes**: the `register` → form-state path runs against a per-PR threshold; see [`bench/keystroke.bench.ts`](https://github.com/attaform/attaform/blob/main/bench/keystroke.bench.ts) for the measured scenarios (100-leaf and 500-leaf forms, single-leaf mutation).
+- **Keystrokes**: the `register` → form-state path runs against a per-PR threshold; see [`bench/keystroke.bench.ts`](https://github.com/attaform/Attaform/blob/main/bench/keystroke.bench.ts) for the measured scenarios (100-leaf and 500-leaf forms, single-leaf mutation).
 - **`form.meta.dirty`**: iterates the tracked leaves with no per-leaf parse cost.
 - **Path resolution**: dotted-string paths are LRU-cached (128 entries), so repeat canonicalization reduces to a map lookup.
 

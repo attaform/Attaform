@@ -22,7 +22,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-This page is code-only; bare-Vue SSR runs on a Node server you provide. The end-to-end test at [`test/ssr-bare-vue/round-trip.test.ts`](https://github.com/attaform/attaform/blob/main/test/ssr-bare-vue/round-trip.test.ts) exercises exactly the pattern below and is the fastest way to read it working.
+This page is code-only; bare-Vue SSR runs on a Node server you provide. The end-to-end test at [`test/ssr-bare-vue/round-trip.test.ts`](https://github.com/attaform/Attaform/blob/main/test/ssr-bare-vue/round-trip.test.ts) exercises exactly the pattern below and is the fastest way to read it working.
 
 ## Server (`entry-server.ts`)
 

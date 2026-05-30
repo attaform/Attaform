@@ -1,0 +1,409 @@
+name: Prepare Release PR
+run-name: ${{ github.event.inputs.exact_version != '' && format('Prepare v{0} release PR{1}', github.event.inputs.exact_version, github.event.inputs.dist_tag != '' && format(' @ {0}', github.event.inputs.dist_tag) || '') || format('Prepare {0} release PR', github.event.inputs.prerelease_id != '' && format('{0} ({1})', github.event.inputs.version_type, github.event.inputs.prerelease_id) || github.event.inputs.version_type) }}
+
+# Step one of the two-workflow publish topology. This workflow opens a
+# release PR with the version bump + CHANGELOG / RELEASES.md updates;
+# `publish-npm.yml` (step two) fires on push to main once the PR merges
+# and handles the actual npm publish + tag push + GitHub Release. Split
+# so:
+#
+#   1. Branch updates to main always go through a PR. The
+#      `main protection` ruleset on the repo gates main behind 10
+#      required status checks + a `pull_request` rule with no bypass
+#      actors; the old single-workflow approach (`git push --follow-tags`
+#      back to main from the publish step) is structurally blocked.
+#   2. The release-PR workflow runs install-script-free. It only needs
+#      `pnpm version` (which doesn't read node_modules) + `gh`
+#      (system binary) + Node (for `scripts/promote-changelog.mjs` +
+#      `scripts/generate-release-notes.mjs`, both pure-Node). No GPG
+#      key, no npm OIDC token, no `Production (NPM)` environment scope.
+#      The privileged surface lives entirely in `publish-npm.yml`.
+#   3. The bump commit on the release branch is github-actions[bot]-
+#      attributed; web-flow squash-merge replaces it with a fresh
+#      web-flow-signed commit, which satisfies the ruleset's
+#      `required_signatures` rule. GPG-signing the release branch
+#      commit would be wasted effort.
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version type (major, minor, patch). For prereleases, this is the base bump that the prerelease attaches to (used only when starting a NEW prerelease cycle). Ignored when `exact_version` is set.'
+        required: true
+        default: 'patch'
+      prerelease_id:
+        description: 'Prerelease identifier (alpha, beta, rc, next, ...). Leave EMPTY for a stable release. Example flow: 0.2.1 → 0.2.2-beta.0 → 0.2.2-beta.1 → 0.2.2. Ignored when `exact_version` is set.'
+        required: false
+        default: ''
+      exact_version:
+        description: 'Override mode: open a release PR for this EXACT semver (e.g. "1.16.3" or "1.16.3-hotfix.0") instead of computing from version_type / prerelease_id. Use for hotfixes to an older major line while a newer major holds the current `latest` tag. Pair with `dist_tag` so the publish does not clobber `latest`.'
+        required: false
+        default: ''
+      dist_tag:
+        description: 'npm dist-tag override. Leave EMPTY in normal flows — the workflow derives `latest` for stable releases and the preid for prereleases. Set this when publishing an off-latest version (e.g. "v1" for a v1.x hotfix while 2.x is current) so `npm install attaform` still resolves to the current major.'
+        required: false
+        default: ''
+      target_branch:
+        description: 'Branch to open the release PR against. Default `main` for normal releases; set to `hotfix/v<major>` (e.g. `hotfix/v0`) for off-latest hotfixes against an older major line.'
+        required: false
+        default: 'main'
+
+# Workflow-level default: read-only. The `prepare` job below upgrades
+# to `contents: write` + `pull-requests: write` for the branch push +
+# PR open. No `id-token`, no `attestations`, no environment scope —
+# `release-pr.yml` runs without access to the GPG signing key or npm
+# OIDC credential.
+permissions:
+  contents: read
+
+# Serialize against the same target branch so two simultaneous dispatches
+# don't both try to create `release/v<version>`. Different target branches
+# (e.g. one against main + one against `hotfix/v0`) can run in parallel.
+concurrency:
+  group: release-pr-${{ github.event.inputs.target_branch || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Push the `release/v<version>` branch (a release-PR branch, NOT main).
+      pull-requests: write # Open the release PR via `gh pr create`.
+    steps:
+      - name: Validate dispatch ref allowlist
+        # workflow_dispatch picks up `github.ref` from the branch shown
+        # in the dispatch UI. Restrict to `main` + `hotfix/v*` so a
+        # dispatch from a random feature branch can't open a release PR
+        # against an unintended base.
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$REF" in
+            refs/heads/main) ;;
+            refs/heads/hotfix/v*) ;;
+            *)
+              echo "::error::Dispatching ref '$REF' is not allowed. release-pr.yml accepts dispatches from 'main' or 'hotfix/v*' only."
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout target branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+          # Full history needed by `generate-release-notes.mjs` to walk
+          # `git tag --sort=-creatordate` for the previous release.
+          fetch-depth: 0
+          # Keep GITHUB_TOKEN in .git/config so the branch push step
+          # below can authenticate. Unlike publish-npm.yml, this workflow
+          # never mints a privileged OIDC token, so the token sitting
+          # in the working tree config is a smaller risk surface and a
+          # cleaner ergonomic.
+          persist-credentials: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          # Disable setup-node's package-manager-cache. We never run
+          # `pnpm install` in this workflow — `pnpm version` only edits
+          # package.json and runs the `version` lifecycle hook (which
+          # calls pure-Node scripts). No node_modules surface to cache.
+          package-manager-cache: false
+
+      - name: Calculate next version
+        id: calculate-next-version
+        env:
+          # Bind the inputs into env vars so the `run:` block references
+          # them as ordinary shell variables — eliminates the GitHub
+          # Actions template-injection footprint without a suppression
+          # comment.
+          VERSION_TYPE: ${{ github.event.inputs.version_type }}
+          PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+          EXACT_VERSION: ${{ github.event.inputs.exact_version }}
+        run: |
+          set -euo pipefail
+          # exact_version short-circuit: caller dictates the version
+          # verbatim, skipping version_type / prerelease_id math. Used
+          # for hotfix releases to older major lines (e.g. opening a PR
+          # for 1.16.3 while 2.x is current). Pair with `dist_tag` so the
+          # off-latest tarball does not shadow the current `latest`.
+          if [ -n "$EXACT_VERSION" ]; then
+            if ! echo "$EXACT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+)?$'; then
+              echo "::error::exact_version='$EXACT_VERSION' is not a valid semver string. Examples: 1.16.3, 1.16.3-hotfix.0"
+              exit 1
+            fi
+            CURRENT=$(node -p "require('./package.json').version")
+            if [ "$EXACT_VERSION" = "$CURRENT" ]; then
+              echo "::error::exact_version='$EXACT_VERSION' matches the current package.json version — pnpm version would reject the bump. Pick a distinct version or use a regular bump path."
+              exit 1
+            fi
+            echo "next_version=$EXACT_VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Computed in Node so we can handle prerelease semantics without
+          # depending on `semver` being installed. Pure-JS version inc,
+          # matching `semver.inc`:
+          #
+          #   stable + no preid    → bump <type>           e.g. 0.13.0 → 0.13.1
+          #   stable + preid       → pre<type> + .0        e.g. 0.13.0 → 0.13.1-beta.0
+          #   prerelease + no preid → drop suffix          e.g. 0.13.1-beta.5 → 0.13.1
+          #   prerelease + same preid → bump counter       e.g. 0.13.1-beta.5 → 0.13.1-beta.6
+          #   prerelease + new preid → switch preid, .0    e.g. 0.13.1-beta.5 → 0.13.1-rc.0
+          #
+          # version_type is consulted ONLY when starting a new prerelease
+          # cycle from stable. Once you're inside a prerelease cycle, base
+          # bumps are deferred until you exit (run with empty prerelease_id
+          # then bump separately, or pass version_type=patch which drops
+          # the suffix without re-bumping).
+          NEXT=$(node -e '
+            const v = require("./package.json").version;
+            const type = process.env.VERSION_TYPE;
+            const preid = process.env.PRERELEASE_ID;
+            const m = v.match(/^(\d+)\.(\d+)\.(\d+)(?:-([\w.-]+?)(?:\.(\d+))?)?$/);
+            if (!m) { console.error("Unparseable version: " + v); process.exit(1); }
+            let [, maj, min, pat, curId, curN] = m;
+            maj = +maj; min = +min; pat = +pat;
+            curN = curN === undefined ? null : +curN;
+            const onPrerelease = curId !== undefined;
+            const bumpBase = (t) => {
+              if (t === "major") { maj++; min = 0; pat = 0; }
+              else if (t === "minor") { min++; pat = 0; }
+              else { pat++; }
+            };
+            let next;
+            if (preid) {
+              if (onPrerelease) {
+                if (curId === preid && curN !== null) {
+                  next = `${maj}.${min}.${pat}-${preid}.${curN + 1}`;
+                } else {
+                  next = `${maj}.${min}.${pat}-${preid}.0`;
+                }
+              } else {
+                bumpBase(type);
+                next = `${maj}.${min}.${pat}-${preid}.0`;
+              }
+            } else {
+              if (onPrerelease) {
+                next = `${maj}.${min}.${pat}`;
+              } else {
+                bumpBase(type);
+                next = `${maj}.${min}.${pat}`;
+              }
+            }
+            console.log(next);
+          ')
+          echo "next_version=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Compute resolved dist-tag
+        id: compute-dist-tag
+        env:
+          DIST_TAG_INPUT: ${{ github.event.inputs.dist_tag }}
+          PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+        run: |
+          set -euo pipefail
+          # Resolution order: explicit `dist_tag` input wins; else
+          # `<preid>` for prereleases; else `latest`. publish-npm.yml
+          # reads this value back from `package.json#publishConfig.tag`
+          # to drive both `pnpm publish` and the GitHub Release
+          # `make_latest` flag.
+          if [ -n "${DIST_TAG_INPUT:-}" ]; then
+            TAG="$DIST_TAG_INPUT"
+          elif [ -n "${PRERELEASE_ID:-}" ]; then
+            TAG="$PRERELEASE_ID"
+          else
+            TAG="latest"
+          fi
+          echo "dist_tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Re-dispatch detection
+        # If `release/v<version>` already exists on origin, the prior
+        # dispatch either:
+        #   (a) succeeded and the PR is still open → noop, link the PR
+        #   (b) succeeded, the PR was closed/merged → stale branch needs
+        #       manual cleanup, fail with explicit guidance
+        # Without this check, the `git push origin release/v<version>`
+        # step below would fail with a non-fast-forward error and leave
+        # an unactionable error in the log.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$NEXT_VERSION"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+            if [ -n "$PR_NUMBER" ]; then
+              PR_URL="${GH_SERVER_URL}/${GH_REPOSITORY}/pull/${PR_NUMBER}"
+              echo "::notice title=Release PR already open::PR #$PR_NUMBER for $BRANCH is open at $PR_URL — nothing to do."
+              exit 0
+            fi
+            echo "::error::Branch '$BRANCH' exists on origin but no open PR is associated. Either reopen the closed PR, or clean up the stale branch with: gh api -X DELETE repos/${GH_REPOSITORY}/git/refs/heads/${BRANCH}"
+            exit 1
+          fi
+
+      - name: Configure git identity
+        # github-actions[bot] attribution. When the PR is squash-merged,
+        # the resulting commit on main is web-flow signed by GitHub
+        # (which satisfies the `required_signatures` ruleset rule), so
+        # the GPG signature we'd otherwise add here would be discarded.
+        # Keep the workflow GPG-free; that key only matters for tag
+        # signing in publish-npm.yml.
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create release branch
+        env:
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          git checkout -b "release/v$NEXT_VERSION"
+
+      - name: Bump version + promote changelog
+        # `pnpm version <X> --no-git-tag-version` writes the new version
+        # into package.json and fires the `version` npm-hook
+        # (promote-changelog.mjs + generate-release-notes.mjs +
+        # `git add CHANGELOG.md RELEASES.md`). The `--no-git-tag-version`
+        # flag suppresses the auto-commit AND the auto-tag — the staged
+        # files stay in the index for the manual commit step below.
+        #
+        # RELEASE_NOTES_TARGET_REF is consumed by generate-release-notes.mjs
+        # when calling `gh api .../generate-notes` — for hotfix releases
+        # against a non-main branch, this drives the PR-range correctly.
+        env:
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES_TARGET_REF: ${{ github.event.inputs.target_branch }}
+        run: |
+          set -euo pipefail
+          pnpm version "$NEXT_VERSION" --no-git-tag-version
+
+      - name: Set publishConfig.tag
+        # Surgical string-level edit to preserve the rest of package.json
+        # byte-for-byte (matching how `pnpm version` itself edits the
+        # version field). Re-serializing via JSON.stringify would risk
+        # drifting against the repo's Prettier rule on package.json.
+        # Anchored to the `publishConfig` block so we never touch an
+        # unrelated key literally named `tag` elsewhere.
+        env:
+          DIST_TAG: ${{ steps.compute-dist-tag.outputs.dist_tag }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const path = "package.json";
+            const src = fs.readFileSync(path, "utf8");
+            const tag = process.env.DIST_TAG;
+            const match = src.match(/("publishConfig"\s*:\s*\{[^}]*?"tag"\s*:\s*")[^"]*(")/);
+            if (!match) {
+              console.error("Could not locate publishConfig.tag in package.json — abort.");
+              process.exit(1);
+            }
+            const updated = src.replace(match[0], `${match[1]}${tag}${match[2]}`);
+            fs.writeFileSync(path, updated);
+            console.log(`publishConfig.tag set to "${tag}"`);
+          '
+
+      - name: Stage and commit
+        env:
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          DIST_TAG: ${{ steps.compute-dist-tag.outputs.dist_tag }}
+        run: |
+          set -euo pipefail
+          # `pnpm version` staged CHANGELOG.md + RELEASES.md (via the
+          # `version` hook's `git add` step) and modified package.json
+          # in the working tree without staging it. The publishConfig.tag
+          # edit above only touches package.json. Stage both
+          # package.json edits explicitly.
+          git add package.json
+          echo "Files staged for release commit:"
+          git diff --cached --name-only | sort -u
+          git commit -m "chore(release): v${NEXT_VERSION}" -m "Bumps the package to v${NEXT_VERSION} with \`publishConfig.tag=${DIST_TAG}\`. Promotes the CHANGELOG Unreleased section and prepends a RELEASES.md entry. When merged, \`publish-npm.yml\` runs an idempotent precheck and publishes \`attaform@${NEXT_VERSION}\` to npm under the \`${DIST_TAG}\` dist-tag."
+
+      - name: Push release branch
+        env:
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          git push origin "release/v$NEXT_VERSION"
+
+      - name: Build PR body
+        # Build the PR body to a file via Node (no shell interpolation)
+        # rather than a heredoc with dispatch-input interpolation —
+        # eliminates the template-injection footprint that a heredoc
+        # `<<EOF` block with `$DIST_TAG` / `$NEXT_VERSION` would
+        # carry. The body is read by `gh pr create --body-file` below.
+        env:
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          DIST_TAG: ${{ steps.compute-dist-tag.outputs.dist_tag }}
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const version = process.env.NEXT_VERSION;
+            const distTag = process.env.DIST_TAG;
+            const target = process.env.TARGET_BRANCH || "main";
+            const preid = process.env.PRERELEASE_ID || "";
+            const isPrerelease = preid !== "";
+            const makesLatest = distTag === "latest" && !isPrerelease;
+            const body = [
+              `## Release v${version}`,
+              "",
+              "Mechanical version-bump PR opened by `release-pr.yml`. Merging this PR triggers `publish-npm.yml` to publish `attaform@" + version + "` to npm under the `" + distTag + "` dist-tag.",
+              "",
+              "| Detail | Value |",
+              "|---|---|",
+              "| Version | `" + version + "` |",
+              "| npm dist-tag | `" + distTag + "` |",
+              "| Prerelease | " + (isPrerelease ? "yes (preid: `" + preid + "`)" : "no") + " |",
+              "| Target branch | `" + target + "` |",
+              "| Make-latest | " + (makesLatest ? "yes" : "no") + " |",
+              "",
+              "### What changed",
+              "",
+              "- `package.json`: version bumped, `publishConfig.tag` set to `" + distTag + "`",
+              "- `CHANGELOG.md`: `## Unreleased` promoted to `## v" + version + "`",
+              "- `RELEASES.md`: auto-generated GitHub release-notes entry prepended",
+              "",
+              "### After merge",
+              "",
+              "`publish-npm.yml` runs an idempotent precheck:",
+              "",
+              "1. `npm view attaform@" + version + "`: publishes if missing",
+              "2. `git ls-remote --tags origin v" + version + "`: pushes tag if missing",
+              "3. `gh release view v" + version + "`: creates GitHub Release if missing",
+              "",
+              "Re-running the workflow after a successful publish is safe (noop).",
+              "",
+            ].join("\n");
+            const out = path.join(process.env.RUNNER_TEMP, "pr-body.md");
+            fs.writeFileSync(out, body);
+            console.log("Wrote PR body to " + out);
+          '
+          echo "PR_BODY_PATH=$RUNNER_TEMP/pr-body.md" >> "$GITHUB_ENV"
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --base "$TARGET_BRANCH" \
+            --head "release/v$NEXT_VERSION" \
+            --title "chore(release): v$NEXT_VERSION" \
+            --label "release-pr" \
+            --body-file "$PR_BODY_PATH"

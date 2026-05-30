@@ -555,7 +555,11 @@ export function stripUnacknowledgedSensitiveLeaves(
     if (value === null || typeof value !== 'object') return value
     if (Array.isArray(value)) return value.map((item, i) => walk([...path, i], item))
     if (!isPlainRecord(value)) return value
-    const out: Record<string, unknown> = {}
+    // Prototype-less scrub container, matching the rest of the
+    // persistence layer's allocators. The sensitive-leaf scrub feeds
+    // back into the persisted payload, so the shape stays consistent
+    // with what `mergeDeep` would produce on the way back in.
+    const out: Record<string, unknown> = Object.create(null)
     for (const key of Object.keys(value as Record<string, unknown>)) {
       const walked = walk([...path, key], (value as Record<string, unknown>)[key])
       if (walked !== undefined) out[key] = walked

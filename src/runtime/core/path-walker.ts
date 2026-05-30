@@ -349,7 +349,12 @@ function mergeStructuralImpl(
       return consumer
     }
     let mutated = false
-    const out: Record<string, unknown> = { ...consumer }
+    // Prototype-less merge target, matching `setAtPath` and `mergeDeep`
+    // elsewhere in the runtime. Spread via `Object.assign` copies
+    // consumer's own properties as own properties on the proto-less
+    // container, so the merged tree stays structurally consistent
+    // with every other allocator.
+    const out: Record<string, unknown> = Object.assign(Object.create(null), consumer)
     // Fill schema-default keys that are MISSING from consumer (key
     // not present at all). An explicit `consumer[key] = undefined`
     // means the consumer named the slot empty on purpose — distinct

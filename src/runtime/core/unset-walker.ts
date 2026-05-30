@@ -134,7 +134,12 @@ function walk(
     ) {
       for (const k of Object.keys(slim as object)) allKeys.add(k)
     }
-    const out: Record<string, unknown> = {}
+    // Prototype-less container, matching the rest of the runtime's
+    // value-write pipeline. Schema keys can't be literal `__proto__`,
+    // so this is principle alignment rather than a new pollution gate;
+    // it keeps the walker's output structurally identical to
+    // `setAtPath`'s so a value flowing through both stays one shape.
+    const out: Record<string, unknown> = Object.create(null)
     let mutated = allKeys.size !== inputKeys.length
     for (const key of allKeys) {
       const orig = (input as Record<string, unknown>)[key]
@@ -192,7 +197,7 @@ export function walkUnspecified(slim: unknown, segments: Segment[], paths: PathK
   // tuple-shaped fixed arrays opt-in via explicit per-element `unset`.
   if (Array.isArray(slim)) return slim
   if (slim !== null && typeof slim === 'object') {
-    const out: Record<string, unknown> = {}
+    const out: Record<string, unknown> = Object.create(null)
     for (const key of Object.keys(slim as object)) {
       out[key] = walkUnspecified((slim as Record<string, unknown>)[key], [...segments, key], paths)
     }
@@ -268,7 +273,7 @@ function substitute(
   }
   if (typeof input === 'object') {
     let mutated = false
-    const out: Record<string, unknown> = {}
+    const out: Record<string, unknown> = Object.create(null)
     for (const key of Object.keys(input as object)) {
       const orig = (input as Record<string, unknown>)[key]
       const walked = substitute(orig, [...segments, key], schema, paths)

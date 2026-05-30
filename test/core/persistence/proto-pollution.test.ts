@@ -89,11 +89,12 @@ describe('SEC-2 — persistence hydration merge resists prototype pollution', ()
     expect(isPlainRecord(merged)).toBe(true)
   })
 
-  it('SSR DU-stub walk ignores a __proto__ hydration key', () => {
-    // `walkDuStubs` still uses the SEC-2-era input-rejection guard;
-    // a follow-up PR will apply the proto-less storage treatment here
-    // alongside the rest of the sweep. This case pins the current
-    // behavior until then.
+  it('SSR DU-stub walk keeps Object.prototype clean despite a __proto__ hydration key', () => {
+    // `walkDuStubs` is now proto-less too: a hostile `__proto__` in
+    // the SSR hydration payload lands as an ordinary own-property
+    // pair on the prototype-less form-value container, and the global
+    // prototype stays untouched. Mirrors the structural defense in
+    // `setAtPath` and the persistence merge.
     const hostile = JSON.parse('{"__proto__":{"polluted":1},"name":"x","nested":{"a":"y"}}')
     const state = createFormStore<Bag>({
       formKey: 'sec2-ssr',
@@ -101,8 +102,16 @@ describe('SEC-2 — persistence hydration merge resists prototype pollution', ()
       hydration: { form: hostile, schemaErrors: [], userErrors: [], fields: [] },
     })
     const raw = toRaw(state.form.value) as Record<string, unknown>
-    expect(raw['polluted']).toBeUndefined()
+
+    // The SEC-2 invariant.
     expect(readGlobalProp('polluted')).toBeUndefined()
-    expect(Object.getPrototypeOf(raw)).toBe(Object.prototype)
+    // Prototype-less form-value container — `__proto__` is an own
+    // property at the top level (mirrors what `setValue` would
+    // produce for a legitimate `__proto__` schema field).
+    expect(Object.getPrototypeOf(raw)).toBeNull()
+    expect(raw['polluted']).toBeUndefined()
+    // Defaults still merged through (name + nested came through SSR
+    // alongside the special-key smuggle).
+    expect(raw['name']).toBe('x')
   })
 })

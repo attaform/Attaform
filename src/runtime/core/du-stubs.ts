@@ -1,6 +1,6 @@
 import type { AbstractSchema } from '../types/types-api'
 import { __DEV__ } from './dev'
-import { isDangerousSegment, type Path } from './paths'
+import { type Path } from './paths'
 
 /**
  * Walk an `initialData` / restored payload and collapse any object whose
@@ -17,9 +17,11 @@ import { isDangerousSegment, type Path } from './paths'
  * variant transitions) without sharing state across calls.
  *
  * SSR hydration payloads (third-party storage JSON) flow through the
- * same walker. The dangerous-segment guard (`__proto__` /
- * `constructor` / `prototype`) is applied at every object-key step so
- * an attacker's payload can't reach the bracket-assign in `out[k]`.
+ * same walker. Pollution defense is structural: every intermediate
+ * container is allocated via `Object.create(null)` so the `out[k] =
+ * …` write is a plain own-property assignment regardless of `k`.
+ * Legitimate fields literally named `prototype` / `constructor` /
+ * `__proto__` round-trip the same way every other key does.
  *
  * `warn: true` opts in to a `__DEV__`-only one-shot per
  * `(dotted-path, disc-value)` console warning when a non-blank
@@ -83,14 +85,23 @@ function walkDuStubs(
           )
         }
       }
-      return { [du.discriminatorKey]: discValue }
+      // The disc-only stub also uses a prototype-less container so a
+      // schema whose discriminator key happens to be `__proto__` /
+      // `constructor` / `prototype` (vanishingly rare, but possible
+      // via `z.discriminatedUnion('prototype', …)`) lands the disc
+      // value as an ordinary own-property pair.
+      const stub: Record<string, unknown> = Object.create(null)
+      stub[du.discriminatorKey] = discValue
+      return stub
     }
   }
-  const out: Record<string, unknown> = {}
+  // Prototype-less SSR-walk container. Pairs with the `setAtPath` and
+  // persistence merges already proto-less, so an SSR payload carrying
+  // a legitimate `__proto__` / `constructor` / `prototype` own
+  // property (or a hostile one) lands as a plain own-property pair
+  // with no path to `Object.prototype`.
+  const out: Record<string, unknown> = Object.create(null)
   for (const k of Object.keys(rec)) {
-    // SSR hydration payloads are untrusted JSON: skip prototype-
-    // corrupting keys before the bracket-assign reaches `out`.
-    if (isDangerousSegment(k)) continue
     out[k] = walkDuStubs(schema, rec[k], [...path, k], warned)
   }
   return out

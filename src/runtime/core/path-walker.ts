@@ -123,7 +123,20 @@ function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: numb
     return arr
   }
 
-  const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
+  // Prototype-less intermediate. `rec['__proto__'] = …` on a plain
+  // `{}` would invoke the `Set` accessor inherited from
+  // `Object.prototype` and reassign the prototype chain. On a
+  // prototype-less object that accessor doesn't exist, so the write
+  // is a plain own-property assignment. Schema fields literally
+  // named `__proto__` / `constructor` / `prototype` now round-trip
+  // through `setValue` / `applyPatchesForward` / history undo-redo
+  // alongside every other key. Spread carries existing own properties
+  // through `CopyDataProperties` (the spec step bypasses the
+  // prototype setter), so a previously-set `__proto__` own property
+  // survives a re-spread when intermediate copy-on-write occurs.
+  const rec: Record<string, unknown> = isPlainRecord(root)
+    ? Object.assign(Object.create(null), root)
+    : Object.create(null)
   rec[head] = setAtPathOffset(rec[head], path, value, nextOffset)
   return rec
 }

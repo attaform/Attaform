@@ -3,13 +3,7 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { applyPatchesForward, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { isPlainRecord } from './path-walker'
-import {
-  canonicalizePath,
-  isDangerousSegment,
-  type Path,
-  type PathKey,
-  type Segment,
-} from './paths'
+import { canonicalizePath, type Path, type PathKey } from './paths'
 import { slimKindOf } from './slim-primitive-gate'
 
 /**
@@ -194,13 +188,6 @@ function isFileLikeValue(value: unknown): boolean {
   return false
 }
 
-function pathContainsDangerousSegment(path: Path): boolean {
-  for (let i = 0; i < path.length; i++) {
-    if (isDangerousSegment(path[i] as Segment)) return true
-  }
-  return false
-}
-
 /**
  * Walk an inbound value tree and verify every leaf's primitive kind
  * matches the schema's slim accept-set at its sub-path. Returns
@@ -297,7 +284,12 @@ function stripSensitivePathsDeep(
   }
   const proto = Object.getPrototypeOf(value)
   if (proto !== Object.prototype && proto !== null) return value
-  const out: Record<string, unknown> = {}
+  // Prototype-less scrub container — mirrors the proto-less allocator
+  // in `structuralSnapshot` so a form value carrying a legitimate
+  // `__proto__` / `constructor` / `prototype` own property (the
+  // post-`setAtPath` shape) flows through the scrub without routing
+  // through the inherited `[[Set]]` accessor at the destination.
+  const out: Record<string, unknown> = Object.create(null)
   const src = value as Record<string, unknown>
   for (const key of Object.keys(src)) {
     const childPath = [...pathSoFar, key]
@@ -451,7 +443,14 @@ export function createMultiTabSyncModule<F extends GenericForm>(
   }
 
   function isPathLocallySuppressed(path: Path): boolean {
-    if (pathContainsDangerousSegment(path)) return true
+    // The dangerous-segment guard the SEC-2 audit added here is now
+    // load-bearing on `setAtPath`'s proto-less intermediates AND
+    // `structuralSnapshot`'s proto-less containers. With both in place
+    // the patch-apply pipeline writes `__proto__` / `constructor` /
+    // `prototype` segments as ordinary own-property pairs that never
+    // walk into `Object.prototype`, so the gate is no longer needed
+    // and dropping it lets a legit schema field literally named
+    // `prototype` sync cross-tab like every other field.
     if (options.isSensitivePath(path)) return true
     const { key } = canonicalizePath([...path])
     if (options.noSyncPaths.has(key)) return true

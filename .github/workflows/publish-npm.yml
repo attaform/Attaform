@@ -133,7 +133,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Push the version-bump commit + tag to protected `main` via `git push --follow-tags`. Read alone would 403 at the GitHub API layer.
-      id-token: write # Mint an ephemeral npm publish credential from this run's GitHub OIDC token under Trusted Publishing. No NPM_TOKEN secret is involved.
+      id-token: write # Mint an ephemeral npm publish credential from this run's GitHub OIDC token under Trusted Publishing, AND request the Sigstore audience for `actions/attest-build-provenance` below. No NPM_TOKEN secret is involved.
+      attestations: write # Write the SLSA build-provenance attestation produced by `actions/attest-build-provenance` to GitHub Attestations (`gh attestation verify`). The same `.intoto.jsonl` bundle is also attached to the GitHub Release below so OpenSSF Scorecard's `Signed-Releases` check picks it up.
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -263,6 +264,19 @@ jobs:
           # permission on this job (declared above) is what lets npm
           # mint that token.
           registry-url: 'https://registry.npmjs.org/'
+          # Disable setup-node's package-manager-cache auto-detection.
+          # By default, setup-node honours `package.json#packageManager`
+          # (currently `pnpm@11.3.0`) and mounts the pnpm cache into the
+          # job. That cache surface is shared across workflow runs —
+          # a poisoned entry from an earlier run could ride
+          # `--frozen-lockfile`'s integrity check (pnpm rejects mismatched
+          # hashes, but defence-in-depth wins here) and reach the
+          # publish artifact. The validate job's setup-node keeps the
+          # cache for CI throughput; this job eats the install cost
+          # (~30s) for cache-free reproducibility, matching zizmor's
+          # `cache-poisoning` audit recommendation for steps that
+          # publish runtime artifacts.
+          package-manager-cache: false
 
       # No `npm install -g npm@latest` step. pnpm 11 dropped the
       # npm-CLI publish fallback in favor of pnpm's native publish
@@ -394,6 +408,30 @@ jobs:
           fi
           echo "TARBALL_PATH=$(pwd)/$TARBALL" >> "$GITHUB_ENV"
 
+      # Sigstore-backed SLSA build-provenance attestation. Issued
+      # under this workflow's OIDC token (audience: sigstore),
+      # recorded to the Sigstore transparency log, and stored as a
+      # GitHub Attestation that consumers verify with
+      # `gh attestation verify ./attaform-X.Y.Z.tgz --repo attaform/Attaform`.
+      #
+      # Runs BEFORE `pnpm publish` below: if attestation fails (a
+      # Sigstore outage, an OIDC misconfiguration) the publish is
+      # short-circuited rather than producing an npm tarball with no
+      # matching GitHub attestation. Order is intentional — `pnpm
+      # publish --provenance` and this step share the same OIDC
+      # primitive but land in different verification surfaces, and
+      # the audit story relies on both paths being present together.
+      #
+      # The `.intoto.jsonl` bundle written to `steps.attest.outputs.bundle-path`
+      # is also attached to the GitHub Release via the `files:` input
+      # of `softprops/action-gh-release` further down, which is what
+      # OpenSSF Scorecard's `Signed-Releases` check looks for.
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: ${{ env.TARBALL_PATH }}
+
       - name: Publish to npm
         # `--provenance` attaches an OIDC-signed statement linking the
         # published tarball to this workflow run + commit, recorded by
@@ -452,36 +490,32 @@ jobs:
           gh auth setup-git
           git push --follow-tags
 
-      # Create the GitHub Release for the just-pushed tag. Runs AFTER
-      # npm publish + git push so a release on
-      # https://github.com/<owner>/<repo>/releases always corresponds
-      # to a published tarball and a remote tag. Best-effort: a failure
-      # here (transient API, auth hiccup, quota) does NOT roll back the
-      # publish — the user can re-run `gh release create` manually from
-      # the tag if needed.
+      # Build the release-notes body to a file on the runner. Split
+      # off the release-create step below for two reasons:
       #
-      # Body shape: a metadata prelude (version, commit, author,
-      # workflow run, npm link) plus GitHub's auto-generated
-      # PR-grouped changelog (same API the `generate-release-notes.mjs`
-      # hook script uses for RELEASES.md, so the two stay consistent).
-      - name: Create GitHub Release
+      #   1. `softprops/action-gh-release` reads the body via
+      #      `body_path` rather than inline interpolation, so the body
+      #      stays out of the action's argument surface (smaller
+      #      template-injection footprint than a multi-line `with:` value).
+      #   2. The flag-matrix is computed in a separate step below so
+      #      the action invocation reads cleanly without a per-mode
+      #      branch around `gh release create`.
+      #
+      # Body shape unchanged from the prior single-step version: a
+      # metadata prelude (version, commit, author, workflow run, npm
+      # link) plus GitHub's auto-generated PR-grouped changelog (same
+      # API the `generate-release-notes.mjs` hook script uses for
+      # RELEASES.md, so the two stay consistent).
+      - name: Build release notes body
         if: success()
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Bind workflow-dispatch inputs into env vars so the `run:`
-          # block below can reference them as ordinary shell variables.
-          # Direct `${{ github.event.inputs.* }}` interpolation inside a
-          # shell context lets an attacker-controlled input value expand
-          # into the runner's bash before quoting takes effect — the
-          # classic GitHub Actions template-injection pattern.
-          INPUT_DIST_TAG: ${{ github.event.inputs.dist_tag }}
-          INPUT_PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
-          # Bind workflow-context values + step output the same way.
-          # github.server_url / .repository / .run_id are GitHub-set and
-          # not attacker-controllable, but env-binding eliminates the
-          # template-injection finding without leaving a suppression
-          # comment behind.
+          # Bind workflow-context values + step output into env vars
+          # so the `run:` block below references them as ordinary
+          # shell variables. github.server_url / .repository / .run_id
+          # are GitHub-set and not attacker-controllable, but
+          # env-binding eliminates the template-injection finding
+          # without leaving a suppression comment behind.
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
           GH_SERVER_URL: ${{ github.server_url }}
           GH_REPOSITORY: ${{ github.repository }}
@@ -521,33 +555,91 @@ jobs:
             echo "$AUTO_NOTES"
           } > "$RUNNER_TEMP/release-body.md"
 
-          # `--verify-tag` confirms the tag exists on the remote before
-          # creating the release, so a failed `git push --follow-tags`
-          # above would short-circuit here rather than produce an
-          # orphan release. Stable releases use `--latest` (primary on
-          # the repo's releases page); prereleases use `--prerelease`
-          # so they don't shadow the stable line. Off-latest stable
-          # hotfixes (any non-empty, non-`latest` dist_tag) get neither
-          # flag — they appear in the release list but don't claim
-          # the "Latest" badge that the current major's release holds.
-          if [ -n "${INPUT_DIST_TAG:-}" ] && [ "$INPUT_DIST_TAG" != "latest" ]; then
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --notes-file "$RUNNER_TEMP/release-body.md" \
-              --verify-tag
+      # Compute the `prerelease` and `make_latest` flags for the
+      # release-create step below. The flag matrix matches the
+      # earlier single-step gh-release-create branching:
+      #
+      #   off-latest stable hotfix  → prerelease=false, make_latest=false
+      #     (non-empty `dist_tag` other than `latest` — the release
+      #      appears in the list but does not claim the "Latest"
+      #      badge that the current major's release holds).
+      #   prerelease                → prerelease=true,  make_latest=false
+      #     (so beta / alpha / rc / next don't shadow the stable line).
+      #   normal stable             → prerelease=false, make_latest=true
+      #     (includes the explicit `dist_tag=latest` case).
+      #
+      # Computed in its own step so the action invocation below stays
+      # declarative — a single `softprops/action-gh-release` with two
+      # output-bound inputs, rather than the prior per-mode `if/elif/else`
+      # tree around `gh release create`.
+      - name: Compute release flags
+        id: release-flags
+        if: success()
+        env:
+          # Bind workflow-dispatch inputs into env vars so the `run:`
+          # block below references them as ordinary shell variables.
+          # Direct `${{ github.event.inputs.* }}` interpolation inside
+          # a shell context lets an attacker-controlled input value
+          # expand into the runner's bash before quoting takes effect
+          # — the classic GitHub Actions template-injection pattern.
+          INPUT_DIST_TAG: ${{ github.event.inputs.dist_tag }}
+          INPUT_PRERELEASE_ID: ${{ github.event.inputs.prerelease_id }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_DIST_TAG:-}" ] && [ "${INPUT_DIST_TAG}" != "latest" ]; then
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
           elif [ -n "${INPUT_PRERELEASE_ID:-}" ]; then
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --notes-file "$RUNNER_TEMP/release-body.md" \
-              --verify-tag \
-              --prerelease
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
           else
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --notes-file "$RUNNER_TEMP/release-body.md" \
-              --verify-tag \
-              --latest
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # Create the GitHub Release for the just-pushed tag and attach
+      # the SLSA build-provenance attestation (`.intoto.jsonl`)
+      # produced by the `Attest build provenance` step above. Runs
+      # AFTER `pnpm publish` + `git push` so a release on
+      # https://github.com/<owner>/<repo>/releases always corresponds
+      # to a published tarball and a remote tag.
+      #
+      # Why `softprops/action-gh-release` (vs the prior `gh release create`):
+      #
+      #   1. OpenSSF Scorecard's `Packaging` check matches workflow
+      #      patterns from a known publish-action list;
+      #      `softprops/action-gh-release` is in that list while raw
+      #      `gh release create` is not. Using the action surfaces
+      #      the canonical Packaging signal.
+      #   2. The `files:` input accepts the
+      #      `steps.attest.outputs.bundle-path` from the attestation
+      #      step above, attaching the `.intoto.jsonl` to the release.
+      #      That attachment is what Scorecard's `Signed-Releases`
+      #      check inspects.
+      #
+      # Best-effort: `continue-on-error: true` preserves the prior
+      # behaviour — a transient API hiccup creating the release does
+      # NOT roll back the npm publish that already happened above.
+      # The user can re-run `gh release create` manually from the
+      # tag if needed.
+      #
+      # `fail_on_unmatched_files: true` makes the action fail if the
+      # attestation bundle isn't present, so an empty attach is
+      # surfaced rather than silently producing a release without
+      # the `.intoto.jsonl`.
+      - name: Publish GitHub Release with attestation
+        if: success()
+        continue-on-error: true
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          tag_name: v${{ steps.calculate-next-version.outputs.next_version }}
+          name: v${{ steps.calculate-next-version.outputs.next_version }}
+          body_path: ${{ runner.temp }}/release-body.md
+          files: |
+            ${{ steps.attest.outputs.bundle-path }}
+          prerelease: ${{ steps.release-flags.outputs.prerelease }}
+          make_latest: ${{ steps.release-flags.outputs.make_latest }}
+          fail_on_unmatched_files: true
 
       - name: Rollback version bump if failed
         if: failure()

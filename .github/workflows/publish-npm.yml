@@ -133,7 +133,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Push the version-bump commit + tag to protected `main` via `git push --follow-tags`. Read alone would 403 at the GitHub API layer.
-      id-token: write # Mint an ephemeral npm publish credential from this run's GitHub OIDC token under Trusted Publishing. No NPM_TOKEN secret is involved.
+      id-token: write # Mint an ephemeral npm publish credential from this run's GitHub OIDC token under Trusted Publishing, AND request the Sigstore audience for `actions/attest-build-provenance` below. No NPM_TOKEN secret is involved.
+      attestations: write # Write the SLSA build-provenance attestation produced by `actions/attest-build-provenance` to GitHub Attestations (`gh attestation verify`). The same `.intoto.jsonl` bundle is also attached to the GitHub Release below so OpenSSF Scorecard's `Signed-Releases` check picks it up.
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -393,6 +394,30 @@ jobs:
             exit 1
           fi
           echo "TARBALL_PATH=$(pwd)/$TARBALL" >> "$GITHUB_ENV"
+
+      # Sigstore-backed SLSA build-provenance attestation. Issued
+      # under this workflow's OIDC token (audience: sigstore),
+      # recorded to the Sigstore transparency log, and stored as a
+      # GitHub Attestation that consumers verify with
+      # `gh attestation verify ./attaform-X.Y.Z.tgz --repo attaform/Attaform`.
+      #
+      # Runs BEFORE `pnpm publish` below: if attestation fails (a
+      # Sigstore outage, an OIDC misconfiguration) the publish is
+      # short-circuited rather than producing an npm tarball with no
+      # matching GitHub attestation. Order is intentional — `pnpm
+      # publish --provenance` and this step share the same OIDC
+      # primitive but land in different verification surfaces, and
+      # the audit story relies on both paths being present together.
+      #
+      # The `.intoto.jsonl` bundle written to `steps.attest.outputs.bundle-path`
+      # is also attached to the GitHub Release via the `files:` input
+      # of `softprops/action-gh-release` further down, which is what
+      # OpenSSF Scorecard's `Signed-Releases` check looks for.
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: ${{ env.TARBALL_PATH }}
 
       - name: Publish to npm
         # `--provenance` attaches an OIDC-signed statement linking the

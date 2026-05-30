@@ -1,5 +1,40 @@
 # Releases
 
+## v0.20.0 — 2026-05-30
+
+## What's Changed
+* Phase 1: Security & honesty (SEC-1/2/3/4, SF1 guard, DEVTOOLS-1/2) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/288
+* Phase 2: Dead-code & dead-type sweep by @ozzyfromspace in https://github.com/attaform/Attaform/pull/289
+* Phase 3: Pure perf wins on the keystroke hot path (CORE-P1b + CORE-P2a) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/290
+* Phase 4: Proxy consistency (PASS2-4/5/10/11/12) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/291
+* fix: blank-mark & array-state correctness (Phase 5 — PASS2-1/6/7/8/9/S1) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/292
+* Phase 6: Validation lifecycle (PASS2-2/3/S3/14 + CORE-P1a) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/293
+* Phase 7: v3 introspect chokepoint (ADAPT-F1 / D18) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/294
+* fix(zod-v3): unify path walker against introspect, retire walkV3ToLeafSchema (Phase 8 / D1 / D15 / D16 / R1) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/295
+* fix(adapters): v3 per-method parity + symmetric SF6/D11 on v4 (Phase 9) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/296
+* Phase 10: v3 validation contract — needsAsyncValidation + strict-mode seeding + validator-threw wrap by @ozzyfromspace in https://github.com/attaform/Attaform/pull/297
+* Phase 11: v3 typed-config field-surface parity (SF2) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/298
+* refactor(adapters): createAbstractSchema factory + D6/B3 dedup (Phase 12, part 1 of 2) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/299
+* Phase 12 part 2: deriveDefault / slimPrimitives / walkPathSegments dedup (D2 / D3 / D5) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/300
+* Phase 13: proxy factory + entry barrel dedup (CORE-P1c + ENTRY-1) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/301
+* Phase 14: wizard decouple + dedup (COMP-W1-W5) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/302
+* Phase 15: transform dedup + DIR-F4 SSR hydration fix (DIR-F1/F2/F4/F5/F6/F8/F9/F10/F11 + test/vite coverage gap) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/303
+* refactor: type-walker dedup + naming (Phase 16 — TYPES-D2/D3/D4/D7) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/304
+* Phase 17: structural extraction + PASS2-13 + PASS2-S2 (CORE-P3 / DIR-F7 / persistence-extract) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/305
+* ci(security): add CodeQL SAST workflow by @ozzyfromspace in https://github.com/attaform/Attaform/pull/306
+* fix(security): close CodeQL findings + pin Dockerfile by @ozzyfromspace in https://github.com/attaform/Attaform/pull/307
+* fix(security): proto-less storage closes proto-pollution + sanitizes-not-blocks legit keys by @ozzyfromspace in https://github.com/attaform/Attaform/pull/308
+* fix(security): proto-less storage sweep across the runtime by @ozzyfromspace in https://github.com/attaform/Attaform/pull/309
+* chore(security): polish-pass proto-less containers across schema-driven walks by @ozzyfromspace in https://github.com/attaform/Attaform/pull/310
+* ci(security): SLSA attestation + Packaging signal for Scorecard by @ozzyfromspace in https://github.com/attaform/Attaform/pull/311
+* docs(scorecard): draft CII Best Practices Passing-level answers by @ozzyfromspace in https://github.com/attaform/Attaform/pull/312
+* docs(changelog): draft Unreleased section covering #288-#312 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/313
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.19.0...v0.20.0
+
+---
+
 ## v0.19.0 — 2026-05-27
 
 ## What's Changed

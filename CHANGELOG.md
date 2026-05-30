@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.20.0
 A seventeen-phase codebase audit closes out, with prototype-pollution
 defense flipped from input rejection to prototype-less storage so
 legitimate schema fields named `prototype` / `constructor` /

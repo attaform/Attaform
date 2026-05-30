@@ -201,7 +201,12 @@ export function deriveDefaultWalk<Schema>(
   switch (kind) {
     case 'object': {
       const shape = intro.getObjectShape(schema)
-      const out: Record<string, unknown> = {}
+      // Prototype-less default container, matching the rest of the
+      // runtime's value-write pipeline. The default flows directly into
+      // `form.values`; allocating it proto-less here keeps the entire
+      // initial-value tree structurally identical to what `setAtPath`
+      // and `mergeDeep` produce.
+      const out: Record<string, unknown> = Object.create(null)
       for (const [key, subSchema] of Object.entries(shape)) {
         out[key] = deriveDefaultWalk(subSchema, useDefault, intro, maxDepth, ctx, lazyDepth)
       }

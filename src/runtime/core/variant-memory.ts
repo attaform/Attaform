@@ -146,7 +146,10 @@ export function cloneVariantSnapshot(value: unknown): unknown {
     return out
   }
   const src = raw as Record<string, unknown>
-  const out: Record<string, unknown> = {}
+  // Prototype-less variant snapshot. Variant memos restore back into
+  // `form.values` on union-switch reshape; matching the proto-less
+  // shape keeps the round-trip structurally identical.
+  const out: Record<string, unknown> = Object.create(null)
   for (const k of Object.keys(src)) out[k] = cloneVariantSnapshot(src[k])
   return out
 }

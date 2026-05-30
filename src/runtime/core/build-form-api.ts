@@ -1008,7 +1008,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       return EMPTY_FIELD_RECORD
     }
-    const out: Record<string, unknown> = {}
+    // Prototype-less record container — matches the runtime's
+    // value-tree shape so a frozen `record()` view's prototype chain
+    // doesn't diverge from the live data it mirrors.
+    const out: Record<string, unknown> = Object.create(null)
     for (const key of Object.keys(value as Record<string, unknown>)) {
       out[key] = callTerminal(`${path}.${key}`)
     }

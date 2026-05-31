@@ -2044,18 +2044,34 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * Attach an HTML element to this binding. Called by `v-register`
    * automatically; expose it to custom integrations that need to
    * register an element manually.
+   *
+   * Recording the element also enables `setValueWithInternalPath` to
+   * auto-attach per-element persist meta on writes that don't carry
+   * their own.
    */
   registerElement: (el: HTMLElement) => void
   /**
    * Detach an HTML element from this binding. Pair with
-   * `registerElement` for custom integrations.
+   * `registerElement` for custom integrations. Clears the recorded
+   * element so subsequent writes without explicit `meta` fall back to
+   * "no auto-persist".
    */
   deregisterElement: (el: HTMLElement) => void
   /**
    * Write the field's value programmatically. Returns `true` when the
    * write was accepted, `false` when it was rejected (e.g. wrong
-   * primitive type for the path). The optional `meta` lets custom
-   * directives signal whether the write should be persisted.
+   * primitive type for the path).
+   *
+   * When `meta` is undefined and the binding has a registered element,
+   * the rv consults the per-element opt-in (set by
+   * `register(path, { persist: true })` against that element) and
+   * auto-attaches `{ persist: true }` when opted in. Custom directives
+   * and consumer assigners can omit `meta` to participate in the same
+   * persistence channel the default assigner uses.
+   *
+   * Pass an explicit `meta` to override the auto-derivation, e.g.
+   * `{ persist: false }` to skip persistence for a transient write
+   * even when the element is opted in.
    */
   setValueWithInternalPath: (value: unknown, meta?: WriteMeta) => boolean
   /**

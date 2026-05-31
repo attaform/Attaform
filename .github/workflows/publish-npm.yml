@@ -269,7 +269,17 @@ jobs:
           # Publishers), npm exchanges this run's GitHub OIDC token
           # for an ephemeral publish credential at publish time, so
           # no NPM_TOKEN secret is required.
-          registry-url: 'https://registry.npmjs.org/'
+          #
+          # The URL is written WITHOUT a trailing slash. OpenSSF
+          # Scorecard's Node packaging-workflow detector matches this
+          # field by exact string equality (see
+          # `IsPackagingWorkflow` in
+          # https://github.com/ossf/scorecard/blob/main/checks/fileparser/github_workflow.go);
+          # a trailing slash silently disqualifies the workflow and
+          # collapses the `Packaging` check to -1 (workflow not
+          # detected). npm + pnpm normalize both forms, so there is
+          # no functional impact downstream.
+          registry-url: 'https://registry.npmjs.org'
           # Disable setup-node's package-manager-cache auto-detection.
           # By default, setup-node honours `package.json#packageManager`
           # and mounts the pnpm cache into the job. That cache surface
@@ -538,12 +548,60 @@ jobs:
       # recovery.
       - name: Publish GitHub Release with attestation
         if: needs.precheck.outputs.should_release == 'true'
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
-        with:
-          tag_name: v${{ needs.precheck.outputs.version }}
-          name: v${{ needs.precheck.outputs.version }}
-          body_path: ${{ runner.temp }}/release-body.md
-          files: ${{ needs.precheck.outputs.should_publish == 'true' && steps.attest.outputs.bundle-path || '' }}
-          prerelease: ${{ steps.release-flags.outputs.prerelease }}
-          make_latest: ${{ steps.release-flags.outputs.make_latest }}
-          fail_on_unmatched_files: ${{ needs.precheck.outputs.should_publish == 'true' }}
+        # Uses the runner's built-in `gh release create`, NOT a
+        # third-party action wrapper. The gh CLI is GitHub's official
+        # tool and is preinstalled on `ubuntu-latest` (provenance
+        # matches the runner image itself), so this removes one
+        # supply-chain dependency from the publish path. The mapping
+        # to the GitHub Releases REST API is the same one
+        # `softprops/action-gh-release` was performing under the hood —
+        # we just call it directly.
+        #
+        # `--latest` / `--latest=false` is passed explicitly so the
+        # off-latest hotfix case (`make_latest=false` while a newer
+        # major holds `latest` on npm) doesn't fall back on gh CLI's
+        # default semver auto-detection. Auto-detection might or might
+        # not pick the desired branch; explicit beats implicit.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.precheck.outputs.version }}
+          PRERELEASE: ${{ steps.release-flags.outputs.prerelease }}
+          MAKE_LATEST: ${{ steps.release-flags.outputs.make_latest }}
+          SHOULD_PUBLISH: ${{ needs.precheck.outputs.should_publish }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          BODY_FILE="$RUNNER_TEMP/release-body.md"
+
+          args=(release create "$TAG" --title "$TAG" --notes-file "$BODY_FILE")
+
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+
+          if [ "$MAKE_LATEST" = "true" ]; then
+            args+=(--latest)
+          else
+            # Explicit --latest=false for off-latest stable hotfixes
+            # (PRERELEASE=false, MAKE_LATEST=false). Prereleases pass
+            # --prerelease above and GitHub forbids prereleases from
+            # being marked latest, so the --latest=false here is a
+            # no-op for that branch — still safe to send.
+            args+=(--latest=false)
+          fi
+
+          if [ "$SHOULD_PUBLISH" = "true" ]; then
+            # Attach the Sigstore attestation bundle freshly minted by
+            # the `Attest build provenance` step above. `gh release
+            # create` errors on missing files by default — that
+            # replaces the `fail_on_unmatched_files: true` input the
+            # third-party action had, with no special flag needed.
+            args+=("$BUNDLE_PATH")
+          fi
+          # When SHOULD_PUBLISH=false (the recovery path), no asset is
+          # uploaded: the bundle was never built on this runner, and
+          # `gh attestation verify` against the npm tarball still
+          # validates from the Sigstore transparency log.
+
+          gh "${args[@]}"

@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
-import { wait, waitUntil } from '../utils/form-harness'
+import { awaitSettle, waitUntil } from '../utils/form-harness'
 
 /**
  * Lazy activation contract for `useForm`. The factory passed via
@@ -73,9 +73,10 @@ describe('useForm — lazy activation', () => {
   it('dormant form: factory does not fire on mount or after microtask flush', async () => {
     const { app, calls } = mountInert(() => Promise.resolve({ email: 'fetched@x.io', name: 'Z' }))
     apps.push(app)
-    // Drain any historical microtask defer window so a residual fire
-    // would show up here, not on a later expect.
-    await wait(30)
+    // Drain any pending microtask defer window so a residual fire would
+    // show up here, not on a later expect. The lazy-init code schedules
+    // its first fire via queueMicrotask; two nextTicks flushes it.
+    await awaitSettle()
     expect(calls.count).toBe(0)
   })
 
@@ -83,14 +84,14 @@ describe('useForm — lazy activation', () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
     expect(api.key).toMatch(/^lazy-/)
-    await wait(30)
+    await awaitSettle()
     expect(calls.count).toBe(0)
   })
 
   it('reading form.values activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.values.email
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -100,7 +101,7 @@ describe('useForm — lazy activation', () => {
   it('reading form.fields activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.fields.email
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -110,7 +111,7 @@ describe('useForm — lazy activation', () => {
   it('reading form.meta activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.meta.valid
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -120,7 +121,7 @@ describe('useForm — lazy activation', () => {
   it('reading form.errors activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.errors
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -130,7 +131,7 @@ describe('useForm — lazy activation', () => {
   it('reading form.hydrating activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.hydrating
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -140,7 +141,7 @@ describe('useForm — lazy activation', () => {
   it('reading form.hydrateError activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.hydrateError
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -150,7 +151,7 @@ describe('useForm — lazy activation', () => {
   it('reading form.ready activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.ready
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -160,7 +161,7 @@ describe('useForm — lazy activation', () => {
   it('calling form.setValue activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     api.setValue('email', 'typed@x.io')
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -170,7 +171,7 @@ describe('useForm — lazy activation', () => {
   it('calling form.register activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.register('email')
     await waitUntil(() => (calls.count >= 1 ? true : null))
@@ -180,7 +181,7 @@ describe('useForm — lazy activation', () => {
   it('calling form.handleSubmit activates the factory', async () => {
     const { app, api, calls } = mountInert(() => Promise.resolve({ email: 'a@b', name: 'A' }))
     apps.push(app)
-    await wait(20)
+    await awaitSettle()
     expect(calls.count).toBe(0)
     void api.handleSubmit(() => {})
     await waitUntil(() => (calls.count >= 1 ? true : null))

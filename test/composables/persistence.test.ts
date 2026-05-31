@@ -701,8 +701,10 @@ describe('persistence — per-element opt-in', () => {
     apps.push(app)
 
     handle.api?.setValue('email', 'leak@example.com')
-    // Generous wait — debounce is 20 ms, so 80 ms covers timer + drain.
-    await wait(80)
+    // 1.5x the 20 ms debounce — any in-flight write would have fired
+    // and reached localStorage by now; the waitUntil that follows is
+    // an extra defensive poll, not a long pessimistic ceiling.
+    await wait(30)
     await waitUntil(() => (localStorage.getItem(fpKey('test-noop')) === null ? true : null))
     expect(localStorage.getItem(fpKey('test-noop'))).toBeNull()
   })
@@ -744,7 +746,9 @@ describe('persistence — per-element opt-in', () => {
     const input = handle.el as HTMLInputElement
     input.value = 'no-opt-in@example.com'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    await wait(80)
+    // 1.5x the 20 ms debounce — any in-flight write would have fired
+    // by now.
+    await wait(30)
     await waitUntil(() => (localStorage.getItem(fpKey('test-no-flag')) === null ? true : null))
     expect(localStorage.getItem(fpKey('test-no-flag'))).toBeNull()
     // Sanity: the value still landed in the form ref (writes work, just
@@ -799,7 +803,9 @@ describe('persistence — per-element opt-in', () => {
     const b = handle.b as HTMLInputElement
     b.value = 'from-b@example.com'
     b.dispatchEvent(new Event('input', { bubbles: true }))
-    await wait(80)
+    // 1.5x the 20 ms debounce — any in-flight write would have fired
+    // by now.
+    await wait(30)
     await waitUntil(() => (localStorage.getItem(fpKey('test-mixed')) === null ? true : null))
     expect(localStorage.getItem(fpKey('test-mixed'))).toBeNull()
 

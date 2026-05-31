@@ -1,6 +1,6 @@
 {
   "name": "attaform",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "files": [
@@ -142,8 +142,8 @@
     "@vue/typescript-plugin": "^3.2.7",
     "changelogen": "^0.6.2",
     "cheerio": "^1.2.0",
-    "devalue": "^5.8.1",
     "chokidar-cli": "^3.0.0",
+    "devalue": "^5.8.1",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",

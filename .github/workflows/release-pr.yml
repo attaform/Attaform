@@ -81,7 +81,7 @@ jobs:
     name: Prepare Release PR
     runs-on: ubuntu-latest
     # The `Production (Release PR)` environment scopes the two App
-    # secrets (`RELEASE_PR_APP_ID` + `RELEASE_PR_APP_PRIVATE_KEY`) to
+    # secrets (`RELEASE_PR_APP_CLIENT_ID` + `RELEASE_PR_APP_PRIVATE_KEY`) to
     # this workflow and to dispatches from `main` / `hotfix/v*` (per
     # the environment's deployment-branches policy). zizmor's
     # `secrets-outside-env` rule flags privileged secrets accessed
@@ -138,11 +138,11 @@ jobs:
         # Failing here, before any state on origin is mutated, keeps
         # the remote tidy: no orphan branch, no half-opened PR.
         env:
-          APP_ID: ${{ secrets.RELEASE_PR_APP_ID }}
+          APP_CLIENT_ID: ${{ secrets.RELEASE_PR_APP_CLIENT_ID }}
           APP_PRIVATE_KEY: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${APP_ID:-}" ] || [ -z "${APP_PRIVATE_KEY:-}" ]; then
+          if [ -z "${APP_CLIENT_ID:-}" ] || [ -z "${APP_PRIVATE_KEY:-}" ]; then
             echo "::error title=Release-PR app credentials missing::This workflow requires a GitHub App installation for opening the release PR."
             echo "::error::Setup:"
             echo "::error::  1. Create the App: https://github.com/organizations/attaform/settings/apps/new"
@@ -153,7 +153,7 @@ jobs:
             echo "::error::     - Where can this GitHub App be installed?: Only on this account"
             echo "::error::     - Create GitHub App"
             echo "::error::  2. On the new app's settings page:"
-            echo "::error::     - Note the numeric App ID at the top of General"
+            echo "::error::     - Note the Client ID near the top of General (starts with 'Iv23li...')"
             echo "::error::     - Generate a private key (.pem download) at the bottom"
             echo "::error::  3. Install the app on this repo only: Install App tab -> attaform org -> Only select repositories -> attaform/Attaform -> Install"
             echo "::error::  4. Create the deployment environment: https://github.com/attaform/Attaform/settings/environments/new"
@@ -161,7 +161,7 @@ jobs:
             echo "::error::     - Deployment branches and tags: Selected branches -> add 'main' and 'hotfix/v*'"
             echo "::error::     - No required reviewers, no wait timer"
             echo "::error::  5. Add the two secrets to the environment (NOT to repo-level secrets):"
-            echo "::error::     - RELEASE_PR_APP_ID: the numeric App ID from step 2"
+            echo "::error::     - RELEASE_PR_APP_CLIENT_ID: the Client ID from step 2 (starts with 'Iv23li...')"
             echo "::error::     - RELEASE_PR_APP_PRIVATE_KEY: the full contents of the .pem file (BEGIN to END inclusive)"
             echo "::error::  6. Re-dispatch this workflow."
             exit 1
@@ -686,7 +686,7 @@ jobs:
         # blanket installation permissions).
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.RELEASE_PR_APP_ID }}
+          client-id: ${{ secrets.RELEASE_PR_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
           permission-pull-requests: write
 

@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { canonicalStringify } from '../../core/canonical-stringify'
 import {
   getArrayElement,
   getCatchDefault,
@@ -295,59 +296,6 @@ function serializeCheck(check: unknown): string {
     if (def !== undefined) return canonicalStringify(def)
   }
   return canonicalStringify(check)
-}
-
-/**
- * Canonical stringify for arbitrary values. Sorts object keys, walks
- * arrays in index order, represents functions / symbols / cycles as
- * opaque sentinels. NOT JSON — the output is not meant to round-trip
- * via JSON.parse; it's a canonical surface for equality-testing.
- *
- * Cycle detection uses an "ancestor stack" add/delete pattern: a
- * reference is only considered cyclic if it's currently on the
- * path from the root being stringified. Without `delete` on pop,
- * two sibling properties pointing at the same object would have
- * the second labelled `<cyclic>` (false positive) even though the
- * reference isn't actually an ancestor.
- */
-function canonicalStringify(value: unknown, seen: WeakSet<object> = new WeakSet()): string {
-  if (value === null) return 'null'
-  if (value === undefined) return 'undefined'
-  const t = typeof value
-  if (t === 'string') return JSON.stringify(value)
-  if (t === 'number' || t === 'boolean') return String(value)
-  if (t === 'bigint') return `${String(value)}n`
-  if (t === 'function') return 'fn:*'
-  if (t === 'symbol') return 'symbol:*'
-  if (Array.isArray(value)) {
-    if (seen.has(value)) return '<cyclic>'
-    seen.add(value)
-    try {
-      const parts = value.map((v) => canonicalStringify(v, seen))
-      return `[${parts.join(',')}]`
-    } finally {
-      seen.delete(value)
-    }
-  }
-  if (t === 'object') {
-    // `null` already returned above; the remaining `object` branch is
-    // non-null, so narrowing against it is redundant (eslint's
-    // no-unnecessary-condition rule flags the prior guard).
-    const obj = value as Record<string, unknown>
-    if (seen.has(obj)) return '<cyclic>'
-    seen.add(obj)
-    try {
-      if (value instanceof Date) return `date:${value.getTime()}`
-      if (value instanceof RegExp) return `regex:${String(value)}`
-      const entries = Object.entries(obj)
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([k, v]) => `${JSON.stringify(k)}:${canonicalStringify(v, seen)}`)
-      return `{${entries.join(',')}}`
-    } finally {
-      seen.delete(obj)
-    }
-  }
-  return 'unknown'
 }
 
 /** Strict-mode sort comparator that handles mixed string/number enums. */

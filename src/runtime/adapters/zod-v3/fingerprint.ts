@@ -1,4 +1,5 @@
 import type { z } from 'zod-v3'
+import { canonicalStringify } from '../../core/canonical-stringify'
 
 /**
  * Compute a structural fingerprint for a Zod v3 schema.
@@ -329,46 +330,4 @@ function formatChecks(checks: readonly unknown[] | undefined): string {
   if (!Array.isArray(checks) || checks.length === 0) return ''
   const parts = checks.map((c) => canonicalStringify(c)).sort()
   return `[${parts.join(';')}]`
-}
-
-function canonicalStringify(value: unknown, seen: WeakSet<object> = new WeakSet()): string {
-  if (value === null) return 'null'
-  if (value === undefined) return 'undefined'
-  const t = typeof value
-  if (t === 'string') return JSON.stringify(value)
-  if (t === 'number' || t === 'boolean') return String(value)
-  if (t === 'bigint') return `${String(value)}n`
-  if (t === 'function') return 'fn:*'
-  if (t === 'symbol') return 'symbol:*'
-  if (Array.isArray(value)) {
-    if (seen.has(value)) return '<cyclic>'
-    seen.add(value)
-    try {
-      return `[${value.map((v) => canonicalStringify(v, seen)).join(',')}]`
-    } finally {
-      // Add/delete ancestor-stack pattern. Without `delete`, two
-      // sibling properties pointing at the same object get the
-      // second one falsely labelled `<cyclic>`.
-      seen.delete(value)
-    }
-  }
-  if (t === 'object') {
-    // `null` already returned above; `object` here is guaranteed
-    // non-null. Narrowing against null again is flagged by eslint's
-    // no-unnecessary-condition rule.
-    const obj = value as Record<string, unknown>
-    if (seen.has(obj)) return '<cyclic>'
-    seen.add(obj)
-    try {
-      if (value instanceof Date) return `date:${value.getTime()}`
-      if (value instanceof RegExp) return `regex:${String(value)}`
-      const entries = Object.entries(obj)
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([k, v]) => `${JSON.stringify(k)}:${canonicalStringify(v, seen)}`)
-      return `{${entries.join(',')}}`
-    } finally {
-      seen.delete(obj)
-    }
-  }
-  return 'unknown'
 }

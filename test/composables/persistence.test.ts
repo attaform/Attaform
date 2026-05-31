@@ -1385,6 +1385,12 @@ describe('persistence — shorthand config', () => {
     // generates a unique formKey, so the resolved storage key is unique
     // per test and we read back via the same scheme. Fake timers step
     // the default 300 ms debounce window in virtual time.
+    //
+    // Pre-warm the local-storage adapter module before swapping to
+    // fake timers — `getStorageAdapter('local')` does a dynamic import
+    // on first call, which runs in real time and can't be advanced.
+    // Subsequent calls hit the module cache.
+    await import('../../src/runtime/core/persistence/local-storage')
     vi.useFakeTimers()
     try {
       const handle: { api?: ApiReturn; el?: HTMLInputElement } = {}
@@ -1473,8 +1479,11 @@ describe('persistence — shorthand config', () => {
       const el = handle.el as HTMLInputElement
       el.value = 'custom@example.com'
       el.dispatchEvent(new Event('input', { bubbles: true }))
-      // Step past the 300 ms default debounce window.
+      // Step past the 300 ms default debounce window, then drain the
+      // adapter chain's microtasks so the awaited setItem has actually
+      // committed to storage by the time we read it.
       await vi.advanceTimersByTimeAsync(310)
+      await vi.runAllTimersAsync()
       expect(writes.length).toBeGreaterThan(0)
       const [writtenKey, writtenValue] = writes[writes.length - 1]!
       expect(writtenKey).toBe(`attaform:${formKey}:${FP}`)

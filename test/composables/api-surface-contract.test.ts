@@ -439,7 +439,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
   it('inbound sensitive-path REJECTION — hostile sibling cannot inject a `password` write', async () => {
     const { hashStableString } = await import('../../src/runtime/core/hash')
     const { fingerprintZodSchema } = await import('../../src/runtime/adapters/zod-v4/fingerprint')
-    const { wait } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
     const { z: zod } = await import('zod')
 
     const secretSchema = zod.object({
@@ -484,8 +484,11 @@ describe('multi-tab sync — BroadcastChannel', () => {
       blankPathsAdded: [],
       blankPathsRemoved: [],
     })
-    await wait(100)
-    // `password` was filtered; `name` (non-sensitive) was applied.
+    // The non-sensitive `name` patch is the delivery signal: once it
+    // lands, the hostile `password` patch has also been processed by
+    // the same listener invocation. Asserting on the negative arm
+    // becomes a true post-delivery check.
+    await waitUntil(() => (api.values.name === 'name-ok' ? true : null))
     expect(api.values.password).toBe('')
     expect(api.values.name).toBe('name-ok')
 
@@ -778,8 +781,9 @@ describe('multi-tab sync — BroadcastChannel', () => {
     await waitUntil(() => (api.values.name === 'from-tab-B' ? true : null), 500)
 
     // Persistence listener skipped on crossTab apply — the sentinel
-    // we set above is untouched.
-    await wait(100)
+    // we set above is untouched. Sleep ~3x the configured debounceMs
+    // (5 ms above) so any in-flight write would have fired by now.
+    await wait(15)
     expect(localStorage.getItem(persistKey)).toBe(sentinel)
 
     external.close()
@@ -801,7 +805,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const { hashStableString } = await import('../../src/runtime/core/hash')
     const { fingerprintZodSchema } = await import('../../src/runtime/adapters/zod-v4/fingerprint')
     const { DEFAULT_SENSITIVE_NAMES } = await import('../../src/index')
-    const { wait } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
     const { z: zod } = await import('zod')
 
     const medSchema = zod.object({ name: zod.string(), mrn: zod.string() })
@@ -843,7 +847,11 @@ describe('multi-tab sync — BroadcastChannel', () => {
       blankPathsAdded: [],
       blankPathsRemoved: [],
     })
-    await wait(100)
+    // The non-sensitive `name` patch is the delivery signal: once it
+    // lands, the sensitive `mrn` patch has also been processed by the
+    // same listener invocation. Asserting on the negative arm becomes
+    // a true post-delivery check.
+    await waitUntil(() => (api.values.name === 'Alice' ? true : null))
     // Custom global sensitiveNames added `'mrn'` → filtered. `name`
     // passes through.
     expect(api.values.mrn).toBe('')

@@ -1,5 +1,18 @@
 name: Publish to NPM
-run-name: Publish attaform from ${{ github.ref_name }}@${{ github.sha }}
+# For push triggers (the normal release path — release-pr.yml merges
+# its bump commit and the push fires this workflow), the run-name
+# pulls the head commit's headline directly. `release-pr.yml` shapes
+# that headline as `chore(release/<bump_type>): vX.Y.Z`, so the
+# Actions run list reads "Publish: chore(release/patch): v0.20.2"
+# without any parsing or `contains()` ladder. For workflow_dispatch
+# (manual recovery re-runs), fall back to `ref@sha` because there's
+# no `head_commit` context to characterize.
+run-name: >-
+  ${{
+    github.event_name == 'push'
+      && format('Publish: {0}', github.event.head_commit.message)
+      || format('Publish attaform from {0}@{1}', github.ref_name, github.sha)
+  }}
 
 # Step two of the two-workflow publish topology. The release-PR workflow
 # (`release-pr.yml`) opens a PR with the version bump + CHANGELOG /

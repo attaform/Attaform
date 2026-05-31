@@ -209,6 +209,25 @@ jobs:
           EXACT_VERSION: ${{ github.event.inputs.exact_version }}
         run: |
           set -euo pipefail
+
+          # Classify the dispatch shape. Precedence matches the version
+          # computation below: explicit exact_version wins, else
+          # prerelease_id wins (any base bump it carries is implicit in
+          # the prerelease cycle), else fall back to version_type.
+          # Surfaced as a step output so downstream commit headline + PR
+          # title can encode the bump shape (e.g.
+          # `chore(release/patch): v0.20.2`), giving publish-npm.yml's
+          # run-name a parse-free signal of the release type via
+          # `github.event.head_commit.message`.
+          if [ -n "$EXACT_VERSION" ]; then
+            BUMP_TYPE=exact
+          elif [ -n "$PRERELEASE_ID" ]; then
+            BUMP_TYPE=prerelease
+          else
+            BUMP_TYPE="$VERSION_TYPE"
+          fi
+          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
+
           # exact_version short-circuit: caller dictates the version
           # verbatim, skipping version_type / prerelease_id math. Used
           # for hotfix releases to older major lines (e.g. opening a PR
@@ -509,6 +528,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          BUMP_TYPE: ${{ steps.calculate-next-version.outputs.bump_type }}
           DIST_TAG: ${{ steps.compute-dist-tag.outputs.dist_tag }}
           BASE_SHA: ${{ steps.classify.outputs.base_sha }}
           GH_REPOSITORY: ${{ github.repository }}
@@ -519,6 +539,7 @@ jobs:
             const { execFileSync } = require("node:child_process");
 
             const version = process.env.NEXT_VERSION;
+            const bumpType = process.env.BUMP_TYPE;
             const distTag = process.env.DIST_TAG;
             const baseSha = process.env.BASE_SHA;
             const repo = process.env.GH_REPOSITORY;
@@ -568,8 +589,8 @@ jobs:
                     branchName: branch,
                   },
                   message: {
-                    headline: `chore(release): v${version}`,
-                    body: `Bumps the package to v${version} with \`publishConfig.tag=${distTag}\`. Promotes the CHANGELOG Unreleased section and prepends a RELEASES.md entry. When merged, \`publish-npm.yml\` runs an idempotent precheck and publishes \`attaform@${version}\` to npm under the \`${distTag}\` dist-tag.`,
+                    headline: `chore(release/${bumpType}): v${version}`,
+                    body: `Bumps the package to v${version} (${bumpType}) with \`publishConfig.tag=${distTag}\`. Promotes the CHANGELOG Unreleased section and prepends a RELEASES.md entry. When merged, \`publish-npm.yml\` runs an idempotent precheck and publishes \`attaform@${version}\` to npm under the \`${distTag}\` dist-tag.`,
                   },
                   expectedHeadOid: baseSha,
                   fileChanges: { additions },
@@ -703,12 +724,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          BUMP_TYPE: ${{ steps.calculate-next-version.outputs.bump_type }}
           TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
         run: |
           set -euo pipefail
           gh pr create \
             --base "$TARGET_BRANCH" \
             --head "release/v$NEXT_VERSION" \
-            --title "chore(release): v$NEXT_VERSION" \
+            --title "chore(release/$BUMP_TYPE): v$NEXT_VERSION" \
             --label "release-pr" \
             --body-file "$PR_BODY_PATH"

@@ -12,7 +12,10 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
  *
  * The lazy-parity block is the anchor for the v3 fix: v4's
  * `isLeafRequired` already peels `ZodLazy`, so these cases pass
- * unchanged and prove the v3 side now matches.
+ * unchanged and prove the v3 side now matches. The preprocess-parity
+ * block is the same kind of anchor: v4 already treats `z.preprocess` as
+ * an opaque leaf (it desugars to a pipe whose input is a transform), so
+ * these cases pass unchanged and pin the behavior v3 now matches.
  */
 describe('zod v4: required + discriminator parity', () => {
   describe('z.void() is not required', () => {
@@ -106,6 +109,52 @@ describe('zod v4: required + discriminator parity', () => {
       const schema = z.object({ node: z.lazy(() => z.string()) })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
       expect(adapter.isRequiredAtPath(['node'])).toBe(true)
+    })
+  })
+
+  describe('z.preprocess is an opaque leaf (preprocess parity)', () => {
+    it('a preprocess-wrapped optional leaf reports as required (opaque, not peeled)', () => {
+      const schema = z.object({ f: z.preprocess((v) => v, z.string().optional()) })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      expect(adapter.isRequiredAtPath(['f'])).toBe(true)
+    })
+
+    it('a preprocess-wrapped discriminated union exposes no discriminator (no reshape)', () => {
+      const schema = z.object({
+        p: z.preprocess(
+          (v) => v,
+          z.discriminatedUnion('kind', [
+            z.object({ kind: z.literal('a'), x: z.string() }),
+            z.object({ kind: z.literal('b'), y: z.number() }),
+          ])
+        ),
+      })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      expect(adapter.getUnionDiscriminatorAtPath(['p'])).toBeUndefined()
+    })
+
+    it('a transform-wrapped optional still peels (transform stays transparent)', () => {
+      const schema = z.object({
+        f: z
+          .string()
+          .optional()
+          .transform((v) => v),
+      })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      expect(adapter.isRequiredAtPath(['f'])).toBe(false)
+    })
+
+    it('a transform-wrapped discriminated union still exposes its discriminator', () => {
+      const schema = z.object({
+        p: z
+          .discriminatedUnion('kind', [
+            z.object({ kind: z.literal('a'), x: z.string() }),
+            z.object({ kind: z.literal('b'), y: z.number() }),
+          ])
+          .transform((v) => v),
+      })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      expect(adapter.getUnionDiscriminatorAtPath(['p'])?.discriminatorKey).toBe('kind')
     })
   })
 })

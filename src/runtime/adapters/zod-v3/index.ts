@@ -120,6 +120,7 @@ import {
   getArrayElement,
   getDiscriminatedOptions,
   getDiscriminator,
+  getEffectsKind,
   getIntersectionLeft,
   getIntersectionRight,
   getLiteralValue,
@@ -481,8 +482,13 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
  *
  * - `ZodOptional` / `ZodNullable` / `ZodDefault` / `ZodCatch` →
  *   directly `false`.
- * - `ZodReadonly` / `ZodPipeline` / `ZodBranded` / `ZodEffects` /
- *   `ZodLazy` → transparent peel and re-check inner.
+ * - `ZodReadonly` / `ZodPipeline` / `ZodBranded` / `ZodLazy` and
+ *   `transform` / `refinement` `ZodEffects` → transparent peel and
+ *   re-check inner.
+ * - `z.preprocess` `ZodEffects` → opaque, treated as a required leaf:
+ *   the preprocess fn can reshape input arbitrarily before the inner
+ *   validates, so required-ness is undecidable. Matches v4, which
+ *   desugars preprocess to a pipe whose input is a transform.
  * - `ZodUnion` / `ZodDiscriminatedUnion` → `false` if ANY branch
  *   admits empty (matches union "first-success" semantic).
  * - `ZodIntersection` → `true` if EITHER side is required (parse
@@ -522,6 +528,11 @@ function isLeafRequiredV3(schema: z.ZodTypeAny, depth = 0): boolean {
     return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
   if (isZodSchemaType(schema, 'ZodEffects')) {
+    // `z.preprocess` is opaque: the fn can reshape the input before the
+    // inner validates, so required-ness can't be read off the inner.
+    // Treat it as a required leaf, matching v4. `transform` /
+    // `refinement` effects stay transparent and peel to the source.
+    if (getEffectsKind(schema) === 'preprocess') return true
     const inner = unwrapEffectsSource(schema)
     return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
@@ -603,10 +614,14 @@ function unwrapToDiscriminatedUnion(
       currentSchema = inner
       continue
     }
-    // ZodEffects (`z.preprocess` / `.refine` / `.transform`) is a
-    // transparent wrapper for structural traversal; the discriminated
-    // union may live on the source schema.
+    // ZodEffects: `.refine` / `.transform` are transparent for
+    // structural traversal, so a discriminated union may live on the
+    // source schema. `z.preprocess` is opaque, though — its fn can
+    // reshape a write before the union sees it, so variant-aware reshape
+    // through it is unsound. Bail on preprocess (matching v4, which
+    // treats it as a leaf) so the runtime falls back to a plain write.
     if (isZodSchemaType(currentSchema, 'ZodEffects')) {
+      if (getEffectsKind(currentSchema) === 'preprocess') return undefined
       const inner = unwrapEffectsSource(currentSchema)
       if (!inner) return undefined
       currentSchema = inner

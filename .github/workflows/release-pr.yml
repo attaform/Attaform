@@ -22,11 +22,21 @@ run-name: ${{ github.event.inputs.exact_version != '' && format('Prepare v{0} re
 #      GraphQL mutation, not `git commit && git push`. The resulting
 #      commit is signed by `github-actions[bot]`'s web-flow key
 #      (GitHub's server-side signing identity), which `required_signatures`
-#      rulesets accept — no GPG key in this workflow. The mutation also
-#      explains why the workflow stages the bump into the index and uses
-#      `git write-tree` instead of making a local commit: the commit is
-#      constructed server-side from base64-encoded file contents, so a
-#      local commit object would be redundant.
+#      rulesets accept — no GPG key in this workflow.
+#   4. The release PR itself is opened with a GitHub App installation
+#      token, NOT the default `GITHUB_TOKEN`. GitHub Actions suppresses
+#      cascading workflow runs when a `pull_request: opened` event is
+#      triggered by `GITHUB_TOKEN`, so the required status checks
+#      would never fire and the PR would sit pending forever. The App
+#      credentials live in the `Production (Release PR)` deployment
+#      environment (zizmor `secrets-outside-env` rule); the token is
+#      minted per workflow run with `permission-pull-requests: write`
+#      ONLY — even if the App's installation grants broader perms,
+#      this token slice gets just enough to call `gh pr create`
+#      (zizmor `github-app` rule). The action's built-in post-job
+#      step revokes the token at end-of-job; combined with the API's
+#      1-hour ceiling, the usable window is bounded by actual job
+#      duration (~30s) rather than the API max.
 on:
   workflow_dispatch:
     inputs:
@@ -70,6 +80,17 @@ jobs:
   prepare:
     name: Prepare Release PR
     runs-on: ubuntu-latest
+    # The `Production (Release PR)` environment scopes the two App
+    # secrets (`RELEASE_PR_APP_ID` + `RELEASE_PR_APP_PRIVATE_KEY`) to
+    # this workflow and to dispatches from `main` / `hotfix/v*` (per
+    # the environment's deployment-branches policy). zizmor's
+    # `secrets-outside-env` rule flags privileged secrets accessed
+    # from a job without an environment binding; the environment also
+    # gives the credentials a separate audit trail from
+    # `Production (NPM)` (publish-npm.yml's privileged surface), so a
+    # compromise of one workflow does not escalate into the other's
+    # secret pool.
+    environment: Production (Release PR)
     permissions:
       contents: write # Create the `release/v<version>` branch ref + signed bump commit via `gh api` (createCommitOnBranch). Never writes to main directly.
       pull-requests: write # Open the release PR via `gh pr create`.
@@ -92,6 +113,60 @@ jobs:
               ;;
           esac
 
+      - name: Validate release-PR app credentials
+        # `gh pr create` below MUST be called with a GitHub App
+        # installation token, not `GITHUB_TOKEN`. GitHub Actions
+        # suppresses cascading workflow runs when an event is triggered
+        # by the default `GITHUB_TOKEN` — a PR opened with that token
+        # fires the `pull_request: opened` event, but none of the
+        # workflows listed under `on: pull_request` actually run for it.
+        # The `main protection` ruleset requires 10 status checks;
+        # without cascade the checks never fire and the PR is stuck
+        # pending forever (the failure mode that swallowed v0.20.1's
+        # first two release PRs, #321 and #323).
+        #
+        # See https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow
+        # for the underlying restriction.
+        #
+        # We use a GitHub App rather than a PAT because installation
+        # tokens are short-lived (~1 hour), scoped to only the repos
+        # the App is installed on, and carry a non-human service
+        # identity. A PAT would be long-lived, tied to a human account,
+        # and easily over-scoped — exactly the smells the rest of this
+        # repo's release surface is built to avoid.
+        #
+        # Failing here, before any state on origin is mutated, keeps
+        # the remote tidy: no orphan branch, no half-opened PR.
+        env:
+          APP_ID: ${{ secrets.RELEASE_PR_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_ID:-}" ] || [ -z "${APP_PRIVATE_KEY:-}" ]; then
+            echo "::error title=Release-PR app credentials missing::This workflow requires a GitHub App installation for opening the release PR."
+            echo "::error::Setup:"
+            echo "::error::  1. Create the App: https://github.com/organizations/attaform/settings/apps/new"
+            echo "::error::     - GitHub App name: attaform-release (or any unique name)"
+            echo "::error::     - Homepage URL: https://github.com/attaform/Attaform"
+            echo "::error::     - Disable Webhook (uncheck Active)"
+            echo "::error::     - Repository permissions: Pull requests=Write (Metadata=Read auto-included)"
+            echo "::error::     - Where can this GitHub App be installed?: Only on this account"
+            echo "::error::     - Create GitHub App"
+            echo "::error::  2. On the new app's settings page:"
+            echo "::error::     - Note the numeric App ID at the top of General"
+            echo "::error::     - Generate a private key (.pem download) at the bottom"
+            echo "::error::  3. Install the app on this repo only: Install App tab -> attaform org -> Only select repositories -> attaform/Attaform -> Install"
+            echo "::error::  4. Create the deployment environment: https://github.com/attaform/Attaform/settings/environments/new"
+            echo "::error::     - Name: Production (Release PR) (exactly, matching the workflow's environment: key)"
+            echo "::error::     - Deployment branches and tags: Selected branches -> add 'main' and 'hotfix/v*'"
+            echo "::error::     - No required reviewers, no wait timer"
+            echo "::error::  5. Add the two secrets to the environment (NOT to repo-level secrets):"
+            echo "::error::     - RELEASE_PR_APP_ID: the numeric App ID from step 2"
+            echo "::error::     - RELEASE_PR_APP_PRIVATE_KEY: the full contents of the .pem file (BEGIN to END inclusive)"
+            echo "::error::  6. Re-dispatch this workflow."
+            exit 1
+          fi
+
       - name: Checkout target branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -99,12 +174,15 @@ jobs:
           # Full history needed by `generate-release-notes.mjs` to walk
           # `git tag --sort=-creatordate` for the previous release.
           fetch-depth: 0
-          # Keep GITHUB_TOKEN in .git/config so the `git fetch` inside
-          # the Classify step (re-dispatch detection) authenticates.
-          # The release branch + bump commit are written via `gh api`
-          # (createCommitOnBranch), not `git push`, so this credential
-          # only services read-side git operations.
-          persist-credentials: true
+          # Drop GITHUB_TOKEN from `.git/config` after checkout. The
+          # release branch + bump commit are written via `gh api`
+          # (createCommitOnBranch), not `git push`; remote branch
+          # existence + orphan-SHA reads also go through `gh api`
+          # (see the Classify step). The working tree never needs an
+          # attached credential, so the token in `.git/config` would
+          # be unnecessary ambient authority — zizmor flags this under
+          # the `artipacked` rule.
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
@@ -351,7 +429,15 @@ jobs:
           BASE_SHA=$(git rev-parse HEAD)
           echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
 
-          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+          # Remote branch existence + orphan-SHA reads go through the
+          # API rather than `git ls-remote`. With `persist-credentials:
+          # false` on the checkout there is no token attached to
+          # `.git/config`; `gh api` uses the explicit `GH_TOKEN` env
+          # binding instead, which keeps the credential out of the
+          # working tree (zizmor `artipacked` rule).
+          BRANCH_INFO=$(gh api "repos/$GH_REPOSITORY/branches/$BRANCH" 2>/dev/null || true)
+
+          if [ -z "$BRANCH_INFO" ]; then
             echo "mode=fresh" >> "$GITHUB_OUTPUT"
             echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; creating the branch + signed bump commit via createCommitOnBranch and opening the PR."
             exit 0
@@ -371,7 +457,7 @@ jobs:
           # commit object reachable via `refs/pull/<n>/head`, so the
           # audit trail of the prior attempt is preserved even with
           # the branch ref gone.
-          ORPHAN_SHA=$(git ls-remote origin "$BRANCH" | awk '{print $1}')
+          ORPHAN_SHA=$(echo "$BRANCH_INFO" | jq -r .commit.sha)
           echo "::notice title=Cleaning up orphan branch::$BRANCH exists on origin (sha=$ORPHAN_SHA) without an open PR; deleting before re-creating with a fresh signed bump commit."
           gh api -X DELETE "repos/$GH_REPOSITORY/git/refs/heads/$BRANCH"
           echo "mode=fresh" >> "$GITHUB_OUTPUT"
@@ -557,10 +643,45 @@ jobs:
             --color 0E8A16 \
             --force
 
+      - name: Mint release-PR app installation token
+        if: steps.classify.outputs.mode != 'noop'
+        id: app_token
+        # Mints a fresh installation token for the release-PR GitHub
+        # App. GitHub's API mints these with a fixed 1-hour ceiling on
+        # lifetime; the action's built-in post-job step calls
+        # `DELETE /installation/token` at end-of-job (default
+        # `skip-token-revoke: false`), shrinking the usable window from
+        # the API's 1-hour ceiling down to actual job duration (~30s
+        # for this workflow).
+        #
+        # The token carries the App's identity (not
+        # `github-actions[bot]`), so the `pull_request: opened` event
+        # the next step fires escapes the GITHUB_TOKEN cascade
+        # restriction.
+        #
+        # `permission-pull-requests: write` is the only permission the
+        # token is scoped to — the App on install may hold broader
+        # permissions, but this token slice gets just enough to call
+        # `gh pr create` (zizmor `github-app` rule: do not inherit
+        # blanket installation permissions).
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_PR_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+
       - name: Open release PR
         if: steps.classify.outputs.mode != 'noop'
+        # GH_TOKEN here is the App installation token from the previous
+        # step, NOT `secrets.GITHUB_TOKEN`. PRs opened via `GITHUB_TOKEN`
+        # do not cascade workflow runs, so the 10 required status checks
+        # would never fire — see the `Validate release-PR app
+        # credentials` step at the top of this job for the rationale.
+        # Everything else in this workflow (branch ref creation, signed
+        # bump commit, label bootstrap) runs on the lower-privilege
+        # default `GITHUB_TOKEN`.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
           TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
         run: |

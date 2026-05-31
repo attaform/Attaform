@@ -63,7 +63,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [apps/site/content/docs](https://github.com/attaform/Attaform/tree/main/apps/site/content/docs)
-**Notes:** Per-symbol reference pages: `useForm`, `useRegister`, `useWizard`, `injectForm`, plus schema, validation, persistence, undo/redo. Every public API symbol has its own page with the inference-first DX walkthroughs the library is built around.
+**Notes:** Per-symbol reference pages: `useForm`, `useRegister`, `useWizard`, `injectForm`, plus schema, validation, persistence, undo/redo. Every public API symbol has its own page with the inference-first DX walkthroughs Attaform is built around.
 
 ### 10. `sites_https`: Project sites MUST support HTTPS using TLS.
 

@@ -341,7 +341,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
   it('echo drop: own outbound messages do NOT mutate own state on receive', async () => {
     const { hashStableString } = await import('../../src/runtime/core/hash')
     const { fingerprintZodSchema } = await import('../../src/runtime/adapters/zod-v4/fingerprint')
-    const { wait } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
 
     const formKey = `b19-echo-${Math.random().toString(36).slice(2)}`
     const channelName = `attaform:sync:${formKey}:${hashStableString(fingerprintZodSchema(schema))}`
@@ -388,7 +388,20 @@ describe('multi-tab sync — BroadcastChannel', () => {
       blankPathsAdded: [],
       blankPathsRemoved: [],
     })
-    await wait(100)
+    // Sentinel: a non-echo patch on a different path. BC delivers
+    // FIFO per channel, so once the sentinel lands, the prior echo
+    // message has already been processed (and dropped) by the same
+    // listener invocation. The assertion below is a true post-delivery
+    // check, not a "we waited some time and nothing changed" guess.
+    external.postMessage({
+      v: 1,
+      kind: 'patches',
+      senderId: 'sentinel-tab',
+      formPatches: [{ kind: 'changed', path: ['email'], oldValue: '', newValue: 'sentinel@x.io' }],
+      blankPathsAdded: [],
+      blankPathsRemoved: [],
+    })
+    await waitUntil(() => (api.values.email === 'sentinel@x.io' ? true : null))
     expect(api.values.name).toBe('')
 
     external.close()
@@ -398,7 +411,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
   it('protocol-version drop: messages with unknown `v` are ignored', async () => {
     const { hashStableString } = await import('../../src/runtime/core/hash')
     const { fingerprintZodSchema } = await import('../../src/runtime/adapters/zod-v4/fingerprint')
-    const { wait } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
 
     const formKey = `b19-vdrop-${Math.random().toString(36).slice(2)}`
     const channelName = `attaform:sync:${formKey}:${hashStableString(fingerprintZodSchema(schema))}`
@@ -429,7 +442,17 @@ describe('multi-tab sync — BroadcastChannel', () => {
       blankPathsAdded: [],
       blankPathsRemoved: [],
     })
-    await wait(100)
+    // Sentinel: a current-version patch on a different path. Once it
+    // lands, the v: 999 message has already been processed (and dropped).
+    external.postMessage({
+      v: 1,
+      kind: 'patches',
+      senderId: 'sentinel-tab',
+      formPatches: [{ kind: 'changed', path: ['email'], oldValue: '', newValue: 'sentinel@x.io' }],
+      blankPathsAdded: [],
+      blankPathsRemoved: [],
+    })
+    await waitUntil(() => (api.values.email === 'sentinel@x.io' ? true : null))
     expect(api.values.name).toBe('')
 
     external.close()
@@ -499,7 +522,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
   it('inbound prototype-pollution defense — patch with `__proto__` segment rejected', async () => {
     const { hashStableString } = await import('../../src/runtime/core/hash')
     const { fingerprintZodSchema } = await import('../../src/runtime/adapters/zod-v4/fingerprint')
-    const { wait } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
 
     const formKey = `b19-proto-${Math.random().toString(36).slice(2)}`
     const channelName = `attaform:sync:${formKey}:${hashStableString(fingerprintZodSchema(schema))}`
@@ -518,6 +541,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
     })
     const app = createApp(App).use(createAttaform())
     app.mount(document.createElement('div'))
+    const api = handle.api as Api
     await waitForSyncEstablished(app, formKey)
 
     const external = new BroadcastChannel(channelName)
@@ -529,7 +553,18 @@ describe('multi-tab sync — BroadcastChannel', () => {
       blankPathsAdded: [],
       blankPathsRemoved: [],
     })
-    await wait(100)
+    // Sentinel: a clean patch on a normal path. Once it lands, the
+    // __proto__ patch has been processed (and dropped) by the same
+    // listener invocation.
+    external.postMessage({
+      v: 1,
+      kind: 'patches',
+      senderId: 'sentinel-tab',
+      formPatches: [{ kind: 'changed', path: ['email'], oldValue: '', newValue: 'sentinel@x.io' }],
+      blankPathsAdded: [],
+      blankPathsRemoved: [],
+    })
+    await waitUntil(() => (api.values.email === 'sentinel@x.io' ? true : null))
     expect((Object.prototype as Record<string, unknown>)['polluted']).toBeUndefined()
 
     external.close()
@@ -540,7 +575,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const { hashStableString } = await import('../../src/runtime/core/hash')
     const { fingerprintZodSchema } = await import('../../src/runtime/adapters/zod-v4/fingerprint')
     const { MULTI_TAB_SYNC_MODULE_KEY } = await import('../../src/runtime/core/multi-tab-sync')
-    const { wait } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
 
     const formKey = `b19-form-off-${Math.random().toString(36).slice(2)}`
     const channelName = `attaform:sync:${formKey}:${hashStableString(fingerprintZodSchema(schema))}`
@@ -568,6 +603,15 @@ describe('multi-tab sync — BroadcastChannel', () => {
     expect(state).toBeDefined()
     expect(state!.modules.has(MULTI_TAB_SYNC_MODULE_KEY)).toBe(false)
 
+    // The form has no sync listener, so we can't observe delivery
+    // through it. Stand up a separate BroadcastChannel as a delivery
+    // witness: when it sees the message, the channel has demonstrably
+    // delivered, and the form's unchanged state is a true assertion.
+    const observer = new BroadcastChannel(channelName)
+    let observerReceived = 0
+    observer.onmessage = (): void => {
+      observerReceived += 1
+    }
     const external = new BroadcastChannel(channelName)
     external.postMessage({
       v: 1,
@@ -577,9 +621,10 @@ describe('multi-tab sync — BroadcastChannel', () => {
       blankPathsAdded: [],
       blankPathsRemoved: [],
     })
-    await wait(100)
+    await waitUntil(() => (observerReceived > 0 ? true : null))
     expect(api.values.name).toBe('')
 
+    observer.close()
     external.close()
     app.unmount()
   })
@@ -588,7 +633,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const { hashStableString } = await import('../../src/runtime/core/hash')
     const { fingerprintZodSchema } = await import('../../src/runtime/adapters/zod-v4/fingerprint')
     const { MULTI_TAB_SYNC_MODULE_KEY } = await import('../../src/runtime/core/multi-tab-sync')
-    const { wait } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
 
     const formKey = `b19-insecure-${Math.random().toString(36).slice(2)}`
     const channelName = `attaform:sync:${formKey}:${hashStableString(fingerprintZodSchema(schema))}`
@@ -619,6 +664,15 @@ describe('multi-tab sync — BroadcastChannel', () => {
       expect(state).toBeDefined()
       expect(state!.modules.has(MULTI_TAB_SYNC_MODULE_KEY)).toBe(false)
 
+      // Same delivery-witness pattern as the multiTab:false test:
+      // the form has no listener here either (secure-context gate
+      // suppressed the sync module), so we observe through a separate
+      // channel.
+      const observer = new BroadcastChannel(channelName)
+      let observerReceived = 0
+      observer.onmessage = (): void => {
+        observerReceived += 1
+      }
       const external = new BroadcastChannel(channelName)
       external.postMessage({
         v: 1,
@@ -630,9 +684,10 @@ describe('multi-tab sync — BroadcastChannel', () => {
         blankPathsAdded: [],
         blankPathsRemoved: [],
       })
-      await wait(100)
+      await waitUntil(() => (observerReceived > 0 ? true : null))
       expect(api.values.name).toBe('')
 
+      observer.close()
       external.close()
       app.unmount()
     } finally {
@@ -646,7 +701,7 @@ describe('multi-tab sync — BroadcastChannel', () => {
     const { vRegister } = await import('../../src/runtime/core/directive')
     const { MULTI_TAB_SYNC_MODULE_KEY } = await import('../../src/runtime/core/multi-tab-sync')
     const { withDirectives } = await import('vue')
-    const { wait, waitUntil } = await import('../utils/form-harness')
+    const { waitUntil } = await import('../utils/form-harness')
 
     const formKey = `b19-reg-off-${Math.random().toString(36).slice(2)}`
     const channelName = `attaform:sync:${formKey}:${hashStableString(fingerprintZodSchema(schema))}`
@@ -699,7 +754,10 @@ describe('multi-tab sync — BroadcastChannel', () => {
       blankPathsAdded: [],
       blankPathsRemoved: [],
     })
-    await wait(50)
+    // The `email` patch is the delivery signal: once it lands, the
+    // hostile `name` patch in the same message has been processed by
+    // the same listener invocation.
+    await waitUntil(() => (api.values.email === 'a@b.co' ? true : null))
     // `name` was opted out of sync via the register call → rejected.
     expect(api.values.name).toBe('')
     // `email` rode the form-level default (multiTab on) → applied.

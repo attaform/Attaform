@@ -1,5 +1,35 @@
 # Releases
 
+## v0.20.2 — 2026-05-31
+
+## What's Changed
+* ci(release): pr-driven publish workflow with idempotent recovery by @ozzyfromspace in https://github.com/attaform/Attaform/pull/318
+* fix(release): bootstrap the release-pr label on every dispatch by @ozzyfromspace in https://github.com/attaform/Attaform/pull/319
+* feat(release): adopt an existing release branch via tree-hash byte-match by @ozzyfromspace in https://github.com/attaform/Attaform/pull/320
+* fix(release): sign the bump commit via createCommitOnBranch by @ozzyfromspace in https://github.com/attaform/Attaform/pull/322
+* fix(release): auto-delete orphan release branches on dispatch by @ozzyfromspace in https://github.com/attaform/Attaform/pull/324
+* fix(release): open release PR with a per-repo GitHub App, not GITHUB_TOKEN by @ozzyfromspace in https://github.com/attaform/Attaform/pull/325
+* fix(release): differentiate 404 from real branch existence in classify step by @ozzyfromspace in https://github.com/attaform/Attaform/pull/326
+* chore(release): v0.20.1 by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/327
+* fix(release): migrate App auth from deprecated app-id to client-id by @ozzyfromspace in https://github.com/attaform/Attaform/pull/328
+* fix(directive): unify consumer assigner fire-time contract by @ozzyfromspace in https://github.com/attaform/Attaform/pull/329
+* test(docs-demos): smoke harness for documented gestures by @ozzyfromspace in https://github.com/attaform/Attaform/pull/330
+* test(perf): cut test-suite execution time by ~27% by @ozzyfromspace in https://github.com/attaform/Attaform/pull/331
+* fix(directive): close three stale-closure sites by @ozzyfromspace in https://github.com/attaform/Attaform/pull/332
+* fix(persistence): auto-attach per-element meta inside RegisterValue by @ozzyfromspace in https://github.com/attaform/Attaform/pull/333
+* docs(persistence): describe rv-side persist-meta auto-attach by @ozzyfromspace in https://github.com/attaform/Attaform/pull/334
+* test(docs-demos): backfill Phase 2 smoke entries by @ozzyfromspace in https://github.com/attaform/Attaform/pull/335
+* docs: close out the brand-voice sweep with two micro-touches by @ozzyfromspace in https://github.com/attaform/Attaform/pull/336
+* docs(changelog): draft Unreleased section covering #329-#336 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/337
+* ci(release): signal bump type in commit headline + publish run-name by @ozzyfromspace in https://github.com/attaform/Attaform/pull/338
+
+## New Contributors
+* @attaform-release[bot] made their first contribution in https://github.com/attaform/Attaform/pull/327
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.20.1...v0.20.2
+
+---
+
 ## v0.20.1 — 2026-05-30
 
 **Full Changelog**: https://github.com/attaform/Attaform/compare/v0.20.1...v0.20.1

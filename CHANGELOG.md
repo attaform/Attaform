@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.20.2
 ### Fixed
 
 - **Consumer-installed assigners now see a uniform `(value, rv)`

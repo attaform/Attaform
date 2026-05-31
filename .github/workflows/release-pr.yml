@@ -305,52 +305,37 @@ jobs:
 
       - name: Classify dispatch state
         id: classify
-        # The bump steps above stage the version + CHANGELOG + RELEASES
-        # changes into the index without committing. This step inspects
-        # the matching state on origin and decides what to do with that
-        # staged bump:
+        # Two modes:
         #
-        #   (1) No branch on origin.
-        #         mode=fresh. Create the branch + signed bump commit via
-        #         createCommitOnBranch, open the PR.
-        #   (2) Branch on origin + open PR.
-        #         mode=noop. The prior dispatch already landed everything;
-        #         discard the local bump.
-        #   (3) Branch on origin + no PR + remote tree == local tree.
-        #         mode=adopt. The remote branch is byte-identical to what
-        #         this run just produced (same files, same contents, same
-        #         modes), so it is the artifact of a prior dispatch that
-        #         died before opening the PR. Skip the commit creation,
-        #         open the missing PR against the existing remote branch.
-        #   (4) Branch on origin + no PR + remote tree != local tree.
-        #         Fail with a tree-diff dump. Either a stale branch from
-        #         an abandoned attempt, or a hand-pushed branch with
-        #         contents the workflow did not produce. The user makes
-        #         the call (delete vs. investigate). Refusing adoption
-        #         here is the defense: a malicious actor with write
-        #         access cannot pre-stage `release/v<next>` with a
-        #         backdoored tree and wait for the workflow to merge and
-        #         publish it.
+        #   (1) mode=fresh. The terminal mode for every re-dispatch path
+        #       that does NOT have an open release PR. Covers:
         #
-        # Tree-hash equality is the byte-identity check. `git write-tree`
-        # serializes the current index into a tree object and returns
-        # its SHA; `git rev-parse <ref>^{tree}` returns the tree SHA of
-        # a remote commit. Two trees with the same SHA are guaranteed
-        # identical for every file, file mode, and directory structure
-        # they contain (git's content-addressed storage gives us this
-        # for free). Commit metadata (author, timestamps, parent) is NOT
-        # in the tree object, so author-email forgery cannot fake a
-        # tree match.
+        #         a. No branch on origin (first dispatch for this version).
+        #         b. Orphan branch on origin (no open PR pointing at it).
+        #            Could be a prior dispatch that died before opening
+        #            the PR, a closed-without-merge PR, or a stale branch
+        #            from a workflow version that produced a different
+        #            tree than this run will. The branch is deleted
+        #            here; the `Create signed bump commit` step below
+        #            re-creates it from scratch.
         #
-        # Adoption requires the bump steps to be deterministic across
-        # dispatches. `pnpm version` + `promote-changelog.mjs` already
-        # are; `generate-release-notes.mjs` uses HEAD's committer date
-        # (not `new Date()`) so RELEASES.md is also deterministic for a
-        # given target_branch HEAD. If the auto-notes API response varies
-        # between runs (PR title edited, label changed), adoption fails
-        # closed; the user cleans up and re-dispatches.
+        #       Deleting + re-creating is also the defense against a
+        #       malicious actor pre-staging `release/v<next>` with a
+        #       backdoored tree: their branch is obliterated before our
+        #       createCommitOnBranch call runs, so the workflow only
+        #       ever publishes a tree it computed itself. The earlier
+        #       "byte-match or fail" design refused to publish on a tree
+        #       mismatch, but that path required the user to delete the
+        #       branch by hand on every divergence — including benign
+        #       cases like the GitHub auto-notes API returning slightly
+        #       different markdown between runs.
         #
-        # `base_sha` is also captured for the createCommitOnBranch
+        #   (2) mode=noop. The release branch has an open PR. The prior
+        #       dispatch already landed everything; this dispatch
+        #       discards its local bump and exits cleanly without
+        #       touching the branch (which would invalidate the open PR).
+        #
+        # `base_sha` is captured for the createCommitOnBranch
         # `expectedHeadOid` field below. HEAD has not moved since
         # checkout (no local commit), so it is target_branch's tip at
         # the moment the workflow started — the right parent for the
@@ -363,7 +348,6 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="release/v$NEXT_VERSION"
-          LOCAL_TREE=$(git write-tree)
           BASE_SHA=$(git rev-parse HEAD)
           echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
 
@@ -381,23 +365,16 @@ jobs:
             exit 0
           fi
 
-          git fetch --depth=1 origin "$BRANCH"
-          REMOTE_TREE=$(git rev-parse FETCH_HEAD^{tree})
-
-          if [ "$LOCAL_TREE" = "$REMOTE_TREE" ]; then
-            echo "mode=adopt" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Adopting existing branch::$BRANCH already has the byte-identical bump on origin (tree=$LOCAL_TREE) but no open PR; skipping commit creation, opening the missing PR."
-            exit 0
-          fi
-
-          {
-            echo "::error::Branch '$BRANCH' exists on origin but its tree ($REMOTE_TREE) does not byte-match what this run just produced ($LOCAL_TREE)."
-            echo "::error::Diff (staged bump vs. origin/$BRANCH):"
-            git --no-pager diff --cached --stat FETCH_HEAD 2>&1 | sed 's/^/::error::  /' || true
-            echo "::error::Either a stale branch from an abandoned attempt, or a hand-pushed branch with contents this workflow did not produce."
-            echo "::error::Clean up the branch via the GitHub Branches UI (trash icon on '$BRANCH') and re-dispatch, or investigate the divergence."
-          }
-          exit 1
+          # Orphan branch: exists on origin without an open PR. Delete
+          # it so the `Create signed bump commit` step can re-create it
+          # cleanly. Closed PRs that referenced this branch keep their
+          # commit object reachable via `refs/pull/<n>/head`, so the
+          # audit trail of the prior attempt is preserved even with
+          # the branch ref gone.
+          ORPHAN_SHA=$(git ls-remote origin "$BRANCH" | awk '{print $1}')
+          echo "::notice title=Cleaning up orphan branch::$BRANCH exists on origin (sha=$ORPHAN_SHA) without an open PR; deleting before re-creating with a fresh signed bump commit."
+          gh api -X DELETE "repos/$GH_REPOSITORY/git/refs/heads/$BRANCH"
+          echo "mode=fresh" >> "$GITHUB_OUTPUT"
 
       - name: Create signed bump commit
         if: steps.classify.outputs.mode == 'fresh'
@@ -412,11 +389,12 @@ jobs:
         # target_branch tip captured by the Classify step). The bump
         # files (package.json, CHANGELOG.md, RELEASES.md) are passed as
         # base64-encoded `additions` that the API overlays onto the
-        # base commit's tree. The resulting commit's tree hash is
-        # byte-identical to `git write-tree` against the staged index,
-        # which is exactly what the Classify step compared for
-        # adoption — re-dispatching this run on an existing branch
-        # produced by a prior run will tree-match and adopt.
+        # base commit's tree to produce the new commit's tree.
+        #
+        # The branch ref creation will fail with HTTP 422 if the branch
+        # already exists. The Classify step above guarantees absence:
+        # `mode == 'fresh'` means either the branch never existed or
+        # the orphan-cleanup step just deleted it.
         #
         # Variables are read from env, not interpolated by the shell or
         # by Actions templating. The script uses execFileSync (not

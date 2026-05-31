@@ -196,9 +196,13 @@ describe('DU variant switch — error materialisation regressions', () => {
     // entry itself should not survive the re-validation either, or
     // `form.meta.errors` will leak it).
     api.setValue('notify.channel', 'sms')
+    // Wait for the new variant's leaf error (notify.number) to land —
+    // that's the positive signal the re-validation pass has completed.
+    // A predicate on `errs === undefined` would never resolve because
+    // the active-path filter returns `[]`, not undefined.
     await waitUntil(() => {
-      const errs = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
-      return errs === undefined ? true : null
+      const errs = (api.errors as unknown as (p: string) => ValidationError[])('notify.number')
+      return errs?.[0]?.code?.startsWith('zod:') ? true : null
     })
 
     // The stale leaf entry must NOT show up anywhere — not in the

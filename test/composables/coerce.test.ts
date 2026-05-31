@@ -19,7 +19,7 @@ import type { UseFormConfigV4, UseFormReturnV4 } from '../../src/zod'
 import { vRegister, isRegisterValue, assignKey } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { defineCoercion, defaultCoercionRules } from '../../src/runtime/core/schema-coerce'
-import { waitUntil } from '../utils/form-harness'
+import { awaitSettle, waitUntil } from '../utils/form-harness'
 
 let app: App | undefined
 afterEach(() => {
@@ -438,8 +438,9 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
     const cb = root.querySelector('[data-field="cb"]') as HTMLInputElement
     cb.checked = true
     cb.dispatchEvent(new Event('change', { bubbles: true }))
-    // The gate rejects, so the value won't change. Wait for the post-tick state.
-    await waitUntil(() => (cb.checked === true ? true : null))
+    // The gate rejects, so the value won't change. Settle the cycle so
+    // any write that would have fired has had its chance.
+    await awaitSettle()
     // 'yes' isn't 'true'/'false' post-trim+lowercase → coerce passes
     // through → gate rejects → state preserves the original `false`.
     expect(api.values.accepted).toBe(false)
@@ -484,8 +485,9 @@ describe('NaN passthrough + gate rejection', () => {
     const input = root.querySelector('[data-field="age"]') as HTMLInputElement
     input.value = 'abc'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    // Gate rejects; wait for post-input tick to settle.
-    await waitUntil(() => (input.value === 'abc' ? true : null))
+    // Gate rejects; settle the cycle so any write that would have
+    // fired has had its chance.
+    await awaitSettle()
     // 'abc' is non-coercible; coerce passes through; gate rejects.
     expect(api.values.age).toBe(5)
   })
@@ -498,8 +500,9 @@ describe('programmatic write bypass', () => {
     const { api } = mount(schema, { age: 0 }, () => h('div'))
     await waitUntil(() => (api.values.age === 0 ? true : null))
     api.setValue('age', '25' as unknown as number)
-    // Gate rejects; the value should remain 0. Wait briefly for any tick.
-    await waitUntil(() => (api.values.age === 0 ? true : null))
+    // Gate rejects; the value should remain 0. Settle the cycle so any
+    // tick-scheduled write has had its chance.
+    await awaitSettle()
     // Coerce only fires on directive-driven writes. Programmatic
     // writes go through the slim gate untouched, which rejects.
     expect(api.values.age).toBe(0)
@@ -525,8 +528,9 @@ describe('plugin-default off', () => {
     const input = root.querySelector('[data-field="age"]') as HTMLInputElement
     input.value = '25'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    // Gate rejects; wait for the input event to be processed.
-    await waitUntil(() => (input.value === '25' ? true : null))
+    // Gate rejects; settle the cycle so any write that would have
+    // fired has had its chance.
+    await awaitSettle()
     // Coerce off → string write rejected by gate; state unchanged.
     expect(api.values.age).toBe(0)
   })
@@ -594,8 +598,9 @@ describe('per-form override beats plugin default (both directions)', () => {
     const input = root.querySelector('[data-field="age"]') as HTMLInputElement
     input.value = '25'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    // Gate rejects; wait for input event to settle.
-    await waitUntil(() => (input.value === '25' ? true : null))
+    // Gate rejects; settle the cycle so any write that would have
+    // fired has had its chance.
+    await awaitSettle()
     expect(handle.api.values.age).toBe(0)
   })
 })

@@ -34,6 +34,8 @@
       props. They call <code>injectForm</code> and the registry hands back the same reactive form
       the parent owns.
     </p>
+
+    <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
 
@@ -97,5 +99,15 @@
     margin: 0;
     color: #6b7280;
     font-size: 0.75rem;
+  }
+  pre {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    color: #111827;
+    margin: 0;
   }
 </style>

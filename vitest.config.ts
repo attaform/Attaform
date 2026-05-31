@@ -40,14 +40,20 @@ export default defineConfig({
     // edits are live in the source tree. Mirrors the alias map on
     // `apps/site/nuxt.config.ts` (vite + nitro) — see the comment
     // there for the broader staleness story.
-    alias: {
-      attaform: `${rootDir}src/index.ts`,
-      'attaform/zod': `${rootDir}src/zod.ts`,
-      'attaform/zod-v3': `${rootDir}src/zod-v3.ts`,
-      'attaform/zod-v4': `${rootDir}src/zod-v4.ts`,
-      'attaform/vite': `${rootDir}src/vite.ts`,
-      'attaform/transforms': `${rootDir}src/transforms.ts`,
-    },
+    //
+    // Array form with anchored regex `find` patterns. The object
+    // form's prefix-matching semantics rewrote `attaform/zod` to
+    // `${rootDir}src/index.ts/zod` because the bare `attaform`
+    // entry was iterated first; the regex finds anchor each entry
+    // to an exact specifier so no entry can swallow a sibling.
+    alias: [
+      { find: /^attaform\/zod-v3$/, replacement: `${rootDir}src/zod-v3.ts` },
+      { find: /^attaform\/zod-v4$/, replacement: `${rootDir}src/zod-v4.ts` },
+      { find: /^attaform\/zod$/, replacement: `${rootDir}src/zod.ts` },
+      { find: /^attaform\/vite$/, replacement: `${rootDir}src/vite.ts` },
+      { find: /^attaform\/transforms$/, replacement: `${rootDir}src/transforms.ts` },
+      { find: /^attaform$/, replacement: `${rootDir}src/index.ts` },
+    ],
   },
   test: {
     // Global setup file: stubs `window.isSecureContext = true` so the

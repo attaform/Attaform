@@ -12,7 +12,7 @@
 // `await Promise.resolve()` between keystrokes is enough to surface
 // errors. A form with an explicit positive `debounceMs` needs a real
 // `setTimeout(>0)` flush to surface anything.
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
@@ -198,59 +198,63 @@ describe('spike — persist.debounceMs: 0 writes immediately on every form chang
   const schema = z.object({ note: z.string() })
 
   it('default debounce: storage is empty until the 300 ms timer fires', async () => {
-    const writes: { key: string; value: unknown }[] = []
-    const memoryAdapter = {
-      async getItem(): Promise<unknown> {
-        return null
-      },
-      async setItem(key: string, value: unknown): Promise<void> {
-        writes.push({ key, value })
-      },
-      async removeItem(): Promise<void> {},
-      async listKeys(): Promise<string[]> {
-        return []
-      },
+    // Fake timers step the persistence debounce timer in virtual time
+    // — the test verifies BEFORE / AFTER the 300 ms window without
+    // burning wall-clock seconds, and the contract is sharper than a
+    // wall-clock poll (which could not distinguish "timer fired" from
+    // "wall-clock ran past it").
+    vi.useFakeTimers()
+    try {
+      const writes: { key: string; value: unknown }[] = []
+      const memoryAdapter = {
+        async getItem(): Promise<unknown> {
+          return null
+        },
+        async setItem(key: string, value: unknown): Promise<void> {
+          writes.push({ key, value })
+        },
+        async removeItem(): Promise<void> {},
+        async listKeys(): Promise<string[]> {
+          return []
+        },
+      }
+
+      const handle: { api?: UseFormReturn<typeof schema> } = {}
+      const Parent = defineComponent({
+        setup() {
+          handle.api = useForm({
+            schema,
+            defaultValues: { note: '' },
+            key: `persist-default-${Math.random().toString(36).slice(2)}`,
+            persist: { storage: memoryAdapter },
+          })
+          const rv = handle.api.register('note', { persist: true })
+          return () =>
+            h('div', null, [
+              withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [[vRegister, rv]]),
+            ])
+        },
+      })
+      app = createApp(Parent).use(createAttaform())
+      const root = document.createElement('div')
+      document.body.appendChild(root)
+      app.mount(root)
+
+      const input = root.querySelector('[data-field="note"]') as HTMLInputElement
+      input.value = 'hello'
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+
+      // Advance to just BEFORE the 300 ms debounce window — the timer
+      // hasn't fired, so no write should have landed.
+      await vi.advanceTimersByTimeAsync(299)
+      expect(writes.length).toBe(0)
+
+      // Cross the threshold — exactly one coalesced write lands.
+      await vi.advanceTimersByTimeAsync(2)
+      expect(writes.length).toBe(1)
+    } finally {
+      vi.useRealTimers()
     }
-
-    const handle: { api?: UseFormReturn<typeof schema> } = {}
-    const Parent = defineComponent({
-      setup() {
-        handle.api = useForm({
-          schema,
-          defaultValues: { note: '' },
-          key: `persist-default-${Math.random().toString(36).slice(2)}`,
-          persist: { storage: memoryAdapter },
-        })
-        const rv = handle.api.register('note', { persist: true })
-        return () =>
-          h('div', null, [
-            withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [[vRegister, rv]]),
-          ])
-      },
-    })
-    app = createApp(Parent).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    // Allow mount-time setup to settle. No persist write expected yet
-    // since the user hasn't typed.
-    await waitUntil(() => (writes.length === 0 ? true : null), 50)
-
-    const input = root.querySelector('[data-field="note"]') as HTMLInputElement
-    input.value = 'hello'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-
-    // Microtask flush — write hasn't happened yet (300 ms timer
-    // pending). Short timeout: a longer wait would let the timer fire
-    // and hide the contract.
-    await waitUntil(() => (writes.length === 0 ? true : null), 50)
-    expect(writes.length).toBe(0)
-
-    // After the debounce timer fires, exactly one coalesced write
-    // lands. Poll on the side-effect rather than time-pumping so a
-    // contended CI doesn't flake before the timer has a chance.
-    await waitUntil(() => (writes.length >= 1 ? true : null))
-    expect(writes.length).toBe(1)
   })
 
   it('debounceMs: 0: every keystroke kicks off a write immediately', async () => {

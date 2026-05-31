@@ -481,8 +481,8 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
  *
  * - `ZodOptional` / `ZodNullable` / `ZodDefault` / `ZodCatch` →
  *   directly `false`.
- * - `ZodReadonly` / `ZodPipeline` / `ZodBranded` / `ZodEffects` →
- *   transparent peel and re-check inner.
+ * - `ZodReadonly` / `ZodPipeline` / `ZodBranded` / `ZodEffects` /
+ *   `ZodLazy` → transparent peel and re-check inner.
  * - `ZodUnion` / `ZodDiscriminatedUnion` → `false` if ANY branch
  *   admits empty (matches union "first-success" semantic).
  * - `ZodIntersection` → `true` if EITHER side is required (parse
@@ -523,6 +523,14 @@ function isLeafRequiredV3(schema: z.ZodTypeAny, depth = 0): boolean {
   }
   if (isZodSchemaType(schema, 'ZodEffects')) {
     const inner = unwrapEffectsSource(schema)
+    return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
+  }
+  if (isZodSchemaType(schema, 'ZodLazy')) {
+    // `z.lazy(() => inner)` is transparent for required-ness; resolve
+    // and re-check the inner. Matches v4's isLeafRequired, which peels
+    // lazy too. `unwrapLazy` swallows a throwing getter, and the depth
+    // cap above bounds a self-referential lazy.
+    const inner = unwrapLazy(schema)
     return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
   // Union — required only if EVERY branch is required.

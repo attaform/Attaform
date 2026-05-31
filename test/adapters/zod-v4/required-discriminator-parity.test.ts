@@ -9,6 +9,10 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
  * written; the catch-peel scenario in D11 is investigated empirically
  * here — if it fails, the v4 side has the same gap and the fix lands
  * symmetrically.
+ *
+ * The lazy-parity block is the anchor for the v3 fix: v4's
+ * `isLeafRequired` already peels `ZodLazy`, so these cases pass
+ * unchanged and prove the v3 side now matches.
  */
 describe('zod v4: required + discriminator parity', () => {
   describe('z.void() is not required', () => {
@@ -88,6 +92,20 @@ describe('zod v4: required + discriminator parity', () => {
       expect(ctx?.isVariantSelected('b')).toBe(true)
       expect(ctx?.isVariantSelected('c')).toBe(true)
       expect(ctx?.isVariantSelected('d')).toBe(false)
+    })
+  })
+
+  describe('z.lazy is transparent for required-ness (lazy parity)', () => {
+    it('peels z.lazy to a permissive inner so the leaf is not required', () => {
+      const schema = z.object({ node: z.lazy(() => z.string().optional()) })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      expect(adapter.isRequiredAtPath(['node'])).toBe(false)
+    })
+
+    it('a z.lazy wrapping a required inner stays required', () => {
+      const schema = z.object({ node: z.lazy(() => z.string()) })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      expect(adapter.isRequiredAtPath(['node'])).toBe(true)
     })
   })
 })

@@ -29,6 +29,10 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  *   the literal set held the array AS one entry and
  *   `isVariantSelected('a')` returned `false`. v4 reads through
  *   `getLiteralValues(litSchema)` which always returns an array.
+ * - **lazy parity** — `isLeafRequiredV3` did not peel `ZodLazy`, so a
+ *   `z.lazy(() => x.optional())` leaf reported as required while v4
+ *   (which peels lazy via `unwrapLazy`) reported not-required. v3 now
+ *   peels lazy to match.
  *
  * Mirror of `required-discriminator-parity.test.ts` under
  * `test/adapters/zod-v4/`; dual-green after the fix is the parity
@@ -118,6 +122,22 @@ describe('zod v3: required + discriminator parity (D9 / D10 / D11 / D12)', () =>
       expect(ctx?.isVariantSelected('b')).toBe(true)
       expect(ctx?.isVariantSelected('c')).toBe(true)
       expect(ctx?.isVariantSelected('d')).toBe(false)
+    })
+  })
+
+  describe('z.lazy is transparent for required-ness (lazy parity)', () => {
+    it('peels z.lazy to a permissive inner so the leaf is not required', () => {
+      const schema = z.object({ node: z.lazy(() => z.string().optional()) })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      // v4's isLeafRequired already peels lazy; v3 now matches. Before
+      // the peel a lazy-wrapped optional reported as required.
+      expect(adapter.isRequiredAtPath(['node'])).toBe(false)
+    })
+
+    it('a z.lazy wrapping a required inner stays required', () => {
+      const schema = z.object({ node: z.lazy(() => z.string()) })
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      expect(adapter.isRequiredAtPath(['node'])).toBe(true)
     })
   })
 })

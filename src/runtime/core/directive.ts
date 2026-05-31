@@ -486,7 +486,16 @@ function setAssignFunction(
   // entire directive lifecycle. The default assigner is a fallback
   // for the common case where nobody overrides; it should NEVER
   // clobber an explicit consumer override.
-  if (el[assignKey] !== undefined && !isDefaultAssigner(el[assignKey])) {
+  //
+  // Wrappers produced by `getModelAssigner` for the
+  // `@update:registerValue` install path are tagged with
+  // `CONSUMER_WRAPPED_TAG`; bailing on them too would freeze the
+  // listener at the first vnode's prop value, so a parent re-render
+  // that swaps the handler reference would never take effect. Allow
+  // re-derivation in that case — the freshly produced wrapper closes
+  // over the new vnode's prop function.
+  const current = el[assignKey]
+  if (current !== undefined && !isDefaultAssigner(current) && !isConsumerWrapped(current)) {
     return
   }
 

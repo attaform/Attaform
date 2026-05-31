@@ -2329,9 +2329,9 @@ export type InternalRegisterValue<Value = unknown> = RegisterValue<Value> & {
  * on the bound element.
  *
  * The directive passes the extracted value plus the `RegisterValue`
- * the directive is currently bound to. The second arg lets a
- * top-level handler write back to form state without having to
- * capture the RV via closure:
+ * the directive is currently bound to, regardless of install path.
+ * The second arg lets a top-level handler write back to form state
+ * without having to capture the RV via closure:
  *
  * ```ts
  * function upperCaseAssigner(value: unknown, rv: RegisterValue): void {
@@ -2339,9 +2339,10 @@ export type InternalRegisterValue<Value = unknown> = RegisterValue<Value> & {
  * }
  * ```
  *
- * `registerValue` is omitted only for assigners installed directly
- * via `el[assignKey] = fn` — those callers already have the RV in
- * scope at install time.
+ * The `registerValue` parameter is typed optional only to keep
+ * standalone invocations from outside the directive (rare; manual
+ * dispatch in tests, for example) type-checkable; the directive
+ * itself always supplies it at fire time.
  *
  * Return `true` when the write was accepted, `false` when it was
  * rejected (e.g. the value didn't match the path's expected type).

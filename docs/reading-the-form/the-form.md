@@ -16,7 +16,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-One call, one form. `useForm` hands back a reactive form that already knows your schema's shape, types, defaults, and validation. Everything below is a property of that single `form` handle: drillable value reads, per-leaf field state, error arrays, the submit handler, mutators. Wire one input, then reach for whatever else you need on the same object.
+One call, one form. `useForm` hands back a reactive form that already knows your schema's shape, types, defaults, and validation. Everything below is a property of that single `form` handle: drillable value reads, per-leaf field state, error arrays, the submit handler, mutators. Wire one input, then reach for whatever else you need on the same `form`.
 
 ```ts
 const schema = z.object({

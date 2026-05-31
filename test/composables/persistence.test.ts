@@ -701,8 +701,10 @@ describe('persistence — per-element opt-in', () => {
     apps.push(app)
 
     handle.api?.setValue('email', 'leak@example.com')
-    // Generous wait — debounce is 20 ms, so 80 ms covers timer + drain.
-    await wait(80)
+    // 1.5x the 20 ms debounce — any in-flight write would have fired
+    // and reached localStorage by now; the waitUntil that follows is
+    // an extra defensive poll, not a long pessimistic ceiling.
+    await wait(30)
     await waitUntil(() => (localStorage.getItem(fpKey('test-noop')) === null ? true : null))
     expect(localStorage.getItem(fpKey('test-noop'))).toBeNull()
   })
@@ -744,7 +746,9 @@ describe('persistence — per-element opt-in', () => {
     const input = handle.el as HTMLInputElement
     input.value = 'no-opt-in@example.com'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    await wait(80)
+    // 1.5x the 20 ms debounce — any in-flight write would have fired
+    // by now.
+    await wait(30)
     await waitUntil(() => (localStorage.getItem(fpKey('test-no-flag')) === null ? true : null))
     expect(localStorage.getItem(fpKey('test-no-flag'))).toBeNull()
     // Sanity: the value still landed in the form ref (writes work, just
@@ -799,7 +803,9 @@ describe('persistence — per-element opt-in', () => {
     const b = handle.b as HTMLInputElement
     b.value = 'from-b@example.com'
     b.dispatchEvent(new Event('input', { bubbles: true }))
-    await wait(80)
+    // 1.5x the 20 ms debounce — any in-flight write would have fired
+    // by now.
+    await wait(30)
     await waitUntil(() => (localStorage.getItem(fpKey('test-mixed')) === null ? true : null))
     expect(localStorage.getItem(fpKey('test-mixed'))).toBeNull()
 
@@ -1377,93 +1383,115 @@ describe('persistence — shorthand config', () => {
   it("persist: 'local' (string shorthand) writes to localStorage with default key", async () => {
     // The default key is `attaform:${formKey}` — mountForm
     // generates a unique formKey, so the resolved storage key is unique
-    // per test and we read back via the same scheme.
-    const handle: { api?: ApiReturn; el?: HTMLInputElement } = {}
-    const formKey = `shorthand-${Math.random().toString(36).slice(2)}`
-    const App = defineComponent({
-      setup() {
-        const api = useForm({ schema, key: formKey, persist: 'local' })
-        handle.api = api
-        return () =>
-          h(
-            'div',
-            withDirectives(
-              h('input', {
-                type: 'text',
-                ref: (el): void => {
-                  if (el !== null) handle.el = el as HTMLInputElement
-                },
-              }),
-              [[vRegister, api.register('email', { persist: true })]]
+    // per test and we read back via the same scheme. Fake timers step
+    // the default 300 ms debounce window in virtual time.
+    //
+    // Pre-warm the local-storage adapter module before swapping to
+    // fake timers — `getStorageAdapter('local')` does a dynamic import
+    // on first call, which runs in real time and can't be advanced.
+    // Subsequent calls hit the module cache.
+    await import('../../src/runtime/core/persistence/local-storage')
+    vi.useFakeTimers()
+    try {
+      const handle: { api?: ApiReturn; el?: HTMLInputElement } = {}
+      const formKey = `shorthand-${Math.random().toString(36).slice(2)}`
+      const App = defineComponent({
+        setup() {
+          const api = useForm({ schema, key: formKey, persist: 'local' })
+          handle.api = api
+          return () =>
+            h(
+              'div',
+              withDirectives(
+                h('input', {
+                  type: 'text',
+                  ref: (el): void => {
+                    if (el !== null) handle.el = el as HTMLInputElement
+                  },
+                }),
+                [[vRegister, api.register('email', { persist: true })]]
+              )
             )
-          )
-      },
-    })
-    const app = createApp(App).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    apps.push(app)
+        },
+      })
+      const app = createApp(App).use(createAttaform())
+      const root = document.createElement('div')
+      document.body.appendChild(root)
+      app.mount(root)
+      apps.push(app)
 
-    const el = handle.el as HTMLInputElement
-    el.value = 'shorthand@example.com'
-    el.dispatchEvent(new Event('input', { bubbles: true }))
-    // Default debounceMs is 300 — allow 600 ms for the timer + adapter chain.
-    const expectedKey = `attaform:${formKey}:${FP}`
-    const raw = await waitUntil(() => localStorage.getItem(expectedKey), 1000)
-    expect(raw).not.toBeNull()
-    const payload = JSON.parse(raw as string) as { v: number; data: { form: { email: string } } }
-    expect(payload.v).toBe(6)
-    expect(payload.data.form.email).toBe('shorthand@example.com')
+      const el = handle.el as HTMLInputElement
+      el.value = 'shorthand@example.com'
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      // Step past the 300 ms default debounce window.
+      await vi.advanceTimersByTimeAsync(310)
+      const expectedKey = `attaform:${formKey}:${FP}`
+      const raw = localStorage.getItem(expectedKey)
+      expect(raw).not.toBeNull()
+      const payload = JSON.parse(raw as string) as { v: number; data: { form: { email: string } } }
+      expect(payload.v).toBe(6)
+      expect(payload.data.form.email).toBe('shorthand@example.com')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('persist: customAdapter (object shorthand) routes writes to the adapter', async () => {
     // A custom FormStorage with no `storage` key — disambiguator picks
     // it up as a custom adapter, NOT as a malformed options bag.
-    const writes: Array<[string, unknown]> = []
-    const customAdapter = {
-      getItem: (): Promise<unknown> => Promise.resolve(undefined),
-      setItem: (key: string, value: unknown): Promise<void> => {
-        writes.push([key, value])
-        return Promise.resolve()
-      },
-      removeItem: (): Promise<void> => Promise.resolve(),
-      listKeys: (): Promise<string[]> => Promise.resolve([]),
-    }
-    const handle: { el?: HTMLInputElement } = {}
-    const formKey = `custom-${Math.random().toString(36).slice(2)}`
-    const App = defineComponent({
-      setup() {
-        const api = useForm({ schema, key: formKey, persist: customAdapter })
-        return () =>
-          h(
-            'div',
-            withDirectives(
-              h('input', {
-                type: 'text',
-                ref: (el): void => {
-                  if (el !== null) handle.el = el as HTMLInputElement
-                },
-              }),
-              [[vRegister, api.register('email', { persist: true })]]
+    vi.useFakeTimers()
+    try {
+      const writes: Array<[string, unknown]> = []
+      const customAdapter = {
+        getItem: (): Promise<unknown> => Promise.resolve(undefined),
+        setItem: (key: string, value: unknown): Promise<void> => {
+          writes.push([key, value])
+          return Promise.resolve()
+        },
+        removeItem: (): Promise<void> => Promise.resolve(),
+        listKeys: (): Promise<string[]> => Promise.resolve([]),
+      }
+      const handle: { el?: HTMLInputElement } = {}
+      const formKey = `custom-${Math.random().toString(36).slice(2)}`
+      const App = defineComponent({
+        setup() {
+          const api = useForm({ schema, key: formKey, persist: customAdapter })
+          return () =>
+            h(
+              'div',
+              withDirectives(
+                h('input', {
+                  type: 'text',
+                  ref: (el): void => {
+                    if (el !== null) handle.el = el as HTMLInputElement
+                  },
+                }),
+                [[vRegister, api.register('email', { persist: true })]]
+              )
             )
-          )
-      },
-    })
-    const app = createApp(App).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    apps.push(app)
-    const el = handle.el as HTMLInputElement
-    el.value = 'custom@example.com'
-    el.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitUntil(() => (writes.length > 0 ? true : null), 1000)
-    expect(writes.length).toBeGreaterThan(0)
-    const [writtenKey, writtenValue] = writes[writes.length - 1]!
-    expect(writtenKey).toBe(`attaform:${formKey}:${FP}`)
-    const payload = writtenValue as { data: { form: { email: string } } }
-    expect(payload.data.form.email).toBe('custom@example.com')
+        },
+      })
+      const app = createApp(App).use(createAttaform())
+      const root = document.createElement('div')
+      document.body.appendChild(root)
+      app.mount(root)
+      apps.push(app)
+      const el = handle.el as HTMLInputElement
+      el.value = 'custom@example.com'
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      // Step past the 300 ms default debounce window, then drain the
+      // adapter chain's microtasks so the awaited setItem has actually
+      // committed to storage by the time we read it.
+      await vi.advanceTimersByTimeAsync(310)
+      await vi.runAllTimersAsync()
+      expect(writes.length).toBeGreaterThan(0)
+      const [writtenKey, writtenValue] = writes[writes.length - 1]!
+      expect(writtenKey).toBe(`attaform:${formKey}:${FP}`)
+      const payload = writtenValue as { data: { form: { email: string } } }
+      expect(payload.data.form.email).toBe('custom@example.com')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

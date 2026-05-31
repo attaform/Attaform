@@ -4,6 +4,7 @@ import { defineComponent, h, createApp, type App } from 'vue'
 import { z } from 'zod'
 
 import { useForm } from '../../src/zod'
+import { awaitSettle, waitUntil } from '../utils/form-harness'
 
 /**
  * Cross-tab snapshot handshake MUST adopt the leader's live state on
@@ -101,8 +102,9 @@ describe('multi-tab sync: opt-in default', () => {
     })
     if (captureA.form === undefined) throw new Error('setup did not capture formA')
 
-    // Allow any potential lazy-init window to elapse.
-    await new Promise((r) => setTimeout(r, 100))
+    // Lazy-init schedules via queueMicrotask; two nextTicks flush the
+    // window where a sync module would (incorrectly) install itself.
+    await awaitSettle()
 
     const registry = appA._attaform
     if (registry === undefined) throw new Error('app has no attaform registry')
@@ -136,7 +138,10 @@ describe('multi-tab sync: opt-in default', () => {
     if (formA === undefined || formB === undefined) throw new Error('setup did not capture form')
 
     formA.setValue('email', 'alice@example.com')
-    await new Promise((r) => setTimeout(r, 100))
+    // Neither form has multiTab, so no BroadcastChannel is opened on
+    // either side — nothing to deliver, nothing to drop. Settle the
+    // local reactive cycle and assert.
+    await awaitSettle()
 
     // No multiTab on either form, so Tab A's write stays local.
     expect(formA.values.email).toBe('alice@example.com')
@@ -451,7 +456,21 @@ describe('multi-tab sync: File values stay local (security gate)', () => {
         blankPathsAdded: [],
         blankPathsRemoved: [],
       })
-      await new Promise((r) => setTimeout(r, 100))
+      // Sentinel: a valid string patch on a different path, in the
+      // accepted `kind: 'changed'` shape. BC delivers FIFO, so once
+      // the sentinel lands, the hostile File patch has already been
+      // processed (and dropped) by the same listener.
+      evil.postMessage({
+        v: 1,
+        kind: 'patches',
+        senderId: 'evil-sender',
+        formPatches: [
+          { kind: 'changed', path: ['caption'], oldValue: '', newValue: '__sentinel__' },
+        ],
+        blankPathsAdded: [],
+        blankPathsRemoved: [],
+      })
+      await waitUntil(() => (formA.values.caption === '__sentinel__' ? true : null))
     } finally {
       evil.close()
     }
@@ -493,8 +512,20 @@ describe('multi-tab sync: structural type-mismatch defense', () => {
         blankPathsAdded: [],
         blankPathsRemoved: [],
       })
-      // Give the channel time to deliver and the receiver time to apply.
-      await new Promise((r) => setTimeout(r, 100))
+      // Sentinel: a valid string patch on the `comment` path, in the
+      // accepted `kind: 'changed'` shape. Once it lands, the bad-type
+      // patch has been processed (and dropped) by the same listener.
+      evil.postMessage({
+        v: 1,
+        kind: 'patches',
+        senderId: 'evil-tab',
+        formPatches: [
+          { kind: 'changed', path: ['comment'], oldValue: '', newValue: '__sentinel__' },
+        ],
+        blankPathsAdded: [],
+        blankPathsRemoved: [],
+      })
+      await waitUntil(() => (formA.values.comment === '__sentinel__' ? true : null))
     } finally {
       evil.close()
     }
@@ -629,7 +660,20 @@ describe('multi-tab sync: hostile-message no-uncaught guard (SEC-3)', () => {
         blankPathsAdded: [null],
         blankPathsRemoved: [],
       })
-      await new Promise((r) => setTimeout(r, 100))
+      // Sentinel: a clean patch in the accepted `kind: 'changed'` shape.
+      // Once it lands, the malformed message has already been processed;
+      // any uncaught exception it would throw is now visible.
+      evil.postMessage({
+        v: 1,
+        kind: 'patches',
+        senderId: 'evil-malformed',
+        formPatches: [
+          { kind: 'changed', path: ['comment'], oldValue: '', newValue: '__sentinel__' },
+        ],
+        blankPathsAdded: [],
+        blankPathsRemoved: [],
+      })
+      await waitUntil(() => (formA.values.comment === '__sentinel__' ? true : null))
     } finally {
       evil.close()
       process.off('uncaughtException', onProcessError)

@@ -321,7 +321,12 @@ describe('<input type="file" v-register> — persistence carve-out', () => {
     textInput.value = 'release notes'
     textInput.dispatchEvent(new Event('input', { bubbles: true }))
 
-    await waitUntil(() => (localStorage.getItem('file-persist-test') !== null ? true : null), 200)
+    // The persisted key has a schema-hash suffix (`file-persist-test:<hash>`),
+    // so a bare `getItem('file-persist-test')` predicate would burn the
+    // full ceiling waiting for an exact key that is never written.
+    await waitUntil(() => {
+      return Object.keys(localStorage).some((k) => k.startsWith('file-persist-test:')) ? true : null
+    }, 200)
 
     const raw = Object.keys(localStorage).find((k) => k.startsWith('file-persist-test:'))
     expect(raw).toBeDefined()

@@ -7,7 +7,7 @@
  * Parameterised on `useFormFn` so v3 and v4 callers can pass their
  * own typed import without the harness coupling to either zod major.
  */
-import { createApp, defineComponent, h, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
@@ -53,6 +53,24 @@ export async function waitUntil<T>(
     if (Date.now() >= deadline) return null
     await wait(intervalMs)
   }
+}
+
+/**
+ * Yield twice through Vue's microtask queue so the directive's
+ * input/change cycle (handler → gate → reactive patch → DOM sync) has
+ * fired. Use for "prove the write was rejected / nothing happened"
+ * assertions where there is no positive state change to poll on — a
+ * `waitUntil` predicate that's structurally never true burns the full
+ * timeout ceiling on every run.
+ *
+ * Two ticks because the cycle can be: handler fires → schedules a
+ * reactive write → first nextTick flushes that write → directive's
+ * model→DOM sync watcher runs on the next tick. One yield isn't enough
+ * for the round-trip; three would be overkill.
+ */
+export async function awaitSettle(): Promise<void> {
+  await nextTick()
+  await nextTick()
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

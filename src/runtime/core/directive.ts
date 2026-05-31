@@ -158,6 +158,64 @@ function isDefaultAssigner(fn: unknown): boolean {
 }
 
 /**
+ * Symbol-tagged on wrappers `getModelAssigner` produces for the
+ * `@update:registerValue` install path. The tag lets `fireAssigner`
+ * recognize an already-wrapped consumer handler and call it raw
+ * (the wrapper already runs transforms + coerce + supplies `rv`).
+ * Without the tag, fire-time would re-wrap and apply transforms
+ * twice for that install path.
+ */
+const CONSUMER_WRAPPED_TAG: unique symbol = Symbol.for('attaform:consumer-wrapped-assigner')
+
+type ConsumerWrappedCarrier = { [CONSUMER_WRAPPED_TAG]?: boolean }
+
+function isConsumerWrapped(fn: unknown): boolean {
+  return typeof fn === 'function' && (fn as ConsumerWrappedCarrier)[CONSUMER_WRAPPED_TAG] === true
+}
+
+/**
+ * Fire-time entry point for invoking whatever currently sits at
+ * `el[assignKey]`. Replaces direct `el[assignKey]?.(value)` calls so
+ * the directive's two consumer-install paths produce the same fire-
+ * time contract:
+ *
+ *   - `@update:registerValue` (vnode-prop listener): wrapped at
+ *     `created`-time by `getModelAssigner`, tagged with
+ *     `CONSUMER_WRAPPED_TAG`. Called raw here — its own body runs
+ *     `runTransforms` + `applyCoerce` and supplies `rv` to the user
+ *     handler.
+ *   - `el[assignKey] = fn` (pre- or post-install via companion
+ *     directive / `onMounted` / ref-callback): raw consumer fn,
+ *     untagged. JIT-wrapped here so the user sees the same
+ *     `(post-transform-post-coerce value, rv)` shape.
+ *
+ * The default-tagged sentinel runs its own pipeline internally and is
+ * also called raw. A `registerValue` that isn't a `RegisterValue`
+ * (e.g. `useRegister` returned `undefined` AND a consumer pre-
+ * installed an assigner before `setAssignFunction` would have
+ * installed the noop) falls through with `(value, undefined)` —
+ * defensive; the documented happy path always has a real `rv`.
+ */
+function fireAssigner(
+  el: HTMLElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn },
+  registerValue: unknown,
+  value: unknown
+): boolean | undefined {
+  const fn = el[assignKey]
+  if (fn === undefined) return undefined
+  if (isDefaultAssigner(fn) || isConsumerWrapped(fn)) {
+    return fn(value)
+  }
+  if (!isRegisterValue(registerValue)) {
+    return fn(value, undefined)
+  }
+  const r = runTransforms(value, registerValue)
+  if (!r.ok) return false
+  const coerced = applyCoerce(r.value, registerValue)
+  return fn(coerced, registerValue)
+}
+
+/**
  * Listener-body bail. Called at the top of every event handler the
  * directive attaches. Bails when:
  *  - the rendered root is a non-supported tag (where `el.value` is
@@ -330,7 +388,7 @@ const getModelAssigner = (
     vnode.props?.['onUpdate:registerValue'] ?? vnode.props?.['on:update:registerValue']
   if (isArray(fn)) {
     const fnArr = fn.filter((x) => isFunction(x)) as ((...args: unknown[]) => unknown)[]
-    return (value) => {
+    const wrapped: CustomDirectiveRegisterAssignerFn = (value) => {
       // Transforms run BEFORE the override sees the value. A consumer
       // who declared `transforms: [...]` intended "always normalize"; a
       // silent bypass on override would be the surprise. If they want
@@ -345,18 +403,22 @@ const getModelAssigner = (
       invokeArrayFns(fnArr, coerced, registerValue)
       // Multi-listener case: no single boolean to surface. Return
       // undefined so the listener treats this as "succeeded" — matches
-      // the back-compat contract for consumer-installed assigners.
+      // the contract for single-handler consumer assigners.
       return undefined
     }
+    ;(wrapped as unknown as ConsumerWrappedCarrier)[CONSUMER_WRAPPED_TAG] = true
+    return wrapped
   }
   if (isFunction(fn)) {
     const handler = fn as CustomDirectiveRegisterAssignerFn
-    return (value) => {
+    const wrapped: CustomDirectiveRegisterAssignerFn = (value) => {
       const r = runTransforms(value, registerValue)
       if (!r.ok) return false
       const coerced = applyCoerce(r.value, registerValue)
       return handler(coerced, registerValue)
     }
+    ;(wrapped as unknown as ConsumerWrappedCarrier)[CONSUMER_WRAPPED_TAG] = true
+    return wrapped
   }
   // Default-installed assigner. Tagged so the listener-body bail
   // (`shouldBailListener`) can distinguish it from consumer overrides
@@ -596,7 +658,7 @@ const vRegisterText: RegisterTextCustomDirective = {
       }
       const commit =
         domValue === '' && isRegisterValue(value) && value.acceptsUndefined ? undefined : domValue
-      el[assignKey]?.(commit)
+      fireAssigner(el, value, commit)
       // After the default assigner runs, force-sync the DOM when
       // storage diverges from the post-cast/post-trim `domValue`.
       // Two cases produce no Vue re-render and so leave the
@@ -654,7 +716,7 @@ const vRegisterText: RegisterTextCustomDirective = {
             // handler.
             if (isRegisterValue(value)) writeLastTypedForm(value, null)
             el.value = String(cast)
-            if (lazy !== true) el[assignKey]?.(cast)
+            if (lazy !== true) fireAssigner(el, value, cast)
           } else {
             // Uncastable mid-edit residue (lone '.', '-', 'abc') OR
             // overflow (`1e309` parses to Infinity). Native
@@ -681,7 +743,7 @@ const vRegisterText: RegisterTextCustomDirective = {
         // `change`) already wrote the trimmed value, so this branch
         // skips to avoid a redundant duplicate write.
         if (trim === true && lazy !== true) {
-          el[assignKey]?.(normalized)
+          fireAssigner(el, value, normalized)
         }
       })
     }
@@ -806,7 +868,6 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
       const rawElementValue = getValue(el, explicitValueRequired)
 
       const checked = el.checked
-      const assign = el[assignKey]
       if (isArray(modelValue)) {
         if (rawElementValue === undefined) {
           warn(
@@ -829,11 +890,11 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
         const index = looseIndexOf(modelValue, elementValue)
         const found = index !== -1
         if (checked && !found) {
-          assign?.(modelValue.concat(elementValue))
+          fireAssigner(el, value, modelValue.concat(elementValue))
         } else if (!checked && found) {
           const filtered = [...modelValue]
           filtered.splice(index, 1)
-          assign?.(filtered)
+          fireAssigner(el, value, filtered)
         }
       } else if (isSet(modelValue)) {
         if (rawElementValue === undefined) {
@@ -855,9 +916,9 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
         } else {
           cloned.delete(elementValue)
         }
-        assign?.(cloned)
+        fireAssigner(el, value, cloned)
       } else {
-        assign?.(getCheckboxValue(el, checked))
+        fireAssigner(el, value, getCheckboxValue(el, checked))
       }
       // After the default assigner runs, force-sync `el.checked` to
       // current storage. Catches the no-op-write case: a transform
@@ -954,7 +1015,7 @@ const vRegisterRadio: RegisterRadioCustomDirective = {
     addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
-      el[assignKey]?.(getValue(el))
+      fireAssigner(el, value, getValue(el))
       // After the default assigner runs, force-sync `el.checked` to
       // current storage. Catches the no-op-write case where a
       // transform maps the click's value to current storage — no
@@ -1020,7 +1081,9 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
       const selectedVal = Array.prototype.filter
         .call(el.options, (o: HTMLOptionElement) => o.selected)
         .map((o: HTMLOptionElement) => (number === true ? looseToNumber(getValue(o)) : getValue(o)))
-      const wrote = el[assignKey]?.(
+      const wrote = fireAssigner(
+        el,
+        value,
         el.multiple ? (isSetModel ? new Set(selectedVal) : selectedVal) : selectedVal[0]
       )
       // Only set `_assigning` when the write actually landed. A

@@ -70,10 +70,10 @@ type CustomDirectiveRegisterAssignerFn = (
 ) => boolean | undefined
 ```
 
-| Arg             | Use                                                                                                                                                                                               |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `value`         | What the directive extracted from the event. May be `undefined` when the assigner reads its own state.                                                                                            |
-| `registerValue` | The `RegisterValue` for the current binding. Call `rv.setValueWithInternalPath(v)` to commit a write. Omitted when installed via `el[assignKey] = fn`; the installer already has the RV in scope. |
+| Arg             | Use                                                                                                                                                                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `value`         | What the directive extracted from the event, post-transforms and post-coerce. May be `undefined` when the assigner reads its own state.                                                                                                               |
+| `registerValue` | The `RegisterValue` for the current binding. Call `rv.setValueWithInternalPath(v)` to commit a write. Supplied by the directive on every fire regardless of install path, so the assigner doesn't have to capture the RV via closure at install time. |
 
 Return `true` to signal the write was accepted, `false` to reject. `undefined` is treated as success, so simple assigners can `return` nothing.
 

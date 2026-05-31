@@ -617,17 +617,28 @@ jobs:
       - name: Mint release-PR app installation token
         if: steps.classify.outputs.mode != 'noop'
         id: app_token
-        # Mints a short-lived (~1 hour) installation token for the
-        # release-PR GitHub App. The token carries the App's identity
-        # (not `github-actions[bot]`), so the `pull_request: opened`
-        # event the next step fires escapes the GITHUB_TOKEN cascade
-        # restriction. The token is scoped to the permissions granted
-        # to the App on this repo (pull-requests=write,
-        # contents=read, metadata=read).
+        # Mints a fresh installation token for the release-PR GitHub
+        # App. GitHub's API mints these with a fixed 1-hour ceiling on
+        # lifetime; the explicit-revoke step below collapses the
+        # USABLE window to the few seconds between mint and revoke
+        # (which is what the next step actually needs).
+        #
+        # The token carries the App's identity (not
+        # `github-actions[bot]`), so the `pull_request: opened` event
+        # the next step fires escapes the GITHUB_TOKEN cascade
+        # restriction. The token is scoped to the permissions the App
+        # was granted on this repo: pull-requests=write,
+        # contents=read, metadata=read.
+        #
+        # `skip-token-revoke: true` disables the action's
+        # end-of-job post-step revoke; we revoke inline immediately
+        # after `gh pr create` returns, so the token is dead well
+        # before the job completes.
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_PR_APP_ID }}
           private-key: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
+          skip-token-revoke: true
 
       - name: Open release PR
         if: steps.classify.outputs.mode != 'noop'
@@ -651,3 +662,25 @@ jobs:
             --title "chore(release): v$NEXT_VERSION" \
             --label "release-pr" \
             --body-file "$PR_BODY_PATH"
+
+      - name: Revoke release-PR app installation token
+        # `if: always()` so the token is revoked even when `gh pr create`
+        # above failed (network blip, conflict, etc.) — we never want a
+        # mint without a matching revoke. The `mode != 'noop'` guard
+        # mirrors the mint step's condition: in noop mode no token was
+        # ever minted, so nothing to revoke.
+        #
+        # An empty `GH_TOKEN` triggers a soft no-op (the mint step
+        # failed before producing an output); the API call is skipped
+        # rather than 401-ing.
+        if: always() && steps.classify.outputs.mode != 'noop'
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::notice title=No token to revoke::The mint step did not produce a token; nothing to do."
+            exit 0
+          fi
+          gh api -X DELETE installation/token
+          echo "::notice title=Token revoked::Release-PR app installation token revoked; usable window ended at $(date -u +%FT%TZ)."

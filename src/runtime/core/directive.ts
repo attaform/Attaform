@@ -486,7 +486,16 @@ function setAssignFunction(
   // entire directive lifecycle. The default assigner is a fallback
   // for the common case where nobody overrides; it should NEVER
   // clobber an explicit consumer override.
-  if (el[assignKey] !== undefined && !isDefaultAssigner(el[assignKey])) {
+  //
+  // Wrappers produced by `getModelAssigner` for the
+  // `@update:registerValue` install path are tagged with
+  // `CONSUMER_WRAPPED_TAG`; bailing on them too would freeze the
+  // listener at the first vnode's prop value, so a parent re-render
+  // that swaps the handler reference would never take effect. Allow
+  // re-derivation in that case — the freshly produced wrapper closes
+  // over the new vnode's prop function.
+  const current = el[assignKey]
+  if (current !== undefined && !isDefaultAssigner(current) && !isConsumerWrapped(current)) {
     return
   }
 
@@ -521,7 +530,14 @@ function setAssignFunction(
 // be tree-shaken in case v-model is never used.
 const vRegisterText: RegisterTextCustomDirective = {
   created(el, { value, modifiers: { lazy, trim, number } }, vnode) {
-    const castToNumber = number === true || vnode.props?.['type'] === 'number'
+    // Static "would this listener ever want to cast?" gate for the
+    // optional blur normalizer below. Read straight off vnode.props
+    // at created-time because the modifier is what we're allowed to
+    // freeze. Listener bodies re-derive `castToNumber` each fire
+    // (see `liveCastToNumber`) so a dynamic `:type="..."` swap is
+    // honored against the post-patch DOM.
+    const castToNumberAtCreated = number === true || vnode.props?.['type'] === 'number'
+    const liveCastToNumber = (): boolean => number === true || el.getAttribute('type') === 'number'
     if (isRegisterValue(value)) {
       value.registerElement(el)
       setAssignFunction(el, vnode, value)
@@ -537,6 +553,9 @@ const vRegisterText: RegisterTextCustomDirective = {
       const target = e.target as ComposingTarget
       if (target === null || target.composing) return
       noteInteraction(value)
+      // Re-read per fire so a dynamic `:type="..."` swap (text → number
+      // or back) routes the next keystroke through the right branch.
+      const castToNumber = liveCastToNumber()
       let domValue: string | number = el.value
       // Deferred-to-blur trim: only trim here when this listener is
       // already on `change` (i.e. `.lazy.trim`). Per-keystroke trim
@@ -694,7 +713,7 @@ const vRegisterText: RegisterTextCustomDirective = {
         }
       }
     })
-    if (trim === true || castToNumber) {
+    if (trim === true || castToNumberAtCreated) {
       addTrackedListener(el, 'change', () => {
         if (shouldBailListener(el)) return
         // Mirror Vue's `castValue(el.value, trim, castToNumber)` so the
@@ -703,6 +722,11 @@ const vRegisterText: RegisterTextCustomDirective = {
         // sees ` 12 ` stick after blur instead of `12`.
         let normalized: string | number = el.value
         if (trim === true) normalized = normalized.trim()
+        // Re-derive each fire so a `:type` swap is honored at blur too.
+        // The installation gate above is the static "could this input
+        // ever want cast-on-blur" check, but the body's branch picks
+        // up the current type per fire.
+        const castToNumber = liveCastToNumber()
         if (castToNumber) {
           const cast = looseToNumber(normalized)
           if (typeof cast === 'number' && Number.isFinite(cast)) {
@@ -1074,10 +1098,14 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
     if (!isRegisterValue(value)) return
 
     value.registerElement(el)
-    const isSetModel = isSet(value.innerRef.value)
     addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
+      // Re-derive each fire so an Array ↔ Set swap on the bound path
+      // (a `form.setValue('picks', new Set([...]))` against a union
+      // schema, or any other write that lands a different container
+      // shape) routes the next change through the matching constructor.
+      const isSetModel = isSet(value.innerRef.value)
       const selectedVal = Array.prototype.filter
         .call(el.options, (o: HTMLOptionElement) => o.selected)
         .map((o: HTMLOptionElement) => (number === true ? looseToNumber(getValue(o)) : getValue(o)))

@@ -1098,10 +1098,14 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
     if (!isRegisterValue(value)) return
 
     value.registerElement(el)
-    const isSetModel = isSet(value.innerRef.value)
     addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
+      // Re-derive each fire so an Array ↔ Set swap on the bound path
+      // (a `form.setValue('picks', new Set([...]))` against a union
+      // schema, or any other write that lands a different container
+      // shape) routes the next change through the matching constructor.
+      const isSetModel = isSet(value.innerRef.value)
       const selectedVal = Array.prototype.filter
         .call(el.options, (o: HTMLOptionElement) => o.selected)
         .map((o: HTMLOptionElement) => (number === true ? looseToNumber(getValue(o)) : getValue(o)))

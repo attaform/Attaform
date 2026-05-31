@@ -180,7 +180,7 @@ describe('vRegisterText — :type swap reactivity', () => {
     // Pre-swap: the listener writes the raw string.
     input.value = '42'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith('42', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('42')
 
     // Vue patches the DOM attribute when `:type="..."` swaps; mirror
     // that here. Pre-fix the listener stayed on the created-time
@@ -189,7 +189,7 @@ describe('vRegisterText — :type swap reactivity', () => {
 
     input.value = '100'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(100, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(100)
   })
 })
 

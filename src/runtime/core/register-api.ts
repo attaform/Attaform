@@ -17,6 +17,7 @@ import { computeFieldIdentity } from './field-ids'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 import { PERSISTENCE_MODULE_KEY } from './persistence'
+import { getOrAssignElementId } from './persistence/opt-in-registry'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
 
 /**
@@ -334,6 +335,18 @@ export function buildRegister<F extends GenericForm>(
         ? (computed(() => getDisplayStateAt(segments)) as Readonly<Ref<DisplayState>>)
         : undefined
 
+    // Per-RV bound-element reference. Set by `registerElement` (called
+    // by the directive's `created` hook and by `syncElementRegistration`
+    // on every parent re-render to keep the freshly closed-over RV in
+    // step with the underlying DOM node). Cleared by
+    // `deregisterElement`. Consulted by `setValueWithInternalPath` to
+    // auto-derive persistence meta from the per-element opt-in
+    // registry, so a consumer-installed assigner that simply calls
+    // `rv.setValueWithInternalPath(value)` participates in the same
+    // per-element persistence contract the directive's default assigner
+    // honors.
+    let boundElement: HTMLElement | null = null
+
     // `shallowReadonly` is what makes `rv.path`, `rv.formKey`, and the
     // other top-level string fields feel like reactive state in
     // wrapper components: property reads track in computeds /
@@ -368,9 +381,23 @@ export function buildRegister<F extends GenericForm>(
       },
 
       registerElement: (element: HTMLElement): void => {
-        // Skip non-form elements. Prevents accidental registration of
-        // component wrapper divs when fallthrough attributes carry the
-        // directive past the intended `<input>` / `<select>` / `<textarea>`.
+        // Track the bound element on the RV regardless of tag name.
+        // The custom-assigner shape (`<div v-register>` + an
+        // `el[assignKey]` install) targets a non-form element on
+        // purpose; the rv still needs to know which element it was
+        // bound to so `setValueWithInternalPath` can auto-derive the
+        // per-element persistence meta. Single element per RV: each
+        // `form.register('path')` call returns a fresh handle, so the
+        // directive's lifecycle never asks one RV to track two
+        // elements; last-wins covers the corner case of a consumer who
+        // manually re-binds. Closure-private so a consumer can't read
+        // it off the public `RegisterValue` surface.
+        boundElement = element
+        // Form-element semantics (state-side registration + focus
+        // listeners) are gated behind the interactive tag set —
+        // prevents accidental registration of component wrapper divs
+        // when fallthrough attributes carry the directive past the
+        // intended `<input>` / `<select>` / `<textarea>`.
         if (!INTERACTIVE_TAG_NAMES.has(element.tagName)) return
         const added = state.registerElement(segments, element, formInstanceId)
         if (added) attachFocusListeners(state, segments, element, instanceMeta)
@@ -379,10 +406,31 @@ export function buildRegister<F extends GenericForm>(
       deregisterElement: (element: HTMLElement): void => {
         detachFocusListeners(element)
         state.deregisterElement(segments, element)
+        // Drop the bound-element reference if it matches the element
+        // being torn down. A post-teardown write (e.g. a captured RV
+        // ref held by a parent's `onBeforeUnmount` cleanup callback)
+        // therefore falls back to the "no auto-meta" path — safe,
+        // since the element id has gone out of scope on the WeakMap
+        // and the persist gate would drop the write either way.
+        if (boundElement === element) boundElement = null
       },
 
       setValueWithInternalPath: (value: unknown, meta?: WriteMeta): boolean => {
-        return state.setValueAtPath(segments, value, withInstanceMeta(meta))
+        // Auto-attach persistence meta when the consumer didn't supply
+        // their own AND this RV has a bound element. Lets a custom
+        // assigner call `rv.setValueWithInternalPath(value)` and have
+        // the per-element opt-in registry consulted automatically —
+        // the directive's default assigner takes this same path. An
+        // explicit `meta` (including `{}` or `{ persist: false }`)
+        // opts out of the derivation and passes through unchanged, so
+        // the documented "imperative writes via `form.setValue` don't
+        // auto-persist" contract is preserved (`form.setValue` calls
+        // `state.setValueAtPath` directly, not through RV).
+        const resolvedMeta =
+          meta === undefined && boundElement !== null
+            ? { persist: state.persistOptIns.hasOptIn(getOrAssignElementId(boundElement), pathKey) }
+            : meta
+        return state.setValueAtPath(segments, value, withInstanceMeta(resolvedMeta))
       },
 
       // Called by the `vRegisterHint` compile-time transform's wrapping

@@ -18,11 +18,15 @@ run-name: ${{ github.event.inputs.exact_version != '' && format('Prepare v{0} re
 #      `scripts/generate-release-notes.mjs`, both pure-Node). No GPG
 #      key, no npm OIDC token, no `Production (NPM)` environment scope.
 #      The privileged surface lives entirely in `publish-npm.yml`.
-#   3. The bump commit on the release branch is github-actions[bot]-
-#      attributed; web-flow squash-merge replaces it with a fresh
-#      web-flow-signed commit, which satisfies the ruleset's
-#      `required_signatures` rule. GPG-signing the release branch
-#      commit would be wasted effort.
+#   3. The bump commit is created via GitHub's `createCommitOnBranch`
+#      GraphQL mutation, not `git commit && git push`. The resulting
+#      commit is signed by `github-actions[bot]`'s web-flow key
+#      (GitHub's server-side signing identity), which `required_signatures`
+#      rulesets accept — no GPG key in this workflow. The mutation also
+#      explains why the workflow stages the bump into the index and uses
+#      `git write-tree` instead of making a local commit: the commit is
+#      constructed server-side from base64-encoded file contents, so a
+#      local commit object would be redundant.
 on:
   workflow_dispatch:
     inputs:
@@ -48,10 +52,10 @@ on:
         default: 'main'
 
 # Workflow-level default: read-only. The `prepare` job below upgrades
-# to `contents: write` + `pull-requests: write` for the branch push +
-# PR open. No `id-token`, no `attestations`, no environment scope —
-# `release-pr.yml` runs without access to the GPG signing key or npm
-# OIDC credential.
+# to `contents: write` + `pull-requests: write` for the createCommitOnBranch
+# call + PR open. No `id-token`, no `attestations`, no environment
+# scope — `release-pr.yml` runs without access to the GPG signing key
+# or npm OIDC credential.
 permissions:
   contents: read
 
@@ -67,7 +71,7 @@ jobs:
     name: Prepare Release PR
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Push the `release/v<version>` branch (a release-PR branch, NOT main).
+      contents: write # Create the `release/v<version>` branch ref + signed bump commit via `gh api` (createCommitOnBranch). Never writes to main directly.
       pull-requests: write # Open the release PR via `gh pr create`.
     steps:
       - name: Validate dispatch ref allowlist
@@ -95,11 +99,11 @@ jobs:
           # Full history needed by `generate-release-notes.mjs` to walk
           # `git tag --sort=-creatordate` for the previous release.
           fetch-depth: 0
-          # Keep GITHUB_TOKEN in .git/config so the branch push step
-          # below can authenticate. Unlike publish-npm.yml, this workflow
-          # never mints a privileged OIDC token, so the token sitting
-          # in the working tree config is a smaller risk surface and a
-          # cleaner ergonomic.
+          # Keep GITHUB_TOKEN in .git/config so the `git fetch` inside
+          # the Classify step (re-dispatch detection) authenticates.
+          # The release branch + bump commit are written via `gh api`
+          # (createCommitOnBranch), not `git push`, so this credential
+          # only services read-side git operations.
           persist-credentials: true
 
       - name: Setup pnpm
@@ -221,32 +225,15 @@ jobs:
           fi
           echo "dist_tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Configure git identity
-        # github-actions[bot] attribution. When the PR is squash-merged,
-        # the resulting commit on main is web-flow signed by GitHub
-        # (which satisfies the `required_signatures` ruleset rule), so
-        # the GPG signature we'd otherwise add here would be discarded.
-        # Keep the workflow GPG-free; that key only matters for tag
-        # signing in publish-npm.yml.
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Create release branch
-        env:
-          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
-        run: |
-          set -euo pipefail
-          git checkout -b "release/v$NEXT_VERSION"
-
       - name: Bump version + promote changelog
         # `pnpm version <X> --no-git-tag-version` writes the new version
         # into package.json and fires the `version` npm-hook
         # (promote-changelog.mjs + generate-release-notes.mjs +
         # `git add CHANGELOG.md RELEASES.md`). The `--no-git-tag-version`
         # flag suppresses the auto-commit AND the auto-tag — the staged
-        # files stay in the index for the manual commit step below.
+        # files stay in the index, where the Stage bump step finalizes
+        # the index for `git write-tree` byte-match + createCommitOnBranch
+        # consumption.
         #
         # RELEASE_NOTES_TARGET_REF is consumed by generate-release-notes.mjs
         # when calling `gh api .../generate-notes` — for hotfix releases
@@ -285,30 +272,47 @@ jobs:
             console.log(`publishConfig.tag set to "${tag}"`);
           '
 
-      - name: Stage and commit
-        env:
-          NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
-          DIST_TAG: ${{ steps.compute-dist-tag.outputs.dist_tag }}
+      - name: Stage bump
         run: |
           set -euo pipefail
           # `pnpm version` staged CHANGELOG.md + RELEASES.md (via the
           # `version` hook's `git add` step) and modified package.json
           # in the working tree without staging it. The publishConfig.tag
-          # edit above only touches package.json. Stage both
-          # package.json edits explicitly.
+          # edit above only touches package.json. Stage package.json
+          # explicitly so the index reflects every bump change for the
+          # `git write-tree` byte-match below.
+          #
+          # No local commit. The signed commit is produced by the
+          # `Create signed bump commit` step via createCommitOnBranch
+          # against the same staged files.
           git add package.json
+
+          # Defense in depth: createCommitOnBranch below sends exactly
+          # the three bump files as additions. Any other staged file
+          # would silently fall off the resulting commit, so we assert
+          # the invariant on the index here, where the run log still
+          # shows what was unexpectedly modified.
+          STAGED=$(git diff --cached --name-only | sort)
+          EXPECTED=$(printf '%s\n' CHANGELOG.md RELEASES.md package.json | sort)
+          if [ "$STAGED" != "$EXPECTED" ]; then
+            echo "::error::Unexpected files staged for release commit:"
+            git diff --cached --name-only | sed 's/^/::error::  /'
+            echo "::error::Expected exactly: CHANGELOG.md, RELEASES.md, package.json"
+            exit 1
+          fi
           echo "Files staged for release commit:"
-          git diff --cached --name-only | sort -u
-          git commit -m "chore(release): v${NEXT_VERSION}" -m "Bumps the package to v${NEXT_VERSION} with \`publishConfig.tag=${DIST_TAG}\`. Promotes the CHANGELOG Unreleased section and prepends a RELEASES.md entry. When merged, \`publish-npm.yml\` runs an idempotent precheck and publishes \`attaform@${NEXT_VERSION}\` to npm under the \`${DIST_TAG}\` dist-tag."
+          echo "$STAGED"
 
       - name: Classify dispatch state
         id: classify
-        # The bump steps above always produce a local `release/v<version>`
-        # branch with the bump commit. This step inspects the matching
-        # state on origin and decides what to do with the local result:
+        # The bump steps above stage the version + CHANGELOG + RELEASES
+        # changes into the index without committing. This step inspects
+        # the matching state on origin and decides what to do with that
+        # staged bump:
         #
         #   (1) No branch on origin.
-        #         mode=fresh. Push the local branch, open the PR.
+        #         mode=fresh. Create the branch + signed bump commit via
+        #         createCommitOnBranch, open the PR.
         #   (2) Branch on origin + open PR.
         #         mode=noop. The prior dispatch already landed everything;
         #         discard the local bump.
@@ -316,8 +320,8 @@ jobs:
         #         mode=adopt. The remote branch is byte-identical to what
         #         this run just produced (same files, same contents, same
         #         modes), so it is the artifact of a prior dispatch that
-        #         died before opening the PR. Skip the push, open the
-        #         missing PR against the existing remote branch.
+        #         died before opening the PR. Skip the commit creation,
+        #         open the missing PR against the existing remote branch.
         #   (4) Branch on origin + no PR + remote tree != local tree.
         #         Fail with a tree-diff dump. Either a stale branch from
         #         an abandoned attempt, or a hand-pushed branch with
@@ -328,13 +332,15 @@ jobs:
         #         backdoored tree and wait for the workflow to merge and
         #         publish it.
         #
-        # Tree-hash equality (`git rev-parse <ref>^{tree}`) is the
-        # byte-identity check. Two refs with the same tree SHA are
-        # guaranteed identical for every file, file mode, and directory
-        # structure they contain (git's content-addressed storage gives
-        # us this for free). Commit metadata (author, timestamps, parent)
-        # is NOT in the tree object, so author-email forgery cannot fake
-        # a tree match.
+        # Tree-hash equality is the byte-identity check. `git write-tree`
+        # serializes the current index into a tree object and returns
+        # its SHA; `git rev-parse <ref>^{tree}` returns the tree SHA of
+        # a remote commit. Two trees with the same SHA are guaranteed
+        # identical for every file, file mode, and directory structure
+        # they contain (git's content-addressed storage gives us this
+        # for free). Commit metadata (author, timestamps, parent) is NOT
+        # in the tree object, so author-email forgery cannot fake a
+        # tree match.
         #
         # Adoption requires the bump steps to be deterministic across
         # dispatches. `pnpm version` + `promote-changelog.mjs` already
@@ -343,6 +349,12 @@ jobs:
         # given target_branch HEAD. If the auto-notes API response varies
         # between runs (PR title edited, label changed), adoption fails
         # closed; the user cleans up and re-dispatches.
+        #
+        # `base_sha` is also captured for the createCommitOnBranch
+        # `expectedHeadOid` field below. HEAD has not moved since
+        # checkout (no local commit), so it is target_branch's tip at
+        # the moment the workflow started — the right parent for the
+        # signed bump commit.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
@@ -351,10 +363,13 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="release/v$NEXT_VERSION"
+          LOCAL_TREE=$(git write-tree)
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
 
           if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
             echo "mode=fresh" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; pushing the local bump and opening the PR."
+            echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; creating the branch + signed bump commit via createCommitOnBranch and opening the PR."
             exit 0
           fi
 
@@ -367,31 +382,125 @@ jobs:
           fi
 
           git fetch --depth=1 origin "$BRANCH"
-          LOCAL_TREE=$(git rev-parse HEAD^{tree})
           REMOTE_TREE=$(git rev-parse FETCH_HEAD^{tree})
 
           if [ "$LOCAL_TREE" = "$REMOTE_TREE" ]; then
             echo "mode=adopt" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Adopting existing branch::$BRANCH already has the byte-identical bump on origin (tree=$LOCAL_TREE) but no open PR; skipping push, opening the missing PR."
+            echo "::notice title=Adopting existing branch::$BRANCH already has the byte-identical bump on origin (tree=$LOCAL_TREE) but no open PR; skipping commit creation, opening the missing PR."
             exit 0
           fi
 
           {
             echo "::error::Branch '$BRANCH' exists on origin but its tree ($REMOTE_TREE) does not byte-match what this run just produced ($LOCAL_TREE)."
-            echo "::error::Diff (local HEAD vs. origin/$BRANCH):"
-            git --no-pager diff --stat HEAD FETCH_HEAD 2>&1 | sed 's/^/::error::  /' || true
+            echo "::error::Diff (staged bump vs. origin/$BRANCH):"
+            git --no-pager diff --cached --stat FETCH_HEAD 2>&1 | sed 's/^/::error::  /' || true
             echo "::error::Either a stale branch from an abandoned attempt, or a hand-pushed branch with contents this workflow did not produce."
             echo "::error::Clean up the branch via the GitHub Branches UI (trash icon on '$BRANCH') and re-dispatch, or investigate the divergence."
           }
           exit 1
 
-      - name: Push release branch
+      - name: Create signed bump commit
         if: steps.classify.outputs.mode == 'fresh'
+        # `createCommitOnBranch` produces a commit signed by
+        # `github-actions[bot]` via GitHub's server-side web-flow key.
+        # The resulting commit is "Verified" in the GitHub UI and
+        # satisfies the `main protection` ruleset's `required_signatures`
+        # rule on merge — no GPG key in this workflow.
+        #
+        # The mutation requires its target branch to already exist, so
+        # the branch ref is created first (pointing at the
+        # target_branch tip captured by the Classify step). The bump
+        # files (package.json, CHANGELOG.md, RELEASES.md) are passed as
+        # base64-encoded `additions` that the API overlays onto the
+        # base commit's tree. The resulting commit's tree hash is
+        # byte-identical to `git write-tree` against the staged index,
+        # which is exactly what the Classify step compared for
+        # adoption — re-dispatching this run on an existing branch
+        # produced by a prior run will tree-match and adopt.
+        #
+        # Variables are read from env, not interpolated by the shell or
+        # by Actions templating. The script uses execFileSync (not
+        # execSync) so each argument is passed as its own argv element;
+        # this keeps the call shell-free end-to-end.
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
+          DIST_TAG: ${{ steps.compute-dist-tag.outputs.dist_tag }}
+          BASE_SHA: ${{ steps.classify.outputs.base_sha }}
+          GH_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          git push origin "release/v$NEXT_VERSION"
+          node -e '
+            const fs = require("node:fs");
+            const { execFileSync } = require("node:child_process");
+
+            const version = process.env.NEXT_VERSION;
+            const distTag = process.env.DIST_TAG;
+            const baseSha = process.env.BASE_SHA;
+            const repo = process.env.GH_REPOSITORY;
+            const tmp = process.env.RUNNER_TEMP;
+            const branch = `release/v${version}`;
+
+            // Create the release branch ref on origin, pointing at the
+            // target_branch tip captured by the Classify step.
+            execFileSync(
+              "gh",
+              [
+                "api",
+                "-X", "POST",
+                `repos/${repo}/git/refs`,
+                "-f", `ref=refs/heads/${branch}`,
+                "-f", `sha=${baseSha}`,
+              ],
+              { stdio: "inherit" }
+            );
+
+            // Read + base64-encode the three bump files. Anything else
+            // modified in the workspace is excluded by construction;
+            // the Stage bump step already asserted the index contains
+            // exactly these three paths.
+            const encode = (path) =>
+              fs.readFileSync(path).toString("base64");
+            const additions = [
+              { path: "package.json", contents: encode("package.json") },
+              { path: "CHANGELOG.md", contents: encode("CHANGELOG.md") },
+              { path: "RELEASES.md", contents: encode("RELEASES.md") },
+            ];
+
+            // Build the GraphQL request body. The mutation is wrapped
+            // around a single `$input: CreateCommitOnBranchInput!`
+            // variable so jq / shell quoting do not need to massage
+            // nested objects.
+            const requestBody = JSON.stringify({
+              query: `mutation($input: CreateCommitOnBranchInput!) {
+                createCommitOnBranch(input: $input) {
+                  commit { oid url }
+                }
+              }`,
+              variables: {
+                input: {
+                  branch: {
+                    repositoryNameWithOwner: repo,
+                    branchName: branch,
+                  },
+                  message: {
+                    headline: `chore(release): v${version}`,
+                    body: `Bumps the package to v${version} with \`publishConfig.tag=${distTag}\`. Promotes the CHANGELOG Unreleased section and prepends a RELEASES.md entry. When merged, \`publish-npm.yml\` runs an idempotent precheck and publishes \`attaform@${version}\` to npm under the \`${distTag}\` dist-tag.`,
+                  },
+                  expectedHeadOid: baseSha,
+                  fileChanges: { additions },
+                },
+              },
+            });
+
+            const requestPath = `${tmp}/createCommitOnBranch.json`;
+            fs.writeFileSync(requestPath, requestBody);
+            execFileSync(
+              "gh",
+              ["api", "graphql", "--input", requestPath],
+              { stdio: "inherit" }
+            );
+          '
 
       - name: Build PR body
         if: steps.classify.outputs.mode != 'noop'

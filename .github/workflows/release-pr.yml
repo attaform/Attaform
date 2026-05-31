@@ -22,11 +22,15 @@ run-name: ${{ github.event.inputs.exact_version != '' && format('Prepare v{0} re
 #      GraphQL mutation, not `git commit && git push`. The resulting
 #      commit is signed by `github-actions[bot]`'s web-flow key
 #      (GitHub's server-side signing identity), which `required_signatures`
-#      rulesets accept — no GPG key in this workflow. The mutation also
-#      explains why the workflow stages the bump into the index and uses
-#      `git write-tree` instead of making a local commit: the commit is
-#      constructed server-side from base64-encoded file contents, so a
-#      local commit object would be redundant.
+#      rulesets accept — no GPG key in this workflow.
+#   4. The release PR itself is opened with a fine-grained PAT
+#      (`secrets.RELEASE_PR_TOKEN`), NOT the default `GITHUB_TOKEN`.
+#      GitHub Actions suppresses cascading workflow runs when a
+#      `pull_request: opened` event is triggered by `GITHUB_TOKEN`, so
+#      the required status checks would never fire and the PR would
+#      sit pending forever. The PAT is scoped to this repo with
+#      `pull-requests: write` only; the bump commit + branch ref still
+#      ride on the lower-privilege default token.
 on:
   workflow_dispatch:
     inputs:
@@ -91,6 +95,41 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Validate RELEASE_PR_TOKEN secret
+        # `gh pr create` below MUST be called with a PAT (or GitHub App
+        # token), not `GITHUB_TOKEN`. GitHub Actions suppresses
+        # cascading workflow runs when an event is triggered by the
+        # default `GITHUB_TOKEN` — a PR opened with that token fires the
+        # `pull_request: opened` event, but none of the workflows listed
+        # under `on: pull_request` actually run for it. The
+        # `main protection` ruleset requires 10 status checks; without
+        # cascade the checks never fire and the PR is stuck pending
+        # forever (the exact failure mode that swallowed v0.20.1's first
+        # two release PRs, #321 and #323).
+        #
+        # See https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow
+        # for the underlying restriction.
+        #
+        # Failing here, before any state on origin is mutated, keeps the
+        # remote tidy: no orphan branch, no half-opened PR to delete.
+        env:
+          RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_PR_TOKEN:-}" ]; then
+            echo "::error title=RELEASE_PR_TOKEN missing::This workflow requires a fine-grained PAT scoped to attaform/Attaform with pull-requests:write."
+            echo "::error::Setup:"
+            echo "::error::  1. https://github.com/settings/personal-access-tokens/new"
+            echo "::error::     - Resource owner: attaform"
+            echo "::error::     - Repository access: only attaform/Attaform"
+            echo "::error::     - Permissions: contents=read, pull-requests=write, metadata=read"
+            echo "::error::  2. Copy the generated token."
+            echo "::error::  3. https://github.com/attaform/Attaform/settings/secrets/actions"
+            echo "::error::     New repository secret named RELEASE_PR_TOKEN, paste the value."
+            echo "::error::  4. Re-dispatch this workflow."
+            exit 1
+          fi
 
       - name: Checkout target branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -559,8 +598,17 @@ jobs:
 
       - name: Open release PR
         if: steps.classify.outputs.mode != 'noop'
+        # GH_TOKEN here is `RELEASE_PR_TOKEN` (a PAT), NOT
+        # `secrets.GITHUB_TOKEN`. A PR opened via `GITHUB_TOKEN` does not
+        # cascade workflow runs, so the 10 required status checks would
+        # never fire — see the `Validate RELEASE_PR_TOKEN secret` step
+        # at the top of this job for the rationale. The PAT's only
+        # required permission is `pull-requests: write` on this repo;
+        # everything else in this workflow (branch ref creation, signed
+        # bump commit, label bootstrap) runs on the lower-privilege
+        # `GITHUB_TOKEN`.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
           TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
         run: |

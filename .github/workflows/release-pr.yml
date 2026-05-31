@@ -435,13 +435,33 @@ jobs:
           # `.git/config`; `gh api` uses the explicit `GH_TOKEN` env
           # binding instead, which keeps the credential out of the
           # working tree (zizmor `artipacked` rule).
-          BRANCH_INFO=$(gh api "repos/$GH_REPOSITORY/branches/$BRANCH" 2>/dev/null || true)
+          #
+          # `gh api -i` includes the HTTP status line in stdout. Parse
+          # the status explicitly rather than treating any non-empty
+          # output as "branch exists" — on a 404 the response body is
+          # an error JSON (not an empty string), so an `[ -z "$body" ]`
+          # check would misclassify "absent" as "orphan".
+          set +e
+          RAW=$(gh api -i "repos/$GH_REPOSITORY/branches/$BRANCH" 2>/dev/null)
+          set -e
+          HTTP_STATUS=$(echo "$RAW" | head -n1 | awk '{print $2}')
 
-          if [ -z "$BRANCH_INFO" ]; then
-            echo "mode=fresh" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; creating the branch + signed bump commit via createCommitOnBranch and opening the PR."
-            exit 0
-          fi
+          case "${HTTP_STATUS:-}" in
+            200)
+              # Branch exists. Continue to PR / orphan classification.
+              BRANCH_BODY=$(echo "$RAW" | awk 'body{print} /^\r?$/{body=1}')
+              ;;
+            404)
+              echo "mode=fresh" >> "$GITHUB_OUTPUT"
+              echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; creating the branch + signed bump commit via createCommitOnBranch and opening the PR."
+              exit 0
+              ;;
+            *)
+              echo "::error::Unexpected HTTP status checking branch existence: ${HTTP_STATUS:-(no response)}"
+              echo "$RAW"
+              exit 1
+              ;;
+          esac
 
           PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$PR_NUMBER" ]; then
@@ -457,7 +477,7 @@ jobs:
           # commit object reachable via `refs/pull/<n>/head`, so the
           # audit trail of the prior attempt is preserved even with
           # the branch ref gone.
-          ORPHAN_SHA=$(echo "$BRANCH_INFO" | jq -r .commit.sha)
+          ORPHAN_SHA=$(echo "$BRANCH_BODY" | jq -r .commit.sha)
           echo "::notice title=Cleaning up orphan branch::$BRANCH exists on origin (sha=$ORPHAN_SHA) without an open PR; deleting before re-creating with a fresh signed bump commit."
           gh api -X DELETE "repos/$GH_REPOSITORY/git/refs/heads/$BRANCH"
           echo "mode=fresh" >> "$GITHUB_OUTPUT"

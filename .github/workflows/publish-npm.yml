@@ -300,11 +300,12 @@ jobs:
       # account whose email is in the key's UID.
       #
       # `git_commit_gpgsign: false` — the publish job no longer creates
-      # commits; the bump commit was made by github-actions[bot] in
-      # `release-pr.yml`, then web-flow-signed on squash-merge. The
-      # `required_signatures` ruleset rule accepts web-flow signatures,
-      # so the chain to main stays signed without this workflow needing
-      # a commit-signing capability.
+      # commits. The bump commit was made server-side by
+      # `release-pr.yml`'s `createCommitOnBranch` GraphQL call, which
+      # web-flow-signs the commit on `release/v<version>` at the moment
+      # of creation. The squash-merge to main produces a second web-flow
+      # signed commit. Both ends of the chain are verified without this
+      # workflow holding a commit-signing capability.
       - name: Import GPG signing key
         if: needs.precheck.outputs.should_tag == 'true'
         uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0

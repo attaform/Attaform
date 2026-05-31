@@ -112,10 +112,15 @@ export function syncMultiTabOptOut(value: unknown, oldValue: unknown): void {
  *     `created` hook skipped this when the binding mounted with an
  *     undefined value, so we have to catch up here).
  *   - RV → undefined: deregister the old RV's element.
- *   - RV → RV (same path + same form): no-op. `register('foo')`
- *     returns a fresh closure on every parent re-render; without
- *     the early-out, every tick would deregister-and-re-register
- *     the element, thrashing the `connected` flag.
+ *   - RV → RV (same path + same form): skip the deregister side so
+ *     the `connected` flag doesn't thrash false → true on every
+ *     parent re-render. STILL call `registerElement` on the new RV:
+ *     `register('foo')` returns a fresh handle per render, and the
+ *     new RV owns its own bound-element reference (consumed by
+ *     `setValueWithInternalPath` to auto-attach per-element
+ *     persistence meta). `state.registerElement(path, el)` is
+ *     idempotent — a single Set membership check on the path's
+ *     element record.
  *   - RV → RV (different path or different form): deregister old,
  *     register new. Covers dynamic-path templates
  *     (`v-register="form.register(\`item.${i}\`)"`) and the
@@ -127,13 +132,21 @@ export function syncElementRegistration(el: HTMLElement, value: unknown, oldValu
   const isRegistered = isRegisterValue(value)
   if (!wasRegistered && !isRegistered) return
 
-  if (wasRegistered && isRegistered) {
-    const old = oldValue
-    const next = value
-    if (old.path === next.path && old.persistOptIns === next.persistOptIns) return
-  }
+  // Same path + same store: skip the deregister-then-register sequence
+  // so the `connected` flag doesn't thrash false-true on every parent
+  // re-render. But STILL call `registerElement` on the freshly closed-
+  // over RV — `register()` returns a new RV per render, and the new RV
+  // owns its own bound-element reference (consumed by
+  // `setValueWithInternalPath` to auto-attach persistence meta).
+  // `state.registerElement` is idempotent on (path, element) so the
+  // re-call is a single Set membership check.
+  const samePathAndStore =
+    wasRegistered &&
+    isRegistered &&
+    oldValue.path === value.path &&
+    oldValue.persistOptIns === value.persistOptIns
 
-  if (wasRegistered) {
+  if (wasRegistered && !samePathAndStore) {
     oldValue.deregisterElement(el)
   }
   if (isRegistered) {

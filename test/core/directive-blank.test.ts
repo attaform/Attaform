@@ -101,7 +101,7 @@ describe('directive — blank on numeric clear', () => {
 
     input.value = '5'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(5, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(5)
 
     setValue.mockClear()
     markBlank.mockClear()
@@ -122,7 +122,7 @@ describe('directive — blank on numeric clear', () => {
 
     input.value = '7'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(7, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(7)
 
     setValue.mockClear()
     markBlank.mockClear()
@@ -165,7 +165,7 @@ describe('directive — blank on numeric clear', () => {
 
     input.value = '12'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(12, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(12)
   })
 
   it('text inputs without `.number` do NOT auto-mark on clear (string clear is ambiguous)', () => {
@@ -189,7 +189,7 @@ describe('directive — blank on numeric clear', () => {
     // The DOM doesn't tell us "user typed empty" vs "user hasn't typed",
     // so the dev opts in to blank via the unset symbol if
     // they want that semantic.
-    expect(setValue).toHaveBeenCalledWith('', expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith('')
     expect(markBlank).not.toHaveBeenCalled()
   })
 })
@@ -584,19 +584,19 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
 
     input.value = '1'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(1, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1)
     expect(value.lastTypedForm.value).toBe('1')
 
     // `parseFloat('1e')` is 1 (permissive); storage stays at 1, but
     // the typed form updates so the DOM keeps showing `1e`.
     input.value = '1e'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(1, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1)
     expect(value.lastTypedForm.value).toBe('1e')
 
     input.value = '1e2'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(100, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(100)
     expect(value.lastTypedForm.value).toBe('1e2')
   })
 
@@ -610,7 +610,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
 
     input.value = '2E10'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(2e10, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(2e10)
     expect(value.lastTypedForm.value).toBe('2E10')
   })
 
@@ -698,17 +698,17 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
 
     input.value = '1'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(1, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1)
     expect(value.lastTypedForm.value).toBe('1')
 
     input.value = '1.'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(1, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1)
     expect(value.lastTypedForm.value).toBe('1.')
 
     input.value = '1.50'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(1.5, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1.5)
     expect(value.lastTypedForm.value).toBe('1.50')
   })
 
@@ -726,7 +726,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
 
     input.value = '3e45'
     input.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith(3e45, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(3e45)
     expect(input.value).toBe(String(3e45))
     expect(value.lastTypedForm.value).toBeNull()
   })
@@ -759,7 +759,7 @@ describe('directive — `.number` overflow (Infinity) refusal', () => {
     // restore to.
     input.value = '1e308'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(1e308, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1e308)
     setValue.mockClear()
 
     // Push past Number.MAX_VALUE — parseFloat returns Infinity.
@@ -825,7 +825,7 @@ describe('directive — `.number` overflow (Infinity) refusal', () => {
 
     input.value = '1.7976931348623157e308'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(Number.MAX_VALUE, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(Number.MAX_VALUE)
   })
 })
 
@@ -909,7 +909,7 @@ describe('directive — `<input type="number">` mid-typing badInput is not a cle
     input.value = '1'
     withBadInput(input, false)
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(1, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1)
 
     setValue.mockClear()
     // `1e` — browser blanks el.value, sets badInput.
@@ -923,6 +923,6 @@ describe('directive — `<input type="number">` mid-typing badInput is not a cle
     input.value = '1e2'
     withBadInput(input, false)
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(100, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(100)
   })
 })

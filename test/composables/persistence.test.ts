@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
+import { createApp, defineComponent, h, onMounted, ref, withDirectives, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormConfig, UseFormReturn } from '../../src/zod'
-import { vRegister } from '../../src/runtime/core/directive'
+import { assignKey, vRegister } from '../../src/runtime/core/directive'
+import type { CustomDirectiveRegisterAssignerFn } from '../../src/runtime/types/types-api'
 import { AnonPersistError } from '../../src/runtime/core/errors'
 import { resetSensitivePersistWarnDedup } from '../../src/runtime/core/persistence/sensitive-names'
 import { __resetIndexedDbForTests } from '../../src/runtime/core/persistence/indexeddb'
@@ -817,6 +818,128 @@ describe('persistence — per-element opt-in', () => {
     expect(raw).not.toBeNull()
     const payload = JSON.parse(raw as string) as { data: { form: { email: string } } }
     expect(payload.data.form.email).toBe('from-a@example.com')
+  })
+})
+
+/**
+ * Custom assigners installed via `el[assignKey] = fn` write through
+ * `rv.setValueWithInternalPath(value)`. The RV auto-attaches
+ * `{ persist: hasOptIn(elementId, path) }` from its bound element so a
+ * consumer's assigner picks up the per-element opt-in registered via
+ * `register('path', { persist: true })` without having to thread meta
+ * by hand. Pre-fix, the meta home lived only in the directive's
+ * default assigner; consumer overrides silently dropped the persist
+ * flag, the in-memory `form.values` updated, storage stayed empty,
+ * and the next mount rehydrated to the schema default.
+ */
+describe('persistence — consumer-installed assigner', () => {
+  const apps: App[] = []
+  beforeEach(() => localStorage.clear())
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+    localStorage.clear()
+  })
+
+  it('rv.setValueWithInternalPath(value) from a consumer assigner persists when register opted in', async () => {
+    const handle: { widget?: HTMLDivElement } = {}
+    const App = defineComponent({
+      setup() {
+        const api = useForm({
+          schema,
+          defaultValues: { email: '#000', password: '' },
+          key: 'consumer-assigner-persist',
+          persist: { storage: 'local', key: 'test-consumer-assigner', debounceMs: 20 },
+        })
+        const widget = ref<HTMLDivElement | null>(null)
+        const widgetAssigner: CustomDirectiveRegisterAssignerFn = (_value, rv) => {
+          const el = widget.value
+          if (!el || !rv) return false
+          // The demo's exact pattern: read picked value off the
+          // element's own state, forward via rv with NO explicit meta.
+          rv.setValueWithInternalPath(el.dataset['picked'] ?? '')
+          return true
+        }
+        onMounted(() => {
+          const el = widget.value
+          if (el === null) return
+          handle.widget = el
+          ;(el as HTMLDivElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn })[assignKey] =
+            widgetAssigner
+        })
+        return () =>
+          withDirectives(h('div', { ref: widget }), [
+            [vRegister, api.register('email', { persist: true })],
+          ])
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    apps.push(app)
+
+    await waitUntil(() => (handle.widget !== undefined ? true : null))
+    const widget = handle.widget as HTMLDivElement
+    widget.dataset['picked'] = 'consumer-write@example.com'
+    widget.dispatchEvent(new Event('input', { bubbles: true }))
+
+    const raw = await waitUntil(() => localStorage.getItem(fpKey('test-consumer-assigner')))
+    expect(raw).not.toBeNull()
+    const payload = JSON.parse(raw as string) as { data: { form: { email: string } } }
+    expect(payload.data.form.email).toBe('consumer-write@example.com')
+  })
+
+  it('a consumer assigner that passes explicit meta keeps that meta verbatim (no auto-override)', async () => {
+    // Advanced override: a consumer who actively wants to suppress
+    // persistence on a specific write supplies `{ persist: false }`
+    // (or any non-undefined meta). The RV must NOT replace it with
+    // its auto-derived value, otherwise the escape hatch is closed.
+    const handle: { widget?: HTMLDivElement } = {}
+    const App = defineComponent({
+      setup() {
+        const api = useForm({
+          schema,
+          defaultValues: { email: '', password: '' },
+          key: 'consumer-assigner-override',
+          persist: { storage: 'local', key: 'test-consumer-override', debounceMs: 20 },
+        })
+        const widget = ref<HTMLDivElement | null>(null)
+        const overrideAssigner: CustomDirectiveRegisterAssignerFn = (_value, rv) => {
+          const el = widget.value
+          if (!el || !rv) return false
+          rv.setValueWithInternalPath(el.dataset['picked'] ?? '', { persist: false })
+          return true
+        }
+        onMounted(() => {
+          const el = widget.value
+          if (el === null) return
+          handle.widget = el
+          ;(el as HTMLDivElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn })[assignKey] =
+            overrideAssigner
+        })
+        return () =>
+          withDirectives(h('div', { ref: widget }), [
+            [vRegister, api.register('email', { persist: true })],
+          ])
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    apps.push(app)
+
+    await waitUntil(() => (handle.widget !== undefined ? true : null))
+    const widget = handle.widget as HTMLDivElement
+    widget.dataset['picked'] = 'should-not-persist@example.com'
+    widget.dispatchEvent(new Event('input', { bubbles: true }))
+
+    // 1.5x the 20 ms debounce — any in-flight write would have fired.
+    await wait(30)
+    await waitUntil(() =>
+      localStorage.getItem(fpKey('test-consumer-override')) === null ? true : null
+    )
+    expect(localStorage.getItem(fpKey('test-consumer-override'))).toBeNull()
   })
 })
 

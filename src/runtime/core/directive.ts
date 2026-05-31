@@ -54,7 +54,6 @@ import type {
   RegisterTextCustomDirective,
   RegisterTransform,
   RegisterValue,
-  WriteMeta,
 } from '../types/types-api'
 import type { PathKey } from './paths'
 import { getOrAssignElementId } from './persistence/opt-in-registry'
@@ -119,23 +118,6 @@ type ComposingTarget = (EventTarget & { composing: boolean }) | null
  */
 function writeLastTypedForm(rv: RegisterValue, next: string | null): void {
   ;(rv as InternalRegisterValue).lastTypedForm.value = next
-}
-
-/**
- * Compute the WriteMeta the default assigner attaches to its
- * `setValueWithInternalPath` call. Per-element semantics: only THIS
- * element's writes carry `persist: true`, and only if THIS element opted
- * in via `register('foo', { persist: true })`. Other elements bound to
- * the same path get `persist: false` from their own assigners.
- *
- * The assigner closure captures `el` and `registerValue` directly.
- * `el` is stable across the assigner's lifetime; `registerValue` is the
- * latest one, since the assigner is recreated on every `beforeUpdate`
- * via `setAssignFunction`.
- */
-function computePersistMeta(el: HTMLElement, registerValue: RegisterValue): WriteMeta {
-  const elementId = getOrAssignElementId(el)
-  return { persist: registerValue.persistOptIns.hasOptIn(elementId, registerValue.path) }
 }
 
 /**
@@ -359,7 +341,6 @@ function logTransformAsync(path: PathKey): void {
 }
 
 const getModelAssigner = (
-  el: HTMLElement,
   vnode: VNode,
   registerValue: RegisterValue
 ): CustomDirectiveRegisterAssignerFn => {
@@ -370,9 +351,11 @@ const getModelAssigner = (
   // Both shapes invoke the consumer's handler as `(value, registerValue)` so
   // a top-level handler can call `rv.setValueWithInternalPath(value)` to
   // forward the write into form state without having to capture `rv` via
-  // closure. Consumers wanting persistence-aware writes pass their own
-  // `meta` to `setValueWithInternalPath`; the default assigner below
-  // auto-attaches per-element meta.
+  // closure. The RV auto-attaches per-element persistence meta from its
+  // bound element when no `meta` is supplied — same code path the
+  // default assigner below uses. Advanced consumers who want to suppress
+  // (or override) persistence on a specific write pass an explicit
+  // `meta` second argument; the RV honors it verbatim.
   //
   // Vue 3.5's compiler emits TWO different prop keys for `@update:registerValue`
   // depending on context. For native elements with an uppercase letter in the
@@ -437,15 +420,16 @@ const getModelAssigner = (
     // bypasses normalization. Coerce already passes undefined cleanly
     // for paths that admit it, so skipping is a clarity win.
     if (value === undefined && registerValue.acceptsUndefined) {
-      return registerValue.setValueWithInternalPath(
-        undefined,
-        computePersistMeta(el, registerValue)
-      )
+      // Meta omitted on purpose: the RV's `setValueWithInternalPath`
+      // auto-derives `{ persist: hasOptIn(elementId, path) }` from its
+      // bound element when no meta is supplied. Same auto-derivation
+      // path consumer-installed assigners get for free.
+      return registerValue.setValueWithInternalPath(undefined)
     }
     const r = runTransforms(value, registerValue)
     if (!r.ok) return false
     const coerced = applyCoerce(r.value, registerValue)
-    return registerValue.setValueWithInternalPath(coerced, computePersistMeta(el, registerValue))
+    return registerValue.setValueWithInternalPath(coerced)
   }
   ;(defaultAssigner as unknown as DefaultAssignerCarrier)[DEFAULT_ASSIGNER_TAG] = true
   return defaultAssigner
@@ -523,7 +507,7 @@ function setAssignFunction(
     return
   }
 
-  el[assignKey] = getModelAssigner(el, vnode, value)
+  el[assignKey] = getModelAssigner(vnode, value)
 }
 
 // We are exporting the v-model runtime directly as vnode hooks so that it can

@@ -470,7 +470,7 @@ describe('v-register directive — runtime value swap', () => {
     input.dispatchEvent(new Event('input'))
 
     expect(next.setValue).toHaveBeenCalledTimes(1)
-    expect(next.setValue).toHaveBeenCalledWith('typed', expect.objectContaining({}))
+    expect(next.setValue).toHaveBeenCalledWith('typed')
   })
 
   it('RegisterValue → undefined: deregisterElement on the prior RV is called', () => {
@@ -534,13 +534,16 @@ describe('v-register directive — runtime value swap', () => {
     expect(second.setValue).toHaveBeenCalledTimes(1)
   })
 
-  it('same path, fresh RV reference (parent re-render): no spurious deregister/register thrash', () => {
+  it('same path, fresh RV reference (parent re-render): no deregister-then-register thrash; new RV picks up the element', () => {
     // form.register('email') returns a fresh object each call; every
     // parent re-render hands beforeUpdate a referentially-different
-    // value at the same conceptual path. The diff must short-circuit
-    // (same path + same persistOptIns registry → already registered)
-    // so the element doesn't deregister-and-re-register on every
-    // tick.
+    // value at the same conceptual path. The diff skips the
+    // deregister-then-register sequence (so the `connected` flag
+    // doesn't thrash false → true on every tick) but STILL calls
+    // `registerElement` on the new RV so its private
+    // bound-element reference is current — `setValueWithInternalPath`
+    // reads it to auto-attach per-element persistence meta on writes
+    // that don't supply their own.
     const input = document.createElement('input')
     document.body.appendChild(input)
     const vnode = makeVNode({})
@@ -561,7 +564,7 @@ describe('v-register directive — runtime value swap', () => {
     hooks.beforeUpdate?.(input, swap, vnode, null)
 
     expect(first.deregister).not.toHaveBeenCalled()
-    expect(fresh.register).not.toHaveBeenCalled()
+    expect(fresh.register).toHaveBeenCalledTimes(1)
   })
 
   it('same form, different path (dynamic v-register expression): deregisters old path, registers new', () => {

@@ -146,7 +146,7 @@ describe('vRegisterText — `.lazy`', () => {
     // Dispatching `change` writes.
     input.dispatchEvent(new Event('change'))
     expect(setValue).toHaveBeenCalledTimes(1)
-    expect(setValue).toHaveBeenCalledWith('typing', expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith('typing')
   })
 
   it('does NOT attach composition handlers under `.lazy`', () => {
@@ -166,7 +166,7 @@ describe('vRegisterText — `.lazy`', () => {
     input.dispatchEvent(new Event('compositionstart'))
     input.value = 'lazy-write'
     input.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith('lazy-write', expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith('lazy-write')
   })
 })
 
@@ -189,7 +189,7 @@ describe('vRegisterText — `.trim`', () => {
 
     input.value = '  hello  '
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenCalledWith('  hello  ', expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith('  hello  ')
   })
 
   it('change event commits the trimmed value to the model AND normalizes the DOM', () => {
@@ -204,7 +204,7 @@ describe('vRegisterText — `.trim`', () => {
     input.dispatchEvent(new Event('change'))
     // Both DOM and model arrive at the canonical trimmed form.
     expect(input.value).toBe('hello')
-    expect(setValue).toHaveBeenLastCalledWith('hello', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('hello')
   })
 })
 
@@ -223,12 +223,12 @@ describe('vRegisterText — `.number`', () => {
 
     input.value = '42'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenCalledWith(42, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(42)
 
     setValue.mockClear()
     input.value = '12.5'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenCalledWith(12.5, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(12.5)
   })
 
   it('input event marks blank for non-numeric strings instead of attempting the write', () => {
@@ -284,7 +284,7 @@ describe('vRegisterText — `.number`', () => {
 
     input.value = '7'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenCalledWith(7, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(7)
   })
 })
 
@@ -306,7 +306,7 @@ describe('vRegisterText — combined modifiers', () => {
     input.dispatchEvent(new Event('input'))
     expect(setValue).not.toHaveBeenCalled()
     input.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith('spaced', expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith('spaced')
   })
 
   it('`.lazy.number`: change event writes the cast value', () => {
@@ -321,7 +321,7 @@ describe('vRegisterText — combined modifiers', () => {
     input.dispatchEvent(new Event('input'))
     expect(setValue).not.toHaveBeenCalled()
     input.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith(99, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(99)
   })
 
   it('`.trim.number`: input writes the cast value (trim is deferred); change commits and normalizes', () => {
@@ -337,7 +337,7 @@ describe('vRegisterText — combined modifiers', () => {
     // handles surrounding whitespace, so the model still lands on 42.
     input.value = '  42  '
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenCalledWith(42, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(42)
 
     input.value = '  7  '
     input.dispatchEvent(new Event('change'))
@@ -360,10 +360,10 @@ describe('vRegisterText — <textarea> reuses the same variant', () => {
 
     ta.value = '  multi line  '
     ta.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith('  multi line  ', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('  multi line  ')
 
     ta.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenLastCalledWith('multi line', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('multi line')
     expect(ta.value).toBe('multi line')
   })
 })
@@ -397,7 +397,7 @@ describe('vRegisterSelect — `.number`', () => {
 
     select.value = '20'
     select.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith(20, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(20)
   })
 
   it('multi-select with `.number` produces a numeric array', () => {
@@ -414,7 +414,7 @@ describe('vRegisterSelect — `.number`', () => {
     opt0.selected = true
     opt2.selected = true
     select.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith([1, 3], expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith([1, 3])
   })
 
   it('multi-select WITHOUT `.number` writes string values', () => {
@@ -429,7 +429,7 @@ describe('vRegisterSelect — `.number`', () => {
     if (opt0 === undefined) throw new Error('unreachable')
     opt0.selected = true
     select.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith(['1'], expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(['1'])
   })
 
   it('mounted: selects the option matching a numeric model (16f regression)', () => {
@@ -565,7 +565,7 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
     opt0.selected = true
     opt2.selected = true
     select.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith(['a', 'c'], expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(['a', 'c'])
   })
 
   it('change event writes a Set when the initial model was a Set', () => {
@@ -598,7 +598,7 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
     // Deselect everything.
     opt0.selected = false
     select.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith([], expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith([])
   })
 
   it('updated: re-syncs DOM when model array changes', () => {
@@ -836,7 +836,7 @@ describe('attaform interactions: `.lazy` × value-swap', () => {
     // `change` event routes the write to the new RV.
     input.dispatchEvent(new Event('change'))
     expect(next.setValue).toHaveBeenCalledTimes(1)
-    expect(next.setValue).toHaveBeenCalledWith('typed', expect.objectContaining({}))
+    expect(next.setValue).toHaveBeenCalledWith('typed')
   })
 })
 
@@ -865,7 +865,7 @@ describe('vRegisterDynamic — propagates modifiers to the per-tag variant', () 
     expect(setValue).not.toHaveBeenCalled()
 
     input.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith('x', expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith('x')
   })
 
   it('`.number` on a select reaches vRegisterSelect', () => {
@@ -883,7 +883,7 @@ describe('vRegisterDynamic — propagates modifiers to the per-tag variant', () 
 
     select.value = '2'
     select.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenCalledWith(2, expect.objectContaining({}))
+    expect(setValue).toHaveBeenCalledWith(2)
   })
 })
 
@@ -925,14 +925,14 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
     // User types "hello"
     input.value = 'hello'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith('hello', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('hello')
 
     // User then types a trailing space. With deferred trim the model
     // sees the raw "hello " so Vue's :value patch stays in sync
     // with the DOM and the space the user is mid-typing survives.
     input.value = 'hello '
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith('hello ', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('hello ')
     expect(input.value).toBe('hello ')
   })
 
@@ -952,7 +952,7 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
 
     // After the full sequence the form holds the raw "hello w" —
     // deferred trim does not strip the trailing space until blur.
-    expect(setValue).toHaveBeenLastCalledWith('hello w', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('hello w')
     expect(input.value).toBe('hello w')
   })
 
@@ -974,17 +974,17 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
     const tenSpaces = ' '.repeat(10)
     input.value = tenSpaces
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(tenSpaces, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(tenSpaces)
 
     // First real character — model still receives the raw value.
     input.value = `${tenSpaces}a`
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(`${tenSpaces}a`, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(`${tenSpaces}a`)
     expect(input.value).toBe(`${tenSpaces}a`)
 
     // Blur commits the trim — DOM and model agree on "a".
     input.dispatchEvent(new Event('change'))
-    expect(setValue).toHaveBeenLastCalledWith('a', expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith('a')
     expect(input.value).toBe('a')
   })
 })
@@ -1022,7 +1022,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
     input.value = '1'
     input.dispatchEvent(new Event('input'))
     expect(setValue).toHaveBeenCalledTimes(1)
-    expect(setValue).toHaveBeenLastCalledWith(1, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1)
 
     // Backspace to empty: directive must NOT call setValue with "".
     // The form stays at the previously-accepted numeric value; the
@@ -1043,7 +1043,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
 
     input.value = '42'
     input.dispatchEvent(new Event('input'))
-    expect(setValue).toHaveBeenLastCalledWith(42, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(42)
 
     setValue.mockClear()
     input.value = ''
@@ -1091,7 +1091,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
     input.value = '1'
     input.dispatchEvent(new Event('input'))
     expect(setValue).toHaveBeenCalledTimes(1)
-    expect(setValue).toHaveBeenLastCalledWith(1, expect.objectContaining({}))
+    expect(setValue).toHaveBeenLastCalledWith(1)
 
     setValue.mockClear()
     input.value = ''

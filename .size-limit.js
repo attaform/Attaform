@@ -535,9 +535,21 @@ export default [
     // PASS2-S2 drain race fix in `createDebouncedWriter`, and
     // CORE-P3 `form.meta` computed→getter collapse. Measured at
     // 56.22 KB.
+    //
+    // Held at 57 KB on the drop-lodash-peer branch, which removed the
+    // `lodash-es` peer dependency. The v3 adapter's only lodash uses
+    // were `cloneDeep` (discriminated-union slim path) and `isFunction`,
+    // now the dependency-free `cloneSchemaDeep` (clone-schema.ts) and a
+    // `typeof` check. `lodash-es` left this entry's `ignore` list since
+    // it is no longer a dependency. Self-size ticked 56.22 → 56.54 KB:
+    // `cloneDeep` was external (ignored, so never counted here), whereas
+    // `cloneSchemaDeep` is first-party and counted. The real win is
+    // consumer-side and invisible to this number: a v3 consumer drops
+    // lodash's ~5.0 KB gz `cloneDeep` closure for the ~0.35 KB clone, a
+    // ~4.67 KB gz net reduction in their bundle.
     limit: '57 KB',
     gzip: true,
-    ignore: ['zod', 'lodash-es'],
+    ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
   },
   {

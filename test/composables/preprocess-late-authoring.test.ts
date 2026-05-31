@@ -4,6 +4,7 @@ import { createApp, defineComponent, h, nextTick } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { waitUntil } from '../utils/form-harness'
 
 /**
  * Pins the "authored" set's lifecycle past construction.
@@ -78,12 +79,13 @@ describe('authored-paths updates beyond construction', () => {
     // against the runtime "no value yet").
     await nextTick()
 
-    // Lazy activation: kick the factory explicitly, then let the
-    // post-resolution validation sweep complete. Without this the
-    // form stays dormant until the first reactive read below, leaving
-    // no time for validation to land.
+    // Lazy activation: kick the factory explicitly, then wait for the
+    // validation verdict to land. The post-resolution validation sweep
+    // runs through preprocess + refine asynchronously; poll the
+    // positive signal (errors populated) rather than guessing a wall-
+    // clock budget.
     await api.activate()
-    await new Promise((r) => setTimeout(r, 30))
+    await waitUntil(() => (api.errors.url.length > 0 ? true : null))
 
     // The factory landed `{ url: undefined }`. The path is now
     // authored — distinct from "no consumer input." Validation runs
@@ -103,8 +105,7 @@ describe('authored-paths updates beyond construction', () => {
     expect(api.errors.url).toEqual([])
 
     api.reset({ url: undefined })
-    await nextTick()
-    await new Promise((r) => setTimeout(r, 30))
+    await waitUntil(() => (api.errors.url.length > 0 ? true : null))
 
     expect(api.values.url).toBeUndefined()
     expect(api.errors.url.length).toBeGreaterThan(0)
@@ -130,8 +131,7 @@ describe('authored-paths updates beyond construction', () => {
     // change-mode validation sweep that follows the write picks up
     // the verdict.
     api.setValue('url', undefined as never)
-    await nextTick()
-    await new Promise((r) => setTimeout(r, 30))
+    await waitUntil(() => (api.errors.url.length > 0 ? true : null))
 
     expect(api.values.url).toBeUndefined()
     expect(api.errors.url.length).toBeGreaterThan(0)

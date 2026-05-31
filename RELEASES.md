@@ -1,5 +1,11 @@
 # Releases
 
+## v0.20.1 — 2026-05-30
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.20.1...v0.20.1
+
+---
+
 ## v0.20.0 — 2026-05-30
 
 ## What's Changed

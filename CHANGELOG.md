@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.20.1
 ### Changed
 
 - **Publish pipeline is now PR-driven and idempotent.** The release

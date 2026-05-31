@@ -2,7 +2,63 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **Consumer-installed assigners now see a uniform `(value, rv)`
+  fire-time contract regardless of install path.** A custom assigner
+  installed via the documented `el[assignKey] = fn` symbol assignment
+  previously diverged from one installed via the
+  `@update:registerValue` vnode-prop listener on three counts: the
+  bound `RegisterValue` was dropped from the second argument; per-field
+  `register` transforms were bypassed; and the per-field coerce closure
+  was bypassed. The `/demos/custom-assigners` gesture relied on the
+  `rv` arg to commit through `rv.setValueWithInternalPath` and would
+  have surfaced the divergence on any consumer reach past the
+  documented shape. A new `fireAssigner` helper replaces the eight
+  direct `el[assignKey]?.(value)` call sites and stamps consumer
+  wrappers with a `CONSUMER_WRAPPED_TAG` so the helper can distinguish
+  the directive's own wrapper from a raw pre-installed function and
+  JIT-wrap the latter at fire time. Both install paths now deliver
+  the same `(post-transform-post-coerce value, rv)` shape. The
+  custom-assigner docs page drops the now-incorrect "omitted when
+  installed via `el[assignKey] = fn`" claim.
+
+- **Per-element persistence meta auto-attaches inside `RegisterValue`.**
+  A consumer-installed custom assigner that called
+  `rv.setValueWithInternalPath(value)` without an explicit `meta` arg
+  silently dropped the per-element persist opt-in: `form.values`
+  updated, storage stayed empty, the next mount rehydrated to the
+  schema default. The meta home moves into the RV itself.
+  `registerElement(el)` records the bound element on a closure-private
+  slot (independent of the `INTERACTIVE_TAG_NAMES` gate, since
+  custom-assigner widgets are usually `<div>`), and
+  `setValueWithInternalPath(value)` auto-derives
+  `{ persist: hasOptIn(elementId, path) }` from that bound element
+  when no meta is supplied. Explicit meta (including
+  `{ persist: false }` for a deliberately transient write) still passes
+  through verbatim, so the advanced-override escape hatch stays open.
+  `form.setValue(...)` does not route through the RV and keeps the
+  documented "imperative writes don't auto-persist" contract.
+  `syncElementRegistration` learns to call `registerElement` on the
+  fresh RV when the parent re-renders with a referentially-different
+  `form.register('path')` result; `state.registerElement(path, el)`
+  is idempotent so the re-call is a single Set membership check.
+
+- **Three stale-closure sites in `v-register` re-derive per fire.**
+  Dynamic prop swaps now propagate into the listener body that consumes
+  them. `setAssignFunction` re-derives the wrapper when the parent
+  re-renders with a referentially-fresh `@update:registerValue`
+  handler (previously the first wrapper persisted forever because the
+  early-return bailed on any non-default assigner, including the
+  directive's own wrapper). `vRegisterText` re-reads `castToNumber`
+  per fire so a dynamic `:type="isNumber ? 'number' : 'text'"` swap
+  routes the next event through the correct branch (previously
+  captured once at `created` time). `vRegisterSelect` re-reads
+  `isSetModel` per fire so a path-type swap between Array and Set
+  containers routes writes to the correct container shape (previously
+  captured once at `created` time). The shared `isConsumerWrapped`
+  tag the fire-time contract introduced makes the assigner case a
+  one-line bail-condition update.
 
 ## v0.20.1
 ### Changed

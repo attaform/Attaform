@@ -1,4 +1,3 @@
-import { cloneDeep, isFunction } from 'lodash-es'
 // Imports zod v3 via the pnpm alias defined in devDependencies; the
 // published bundle rewrites this specifier back to 'zod' via the build
 // step (see build.config.ts). Consumers of `attaform/zod-v3`
@@ -29,6 +28,7 @@ import { canonicalizePath, type Path, type PathKey } from '../../core/paths'
 import { slimKindOf } from '../../core/slim-primitive-gate'
 import type { FieldMetaPayload } from '../../core/field-meta'
 import { getFieldMeta, getFieldMetaList } from './field-meta'
+import { cloneSchemaDeep } from './clone-schema'
 import type { GenericForm } from '../../types/types-core'
 
 // The adapter exchanges dotted-string paths with core at the
@@ -977,7 +977,9 @@ const getStripInstruction = (
 ): boolean => {
   if (stripValueOrCallback === undefined || stripValueOrCallback === false) return false
 
-  return isFunction(stripValueOrCallback) ? stripValueOrCallback(schema) : stripValueOrCallback
+  return typeof stripValueOrCallback === 'function'
+    ? stripValueOrCallback(schema)
+    : stripValueOrCallback
 }
 
 // make the schema more relaxed so we can construct a initial form state
@@ -1018,7 +1020,7 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
       for (const option of getDiscriminatedOptions(_schema)) {
         const slimmedSchema = _getSlimSchema(option as unknown as z.ZodSchema)
         // slimmedSchema will be a structurally deep object, so break pointer refs to prevent recursion bugs
-        const deepCloneSlimmedSchema = cloneDeep(slimmedSchema)
+        const deepCloneSlimmedSchema = cloneSchemaDeep(slimmedSchema)
         slimmedSchemas.push(deepCloneSlimmedSchema)
       }
 

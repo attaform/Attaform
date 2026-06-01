@@ -33,10 +33,8 @@
  * using a custom Vue plugin wrapper, fall back to `attaform/transforms`
  * and wire them yourself.
  */
-import { readFileSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { join } from 'node:path'
 import type { Plugin } from 'vite'
+import { resolveZodAliasTarget, ZOD_UNIFIED_SPECIFIER } from './core/detect-zod-major'
 import { componentBridgeTransform } from './runtime/lib/core/transforms/component-bridge-transform'
 import { inputTextAreaNodeTransform } from './runtime/lib/core/transforms/input-text-area-transform'
 import { vRegisterHintTransform } from './runtime/lib/core/transforms/v-register-hint-transform'
@@ -73,46 +71,6 @@ interface VitePluginVueApi {
   }
 }
 
-const ZOD_UNIFIED_SPECIFIER = 'attaform/zod'
-const ZOD_V3_SPECIFIER = 'attaform/zod-v3'
-const ZOD_V4_SPECIFIER = 'attaform/zod-v4'
-
-/**
- * Read the consumer's installed Zod major by resolving
- * `zod/package.json` from their project root. ESM resolution
- * (`import.meta.resolve`) is sync and stable on Node 20.6+, follows
- * pnpm symlinks, and works with attaform's ESM-only `exports` map.
- *
- * Returns:
- *  - `{ major: 3 | 4 }` when zod is resolvable AND its `version`
- *    field parses to a known major;
- *  - `{ major: 'missing' }` when zod can't be resolved at all;
- *  - `{ major: 'unknown' }` for any other failure (corrupted
- *    package.json, unexpected version string, monorepo edge case).
- */
-function detectZodMajor(
-  consumerRootDir: string
-): { major: 3 } | { major: 4 } | { major: 'missing' } | { major: 'unknown' } {
-  const consumerURL = pathToFileURL(join(consumerRootDir, 'package.json')).href
-  let resolved: string
-  try {
-    resolved = import.meta.resolve('zod/package.json', consumerURL)
-  } catch {
-    return { major: 'missing' }
-  }
-  try {
-    const pkg = JSON.parse(readFileSync(fileURLToPath(resolved), 'utf8')) as { version?: unknown }
-    const version = pkg.version
-    if (typeof version !== 'string') return { major: 'unknown' }
-    const major = Number.parseInt(version.split('.')[0] ?? '', 10)
-    if (major === 3) return { major: 3 }
-    if (major === 4) return { major: 4 }
-    return { major: 'unknown' }
-  } catch {
-    return { major: 'unknown' }
-  }
-}
-
 /**
  * Vite plugin that wires the form library's compile-time template
  * transforms into `@vitejs/plugin-vue` and rewrites the unified
@@ -138,7 +96,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
   // Vite root in `configResolved`, then cached for every `resolveId`
   // call (the hook fires many times during dev/build).
   let aliasTarget: string | null = null
-  let warnedAboutDetection = false
+  const warnState = { warned: false }
 
   return {
     name: 'attaform',
@@ -190,34 +148,17 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
         ]
       }
 
-      // Build-time alias resolution. Skip cleanly when the user opted
-      // out so consumers with non-standard Zod setups don't see a
-      // "zod is not installed" error from this plugin.
-      if (!resolveZodAlias) return
-      const detection = detectZodMajor(resolved.root)
-      if (detection.major === 'missing') {
-        throw new Error(
-          '[attaform/vite] zod is not installed. attaform requires zod as a peer dependency. ' +
-            'Install `zod@^3` or `zod@^4`, OR pass `attaform({ resolveZodAlias: false })` ' +
-            'to keep the runtime-dispatch unified entry (and silence this check).'
-        )
-      }
-      if (detection.major === 'unknown') {
-        // Detection landed on a zod resolution but couldn't classify
-        // the version — log once and fall through to runtime dispatch.
-        // The build still works; the consumer just ships both adapters.
-        if (!warnedAboutDetection) {
-          warnedAboutDetection = true
-          console.warn(
-            '[attaform/vite] Could not classify the installed Zod major (corrupted package.json, ' +
-              'monorepo edge case, or an unexpected version string). Falling through to runtime ' +
-              'dispatch — both Zod adapters will ship in the bundle. ' +
-              'Pass `attaform({ resolveZodAlias: false })` to silence this warning.'
-          )
-        }
-        return
-      }
-      aliasTarget = detection.major === 4 ? ZOD_V4_SPECIFIER : ZOD_V3_SPECIFIER
+      // Build-time alias resolution, shared with the other bundler
+      // plugins. Returns null (leave the unified runtime-dispatch entry
+      // in place) when the consumer opted out or the Zod version can't be
+      // classified (warned once via `warnState`), and throws only when
+      // zod isn't installed at all.
+      aliasTarget = resolveZodAliasTarget(
+        resolved.root,
+        'attaform/vite',
+        resolveZodAlias,
+        warnState
+      )
     },
     configureServer(server) {
       // Dev-only middleware that serves the Nuxt DevTools overlay panel's

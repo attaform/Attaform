@@ -634,6 +634,39 @@ export default [
     ignore: ['vite'],
     modifyEsbuildConfig: asEsmNode,
   },
+  // Cross-bundler `attaform/zod` adapter-rewrite plugins (Block E). Each
+  // is a hand-written, zero-dep Node build-time plugin: the shared
+  // `core/detect-zod-major` (detection + diagnostics) plus a thin
+  // bundler-specific rewrite hook. They import nothing from the bundler
+  // (structural types only), so the gzipped size is small and stable;
+  // the tight cap is a tripwire against a future edit accidentally
+  // pulling runtime weight into a build-time entry. platform:node
+  // externalizes the `node:*` builtins. Measured: rollup 811 B,
+  // esbuild 906 B, webpack 849 B, rspack 849 B.
+  {
+    path: 'dist/rollup.mjs',
+    limit: '1.25 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsmNode,
+  },
+  {
+    path: 'dist/esbuild.mjs',
+    limit: '1.25 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsmNode,
+  },
+  {
+    path: 'dist/webpack.mjs',
+    limit: '1.25 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsmNode,
+  },
+  {
+    path: 'dist/rspack.mjs',
+    limit: '1.25 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsmNode,
+  },
   {
     path: 'dist/transforms.mjs',
     limit: '6 KB',

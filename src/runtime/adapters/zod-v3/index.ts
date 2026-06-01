@@ -77,7 +77,6 @@ import type { TypeWithNullableDynamicKeys } from './types-zod'
 // longer reads `_def` directly inline; the public type stays available
 // for downstream consumers writing adapter-shaped code.
 import { assertSupportedKinds } from './assert-supported'
-import { fingerprintZodSchema } from './fingerprint'
 import { isZodSchemaType } from './helpers'
 import {
   containsAsyncTransform,
@@ -166,12 +165,22 @@ export function zodAdapter<
  * so the typed methods (`runStrictGetDefaults` / `makeSubSchema`)
  * propagate the form shape correctly.
  */
+// Lazy fingerprint: the only consumers are opt-in async features
+// (multi-tab channel name, persistence storage key) plus a dev-only
+// mismatch warning, so the structural walk + its `canonicalStringify`
+// helper load on demand off the eager `useForm` path instead of being
+// anchored eager by a static import.
+async function lazyFingerprint(schema: z.ZodSchema): Promise<string> {
+  const { fingerprintZodSchema } = await import('./fingerprint')
+  return fingerprintZodSchema(schema)
+}
+
 function buildV3Services<
   Form extends GenericForm,
   GetValueFormType extends GenericForm,
 >(): AbstractSchemaServices<z.ZodTypeAny, Form, GetValueFormType> {
   return {
-    fingerprint: (schema) => fingerprintZodSchema(schema as z.ZodSchema),
+    fingerprint: (schema) => lazyFingerprint(schema as z.ZodSchema),
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodSchema, path, maxRecursionDepth),
     // v3 pre-strips refinements / defaults / wrappers off the root for

@@ -49,14 +49,14 @@ describe('zod v3 adapter — bounded wrapper recursion', () => {
     expect(() => adapter.getDefaultValues({ useDefaultSchemaValues: true })).not.toThrow()
   })
 
-  it('produces a finite fingerprint for a deep optional chain', () => {
+  it('produces a finite fingerprint for a deep optional chain', async () => {
     let schema: z.ZodTypeAny = z.string()
     for (let i = 0; i < 100; i++) {
       schema = schema.optional()
     }
     const root = z.object({ deep: schema })
     const adapter = zodAdapter(root)('f', { maxRecursionDepth: 64 })
-    const fp = adapter.fingerprint()
+    const fp = await adapter.fingerprint()
     expect(typeof fp).toBe('string')
     expect(fp.length).toBeGreaterThan(0)
   })

@@ -196,6 +196,12 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * Structural fingerprint of the schema. Same shape → same string;
    * different shape → (best-effort) different string.
    *
+   * Resolves a `Promise` so adapters can defer the structural walk (and
+   * its `canonicalStringify` helper) onto a dynamic import. The framework
+   * only ever needs the fingerprint on opt-in async paths (the multi-tab
+   * channel name, the persistence storage key) plus a dev-only mismatch
+   * warning, so none of those bytes belong on the eager `useForm` path.
+   *
    * The library uses this to detect schema mismatches at a shared
    * form key: two `useForm({ key: 'x', schema })` calls are allowed
    * to land on the same `FormStore` (the "shared store" semantic),
@@ -223,7 +229,7 @@ export type AbstractSchema<Form, GetValueFormType> = {
    *   look identical. The warning is a footgun catcher, not a
    *   soundness guarantee.
    */
-  fingerprint(): string
+  fingerprint(): Promise<string>
 
   getDefaultValues(config: GetDefaultValuesConfig<Form>): DefaultValuesResponse<Form>
   /**

@@ -35,6 +35,13 @@ const FINGERPRINT_WARN_MARKER = 'use different schemas'
 type Form = { name: string }
 const defaults: Form = { name: '' }
 
+// The shared-key mismatch warning fires from an async path: `fingerprint()`
+// resolves a Promise so the adapter can lazy-load its walker, and the check
+// is dispatched fire-and-forget. Drain microtasks + the timer queue before
+// asserting on the spy so the warning has had its chance to fire (or
+// provably not, for the silent cases).
+const flushAsync = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
 describe('schema-fingerprint shared-key warning', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
   let errorSpy: ReturnType<typeof vi.spyOn>
@@ -70,18 +77,20 @@ describe('schema-fingerprint shared-key warning', () => {
     return () => app.unmount()
   }
 
-  it('stays silent when two useForm calls use the same fingerprint', () => {
+  it('stays silent when two useForm calls use the same fingerprint', async () => {
     const schemaA = fakeSchema<Form>(defaults, undefined, 'fp:same')
     const schemaB = fakeSchema<Form>(defaults, undefined, 'fp:same')
     const unmount = mountTwo(schemaA, schemaB)
+    await flushAsync()
     expect(fingerprintWarnCalls()).toHaveLength(0)
     unmount()
   })
 
-  it('warns when the second call uses a different fingerprint', () => {
+  it('warns when the second call uses a different fingerprint', async () => {
     const schemaA = fakeSchema<Form>(defaults, undefined, 'fp:first')
     const schemaB = fakeSchema<Form>(defaults, undefined, 'fp:second')
     const unmount = mountTwo(schemaA, schemaB)
+    await flushAsync()
     const calls = fingerprintWarnCalls()
     expect(calls).toHaveLength(1)
     const message = String(calls[0]?.[0] ?? '')
@@ -91,7 +100,7 @@ describe('schema-fingerprint shared-key warning', () => {
     unmount()
   })
 
-  it('catches adapter-thrown fingerprint exceptions and surfaces them in dev', () => {
+  it('catches adapter-thrown fingerprint exceptions and surfaces them in dev', async () => {
     // A misbehaving adapter that throws from .fingerprint() must
     // NOT crash the form lifecycle — we allow the inconsistency
     // and skip the mismatch check. In dev the exception is logged
@@ -104,6 +113,7 @@ describe('schema-fingerprint shared-key warning', () => {
     }
     const second = fakeSchema<Form>(defaults, undefined, 'fp:other')
     const unmount = mountTwo(throwing, second)
+    await flushAsync()
     expect(fingerprintWarnCalls()).toHaveLength(0)
     expect(errorSpy).toHaveBeenCalledTimes(1)
     const [message, errArg] = errorSpy.mock.calls[0] ?? []
@@ -113,7 +123,7 @@ describe('schema-fingerprint shared-key warning', () => {
     unmount()
   })
 
-  it('no false positive on shared key with zod factory default', () => {
+  it('no false positive on shared key with zod factory default', async () => {
     // Regression: before the idempotence fix in the v4 walker,
     // `.default(() => new Date())` made `.fingerprint()` return a
     // different string on every call (the getter re-invoked the
@@ -135,6 +145,7 @@ describe('schema-fingerprint shared-key warning', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
+    await flushAsync()
     expect(fingerprintWarnCalls()).toHaveLength(0)
     app.unmount()
   })

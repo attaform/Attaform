@@ -155,14 +155,20 @@ export async function measureEager(define = PROD_DEFINE) {
 // Baseline measured at 46.28 kB gz when this gate landed, with the
 // dev-flag DCE win (core/dev.ts) folded in under the production define.
 // D1 then lazy-loads multi-tab sync onto the async path (45.61 kB gz),
-// and D2 lazy-loads persistence's wiring + payload machinery (the
+// D2 lazy-loads persistence's wiring + payload machinery (the
 // onFormChange writer, envelope read/build, debounce, pluck / strip /
-// filter) onto the async path, dropping the eager set to 44.60 kB gz;
-// the budget is tightened here to lock that in. ~0.5 kB headroom absorbs
-// minifier-version drift. The lazy-loading work tightens this as
-// optional features move to the async path; never loosen it without a
-// recorded reason in the commit.
-const BUDGET_GZ = 46_200
+// filter) onto the async path (44.60 kB gz), and D3 lazy-loads the
+// schema fingerprint walker + its canonicalStringify helper (only the
+// opt-in multi-tab / persistence key paths plus a dev-only mismatch
+// warning consume them), landing the eager set at 44.38 kB gz; the
+// budget is tightened here to lock that in. The single-adapter delta is
+// modest because the async deferral machinery offsets most of the
+// fingerprint bytes, but the unified `attaform/zod` entry (both adapters'
+// walkers leave eager against the same one-time machinery) drops ~1.0 kB.
+// ~0.5 kB headroom absorbs minifier-version drift. The lazy-loading work
+// tightens this as optional features move to the async path; never loosen
+// it without a recorded reason in the commit.
+const BUDGET_GZ = 45_950
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

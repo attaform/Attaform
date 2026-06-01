@@ -225,7 +225,7 @@ export function useAbstractForm<
     // sharing. The second call's schema is then silently dropped in
     // favour of the first's — matching what already happens (only
     // the first caller's config wires the FormStore).
-    warnOnSchemaFingerprintMismatch(key, existing.schema, resolvedSchema)
+    void warnOnSchemaFingerprintMismatch(key, existing.schema, resolvedSchema)
     // Persist is a single-IO-channel concern (one storage key, one
     // debounce timer, one subscription). The first useForm call wires
     // it; subsequent calls' `persist:` configurations are silently
@@ -383,9 +383,22 @@ export function useAbstractForm<
         })
         const ready: Promise<PersistenceModule | undefined> = (async () => {
           try {
-            const { wirePersistence } = await import('../core/persistence/wire-persistence')
+            // Resolve the fingerprint token in parallel with the chunk
+            // import: `schema.fingerprint()` itself dynamic-imports the
+            // fingerprint walker, so kicking both off together keeps the
+            // storage key ready by the time the wiring runs, with no serial
+            // round-trip behind the chunk load.
+            const [{ wirePersistence }, fingerprintToken] = await Promise.all([
+              import('../core/persistence/wire-persistence'),
+              resolvePersistFingerprintToken(state),
+            ])
             if (persistDisposed) return undefined
-            const persistenceModule = wirePersistence(state, resolvedPersist, adapterPromise)
+            const persistenceModule = wirePersistence(
+              state,
+              resolvedPersist,
+              adapterPromise,
+              fingerprintToken
+            )
             // Drain BEFORE the synchronous teardown: the registry awaits
             // `awaitPendingWrites` before calling `dispose`, so the last
             // debounced keystroke gets to disk before the FormStore is
@@ -453,58 +466,53 @@ export function useAbstractForm<
     const hasBroadcastChannel = typeof BroadcastChannel !== 'undefined'
     const secureContext = isSecureContext()
     if (hasBroadcastChannel && secureContext) {
-      // Channel name = `attaform:sync:${formKey}:${fingerprint hash}`.
-      // Wrap the fingerprint read so an adapter bug throwing here doesn't
-      // poison the rest of the form lifecycle; the sync module just skips
-      // instantiation. The schema-fingerprint mismatch warning surfaces
-      // the underlying adapter issue separately.
-      let channelName: string | null
-      try {
-        channelName = `attaform:sync:${state.formKey}:${hashStableString(state.schema.fingerprint())}`
-      } catch {
-        channelName = null
-      }
-      if (channelName !== null) {
-        const resolvedChannelName = channelName
-        // The form can dispose while the sync chunk is in flight (a fast
-        // mount then unmount). `registerCleanup` runs disposers once and
-        // then drops the list, so a disposer registered after dispose
-        // never fires. Guard with a flag an eagerly-registered cleanup
-        // sets, so a late-resolving import doesn't subscribe a
-        // BroadcastChannel onto a torn-down store (which would leak it).
-        let formDisposed = false
-        state.registerCleanup(() => {
-          formDisposed = true
-        })
-        void (async () => {
-          try {
-            const { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } =
-              await import('../core/multi-tab-sync')
-            if (formDisposed) return
-            const syncModule = createMultiTabSyncModule(state, resolvedChannelName, {
-              isSensitivePath: state.isSensitivePath,
-              noSyncPaths: state.noSyncPaths,
-              validateForm: (form) => {
-                // Sync-preferred schema validation. Async-only schemas
-                // return a Promise; for those we skip the gate and trust
-                // the patch (last-writer-wins; the local validate cycle
-                // catches issues on the next user interaction).
-                const result = state.schema.validateAtPath(form, undefined, { sync: true })
-                if (result instanceof Promise) return
-                if (!result.success) {
-                  throw new Error('attaform multi-tab sync: post-apply schema validation failed')
-                }
-              },
-            })
-            state.modules.set(MULTI_TAB_SYNC_MODULE_KEY, syncModule)
-            state.registerCleanup(() => syncModule.dispose())
-          } catch {
-            // The multi-tab-sync chunk failed to load (offline, chunk
-            // eviction). Sync stays silently unavailable rather than
-            // throwing into the consumer's form lifecycle.
-          }
-        })()
-      }
+      // The form can dispose while the sync chunk is in flight (a fast
+      // mount then unmount). `registerCleanup` runs disposers once and
+      // then drops the list, so a disposer registered after dispose
+      // never fires. Guard with a flag an eagerly-registered cleanup
+      // sets, so a late-resolving import doesn't subscribe a
+      // BroadcastChannel onto a torn-down store (which would leak it).
+      let formDisposed = false
+      state.registerCleanup(() => {
+        formDisposed = true
+      })
+      void (async () => {
+        try {
+          // Channel name = `attaform:sync:${formKey}:${fingerprint hash}`.
+          // Resolve the fingerprint (the adapter dynamic-imports its
+          // walker) in parallel with the sync-module chunk. A rejection
+          // here (an adapter bug) or a failed chunk load both leave sync
+          // silently unavailable rather than poisoning the form lifecycle;
+          // the schema-fingerprint mismatch warning surfaces an adapter
+          // issue separately.
+          const [{ createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY }, fingerprint] =
+            await Promise.all([import('../core/multi-tab-sync'), state.schema.fingerprint()])
+          if (formDisposed) return
+          const channelName = `attaform:sync:${state.formKey}:${hashStableString(fingerprint)}`
+          const syncModule = createMultiTabSyncModule(state, channelName, {
+            isSensitivePath: state.isSensitivePath,
+            noSyncPaths: state.noSyncPaths,
+            validateForm: (form) => {
+              // Sync-preferred schema validation. Async-only schemas
+              // return a Promise; for those we skip the gate and trust
+              // the patch (last-writer-wins; the local validate cycle
+              // catches issues on the next user interaction).
+              const result = state.schema.validateAtPath(form, undefined, { sync: true })
+              if (result instanceof Promise) return
+              if (!result.success) {
+                throw new Error('attaform multi-tab sync: post-apply schema validation failed')
+              }
+            },
+          })
+          state.modules.set(MULTI_TAB_SYNC_MODULE_KEY, syncModule)
+          state.registerCleanup(() => syncModule.dispose())
+        } catch {
+          // The fingerprint rejected or the multi-tab-sync chunk failed to
+          // load (offline, chunk eviction). Sync stays silently
+          // unavailable rather than throwing into the consumer's form
+          // lifecycle.
+        }
+      })()
     } else if (hasBroadcastChannel && !secureContext) {
       warnOnceInsecureContext('multiTab')
     }
@@ -888,27 +896,55 @@ function resolveFormKey(key: FormKey | undefined): FormKey {
 }
 
 /**
+ * Resolve the hashed schema fingerprint that keys a form's persisted
+ * draft. `schema.fingerprint()` dynamic-imports the fingerprint walker
+ * and may reject (some shapes make an adapter throw, e.g. a v3
+ * `z.nativeEnum` that spreads the enum object). Persistence must never
+ * crash a consumer's mount, so a rejection degrades to a stable
+ * fingerprint-free token: persistence still works, it just loses
+ * automatic schema-change invalidation for this form. Resolved in the
+ * persist wiring's async IIFE, in parallel with the chunk import, so no
+ * synchronous caller waits on it.
+ */
+async function resolvePersistFingerprintToken<F extends GenericForm>(
+  state: FormStore<F, GenericForm>
+): Promise<string> {
+  try {
+    return hashStableString(await state.schema.fingerprint())
+  } catch (err) {
+    if (__DEV__) {
+      console.warn(
+        `[attaform] Could not fingerprint the schema for form '${state.formKey}': ` +
+          `${err instanceof Error ? err.message : String(err)}. Persistence falls back to a ` +
+          `fingerprint-free key, so a schema change won't auto-invalidate a saved draft.`
+      )
+    }
+    return 'unfingerprinted'
+  }
+}
+
+/**
  * Dev-only: warn when a second `useForm` lands on the same key with
- * a structurally-different schema. Two schemas compute their own
- * fingerprints; we compare the strings and flag mismatches. An
- * adapter-thrown `fingerprint()` is caught (never crashes the form)
- * and surfaced as a `console.error` in dev — the mismatch check is
- * skipped, matching the "allow the inconsistency" failure mode. See
+ * a structurally-different schema. Two schemas resolve their own
+ * fingerprints; we compare the strings and flag mismatches. An adapter
+ * `fingerprint()` that rejects is caught (never crashes the form) and
+ * surfaced as a `console.error` in dev: the mismatch check is skipped,
+ * matching the "allow the inconsistency" failure mode. See
  * `AbstractSchema.fingerprint()` in types-api.ts for the contract.
  */
-function warnOnSchemaFingerprintMismatch(
+async function warnOnSchemaFingerprintMismatch(
   key: FormKey,
   existing: AbstractSchema<GenericForm, GenericForm>,
   incoming: AbstractSchema<GenericForm, GenericForm>
-): void {
+): Promise<void> {
   let existingFp: string
   let incomingFp: string
   try {
-    existingFp = existing.fingerprint()
-    incomingFp = incoming.fingerprint()
+    existingFp = await existing.fingerprint()
+    incomingFp = await incoming.fingerprint()
   } catch (error) {
     console.error(
-      `[attaform] fingerprint() threw for key "${key}"; skipping mismatch check.`,
+      `[attaform] fingerprint() rejected for key "${key}"; skipping mismatch check.`,
       error
     )
     return

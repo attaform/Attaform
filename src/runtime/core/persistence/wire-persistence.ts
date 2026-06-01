@@ -3,8 +3,6 @@ import type { FormStorage, PersistConfigOptions, ValidationError } from '../../t
 import type { GenericForm } from '../../types/types-core'
 import type { FormStore } from '../create-form-store'
 import { DEFAULT_PERSISTENCE_DEBOUNCE_MS, normalizeNumericOption } from '../defaults'
-import { __DEV__ } from '../dev'
-import { hashStableString } from '../hash'
 import { canonicalizePath, type Path, type PathKey } from '../paths'
 import { deleteAtPath, getAtPath, isPlainRecord, setAtPath } from '../path-walker'
 import {
@@ -42,42 +40,21 @@ import {
 export function wirePersistence<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   config: PersistConfigOptions,
-  adapterPromise: Promise<FormStorage>
+  adapterPromise: Promise<FormStorage>,
+  fingerprintToken: string
 ): PersistenceModule {
-  // Fingerprint the schema once and bake it into the storage key. Any
-  // structural schema change (added/removed/renamed field, type swap)
-  // produces a different fingerprint, so the new mount looks up a fresh
-  // key — the old draft becomes an orphan, cleaned up in the same mount
-  // by `cleanupOrphanKeys` below. No manual version protocol required.
-  // Hash the long structural fingerprint into a fixed-size token before
-  // baking it into the storage key. The raw fingerprint is the
-  // schema's full shape stringified (`object{"address":object{...}}`),
-  // which works correctly for invalidation but produces 200+ char
-  // storage keys for non-trivial schemas AND leaks the schema's
-  // structure into client-side storage. The hash preserves
-  // determinism (same schema → same hash) without either downside.
-  // Defensive: some schema shapes make an adapter's fingerprint() throw
-  // (a v3 `z.nativeEnum` spreads the enum object). The library must never
-  // crash a consumer's mount on the persistence path — the multi-tab
-  // channel-name site already degrades the same way. Fall back to a
-  // stable fingerprint-free token: persistence still works, it just
-  // loses automatic schema-change invalidation for this form until the
-  // adapter-side fingerprint fix lands.
-  let fingerprint: string
-  try {
-    fingerprint = hashStableString(state.schema.fingerprint())
-  } catch (err) {
-    if (__DEV__) {
-      console.warn(
-        `[attaform] Could not fingerprint the schema for form '${state.formKey}': ` +
-          `${err instanceof Error ? err.message : String(err)}. Persistence falls back to a ` +
-          `fingerprint-free key, so a schema change won't auto-invalidate a saved draft.`
-      )
-    }
-    fingerprint = 'unfingerprinted'
-  }
+  // `fingerprintToken` is the schema's structural fingerprint, hashed to a
+  // fixed-size token by the caller. Baking it into the storage key makes
+  // any structural schema change (added / removed / renamed field, type
+  // swap) look up a fresh key, so the old draft becomes an orphan cleaned
+  // up in this same mount by `cleanupOrphanKeys` below (no manual version
+  // protocol). The caller hashes the raw fingerprint (a 200+ char
+  // stringified shape that would otherwise bloat the key and leak the
+  // schema's structure into client storage) and owns the fallback for the
+  // adapters whose `fingerprint()` rejects, so persistence never crashes a
+  // consumer's mount.
   const base = resolveStorageKeyBase(config, state.formKey)
-  const key = `${base}:${fingerprint}`
+  const key = `${base}:${fingerprintToken}`
   // Sanitise the persistence debounce — same rules as field validation:
   // `NaN` would fire synchronously, `Infinity` would stall the event
   // loop for ~24.8 days then wrap. Both fall back to the library default.

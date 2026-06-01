@@ -291,8 +291,12 @@ export interface SchemaIntrospector<Schema> {
  * coding one strategy.
  */
 export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
-  /** Returns the deterministic structural fingerprint of the schema. */
-  fingerprint(schema: Schema): string
+  /**
+   * Resolves the deterministic structural fingerprint of the schema.
+   * Async so adapters can dynamic-import the fingerprint walker, keeping
+   * it off the eager path (only opt-in async features consume it).
+   */
+  fingerprint(schema: Schema): Promise<string>
   /**
    * Returns every sub-schema reachable at the given path. Multiple
    * results indicate a union / discriminated-union split; empty

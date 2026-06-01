@@ -414,6 +414,13 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // writes can't clobber the authoritative submit result. Also
         // clears debounce timers that never fired.
         state.cancelFieldValidation()
+        // Drop the anti-flash display state too. An explicit submit is a
+        // "show me the verdict now" signal, so a leftover show-delay hold
+        // or a min-visible spinner timer from pre-submit typing must not
+        // outlive the submit and delay the reveal. `cancelFieldValidation`
+        // already cleared `fieldValidatingSince`, so the next read recomputes
+        // the settled verdict against the post-submit gate immediately.
+        state.displayEngine.clear()
         state.activeValidations.value += 1
         const refinement = await runRefinementValidation(state.form.value, undefined)
         const merged = composeWithDerivedBlank(refinement, undefined)

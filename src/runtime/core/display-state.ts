@@ -36,9 +36,12 @@ type Verdict = 'idle' | 'error' | 'success'
  * and, during a validation streak, for the verdict to hold under the
  * spinner once it lands.
  */
+function isGateOpen(field: DisplayCtx['field'], formMeta: DisplayCtx['formMeta']): boolean {
+  return formMeta.submissionAttempts > 0 || field.blurredAfterInteraction === true
+}
+
 function computeVerdict(field: DisplayCtx['field'], formMeta: DisplayCtx['formMeta']): Verdict {
-  const gateOpen = formMeta.submissionAttempts > 0 || field.blurredAfterInteraction === true
-  if (!gateOpen) return 'idle'
+  if (!isGateOpen(field, formMeta)) return 'idle'
   const hasOwnError = field.errors.some(
     (e) => e.path.length === field.path.length && e.path.every((s, i) => s === field.path[i])
   )
@@ -95,6 +98,11 @@ export function makeDefaultDisplayState({
 }: DisplayTimings): GetDisplayState {
   return (prev, { field, formMeta, validatingSince, now }) => {
     const verdict = computeVerdict(field, formMeta)
+    // The reveal gate governs the spinner too: until it opens, a field stays
+    // idle — no spinner mid-first-entry — exactly as errors and success are
+    // withheld. computeVerdict already returns idle for a closed gate; this
+    // short-circuit keeps a still-closed gate out of the timed-pending machine.
+    if (!isGateOpen(field, formMeta)) return { display: verdict }
     // Settled — nothing in flight. Show the true verdict, unless a spinner
     // is still inside its minimum-visible window: hold it so a validation
     // that landed just past the show-delay does not flash on and off.

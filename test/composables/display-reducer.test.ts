@@ -169,6 +169,32 @@ describe('default reducer — settled verdict (validatingSince: null)', () => {
   })
 })
 
+describe('default reducer — the reveal gate governs the spinner', () => {
+  it('gate closed + validating past show-delay stays idle (no spinner mid-first-entry)', () => {
+    // No submit, not blurred-after-interaction: the gate is closed. Even a
+    // slow validation must not surface a spinner before the user engages,
+    // matching how errors and success are withheld.
+    const next = defaultDisplayState(
+      { display: 'idle' },
+      ctx({ field: field({ errors: [ownError] }), validatingSince: 0, now: showDelay + 50 })
+    )
+    expect(next.display).toBe('idle')
+    expect(next.reviewAt).toBeUndefined()
+  })
+
+  it('gate open + validating past show-delay does surface the spinner', () => {
+    const next = defaultDisplayState(
+      { display: 'idle' },
+      ctx({
+        field: field({ errors: [ownError], blurredAfterInteraction: true }),
+        validatingSince: 0,
+        now: showDelay,
+      })
+    )
+    expect(next.display).toBe('pending')
+  })
+})
+
 describe('default reducer — show-delay window', () => {
   const gatedError = field({ errors: [ownError], blurredAfterInteraction: true })
 

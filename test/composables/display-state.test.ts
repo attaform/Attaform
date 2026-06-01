@@ -7,6 +7,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { vRegister } from '../../src/runtime/core/directive'
+import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { DEFAULT_TIMINGS, defaultDisplayState, makeDefaultDisplayState } from '../../src'
 import type {
   DisplayCtx,
@@ -860,6 +861,93 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
 
     resolveF0(false)
     await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay + DEFAULT_TIMINGS.minVisible)
+  })
+
+  it('form submit cancels a held spinner timer and reveals the verdict at once', async () => {
+    const { form, resolve } = mountGatedRefine()
+    // Open the gate + land an error (empty value is synchronously invalid).
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('error')
+
+    // Drive a spinner into its min-visible hold: shown, validation settled,
+    // hold timer still armed.
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+    resolve(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.fields('email').displayState).toBe('pending')
+    expect(vi.getTimerCount()).toBe(1)
+
+    // Submit. At submit entry (before its own validation even runs) the
+    // handler cancels field validation AND clears the display engine, so the
+    // leftover hold timer is gone and the verdict is no longer masked by it.
+    const submitting = form.handleSubmit(() => {})()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(form.fields('email').displayState).not.toBe('pending')
+
+    // The submit re-validates (still invalid); the error shows, no spinner.
+    resolve(false)
+    await submitting
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('error')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('wizard submit cancels a held spinner timer on its forms', async () => {
+    let resolveValidation: (ok: boolean) => void = () => {}
+    const schema = zV4.object({
+      email: zV4.string().refine(
+        (val) =>
+          val.length === 0
+            ? false
+            : new Promise<boolean>((r) => {
+                resolveValidation = r
+              }),
+        { error: 'invalid email' }
+      ),
+    })
+    const { form, wizard } = mountWithApp(() => {
+      const f = useFormV4({
+        schema,
+        key: `wiz-timing-${Math.random()}`,
+        strict: false,
+        defaultValues: { email: '' },
+      } as never)
+      const w = useWizard({ steps: [f], restore: false, persist: false })
+      return { form: asForm(f), wizard: w }
+    })
+
+    // Clean first wizard submit opens the gate. The wizard validates via
+    // process(), which does not write per-field errors to the store, so the
+    // empty field reads idle (gate open, nothing surfaced yet) rather than
+    // error — that is fine; we only need the gate open to drive a spinner.
+    await wizard.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('idle')
+
+    // Drive a spinner into its min-visible hold (change validation DOES write
+    // the error, so the field carries a verdict under the spinner).
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+    resolveValidation(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.fields('email').displayState).toBe('pending')
+    expect(vi.getTimerCount()).toBe(1)
+
+    // Second wizard submit. processOne re-validates (parks on the gate); the
+    // per-form cancel runs once it resolves, dropping the held timer.
+    const submitting = wizard.handleSubmit(() => {})()
+    await vi.advanceTimersByTimeAsync(0)
+    resolveValidation(false)
+    await submitting
+    await nextTick()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(form.fields('email').displayState).toBe('error')
   })
 })
 

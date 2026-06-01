@@ -210,7 +210,17 @@ export default [
     // identity-keyed element-state migration across array mutations
     // (array-state-migrate.ts) plus the structural-dirty signal.
     // Measured at 45.66 KB.
-    limit: '48 KB',
+    //
+    // Raised 48 -> 49 KB on the D1 lazy-load branch (bundle slim-down
+    // Block D). Multi-tab sync moved to a dynamically-imported async
+    // chunk, so the EAGER path shrank (the minimal-useForm eager set
+    // dropped 46.36 -> 45.61 kB gz; see scripts/check-eager-size.mjs).
+    // This cap measures the INLINED total, though: with no splitting,
+    // esbuild inlines the dynamic import back, adding chunk-interop glue
+    // and losing cross-module dedup, so the total ticks up ~0.5 kB even
+    // as first-paint bytes drop. The real win lives in the eager gate;
+    // this number is the full-feature ceiling. Measured at 48.06 KB.
+    limit: '49 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -410,7 +420,18 @@ export default [
     // (variant-memory, array-bookkeeping, DU-stubs, ARIA, file,
     // lifecycle, wirePersistence) are net-neutral. Measured at
     // 55.14 KB.
-    limit: '56 KB',
+    //
+    // Raised 56 -> 57 KB on the bundle-slim D2 branch: persistence's
+    // wiring + payload machinery (the onFormChange writer, envelope
+    // read/build, debounce, pluck / strip / filter) moved onto a
+    // dynamically-imported chunk so the always-on useForm path stops
+    // shipping it. size-limit builds with NO code-splitting, so it folds
+    // the dynamic import back inline and adds the chunk-interop glue plus
+    // the dedup it can no longer share, ticking the INLINED total up even
+    // though the EAGER set drops 45.61 -> 44.60 KB gz. The real D-metric
+    // is scripts/check-eager-size.mjs (splitting:true); this cap tracks
+    // only the inlined whole. Measured at 56.03 KB.
+    limit: '57 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -547,7 +568,14 @@ export default [
     // consumer-side and invisible to this number: a v3 consumer drops
     // lodash's ~5.0 KB gz `cloneDeep` closure for the ~0.35 KB clone, a
     // ~4.67 KB gz net reduction in their bundle.
-    limit: '57 KB',
+    //
+    // Raised 57 -> 58 KB on the D1 lazy-load branch (bundle slim-down
+    // Block D), tracking index.mjs: multi-tab sync moved to an async
+    // chunk. The eager path shrank, but size-limit inlines the dynamic
+    // import back (it cannot see the eager/async split), so the inlined
+    // total ticks up ~0.5 kB. See the index.mjs note plus the eager gate
+    // (scripts/check-eager-size.mjs). Measured at 57.16 KB.
+    limit: '58 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -604,6 +632,39 @@ export default [
     limit: '13 KB',
     gzip: true,
     ignore: ['vite'],
+    modifyEsbuildConfig: asEsmNode,
+  },
+  // Cross-bundler `attaform/zod` adapter-rewrite plugins (Block E). Each
+  // is a hand-written, zero-dep Node build-time plugin: the shared
+  // `core/detect-zod-major` (detection + diagnostics) plus a thin
+  // bundler-specific rewrite hook. They import nothing from the bundler
+  // (structural types only), so the gzipped size is small and stable;
+  // the tight cap is a tripwire against a future edit accidentally
+  // pulling runtime weight into a build-time entry. platform:node
+  // externalizes the `node:*` builtins. Measured: rollup 811 B,
+  // esbuild 906 B, webpack 849 B, rspack 849 B.
+  {
+    path: 'dist/rollup.mjs',
+    limit: '1.25 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsmNode,
+  },
+  {
+    path: 'dist/esbuild.mjs',
+    limit: '1.25 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsmNode,
+  },
+  {
+    path: 'dist/webpack.mjs',
+    limit: '1.25 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsmNode,
+  },
+  {
+    path: 'dist/rspack.mjs',
+    limit: '1.25 KB',
+    gzip: true,
     modifyEsbuildConfig: asEsmNode,
   },
   {

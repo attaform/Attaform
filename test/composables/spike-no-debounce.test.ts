@@ -19,7 +19,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormConfig, UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitUntil } from '../utils/form-harness'
+import { waitForPersistence, waitUntil } from '../utils/form-harness'
 
 let app: App | undefined
 afterEach(() => {
@@ -203,6 +203,10 @@ describe('spike — persist.debounceMs: 0 writes immediately on every form chang
     // burning wall-clock seconds, and the contract is sharper than a
     // wall-clock poll (which could not distinguish "timer fired" from
     // "wall-clock ran past it").
+    //
+    // Pre-warm the lazily-imported persistence chunk so its wiring IIFE
+    // resolves on a microtask under the fake timers installed below.
+    await import('../../src/runtime/core/persistence/wire-persistence')
     vi.useFakeTimers()
     try {
       const writes: { key: string; value: unknown }[] = []
@@ -240,6 +244,7 @@ describe('spike — persist.debounceMs: 0 writes immediately on every form chang
       document.body.appendChild(root)
       app.mount(root)
 
+      await waitForPersistence(app)
       const input = root.querySelector('[data-field="note"]') as HTMLInputElement
       input.value = 'hello'
       input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -297,6 +302,7 @@ describe('spike — persist.debounceMs: 0 writes immediately on every form chang
 
     const input = root.querySelector('[data-field="note"]') as HTMLInputElement
 
+    await waitForPersistence(app)
     // Three keystrokes → three writes. No coalescing since the timer
     // is the gate that would have collapsed bursts.
     let expected = 0

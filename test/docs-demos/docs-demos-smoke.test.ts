@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitUntil } from '../utils/form-harness'
+import { waitForPersistence, waitUntil } from '../utils/form-harness'
 
 /**
  * Smoke harness for the docs demos at `apps/site/docs-demos/**`. Each
@@ -1249,6 +1249,11 @@ describe('docs-demos smoke', () => {
       await nextTick()
       mounted = { app, root }
 
+      // Persistence is dynamically imported off the useForm path, so its
+      // write subscription attaches a few microtasks after mount. A demo
+      // that persists would miss a gesture fired before then; establish
+      // first (no-op for demos without persist).
+      await waitForPersistence(app)
       await entry.gesture(root)
       await entry.assert(root)
     })

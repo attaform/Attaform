@@ -84,7 +84,19 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
   }
 
   it('all expected entries are present', () => {
-    for (const name of ['nuxt', 'index', 'vite', 'transforms', 'zod', 'zod-v3', 'zod-v4']) {
+    for (const name of [
+      'nuxt',
+      'index',
+      'vite',
+      'rollup',
+      'esbuild',
+      'webpack',
+      'rspack',
+      'transforms',
+      'zod',
+      'zod-v3',
+      'zod-v4',
+    ]) {
       expect(existsSync(join(distDir, `${name}.mjs`)), `${name}.mjs`).toBe(true)
       expect(existsSync(join(distDir, `${name}.d.mts`)), `${name}.d.mts`).toBe(true)
     }
@@ -120,7 +132,19 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
     // externalize as `from 'zod-v3'` and consumers would hit resolution
     // failures at install time. We exclude error-message string literals
     // from the check.
-    for (const name of ['index', 'nuxt', 'vite', 'transforms', 'zod', 'zod-v3', 'zod-v4']) {
+    for (const name of [
+      'index',
+      'nuxt',
+      'vite',
+      'rollup',
+      'esbuild',
+      'webpack',
+      'rspack',
+      'transforms',
+      'zod',
+      'zod-v3',
+      'zod-v4',
+    ]) {
       const mjs = readFileSync(join(distDir, `${name}.mjs`), 'utf-8')
       expect(mjs, `${name}.mjs imports zod-v3`).not.toMatch(
         /from\s*['"]zod-v3['"]|require\(\s*['"]zod-v3['"]\s*\)/

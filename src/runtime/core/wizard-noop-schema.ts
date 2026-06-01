@@ -52,7 +52,7 @@ export function buildNoopWizardSchema(
     formKey,
   }
   return {
-    fingerprint: () => NOOP_FINGERPRINT,
+    fingerprint: () => Promise.resolve(NOOP_FINGERPRINT),
     getDefaultValues: () => defaultsResponse,
     getDefaultAtPath: () => undefined,
     getEmptyValueAtPath: () => undefined,

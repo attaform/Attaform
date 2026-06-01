@@ -10,11 +10,11 @@
 
 import 'fake-indexeddb/auto'
 import { bench, describe } from 'vitest'
+import { getStorageAdapter } from '../src/runtime/core/persistence'
 import {
   buildPersistedPayload,
   createDebouncedWriter,
-  getStorageAdapter,
-} from '../src/runtime/core/persistence'
+} from '../src/runtime/core/persistence/payload'
 import type { FormStorage } from '../src/runtime/types/types-api'
 
 // Storage polyfill for Node 25's broken native webstorage — mirrors

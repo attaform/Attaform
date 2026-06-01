@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
 import { z } from 'zod'
 import { useForm as useZodForm } from '../../src/zod'
@@ -35,9 +35,25 @@ const FINGERPRINT_WARN_MARKER = 'use different schemas'
 type Form = { name: string }
 const defaults: Form = { name: '' }
 
+// The shared-key mismatch warning fires from an async path: the collision
+// diagnostics live in a dev-only module loaded via dynamic import (so a
+// prod build drops them), `fingerprint()` resolves a Promise, and the
+// check is dispatched fire-and-forget. `beforeAll` warms that module so its
+// import resolves from cache on a microtask; draining the timer queue here
+// then lets the whole chain settle before asserting (or provably not, for
+// the silent cases).
+const flushAsync = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
 describe('schema-fingerprint shared-key warning', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
   let errorSpy: ReturnType<typeof vi.spyOn>
+  beforeAll(async () => {
+    // Warm the dev-only collision-warning module so each test's dynamic
+    // import is a cached microtask rather than a first-load transform that
+    // would land after `flushAsync`'s timer. A bundled app ships this chunk
+    // ready to load; this mirrors that here.
+    await import('../../src/runtime/core/dev-key-collision-warnings')
+  })
   beforeEach(() => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -70,18 +86,20 @@ describe('schema-fingerprint shared-key warning', () => {
     return () => app.unmount()
   }
 
-  it('stays silent when two useForm calls use the same fingerprint', () => {
+  it('stays silent when two useForm calls use the same fingerprint', async () => {
     const schemaA = fakeSchema<Form>(defaults, undefined, 'fp:same')
     const schemaB = fakeSchema<Form>(defaults, undefined, 'fp:same')
     const unmount = mountTwo(schemaA, schemaB)
+    await flushAsync()
     expect(fingerprintWarnCalls()).toHaveLength(0)
     unmount()
   })
 
-  it('warns when the second call uses a different fingerprint', () => {
+  it('warns when the second call uses a different fingerprint', async () => {
     const schemaA = fakeSchema<Form>(defaults, undefined, 'fp:first')
     const schemaB = fakeSchema<Form>(defaults, undefined, 'fp:second')
     const unmount = mountTwo(schemaA, schemaB)
+    await flushAsync()
     const calls = fingerprintWarnCalls()
     expect(calls).toHaveLength(1)
     const message = String(calls[0]?.[0] ?? '')
@@ -91,7 +109,7 @@ describe('schema-fingerprint shared-key warning', () => {
     unmount()
   })
 
-  it('catches adapter-thrown fingerprint exceptions and surfaces them in dev', () => {
+  it('catches adapter-thrown fingerprint exceptions and surfaces them in dev', async () => {
     // A misbehaving adapter that throws from .fingerprint() must
     // NOT crash the form lifecycle — we allow the inconsistency
     // and skip the mismatch check. In dev the exception is logged
@@ -104,6 +122,7 @@ describe('schema-fingerprint shared-key warning', () => {
     }
     const second = fakeSchema<Form>(defaults, undefined, 'fp:other')
     const unmount = mountTwo(throwing, second)
+    await flushAsync()
     expect(fingerprintWarnCalls()).toHaveLength(0)
     expect(errorSpy).toHaveBeenCalledTimes(1)
     const [message, errArg] = errorSpy.mock.calls[0] ?? []
@@ -113,7 +132,7 @@ describe('schema-fingerprint shared-key warning', () => {
     unmount()
   })
 
-  it('no false positive on shared key with zod factory default', () => {
+  it('no false positive on shared key with zod factory default', async () => {
     // Regression: before the idempotence fix in the v4 walker,
     // `.default(() => new Date())` made `.fingerprint()` return a
     // different string on every call (the getter re-invoked the
@@ -135,6 +154,7 @@ describe('schema-fingerprint shared-key warning', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
+    await flushAsync()
     expect(fingerprintWarnCalls()).toHaveLength(0)
     app.unmount()
   })

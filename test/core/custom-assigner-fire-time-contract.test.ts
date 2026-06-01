@@ -9,7 +9,7 @@ import type {
   CustomDirectiveRegisterAssignerFn,
   RegisterValue,
 } from '../../src/runtime/types/types-api'
-import { waitUntil } from '../utils/form-harness'
+import { waitForPersistence, waitUntil } from '../utils/form-harness'
 
 /**
  * Fire-time contract for consumer-supplied assigners.
@@ -274,6 +274,7 @@ describe('fire-time contract: consumer-installed assigner sees (value, rv) consi
 
     if (widgetEl === undefined) throw new Error('widget element never resolved')
 
+    await waitForPersistence(app)
     widgetEl.dataset['color'] = '#16a34a'
     widgetEl.dispatchEvent(new Event('input', { bubbles: true }))
 

@@ -23,17 +23,17 @@ import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
 import { createHistoryModule, type HistoryModule } from '../core/history'
 import {
+  getStorageAdapter,
   normalizePersistConfig,
   PERSISTENCE_MODULE_KEY,
   resolveStorageKeyBase,
   sweepAllOrphansAcrossStandardStores,
   sweepNonConfiguredStandardStoresForOrphans,
+  type PersistenceHandle,
   type PersistenceModule,
 } from '../core/persistence'
 import { createIsSensitivePath } from '../core/persistence/sensitive-names'
-import { wirePersistence } from '../core/persistence/wire-persistence'
 import { hashStableString } from '../core/hash'
-import { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } from '../core/multi-tab-sync'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
@@ -43,8 +43,6 @@ import type {
   AbstractSchema,
   AttaformDefaults,
   FormKey,
-  PersistConfig,
-  PersistConfigOptions,
   UseFormReturnType,
   UseFormConfiguration,
 } from '../types/types-api'
@@ -215,31 +213,18 @@ export function useAbstractForm<
 
   const existing = registry.forms.get(key) as FormStore<Form, GetValueFormType> | undefined
   if (__DEV__ && existing !== undefined) {
-    // Shared-key semantics are a feature when consumers OPT in to them
-    // (two `useForm({ key: 'x' })` calls that genuinely want the same
-    // store). They're a silent-collision footgun when two unrelated
-    // parts of an app happen to agree on a key. Fingerprinting the
-    // schema turns collision into a diagnosable warning: if the
-    // second call's schema has a different structural fingerprint
-    // than the first's, the forms almost certainly shouldn't be
-    // sharing. The second call's schema is then silently dropped in
-    // favour of the first's — matching what already happens (only
-    // the first caller's config wires the FormStore).
-    warnOnSchemaFingerprintMismatch(key, existing.schema, resolvedSchema)
-    // Persist is a single-IO-channel concern (one storage key, one
-    // debounce timer, one subscription). The first useForm call wires
-    // it; subsequent calls' `persist:` configurations are silently
-    // dropped. When the second caller passes a DIFFERENT persist
-    // config, that drop is a footgun: modal-team dev configures
-    // `'session'`, finds nothing in sessionStorage, debugs for an hour
-    // — the main-form team wired `'local'` first. Surface the divergence
-    // as a dev-warn so the surprise is explicit. `validateOn` /
-    // `debounceMs` / `coerce` / `rememberVariants` / `getDisplayState`
-    // are now per-instance, so they don't need this guard;
-    // `defaultValues` is intentionally first-wins (the live store
-    // state is what the modal should see); `strict` is construction-
-    // only and the seed has already fired.
-    warnOnPersistDivergence(key, existing, configuration.persist)
+    // Two `useForm({ key })` calls resolve to one FormStore by design;
+    // the second call's schema and `persist:` config are then dropped in
+    // favour of the first's wiring. That's a silent footgun when the two
+    // call sites are unrelated and only happen to agree on a key, so a
+    // dev build surfaces the divergence. The diagnostics live in a
+    // dev-only module imported behind this `__DEV__` gate: a production
+    // build folds the gate away and drops the whole module, so none of
+    // the warning code ships (see `dev-key-collision-warnings.ts`).
+    void import('../core/dev-key-collision-warnings').then((m) => {
+      void m.warnOnSchemaFingerprintMismatch(key, existing.schema, resolvedSchema)
+      m.warnOnPersistDivergence(key, existing, configuration.persist)
+    })
   }
   // Capture whether a hydration payload is waiting for this key BEFORE
   // `buildFreshState` consumes it. We use this flag to skip re-firing
@@ -364,14 +349,63 @@ export function useAbstractForm<
         // Ensures stale drafts can't survive in stores the dev migrated
         // AWAY from. Fire-and-forget; backend unavailability is silent.
         void sweepNonConfiguredStandardStoresForOrphans(resolvedPersist.storage, persistenceBase)
-        const persistenceModule = wirePersistence(state, resolvedPersist)
-        state.modules.set(PERSISTENCE_MODULE_KEY, persistenceModule)
-        // Drain BEFORE the synchronous teardown: the registry will await
-        // `awaitPendingWrites` before calling `dispose`, so the last
-        // debounced keystroke gets to disk before the FormStore is
-        // evicted from the registry's `forms` map.
-        state.registerDrain(() => persistenceModule.awaitPendingWrites())
-        state.registerCleanup(() => persistenceModule.dispose())
+        // Persistence's wiring + payload machinery is dynamically
+        // imported so the always-on `useForm` path never ships it. Start
+        // the adapter's own dynamic import NOW, in parallel with the
+        // chunk import below: the chunk load then hides behind the
+        // adapter load the hydration read already waits for, so a
+        // persist-configured form's flash-of-defaults window is unchanged
+        // and no synchronous caller gains a new await.
+        const adapterPromise = getStorageAdapter(resolvedPersist.storage)
+        // Disposal race: a fast mount->unmount can dispose the store
+        // before the chunk lands. registerCleanup runs disposers once
+        // then drops the list, so a disposer registered late never fires.
+        // An eagerly-registered cleanup flips `persistDisposed`, which the
+        // resolver checks before wiring onto a dead store.
+        let persistDisposed = false
+        state.registerCleanup(() => {
+          persistDisposed = true
+        })
+        const ready: Promise<PersistenceModule | undefined> = (async () => {
+          try {
+            // Resolve the fingerprint token in parallel with the chunk
+            // import: `schema.fingerprint()` itself dynamic-imports the
+            // fingerprint walker, so kicking both off together keeps the
+            // storage key ready by the time the wiring runs, with no serial
+            // round-trip behind the chunk load.
+            const [{ wirePersistence }, fingerprintToken] = await Promise.all([
+              import('../core/persistence/wire-persistence'),
+              resolvePersistFingerprintToken(state),
+            ])
+            if (persistDisposed) return undefined
+            const persistenceModule = wirePersistence(
+              state,
+              resolvedPersist,
+              adapterPromise,
+              fingerprintToken
+            )
+            // Drain BEFORE the synchronous teardown: the registry awaits
+            // `awaitPendingWrites` before calling `dispose`, so the last
+            // debounced keystroke gets to disk before the FormStore is
+            // evicted from the registry's `forms` map.
+            state.registerDrain(() => persistenceModule.awaitPendingWrites())
+            state.registerCleanup(() => persistenceModule.dispose())
+            return persistenceModule
+          } catch {
+            // The chunk failed to load (offline, chunk eviction).
+            // Persistence stays silently unavailable rather than throwing
+            // into the consumer's form lifecycle.
+            return undefined
+          }
+        })()
+        // Handle set SYNCHRONOUSLY so the render-path reads that can't
+        // wait for the chunk still get the right answer: `config` powers
+        // register-api's "is persist configured?" gate and the
+        // cross-instance divergence warn; `ready` is the promise the
+        // imperative `form.persist` / `clearPersistedDraft` APIs await. A
+        // second useForm({ key }) on the same store shares this handle.
+        const persistenceHandle: PersistenceHandle = { config: resolvedPersist, ready }
+        state.modules.set(PERSISTENCE_MODULE_KEY, persistenceHandle)
       }
     } else {
       // Either the dev didn't configure `persist:` OR we just disabled
@@ -383,24 +417,29 @@ export function useAbstractForm<
     }
   }
 
-  // Wire multi-tab sync. Fresh-state-only — the module subscribes
-  // to FormStore events, so subscribing twice would double-broadcast.
-  // Registers AFTER persistence (so persistence hydration is the floor
-  // — when a BroadcastChannel snapshot arrives, it overrides the
-  // disk-persisted baseline) and BEFORE history (so the crossTab-meta
-  // history-listener guard is in place by the time the first incoming
-  // message lands).
+  // Wire multi-tab sync (opt-in, lazy). The sync module and its diff /
+  // patch machinery live in their own chunk, dynamically imported only
+  // when a keyed form opts in, so the always-on `useForm` path never
+  // ships them. Fresh-state-only: the module subscribes to FormStore
+  // events, so subscribing twice would double-broadcast.
+  //
+  // Ordering vs persistence and history: persistence wires synchronously
+  // above (its hydration is the floor a BroadcastChannel snapshot
+  // overrides), and history wires synchronously below. Because this
+  // import resolves on a later microtask, history is already subscribed
+  // before the sync module can deliver its first cross-tab message, so
+  // history's `crossTab`-meta guard is in place when that message lands.
   //
   // Activation requires ALL of:
   //   1. `multiTab` cascade resolves to `true` (per-form > global > library
   //      default `false`). Strict opt-in: a form that doesn't set
   //      `multiTab: true` somewhere never instantiates the channel.
-  //   2. Consumer-supplied `key` (anonymous forms skip — channel would be solo)
+  //   2. Consumer-supplied `key` (anonymous forms skip; channel would be solo)
   //   3. Runtime has `BroadcastChannel`
   //   4. `window.isSecureContext === true` (HTTPS or localhost)
   //
   // The else branch fires a one-shot dev warning when a keyed form
-  // requested sync but the secure-context gate blocked it — saves
+  // requested sync but the secure-context gate blocked it, saving
   // consumers from debugging "why isn't sync working in prod" in
   // silence.
   if (
@@ -412,37 +451,53 @@ export function useAbstractForm<
     const hasBroadcastChannel = typeof BroadcastChannel !== 'undefined'
     const secureContext = isSecureContext()
     if (hasBroadcastChannel && secureContext) {
-      // Channel name = `attaform:sync:${formKey}:${fingerprint hash}`.
-      // Wrap the fingerprint read so an adapter bug throwing here
-      // doesn't poison the rest of the form lifecycle — the sync
-      // module just skips instantiation. The schema-fingerprint
-      // mismatch warning surfaces the underlying adapter issue
-      // separately.
-      let channelName: string | null
-      try {
-        channelName = `attaform:sync:${state.formKey}:${hashStableString(state.schema.fingerprint())}`
-      } catch {
-        channelName = null
-      }
-      if (channelName !== null) {
-        const syncModule = createMultiTabSyncModule(state, channelName, {
-          isSensitivePath: state.isSensitivePath,
-          noSyncPaths: state.noSyncPaths,
-          validateForm: (form) => {
-            // Sync-preferred schema validation. Async-only schemas
-            // return a Promise — for those we skip the gate and trust
-            // the patch (last-writer-wins; local validate cycle catches
-            // issues on next user interaction).
-            const result = state.schema.validateAtPath(form, undefined, { sync: true })
-            if (result instanceof Promise) return
-            if (!result.success) {
-              throw new Error('attaform multi-tab sync: post-apply schema validation failed')
-            }
-          },
-        })
-        state.modules.set(MULTI_TAB_SYNC_MODULE_KEY, syncModule)
-        state.registerCleanup(() => syncModule.dispose())
-      }
+      // The form can dispose while the sync chunk is in flight (a fast
+      // mount then unmount). `registerCleanup` runs disposers once and
+      // then drops the list, so a disposer registered after dispose
+      // never fires. Guard with a flag an eagerly-registered cleanup
+      // sets, so a late-resolving import doesn't subscribe a
+      // BroadcastChannel onto a torn-down store (which would leak it).
+      let formDisposed = false
+      state.registerCleanup(() => {
+        formDisposed = true
+      })
+      void (async () => {
+        try {
+          // Channel name = `attaform:sync:${formKey}:${fingerprint hash}`.
+          // Resolve the fingerprint (the adapter dynamic-imports its
+          // walker) in parallel with the sync-module chunk. A rejection
+          // here (an adapter bug) or a failed chunk load both leave sync
+          // silently unavailable rather than poisoning the form lifecycle;
+          // the schema-fingerprint mismatch warning surfaces an adapter
+          // issue separately.
+          const [{ createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY }, fingerprint] =
+            await Promise.all([import('../core/multi-tab-sync'), state.schema.fingerprint()])
+          if (formDisposed) return
+          const channelName = `attaform:sync:${state.formKey}:${hashStableString(fingerprint)}`
+          const syncModule = createMultiTabSyncModule(state, channelName, {
+            isSensitivePath: state.isSensitivePath,
+            noSyncPaths: state.noSyncPaths,
+            validateForm: (form) => {
+              // Sync-preferred schema validation. Async-only schemas
+              // return a Promise; for those we skip the gate and trust
+              // the patch (last-writer-wins; the local validate cycle
+              // catches issues on the next user interaction).
+              const result = state.schema.validateAtPath(form, undefined, { sync: true })
+              if (result instanceof Promise) return
+              if (!result.success) {
+                throw new Error('attaform multi-tab sync: post-apply schema validation failed')
+              }
+            },
+          })
+          state.modules.set(MULTI_TAB_SYNC_MODULE_KEY, syncModule)
+          state.registerCleanup(() => syncModule.dispose())
+        } catch {
+          // The fingerprint rejected or the multi-tab-sync chunk failed to
+          // load (offline, chunk eviction). Sync stays silently
+          // unavailable rather than throwing into the consumer's form
+          // lifecycle.
+        }
+      })()
     } else if (hasBroadcastChannel && !secureContext) {
       warnOnceInsecureContext('multiTab')
     }
@@ -826,82 +881,31 @@ function resolveFormKey(key: FormKey | undefined): FormKey {
 }
 
 /**
- * Dev-only: warn when a second `useForm` lands on the same key with
- * a structurally-different schema. Two schemas compute their own
- * fingerprints; we compare the strings and flag mismatches. An
- * adapter-thrown `fingerprint()` is caught (never crashes the form)
- * and surfaced as a `console.error` in dev — the mismatch check is
- * skipped, matching the "allow the inconsistency" failure mode. See
- * `AbstractSchema.fingerprint()` in types-api.ts for the contract.
+ * Resolve the hashed schema fingerprint that keys a form's persisted
+ * draft. `schema.fingerprint()` dynamic-imports the fingerprint walker
+ * and may reject (some shapes make an adapter throw, e.g. a v3
+ * `z.nativeEnum` that spreads the enum object). Persistence must never
+ * crash a consumer's mount, so a rejection degrades to a stable
+ * fingerprint-free token: persistence still works, it just loses
+ * automatic schema-change invalidation for this form. Resolved in the
+ * persist wiring's async IIFE, in parallel with the chunk import, so no
+ * synchronous caller waits on it.
  */
-function warnOnSchemaFingerprintMismatch(
-  key: FormKey,
-  existing: AbstractSchema<GenericForm, GenericForm>,
-  incoming: AbstractSchema<GenericForm, GenericForm>
-): void {
-  let existingFp: string
-  let incomingFp: string
+async function resolvePersistFingerprintToken<F extends GenericForm>(
+  state: FormStore<F, GenericForm>
+): Promise<string> {
   try {
-    existingFp = existing.fingerprint()
-    incomingFp = incoming.fingerprint()
-  } catch (error) {
-    console.error(
-      `[attaform] fingerprint() threw for key "${key}"; skipping mismatch check.`,
-      error
-    )
-    return
+    return hashStableString(await state.schema.fingerprint())
+  } catch (err) {
+    if (__DEV__) {
+      console.warn(
+        `[attaform] Could not fingerprint the schema for form '${state.formKey}': ` +
+          `${err instanceof Error ? err.message : String(err)}. Persistence falls back to a ` +
+          `fingerprint-free key, so a schema change won't auto-invalidate a saved draft.`
+      )
+    }
+    return 'unfingerprinted'
   }
-  if (existingFp === incomingFp) return
-  console.warn(
-    `[attaform] useForm() calls with key "${key}" use different schemas; first wins, second is ignored. Use identical schemas or unique keys.\n  existing: ${existingFp}\n  incoming: ${incomingFp}`
-  )
-}
-
-/**
- * Dev-only: warn when a second `useForm` lands on the same key with a
- * `persist:` config that diverges from what the first call wired. The
- * persist channel is single-IO (one storage key, one debounce timer);
- * silent drop is a high-stakes footgun ("I configured persist but
- * sessionStorage is empty"). Skipped when the second call passes no
- * persist config (intentional inheritance), and when the comparison
- * is deemed equivalent (same `storage` reference / kind, same `key`,
- * same `debounceMs`). Custom adapter functions compare by reference
- * — distinct closures look distinct, which is conservative but
- * correct: distinct closures may persist to different backends.
- */
-function warnOnPersistDivergence<F extends GenericForm>(
-  key: FormKey,
-  existing: FormStore<F, GenericForm>,
-  incomingPersist: PersistConfig | undefined
-): void {
-  if (incomingPersist === undefined) return
-  const wired = existing.modules.get(PERSISTENCE_MODULE_KEY) as PersistenceModule | undefined
-  const incomingNormalized = normalizePersistConfig(incomingPersist)
-  if (wired === undefined) {
-    console.warn(
-      `[attaform] useForm({ key: "${key}" }) passed a persist config but the first useForm({ key }) call didn't wire persistence; the new config is silently dropped. Pass persist on the first call, or remove persist here to make the inheritance explicit.`
-    )
-    return
-  }
-  if (persistConfigsEquivalent(wired.wiredConfig, incomingNormalized)) return
-  console.warn(
-    `[attaform] useForm({ key: "${key}" }) passed a persist config that differs from the first useForm({ key }) call's; first wins, this one is ignored.\n  wired:    ${describePersist(wired.wiredConfig)}\n  incoming: ${describePersist(incomingNormalized)}`
-  )
-}
-
-function persistConfigsEquivalent(a: PersistConfigOptions, b: PersistConfigOptions): boolean {
-  if (a.storage !== b.storage) return false
-  if ((a.key ?? undefined) !== (b.key ?? undefined)) return false
-  if ((a.debounceMs ?? undefined) !== (b.debounceMs ?? undefined)) return false
-  return true
-}
-
-function describePersist(config: PersistConfigOptions): string {
-  const storage = typeof config.storage === 'string' ? config.storage : 'custom-adapter'
-  const parts = [`storage=${storage}`]
-  if (config.key !== undefined) parts.push(`key=${config.key}`)
-  if (config.debounceMs !== undefined) parts.push(`debounceMs=${config.debounceMs}`)
-  return `{ ${parts.join(', ')} }`
 }
 
 /**

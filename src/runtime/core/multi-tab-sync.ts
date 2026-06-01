@@ -250,19 +250,6 @@ function diffBlankPaths(
   return { added, removed }
 }
 
-function snapshotForm<F>(form: F): F {
-  // Reuse the same structural snapshot helper history uses. Walks
-  // plain object + array spine, leaves non-descendable values
-  // (BigInt, Date, Map, Set, class instances) by reference. This
-  // is fine for the diff anchor — the immutable values are
-  // reference-stable, and the in-place merge inside
-  // `applyFormReplacement` mutates the spine, not the leaves.
-  // BroadcastChannel's own `postMessage` uses `structuredClone` to
-  // serialise the message, which natively handles BigInt / Date /
-  // Map / Set, so sending the diff'd `Patch[]` over the wire works.
-  return structuralSnapshot(form)
-}
-
 /**
  * Deep-clone `value` while substituting any leaf whose enclosing path
  * matches `isSensitivePath` with `undefined`. Used to scrub
@@ -422,9 +409,13 @@ export function createMultiTabSyncModule<F extends GenericForm>(
   // Per-module prior anchor for outbound diffs. Refreshed after every
   // posted `patches` message AND after every accepted inbound apply
   // (so the next local diff is against post-apply state, not the
-  // stale pre-apply form).
+  // stale pre-apply form). `structuralSnapshot` walks the object +
+  // array spine and leaves non-descendable leaves (BigInt, Date, Map,
+  // Set, class instances) by reference: fine as a diff anchor, and
+  // BroadcastChannel's `postMessage` structuredClone handles those leaf
+  // types when the diff'd patches go over the wire.
   let prior: SnapshotState<F> = {
-    form: snapshotForm(state.form.value),
+    form: structuralSnapshot(state.form.value),
     blankPathsSnapshot: [...state.blankPaths],
   }
 
@@ -440,7 +431,7 @@ export function createMultiTabSyncModule<F extends GenericForm>(
 
   function refreshPrior(): void {
     prior = {
-      form: snapshotForm(state.form.value),
+      form: structuralSnapshot(state.form.value),
       blankPathsSnapshot: [...state.blankPaths],
     }
   }
@@ -462,7 +453,7 @@ export function createMultiTabSyncModule<F extends GenericForm>(
 
   function postPatches(): void {
     if (lifecycle !== 'established') return
-    const next = snapshotForm(state.form.value)
+    const next = structuralSnapshot(state.form.value)
     const rawPatches: Patch[] = []
     diffAndApply(prior.form, next, [], (p) => rawPatches.push(p))
     const safePatches: Patch[] = []

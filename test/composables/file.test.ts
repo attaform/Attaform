@@ -6,7 +6,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitUntil } from '../utils/form-harness'
+import { waitForPersistence, waitUntil } from '../utils/form-harness'
 
 /**
  * `<input type="file" v-register>` end-to-end coverage.
@@ -316,6 +316,7 @@ describe('<input type="file" v-register> — persistence carve-out', () => {
     const fileInput = root.querySelector('input.avatar') as HTMLInputElement
     const textInput = root.querySelector('input.title') as HTMLInputElement
 
+    await waitForPersistence(app)
     setFiles(fileInput, [makeFile()])
     dispatchChange(fileInput)
     textInput.value = 'release notes'

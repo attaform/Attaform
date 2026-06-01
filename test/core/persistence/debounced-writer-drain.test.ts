@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { createDebouncedWriter } from '../../../src/runtime/core/persistence'
+import { createDebouncedWriter } from '../../../src/runtime/core/persistence/payload'
 
 /**
  * `createDebouncedWriter`'s `flush()` must resolve only AFTER every

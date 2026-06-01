@@ -15,7 +15,8 @@ import {
   createAbstractSchema,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
-import { getAtPath, isPlainRecord, setAtPath } from '../../core/path-walker'
+import { mergeDeep } from '../../core/merge-deep'
+import { getAtPath, setAtPath } from '../../core/path-walker'
 import { walkPathSegments } from '../../core/walk-path-segments'
 import {
   deriveDefaultWalk,
@@ -24,9 +25,8 @@ import {
 } from '../../core/walk-derive-default'
 import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
-import { canonicalizePath, type Path, type PathKey } from '../../core/paths'
+import { canonicalizePath, type Path } from '../../core/paths'
 import { slimKindOf } from '../../core/slim-primitive-gate'
-import type { FieldMetaPayload } from '../../core/field-meta'
 import { getFieldMeta, getFieldMetaList } from './field-meta'
 import { cloneSchemaDeep } from './clone-schema'
 import type { GenericForm } from '../../types/types-core'
@@ -69,42 +69,6 @@ function constraintsAreSlimValid(slimSchema: z.ZodSchema, constraints: unknown):
   }
 }
 
-/**
- * Deep-merge two values for default-derivation. Mirrors v4's
- * `mergeDeep` (`default-values.ts:308`) exactly so the v3 + v4
- * constraint-merge semantic matches:
- *
- *   - `undefined` override → keep base
- *   - non-plain-record override (primitive, array, `Date`, `Map`,
- *     class instance, `null`) → REPLACE base wholesale (NOT lodash's
- *     element-wise array merge; explicit `null` clears a nullable
- *     default rather than being silently dropped)
- *   - plain-record override + plain-record base → recurse per-key
- *   - plain-record override + non-plain-record base → replace
- *     wholesale
- *
- * Local duplication of v4's helper; Phase 12's `createAbstractSchema`
- * factory will dedup against `ADAPT-D5` (validate-then-fix
- * `getDefaultValues` loop). Pre-1.0 with no users so the temporary
- * duplication carries no compat tail.
- */
-function mergeDeepV3(base: unknown, override: unknown): unknown {
-  if (override === undefined) return base
-  if (!isPlainRecord(override)) return override
-  if (!isPlainRecord(base)) return override
-  const result: Record<string, unknown> = { ...base }
-  for (const key of Object.keys(override)) {
-    const oVal = override[key]
-    const bVal = base[key]
-    if (isPlainRecord(oVal) && isPlainRecord(bVal)) {
-      result[key] = mergeDeepV3(bVal, oVal)
-    } else {
-      result[key] = oVal
-    }
-  }
-  return result
-}
-
 import { __DEV__ } from '../../core/dev'
 import type { TypeWithNullableDynamicKeys } from './types-zod'
 // `ZodTypeWithInnerType` lives in types-zod.ts and is re-exported from
@@ -113,13 +77,13 @@ import type { TypeWithNullableDynamicKeys } from './types-zod'
 // longer reads `_def` directly inline; the public type stays available
 // for downstream consumers writing adapter-shaped code.
 import { assertSupportedKinds } from './assert-supported'
-import { fingerprintZodSchema } from './fingerprint'
 import { isZodSchemaType } from './helpers'
 import {
   containsAsyncTransform,
   getArrayElement,
   getDiscriminatedOptions,
   getDiscriminator,
+  getEffectsKind,
   getIntersectionLeft,
   getIntersectionRight,
   getLiteralValue,
@@ -139,6 +103,7 @@ import {
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 import { stripAsyncChecks } from './strip-async'
+import { getFieldMetaPathMap } from '../../core/walk-field-meta'
 import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
@@ -200,12 +165,22 @@ export function zodAdapter<
  * so the typed methods (`runStrictGetDefaults` / `makeSubSchema`)
  * propagate the form shape correctly.
  */
+// Lazy fingerprint: the only consumers are opt-in async features
+// (multi-tab channel name, persistence storage key) plus a dev-only
+// mismatch warning, so the structural walk + its `canonicalStringify`
+// helper load on demand off the eager `useForm` path instead of being
+// anchored eager by a static import.
+async function lazyFingerprint(schema: z.ZodSchema): Promise<string> {
+  const { fingerprintZodSchema } = await import('./fingerprint')
+  return fingerprintZodSchema(schema)
+}
+
 function buildV3Services<
   Form extends GenericForm,
   GetValueFormType extends GenericForm,
 >(): AbstractSchemaServices<z.ZodTypeAny, Form, GetValueFormType> {
   return {
-    fingerprint: (schema) => fingerprintZodSchema(schema as z.ZodSchema),
+    fingerprint: (schema) => lazyFingerprint(schema as z.ZodSchema),
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodSchema, path, maxRecursionDepth),
     // v3 pre-strips refinements / defaults / wrappers off the root for
@@ -481,8 +456,13 @@ function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
  *
  * - `ZodOptional` / `ZodNullable` / `ZodDefault` / `ZodCatch` →
  *   directly `false`.
- * - `ZodReadonly` / `ZodPipeline` / `ZodBranded` / `ZodEffects` →
- *   transparent peel and re-check inner.
+ * - `ZodReadonly` / `ZodPipeline` / `ZodBranded` / `ZodLazy` and
+ *   `transform` / `refinement` `ZodEffects` → transparent peel and
+ *   re-check inner.
+ * - `z.preprocess` `ZodEffects` → opaque, treated as a required leaf:
+ *   the preprocess fn can reshape input arbitrarily before the inner
+ *   validates, so required-ness is undecidable. Matches v4, which
+ *   desugars preprocess to a pipe whose input is a transform.
  * - `ZodUnion` / `ZodDiscriminatedUnion` → `false` if ANY branch
  *   admits empty (matches union "first-success" semantic).
  * - `ZodIntersection` → `true` if EITHER side is required (parse
@@ -522,7 +502,20 @@ function isLeafRequiredV3(schema: z.ZodTypeAny, depth = 0): boolean {
     return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
   if (isZodSchemaType(schema, 'ZodEffects')) {
+    // `z.preprocess` is opaque: the fn can reshape the input before the
+    // inner validates, so required-ness can't be read off the inner.
+    // Treat it as a required leaf, matching v4. `transform` /
+    // `refinement` effects stay transparent and peel to the source.
+    if (getEffectsKind(schema) === 'preprocess') return true
     const inner = unwrapEffectsSource(schema)
+    return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
+  }
+  if (isZodSchemaType(schema, 'ZodLazy')) {
+    // `z.lazy(() => inner)` is transparent for required-ness; resolve
+    // and re-check the inner. Matches v4's isLeafRequired, which peels
+    // lazy too. `unwrapLazy` swallows a throwing getter, and the depth
+    // cap above bounds a self-referential lazy.
+    const inner = unwrapLazy(schema)
     return inner === undefined ? true : isLeafRequiredV3(inner, depth + 1)
   }
   // Union — required only if EVERY branch is required.
@@ -595,10 +588,14 @@ function unwrapToDiscriminatedUnion(
       currentSchema = inner
       continue
     }
-    // ZodEffects (`z.preprocess` / `.refine` / `.transform`) is a
-    // transparent wrapper for structural traversal; the discriminated
-    // union may live on the source schema.
+    // ZodEffects: `.refine` / `.transform` are transparent for
+    // structural traversal, so a discriminated union may live on the
+    // source schema. `z.preprocess` is opaque, though — its fn can
+    // reshape a write before the union sees it, so variant-aware reshape
+    // through it is unsound. Bail on preprocess (matching v4, which
+    // treats it as a leaf) so the runtime falls back to a plain write.
     if (isZodSchemaType(currentSchema, 'ZodEffects')) {
+      if (getEffectsKind(currentSchema) === 'preprocess') return undefined
       const inner = unwrapEffectsSource(currentSchema)
       if (!inner) return undefined
       currentSchema = inner
@@ -1150,192 +1147,6 @@ function peelAllV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
   return current
 }
 
-// Per-rootSchema cache of path → payload maps. Build is a single tree
-// walk; lookups are O(1) thereafter. WeakMap keyed on the root schema
-// so entries GC with the form. Mirrors v4's `pathMetaCache`.
-const pathMetaCacheV3 = new WeakMap<z.ZodTypeAny, Map<PathKey, FieldMetaPayload>>()
-
-function getPathMetaMapV3(rootSchema: z.ZodTypeAny): Map<PathKey, FieldMetaPayload> {
-  const cached = pathMetaCacheV3.get(rootSchema)
-  if (cached !== undefined) return cached
-  const map = new Map<PathKey, FieldMetaPayload>()
-  const counters = new Map<z.ZodTypeAny, number>()
-  const lastPathPerSchema = new Map<z.ZodTypeAny, PathKey>()
-  const inProgress = new WeakSet<z.ZodTypeAny>()
-  walkForMetaV3(rootSchema, [], map, counters, lastPathPerSchema, inProgress)
-  // Absorb surplus registrations into the schema's last-visited path
-  // — covers chains like `withMeta(s, {label}).register(fieldMeta, {desc})`
-  // where one path consumes list[0] and list[1] would otherwise go
-  // unread. Mirrors v4's surplus-merge step in `getPathMetaMap`.
-  for (const [schema, lastPath] of lastPathPerSchema) {
-    const list = getFieldMetaList(schema)
-    const consumed = counters.get(schema) ?? 0
-    if (list.length <= consumed) continue
-    const surplus = list
-      .slice(consumed)
-      .reduce<FieldMetaPayload>((acc, p) => ({ ...acc, ...p }), {})
-    const existing = map.get(lastPath) ?? {}
-    map.set(lastPath, { ...existing, ...surplus })
-  }
-  pathMetaCacheV3.set(rootSchema, map)
-  return map
-}
-
-function consumePayloadV3(
-  schema: z.ZodTypeAny,
-  counters: Map<z.ZodTypeAny, number>
-): FieldMetaPayload | undefined {
-  const list = getFieldMetaList(schema)
-  if (list.length === 0) return undefined
-  const idx = counters.get(schema) ?? 0
-  // Clamp to last entry — schemas reused MORE times than they're
-  // registered (e.g. an array element schema registered once, visited
-  // per-index) all share the single registration. Mirrors v4's clamp.
-  const payload = list[Math.min(idx, list.length - 1)]
-  counters.set(schema, idx + 1)
-  return payload
-}
-
-/**
- * Walk the v3 schema tree from `rootSchema`, emitting a payload for
- * each path that has registered metadata. For schemas registered at
- * multiple paths the per-schema counter advances each visit and
- * selects the i-th payload from the schema's registration list — when
- * registrations happen in declaration order they pair correctly with
- * tree-walk order. Mirrors v4's `walkForMeta` shape.
- *
- * Visits the schema first (terminal-position registration), then the
- * peeled inner if different (inner-then-wrap registration). At each
- * point the FIRST list-payload found wins for that path.
- */
-function walkForMetaV3(
-  schema: z.ZodTypeAny,
-  path: Path,
-  map: Map<PathKey, FieldMetaPayload>,
-  counters: Map<z.ZodTypeAny, number>,
-  lastPathPerSchema: Map<z.ZodTypeAny, PathKey>,
-  inProgress: WeakSet<z.ZodTypeAny>
-): void {
-  if (inProgress.has(schema)) return
-  inProgress.add(schema)
-  try {
-    const pathKey = canonicalizePath(path).key
-    if (!map.has(pathKey)) {
-      const payload = consumePayloadV3(schema, counters)
-      if (payload !== undefined) {
-        map.set(pathKey, payload)
-        lastPathPerSchema.set(schema, pathKey)
-      }
-    }
-    const peeled = peelAllV3Wrappers(schema)
-    if (peeled !== schema && !map.has(pathKey)) {
-      const payload = consumePayloadV3(peeled, counters)
-      if (payload !== undefined) {
-        map.set(pathKey, payload)
-        lastPathPerSchema.set(peeled, pathKey)
-      }
-    }
-    // Descend
-    if (isZodSchemaType(schema, 'ZodObject')) {
-      const shape = getObjectShape(schema)
-      for (const [key, child] of Object.entries(shape)) {
-        walkForMetaV3(
-          child as z.ZodTypeAny,
-          [...path, key],
-          map,
-          counters,
-          lastPathPerSchema,
-          inProgress
-        )
-      }
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodArray')) {
-      const inner = getArrayElement(schema)
-      if (inner) walkForMetaV3(inner, [...path, 0], map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodTuple')) {
-      const items = getTupleItems(schema)
-      items.forEach((item, i) => {
-        walkForMetaV3(
-          item as z.ZodTypeAny,
-          [...path, i],
-          map,
-          counters,
-          lastPathPerSchema,
-          inProgress
-        )
-      })
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodSet')) {
-      const inner = getSetValueType(schema)
-      if (inner) walkForMetaV3(inner, [...path, 0], map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodRecord')) {
-      const inner = getRecordValueType(schema)
-      if (inner) walkForMetaV3(inner, [...path, '*'], map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
-      for (const opt of getUnionOptions(schema)) {
-        walkForMetaV3(opt as z.ZodTypeAny, path, map, counters, lastPathPerSchema, inProgress)
-      }
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodIntersection')) {
-      const left = getIntersectionLeft(schema)
-      const right = getIntersectionRight(schema)
-      if (left) walkForMetaV3(left, path, map, counters, lastPathPerSchema, inProgress)
-      if (right) walkForMetaV3(right, path, map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (
-      isZodSchemaType(schema, 'ZodOptional') ||
-      isZodSchemaType(schema, 'ZodNullable') ||
-      isZodSchemaType(schema, 'ZodDefault') ||
-      isZodSchemaType(schema, 'ZodReadonly') ||
-      isZodSchemaType(schema, 'ZodCatch')
-    ) {
-      const inner = unwrapInner(schema)
-      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodEffects')) {
-      const inner = unwrapEffectsSource(schema)
-      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodPipeline')) {
-      const inner = unwrapPipeIn(schema)
-      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodBranded')) {
-      const inner = unwrapBranded(schema)
-      if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
-      return
-    }
-    if (isZodSchemaType(schema, 'ZodLazy')) {
-      try {
-        const inner = unwrapLazy(schema)
-        if (inner) walkForMetaV3(inner, path, map, counters, lastPathPerSchema, inProgress)
-      } catch {
-        // Recursive z.lazy() — the inProgress guard at the top of
-        // walkForMetaV3 stops the descent, but a getter that throws
-        // before reaching that check shouldn't crash the walk.
-      }
-      return
-    }
-    // Leaf kinds — nothing more to descend into; metadata for the path
-    // itself was captured above.
-  } finally {
-    inProgress.delete(schema)
-  }
-}
-
 function resolveFieldMetaAtPathV3(
   rootSchema: z.ZodSchema,
   path: Path,
@@ -1357,7 +1168,11 @@ function resolveFieldMetaAtPathV3(
   // Path-keyed payload map (built once per rootSchema) disambiguates
   // shared schemas registered at multiple paths. Falls back to the
   // schema-keyed registry for paths not visited by the walker.
-  const pathMap = getPathMetaMapV3(rootSchema as z.ZodTypeAny)
+  const pathMap = getFieldMetaPathMap(rootSchema as z.ZodTypeAny, {
+    intro: V3_INTROSPECTOR,
+    peelAllWrappers: peelAllV3Wrappers,
+    getFieldMetaList,
+  })
   const pathKey = canonicalizePath(path).key
   const peeled = peelV3Wrappers(target)
   const payload =
@@ -1398,9 +1213,9 @@ function resolveFieldMetaAtPathV3(
  *     default; refinement-level issues pass through unchanged so the
  *     downstream strict validation pass surfaces them.
  *
- * Both arms compose with `mergeDeepV3` (NOT lodash merge) so arrays
- * replace wholesale and explicit `null` / `undefined` overrides
- * survive — matching v4's `mergeDeep` semantic.
+ * Both arms compose with the shared core `mergeDeep` (NOT lodash merge)
+ * so arrays replace wholesale and explicit `null` / `undefined`
+ * overrides survive. v3 and v4 now call the same helper.
  */
 function runStrictGetDefaultsV3<Form>(
   rootSchema: z.ZodSchema,
@@ -1429,10 +1244,12 @@ function runStrictGetDefaultsV3<Form>(
 
   let rawDefaultValues = defaultValuesWithoutConstraints
   if (!isPrimitive(rawDefaultValues)) {
-    // `mergeDeepV3` (NOT lodash `merge`) so arrays replace wholesale
-    // and explicit `null`/`undefined` overrides survive, matching v4's
-    // `mergeDeep` semantic.
-    rawDefaultValues = mergeDeepV3(defaultValuesWithoutConstraints, config.constraints)
+    // Shared core `mergeDeep` (NOT lodash `merge`) so arrays replace
+    // wholesale and explicit `null`/`undefined` overrides survive; v3
+    // and v4 call the same helper. `safeAssign` inside lands a
+    // `__proto__` constraint key as own data rather than reassigning the
+    // result's prototype.
+    rawDefaultValues = mergeDeep(defaultValuesWithoutConstraints, config.constraints)
   } else if (constraintsAreSlimValid(slimSchema, config.constraints)) {
     rawDefaultValues = config.constraints
   }
@@ -1681,10 +1498,10 @@ function runStrictGetDefaultsV3<Form>(
       }
     }
   }
-  // `mergeDeepV3` so the fix-up overrides the raw defaults with
-  // copy-on-write semantics matching v4 (array replace, null/undefined
-  // clears honored).
-  fixedData = mergeDeepV3(rawDefaultValues, fixedData) as Record<string, unknown>
+  // Shared core `mergeDeep` so the fix-up overrides the raw defaults
+  // with copy-on-write semantics matching v4 (array replace,
+  // null/undefined clears honored).
+  fixedData = mergeDeep(rawDefaultValues, fixedData) as Record<string, unknown>
 
   // Best-effort re-parse: if the fix-up loop couldn't fully reconcile
   // the data (nested unions whose branches don't match the defaulted

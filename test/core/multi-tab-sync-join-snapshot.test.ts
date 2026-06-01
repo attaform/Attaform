@@ -281,15 +281,23 @@ describe('multi-tab sync: snapshot handshake adopts live state on join', () => {
  * impersonate a hostile peer.
  */
 
-function getChannelName(app: App, formKey: string): string {
-  const registry = app._attaform
-  if (registry === undefined) throw new Error('app has no attached attaform registry')
-  for (const [key, state] of registry.forms) {
-    if (key !== formKey) continue
-    const mod = state.modules.get('multiTabSync') as { channelName: string } | undefined
-    if (mod !== undefined) return mod.channelName
+async function waitForChannelName(app: App, formKey: string, timeoutMs = 1000): Promise<string> {
+  // The sync module now wires on a later microtask (the multi-tab chunk
+  // is dynamically imported), so reading the channel name has to poll
+  // until the module lands rather than assume synchronous wiring.
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const registry = app._attaform
+    if (registry !== undefined) {
+      for (const [key, state] of registry.forms) {
+        if (key !== formKey) continue
+        const mod = state.modules.get('multiTabSync') as { channelName: string } | undefined
+        if (mod !== undefined) return mod.channelName
+      }
+    }
+    await new Promise((r) => setTimeout(r, 10))
   }
-  throw new Error(`no sync module found for key '${formKey}'`)
+  throw new Error(`no sync module found for key '${formKey}' within ${timeoutMs}ms`)
 }
 
 /**
@@ -444,7 +452,7 @@ describe('multi-tab sync: File values stay local (security gate)', () => {
     if (formA === undefined) throw new Error('setup did not capture formA')
     await waitForEstablished([appA])
 
-    const channelName = getChannelName(appA, 'multitab-file-inbound')
+    const channelName = await waitForChannelName(appA, 'multitab-file-inbound')
     const evil = new BroadcastChannel(channelName)
     const file = new File(['hostile bytes'], 'evil.png', { type: 'image/png' })
     try {
@@ -501,7 +509,7 @@ describe('multi-tab sync: structural type-mismatch defense', () => {
     formA.setValue('email', 'still typing')
     expect(formA.values.email).toBe('still typing')
 
-    const channelName = getChannelName(appA, 'multitab-bad-type-patch')
+    const channelName = await waitForChannelName(appA, 'multitab-bad-type-patch')
     const evil = new BroadcastChannel(channelName)
     try {
       evil.postMessage({
@@ -540,7 +548,7 @@ describe('multi-tab sync: structural type-mismatch defense', () => {
     // play that role: it sees the joiner's hello, announces, receives
     // the requestSnapshot, and replies with a structurally hostile
     // snapshot.
-    const channelName = (() => {
+    const channelName = await (async () => {
       // Run a probe app just to compute the channelName the joiner
       // will use, then unmount it so the joiner is the only "real"
       // participant. We can't use _attaform.forms keys here because
@@ -555,7 +563,7 @@ describe('multi-tab sync: structural type-mismatch defense', () => {
           defaultValues: { email: '', comment: '' },
         }) as unknown as SyncForm
       })
-      const name = getChannelName(appProbe, 'multitab-bad-type-snapshot')
+      const name = await waitForChannelName(appProbe, 'multitab-bad-type-snapshot')
       appProbe.unmount()
       return name
     })()
@@ -646,7 +654,7 @@ describe('multi-tab sync: hostile-message no-uncaught guard (SEC-3)', () => {
     const formA = captureA.form
     if (formA === undefined) throw new Error('setup did not capture formA')
 
-    const channelName = getChannelName(appA, 'multitab-hostile-msg')
+    const channelName = await waitForChannelName(appA, 'multitab-hostile-msg')
     const evil = new BroadcastChannel(channelName)
     try {
       await waitForEstablished([appA])
@@ -708,7 +716,7 @@ describe('multi-tab sync: snapshot-request rate limit (SEC-4)', () => {
     if (captureA.form === undefined) throw new Error('setup did not capture formA')
     await waitForEstablished([appA])
 
-    const channelName = getChannelName(appA, 'multitab-snapshot-spam')
+    const channelName = await waitForChannelName(appA, 'multitab-snapshot-spam')
     const evil = new BroadcastChannel(channelName)
     const evilSenderId = 'evil-spammer'
     let leaderId: string | undefined

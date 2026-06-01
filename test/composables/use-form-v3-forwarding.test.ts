@@ -8,7 +8,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { useForm } from '../../src/zod-v3'
 import { fingerprintZodSchema } from '../../src/runtime/adapters/zod-v3/fingerprint'
 import { hashStableString } from '../../src/runtime/core/hash'
-import { waitUntil } from '../utils/form-harness'
+import { waitForPersistence, waitUntil } from '../utils/form-harness'
 
 /**
  * Regression pin: the zod v3 `useForm` wrapper used to hand-pick the
@@ -118,6 +118,7 @@ describe('v3 useForm forwards opt-in options to useAbstractForm', () => {
     // persistence subscription will fire.
     const input = handle.emailInput
     if (input === undefined) throw new Error('email input not mounted')
+    await waitForPersistence(app)
     input.value = 'alice@example.com'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (setItem.mock.calls.length > 0 ? true : null))

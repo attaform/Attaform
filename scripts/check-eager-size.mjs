@@ -154,10 +154,12 @@ export async function measureEager(define = PROD_DEFINE) {
 // Committed eager budget (gz bytes) for a minimal `useForm` (zod-v4).
 // Baseline measured at 46.28 kB gz when this gate landed, with the
 // dev-flag DCE win (core/dev.ts) folded in under the production define.
-// ~0.5 kB headroom absorbs minifier-version drift. The lazy-loading
+// D1 then lazy-loads multi-tab sync onto the async path, dropping the
+// eager set to 45.61 kB gz; the budget is tightened here to lock that
+// in. ~0.5 kB headroom absorbs minifier-version drift. The lazy-loading
 // work tightens this as optional features move to the async path; never
 // loosen it without a recorded reason in the commit.
-const BUDGET_GZ = 47_900
+const BUDGET_GZ = 47_200
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

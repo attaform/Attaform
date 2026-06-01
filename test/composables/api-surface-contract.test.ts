@@ -733,14 +733,17 @@ describe('multi-tab sync — BroadcastChannel', () => {
     app.mount(root)
     const api = handle.api as Api
 
-    // Wait for the sync module's join window to elapse (solo-tab → established).
+    // Wait for the sync module to wire (it loads on a later microtask)
+    // and its join window to elapse (solo-tab → established).
     const reg = (
       app as unknown as {
         _attaform: { forms: Map<string, { modules: Map<string, { lifecycle: () => string }> }> }
       }
     )._attaform
-    const syncMod = reg.forms.get(formKey)!.modules.get(MULTI_TAB_SYNC_MODULE_KEY)!
-    await waitUntil(() => (syncMod.lifecycle() === 'established' ? true : null), 500)
+    await waitUntil(() => {
+      const mod = reg.forms.get(formKey)?.modules.get(MULTI_TAB_SYNC_MODULE_KEY)
+      return mod?.lifecycle() === 'established' ? true : null
+    }, 500)
 
     const external = new BroadcastChannel(channelName)
     external.postMessage({

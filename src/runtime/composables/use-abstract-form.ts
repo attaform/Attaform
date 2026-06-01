@@ -33,7 +33,6 @@ import {
 import { createIsSensitivePath } from '../core/persistence/sensitive-names'
 import { wirePersistence } from '../core/persistence/wire-persistence'
 import { hashStableString } from '../core/hash'
-import { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } from '../core/multi-tab-sync'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
@@ -383,24 +382,29 @@ export function useAbstractForm<
     }
   }
 
-  // Wire multi-tab sync. Fresh-state-only — the module subscribes
-  // to FormStore events, so subscribing twice would double-broadcast.
-  // Registers AFTER persistence (so persistence hydration is the floor
-  // — when a BroadcastChannel snapshot arrives, it overrides the
-  // disk-persisted baseline) and BEFORE history (so the crossTab-meta
-  // history-listener guard is in place by the time the first incoming
-  // message lands).
+  // Wire multi-tab sync (opt-in, lazy). The sync module and its diff /
+  // patch machinery live in their own chunk, dynamically imported only
+  // when a keyed form opts in, so the always-on `useForm` path never
+  // ships them. Fresh-state-only: the module subscribes to FormStore
+  // events, so subscribing twice would double-broadcast.
+  //
+  // Ordering vs persistence and history: persistence wires synchronously
+  // above (its hydration is the floor a BroadcastChannel snapshot
+  // overrides), and history wires synchronously below. Because this
+  // import resolves on a later microtask, history is already subscribed
+  // before the sync module can deliver its first cross-tab message, so
+  // history's `crossTab`-meta guard is in place when that message lands.
   //
   // Activation requires ALL of:
   //   1. `multiTab` cascade resolves to `true` (per-form > global > library
   //      default `false`). Strict opt-in: a form that doesn't set
   //      `multiTab: true` somewhere never instantiates the channel.
-  //   2. Consumer-supplied `key` (anonymous forms skip — channel would be solo)
+  //   2. Consumer-supplied `key` (anonymous forms skip; channel would be solo)
   //   3. Runtime has `BroadcastChannel`
   //   4. `window.isSecureContext === true` (HTTPS or localhost)
   //
   // The else branch fires a one-shot dev warning when a keyed form
-  // requested sync but the secure-context gate blocked it — saves
+  // requested sync but the secure-context gate blocked it, saving
   // consumers from debugging "why isn't sync working in prod" in
   // silence.
   if (
@@ -413,11 +417,10 @@ export function useAbstractForm<
     const secureContext = isSecureContext()
     if (hasBroadcastChannel && secureContext) {
       // Channel name = `attaform:sync:${formKey}:${fingerprint hash}`.
-      // Wrap the fingerprint read so an adapter bug throwing here
-      // doesn't poison the rest of the form lifecycle — the sync
-      // module just skips instantiation. The schema-fingerprint
-      // mismatch warning surfaces the underlying adapter issue
-      // separately.
+      // Wrap the fingerprint read so an adapter bug throwing here doesn't
+      // poison the rest of the form lifecycle; the sync module just skips
+      // instantiation. The schema-fingerprint mismatch warning surfaces
+      // the underlying adapter issue separately.
       let channelName: string | null
       try {
         channelName = `attaform:sync:${state.formKey}:${hashStableString(state.schema.fingerprint())}`
@@ -425,23 +428,45 @@ export function useAbstractForm<
         channelName = null
       }
       if (channelName !== null) {
-        const syncModule = createMultiTabSyncModule(state, channelName, {
-          isSensitivePath: state.isSensitivePath,
-          noSyncPaths: state.noSyncPaths,
-          validateForm: (form) => {
-            // Sync-preferred schema validation. Async-only schemas
-            // return a Promise — for those we skip the gate and trust
-            // the patch (last-writer-wins; local validate cycle catches
-            // issues on next user interaction).
-            const result = state.schema.validateAtPath(form, undefined, { sync: true })
-            if (result instanceof Promise) return
-            if (!result.success) {
-              throw new Error('attaform multi-tab sync: post-apply schema validation failed')
-            }
-          },
+        const resolvedChannelName = channelName
+        // The form can dispose while the sync chunk is in flight (a fast
+        // mount then unmount). `registerCleanup` runs disposers once and
+        // then drops the list, so a disposer registered after dispose
+        // never fires. Guard with a flag an eagerly-registered cleanup
+        // sets, so a late-resolving import doesn't subscribe a
+        // BroadcastChannel onto a torn-down store (which would leak it).
+        let formDisposed = false
+        state.registerCleanup(() => {
+          formDisposed = true
         })
-        state.modules.set(MULTI_TAB_SYNC_MODULE_KEY, syncModule)
-        state.registerCleanup(() => syncModule.dispose())
+        void (async () => {
+          try {
+            const { createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY } =
+              await import('../core/multi-tab-sync')
+            if (formDisposed) return
+            const syncModule = createMultiTabSyncModule(state, resolvedChannelName, {
+              isSensitivePath: state.isSensitivePath,
+              noSyncPaths: state.noSyncPaths,
+              validateForm: (form) => {
+                // Sync-preferred schema validation. Async-only schemas
+                // return a Promise; for those we skip the gate and trust
+                // the patch (last-writer-wins; the local validate cycle
+                // catches issues on the next user interaction).
+                const result = state.schema.validateAtPath(form, undefined, { sync: true })
+                if (result instanceof Promise) return
+                if (!result.success) {
+                  throw new Error('attaform multi-tab sync: post-apply schema validation failed')
+                }
+              },
+            })
+            state.modules.set(MULTI_TAB_SYNC_MODULE_KEY, syncModule)
+            state.registerCleanup(() => syncModule.dispose())
+          } catch {
+            // The multi-tab-sync chunk failed to load (offline, chunk
+            // eviction). Sync stays silently unavailable rather than
+            // throwing into the consumer's form lifecycle.
+          }
+        })()
       }
     } else if (hasBroadcastChannel && !secureContext) {
       warnOnceInsecureContext('multiTab')

@@ -494,18 +494,25 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly fieldValidationCounts: Map<PathKey, number>
   /**
-   * Per-path `Date.now()` stamp marking when the field's current
-   * validation streak opened (the `0 → 1` count edge), deleted on the
-   * `→ 0` edge. Parallels `fieldValidationCounts` and anchors on the same
-   * edges, so the stamp pins to the start of the continuous streak —
-   * overlapping sub-runs that briefly push the count past 1 do not reset
-   * it. The display reducer reads it as `ctx.validatingSince` to time the
-   * anti-flash spinner; the field-state container walk takes the
-   * descendant-min so a row spinner anchors at its earliest active leaf.
-   * Runtime-only, never hydrated, like the counts. Plain (non-reactive)
-   * Map: every write to it coincides with a `fieldValidationCounts` write,
-   * which already re-runs the field-state computed, so a second reactive
-   * source would only duplicate triggers.
+   * Per-path `Date.now()` stamp marking when the field's LATEST validation
+   * run started, re-anchored on every run start (every increment), deleted
+   * on the `→ 0` edge. The display reducer reads it as `ctx.validatingSince`
+   * to time the anti-flash spinner, which measures `now - validatingSince`:
+   * re-anchoring on each run means a burst of keystrokes (each aborting the
+   * prior run and starting a new one) keeps pushing the stamp forward, so the
+   * spinner stays suppressed until the user pauses rather than surfacing
+   * mid-typing. Anchoring only at the streak start would pin it to the first
+   * keystroke, because with `debounceMs: 0` the aborted run's decrement lands
+   * after the next run's increment and the count never returns to 0 between
+   * fast keystrokes. The field-state container walk takes the descendant-min
+   * so a row spinner anchors at its earliest still-active leaf. Runtime-only,
+   * never hydrated, like the counts. REACTIVE: the display computed reads this
+   * (as `ctx.validatingSince`) but not the `validating` flag, and a long
+   * validation that settles with an unchanged verdict (same error, still
+   * invalid) leaves `errors` / `valid` untouched — so a non-reactive map would
+   * leave a held `pending` spinner stranded after the run ends, until some
+   * unrelated reactive change happened to re-run the computed. Reactivity ties
+   * the computed to both the streak start (set) and end (delete).
    */
   readonly fieldValidatingSince: Map<PathKey, number>
 
@@ -1183,11 +1190,18 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   // Anti-flash display engine + its episode-timing companion. The engine
   // owns the clock and the single timer the timed `getDisplayState` reducer
-  // needs; `fieldValidatingSince` records when each path's validation streak
-  // opened (set / cleared on the count edges in inc/decFieldValidation
-  // below). Disposed with the store so a held spinner can't outlive
-  // eviction.
-  const fieldValidatingSince = new Map<PathKey, number>()
+  // needs; `fieldValidatingSince` records when each path's latest validation
+  // run started (re-stamped on every run, cleared on the → 0 edge, in
+  // inc/decFieldValidation below). Disposed with the store so a held spinner
+  // can't outlive eviction.
+  //
+  // Reactive: the display computed reads `validatingSince` but NOT the
+  // `validating` flag, and a long validation that settles with an unchanged
+  // verdict (same error, still invalid) leaves `errors` / `valid` untouched —
+  // so without reactivity here the held spinner would never re-evaluate when
+  // the run ends, stranding `pending` until some unrelated reactive change.
+  // Reactivity ties the computed to the streak's start AND end.
+  const fieldValidatingSince: Map<PathKey, number> = reactive(new Map<PathKey, number>())
   const displayEngine = createDisplayEngine(ssr)
   registerCleanup(() => displayEngine.dispose())
 
@@ -1585,22 +1599,44 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // `FormStore.fieldValidationCounts` for semantics.
   const fieldValidationCounts: Map<PathKey, number> = reactive(new Map<PathKey, number>())
   function incFieldValidation(key: PathKey): void {
+    // Stamp `validatingSince` BEFORE bumping the count so the two signals can
+    // never disagree mid-flight. The count drives `field.validating` (and so
+    // clamps `field.valid` to false for the duration of a run); `validatingSince`
+    // is what the display reducer reads to decide "settled vs in-flight". If the
+    // count led, a synchronous reader landing between the two writes would see
+    // `validating: true, validatingSince: null` — the reducer would read the run
+    // as settled and return the in-flight verdict (idle, because `valid` is
+    // clamped), flashing idle at the start of every re-validation. Stamping the
+    // anchor first makes `validatingSince !== null` an outer bracket around
+    // `count > 0` (it is cleared only AFTER the count reaches 0, in
+    // `decFieldValidation`), so the reducer never sees a run as settled while
+    // `valid` is still clamped.
+    //
+    // Re-anchored on every run start, not just the 0 → 1 edge: the anti-flash
+    // show-delay measures `now - validatingSince`, so a burst of keystrokes —
+    // each aborting the prior run and starting a new one — keeps pushing the
+    // anchor forward and the spinner stays suppressed until the user pauses.
+    // Anchoring only at the streak start would surface the spinner mid-typing:
+    // with `debounceMs: 0` the aborted run's `.finally` decrement lands a
+    // microtask AFTER the next run's increment, so the count oscillates
+    // 1 → 2 → 1 and never returns to 0 between fast keystrokes, pinning the
+    // stamp to the first keystroke. `ssr` never reaches here in practice (no
+    // field validation is scheduled server-side); the `0` keeps the stamp
+    // clock-free.
+    fieldValidatingSince.set(key, ssr ? 0 : Date.now())
     const prevCount = fieldValidationCounts.get(key) ?? 0
     fieldValidationCounts.set(key, prevCount + 1)
-    // 0 → 1 edge: a validation streak just opened at this path. Stamp the
-    // start (the show-delay clock measures `now - validatingSince`).
-    // Guarded on the edge so overlapping sub-runs don't reset the anchor
-    // mid-streak. `ssr` never gets here in practice (no field validation is
-    // scheduled server-side); the `0` keeps the stamp clock-free if it does.
-    if (prevCount === 0) fieldValidatingSince.set(key, ssr ? 0 : Date.now())
   }
   function decFieldValidation(key: PathKey): void {
     const next = (fieldValidationCounts.get(key) ?? 0) - 1
     if (next <= 0) {
+      // → 0 edge: clear the count FIRST (so `field.valid` is accurate again),
+      // THEN drop the anchor — the trailing edge of the bracket described in
+      // `incFieldValidation`. Whenever the reducer sees `validatingSince ===
+      // null` the count is already 0 and `valid` is settled, so a run is never
+      // read as settled while `valid` is still clamped. Co-extensive across the
+      // abort / cancel / migrate paths that release a count.
       fieldValidationCounts.delete(key)
-      // → 0 edge: the streak closed; drop the anchor so the next streak
-      // re-stamps fresh. Co-extensive with the count delete, so the abort /
-      // cancel / migrate paths that release a count clear this in lockstep.
       fieldValidatingSince.delete(key)
     } else {
       fieldValidationCounts.set(key, next)

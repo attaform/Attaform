@@ -156,16 +156,21 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
     migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    // The validation-streak anchor leads its count, mirroring
+    // `incFieldValidation`: relocating `fieldValidatingSince` before
+    // `fieldValidationCounts` keeps `validatingSince !== null` an outer bracket
+    // around `count > 0` at the destination key, so a synchronous reader
+    // catching the gap between the two relocations never sees `validating: true,
+    // validatingSince: null` (which would flash idle). The anchor travels with
+    // the count it parallels, so a moved element's show-delay clock keeps
+    // measuring from when ITS streak opened rather than inheriting the slot's.
+    migrateMapSubtree(fieldValidatingSince, arrayPath, remap, (since) => since)
     // In-flight field-validation counter (`field.validating` mirror).
     // Same identity reasoning as the other path-keyed maps: the spinner
     // belongs to the validating element, not the slot. Self-heals on the
     // next validation pass; this migration just spares the wrong-row
     // visible flicker in between.
     migrateMapSubtree(fieldValidationCounts, arrayPath, remap, (count) => count)
-    // The validation-streak anchor travels with the count it parallels, so
-    // a moved element's show-delay clock keeps measuring from when ITS
-    // streak opened rather than inheriting the slot's.
-    migrateMapSubtree(fieldValidatingSince, arrayPath, remap, (since) => since)
     // Nested-array identity: relocate every tracked array sitting under
     // `arrayPath`'s element slots so a nested `v-for :key` stays stable
     // across an outer-array mutation (no token leak, no collision on the

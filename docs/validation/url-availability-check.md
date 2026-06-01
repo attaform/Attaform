@@ -97,7 +97,7 @@ const schema = z.object({
   ),
 })
 
-const form = useForm({ schema, key: 'url-check', validateOn: 'blur' })
+const form = useForm({ schema, key: 'url-check' })
 ```
 
 ## How the layers split the work
@@ -112,12 +112,12 @@ Preprocess and refine each own a single decision.
 
 ## Three messages, one validator
 
-| User input                 | Preprocess returns       | Refine outcome | Error message                          |
-| -------------------------- | ------------------------ | -------------- | -------------------------------------- |
-| `''` (blur on empty input) | `EMPTY_URL`              | invalid        | "Please enter a URL."                  |
-| `'###'`                    | `INVALID_URL`            | invalid        | "That doesn't look like a URL."        |
-| `'google.com'`             | `'https://google.com'`   | invalid        | "https://google.com is already taken." |
-| `'attaform.dev'`           | `'https://attaform.dev'` | valid          | (none, form submits)                   |
+| User input         | Preprocess returns       | Refine outcome | Error message                          |
+| ------------------ | ------------------------ | -------------- | -------------------------------------- |
+| `''` (empty input) | `EMPTY_URL`              | invalid        | "Please enter a URL."                  |
+| `'###'`            | `INVALID_URL`            | invalid        | "That doesn't look like a URL."        |
+| `'google.com'`     | `'https://google.com'`   | invalid        | "https://google.com is already taken." |
+| `'attaform.dev'`   | `'https://attaform.dev'` | valid          | (none, form submits)                   |
 
 Every message comes out of the refine layer. Preprocess never raises an error itself; it just hands a value over for refine to grade. This is the cleanest division: validation messages all live in one place.
 
@@ -143,7 +143,7 @@ If you need the typed shape outside submit, call `form.validateAsync()` or `form
 ## Tweaks
 
 - **One sentinel instead of two.** If you only need a single "rejected" message ("That URL won't work"), collapse `EMPTY_URL` and `INVALID_URL` into one sentinel and short-circuit refine on that single check. You lose the empty-vs-malformed distinction but the schema gets a few lines shorter.
-- **Validate on submit only.** Change `validateOn: 'blur'` to `validateOn: 'submit'` for forms where the network round-trip on blur is too noisy. The cache still pays for itself once the user clicks Submit and retries.
+- **Throttle the network round-trip.** The form checks on every change by default. For a network-backed check you'll usually want `validateOn: 'blur'` (hit the endpoint when the field loses focus) or `validateOn: 'submit'` (defer entirely), optionally paired with `debounceMs` to coalesce bursts. The cache absorbs repeat checks regardless.
 - **Invalidate on success.** After a successful signup, call `availabilityCache.delete(submittedUrl)` so a subsequent re-check picks up the new "taken" state on the server.
 - **Real backend.** Swap the `setTimeout`-based `checkAvailability` for your API call. A library like TanStack Query gives you the cache + de-duplication for free; the schema stays exactly as written.
 

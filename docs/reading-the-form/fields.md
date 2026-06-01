@@ -90,7 +90,7 @@ The error surface at this path: raw, ergonomic, and gated.
 | `validating`   | `boolean`                                     | `true` while a per-field validation run is in flight.                                               |
 | `displayState` | `'idle' \| 'pending' \| 'error' \| 'success'` | The single display-state verdict, resolved by [`getDisplayState`](/docs/validation/showing-errors). |
 | `showErrors`   | `boolean`                                     | `displayState === 'error'`. The display-time error gate.                                            |
-| `showPending`  | `boolean`                                     | `displayState === 'pending'`. An async check is in flight.                                          |
+| `showPending`  | `boolean`                                     | `displayState === 'pending'`. A check has run long enough to earn a spinner.                        |
 | `showSuccess`  | `boolean`                                     | `displayState === 'success'`. The field has passed.                                                 |
 | `showIdle`     | `boolean`                                     | `displayState === 'idle'`. Nothing to surface yet.                                                  |
 

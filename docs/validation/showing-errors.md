@@ -22,7 +22,7 @@ metaRows:
 Every path on a form carries a single display-state verdict, `field.displayState`, that is one of four values:
 
 - `'idle'`: nothing to surface yet.
-- `'pending'`: an async check is in flight.
+- `'pending'`: a check has been running long enough to earn a spinner.
 - `'error'`: a blocking error is ready to show.
 - `'success'`: the field has passed and earned its green check.
 
@@ -70,7 +70,7 @@ Until the gate opens, `displayState` is `'idle'` no matter what is in the store.
 
 Once the gate is open, the default resolves in order:
 
-1. **Pending.** A per-field validation run in flight (`field.validating`) wins. The verdict in `field.errors` is stale by definition, so Attaform surfaces a spinner rather than a possibly-wrong message.
+1. **Pending (timed).** While a per-field validation runs, the field is heading for a spinner, but Attaform holds the prior verdict for a short window first. A fast check that settles inside that window never shows `'pending'` at all; a slow one flips to the spinner and is then held a minimum so it cannot blink off. This anti-flash timing is tunable, see [Tune the timing](#tune-the-timing).
 2. **Error.** An own-path error resolves to `'error'`.
 3. **Success.** No error, `field.valid`, and the green check is earned: the field is non-blank and `dirty`, so the user put valid content there themselves. An empty field that happens to pass, a pre-filled field merely tabbed through, and the post-submit flood of every valid field all stay `'idle'` rather than greening for free. `valid` already waits on the form-wide first validation pass for async schemas, so success never fires before the first real verdict lands.
 4. **Idle.** Anything else, including a valid-but-unearned field (blank or unchanged), stays `'idle'`.
@@ -89,15 +89,16 @@ That means `form.meta.displayState` only reaches `'error'` for root-level (cross
 ```ts
 useForm({
   schema,
-  getDisplayState: (field) => (field.errors.length > 0 && field.touched ? 'error' : 'idle'),
+  getDisplayState: (prev, ctx) =>
+    ctx.field.errors.length > 0 && ctx.field.touched ? { display: 'error' } : { display: 'idle' },
 })
 ```
 
-Pass a custom predicate to bend the rule, for example to reveal errors the moment a field is touched (ignoring focus and submit state). The predicate receives the field's `FieldState` and the form's `FormMeta`, both with the derived `displayState` / `show*` / `firstError` keys omitted so an accidental self-reference is impossible, and returns the verdict.
+Pass a custom reducer to bend the rule, for example to reveal errors the moment a field is touched (ignoring focus and submit state). A reducer receives `(prev, ctx)`: `prev` is the field's previous `DisplayMachine`, and `ctx` carries the field's `FieldState` and the form's `FormMeta` (both with the derived `displayState` / `show*` / `firstError` keys omitted, so an accidental self-reference is impossible) plus `ctx.validatingSince` and `ctx.now` for timing. It returns the next machine: `{ display }` at minimum, optionally with a `reviewAt` timestamp telling Attaform when to look again.
 
 ## Compose with the default
 
-Adopter predicates can layer on top of `defaultDisplayState`. Defer to it for the common case and special-case only the paths you care about:
+Adopter reducers can layer on top of `defaultDisplayState`. Defer to it for the common case and special-case only the paths you care about:
 
 ```ts
 import { defaultDisplayState } from 'attaform'
@@ -105,12 +106,35 @@ import { defaultDisplayState } from 'attaform'
 useForm({
   schema,
   // Defer everywhere, but never show a success check on `username`.
-  getDisplayState: (field, formMeta) => {
-    const state = defaultDisplayState(field, formMeta)
-    return field.path[0] === 'username' && state === 'success' ? 'idle' : state
+  getDisplayState: (prev, ctx) => {
+    const next = defaultDisplayState(prev, ctx)
+    return next.display === 'success' && ctx.field.path[0] === 'username'
+      ? { display: 'idle' }
+      : next
   },
 })
 ```
+
+## Tune the timing
+
+The spinner is anti-flash by default. A validation that settles quickly never shows `'pending'` at all, and once a spinner appears it stays up for a minimum so it cannot blink off the instant the check lands. Two timings shape this, both in milliseconds:
+
+- `showDelay` (default `100`): how long a validation may run before its spinner is allowed to show. Anything that settles inside this window stays on its prior verdict, so a synchronous or microtask-fast check never flashes a spinner on every keystroke.
+- `minVisible` (default `120`): once shown, the minimum the spinner stays up, so a check that lands just past `showDelay` does not flash it on and immediately off.
+
+The shipped values live in `DEFAULT_TIMINGS`. To retune, build a default with `makeDefaultDisplayState`:
+
+```ts
+import { makeDefaultDisplayState } from 'attaform'
+
+useForm({
+  schema,
+  // Tighter: a spinner after 50ms, held for 200ms once shown.
+  getDisplayState: makeDefaultDisplayState({ showDelay: 50, minVisible: 200 }),
+})
+```
+
+This shapes only the display projection. `errors`, `valid`, `validating`, and the underlying validation all run exactly as before; only when the spinner appears and how long it lingers change. For total control, a from-scratch reducer owns its own timing by returning a `reviewAt` (an absolute `Date.now()` stamp) to tell Attaform when to re-evaluate the field.
 
 ## Where to next
 

@@ -39,6 +39,9 @@ The directive's commit cadence and the validation trigger are independent. With 
 
 The same schema runs in every mode: the only thing that changes is _when_ a refinement gets evaluated.
 
+::docs-demo{slug="validate-on-modes" label="validateOn modes"}
+::
+
 Under `validateOn: 'blur'`, leaving a field you never edited can't change any verdict, so Attaform skips the pass: it tracks whether the form has changed since the last validation and only revalidates when it has. Refocus a field that's showing an error, then tab away, and the error holds steady instead of blinking through `'pending'` and back.
 
 ## Debouncing

@@ -2,7 +2,6 @@ import type { z } from 'zod'
 import type {
   AbstractSchema,
   DefaultValuesResponse,
-  FieldMetaPayload,
   FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
@@ -14,7 +13,7 @@ import {
 import { getFieldMeta, getFieldMetaList } from './field-meta'
 import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
-import { canonicalizePath, type Path, type PathKey } from '../../core/paths'
+import { canonicalizePath, type Path } from '../../core/paths'
 import type { DeepPartial, GenericForm } from '../../types/types-core'
 import { assertSupportedKinds } from './assert-supported'
 import { unwrapToDiscriminatedUnion } from './discriminator'
@@ -25,14 +24,9 @@ import {
   assertZodVersion,
   containsAsyncRefine,
   containsAsyncTransform,
-  getArrayElement,
   getDiscriminatedOptions,
   getIntersectionLeft,
   getIntersectionRight,
-  getObjectShape,
-  getRecordValueType,
-  getSetValueType,
-  getTupleItems,
   getUnionOptions,
   kindOf,
   unwrapInner,
@@ -42,6 +36,7 @@ import {
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
 import { stripAsyncChecks } from './strip'
+import { getFieldMetaPathMap } from '../../core/walk-field-meta'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
@@ -443,232 +438,6 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
   } as unknown as AbstractSchema<unknown, GetValueFormType>
 }
 
-// Per-rootSchema cache of path → payload maps. Build is a single
-// tree-walk; lookups are O(1) thereafter. WeakMap keyed on the root
-// schema so entries GC with the form.
-const pathMetaCache = new WeakMap<z.ZodType, Map<PathKey, FieldMetaPayload>>()
-
-function getPathMetaMap(rootSchema: z.ZodType): Map<PathKey, FieldMetaPayload> {
-  const cached = pathMetaCache.get(rootSchema)
-  if (cached !== undefined) return cached
-  const map = new Map<PathKey, FieldMetaPayload>()
-  const counters = new Map<z.ZodType, number>()
-  // Track the LAST path each schema was visited at — used after the
-  // walk to absorb any "surplus" registrations (cases where the
-  // registration list is longer than the schema is visited, e.g. a
-  // chain like `withMeta(s, {label}).register(fieldMeta, {desc})`
-  // where one path consumes list[0] and list[1] would otherwise go
-  // unread). Surplus entries get merged into the schema's last-
-  // visited path so chained registrations accumulate as expected.
-  const lastPathPerSchema = new Map<z.ZodType, PathKey>()
-  const inProgress = new WeakSet<z.ZodType>()
-  walkForMeta(rootSchema, [], map, counters, lastPathPerSchema, inProgress)
-  for (const [schema, lastPath] of lastPathPerSchema) {
-    const list = getFieldMetaList(schema)
-    const consumed = counters.get(schema) ?? 0
-    if (list.length <= consumed) continue
-    const surplus = list
-      .slice(consumed)
-      .reduce<FieldMetaPayload>((acc, p) => ({ ...acc, ...p }), {})
-    const existing = map.get(lastPath) ?? {}
-    map.set(lastPath, { ...existing, ...surplus })
-  }
-  pathMetaCache.set(rootSchema, map)
-  return map
-}
-
-/**
- * Walk the schema tree from `rootSchema`, emitting a payload for
- * each path that has registered metadata. For schemas registered at
- * multiple paths (shared instance), the per-schema counter advances
- * each visit and selects the i-th payload from the schema's
- * registration list — when registrations happen inline in the
- * schema literal (the canonical pattern), declaration order matches
- * walk order, so each path lands on its intended payload.
- *
- * Visits the schema first (terminal-position registration), then
- * the peeled inner if different (inner-then-wrap registration). At
- * each point the FIRST list-payload found wins for that path.
- */
-function walkForMeta(
-  schema: z.ZodType,
-  path: Path,
-  map: Map<PathKey, FieldMetaPayload>,
-  counters: Map<z.ZodType, number>,
-  lastPathPerSchema: Map<z.ZodType, PathKey>,
-  inProgress: WeakSet<z.ZodType>
-): void {
-  if (inProgress.has(schema)) return
-  inProgress.add(schema)
-  try {
-    const pathKey = canonicalizePath(path).key
-    // Pull a payload off the target schema's list (counter-indexed).
-    if (!map.has(pathKey)) {
-      const payload = consumePayload(schema, counters)
-      if (payload !== undefined) {
-        map.set(pathKey, payload)
-        lastPathPerSchema.set(schema, pathKey)
-      }
-    }
-    // Also try the peeled inner — covers `withMeta(z.string(), {...}).optional()`
-    // where the registration sits on the inner before wrapping.
-    const peeled = peelAllWrappers(schema)
-    if (peeled !== schema && !map.has(pathKey)) {
-      const payload = consumePayload(peeled, counters)
-      if (payload !== undefined) {
-        map.set(pathKey, payload)
-        lastPathPerSchema.set(peeled, pathKey)
-      }
-    }
-    // Descend.
-    const kind = kindOf(schema)
-    switch (kind) {
-      case 'object': {
-        const shape = getObjectShape(schema as z.ZodObject)
-        for (const [key, child] of Object.entries(shape)) {
-          walkForMeta(child, [...path, key], map, counters, lastPathPerSchema, inProgress)
-        }
-        return
-      }
-      case 'array': {
-        // Visit the element schema with a synthetic '0' index so leaf
-        // metadata under array elements gets registered per the array's
-        // canonical "first slot" path. Per-index instantiations of the
-        // array element share the same schema instance, so the
-        // resolver's fallback (getFieldMeta on the schema) picks up
-        // anything not captured here.
-        walkForMeta(
-          getArrayElement(schema as z.ZodArray),
-          [...path, 0],
-          map,
-          counters,
-          lastPathPerSchema,
-          inProgress
-        )
-        return
-      }
-      case 'tuple': {
-        const items = getTupleItems(schema)
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i]
-          if (item !== undefined)
-            walkForMeta(item, [...path, i], map, counters, lastPathPerSchema, inProgress)
-        }
-        return
-      }
-      case 'set':
-        walkForMeta(
-          getSetValueType(schema),
-          [...path, 0],
-          map,
-          counters,
-          lastPathPerSchema,
-          inProgress
-        )
-        return
-      case 'record':
-        walkForMeta(
-          getRecordValueType(schema),
-          [...path, '*'],
-          map,
-          counters,
-          lastPathPerSchema,
-          inProgress
-        )
-        return
-      case 'union': {
-        for (const opt of getUnionOptions(schema)) {
-          walkForMeta(opt, path, map, counters, lastPathPerSchema, inProgress)
-        }
-        return
-      }
-      case 'discriminated-union': {
-        for (const opt of getDiscriminatedOptions(schema)) {
-          walkForMeta(opt, path, map, counters, lastPathPerSchema, inProgress)
-        }
-        return
-      }
-      case 'optional':
-      case 'nullable':
-      case 'default':
-      case 'readonly':
-      case 'catch': {
-        const inner = unwrapInner(schema)
-        if (inner !== undefined)
-          walkForMeta(inner, path, map, counters, lastPathPerSchema, inProgress)
-        return
-      }
-      case 'pipe': {
-        const inner = unwrapPipe(schema)
-        if (inner !== undefined)
-          walkForMeta(inner, path, map, counters, lastPathPerSchema, inProgress)
-        return
-      }
-      case 'lazy': {
-        const inner = unwrapLazy(schema)
-        if (inner !== undefined)
-          walkForMeta(inner, path, map, counters, lastPathPerSchema, inProgress)
-        return
-      }
-      case 'intersection': {
-        // Descend into both sides at the same path — registrations
-        // on either side surface for the same path.
-        const left = getIntersectionLeft(schema)
-        const right = getIntersectionRight(schema)
-        if (left !== undefined)
-          walkForMeta(left, path, map, counters, lastPathPerSchema, inProgress)
-        if (right !== undefined)
-          walkForMeta(right, path, map, counters, lastPathPerSchema, inProgress)
-        return
-      }
-      // Leaf kinds — no children to descend into; metadata for the
-      // path itself was captured above. Listed explicitly so the
-      // exhaustiveness check catches any new kind landing in Zod
-      // without a corresponding decision here.
-      case 'string':
-      case 'number':
-      case 'bigint':
-      case 'boolean':
-      case 'date':
-      case 'enum':
-      case 'literal':
-      case 'null':
-      case 'undefined':
-      case 'any':
-      case 'unknown':
-      case 'nan':
-      case 'void':
-      case 'never':
-      case 'promise':
-      case 'custom':
-      case 'template-literal':
-      case 'transform':
-      case 'file':
-      case 'map':
-      case 'symbol':
-      case 'function':
-        return
-    }
-  } finally {
-    inProgress.delete(schema)
-  }
-}
-
-function consumePayload(
-  schema: z.ZodType,
-  counters: Map<z.ZodType, number>
-): FieldMetaPayload | undefined {
-  const list = getFieldMetaList(schema)
-  if (list.length === 0) return undefined
-  const idx = counters.get(schema) ?? 0
-  // Clamp to last entry — schemas reused MORE times than they're
-  // registered (e.g. an array element schema registered once,
-  // visited per-index) all share the single registration.
-  const payload = list[Math.min(idx, list.length - 1)]
-  counters.set(schema, idx + 1)
-  return payload
-}
-
 /**
  * Resolve the field metadata for the schema node at `path`. Reads
  * the `fieldMeta` registry on the resolved Zod schema and applies
@@ -715,7 +484,11 @@ function resolveFieldMetaAtPath(
   // shared schemas. Falls back to the schema-keyed registry for paths
   // not visited by the walker (e.g. dynamic discriminated-union
   // sub-paths the walker can't statically enumerate).
-  const pathMap = getPathMetaMap(rootSchema)
+  const pathMap = getFieldMetaPathMap(rootSchema, {
+    intro: V4_INTROSPECTOR,
+    peelAllWrappers,
+    getFieldMetaList,
+  })
   const pathKey = canonicalizePath(path).key
   const peeled = peelAllWrappers(target)
   const payload =

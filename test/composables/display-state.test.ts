@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import { computed, createApp, defineComponent, h, nextTick, withDirectives, type App } from 'vue'
+import {
+  computed,
+  createApp,
+  defineComponent,
+  h,
+  nextTick,
+  watch,
+  withDirectives,
+  type App,
+} from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
@@ -9,6 +18,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { vRegister } from '../../src/runtime/core/directive'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { DEFAULT_TIMINGS, defaultDisplayState, makeDefaultDisplayState } from '../../src'
+import { FOCUS_OUT_GRACE } from '../../src/runtime/core/display-state'
 import type {
   DisplayCtx,
   DisplayMachine,
@@ -682,6 +692,183 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('a long-running client-side async check surfaces pending (async-ness drives it, not a network round-trip)', async () => {
+    // The UX story: `pending` reflects "validation is in flight across event-loop
+    // turns," NOT "a request is open to a server." A heavy on-device computation
+    // that yields — any non-blocking async work; here a timer stands in for it,
+    // no fetch anywhere — drives the spinner exactly as a remote check would, so
+    // the consumer never has to care whether validation runs on the client or
+    // the server. (A synchronous BLOCKING computation is the one case that can't
+    // show a spinner: it freezes the thread, so nothing renders until it returns.
+    // The remedy is to run it async — off the main thread or yielding — which
+    // earns pending for free.)
+    const schema = zV4.object({
+      email: zV4
+        .string()
+        .refine(
+          (val) =>
+            val.length === 0
+              ? false
+              : new Promise<boolean>((r) => setTimeout(() => r(val !== 'taken'), 5000)),
+          { error: 'taken' }
+        ),
+    })
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `client-compute-${Math.random()}`,
+          strict: false,
+          defaultValues: { email: '' },
+        } as never)
+      )
+    )
+    // Open the gate. Empty rejects synchronously, so this submit doesn't await
+    // the 5s timer.
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+
+    // Kick off the slow on-device computation.
+    form.setValue('email', 'available')
+    await nextTick()
+    expect(form.fields('email').validating).toBe(true)
+    // Held through the show-delay — a fast result would never flash here.
+    expect(form.fields('email').displayState).not.toBe('pending')
+
+    // Past the show-delay, the LOCAL computation is still churning → spinner.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+    expectProjections(form.fields('email'))
+
+    // The 5s computation finishes on-device (no network) → the verdict lands.
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(form.fields('email').validating).toBe(false)
+    expect(form.fields('email').displayState).toBe('success')
+  })
+
+  it('a burst of keystrokes keeps re-arming the show-delay (no spinner mid-typing)', async () => {
+    // Regression for the live /demos/display-state report: typing showed the
+    // spinner with no perceptible delay. `validatingSince` re-anchors on every
+    // run start, not just the streak's 0 → 1 edge — with `debounceMs: 0` a fast
+    // burst keeps the validation count above 0 (the aborted run's decrement
+    // lands a microtask AFTER the next run's increment), so anchoring at the
+    // streak start would pin the show-delay to the FIRST keystroke and surface
+    // the spinner mid-typing. Re-anchoring suppresses it until the user pauses.
+    const { form, resolve } = mountGatedRefine()
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('error')
+
+    // Type continuously: a fresh value every 40ms across 200ms — twice the
+    // 100ms show-delay — each edit aborting the prior parked validation and
+    // starting a new one. The spinner must stay suppressed the whole time.
+    for (const v of ['a@b.c', 'a@b.cc', 'a@b.ccc', 'a@b.cccc', 'a@b.ccccc']) {
+      form.setValue('email', v)
+      await vi.advanceTimersByTimeAsync(40)
+      expect(form.fields('email').validating).toBe(true)
+      expect(form.fields('email').showPending).toBe(false)
+    }
+
+    // Pause. Now a genuinely-still-running validation earns its spinner.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+    expectProjections(form.fields('email'))
+    // (The mid-burst parked validations are torn down by the afterEach
+    // unmount; `resolve` is unused here because after a burst the captured
+    // resolver may belong to an already-aborted run.)
+    void resolve
+  })
+
+  it('releases a held spinner when a long validation settles with an UNCHANGED verdict', async () => {
+    // Locks the continuity-branch release path: a validation longer than
+    // showDelay + minVisible holds `pending` with NO engine timer (it trusts
+    // the settle to be a reactive event), so the settle MUST re-run the display
+    // computed to release the spinner. Asserts the release happens on settle
+    // with no timer to advance — even when the verdict is unchanged (same
+    // error). (Note: this passes whether `fieldValidatingSince` is reactive or
+    // plain, because the field computed also depends on the reactive validation
+    // count; it guards the behaviour, not that specific mechanism.)
+    const { form, resolve } = mountGatedRefine()
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('error') // landed error on ''
+
+    // Edit to another invalid value: the same 'invalid email' verdict lands.
+    form.setValue('email', 'still-bad')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+    // Past min-visible while STILL validating: the continuity branch drops the
+    // engine timer, so nothing is scheduled to release the spinner.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
+    expect(form.fields('email').displayState).toBe('pending')
+    expect(vi.getTimerCount()).toBe(0)
+
+    // Settle with the SAME verdict. With no engine timer pending, only the
+    // reactive `validatingSince` delete can re-run the computed — flush
+    // microtasks only, advance no timers.
+    resolve(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.fields('email').validating).toBe(false)
+    expect(form.fields('email').displayState).toBe('error')
+    expectProjections(form.fields('email'))
+  })
+
+  it('re-validating a success field never flashes idle (validatingSince brackets the count)', async () => {
+    // Live report: a valid (success) field, edited to another valid value,
+    // flashed `idle` before the spinner. Root cause was a one-frame signal
+    // disagreement at the START of a run — `field.validating` flips true (the
+    // count increments) before `validatingSince` is stamped, so a synchronous
+    // reader catches (validating: true, validatingSince: null). Told it was
+    // "settled", the reducer returned the idle verdict (`valid` is clamped
+    // false mid-run, no error, no earned success), which then poisoned the
+    // held verdict for the rest of the window. The fix stamps `validatingSince`
+    // BEFORE the count, so the two signals never disagree.
+    const { form, resolve } = mountGatedRefine()
+
+    // Reach success: open the gate, edit to a valid value, resolve inside the
+    // show-delay so the spinner never shows and the verdict lands on success.
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay - 1)
+    resolve(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.fields('email').displayState).toBe('success')
+
+    // A synchronous subscriber records every display frame. The transient idle
+    // exists only for one synchronous re-eval between the two bookkeeping
+    // writes, so a flush:'pre' template smooths over it — a sync watch is what
+    // surfaces the defect (and what a consumer's own sync watch would hit).
+    const frames: DisplayState[] = []
+    const stop = watch(
+      () => form.fields('email').displayState,
+      (s) => frames.push(s),
+      {
+        flush: 'sync',
+      }
+    )
+
+    // Edit to another still-valid value and run the full spinner cycle.
+    form.setValue('email', 'a@b.cd')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+    resolve(true)
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
+    stop()
+
+    expect(form.fields('email').displayState).toBe('success')
+    // The crux: success → pending → success, with no idle frame in between.
+    expect(frames).toContain('pending')
+    expect(frames).not.toContain('idle')
+  })
+
   it('a custom factory drives the clock at its own thresholds', async () => {
     let resolveValidation: (ok: boolean) => void = () => {}
     const schema = zV4.object({
@@ -948,6 +1135,150 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     await nextTick()
     expect(vi.getTimerCount()).toBe(0)
     expect(form.fields('email').displayState).toBe('error')
+  })
+})
+
+describe('resetField — in-flight validation teardown', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('cancels an in-flight run on the path (no orphaned validating, no stale error write-back)', async () => {
+    // Regression: resetField on a field mid-validation left the in-flight run
+    // orphaned. In blur mode (the restore write schedules no fresh run) the
+    // field kept `validating: true` after the reset, and when the orphan
+    // settled it committed its verdict back over the errors resetField had
+    // just cleared. resetField now cancels the subtree's runs first.
+    let resolveValidation: (ok: boolean) => void = () => {}
+    const schema = zV4.object({
+      email: zV4
+        .string()
+        .refine(
+          (val) =>
+            val.length === 0 ? false : new Promise<boolean>((r) => (resolveValidation = r)),
+          { error: 'invalid email' }
+        ),
+    })
+    let api!: FormLike
+    const Comp = defineComponent({
+      setup() {
+        api = asForm(
+          useFormV4({
+            schema,
+            key: `resetfield-teardown-${Math.random()}`,
+            strict: false,
+            validateOn: 'blur',
+            defaultValues: { email: '' },
+          } as never)
+        )
+        return () =>
+          withDirectives(h('input', { type: 'text' }), [
+            [vRegister, (api as unknown as { register: (p: string) => unknown }).register('email')],
+          ])
+      },
+    })
+    const app = createApp(Comp).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    apps.push(app)
+    const input = root.querySelector('input') as HTMLInputElement
+
+    // Edit + blur → a blur-mode validation run starts and parks on the gate.
+    input.value = 'a@b.c'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    input.dispatchEvent(new FocusEvent('focus'))
+    input.dispatchEvent(new FocusEvent('blur'))
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.fields('email').validating).toBe(true)
+
+    // Reset the field while validation is in flight.
+    ;(api as unknown as { resetField: (p: readonly (string | number)[]) => void }).resetField([
+      'email',
+    ])
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(0)
+    // The run is cancelled in lockstep: nothing left validating, errors clear,
+    // and the verdict rests at idle (the reset closed the gate).
+    expect(api.fields('email').validating).toBe(false)
+    expect(api.fields('email').errors.length).toBe(0)
+    expect(api.fields('email').displayState).toBe('idle')
+
+    // The orphaned run resolving must NOT write its verdict back post-reset.
+    resolveValidation(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.fields('email').validating).toBe(false)
+    expect(api.fields('email').errors.length).toBe(0)
+    expect(api.fields('email').displayState).toBe('idle')
+    // No orphaned engine timer left running either.
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('getDisplayState — focus-out collapses the show-delay', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('blurring mid-validation surfaces the spinner within the settle grace (not the full window)', async () => {
+    // UX: the show-delay only swallows the spinner during active typing. Focus
+    // out while a slow check is in flight and the spinner appears within the
+    // brief settle grace — not after the rest of a window the user has already
+    // left. A fast check settles inside the grace and never flashes (the
+    // sync-field DOM-gate test above covers that no-flash path).
+    let resolveValidation: (ok: boolean) => void = () => {}
+    const schema = zV4.object({
+      email: zV4
+        .string()
+        .refine(
+          (val) =>
+            val.length === 0 ? false : new Promise<boolean>((r) => (resolveValidation = r)),
+          { error: 'invalid email' }
+        ),
+    })
+    let api!: FormLike
+    const Comp = defineComponent({
+      setup() {
+        api = asForm(
+          useFormV4({
+            schema,
+            key: `focusout-grace-${Math.random()}`,
+            strict: false,
+            validateOn: 'blur',
+            defaultValues: { email: '' },
+          } as never)
+        )
+        return () =>
+          withDirectives(h('input', { type: 'text' }), [
+            [vRegister, (api as unknown as { register: (p: string) => unknown }).register('email')],
+          ])
+      },
+    })
+    const app = createApp(Comp).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    apps.push(app)
+    const input = root.querySelector('input') as HTMLInputElement
+
+    // Type, then focus out — blur mode starts the (parked, slow) validation.
+    input.value = 'a@b.c'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    input.dispatchEvent(new FocusEvent('focus'))
+    input.dispatchEvent(new FocusEvent('blur'))
+    await nextTick()
+
+    // One settle grace later — far short of the show-delay — the spinner is up.
+    await vi.advanceTimersByTimeAsync(FOCUS_OUT_GRACE)
+    expect(api.fields('email').validating).toBe(true)
+    expect(api.fields('email').displayState).toBe('pending')
+    expectProjections(api.fields('email'))
+
+    // Then settles to the landed verdict (held for the min-visible window).
+    resolveValidation(false)
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
+    expect(api.fields('email').displayState).toBe('error')
   })
 })
 

@@ -74,6 +74,20 @@ export type DisplayTimings = { readonly showDelay: number; readonly minVisible: 
 export const DEFAULT_TIMINGS: DisplayTimings = { showDelay: 100, minVisible: 120 }
 
 /**
+ * How long the show-delay collapses to once the field is focused out. The
+ * full `showDelay` exists to swallow the spinner during active typing; the
+ * instant the user leaves the field that rationale is gone, so a still-running
+ * validation should surface its spinner promptly rather than waiting out the
+ * rest of a window meant for editing. This brief grace (one frame) still lets a
+ * synchronous / microtask-settling check resolve to its real verdict before the
+ * review fires, so a fast validation the user blurs past never flashes a
+ * spinner; only one genuinely in flight a frame later reveals `'pending'`.
+ * Capped at `showDelay`, so a custom timing shorter than a frame never widens
+ * the window on blur. Exported for tests; not part of the package surface.
+ */
+export const FOCUS_OUT_GRACE = 16
+
+/**
  * Build a default `getDisplayState` reducer with custom anti-flash timing.
  * Power users who want a tighter or looser spinner than {@link DEFAULT_TIMINGS}
  * pass their own `{ showDelay, minVisible }`:
@@ -102,6 +116,13 @@ export function makeDefaultDisplayState({
     // idle — no spinner mid-first-entry — exactly as errors and success are
     // withheld. computeVerdict already returns idle for a closed gate; this
     // short-circuit keeps a still-closed gate out of the timed-pending machine.
+    //
+    // Load-bearing for hydration: at first paint the gate is closed (no submit
+    // yet, not yet blurred-after-interaction), so a field validating on the
+    // client renders the same idle verdict the server produced with `now`
+    // frozen — no display-projection mismatch. Opening the gate during SSR (or
+    // at first client render) would surface a timed verdict the server never
+    // emitted and break that guarantee.
     if (!isGateOpen(field, formMeta)) return { display: verdict }
     // Settled — nothing in flight. Show the true verdict, unless a spinner
     // is still inside its minimum-visible window: hold it so a validation
@@ -121,10 +142,28 @@ export function makeDefaultDisplayState({
       return { display: 'pending', pendingShownAt: prev.pendingShownAt ?? now }
     // Validating, still inside the show-delay window: hold whatever was on
     // screen before the run began (`prev.display`) rather than the in-flight
-    // verdict, which reads `valid: false` only because a check is running.
-    // A fast validation settles before `reviewAt` and the spinner never shows.
-    if (now - validatingSince < showDelay)
-      return { display: prev.display, reviewAt: validatingSince + showDelay }
+    // verdict, which reads `valid: false` only because a check is running. A
+    // fast validation settles before `reviewAt` and the spinner never shows; a
+    // slow one surfaces it at the window edge. The hold is uniform across every
+    // prior verdict — error, success, idle alike — so editing a field
+    // re-validates as [prior] -> pending -> [settled], never flashing idle in
+    // between. Holding a green check over a value mid-edit is the same
+    // anti-flash trade already accepted for a held error: the true verdict
+    // lands a moment later and replaces it, so a brief stale verdict beats a
+    // gratuitous idle flicker on every keystroke.
+    //
+    // Focus-out collapses the window to a brief settle grace (see
+    // {@link FOCUS_OUT_GRACE}). While the user is typing (`focused === true`) or
+    // there is no focus signal to act on (`focused === null`, a programmatic /
+    // cross-field run on an unbound field) the full `showDelay` holds. The
+    // instant the user focuses out, the window shrinks: a fast check settles
+    // inside the grace and resolves straight to its verdict (no spinner), while
+    // a validation still in flight past the grace surfaces `'pending'` promptly
+    // instead of waiting out a window meant for editing.
+    const window = field.focused === false ? Math.min(showDelay, FOCUS_OUT_GRACE) : showDelay
+    if (now - validatingSince < window) {
+      return { display: prev.display, reviewAt: validatingSince + window }
+    }
     // Window elapsed and still validating: the spinner has earned its place.
     return { display: 'pending', pendingShownAt: now, reviewAt: now + minVisible }
   }

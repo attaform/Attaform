@@ -42,7 +42,7 @@ import {
   type Path,
   type PathKey,
 } from './paths'
-import { PERSISTENCE_MODULE_KEY, type PersistenceModule } from './persistence'
+import { PERSISTENCE_MODULE_KEY, type PersistenceHandle } from './persistence'
 import { allowSensitivePersist } from './persistence/sensitive-names'
 import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
@@ -743,10 +743,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     })
   ) as FormMeta<Form>
 
-  // --- Persistence handle (cached on FormStore by useAbstractForm
-  // when persist: is configured). The persist + clearPersistedDraft
-  // APIs below close over this; reset / resetField also poke it. ---
-  const persistence = state.modules.get(PERSISTENCE_MODULE_KEY) as PersistenceModule | undefined
+  // --- Persistence handle (cached on FormStore by useAbstractForm when
+  // persist: is configured). The handle is set synchronously at mount,
+  // but its `ready` promise resolves to the live module only once the
+  // dynamically-imported persistence chunk lands. The persist +
+  // clearPersistedDraft APIs below await `ready`; reset / resetField
+  // poke it fire-and-forget. A handle absent here means persist: wasn't
+  // configured — every consumer below no-ops, exactly as before. ---
+  const persistenceHandle = state.modules.get(PERSISTENCE_MODULE_KEY) as
+    | PersistenceHandle
+    | undefined
 
   // --- Reset ---
   // Reset semantics are "fresh start across every layer" — drafts are
@@ -786,19 +792,23 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
         state.originalBlankPaths.add(pathKey as PathKey)
       }
     }
-    if (persistence !== undefined) {
+    if (persistenceHandle !== undefined) {
       // Fire-and-forget — reset is sync from the consumer's POV; the
-      // wipe lands a moment later. Errors are absorbed by the adapter
-      // contract (best-effort).
-      void persistence.clearPersistedDraft().catch(() => undefined)
+      // wipe lands a moment later. The wall-clock is unchanged: `ready`
+      // resolves once the chunk lands, which the mount kicked off in
+      // parallel with the adapter this wipe awaits anyway. Errors are
+      // absorbed by the adapter contract (best-effort).
+      void persistenceHandle.ready.then((m) => m?.clearPersistedDraft()).catch(() => undefined)
     }
   }
 
   const resetField = (pathInput: string): void => {
     const segments = canonicalizePath(pathInput).segments
     state.resetField(segments)
-    if (persistence !== undefined) {
-      void persistence.clearPersistedDraft(segments).catch(() => undefined)
+    if (persistenceHandle !== undefined) {
+      void persistenceHandle.ready
+        .then((m) => m?.clearPersistedDraft(segments))
+        .catch(() => undefined)
     }
   }
 
@@ -840,11 +850,18 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     ) {
       return
     }
-    if (persistence === undefined) return // persist: not configured → silent no-op
+    if (persistenceHandle === undefined) return // persist: not configured → silent no-op
+    // form.persist() is already async, so awaiting the lazily-imported
+    // module adds no new async for a synchronous caller. Resolves to
+    // undefined only if the chunk failed to load / the form disposed.
+    const persistence = await persistenceHandle.ready
+    if (persistence === undefined) return
     await persistence.writePathImmediately(segments)
   }
 
   const clearPersistedDraft = async (pathInput?: string | Path): Promise<void> => {
+    if (persistenceHandle === undefined) return
+    const persistence = await persistenceHandle.ready
     if (persistence === undefined) return
     if (pathInput === undefined) {
       await persistence.clearPersistedDraft()

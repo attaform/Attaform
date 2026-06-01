@@ -23,15 +23,16 @@ import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
 import { createHistoryModule, type HistoryModule } from '../core/history'
 import {
+  getStorageAdapter,
   normalizePersistConfig,
   PERSISTENCE_MODULE_KEY,
   resolveStorageKeyBase,
   sweepAllOrphansAcrossStandardStores,
   sweepNonConfiguredStandardStoresForOrphans,
+  type PersistenceHandle,
   type PersistenceModule,
 } from '../core/persistence'
 import { createIsSensitivePath } from '../core/persistence/sensitive-names'
-import { wirePersistence } from '../core/persistence/wire-persistence'
 import { hashStableString } from '../core/hash'
 import { isSecureContext, warnOnceInsecureContext } from '../core/insecure-context-warn'
 import { ensureAttaformInstalled } from '../core/plugin'
@@ -363,14 +364,50 @@ export function useAbstractForm<
         // Ensures stale drafts can't survive in stores the dev migrated
         // AWAY from. Fire-and-forget; backend unavailability is silent.
         void sweepNonConfiguredStandardStoresForOrphans(resolvedPersist.storage, persistenceBase)
-        const persistenceModule = wirePersistence(state, resolvedPersist)
-        state.modules.set(PERSISTENCE_MODULE_KEY, persistenceModule)
-        // Drain BEFORE the synchronous teardown: the registry will await
-        // `awaitPendingWrites` before calling `dispose`, so the last
-        // debounced keystroke gets to disk before the FormStore is
-        // evicted from the registry's `forms` map.
-        state.registerDrain(() => persistenceModule.awaitPendingWrites())
-        state.registerCleanup(() => persistenceModule.dispose())
+        // Persistence's wiring + payload machinery is dynamically
+        // imported so the always-on `useForm` path never ships it. Start
+        // the adapter's own dynamic import NOW, in parallel with the
+        // chunk import below: the chunk load then hides behind the
+        // adapter load the hydration read already waits for, so a
+        // persist-configured form's flash-of-defaults window is unchanged
+        // and no synchronous caller gains a new await.
+        const adapterPromise = getStorageAdapter(resolvedPersist.storage)
+        // Disposal race: a fast mount->unmount can dispose the store
+        // before the chunk lands. registerCleanup runs disposers once
+        // then drops the list, so a disposer registered late never fires.
+        // An eagerly-registered cleanup flips `persistDisposed`, which the
+        // resolver checks before wiring onto a dead store.
+        let persistDisposed = false
+        state.registerCleanup(() => {
+          persistDisposed = true
+        })
+        const ready: Promise<PersistenceModule | undefined> = (async () => {
+          try {
+            const { wirePersistence } = await import('../core/persistence/wire-persistence')
+            if (persistDisposed) return undefined
+            const persistenceModule = wirePersistence(state, resolvedPersist, adapterPromise)
+            // Drain BEFORE the synchronous teardown: the registry awaits
+            // `awaitPendingWrites` before calling `dispose`, so the last
+            // debounced keystroke gets to disk before the FormStore is
+            // evicted from the registry's `forms` map.
+            state.registerDrain(() => persistenceModule.awaitPendingWrites())
+            state.registerCleanup(() => persistenceModule.dispose())
+            return persistenceModule
+          } catch {
+            // The chunk failed to load (offline, chunk eviction).
+            // Persistence stays silently unavailable rather than throwing
+            // into the consumer's form lifecycle.
+            return undefined
+          }
+        })()
+        // Handle set SYNCHRONOUSLY so the render-path reads that can't
+        // wait for the chunk still get the right answer: `config` powers
+        // register-api's "is persist configured?" gate and the
+        // cross-instance divergence warn; `ready` is the promise the
+        // imperative `form.persist` / `clearPersistedDraft` APIs await. A
+        // second useForm({ key }) on the same store shares this handle.
+        const persistenceHandle: PersistenceHandle = { config: resolvedPersist, ready }
+        state.modules.set(PERSISTENCE_MODULE_KEY, persistenceHandle)
       }
     } else {
       // Either the dev didn't configure `persist:` OR we just disabled
@@ -900,7 +937,7 @@ function warnOnPersistDivergence<F extends GenericForm>(
   incomingPersist: PersistConfig | undefined
 ): void {
   if (incomingPersist === undefined) return
-  const wired = existing.modules.get(PERSISTENCE_MODULE_KEY) as PersistenceModule | undefined
+  const wired = existing.modules.get(PERSISTENCE_MODULE_KEY) as PersistenceHandle | undefined
   const incomingNormalized = normalizePersistConfig(incomingPersist)
   if (wired === undefined) {
     console.warn(
@@ -908,9 +945,9 @@ function warnOnPersistDivergence<F extends GenericForm>(
     )
     return
   }
-  if (persistConfigsEquivalent(wired.wiredConfig, incomingNormalized)) return
+  if (persistConfigsEquivalent(wired.config, incomingNormalized)) return
   console.warn(
-    `[attaform] useForm({ key: "${key}" }) passed a persist config that differs from the first useForm({ key }) call's; first wins, this one is ignored.\n  wired:    ${describePersist(wired.wiredConfig)}\n  incoming: ${describePersist(incomingNormalized)}`
+    `[attaform] useForm({ key: "${key}" }) passed a persist config that differs from the first useForm({ key }) call's; first wins, this one is ignored.\n  wired:    ${describePersist(wired.config)}\n  incoming: ${describePersist(incomingNormalized)}`
   )
 }
 

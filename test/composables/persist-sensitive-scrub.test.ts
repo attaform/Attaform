@@ -5,11 +5,11 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
-import { stripUnacknowledgedSensitiveLeaves } from '../../src/runtime/core/persistence'
+import { stripUnacknowledgedSensitiveLeaves } from '../../src/runtime/core/persistence/payload'
 import { isSensitivePath } from '../../src/runtime/core/persistence/sensitive-names'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitUntil } from '../utils/form-harness'
+import { waitForPersistence, waitUntil } from '../utils/form-harness'
 
 /**
  * SEC-1: a CONTAINER persist opt-in (`register('payment', { persist:
@@ -100,6 +100,7 @@ describe('SEC-1 — persisted payload sheds unacknowledged nested secrets', () =
 
     // Drive a persist write from the opted-in last4 binding.
     if (last4El === undefined) throw new Error('last4 input not mounted')
+    await waitForPersistence(app)
     last4El.value = '1111'
     last4El.dispatchEvent(new Event('input', { bubbles: true }))
 

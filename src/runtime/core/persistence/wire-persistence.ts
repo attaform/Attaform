@@ -1,5 +1,5 @@
 import { toRaw } from 'vue'
-import type { PersistConfigOptions, ValidationError } from '../../types/types-api'
+import type { FormStorage, PersistConfigOptions, ValidationError } from '../../types/types-api'
 import type { GenericForm } from '../../types/types-core'
 import type { FormStore } from '../create-form-store'
 import { DEFAULT_PERSISTENCE_DEBOUNCE_MS, normalizeNumericOption } from '../defaults'
@@ -9,15 +9,16 @@ import { canonicalizePath, type Path, type PathKey } from '../paths'
 import { deleteAtPath, getAtPath, isPlainRecord, setAtPath } from '../path-walker'
 import {
   buildPersistedPayload,
-  cleanupOrphanKeys,
   createDebouncedWriter,
   filterErrorsByPaths,
-  getStorageAdapter,
-  mergeSparseHydration,
   pluckPaths,
   readPersistedPayload,
-  resolveStorageKeyBase,
   stripUnacknowledgedSensitiveLeaves,
+} from './payload'
+import {
+  cleanupOrphanKeys,
+  mergeSparseHydration,
+  resolveStorageKeyBase,
   type PersistenceModule,
 } from '../persistence'
 
@@ -40,7 +41,8 @@ import {
  */
 export function wirePersistence<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
-  config: PersistConfigOptions
+  config: PersistConfigOptions,
+  adapterPromise: Promise<FormStorage>
 ): PersistenceModule {
   // Fingerprint the schema once and bake it into the storage key. Any
   // structural schema change (added/removed/renamed field, type swap)
@@ -90,10 +92,13 @@ export function wirePersistence<F extends GenericForm>(
   const clearOnSubmitSuccess = config.clearOnSubmitSuccess ?? true
 
   // Single shared adapter promise — both the hydration path and the
-  // write/clear paths await it. Avoids a race where an early write
-  // (fast debounceMs) would see `adapter === null` and skip silently
-  // because the dynamic-import hadn't resolved yet.
-  const adapterPromise = getStorageAdapter(config.storage)
+  // write/clear paths await it. Injected by the caller, which kicks off
+  // the adapter's dynamic import in parallel with the dynamic import of
+  // this module, so the persisted-draft read isn't serialised behind
+  // the chunk load (the flash-of-defaults window stays the same as when
+  // persistence shipped eagerly). Sharing it also avoids a race where an
+  // early write (fast debounceMs) would see `adapter === null` and skip
+  // silently because the dynamic-import hadn't resolved yet.
   // Routed through `isDisposed()` so each read is a function call,
   // not a direct variable / property access. TS's control-flow
   // analysis would narrow either `let disposed = false` or
@@ -500,7 +505,6 @@ export function wirePersistence<F extends GenericForm>(
   }
 
   return {
-    wiredConfig: config,
     writePathImmediately,
     clearPersistedDraft,
     awaitPendingWrites,

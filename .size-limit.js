@@ -420,7 +420,18 @@ export default [
     // (variant-memory, array-bookkeeping, DU-stubs, ARIA, file,
     // lifecycle, wirePersistence) are net-neutral. Measured at
     // 55.14 KB.
-    limit: '56 KB',
+    //
+    // Raised 56 -> 57 KB on the bundle-slim D2 branch: persistence's
+    // wiring + payload machinery (the onFormChange writer, envelope
+    // read/build, debounce, pluck / strip / filter) moved onto a
+    // dynamically-imported chunk so the always-on useForm path stops
+    // shipping it. size-limit builds with NO code-splitting, so it folds
+    // the dynamic import back inline and adds the chunk-interop glue plus
+    // the dedup it can no longer share, ticking the INLINED total up even
+    // though the EAGER set drops 45.61 -> 44.60 KB gz. The real D-metric
+    // is scripts/check-eager-size.mjs (splitting:true); this cap tracks
+    // only the inlined whole. Measured at 56.03 KB.
+    limit: '57 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

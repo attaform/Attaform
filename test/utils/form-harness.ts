@@ -9,6 +9,7 @@
  */
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { PERSISTENCE_MODULE_KEY } from '../../src/runtime/core/persistence'
 
 /**
  * Sleep for `ms` real-time milliseconds. Thin wrapper over
@@ -71,6 +72,40 @@ export async function waitUntil<T>(
 export async function awaitSettle(): Promise<void> {
   await nextTick()
   await nextTick()
+}
+
+/**
+ * Wait until every persist-configured form mounted on `app` has wired
+ * its lazily-imported persistence chunk.
+ *
+ * Persistence is dynamically imported off the always-on `useForm` path,
+ * so the `onFormChange` subscription that drives draft writes attaches a
+ * few microtasks after mount — once the chunk resolves. A test that
+ * dispatches an input event before then is modelling a keystroke faster
+ * than a real user can physically produce (the chunk loads long before
+ * a human sees the form and presses a key), so it must establish first.
+ *
+ * Keyless on purpose: it awaits the `ready` promise of every form's
+ * persistence handle in the app's registry, so single-form and
+ * multi-form tests share one call. A form mounted without `persist:`
+ * sets no handle and is simply skipped.
+ */
+export async function waitForPersistence(app: App): Promise<void> {
+  const reg = (
+    app as unknown as {
+      _attaform?: { forms: Map<string, { modules: Map<string, unknown> }> }
+    }
+  )._attaform
+  if (reg === undefined) return
+  await waitUntil(() => (reg.forms.size > 0 ? true : null))
+  const readies: Promise<unknown>[] = []
+  for (const state of reg.forms.values()) {
+    const handle = state.modules.get(PERSISTENCE_MODULE_KEY) as
+      | { ready: Promise<unknown> }
+      | undefined
+    if (handle !== undefined) readies.push(handle.ready)
+  }
+  await Promise.all(readies)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

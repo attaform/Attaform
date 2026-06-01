@@ -26,7 +26,7 @@ import {
   buildPersistedPayload,
   PERSISTED_ENVELOPE_VERSION,
   readPersistedPayload,
-} from '../../src/runtime/core/persistence'
+} from '../../src/runtime/core/persistence/payload'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import type { PathKey } from '../../src/runtime/core/paths'
 

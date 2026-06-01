@@ -801,6 +801,23 @@ const entries: SmokeEntry[] = [
     },
   },
   {
+    // Three side-by-side forms (change / blur / submit). Type a too-short
+    // value into the FIRST column (validateOn: 'change'): it validates on
+    // the keystroke, so its raw readout surfaces the message with no blur.
+    slug: 'validate-on-modes',
+    gesture: async (root) => {
+      const changeInput = root.querySelector<HTMLInputElement>('input')
+      if (!changeInput) throw new Error('validate-on-modes: change-mode input not found')
+      await dispatchInput(changeInput, 'a')
+      await waitUntil(() =>
+        root.textContent?.includes('At least 3 characters') === true ? true : null
+      )
+    },
+    assert: async (root) => {
+      expect(root.textContent ?? '').toContain('At least 3 characters')
+    },
+  },
+  {
     // No gesture — the blank-field-state demo shows blank
     // marking across four field shapes. Smoke verifies the table
     // mounts with all four rows.

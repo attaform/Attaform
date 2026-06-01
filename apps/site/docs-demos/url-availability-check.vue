@@ -67,7 +67,6 @@
   const form = useForm({
     schema,
     key: 'docs-demo-url-availability-check',
-    validateOn: 'blur',
   })
 
   const submittedShape = ref<unknown>(null)

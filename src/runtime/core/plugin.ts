@@ -11,10 +11,11 @@ import type { AttaformDefaults } from '../types/types-api'
 export type AttaformPluginOptions = SSRDetectOptions & {
   /**
    * Whether to install the Vue DevTools integration. Default `true`.
-   * The DevTools peer dependency is loaded lazily — in production
-   * builds where it's absent, the import fails silently and no
-   * extra bundle is shipped. Pass `false` to skip even attempting
-   * the import.
+   * The integration is dev-only: the `import('./devtools')` sits behind
+   * the `__DEV__` flag, so a consumer's production build folds it out
+   * entirely (no devtools chunk shipped, no fetch attempted). In
+   * development the DevTools peer is loaded lazily and a missing peer
+   * fails silently. Pass `false` to skip the integration even in dev.
    */
   devtools?: boolean
   /**
@@ -75,7 +76,7 @@ function installAttaformOnApp(
   attachRegistryToApp(app, registry)
   app.directive('register', vRegister)
 
-  if (options.devtools !== false && !registry.ssr) {
+  if (__DEV__ && options.devtools !== false && !registry.ssr) {
     void (async () => {
       try {
         const { setupAttaformDevtools } = await import('./devtools')

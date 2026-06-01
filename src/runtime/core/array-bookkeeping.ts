@@ -34,6 +34,11 @@ export type FieldValidationEntry = {
   controller: AbortController
   timer: ReturnType<typeof setTimeout> | null
   settled: boolean
+  // Set true when an external caller (a path-scoped reset) has already released
+  // this run's counters synchronously. The run's own `.finally` then skips its
+  // decrements, so it can't double-count against a run rescheduled at the same
+  // key in the meantime.
+  released: boolean
 }
 
 /**

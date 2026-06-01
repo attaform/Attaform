@@ -2354,7 +2354,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       prev.controller.abort()
     }
     const controller = new AbortController()
-    const fresh: FieldValidationEntry = { controller, timer: null, settled: false }
+    const fresh: FieldValidationEntry = { controller, timer: null, settled: false, released: false }
     fieldValidationState.set(key, fresh)
     // Capture a fresh epoch at schedule time. Closed over by `run`
     // below and re-checked at the commit site so a later-scheduled
@@ -2474,8 +2474,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           // branch for adapter-level throws (see process-form.ts).
         })
         .finally(() => {
-          activeValidations.value = Math.max(0, activeValidations.value - 1)
-          decFieldValidation(key)
+          // Skip the decrements if an external release (a path-scoped reset)
+          // already did them — otherwise this late `.finally` would
+          // double-count against a run rescheduled at the same key after the
+          // release. Normal runs leave `released` false and decrement here.
+          if (!fresh.released) {
+            activeValidations.value = Math.max(0, activeValidations.value - 1)
+            decFieldValidation(key)
+          }
           fresh.settled = true
         })
     }
@@ -2515,6 +2521,31 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       entry.controller.abort()
     }
     fieldValidationState.clear()
+  }
+
+  // Path-scoped counterpart to `cancelFieldValidation`: abort and release only
+  // the in-flight runs whose path sits at or under `prefix`, leaving sibling
+  // fields' validations untouched. Used by `resetField` so resetting one field
+  // tears down its own validation. Releases the count + streak anchor in
+  // lockstep through `decFieldValidation` (preserving the bracket invariant)
+  // and marks each entry `released` so the run's late `.finally` can't
+  // double-decrement a run rescheduled at the same key (the change-mode restore
+  // write that follows `resetField`'s call schedules exactly such a run).
+  function cancelFieldValidationUnder(prefix: Path): void {
+    for (const [key, entry] of [...fieldValidationState]) {
+      const segs = segmentsForPathKey(key)
+      if (segs === null) continue
+      if (!isPathPrefix(prefix, segs)) continue
+      if (entry.timer !== null) {
+        clearTimeout(entry.timer)
+      } else if (!entry.settled && !entry.released) {
+        activeValidations.value = Math.max(0, activeValidations.value - 1)
+        decFieldValidation(key)
+        entry.released = true
+      }
+      entry.controller.abort()
+      fieldValidationState.delete(key)
+    }
   }
 
   function onFormChange(listener: (next: F, meta?: WriteMeta) => void): () => void {
@@ -3352,6 +3383,22 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // is intentionally preserved — the snapshot self-corrects on the
     // next switch-out.
     variantMemory.clearUnderPath(targetSegments)
+
+    // Tear down any in-flight validation for this subtree BEFORE the restore.
+    // Without this the run validating the pre-reset value outlives the reset:
+    // `validating` stays true on the field and, when it settles, it commits its
+    // verdict back over the errors cleared below. In change mode the restore
+    // write reschedules a fresh run for the restored value (the cancel's
+    // `released` flag keeps the orphan's late `.finally` off the new run's
+    // counters); in blur / submit mode no run follows and the field rests
+    // clean. Drop the subtree's blur-dedup snapshots too, so a post-reset blur
+    // re-validates instead of skipping against a pre-reset anchor.
+    cancelFieldValidationUnder(targetSegments)
+    for (const [snapKey] of [...pathSnapshots]) {
+      const segs = segmentsForPathKey(snapKey)
+      if (segs === null) continue
+      if (isPathPrefix(targetSegments, segs)) pathSnapshots.delete(snapKey)
+    }
 
     // Storage restore: leaf > container > nothing.
     //

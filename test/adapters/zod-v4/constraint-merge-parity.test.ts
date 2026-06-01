@@ -49,4 +49,25 @@ describe('zod v4: constraint-merge parity', () => {
     })
     expect(result.data).toEqual({ profile: { name: 'Ozzy', bio: 'Hello' } })
   })
+
+  // v4 already routes the constraint merge through core `mergeDeep`; this
+  // is the parity anchor for the v3 swap. A consumer-provided `__proto__`
+  // key in constraints stays inert.
+  it('a __proto__ key in constraints stays inert (no prototype reassignment)', () => {
+    const schema = z.object({ name: z.string().default('base') })
+    const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+    const constraints: Record<string, unknown> = JSON.parse(
+      '{"__proto__":{"polluted":true},"name":"override"}'
+    )
+    const result = adapter.getDefaultValues({
+      useDefaultSchemaValues: true,
+      strict: true,
+      constraints,
+    })
+    expect((result.data as Record<string, unknown>)['name']).toBe('override')
+    expect(Object.getPrototypeOf(result.data)).toBe(Object.prototype)
+    expect((result.data as Record<string, unknown>)['polluted']).toBeUndefined()
+    const freshProbe: Record<string, unknown> = {}
+    expect(freshProbe['polluted']).toBeUndefined()
+  })
 })

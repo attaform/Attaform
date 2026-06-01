@@ -15,7 +15,8 @@ import {
   createAbstractSchema,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
-import { getAtPath, isPlainRecord, setAtPath } from '../../core/path-walker'
+import { mergeDeep } from '../../core/merge-deep'
+import { getAtPath, setAtPath } from '../../core/path-walker'
 import { walkPathSegments } from '../../core/walk-path-segments'
 import {
   deriveDefaultWalk,
@@ -66,42 +67,6 @@ function constraintsAreSlimValid(slimSchema: z.ZodSchema, constraints: unknown):
   } catch {
     return false
   }
-}
-
-/**
- * Deep-merge two values for default-derivation. Mirrors v4's
- * `mergeDeep` (`default-values.ts:308`) exactly so the v3 + v4
- * constraint-merge semantic matches:
- *
- *   - `undefined` override → keep base
- *   - non-plain-record override (primitive, array, `Date`, `Map`,
- *     class instance, `null`) → REPLACE base wholesale (NOT lodash's
- *     element-wise array merge; explicit `null` clears a nullable
- *     default rather than being silently dropped)
- *   - plain-record override + plain-record base → recurse per-key
- *   - plain-record override + non-plain-record base → replace
- *     wholesale
- *
- * Local duplication of v4's helper; Phase 12's `createAbstractSchema`
- * factory will dedup against `ADAPT-D5` (validate-then-fix
- * `getDefaultValues` loop). Pre-1.0 with no users so the temporary
- * duplication carries no compat tail.
- */
-function mergeDeepV3(base: unknown, override: unknown): unknown {
-  if (override === undefined) return base
-  if (!isPlainRecord(override)) return override
-  if (!isPlainRecord(base)) return override
-  const result: Record<string, unknown> = { ...base }
-  for (const key of Object.keys(override)) {
-    const oVal = override[key]
-    const bVal = base[key]
-    if (isPlainRecord(oVal) && isPlainRecord(bVal)) {
-      result[key] = mergeDeepV3(bVal, oVal)
-    } else {
-      result[key] = oVal
-    }
-  }
-  return result
 }
 
 import { __DEV__ } from '../../core/dev'
@@ -1239,9 +1204,9 @@ function resolveFieldMetaAtPathV3(
  *     default; refinement-level issues pass through unchanged so the
  *     downstream strict validation pass surfaces them.
  *
- * Both arms compose with `mergeDeepV3` (NOT lodash merge) so arrays
- * replace wholesale and explicit `null` / `undefined` overrides
- * survive — matching v4's `mergeDeep` semantic.
+ * Both arms compose with the shared core `mergeDeep` (NOT lodash merge)
+ * so arrays replace wholesale and explicit `null` / `undefined`
+ * overrides survive. v3 and v4 now call the same helper.
  */
 function runStrictGetDefaultsV3<Form>(
   rootSchema: z.ZodSchema,
@@ -1270,10 +1235,12 @@ function runStrictGetDefaultsV3<Form>(
 
   let rawDefaultValues = defaultValuesWithoutConstraints
   if (!isPrimitive(rawDefaultValues)) {
-    // `mergeDeepV3` (NOT lodash `merge`) so arrays replace wholesale
-    // and explicit `null`/`undefined` overrides survive, matching v4's
-    // `mergeDeep` semantic.
-    rawDefaultValues = mergeDeepV3(defaultValuesWithoutConstraints, config.constraints)
+    // Shared core `mergeDeep` (NOT lodash `merge`) so arrays replace
+    // wholesale and explicit `null`/`undefined` overrides survive; v3
+    // and v4 call the same helper. `safeAssign` inside lands a
+    // `__proto__` constraint key as own data rather than reassigning the
+    // result's prototype.
+    rawDefaultValues = mergeDeep(defaultValuesWithoutConstraints, config.constraints)
   } else if (constraintsAreSlimValid(slimSchema, config.constraints)) {
     rawDefaultValues = config.constraints
   }
@@ -1522,10 +1489,10 @@ function runStrictGetDefaultsV3<Form>(
       }
     }
   }
-  // `mergeDeepV3` so the fix-up overrides the raw defaults with
-  // copy-on-write semantics matching v4 (array replace, null/undefined
-  // clears honored).
-  fixedData = mergeDeepV3(rawDefaultValues, fixedData) as Record<string, unknown>
+  // Shared core `mergeDeep` so the fix-up overrides the raw defaults
+  // with copy-on-write semantics matching v4 (array replace,
+  // null/undefined clears honored).
+  fixedData = mergeDeep(rawDefaultValues, fixedData) as Record<string, unknown>
 
   // Best-effort re-parse: if the fix-up loop couldn't fully reconcile
   // the data (nested unions whose branches don't match the defaulted

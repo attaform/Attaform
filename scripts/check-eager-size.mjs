@@ -165,10 +165,15 @@ export async function measureEager(define = PROD_DEFINE) {
 // modest because the async deferral machinery offsets most of the
 // fingerprint bytes, but the unified `attaform/zod` entry (both adapters'
 // walkers leave eager against the same one-time machinery) drops ~1.0 kB.
-// ~0.5 kB headroom absorbs minifier-version drift. The lazy-loading work
-// tightens this as optional features move to the async path; never loosen
-// it without a recorded reason in the commit.
-const BUDGET_GZ = 45_950
+// Block F then moves the dev-only shared-key collision warnings into their
+// own dynamic-imported module, so a prod build orphans that chunk instead of
+// shipping it as dead code (esbuild keeps a top-level function called only
+// from a dead `__DEV__` branch — tree-shaking runs before the define-fold),
+// landing the eager set at 43.91 kB gz. ~0.5 kB headroom absorbs minifier-
+// version drift. The lazy-loading work tightens this as optional features
+// move to the async path; never loosen it without a recorded reason in the
+// commit.
+const BUDGET_GZ = 45_470
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

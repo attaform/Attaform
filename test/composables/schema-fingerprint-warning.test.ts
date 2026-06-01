@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
 import { z } from 'zod'
 import { useForm as useZodForm } from '../../src/zod'
@@ -35,16 +35,25 @@ const FINGERPRINT_WARN_MARKER = 'use different schemas'
 type Form = { name: string }
 const defaults: Form = { name: '' }
 
-// The shared-key mismatch warning fires from an async path: `fingerprint()`
-// resolves a Promise so the adapter can lazy-load its walker, and the check
-// is dispatched fire-and-forget. Drain microtasks + the timer queue before
-// asserting on the spy so the warning has had its chance to fire (or
-// provably not, for the silent cases).
+// The shared-key mismatch warning fires from an async path: the collision
+// diagnostics live in a dev-only module loaded via dynamic import (so a
+// prod build drops them), `fingerprint()` resolves a Promise, and the
+// check is dispatched fire-and-forget. `beforeAll` warms that module so its
+// import resolves from cache on a microtask; draining the timer queue here
+// then lets the whole chain settle before asserting (or provably not, for
+// the silent cases).
 const flushAsync = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('schema-fingerprint shared-key warning', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
   let errorSpy: ReturnType<typeof vi.spyOn>
+  beforeAll(async () => {
+    // Warm the dev-only collision-warning module so each test's dynamic
+    // import is a cached microtask rather than a first-load transform that
+    // would land after `flushAsync`'s timer. A bundled app ships this chunk
+    // ready to load; this mirrors that here.
+    await import('../../src/runtime/core/dev-key-collision-warnings')
+  })
   beforeEach(() => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)

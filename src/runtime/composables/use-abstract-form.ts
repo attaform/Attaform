@@ -43,8 +43,6 @@ import type {
   AbstractSchema,
   AttaformDefaults,
   FormKey,
-  PersistConfig,
-  PersistConfigOptions,
   UseFormReturnType,
   UseFormConfiguration,
 } from '../types/types-api'
@@ -215,31 +213,18 @@ export function useAbstractForm<
 
   const existing = registry.forms.get(key) as FormStore<Form, GetValueFormType> | undefined
   if (__DEV__ && existing !== undefined) {
-    // Shared-key semantics are a feature when consumers OPT in to them
-    // (two `useForm({ key: 'x' })` calls that genuinely want the same
-    // store). They're a silent-collision footgun when two unrelated
-    // parts of an app happen to agree on a key. Fingerprinting the
-    // schema turns collision into a diagnosable warning: if the
-    // second call's schema has a different structural fingerprint
-    // than the first's, the forms almost certainly shouldn't be
-    // sharing. The second call's schema is then silently dropped in
-    // favour of the first's — matching what already happens (only
-    // the first caller's config wires the FormStore).
-    void warnOnSchemaFingerprintMismatch(key, existing.schema, resolvedSchema)
-    // Persist is a single-IO-channel concern (one storage key, one
-    // debounce timer, one subscription). The first useForm call wires
-    // it; subsequent calls' `persist:` configurations are silently
-    // dropped. When the second caller passes a DIFFERENT persist
-    // config, that drop is a footgun: modal-team dev configures
-    // `'session'`, finds nothing in sessionStorage, debugs for an hour
-    // — the main-form team wired `'local'` first. Surface the divergence
-    // as a dev-warn so the surprise is explicit. `validateOn` /
-    // `debounceMs` / `coerce` / `rememberVariants` / `getDisplayState`
-    // are now per-instance, so they don't need this guard;
-    // `defaultValues` is intentionally first-wins (the live store
-    // state is what the modal should see); `strict` is construction-
-    // only and the seed has already fired.
-    warnOnPersistDivergence(key, existing, configuration.persist)
+    // Two `useForm({ key })` calls resolve to one FormStore by design;
+    // the second call's schema and `persist:` config are then dropped in
+    // favour of the first's wiring. That's a silent footgun when the two
+    // call sites are unrelated and only happen to agree on a key, so a
+    // dev build surfaces the divergence. The diagnostics live in a
+    // dev-only module imported behind this `__DEV__` gate: a production
+    // build folds the gate away and drops the whole module, so none of
+    // the warning code ships (see `dev-key-collision-warnings.ts`).
+    void import('../core/dev-key-collision-warnings').then((m) => {
+      void m.warnOnSchemaFingerprintMismatch(key, existing.schema, resolvedSchema)
+      m.warnOnPersistDivergence(key, existing, configuration.persist)
+    })
   }
   // Capture whether a hydration payload is waiting for this key BEFORE
   // `buildFreshState` consumes it. We use this flag to skip re-firing
@@ -921,85 +906,6 @@ async function resolvePersistFingerprintToken<F extends GenericForm>(
     }
     return 'unfingerprinted'
   }
-}
-
-/**
- * Dev-only: warn when a second `useForm` lands on the same key with
- * a structurally-different schema. Two schemas resolve their own
- * fingerprints; we compare the strings and flag mismatches. An adapter
- * `fingerprint()` that rejects is caught (never crashes the form) and
- * surfaced as a `console.error` in dev: the mismatch check is skipped,
- * matching the "allow the inconsistency" failure mode. See
- * `AbstractSchema.fingerprint()` in types-api.ts for the contract.
- */
-async function warnOnSchemaFingerprintMismatch(
-  key: FormKey,
-  existing: AbstractSchema<GenericForm, GenericForm>,
-  incoming: AbstractSchema<GenericForm, GenericForm>
-): Promise<void> {
-  let existingFp: string
-  let incomingFp: string
-  try {
-    existingFp = await existing.fingerprint()
-    incomingFp = await incoming.fingerprint()
-  } catch (error) {
-    console.error(
-      `[attaform] fingerprint() rejected for key "${key}"; skipping mismatch check.`,
-      error
-    )
-    return
-  }
-  if (existingFp === incomingFp) return
-  console.warn(
-    `[attaform] useForm() calls with key "${key}" use different schemas; first wins, second is ignored. Use identical schemas or unique keys.\n  existing: ${existingFp}\n  incoming: ${incomingFp}`
-  )
-}
-
-/**
- * Dev-only: warn when a second `useForm` lands on the same key with a
- * `persist:` config that diverges from what the first call wired. The
- * persist channel is single-IO (one storage key, one debounce timer);
- * silent drop is a high-stakes footgun ("I configured persist but
- * sessionStorage is empty"). Skipped when the second call passes no
- * persist config (intentional inheritance), and when the comparison
- * is deemed equivalent (same `storage` reference / kind, same `key`,
- * same `debounceMs`). Custom adapter functions compare by reference
- * — distinct closures look distinct, which is conservative but
- * correct: distinct closures may persist to different backends.
- */
-function warnOnPersistDivergence<F extends GenericForm>(
-  key: FormKey,
-  existing: FormStore<F, GenericForm>,
-  incomingPersist: PersistConfig | undefined
-): void {
-  if (incomingPersist === undefined) return
-  const wired = existing.modules.get(PERSISTENCE_MODULE_KEY) as PersistenceHandle | undefined
-  const incomingNormalized = normalizePersistConfig(incomingPersist)
-  if (wired === undefined) {
-    console.warn(
-      `[attaform] useForm({ key: "${key}" }) passed a persist config but the first useForm({ key }) call didn't wire persistence; the new config is silently dropped. Pass persist on the first call, or remove persist here to make the inheritance explicit.`
-    )
-    return
-  }
-  if (persistConfigsEquivalent(wired.config, incomingNormalized)) return
-  console.warn(
-    `[attaform] useForm({ key: "${key}" }) passed a persist config that differs from the first useForm({ key }) call's; first wins, this one is ignored.\n  wired:    ${describePersist(wired.config)}\n  incoming: ${describePersist(incomingNormalized)}`
-  )
-}
-
-function persistConfigsEquivalent(a: PersistConfigOptions, b: PersistConfigOptions): boolean {
-  if (a.storage !== b.storage) return false
-  if ((a.key ?? undefined) !== (b.key ?? undefined)) return false
-  if ((a.debounceMs ?? undefined) !== (b.debounceMs ?? undefined)) return false
-  return true
-}
-
-function describePersist(config: PersistConfigOptions): string {
-  const storage = typeof config.storage === 'string' ? config.storage : 'custom-adapter'
-  const parts = [`storage=${storage}`]
-  if (config.key !== undefined) parts.push(`key=${config.key}`)
-  if (config.debounceMs !== undefined) parts.push(`debounceMs=${config.debounceMs}`)
-  return `{ ${parts.join(', ')} }`
 }
 
 /**

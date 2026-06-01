@@ -124,6 +124,29 @@ function isHydratedFieldRecord(value: unknown): value is FieldRecord {
   )
 }
 
+/**
+ * Return a copy of `record` with its interaction-history flags cleared
+ * (`touched` / `interacted` / `blurredAfterInteraction` to false) and
+ * `updatedAt` stamped to `now`. DOM-truth (`focused` / `blurred`) and
+ * `connected` are preserved: a reset doesn't synthetically blur the
+ * focused input or disconnect the field, so the library shouldn't claim
+ * it did. Shared by `reset()` (one `now` across the whole form) and
+ * `resetField()`'s per-path clear (a fresh `now` per call), so the
+ * caller supplies the timestamp rather than reading the clock here.
+ */
+function withClearedHistoryFlags(record: FieldRecord, now: string): FieldRecord {
+  return {
+    path: record.path,
+    updatedAt: now,
+    connected: record.connected,
+    focused: record.focused,
+    blurred: record.blurred,
+    touched: false,
+    interacted: false,
+    blurredAfterInteraction: false,
+  }
+}
+
 function isHydratedValidationErrorArray(value: unknown): value is ValidationError[] {
   if (!Array.isArray(value)) return false
   for (const entry of value) {
@@ -3171,23 +3194,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (needsAsync) {
       queueMicrotask(() => scheduleFieldValidation([], true /* immediate */))
     }
-    // Clear interaction history (`touched` / `interacted`) per field.
-    // `focused` / `blurred` reflect DOM-truth and stay as-is — `reset()`
-    // doesn't synthetically blur the currently-focused input, so the
-    // library shouldn't claim it did. `connected` is a separate concern
-    // from form state and is preserved. `updatedAt` stamps to now.
+    // Clear every field's interaction history, stamping a single `now`
+    // across the whole form (see `withClearedHistoryFlags` for which
+    // flags clear and which DOM-truth flags are preserved).
     const now = new Date().toISOString()
     for (const [pathKey, record] of fields) {
-      fields.set(pathKey, {
-        path: record.path,
-        updatedAt: now,
-        connected: record.connected,
-        focused: record.focused,
-        blurred: record.blurred,
-        touched: false,
-        interacted: false,
-        blurredAfterInteraction: false,
-      })
+      fields.set(pathKey, withClearedHistoryFlags(record, now))
     }
     // Clear submission lifecycle so a reset surface reports "nothing has
     // been submitted yet" rather than holding on to the prior run's
@@ -3338,20 +3350,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   function clearFieldRecordFlags(pathKey: PathKey): void {
     const record = fields.get(pathKey)
     if (record === undefined) return
-    // Mirrors `resetForm`'s field-loop: clear interaction history
-    // (`touched` / `interacted`), preserve DOM-truth (`focused` /
-    // `blurred`) and `connected`. The function name is historical — it
-    // now clears only the history flags, not all flags.
-    fields.set(pathKey, {
-      path: record.path,
-      updatedAt: new Date().toISOString(),
-      connected: record.connected,
-      focused: record.focused,
-      blurred: record.blurred,
-      touched: false,
-      interacted: false,
-      blurredAfterInteraction: false,
-    })
+    // The name is historical: this clears only the interaction-history
+    // flags, not every flag (same as `reset()`'s field loop), but with a
+    // fresh `now` per path rather than one stamp across the form.
+    fields.set(pathKey, withClearedHistoryFlags(record, new Date().toISOString()))
   }
 
   // --- Derived ---

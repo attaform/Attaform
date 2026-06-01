@@ -138,7 +138,15 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // going through the accessor would recurse through the root path's
   // own showErrors computation.
   const getFormMetaBase = (): FormMetaBase => {
-    const rootBase = buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY, formInstanceId)
+    // `validatingSince` is for the field machine, not the predicate's
+    // meta arg — discard it here and let the root field-state computed
+    // thread the root's own anchor when it resolves `form.meta.displayState`.
+    const { base: rootBase } = buildContainerFieldStateBase(
+      state,
+      ROOT_PATH,
+      ROOT_PATH_KEY,
+      formInstanceId
+    )
     return {
       ...rootBase,
       submitting: state.submitting.value,

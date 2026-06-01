@@ -59,6 +59,8 @@ export type {
   CoercionResult,
   CustomDirectiveRegisterAssignerFn,
   DefaultValuesResponse,
+  DisplayCtx,
+  DisplayMachine,
   DisplayState,
   ErrorsProxyShape,
   FieldMetaPayload,
@@ -160,10 +162,17 @@ export {
   SubmitErrorHandlerError,
 } from './runtime/core/errors'
 
-// Library-default heuristic for `getDisplayState`. Public so adopter
-// predicates can compose with it (a layered predicate that defers to
-// the library default for the unhandled cases).
-export { defaultDisplayState } from './runtime/core/display-state'
+// Library-default reducer for `getDisplayState`. Public so adopter
+// reducers can compose with it (a layered reducer that defers to the
+// library default for the unhandled cases). `makeDefaultDisplayState`
+// rebuilds it with custom anti-flash timing; `DEFAULT_TIMINGS` is the
+// shipped `{ showDelay, minVisible }`.
+export {
+  DEFAULT_TIMINGS,
+  defaultDisplayState,
+  makeDefaultDisplayState,
+} from './runtime/core/display-state'
+export type { DisplayTimings } from './runtime/core/display-state'
 
 // Library-default list of identifier name stems flagged as sensitive
 // (password, ssn, cvv, token, etc.). Compose with `sensitiveNames` at

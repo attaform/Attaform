@@ -52,6 +52,7 @@ export type ArrayBookkeepingDeps = {
   readonly blankPaths: Set<PathKey>
   readonly originalBlankPaths: Set<PathKey>
   readonly fieldValidationCounts: Map<PathKey, number>
+  readonly fieldValidatingSince: Map<PathKey, number>
   readonly fieldValidationState: Map<PathKey, FieldValidationEntry>
   readonly schemaErrors: Map<PathKey, ValidationError[]>
   readonly activeValidations: Ref<number>
@@ -131,6 +132,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     blankPaths,
     originalBlankPaths,
     fieldValidationCounts,
+    fieldValidatingSince,
     fieldValidationState,
     schemaErrors,
     activeValidations,
@@ -160,6 +162,10 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     // next validation pass; this migration just spares the wrong-row
     // visible flicker in between.
     migrateMapSubtree(fieldValidationCounts, arrayPath, remap, (count) => count)
+    // The validation-streak anchor travels with the count it parallels, so
+    // a moved element's show-delay clock keeps measuring from when ITS
+    // streak opened rather than inheriting the slot's.
+    migrateMapSubtree(fieldValidatingSince, arrayPath, remap, (since) => since)
     // Nested-array identity: relocate every tracked array sitting under
     // `arrayPath`'s element slots so a nested `v-for :key` stays stable
     // across an outer-array mutation (no token leak, no collision on the

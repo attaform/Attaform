@@ -10,6 +10,7 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
+import { createDisplayEngine, type DisplayEngine } from './display-engine'
 import { applyDuStubs } from './du-stubs'
 import { cloneVariantSnapshot, createVariantMemory } from './variant-memory'
 import { createArrayIdentity } from './array-identity'
@@ -291,6 +292,17 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly getDisplayState: GetDisplayState
 
+  /**
+   * Per-form display engine: owns the clock and the single timer the timed
+   * `getDisplayState` reducer policy needs, keeping the reducer itself a
+   * pure `(prev, ctx) => next` function. The field-state computeds route
+   * every `displayState` read through `displayEngine.resolve(...)`, which
+   * threads the path's previous machine, persists or evicts the result, and
+   * re-arms the nearest-deadline timer. Constructed once at form
+   * construction; torn down via `registerCleanup` on store eviction.
+   */
+  readonly displayEngine: DisplayEngine
+
   // --- submission lifecycle ---
   // Driven by buildProcessForm's handleSubmit wrapper. See use-abstract-form.ts
   // for the public readonly surface. Mutations happen in exactly one place
@@ -481,6 +493,21 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * computed only re-runs when the count for ITS key changes.
    */
   readonly fieldValidationCounts: Map<PathKey, number>
+  /**
+   * Per-path `Date.now()` stamp marking when the field's current
+   * validation streak opened (the `0 → 1` count edge), deleted on the
+   * `→ 0` edge. Parallels `fieldValidationCounts` and anchors on the same
+   * edges, so the stamp pins to the start of the continuous streak —
+   * overlapping sub-runs that briefly push the count past 1 do not reset
+   * it. The display reducer reads it as `ctx.validatingSince` to time the
+   * anti-flash spinner; the field-state container walk takes the
+   * descendant-min so a row spinner anchors at its earliest active leaf.
+   * Runtime-only, never hydrated, like the counts. Plain (non-reactive)
+   * Map: every write to it coincides with a `fieldValidationCounts` write,
+   * which already re-runs the field-state computed, so a second reactive
+   * source would only duplicate triggers.
+   */
+  readonly fieldValidatingSince: Map<PathKey, number>
 
   // --- form mutations ---
   /**
@@ -1154,6 +1181,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const cleanupHooks: (() => void)[] = []
   const modules = new Map<string, unknown>()
 
+  // Anti-flash display engine + its episode-timing companion. The engine
+  // owns the clock and the single timer the timed `getDisplayState` reducer
+  // needs; `fieldValidatingSince` records when each path's validation streak
+  // opened (set / cleared on the count edges in inc/decFieldValidation
+  // below). Disposed with the store so a held spinner can't outlive
+  // eviction.
+  const fieldValidatingSince = new Map<PathKey, number>()
+  const displayEngine = createDisplayEngine(ssr)
+  registerCleanup(() => displayEngine.dispose())
+
   // Schema is ALWAYS consulted: we need the schema-derived originals even
   // when hydrating, so pristine/dirty computation survives SSR round-trip.
   // The form's actual starting value, though, prefers hydration data.
@@ -1548,12 +1585,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // `FormStore.fieldValidationCounts` for semantics.
   const fieldValidationCounts: Map<PathKey, number> = reactive(new Map<PathKey, number>())
   function incFieldValidation(key: PathKey): void {
-    fieldValidationCounts.set(key, (fieldValidationCounts.get(key) ?? 0) + 1)
+    const prevCount = fieldValidationCounts.get(key) ?? 0
+    fieldValidationCounts.set(key, prevCount + 1)
+    // 0 → 1 edge: a validation streak just opened at this path. Stamp the
+    // start (the show-delay clock measures `now - validatingSince`).
+    // Guarded on the edge so overlapping sub-runs don't reset the anchor
+    // mid-streak. `ssr` never gets here in practice (no field validation is
+    // scheduled server-side); the `0` keeps the stamp clock-free if it does.
+    if (prevCount === 0) fieldValidatingSince.set(key, ssr ? 0 : Date.now())
   }
   function decFieldValidation(key: PathKey): void {
     const next = (fieldValidationCounts.get(key) ?? 0) - 1
-    if (next <= 0) fieldValidationCounts.delete(key)
-    else fieldValidationCounts.set(key, next)
+    if (next <= 0) {
+      fieldValidationCounts.delete(key)
+      // → 0 edge: the streak closed; drop the anchor so the next streak
+      // re-stamps fresh. Co-extensive with the count delete, so the abort /
+      // cancel / migrate paths that release a count clear this in lockstep.
+      fieldValidatingSince.delete(key)
+    } else {
+      fieldValidationCounts.set(key, next)
+    }
   }
 
   // Populate originals by diffing from empty-form to schema-initial. This is
@@ -1701,6 +1752,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     blankPaths,
     originalBlankPaths,
     fieldValidationCounts,
+    fieldValidatingSince,
     fieldValidationState,
     schemaErrors,
     activeValidations,
@@ -2494,6 +2546,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     drainHooks.length = 0
     modules.clear()
     cancelFieldValidation()
+    fieldValidatingSince.clear()
     formChangeListeners.clear()
     submitSuccessListeners.clear()
     resetListeners.clear()
@@ -3220,6 +3273,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // that reached the controller-aborted branch resolve to a no-op, so
     // the error store stays clean after the reset clears it above.
     cancelFieldValidation()
+    // Drop any held spinner state so an in-flight min-visible hold can't
+    // outlive the reset; clear the streak anchors to match (the cancel above
+    // already released the counts, this wipes the parallel map wholesale).
+    displayEngine.clear()
+    fieldValidatingSince.clear()
     // Reset the per-path blur-dedup snapshots and the form-level epoch
     // counters. After `cancelFieldValidation` no in-flight run can
     // commit, so clearing here can't be raced by a late commit
@@ -3470,6 +3528,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     pathHasAsyncValidation,
     pathHasAsyncValidationByKey,
     fieldValidationCounts,
+    fieldValidatingSince,
+    displayEngine,
 
     applyFormReplacement,
     setValueAtPath,

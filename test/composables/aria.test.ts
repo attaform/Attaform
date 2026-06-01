@@ -59,8 +59,7 @@ afterEach(() => {
 
 const forceState =
   (state: 'idle' | 'pending' | 'error' | 'success'): GetDisplayState =>
-  () =>
-    state
+  () => ({ display: state })
 
 describe('auto-aria attribute mapping', () => {
   let mounted: Mounted | undefined

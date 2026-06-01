@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { computed, createApp, defineComponent, h, nextTick, withDirectives, type App } from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
@@ -7,26 +7,27 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { vRegister } from '../../src/runtime/core/directive'
-import { defaultDisplayState } from '../../src'
+import { DEFAULT_TIMINGS, defaultDisplayState, makeDefaultDisplayState } from '../../src'
 import type {
+  DisplayCtx,
+  DisplayMachine,
   DisplayState,
-  FieldState,
-  FormMeta,
   GetDisplayState,
   ValidationError,
 } from '../../src'
 
 /**
- * `field.displayState` + the `getDisplayState` predicate.
+ * `field.displayState` + the `getDisplayState` reducer.
  *
  * `field.displayState` is the single derived verdict on `FieldState`
- * (`'idle' | 'pending' | 'error' | 'success'`); the four `show*`
- * booleans are pure projections of it (`showErrors === (displayState ===
- * 'error')`, and so on). The heuristic `getDisplayState(field, formMeta)`
- * resolves through three tiers:
+ * (`'idle' | 'pending' | 'error' | 'success'`); the four `show*` booleans
+ * are pure projections of it (`showErrors === (displayState === 'error')`,
+ * and so on). The reducer `getDisplayState(prev, ctx)` returns the next
+ * `DisplayMachine` and resolves through three tiers:
  *   1. Library default: one timing gate
  *      (`submissionAttempts > 0 || blurredAfterInteraction`), then
- *      precedence — `validating` → pending; own-path error → error;
+ *      precedence — a validation in flight surfaces a delayed, then held,
+ *      `'pending'` (the anti-flash spinner); own-path error → error;
  *      earned (`valid && !blank && dirty`) → success; else idle.
  *      Containers (intermediate AND root) only resolve to error on their
  *      own-path errors; leaves always satisfy the own-path filter when
@@ -34,11 +35,13 @@ import type {
  *   2. `createAttaform({ defaults: { getDisplayState } })`.
  *   3. `useForm({ getDisplayState })`, wins over both above.
  *
- * The predicate runs unconditionally (it must see the no-error states to
- * resolve success / idle / pending). Its args (`field`, `formMeta`) are
+ * The reducer runs unconditionally (it must see the no-error states to
+ * resolve success / idle / pending). Its `ctx.field` / `ctx.formMeta` are
  * `Omit`'d of the derived `displayState` / `show*` / `firstError` keys at
- * BOTH the type and runtime level, so a self-referential predicate is
- * impossible regardless of language (TS or JS).
+ * BOTH the type and runtime level, so a self-referential reducer is
+ * impossible regardless of language (TS or JS). The pure timing matrix is
+ * locked in `display-reducer.test.ts`; this file covers the verdicts and
+ * the override tiers through a real mounted form.
  */
 
 const apps: App[] = []
@@ -297,14 +300,15 @@ function describeOverrideTier(
       ])
     }
 
-    // A predicate that surfaces errors purely on touch, ignoring the
+    // A reducer that surfaces errors purely on touch, ignoring the
     // submit arm of the default gate.
-    const touchOnly: GetDisplayState = (field) =>
-      field.errors.length > 0 && field.touched === true ? 'error' : 'idle'
-    // "Always show when errors exist" — the eager predicate.
-    const eager: GetDisplayState = (field) => (field.errors.length > 0 ? 'error' : 'idle')
+    const touchOnly: GetDisplayState = (_prev, { field }) =>
+      field.errors.length > 0 && field.touched === true ? { display: 'error' } : { display: 'idle' }
+    // "Always show when errors exist" — the eager reducer.
+    const eager: GetDisplayState = (_prev, { field }) =>
+      field.errors.length > 0 ? { display: 'error' } : { display: 'idle' }
     // "Never surface anything."
-    const silent: GetDisplayState = () => 'idle'
+    const silent: GetDisplayState = () => ({ display: 'idle' })
 
     it('plugin-level override: custom predicate ignores submissionAttempts', async () => {
       const form = makeForm(touchOnly, undefined)
@@ -470,12 +474,12 @@ describe('getDisplayState — cross-cutting', () => {
           key: `omit-runtime-${Math.random()}`,
           strict: false,
           defaultValues: v4Defaults,
-          getDisplayState: (field, formMeta) => {
+          getDisplayState: (_prev, { field, formMeta }) => {
             for (const k of derivedKeys) {
               if (k in (field as object)) probe.fieldPresent.push(k)
               if (k in (formMeta as object)) probe.formMetaPresent.push(k)
             }
-            return 'error'
+            return { display: 'error' }
           },
         })
       )
@@ -489,14 +493,14 @@ describe('getDisplayState — cross-cutting', () => {
     expect(probe.formMetaPresent).toEqual([])
   })
 
-  it('defaultDisplayState is publicly exported and arity-2', () => {
+  it('defaultDisplayState is publicly exported as a (prev, ctx) reducer', () => {
     expect(typeof defaultDisplayState).toBe('function')
     expect(defaultDisplayState.length).toBe(2)
   })
 
-  it('defaultDisplayState composes inside a layered predicate', async () => {
-    const layered: GetDisplayState = (field, formMeta) =>
-      field.path[0] === 'urgent' ? 'error' : defaultDisplayState(field, formMeta)
+  it('defaultDisplayState composes inside a layered reducer', async () => {
+    const layered: GetDisplayState = (prev, ctx) =>
+      ctx.field.path[0] === 'urgent' ? { display: 'error' } : defaultDisplayState(prev, ctx)
 
     const form = asForm(
       mountWithApp(() =>
@@ -520,140 +524,11 @@ describe('getDisplayState — cross-cutting', () => {
     expect(form.fields('email').displayState).toBe('error')
   })
 
-  it('defaultDisplayState tracks the documented heuristic on synthetic inputs', () => {
-    const ownErrorField = {
-      errors: [{ path: ['x'], message: 'm', formKey: 'k', code: 'c' }],
-      touched: false,
-      interacted: false,
-      blurredAfterInteraction: false,
-      focused: false,
-      validating: false,
-      valid: false,
-      path: ['x'],
-    } as unknown as Omit<FieldState, 'displayState' | 'showErrors' | 'firstError'>
-    const baseMeta = {
-      submissionAttempts: 0,
-    } as unknown as Omit<FormMeta, 'displayState' | 'showErrors' | 'firstError'>
-
-    // Gate closed (no submit, not touched): idle even with an own error.
-    expect(defaultDisplayState(ownErrorField, baseMeta)).toBe('idle')
-
-    // Edited and left (blurredAfterInteraction), own error → error,
-    // regardless of dirty.
-    expect(defaultDisplayState({ ...ownErrorField, blurredAfterInteraction: true }, baseMeta)).toBe(
-      'error'
-    )
-
-    // Re-focused after engaging (blurredAfterInteraction stays true while
-    // focused): the bit is sticky and carries no not-focused term, so the
-    // error persists through the re-focus instead of vanishing mid-fix.
-    expect(
-      defaultDisplayState(
-        { ...ownErrorField, blurredAfterInteraction: true, focused: true },
-        baseMeta
-      )
-    ).toBe('error')
-
-    // Tabbed through without editing (touched, but never edited so
-    // blurredAfterInteraction is false): a clean tab-through never engages
-    // the gate → idle.
-    expect(defaultDisplayState({ ...ownErrorField, touched: true }, baseMeta)).toBe('idle')
-
-    // First pass mid-entry: edited (interacted) and focused, and even
-    // tabbed through earlier (touched), but not yet left since the edit
-    // (blurredAfterInteraction false). The error stays quiet → idle. This
-    // is the case a bare `interacted && touched` gate got wrong.
-    expect(
-      defaultDisplayState(
-        { ...ownErrorField, interacted: true, touched: true, focused: true },
-        baseMeta
-      )
-    ).toBe('idle')
-
-    // Currently validating (gate open via blurredAfterInteraction): pending
-    // wins over the stale error verdict.
-    expect(
-      defaultDisplayState(
-        { ...ownErrorField, blurredAfterInteraction: true, validating: true },
-        baseMeta
-      )
-    ).toBe('pending')
-    expect(
-      defaultDisplayState({ ...ownErrorField, validating: true }, {
-        ...baseMeta,
-        submissionAttempts: 1,
-      } as typeof baseMeta)
-    ).toBe('pending')
-
-    // After first submit attempt: error regardless of touched/focused.
-    expect(
-      defaultDisplayState(ownErrorField, {
-        ...baseMeta,
-        submissionAttempts: 1,
-      } as typeof baseMeta)
-    ).toBe('error')
-
-    // Post-submit aggression: focused + untouched + own error still
-    // resolves to error. The user signalled they're done editing by
-    // hitting submit; transient mid-edit hiding no longer applies.
-    expect(
-      defaultDisplayState({ ...ownErrorField, touched: false, focused: true }, {
-        ...baseMeta,
-        submissionAttempts: 1,
-      } as typeof baseMeta)
-    ).toBe('error')
-
-    // No error + valid + earned (dirty + non-blank) + gate open → success.
-    const validField = {
-      errors: [],
-      touched: true,
-      interacted: true,
-      blurredAfterInteraction: true,
-      focused: false,
-      validating: false,
-      valid: true,
-      blank: false,
-      dirty: true,
-      path: ['x'],
-    } as unknown as Omit<FieldState, 'displayState' | 'showErrors' | 'firstError'>
-    expect(defaultDisplayState(validField, baseMeta)).toBe('success')
-
-    // No error + NOT yet valid (e.g. async first pass pending) + gate open → idle.
-    expect(defaultDisplayState({ ...validField, valid: false }, baseMeta)).toBe('idle')
-
-    // Valid but UNEARNED: success is withheld so the green check only ever
-    // means the user put valid content there themselves.
-    //   Blank (an empty optional field that happens to pass) → idle.
-    expect(defaultDisplayState({ ...validField, blank: true }, baseMeta)).toBe('idle')
-    //   Not dirty (a pre-filled field merely tabbed through) → idle.
-    expect(defaultDisplayState({ ...validField, dirty: false }, baseMeta)).toBe('idle')
-    //   The post-submit flood: a valid, non-blank, but untouched field
-    //   stays idle even with the gate forced open by a submit attempt.
-    expect(
-      defaultDisplayState({ ...validField, dirty: false }, {
-        ...baseMeta,
-        submissionAttempts: 1,
-      } as typeof baseMeta)
-    ).toBe('idle')
-
-    // Container with ONLY descendant errors: idle even after submit. The
-    // own-path filter blocks the container from resolving to error and
-    // duplicating leaf-rendered messages.
-    const containerOnlyDescendantErrors = {
-      errors: [{ path: ['x', 'y'], message: 'm', formKey: 'k', code: 'c' }],
-      touched: true,
-      focused: false,
-      validating: false,
-      valid: false,
-      path: ['x'],
-    } as unknown as Omit<FieldState, 'displayState' | 'showErrors' | 'firstError'>
-    expect(
-      defaultDisplayState(containerOnlyDescendantErrors, {
-        ...baseMeta,
-        submissionAttempts: 1,
-      } as typeof baseMeta)
-    ).toBe('idle')
-  })
+  // The full synthetic gate / error / earned-success / container matrix
+  // for the default reducer now lives in `display-reducer.test.ts`, where
+  // it can inject `now` / `validatingSince` / `prev` deterministically and
+  // also lock the anti-flash timing. Integration coverage of the same
+  // verdicts (through a real mounted form) stays in the adapter blocks above.
 
   // PASS2-11 — a consumer predicate that throws must not take the
   // reactive surface down. The catch was already there (correct, never
@@ -705,23 +580,22 @@ describe('getDisplayState — cross-cutting', () => {
   })
 })
 
-describe('getDisplayState — pending during validating', () => {
-  /**
-   * Pending contract: when a verdict is in flight, `field.errors`
-   * retains the stale entry (no flicker to empty) under stale-while-
-   * revalidate, but `field.displayState` resolves to `'pending'` because
-   * the application is recomputing and a spinner narrates the current
-   * state honestly. The error returns the moment validation completes if
-   * the new verdict still has issues.
-   */
-  it('async refine: pending during validation, error when verdict lands', async () => {
+describe('getDisplayState — anti-flash spinner timing (integration)', () => {
+  // Fake timers drive both the engine's deadline `setTimeout` and the
+  // injected `now` (vitest mocks `Date.now()`), so the show-delay /
+  // min-visible thresholds are exercised deterministically. The form's
+  // own validation runs on microtasks (not timers), which `await` and
+  // `advanceTimersByTimeAsync` flush.
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  function mountGatedRefine(): { form: FormLike; resolve: (ok: boolean) => void } {
     let resolveValidation: (ok: boolean) => void = () => {}
     const schema = zV4.object({
       email: zV4.string().refine(
         (val) => {
-          // Reject empty; for any non-empty value, await the
-          // externally-resolved gate so the test can observe the
-          // mid-validation window.
+          // Empty rejects synchronously; any non-empty value parks on the
+          // external gate so the test can sit inside the validating window.
           if (val.length === 0) return false
           return new Promise<boolean>((resolve) => {
             resolveValidation = resolve
@@ -730,46 +604,262 @@ describe('getDisplayState — pending during validating', () => {
         { error: 'invalid email' }
       ),
     })
-
     const form = asForm(
       mountWithApp(() =>
         useFormV4({
           schema,
-          key: `pending-validating-${Math.random()}`,
+          key: `pending-timing-${Math.random()}`,
           strict: false,
           defaultValues: { email: '' },
         } as never)
       )
     )
+    return { form, resolve: (ok) => resolveValidation(ok) }
+  }
 
-    // Touch + submit so the timing gate is open. Mount-time validation
-    // produces a verdict on the empty string ("invalid email").
+  it('holds the verdict through show-delay, shows a held spinner, then the landed verdict', async () => {
+    const { form, resolve } = mountGatedRefine()
+
+    // Gate open + a landed error on the empty string.
     form.touch('email')
     await form.handleSubmit(() => {})()
     await nextTick()
-    expect(form.fields('email').errors.length).toBeGreaterThan(0)
     expect(form.fields('email').displayState).toBe('error')
 
-    // Edit to a non-empty value. Change-mode validation schedules; the
-    // async refine pauses on the externally-resolved gate.
+    // Edit: change-mode validation starts and parks on the external gate.
     form.setValue('email', 'a@b.c')
     await nextTick()
     expect(form.fields('email').validating).toBe(true)
-    // SWR: the stale error stays in `errors`, so consumers reading the
-    // store directly still see something while the new verdict resolves.
-    expect(form.fields('email').errors.length).toBeGreaterThan(0)
-    // But displayState resolves to 'pending' during the recompute window.
-    expect(form.fields('email').displayState).toBe('pending')
-    expect(form.fields('email').showPending).toBe(true)
-    expect(form.fields('email').showErrors).toBe(false)
-
-    // Resolve the validation as STILL invalid. The new verdict lands,
-    // validating returns to false, displayState flips back to 'error'.
-    resolveValidation(false)
-    await new Promise((r) => setTimeout(r, 0))
-    expect(form.fields('email').validating).toBe(false)
+    // Inside the show-delay window: the prior verdict is HELD — no spinner
+    // flash even though a validation is genuinely in flight. SWR keeps the
+    // stale error in `errors` for direct readers.
     expect(form.fields('email').errors.length).toBeGreaterThan(0)
     expect(form.fields('email').displayState).toBe('error')
+    expectProjections(form.fields('email'))
+
+    // Cross the show-delay: now a long-running validation earns its spinner.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+    expectProjections(form.fields('email'))
+
+    // Resolve still-invalid. The spinner is held for its minimum-visible
+    // window even though validation has already settled.
+    resolve(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.fields('email').validating).toBe(false)
+    expect(form.fields('email').displayState).toBe('pending')
+
+    // Past min-visible: the landed error replaces the spinner.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
+    expect(form.fields('email').displayState).toBe('error')
+    expect(form.fields('email').errors.length).toBeGreaterThan(0)
+    expectProjections(form.fields('email'))
+  })
+
+  it('fast validation never reveals the spinner (settles inside the show-delay)', async () => {
+    const { form, resolve } = mountGatedRefine()
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('error')
+
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    expect(form.fields('email').validating).toBe(true)
+    expect(form.fields('email').displayState).toBe('error')
+
+    // Resolve valid BEFORE the show-delay elapses: no spinner is ever shown,
+    // and the verdict moves straight from the held error to success.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay - 1)
+    resolve(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.fields('email').validating).toBe(false)
+    expect(form.fields('email').displayState).toBe('success')
+    expect(form.fields('email').showPending).toBe(false)
+    expectProjections(form.fields('email'))
+    // No orphaned engine timer once the field settled.
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('a custom factory drives the clock at its own thresholds', async () => {
+    let resolveValidation: (ok: boolean) => void = () => {}
+    const schema = zV4.object({
+      email: zV4.string().refine(
+        (val) =>
+          val.length === 0
+            ? false
+            : new Promise<boolean>((resolve) => {
+                resolveValidation = resolve
+              }),
+        { error: 'invalid email' }
+      ),
+    })
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `custom-timing-${Math.random()}`,
+          strict: false,
+          defaultValues: { email: '' },
+          // Tighter than the default: spinner after 30ms, held for 90ms.
+          getDisplayState: makeDefaultDisplayState({ showDelay: 30, minVisible: 90 }),
+        } as never)
+      )
+    )
+
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('error')
+
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    // Still held at the default's 100ms would be wrong — this factory shows
+    // the spinner at 30ms. Just before, it is still held.
+    await vi.advanceTimersByTimeAsync(29)
+    expect(form.fields('email').displayState).toBe('error')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(form.fields('email').displayState).toBe('pending')
+
+    resolveValidation(false)
+    await vi.advanceTimersByTimeAsync(0)
+    // Held for the custom 90ms min-visible, not the default 120ms.
+    expect(form.fields('email').displayState).toBe('pending')
+    await vi.advanceTimersByTimeAsync(90)
+    expect(form.fields('email').displayState).toBe('error')
+  })
+
+  it('reset() mid-spinner clears the held state and leaves no orphaned timer', async () => {
+    const { form, resolve } = mountGatedRefine()
+    const api = form as unknown as { reset: () => void }
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+
+    api.reset()
+    await nextTick()
+    // After reset the gate is closed again and nothing is in flight, so the
+    // verdict is idle — and the engine timer was cleared.
+    expect(form.fields('email').displayState).toBe('idle')
+    expect(vi.getTimerCount()).toBe(0)
+    // Settle the now-orphaned validation so it can't write post-reset.
+    resolve(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.fields('email').displayState).toBe('idle')
+  })
+
+  it('a second keystroke mid-spinner keeps the spinner continuous (no flash to a verdict)', async () => {
+    const { form } = mountGatedRefine()
+    form.touch('email')
+    await form.handleSubmit(() => {})()
+    await nextTick()
+
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('email').displayState).toBe('pending')
+
+    // Type again while the spinner is up: a fresh validation streak opens
+    // before the first settled. The anchor carries over, so the spinner
+    // stays continuous rather than flashing back to the held verdict.
+    form.setValue('email', 'a@b.cd')
+    await nextTick()
+    expect(form.fields('email').displayState).toBe('pending')
+    // It stays pending while validation remains in flight — never a verdict
+    // frame between the two keystrokes.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay + DEFAULT_TIMINGS.minVisible)
+    expect(form.fields('email').displayState).toBe('pending')
+  })
+
+  it('a container shows one continuous spinner while descendants validate on offset starts', async () => {
+    const resolvers: Array<(ok: boolean) => void> = []
+    const gate = (val: string): boolean | Promise<boolean> =>
+      val === '' ? false : new Promise<boolean>((r) => resolvers.push(r))
+    const schema = zV4.object({
+      profile: zV4.object({
+        a: zV4.string().refine(gate, { error: 'bad a' }),
+        b: zV4.string().refine(gate, { error: 'bad b' }),
+      }),
+    })
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `container-spinner-${Math.random()}`,
+          strict: false,
+          defaultValues: { profile: { a: '', b: '' } },
+        } as never)
+      )
+    )
+    // Open the gate for every field (both empty leaves fail).
+    await form.handleSubmit(() => {})()
+    await nextTick()
+
+    // Leaf A starts; 30ms later leaf B joins the streak.
+    form.setValue('profile.a', 'x')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(30)
+    form.setValue('profile.b', 'y')
+    await nextTick()
+
+    // Cross the show-delay (anchored at A, the earliest leaf): the container
+    // reads one spinner, and it stays continuous as B's own window passes.
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+    expect(form.fields('profile').displayState).toBe('pending')
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible + 50)
+    expect(form.fields('profile').displayState).toBe('pending')
+
+    // Both resolve; after min-visible the container leaves pending. Its own
+    // path has no error (the leaves render theirs), so it settles to idle.
+    resolvers.forEach((r) => r(false))
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
+    expect(form.fields('profile').validating).toBe(false)
+    expect(form.fields('profile').displayState).not.toBe('pending')
+  })
+
+  it('100 fields, one validating: a single shared engine timer, the rest leave nothing', async () => {
+    const base = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`f${i}`, zV4.string()]))
+    let resolveF0: (ok: boolean) => void = () => {}
+    const schema = zV4.object({
+      ...base,
+      f0: zV4
+        .string()
+        .refine((v) => (v === '' ? false : new Promise<boolean>((r) => (resolveF0 = r))), {
+          error: 'bad',
+        }),
+    })
+    const defaults = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`f${i}`, '']))
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `perf-${Math.random()}`,
+          strict: false,
+          defaultValues: defaults,
+        } as never)
+      )
+    )
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    // Reading every field after submit leaves no timer: errors / idle are
+    // terminal, only an active validation arms one.
+    for (let i = 0; i < 100; i++) void form.fields(`f${i}`).displayState
+    expect(vi.getTimerCount()).toBe(0)
+
+    // Type into exactly one. The engine's single per-form timer is the only
+    // one armed, no matter how many fields are read.
+    form.setValue('f0', 'x')
+    await nextTick()
+    for (let i = 0; i < 100; i++) void form.fields(`f${i}`).displayState
+    expect(form.fields('f0').validating).toBe(true)
+    expect(vi.getTimerCount()).toBe(1)
+
+    resolveF0(false)
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay + DEFAULT_TIMINGS.minVisible)
   })
 })
 
@@ -915,21 +1005,21 @@ describe('getDisplayState — reward early, punish late (DOM gate)', () => {
 })
 
 describe('getDisplayState — type-level guards', () => {
-  it('predicate signature omits the derived display keys on field and formMeta args', () => {
-    type Field = Parameters<GetDisplayState>[0]
-    type Meta = Parameters<GetDisplayState>[1]
+  it('ctx.field / ctx.formMeta omit the derived display keys; reducer returns a DisplayMachine', () => {
+    type Field = DisplayCtx['field']
+    type Meta = DisplayCtx['formMeta']
 
-    // @ts-expect-error — `displayState` is omitted from the predicate's field arg
+    // @ts-expect-error — `displayState` is omitted from ctx.field
     expectTypeOf<Field['displayState']>()
-    // @ts-expect-error — `showErrors` is omitted from the predicate's field arg
+    // @ts-expect-error — `showErrors` is omitted from ctx.field
     expectTypeOf<Field['showErrors']>()
-    // @ts-expect-error — `showPending` is omitted from the predicate's field arg
+    // @ts-expect-error — `showPending` is omitted from ctx.field
     expectTypeOf<Field['showPending']>()
-    // @ts-expect-error — `firstError` is omitted from the predicate's field arg
+    // @ts-expect-error — `firstError` is omitted from ctx.field
     expectTypeOf<Field['firstError']>()
-    // @ts-expect-error — `displayState` is omitted from the predicate's formMeta arg
+    // @ts-expect-error — `displayState` is omitted from ctx.formMeta
     expectTypeOf<Meta['displayState']>()
-    // @ts-expect-error — `showSuccess` is omitted from the predicate's formMeta arg
+    // @ts-expect-error — `showSuccess` is omitted from ctx.formMeta
     expectTypeOf<Meta['showSuccess']>()
 
     // Every other FieldState key still reaches through, so authors keep
@@ -938,7 +1028,16 @@ describe('getDisplayState — type-level guards', () => {
     expectTypeOf<Field['valid']>().toEqualTypeOf<boolean>()
     expectTypeOf<Meta['submissionAttempts']>().toEqualTypeOf<number>()
 
-    // The predicate returns the DisplayState enum.
-    expectTypeOf<ReturnType<GetDisplayState>>().toEqualTypeOf<DisplayState>()
+    // The injected clock + episode anchor are on ctx, not on the field.
+    expectTypeOf<DisplayCtx['now']>().toEqualTypeOf<number>()
+    expectTypeOf<DisplayCtx['validatingSince']>().toEqualTypeOf<number | null>()
+
+    // The reducer's args are (prev: DisplayMachine, ctx: DisplayCtx) and it
+    // returns the next DisplayMachine.
+    expectTypeOf<Parameters<GetDisplayState>[0]>().toEqualTypeOf<DisplayMachine>()
+    expectTypeOf<Parameters<GetDisplayState>[1]>().toEqualTypeOf<DisplayCtx>()
+    expectTypeOf<ReturnType<GetDisplayState>>().toEqualTypeOf<DisplayMachine>()
+    // `display` carries the same enum the FieldState projection exposes.
+    expectTypeOf<DisplayMachine['display']>().toEqualTypeOf<DisplayState>()
   })
 })

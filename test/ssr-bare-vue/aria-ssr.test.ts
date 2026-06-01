@@ -21,8 +21,7 @@ type Api = UseFormReturn<typeof schema>
 
 const forceState =
   (state: 'idle' | 'pending' | 'error' | 'success'): GetDisplayState =>
-  () =>
-    state
+  () => ({ display: state })
 
 async function renderField(opts?: {
   getDisplayState?: GetDisplayState

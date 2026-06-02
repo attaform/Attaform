@@ -28,7 +28,10 @@
   untouched field's error), `success` when every field is earned,
   otherwise `idle`. Previously a container resolved only on its own-path
   error, so `form.meta.showErrors` could not back a form-level "fix the
-  errors below" banner; now it does.
+  errors below" banner; now it does. `form.meta.showPending` also stays
+  lit while a submit runs its own validation pass, so one binding can
+  drive a form-level "validating" affordance; gate a submit button on
+  `form.meta.submitting`, the precise "a submit is in flight" flag.
 
 - **Cross-bundler plugins — `attaform/rollup`, `attaform/esbuild`,
   `attaform/webpack`, `attaform/rspack`.** Each rewrites `attaform/zod` to

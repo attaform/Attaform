@@ -86,6 +86,20 @@ Precedence rolls up too: a container shows `'pending'` while any descendant is s
 
 That makes `form.meta.showErrors` the natural binding for a form-level "fix the errors below" banner: it turns on the moment a field's error becomes visible and off when the last one clears.
 
+### `form.meta` during a submit
+
+`form.meta.showPending` reflects validation, including the validation a submit runs before your handler. A submit re-validates the whole form, so `form.meta.showPending` stays lit through that pass and a form-level "Checking…" affordance reads true during it. It does not light during the handler itself, because `show*` tracks validation, never submission.
+
+To gate a submit button across the whole submit (its validation and your handler), bind `form.meta.submitting`, the flag that means a submit is in flight:
+
+```vue
+<button type="submit" :disabled="form.meta.submitting">
+  {{ form.meta.submitting ? 'Submitting…' : 'Submit' }}
+</button>
+```
+
+So `form.meta.showPending` is the broad "the form is validating" light and `form.meta.submitting` is the precise "a submit is running" flag: use the first for an ambient indicator, the second to gate the button.
+
 ::docs-demo{slug="container-display-state" label="Container rollup demo"}
 ::
 

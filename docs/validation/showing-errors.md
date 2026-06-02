@@ -100,6 +100,8 @@ To gate a submit button across the whole submit (its validation and your handler
 
 So `form.meta.showPending` is the broad "the form is validating" light and `form.meta.submitting` is the precise "a submit is running" flag: use the first for an ambient indicator, the second to gate the button.
 
+This detour is `form.meta`-only: the submit-driven `pending` is applied at the root, so an individual field never flips to a spinner just because a submit is validating, and each field keeps showing its own verdict throughout. And `showSuccess`, like every verdict, is a validation signal, not a "submission finished" one: for a "Saved" confirmation, gate on `form.meta.submitted` (which flips once the handler resolves), not on `showSuccess`.
+
 ::docs-demo{slug="container-display-state" label="Container rollup demo"}
 ::
 

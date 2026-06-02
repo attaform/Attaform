@@ -1146,6 +1146,49 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     expect(form.meta.submitting).toBe(false)
   })
 
+  it('a submit reflects only on form.meta; a revealed field holds its verdict', async () => {
+    const { form, resolve } = mountGatedRefine()
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    // A first submit opens the reveal gate; the valid field settles to success,
+    // the state a user is in after filling and leaving a field.
+    const first = form.handleSubmit(() => {})()
+    await nextTick()
+    resolve(true)
+    await first
+    await nextTick()
+    expect(form.fields('email').showSuccess).toBe(true)
+    expect(form.meta.showSuccess).toBe(true)
+
+    // A second submit, with a parked async handler.
+    let releaseHandler: () => void = () => {}
+    const handlerGate = new Promise<void>((r) => {
+      releaseHandler = r
+    })
+    const submitting = form.handleSubmit(async () => {
+      await handlerGate
+    })()
+    await nextTick()
+    // The submit-pending treatment is root-only: form.meta flips to pending, but
+    // the leaf is untouched and keeps its own verdict (no spinner).
+    expect(form.meta.showPending).toBe(true)
+    expect(form.fields('email').showPending).toBe(false)
+
+    // Validation settles; the handler is still running. The gate stays open, so
+    // form.meta returns to the earned success the leaf held all along.
+    resolve(true)
+    await vi.advanceTimersByTimeAsync(0)
+    await nextTick()
+    expect(form.meta.submitting).toBe(true)
+    expect(form.meta.showSuccess).toBe(true)
+    expect(form.fields('email').showSuccess).toBe(true)
+
+    releaseHandler()
+    await submitting
+    await nextTick()
+    expect(form.meta.showSuccess).toBe(true)
+  })
+
   it('wizard submit cancels a held spinner timer on its forms', async () => {
     let resolveValidation: (ok: boolean) => void = () => {}
     const schema = zV4.object({

@@ -801,6 +801,27 @@ const entries: SmokeEntry[] = [
     },
   },
   {
+    // Type a too-short password and blur: the password leaf errors, and the
+    // Account *group* badge rolls that up to 'error' (the container rollup).
+    slug: 'container-display-state',
+    gesture: async (root) => {
+      const password = root.querySelectorAll<HTMLInputElement>('input').item(1)
+      if (password === null)
+        throw new Error('container-display-state: password input (index 1) not found')
+      await dispatchInput(password, 'short')
+      await dispatchBlur(password)
+      await waitUntil(() =>
+        root.textContent?.includes('At least 8 characters') === true ? true : null
+      )
+    },
+    assert: async (root) => {
+      expect(root.textContent ?? '').toContain('At least 8 characters')
+      // The Account group legend badge reflects the rolled-up verdict.
+      const accountLegend = root.querySelectorAll('legend').item(0)
+      expect(accountLegend?.textContent ?? '').toContain('error')
+    },
+  },
+  {
     // Three side-by-side forms (change / blur / submit). Type a too-short
     // value into the FIRST column (validateOn: 'change'): it validates on
     // the keystroke, so its raw readout surfaces the message with no blur.

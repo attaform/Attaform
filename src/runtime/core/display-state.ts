@@ -88,6 +88,21 @@ export const DEFAULT_TIMINGS: DisplayTimings = { showDelay: 100, minVisible: 120
 export const FOCUS_OUT_GRACE = 16
 
 /**
+ * The reducers produced by {@link makeDefaultDisplayState} — the exported
+ * {@link defaultDisplayState} and every custom-timing variant. The container
+ * `displayState` rollup (surfacing a descendant's gated error at its container
+ * and at `form.meta`) is a behavior of the library default, applied around the
+ * reducer rather than inside it, so a fully custom `getDisplayState` owns
+ * container verdicts outright. WeakSet so it never pins a reducer against GC.
+ */
+const defaultFamily = new WeakSet<GetDisplayState>()
+
+/** True for any reducer built by {@link makeDefaultDisplayState}. */
+export function isDefaultDisplayState(fn: GetDisplayState): boolean {
+  return defaultFamily.has(fn)
+}
+
+/**
  * Build a default `getDisplayState` reducer with custom anti-flash timing.
  * Power users who want a tighter or looser spinner than {@link DEFAULT_TIMINGS}
  * pass their own `{ showDelay, minVisible }`:
@@ -110,7 +125,7 @@ export function makeDefaultDisplayState({
   showDelay,
   minVisible,
 }: DisplayTimings): GetDisplayState {
-  return (prev, { field, formMeta, validatingSince, now }) => {
+  const reducer: GetDisplayState = (prev, { field, formMeta, validatingSince, now }) => {
     const verdict = computeVerdict(field, formMeta)
     // The reveal gate governs the spinner too: until it opens, a field stays
     // idle — no spinner mid-first-entry — exactly as errors and success are
@@ -167,6 +182,8 @@ export function makeDefaultDisplayState({
     // Window elapsed and still validating: the spinner has earned its place.
     return { display: 'pending', pendingShownAt: now, reviewAt: now + minVisible }
   }
+  defaultFamily.add(reducer)
+  return reducer
 }
 
 /**

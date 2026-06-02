@@ -71,18 +71,23 @@ Until the gate opens, `displayState` is `'idle'` no matter what is in the store.
 Once the gate is open, the default resolves in order:
 
 1. **Pending (timed).** While a per-field validation runs, the field is heading for a spinner, but Attaform holds the prior verdict for a short window first. A fast check that settles inside that window never shows `'pending'` at all; a slow one flips to the spinner and is then held a minimum so it cannot blink off. This anti-flash timing is tunable, see [Tune the timing](#tune-the-timing).
-2. **Error.** An own-path error resolves to `'error'`.
+2. **Error.** An error at the field resolves to `'error'` (containers roll up their descendants, see below).
 3. **Success.** No error, `field.valid`, and the green check is earned: the field is non-blank and `dirty`, so the user put valid content there themselves. An empty field that happens to pass, a pre-filled field merely tabbed through, and the post-submit flood of every valid field all stay `'idle'` rather than greening for free. `valid` already waits on the form-wide first validation pass for async schemas, so success never fires before the first real verdict lands.
 4. **Idle.** Anything else, including a valid-but-unearned field (blank or unchanged), stays `'idle'`.
 
-### The own-path filter
+### Rollup at containers and the form
 
-The error arm fires only on an error whose path equals the field's own path.
+A container resolves over the gated verdicts of everything beneath it, so one verdict reflects the whole subtree.
 
-- **Leaves** always satisfy this when they have errors (a leaf's errors are at its own path).
-- **Containers** (intermediate AND root) resolve to `'error'` only for errors that point directly at them. Descendant errors are rendered by the descendant fields, so binding `field.showErrors` at a container never duplicates them.
+- **Leaves** resolve on their own error.
+- **Containers** (an object, an array row, the array itself, and the root `form.meta`) resolve to `'error'` when any descendant is showing an error, or when a cross-field error is pinned at the container itself. Each descendant counts only once its own gate has opened, so a sibling that has been blurred never drags an untouched field's error up to the group.
 
-That means `form.meta.displayState` only reaches `'error'` for root-level (cross-field or object-level) errors. Aggregate "fix the errors below" banners should bind to `form.meta.errorCount > 0` paired with whatever timing signal fits, not to `form.meta.showErrors`.
+Precedence rolls up too: a container shows `'pending'` while any descendant is still checking, `'error'` if a gated descendant (or the container's own cross-field check) failed, `'success'` once every field is valid and at least one is earned, and `'idle'` otherwise. An untouched optional sibling sits `'idle'` without holding the group's success back.
+
+That makes `form.meta.showErrors` the natural binding for a form-level "fix the errors below" banner: it turns on the moment a field's error becomes visible and off when the last one clears.
+
+::docs-demo{slug="container-display-state" label="Container rollup demo"}
+::
 
 ## Override per form
 

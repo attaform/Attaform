@@ -40,9 +40,11 @@ import type {
  *      precedence — a validation in flight surfaces a delayed, then held,
  *      `'pending'` (the anti-flash spinner); own-path error → error;
  *      earned (`valid && !blank && dirty`) → success; else idle.
- *      Containers (intermediate AND root) only resolve to error on their
- *      own-path errors; leaves always satisfy the own-path filter when
- *      they have errors.
+ *      Containers (intermediate AND root, including `form.meta`) roll up
+ *      their descendants' GATED verdicts: pending if any descendant is
+ *      pending, else error if any descendant (or own cross-field) error
+ *      has cleared its own reveal gate, else earned success, else idle.
+ *      An ungated sibling error never surfaces at the container.
  *   2. `createAttaform({ defaults: { getDisplayState } })`.
  *   3. `useForm({ getDisplayState })`, wins over both above.
  *
@@ -105,7 +107,15 @@ type FormLike = {
     onSubmit: (data: unknown) => void | Promise<void>,
     onError?: (errors: readonly ValidationError[]) => void
   ) => () => Promise<void>
-  meta: { submissionAttempts: number; submitting: boolean; displayState: DisplayState }
+  meta: {
+    submissionAttempts: number
+    submitting: boolean
+    displayState: DisplayState
+    showErrors: boolean
+    showPending: boolean
+    showSuccess: boolean
+    showIdle: boolean
+  }
   key: string
 }
 
@@ -206,34 +216,38 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
       })
     })
 
-    describe('default heuristic — container', () => {
-      it('row-level container with ONLY descendant errors does not duplicate them (idle, not error)', async () => {
-        const form = makeForm()
-        injectError(form, ['users', 0, 'label'], 'label required')
-        form.touch(['users', 0, 'label'])
-        form.setValue('users.0.label', 'x')
-        await nextTick()
-        const row = form.fields('users.0')
-        expect(row.errors.length).toBeGreaterThan(0)
-        // Descendant errors are rendered by the descendant fields; the
-        // container's own-path filter keeps it out of 'error' to avoid
-        // UI duplication.
-        expect(row.displayState).not.toBe('error')
-        expect(row.showErrors).toBe(false)
-        expectProjections(row)
-      })
-
-      it('container shows nothing when descendants have errors and timing conditions unmet', async () => {
+    describe('default heuristic — container (descendant rollup)', () => {
+      it('an ungated descendant error keeps the container idle though invalid', async () => {
         const form = makeForm()
         injectError(form, ['users', 0, 'label'], 'label required')
         await nextTick()
         const row = form.fields('users.0')
         expect(row.errors.length).toBeGreaterThan(0)
+        // No submit and the leaf was never blurred-after-interaction, so the
+        // leaf withholds its own error (its gate is closed) and the container
+        // has nothing to surface. Validity still reflects the latent error.
+        expect(row.valid).toBe(false)
+        expect(row.displayState).toBe('idle')
         expect(row.showErrors).toBe(false)
         expectProjections(row)
       })
 
-      it('row-level container with its OWN error surfaces it after timing gate', async () => {
+      it('a gated descendant error rolls up to its container (row and array)', async () => {
+        const form = makeForm()
+        // Empty label fails min(1); submit opens every field's gate.
+        await form.handleSubmit(() => {})()
+        await nextTick()
+        expect(form.fields('users.0.label').displayState).toBe('error')
+        // The row container reflects the now-visible descendant error...
+        expect(form.fields('users.0').displayState).toBe('error')
+        expect(form.fields('users.0').showErrors).toBe(true)
+        expectProjections(form.fields('users.0'))
+        // ...and so does the array container above it.
+        expect(form.fields('users').displayState).toBe('error')
+        expectProjections(form.fields('users'))
+      })
+
+      it('a container surfaces its OWN (cross-field) error after the gate opens', async () => {
         const form = makeForm()
         // Error at the container path itself (e.g., an object-level refine
         // or a server-side cross-field error mapped to the row).
@@ -275,24 +289,30 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
       })
     })
 
-    describe('form.meta.displayState', () => {
-      it('stays out of error when only descendant (leaf) errors exist (the leaves render their own)', async () => {
+    describe('form.meta.displayState (form-level rollup)', () => {
+      it('rolls up a gated descendant error to the form banner', async () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
+        // Gate closed: nothing surfaced yet, at the leaf or the root.
         expect(form.meta.displayState).toBe('idle')
         await form.handleSubmit(() => {})()
         await nextTick()
-        // form.meta.displayState === rootFieldState.displayState with the
-        // own-path filter applied at root. Leaf errors don't surface here
-        // so the form banner can't duplicate them. Aggregate banners
-        // should bind to form.meta.errorCount > 0 instead.
-        expect(form.meta.displayState).not.toBe('error')
+        // Submit opens the gate; the now-visible leaf error rolls up to the
+        // form root, so form.meta.show* can drive a form-level banner.
+        expect(form.meta.displayState).toBe('error')
+        expect(form.meta.showErrors).toBe(true)
       })
 
-      // Affirmative "root-level error fires form.meta error" coverage
-      // lives in the cross-cutting synthetic test below; the integration
-      // path needs an object-level schema refine to land an error at the
-      // root path [], which isn't worth wiring per-adapter here.
+      it('greens once every field is valid and earned', async () => {
+        const form = makeForm()
+        form.setValue('email', 'a@b.c')
+        form.setValue('profile.name', 'Ada')
+        form.setValue('users.0.label', 'x')
+        await form.handleSubmit(() => {})()
+        await nextTick()
+        expect(form.meta.displayState).toBe('success')
+        expect(form.meta.showSuccess).toBe(true)
+      })
     })
   })
 }
@@ -1001,12 +1021,13 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible + 50)
     expect(form.fields('profile').displayState).toBe('pending')
 
-    // Both resolve; after min-visible the container leaves pending. Its own
-    // path has no error (the leaves render theirs), so it settles to idle.
+    // Both resolve invalid; after min-visible the container leaves pending.
+    // Each leaf now carries a gated error (submit opened the gate), so the
+    // container rolls them up and settles to error.
     resolvers.forEach((r) => r(false))
     await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
     expect(form.fields('profile').validating).toBe(false)
-    expect(form.fields('profile').displayState).not.toBe('pending')
+    expect(form.fields('profile').displayState).toBe('error')
   })
 
   it('100 fields, one validating: a single shared engine timer, the rest leave nothing', async () => {
@@ -1420,6 +1441,207 @@ describe('getDisplayState — reward early, punish late (DOM gate)', () => {
     await nextTick()
     expect(api.fields('email').interacted).toBe(true)
     expect(api.fields('email').displayState).toBe('idle')
+  })
+})
+
+describe('container & form.meta rollup — gated, DOM-driven', () => {
+  function mountRegistered(
+    schema: unknown,
+    paths: readonly string[],
+    formOpts: Record<string, unknown> = {}
+  ): {
+    api: FormLike & { register: (p: string) => unknown }
+    input: (p: string) => HTMLInputElement
+  } {
+    const handle: { api?: FormLike & { register: (p: string) => unknown } } = {}
+    const Comp = defineComponent({
+      setup() {
+        const api = useFormV4({
+          schema,
+          key: `rollup-dom-${Math.random()}`,
+          strict: false,
+          ...formOpts,
+        } as never) as unknown as FormLike & { register: (p: string) => unknown }
+        handle.api = api
+        return () =>
+          h(
+            'div',
+            paths.map((p) =>
+              withDirectives(h('input', { type: 'text', key: p }), [[vRegister, api.register(p)]])
+            )
+          )
+      },
+    })
+    const app = createApp(Comp).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    apps.push(app)
+    if (handle.api === undefined) throw new Error('mountRegistered: api never set')
+    const els = Array.from(root.querySelectorAll('input'))
+    const byPath = new Map<string, HTMLInputElement>()
+    paths.forEach((p, i) => {
+      const el = els[i]
+      if (!(el instanceof HTMLInputElement)) throw new Error(`mountRegistered: no input for ${p}`)
+      byPath.set(p, el)
+    })
+    const input = (p: string): HTMLInputElement => {
+      const el = byPath.get(p)
+      if (el === undefined) throw new Error(`mountRegistered: unknown path ${p}`)
+      return el
+    }
+    return { api: handle.api, input }
+  }
+
+  function editAndBlur(input: HTMLInputElement, value: string): void {
+    input.dispatchEvent(new FocusEvent('focus'))
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new FocusEvent('blur'))
+  }
+
+  it('a blurred valid sibling does not surface an untouched sibling error (per-child gate)', async () => {
+    const schema = zV4.object({ a: zV4.string().min(1), b: zV4.string().min(1) })
+    const { api, input } = mountRegistered(schema, ['a', 'b'], {
+      defaultValues: { a: '', b: '' },
+      validateOn: 'blur',
+    })
+    // Edit A to a valid value and blur it: A earns success, its gate opens.
+    editAndBlur(input('a'), 'x')
+    await new Promise((r) => setTimeout(r, 0))
+    // B carries a committed error but was never touched (its gate is closed).
+    api.setFieldErrors([{ path: ['b'], message: 'b required', formKey: api.key, code: 'test' }])
+    await nextTick()
+    expect(api.fields('a').displayState).toBe('success')
+    expect(api.fields('b').displayState).toBe('idle')
+    // The root must NOT surface B's ungated error just because A opened its gate.
+    expect(api.meta.displayState).not.toBe('error')
+  })
+
+  it('an untouched optional sibling does not block container success', async () => {
+    const schema = zV4.object({
+      name: zV4.string().min(1),
+      nickname: zV4.string().optional(),
+    })
+    const { api, input } = mountRegistered(schema, ['name', 'nickname'], {
+      defaultValues: { name: '', nickname: '' },
+      validateOn: 'blur',
+    })
+    editAndBlur(input('name'), 'Ada')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(api.fields('name').displayState).toBe('success')
+    expect(api.fields('nickname').displayState).toBe('idle')
+    // name is earned and nothing is wrong; the idle optional doesn't hold green back.
+    expect(api.meta.displayState).toBe('success')
+  })
+
+  it('an intermediate-container error rolls up to the form root once a descendant is blurred (no submit)', async () => {
+    const schema = zV4.object({
+      pw: zV4.object({ a: zV4.string(), b: zV4.string() }),
+    })
+    const { api, input } = mountRegistered(schema, ['pw.a', 'pw.b'], {
+      defaultValues: { pw: { a: '', b: '' } },
+      validateOn: 'blur',
+    })
+    // Open the intermediate object's gate by blurring one of its leaves...
+    editAndBlur(input('pw.a'), 'x')
+    await new Promise((r) => setTimeout(r, 0))
+    // ...then pin a cross-field error at the object path itself (a non-leaf).
+    api.setFieldErrors([{ path: ['pw'], message: 'must match', formKey: api.key, code: 'test' }])
+    await nextTick()
+    expect(api.fields('pw').displayState).toBe('error')
+    // It rolls up to the root even though no LEAF carries the error.
+    expect(api.meta.displayState).toBe('error')
+  })
+
+  it('a custom getDisplayState at a container is not overridden by the rollup', async () => {
+    const neverError: GetDisplayState = () => ({ display: 'idle' })
+    const schema = zV4.object({ profile: zV4.object({ name: zV4.string().min(1) }) })
+    const form = asForm(
+      mountWithApp(() =>
+        useFormV4({
+          schema,
+          key: `rollup-custom-${Math.random()}`,
+          strict: false,
+          defaultValues: { profile: { name: '' } },
+          getDisplayState: neverError,
+        } as never)
+      )
+    )
+    await form.handleSubmit(() => {})()
+    await nextTick()
+    // Empty name fails and the gate is open, but the consumer's reducer owns
+    // container verdicts: the default-only rollup override never fires.
+    expect(form.fields('profile').displayState).toBe('idle')
+    expect(form.fields('profile.name').displayState).toBe('idle')
+  })
+
+  describe('with fake timers', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    it('pending wins over a rolled-up error, then the error lands once validation settles', async () => {
+      let resolveB: (ok: boolean) => void = () => {}
+      const schema = zV4.object({
+        a: zV4.string().min(1),
+        b: zV4
+          .string()
+          .refine((v) => (v === '' ? true : new Promise<boolean>((r) => (resolveB = r))), {
+            error: 'bad b',
+          }),
+      })
+      const form = asForm(
+        mountWithApp(() =>
+          useFormV4({
+            schema,
+            key: `rollup-pending-${Math.random()}`,
+            strict: false,
+            defaultValues: { a: '', b: '' },
+          } as never)
+        )
+      )
+      // Submit opens every gate and lands a's min(1) error (b='' settles sync).
+      await form.handleSubmit(() => {})()
+      await nextTick()
+      // Park b's refine so the form has a validation in flight.
+      form.setValue('b', 'go')
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
+      // b is validating past the show-delay; pending wins over a's gated error.
+      expect(form.meta.displayState).toBe('pending')
+      // b settles valid; with nothing in flight, a's gated error rolls up.
+      resolveB(true)
+      await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
+      expect(form.meta.displayState).toBe('error')
+    })
+
+    it('an untouched descendant validating does not flash a container spinner', async () => {
+      let resolveB: (ok: boolean) => void = () => {}
+      const schema = zV4.object({
+        a: zV4.string().min(1),
+        b: zV4
+          .string()
+          .refine((v) => (v === '' ? true : new Promise<boolean>((r) => (resolveB = r))), {
+            error: 'bad b',
+          }),
+      })
+      const { api, input } = mountRegistered(schema, ['a', 'b'], {
+        defaultValues: { a: '', b: '' },
+      })
+      // Blur A (opens the container gate) without ever touching B.
+      editAndBlur(input('a'), 'x')
+      await vi.advanceTimersByTimeAsync(0)
+      // Kick B's async validation programmatically — no interaction, gate closed.
+      api.setValue('b', 'y')
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay + 50)
+      // B would never show its own spinner (gate closed); the container must
+      // not show one on its behalf, even though A opened the container gate.
+      expect(api.fields('b').displayState).not.toBe('pending')
+      expect(api.meta.displayState).not.toBe('pending')
+      resolveB(true)
+      await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
+    })
   })
 })
 

@@ -76,7 +76,15 @@ concurrency:
 
 jobs:
   analyze:
-    name: Analyze (javascript-typescript)
+    # Interpolate the matrix language into the job name. A matrixed job
+    # whose name does not itself reference `${{ matrix.language }}` gets
+    # the matrix value appended by GitHub for disambiguation, which would
+    # double the reported check context to
+    # `Analyze (javascript-typescript) (javascript-typescript)`. The
+    # single-suffix `Analyze (javascript-typescript)` is the exact context
+    # required by the `main protection` ruleset, so this name must stay in
+    # the interpolated form to satisfy the merge requirement.
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30 # CodeQL JS/TS on a ~38k LOC repo finishes in ~6-10min; a 30min ceiling catches a runaway analysis without flagging healthy runs.
     permissions:

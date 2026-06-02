@@ -1,5 +1,21 @@
 # Releases
 
+## v0.21.0 — 2026-06-02
+
+## What's Changed
+* perf(bundle): strip dev-only code from prod builds + add eager-byte gate by @ozzyfromspace in https://github.com/attaform/Attaform/pull/340
+* perf(bundle): drop the lodash-es peer dependency by @ozzyfromspace in https://github.com/attaform/Attaform/pull/341
+* perf(bundle): adapter shared-core, lazy optional features, cross-bundler plugins by @ozzyfromspace in https://github.com/attaform/Attaform/pull/342
+* feat: anti-flash validation display timing (timed getDisplayState) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/343
+* docs(changelog): capture unreleased changes since v0.20.2 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/344
+* docs(demos): give every faux submit button toast feedback by @ozzyfromspace in https://github.com/attaform/Attaform/pull/347
+* feat(validation): form.meta reads pending while a submit validates by @ozzyfromspace in https://github.com/attaform/Attaform/pull/349
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.20.2...v0.21.0
+
+---
+
 ## v0.20.2 — 2026-05-31
 
 ## What's Changed

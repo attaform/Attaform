@@ -29,19 +29,25 @@
     {
       mode: 'change',
       form: changeForm,
-      onSubmit: changeForm.handleSubmit(() => {}),
+      onSubmit: changeForm.handleSubmit((values) =>
+        toast.success('Submitted', { description: values })
+      ),
       caption: 'Checks on every keystroke.',
     },
     {
       mode: 'blur',
       form: blurForm,
-      onSubmit: blurForm.handleSubmit(() => {}),
+      onSubmit: blurForm.handleSubmit((values) =>
+        toast.success('Submitted', { description: values })
+      ),
       caption: 'Checks when the field loses focus.',
     },
     {
       mode: 'submit',
       form: submitForm,
-      onSubmit: submitForm.handleSubmit(() => {}),
+      onSubmit: submitForm.handleSubmit((values) =>
+        toast.success('Submitted', { description: values })
+      ),
       caption: 'Checks only when you submit.',
     },
   ]

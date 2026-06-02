@@ -17,7 +17,9 @@
     key: 'docs-demo-form.fields',
   })
 
-  const onSubmit = form.handleSubmit(() => {})
+  const onSubmit = form.handleSubmit((values) => {
+    toast.success(`Submitted as ${values.email}`, { description: values })
+  })
 
   const formatPath = (path: ReadonlyArray<string | number>) => JSON.stringify(path)
   const formatTime = (iso: string | null) =>

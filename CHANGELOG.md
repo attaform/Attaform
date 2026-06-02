@@ -2,7 +2,72 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Added
+
+- **Anti-flash validation display timing.** `form.fields.<path>.showPending`
+  no longer flips a spinner on every keystroke. A validation that settles
+  fast never reveals a spinner (`showDelay`, default `100ms`), and once a
+  spinner shows it is held a minimum so it cannot blink off (`minVisible`,
+  default `120ms`). The default reducer holds the prior verdict through the
+  show-delay window so a re-validated field never flickers through `idle`;
+  an explicit submit reveals the verdict immediately; and focusing out of a
+  field mid-check surfaces the spinner promptly instead of waiting out a
+  window meant for active typing. `pending` is driven by async-ness, not a
+  network round-trip — a heavy client-side async check surfaces the spinner
+  exactly like a server call. This shapes only the display projection:
+  `errors`, `valid`, `validating`, and the underlying validation run
+  exactly as before. New exports:
+  `makeDefaultDisplayState({ showDelay, minVisible })`, `DEFAULT_TIMINGS`,
+  and the `DisplayMachine` / `DisplayCtx` / `DisplayTimings` types.
+
+- **Container and form-level display rollup.** `displayState` (and the
+  `show*` booleans) on an object, an array row, or `form.meta` now
+  reflect the gated verdicts of everything beneath them: `pending` while
+  any descendant is checking, `error` once a descendant's error has
+  cleared its own reveal gate (so a blurred sibling never surfaces an
+  untouched field's error), `success` when every field is earned,
+  otherwise `idle`. Previously a container resolved only on its own-path
+  error, so `form.meta.showErrors` could not back a form-level "fix the
+  errors below" banner; now it does.
+
+- **Cross-bundler plugins — `attaform/rollup`, `attaform/esbuild`,
+  `attaform/webpack`, `attaform/rspack`.** Each rewrites `attaform/zod` to
+  the single matching adapter subpath at the consumer's build (joining the
+  existing `attaform/vite` plugin), so a non-Vite consumer stops shipping
+  both the v3 and v4 adapters (~7 kB gz). Each plugin imports nothing from
+  its bundler — the hook API is hand-rolled as structural types and
+  injected at the consumer's build — so the zero-dependency contract holds.
+  The Vue SFC `v-register` transforms remain Vite-only.
+
+### Changed
+
+- **`getDisplayState` is now a pure transition reducer
+  `(prev, ctx) => DisplayMachine`** (previously
+  `(field, formMeta) => DisplayState`). A per-form engine owns the clock and
+  a single deadline timer; the reducer owns timing policy. Breaking at the
+  override seam — pre-1.0, no back-compat alias. Compose with the exported
+  `defaultDisplayState`, or retune the spinner with `makeDefaultDisplayState`.
+
+- **Smaller production builds.** Dev-only code — runtime warnings and the
+  devtools install — now folds out of consumer production bundles through a
+  DCE-able `__DEV__` flag, and optional features (multi-tab sync,
+  persistence, the schema fingerprint walker) lazy-load as async chunks off
+  the always-on `useForm` path. With the v3 / v4 adapter shared-core
+  consolidation, the eager cost of a minimal `useForm` (zod-v4, production)
+  drops from 47.83 to 45.00 kB gz. A standing `check:eager` byte gate guards
+  it from regressing.
+
+- **`zod-v3` / `zod-v4` adapter parity advances.** The `zod-v3` adapter is
+  brought up to `zod-v4` on the `__proto__`-hardened default-value merge, on
+  peeling `ZodLazy`, and on treating `z.preprocess` as an opaque leaf.
+
+### Removed
+
+- **The `lodash-es` peer dependency.** Its only runtime uses — a trivial
+  `isFunction` and a `cloneDeep` of a freshly-built Zod schema — are replaced
+  with a schema-aware clone that preserves the discriminated-union
+  pointer-break invariant. The only always-required peers are now `vue` and
+  `zod`; Attaform ships zero runtime dependencies.
 
 ## v0.20.2
 ### Fixed

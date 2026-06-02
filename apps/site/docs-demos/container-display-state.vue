@@ -73,7 +73,7 @@
 
       <label>
         <span>Password</span>
-        <input type="password" v-register="form.register('account.password')" />
+        <input v-register="form.register('account.password')" type="password" />
         <small v-if="form.fields.account.password.showErrors" class="msg msg--error">{{
           form.fields.account.password.firstError?.message
         }}</small>

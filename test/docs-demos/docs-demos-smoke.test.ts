@@ -810,9 +810,18 @@ const entries: SmokeEntry[] = [
         throw new Error('container-display-state: password input (index 1) not found')
       await dispatchInput(password, 'short')
       await dispatchBlur(password)
-      await waitUntil(() =>
-        root.textContent?.includes('At least 8 characters') === true ? true : null
-      )
+      // Wait for the password error to surface AND the Account group to roll
+      // it up. The form's first async validation pass (the email availability
+      // refine, kicked off when the banner reads form.meta) can hold the group
+      // at 'pending' briefly, and longer under coverage instrumentation, so
+      // gate on the settled verdict rather than the first paint after blur.
+      await waitUntil(() => {
+        const legend = root.querySelectorAll('legend').item(0)
+        return root.textContent?.includes('At least 8 characters') === true &&
+          legend?.textContent?.includes('error') === true
+          ? true
+          : null
+      }, 3000)
     },
     assert: async (root) => {
       expect(root.textContent ?? '').toContain('At least 8 characters')

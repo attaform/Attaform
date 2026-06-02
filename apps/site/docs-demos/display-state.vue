@@ -22,7 +22,9 @@
     key: 'docs-demo-display-state',
   })
 
-  const onSubmit = form.handleSubmit(() => {})
+  const onSubmit = form.handleSubmit((values) => {
+    toast.success(`Welcome, ${values.username}`, { description: values })
+  })
 </script>
 
 <template>

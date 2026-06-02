@@ -36,7 +36,9 @@
     success: 'Looking good, ready to submit',
   }
 
-  const onSubmit = form.handleSubmit(() => {})
+  const onSubmit = form.handleSubmit((values) => {
+    toast.success('Account created', { description: values })
+  })
 </script>
 
 <template>

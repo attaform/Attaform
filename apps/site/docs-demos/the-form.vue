@@ -13,8 +13,9 @@
     key: 'docs-demo-the-form',
   })
 
-  const onSubmit = form.handleSubmit(async () => {
+  const onSubmit = form.handleSubmit(async (values) => {
     await new Promise((r) => setTimeout(r, 500))
+    toast.success('Saved', { description: values })
   })
 </script>
 

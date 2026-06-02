@@ -13,8 +13,8 @@
     key: 'docs-demo-focus-scroll',
   })
 
-  const onSubmit = form.handleSubmit(() => {
-    /* success path not relevant for this demo */
+  const onSubmit = form.handleSubmit((values) => {
+    toast.success(`Thanks, ${values.name}`, { description: values })
   })
 </script>
 

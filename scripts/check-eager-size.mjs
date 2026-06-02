@@ -177,11 +177,18 @@ export async function measureEager(define = PROD_DEFINE) {
 // every field access — there is no async seam to defer them behind. That is a
 // deliberate capability-for-bytes trade (a polished, tunable anti-flash
 // spinner baked into every form, otherwise re-built ad hoc by each consumer),
-// landing the eager set at 44.51 kB gz. Budget raised to keep ~0.5 kB headroom
-// for minifier-version drift. The lazy-loading work tightens this as optional
-// features move to the async path; never loosen it without a recorded reason
-// in the commit.
-const BUDGET_GZ = 46_080
+// landing the eager set at 44.51 kB gz. The container / form.meta rollup (#346)
+// then consumed that headroom, landing the eager set at exactly 45.00 kB gz.
+//
+// RECORDED LOOSENING (form.meta pending during submit): form.meta reads as
+// pending while a submit runs its own validation pass, so one
+// `form.meta.showPending` can drive a form-level "validating" affordance. The
+// projection reads `state.submitting` + `state.activeValidations` at the root,
+// landing the eager set at 45.01 kB gz. Budget raised to restore ~0.5 kB
+// headroom for minifier-version drift. The lazy-loading work tightens this as
+// optional features move to the async path; never loosen it without a recorded
+// reason in the commit.
+const BUDGET_GZ = 46_592
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

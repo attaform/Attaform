@@ -25,7 +25,6 @@
     schema,
     defaultValues: buildDefaults,
     key: 'docs-demo-defaults-sync-factory',
-    validateOn: 'blur',
   })
 
   async function onNewSession() {

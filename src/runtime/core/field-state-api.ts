@@ -1,5 +1,8 @@
 import { computed, type ComputedRef } from 'vue'
 import type {
+  DisplayCtx,
+  DisplayMachine,
+  DisplayState,
   FieldState,
   FieldStateDerivedKey,
   FormMeta,
@@ -9,7 +12,7 @@ import type {
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
-import { defaultDisplayState } from './display-state'
+import { defaultDisplayState, isDefaultDisplayState } from './display-state'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META } from './field-meta'
 import { humanize } from './humanize'
@@ -238,7 +241,16 @@ function buildLeafFieldState<F extends GenericForm>(
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
   const base = buildLeafFieldStateBase(state, segments, key, formInstanceId)
-  return decorateWithDerivedProps(base, state, getFormMetaBase, getDisplayState)
+  const validatingSince = state.fieldValidatingSince.get(key) ?? null
+  return decorateWithDerivedProps(
+    base,
+    state,
+    getFormMetaBase,
+    key,
+    validatingSince,
+    false,
+    getDisplayState
+  )
 }
 
 /**
@@ -266,7 +278,11 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   segments: Path,
   key: PathKey,
   formInstanceId: string
-): FieldStateBase {
+): {
+  readonly base: FieldStateBase
+  readonly validatingSince: number | null
+  readonly revealedDescendantError: boolean
+} {
   // Read live form value first so the access participates in dep
   // tracking; the discriminator key write that switches a DU variant
   // shows up here and re-runs the computed.
@@ -295,8 +311,14 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   let blurredAfterInteraction = false
   let connected = false
   let validating = false
+  let validatingSince: number | null = null
   let updatedAt: string | null = null
   let asyncPending = false
+  // For the descendant display rollup: submit opens every gate at once;
+  // otherwise each error gates on whether a leaf at-or-under it has been
+  // blurred-after-interaction. Collected here from the one walk we already do.
+  const submissionAttempts = state.submissionAttempts.value
+  const blurredLeafSegments: Path[] = []
   for (const [leafKey, entry] of state.originals) {
     if (!isPathPrefix(segments, entry.segments)) continue
     if (segments.length === entry.segments.length) continue // self isn't a descendant
@@ -315,9 +337,28 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (leafRecord?.blurred === true) blurred = true
     if (leafRecord?.touched === true) touched = true
     if (leafRecord?.interacted === true) interacted = true
-    if (leafRecord?.blurredAfterInteraction === true) blurredAfterInteraction = true
+    if (leafRecord?.blurredAfterInteraction === true) {
+      blurredAfterInteraction = true
+      blurredLeafSegments.push(entry.segments)
+    }
     if (leafRecord?.connected === true) connected = true
-    if ((state.fieldValidationCounts.get(leafKey) ?? 0) > 0) validating = true
+    if ((state.fieldValidationCounts.get(leafKey) ?? 0) > 0) {
+      validating = true
+      // Anchor the container spinner at its earliest still-validating leaf,
+      // so a row's show-delay window measures from the first descendant to
+      // start rather than resetting each time another leaf joins the streak.
+      // Only a leaf whose own reveal gate is open contributes the anchor: a
+      // descendant validating on 'change' before it has been blurred would
+      // never show its own spinner, so the container must not show one for it.
+      const leafGateOpen = submissionAttempts > 0 || leafRecord?.blurredAfterInteraction === true
+      const since = state.fieldValidatingSince.get(leafKey)
+      if (
+        leafGateOpen &&
+        since !== undefined &&
+        (validatingSince === null || since < validatingSince)
+      )
+        validatingSince = since
+    }
     if (state.pathHasAsyncValidationByKey(leafKey, entry.segments)) asyncPending = true
     const ts = leafRecord?.updatedAt
     if (ts !== undefined && ts !== null) {
@@ -342,6 +383,24 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // `valid` derives from this single source so the two fields can
   // never disagree.
   const errors = aggregateErrorsAt(state, segments)
+  // Descendant display rollup: does any error UNDER this container have its
+  // owning field's reveal gate open? Iterates the aggregated errors (not just
+  // the leaf walk) so a cross-field error pinned at an intermediate object is
+  // included. The container's OWN-path error is left to the reducer's own-path
+  // rule; this adds only the descendant dimension the aggregate base hides.
+  const revealedDescendantError =
+    errors.length > 0 &&
+    errors.some((e) => {
+      const ePath = e.path
+      if (ePath.length === segments.length && ePath.every((s, i) => s === segments[i])) return false
+      if (submissionAttempts > 0) return true
+      // The form-errors bucket (path `['']`) belongs to the root container;
+      // gate it by the root's own aggregate blur rather than a leaf prefix.
+      if (ePath.length === 1 && ePath[0] === '') return blurredAfterInteraction
+      // A leaf error gates on that leaf's blur; an intermediate-container
+      // error gates on any blurred leaf beneath it.
+      return blurredLeafSegments.some((s) => isPathPrefix(ePath, s))
+    })
   // A container's own sub-schema can also declare async work — a
   // top-level `.refine(async ...)` on the root, or a cross-field
   // refine on a sub-object — and those don't show up in any per-
@@ -357,30 +416,34 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   const lastSegment = segments.length === 0 ? '' : (segments[segments.length - 1] ?? '')
   const label = resolved.label || humanize(lastSegment)
   return {
-    value,
-    original,
-    pristine,
-    dirty,
-    focused,
-    blurred,
-    touched,
-    interacted,
-    blurredAfterInteraction,
-    connected,
-    element: null,
-    elements: EMPTY_ELEMENTS,
-    updatedAt,
-    errors,
-    validating,
-    valid,
-    path: segments,
-    ...computeFieldIdentity(formInstanceId, state.formKey, key),
-    key: state.arrayElementKey(segments),
-    blank,
-    label,
-    description: resolved.description,
-    placeholder: resolved.placeholder,
-    meta: resolved.meta,
+    base: {
+      value,
+      original,
+      pristine,
+      dirty,
+      focused,
+      blurred,
+      touched,
+      interacted,
+      blurredAfterInteraction,
+      connected,
+      element: null,
+      elements: EMPTY_ELEMENTS,
+      updatedAt,
+      errors,
+      validating,
+      valid,
+      path: segments,
+      ...computeFieldIdentity(formInstanceId, state.formKey, key),
+      key: state.arrayElementKey(segments),
+      blank,
+      label,
+      description: resolved.description,
+      placeholder: resolved.placeholder,
+      meta: resolved.meta,
+    },
+    validatingSince,
+    revealedDescendantError,
   }
 }
 
@@ -396,45 +459,73 @@ function buildContainerFieldState<F extends GenericForm>(
   getFormMetaBase: FormMetaBaseGetter,
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
-  const base = buildContainerFieldStateBase(state, segments, key, formInstanceId)
-  return decorateWithDerivedProps(base, state, getFormMetaBase, getDisplayState)
+  const { base, validatingSince, revealedDescendantError } = buildContainerFieldStateBase(
+    state,
+    segments,
+    key,
+    formInstanceId
+  )
+  return decorateWithDerivedProps(
+    base,
+    state,
+    getFormMetaBase,
+    key,
+    validatingSince,
+    revealedDescendantError,
+    getDisplayState
+  )
 }
 
 /**
  * Layer `displayState`, the four `show*` booleans, and `firstError`
  * onto a freshly-computed base. Shared by leaf and container paths so
- * the heuristic runs identically at every depth.
+ * the reducer runs identically at every depth.
  *
  * `firstError` is `errors[0]` — deterministic because errors are
  * already sorted by schema-declaration order (within a leaf: schema →
  * blank → user concat; across a container: `pathOrdinal` bucket sort).
  *
- * The predicate runs UNCONDITIONALLY: it resolves the full
- * idle/pending/error/success verdict, not just error visibility, so it
- * must see the no-error states (success, idle) too — short-circuiting on
- * `errors.length === 0` would starve those. The `show*` booleans are
- * pure projections of the single `displayState` result, so they can
- * never disagree with it.
+ * The reducer runs UNCONDITIONALLY through the per-form display engine,
+ * which threads the path's previous `DisplayMachine` and the injected
+ * clock so the timing policy (the anti-flash spinner) can compute the
+ * next verdict. It resolves the full idle/pending/error/success machine,
+ * not just error visibility, so it must see the no-error states too. The
+ * four `show*` booleans are pure projections of the single
+ * `machine.display`, so they can never disagree with it.
+ *
+ * A misbehaving custom reducer must not take down the reactive surface:
+ * its throw is caught, warned once per reference in dev, and the read is
+ * retried through the engine with `defaultDisplayState` so the fallback
+ * still participates in machine state. The reducer call happens before
+ * any engine mutation, so a throw leaves the machine map untouched and
+ * the retry sees the same `prev`.
  */
 function decorateWithDerivedProps<F extends GenericForm>(
   base: FieldStateBase,
   state: FormStore<F, GenericForm>,
   getFormMetaBase: FormMetaBaseGetter,
+  key: PathKey,
+  validatingSince: number | null,
+  revealedDescendantError: boolean,
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
   const firstError = base.errors[0]
   const predicate = getDisplayState ?? state.getDisplayState
   const formMeta = getFormMetaBase()
-  // The predicate runs on every field-state read, so a misbehaving
-  // custom predicate must not take down the whole reactive surface.
-  // Fall back to the library default (total over well-formed base
-  // shapes) rather than propagating the throw out of the computed.
-  // Surface one dev-only warn per predicate reference so a
-  // consistently-broken consumer override is visible without spamming
-  // every read.
-  let displayState: ReturnType<GetDisplayState>
+  const ctx: DisplayCtx = {
+    field: base,
+    formMeta,
+    validatingSince,
+    // The engine's clock. Frozen to 0 under SSR (no clock, nothing in
+    // flight) so the reducer returns the plain verdict and hydration matches.
+    now: state.ssr ? 0 : Date.now(),
+  }
+  let machine: DisplayMachine
+  // The rollup is a library-default behavior; a fully custom reducer owns
+  // container verdicts. A throw falls back to the default, which restores it.
+  let rollupApplies = isDefaultDisplayState(predicate)
   try {
-    displayState = predicate(base, formMeta)
+    machine = state.displayEngine.resolve(key, ctx, predicate)
   } catch (err) {
     if (__DEV__ && !warnedDisplayStatePredicates.has(predicate)) {
       warnedDisplayStatePredicates.add(predicate)
@@ -444,8 +535,20 @@ function decorateWithDerivedProps<F extends GenericForm>(
         err
       )
     }
-    displayState = defaultDisplayState(base, formMeta)
+    machine = state.displayEngine.resolve(key, ctx, defaultDisplayState)
+    rollupApplies = true
   }
+  // Container rollup: surface a descendant's gated error (or a nested
+  // cross-field error) at the container, unless a validation is in flight
+  // (pending wins) or a custom reducer owns the verdict. The reducer already
+  // resolves the field's own-path error and the anti-flash timing; this only
+  // adds the descendant dimension it cannot see from the aggregate base. The
+  // four `show*` booleans below project from this single value, so the
+  // exactly-one-true invariant holds by construction.
+  const displayState: DisplayState =
+    rollupApplies && revealedDescendantError && machine.display !== 'pending'
+      ? 'error'
+      : machine.display
   return {
     ...base,
     displayState,

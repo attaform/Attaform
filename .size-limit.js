@@ -220,7 +220,13 @@ export default [
     // and losing cross-module dedup, so the total ticks up ~0.5 kB even
     // as first-paint bytes drop. The real win lives in the eager gate;
     // this number is the full-feature ceiling. Measured at 48.06 KB.
-    limit: '49 KB',
+    //
+    // Raised 49 → 50 KB on the timed-display-state branch (#343): the
+    // anti-flash display engine (display-state.ts timed reducer +
+    // display-engine.ts per-form clock / single timer / machine map) lands in
+    // the shared core chunk, read synchronously on every field access so it
+    // cannot defer behind an async seam. Measured at 49.48 KB.
+    limit: '50 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -344,7 +350,11 @@ export default [
     // gap). The unified zod.mjs absorbs the full v3 delta. Phase 12
     // dedup reclaims the introspect-walker duplication. Measured at
     // 62.33 KB.
-    limit: '63 KB',
+    //
+    // Raised 63 → 64 KB tracking index.mjs's timed-display-state bump (#343):
+    // same shared core chunk (timed getDisplayState reducer + per-form display
+    // engine). Measured at 63.23 KB.
+    limit: '64 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -431,7 +441,11 @@ export default [
     // though the EAGER set drops 45.61 -> 44.60 KB gz. The real D-metric
     // is scripts/check-eager-size.mjs (splitting:true); this cap tracks
     // only the inlined whole. Measured at 56.03 KB.
-    limit: '57 KB',
+    //
+    // Raised 57 → 58 KB tracking index.mjs's timed-display-state bump (#343):
+    // same shared core chunk (timed display reducer + per-form engine).
+    // Measured at 57.46 KB.
+    limit: '58 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -575,7 +589,11 @@ export default [
     // import back (it cannot see the eager/async split), so the inlined
     // total ticks up ~0.5 kB. See the index.mjs note plus the eager gate
     // (scripts/check-eager-size.mjs). Measured at 57.16 KB.
-    limit: '58 KB',
+    //
+    // Raised 58 → 59 KB tracking index.mjs's timed-display-state bump (#343):
+    // same shared core chunk (timed display reducer + per-form engine).
+    // Measured at 58.63 KB.
+    limit: '59 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

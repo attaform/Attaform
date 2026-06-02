@@ -23,7 +23,6 @@
 
   const form = useForm({
     schema,
-    validateOn: 'blur',
     key: 'docs-demo-async-refinements',
   })
 

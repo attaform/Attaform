@@ -19,7 +19,6 @@
 
   const form = useForm({
     schema,
-    validateOn: 'blur',
     key: 'docs-demo-display-state',
   })
 

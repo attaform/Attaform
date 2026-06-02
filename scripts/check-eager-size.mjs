@@ -169,11 +169,19 @@ export async function measureEager(define = PROD_DEFINE) {
 // own dynamic-imported module, so a prod build orphans that chunk instead of
 // shipping it as dead code (esbuild keeps a top-level function called only
 // from a dead `__DEV__` branch — tree-shaking runs before the define-fold),
-// landing the eager set at 43.91 kB gz. ~0.5 kB headroom absorbs minifier-
-// version drift. The lazy-loading work tightens this as optional features
-// move to the async path; never loosen it without a recorded reason in the
-// commit.
-const BUDGET_GZ = 45_470
+// landing the eager set at 43.91 kB gz.
+//
+// RECORDED LOOSENING (anti-flash display timing): the timed `getDisplayState`
+// reducer + the per-form display engine (clock / single timer / machine map)
+// sit on the eager path because `field.displayState` is read synchronously on
+// every field access — there is no async seam to defer them behind. That is a
+// deliberate capability-for-bytes trade (a polished, tunable anti-flash
+// spinner baked into every form, otherwise re-built ad hoc by each consumer),
+// landing the eager set at 44.51 kB gz. Budget raised to keep ~0.5 kB headroom
+// for minifier-version drift. The lazy-loading work tightens this as optional
+// features move to the async path; never loosen it without a recorded reason
+// in the commit.
+const BUDGET_GZ = 46_080
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

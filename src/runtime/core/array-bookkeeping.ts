@@ -34,6 +34,11 @@ export type FieldValidationEntry = {
   controller: AbortController
   timer: ReturnType<typeof setTimeout> | null
   settled: boolean
+  // Set true when an external caller (a path-scoped reset) has already released
+  // this run's counters synchronously. The run's own `.finally` then skips its
+  // decrements, so it can't double-count against a run rescheduled at the same
+  // key in the meantime.
+  released: boolean
 }
 
 /**
@@ -52,6 +57,7 @@ export type ArrayBookkeepingDeps = {
   readonly blankPaths: Set<PathKey>
   readonly originalBlankPaths: Set<PathKey>
   readonly fieldValidationCounts: Map<PathKey, number>
+  readonly fieldValidatingSince: Map<PathKey, number>
   readonly fieldValidationState: Map<PathKey, FieldValidationEntry>
   readonly schemaErrors: Map<PathKey, ValidationError[]>
   readonly activeValidations: Ref<number>
@@ -131,6 +137,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     blankPaths,
     originalBlankPaths,
     fieldValidationCounts,
+    fieldValidatingSince,
     fieldValidationState,
     schemaErrors,
     activeValidations,
@@ -154,6 +161,15 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
     migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    // The validation-streak anchor leads its count, mirroring
+    // `incFieldValidation`: relocating `fieldValidatingSince` before
+    // `fieldValidationCounts` keeps `validatingSince !== null` an outer bracket
+    // around `count > 0` at the destination key, so a synchronous reader
+    // catching the gap between the two relocations never sees `validating: true,
+    // validatingSince: null` (which would flash idle). The anchor travels with
+    // the count it parallels, so a moved element's show-delay clock keeps
+    // measuring from when ITS streak opened rather than inheriting the slot's.
+    migrateMapSubtree(fieldValidatingSince, arrayPath, remap, (since) => since)
     // In-flight field-validation counter (`field.validating` mirror).
     // Same identity reasoning as the other path-keyed maps: the spinner
     // belongs to the validating element, not the slot. Self-heals on the

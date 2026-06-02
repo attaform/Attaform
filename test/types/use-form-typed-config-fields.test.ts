@@ -26,7 +26,7 @@ import type { GetDisplayState } from '../../src/runtime/types/types-api'
 const schemaV4 = z.object({ email: z.string() })
 const schemaV3 = zV3.object({ email: zV3.string() })
 
-const getDisplayState: GetDisplayState = () => 'idle'
+const getDisplayState: GetDisplayState = () => ({ display: 'idle' })
 
 describe('useForm — typed-config field surface (SF2)', () => {
   describe('attaform/zod-v3', () => {

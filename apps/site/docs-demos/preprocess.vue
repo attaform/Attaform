@@ -12,7 +12,6 @@
   const form = useForm({
     schema,
     key: 'docs-demo-preprocess',
-    validateOn: 'blur',
   })
 
   const parsePreview = computed(() => normalize(form.values.email))

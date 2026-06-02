@@ -1477,29 +1477,31 @@ export type AttaformDefaults = {
    *   useForm({ getDisplayState })  >  AttaformDefaults  >  library default
    *
    * The library default opens one timing gate, then resolves by
-   * precedence: gate closed → `'idle'`; a run in flight → `'pending'`;
-   * an own-path error → `'error'`; otherwise `valid` → `'success'`, else
-   * `'idle'`. The gate opens after the first submit attempt OR once the
-   * field is touched and not currently focused:
+   * precedence: gate closed → `'idle'`; a run in flight → a delayed
+   * `'pending'` (held briefly to smooth fast validations, then held a
+   * minimum so it never flashes); an own-path error → `'error'`;
+   * otherwise earned `valid` → `'success'`, else `'idle'`. The gate opens
+   * after the first submit attempt OR once the field is edited and left:
    *
    * ```ts
-   * (field, formMeta) => {
+   * (prev, ctx) => {
    *   const gateOpen =
-   *     formMeta.submissionAttempts > 0 ||
-   *     (field.touched === true && field.focused !== true)
-   *   if (!gateOpen) return 'idle'
-   *   if (field.validating === true) return 'pending'
-   *   // ...own-path error → 'error'; valid → 'success'; else 'idle'
+   *     ctx.formMeta.submissionAttempts > 0 ||
+   *     ctx.field.blurredAfterInteraction === true
+   *   if (!gateOpen) return { display: 'idle' }
+   *   // ...timed 'pending' while validating; own-path error → 'error';
+   *   //    earned valid → 'success'; else 'idle'
    * }
    * ```
    *
    * Compose with the library default via the public `defaultDisplayState`
-   * export. The predicate runs on every field-state read, so it owns the
+   * export, or retune its timing via `makeDefaultDisplayState`. The
+   * reducer runs on every field-state read, so it owns the
    * idle / pending / error / success decision outright.
    *
-   * The predicate's args are `Omit`'d of the derived `displayState` /
-   * `show*` / `firstError` keys (see `FieldStateDerivedKey`) to prevent
-   * a self-referential predicate.
+   * The reducer's `ctx.field` / `ctx.formMeta` are `Omit`'d of the
+   * derived `displayState` / `show*` / `firstError` keys (see
+   * `FieldStateDerivedKey`) to prevent a self-referential reducer.
    */
   getDisplayState?: GetDisplayState
   /**
@@ -1673,16 +1675,60 @@ export type FieldStateDerivedKey =
   | 'firstError'
 
 /**
- * Predicate that resolves a path's `displayState`. Receives the field's
- * reactive state plus the form's reactive meta (both minus the derived
- * `displayState` / `show*` / `firstError` keys — see `FieldStateDerivedKey`)
- * and returns the single enum verdict; the `show*` booleans derive from
- * the result. Runs unconditionally on every field-state read, so the
- * idle / pending / error / success decision lives in exactly one place
- * and the whole app's validation-display behavior flows from it.
+ * One step of the display state machine: the verdict the field should
+ * render right now (`display`, projected to `displayState` and the
+ * `show*` booleans) plus two optional timing cells the engine reads.
  *
- * The library default — `defaultDisplayState` — is publicly exported so
- * a layered predicate can compose with it:
+ * - `reviewAt` — an absolute `Date.now()` millisecond stamp telling the
+ *   engine "re-evaluate this field no later than here." The engine keeps
+ *   a single timer per form aimed at the nearest `reviewAt` across all
+ *   active fields; when it fires, the dependent field computeds re-run
+ *   and call the reducer again. A machine with no `reviewAt` and a
+ *   non-pending `display` is terminal — the engine evicts it.
+ * - `pendingShownAt` — the stamp at which `'pending'` was first shown,
+ *   the memory the min-visible hold needs so a spinner that just appeared
+ *   is not yanked away the instant validation resolves. Opaque to the
+ *   engine; a custom reducer may carry its own extra memory fields too.
+ */
+export type DisplayMachine = {
+  readonly display: DisplayState
+  readonly reviewAt?: number
+  readonly pendingShownAt?: number
+}
+
+/**
+ * Inputs to a `getDisplayState` reducer. `field` and `formMeta` are the
+ * same reactive snapshots a predicate has always received (still minus
+ * the derived `displayState` / `show*` / `firstError` keys — see
+ * `FieldStateDerivedKey` — so a reducer can never read its own output and
+ * form a cycle), now joined by:
+ *
+ * - `validatingSince` — `Date.now()` at which the field's current
+ *   validation streak opened, or `null` when nothing is in flight. This,
+ *   not `field.validating`, is the timing anchor: the elapsed wait is
+ *   `now - validatingSince`. Pinned to the start of the streak, so
+ *   overlapping sub-runs do not reset it.
+ * - `now` — the engine's clock, injected so the reducer stays pure and
+ *   deterministic (and frozen to `0` under SSR, where there is no clock).
+ */
+export type DisplayCtx = {
+  readonly field: Omit<FieldState, FieldStateDerivedKey>
+  readonly formMeta: Omit<FormMeta, FieldStateDerivedKey>
+  readonly validatingSince: number | null
+  readonly now: number
+}
+
+/**
+ * Pure transition reducer that resolves a path's `displayState`. Given
+ * the field's previous `DisplayMachine` and the current `DisplayCtx`, it
+ * returns the next machine; the engine owns the clock and the timers, the
+ * reducer owns the timing policy. Runs on every field-state read (and
+ * again whenever a `reviewAt` deadline fires), so the whole app's
+ * validation-display behavior flows from this one function.
+ *
+ * The library default — `defaultDisplayState` — is publicly exported so a
+ * layered reducer can compose with it, and `makeDefaultDisplayState`
+ * builds a default with custom anti-flash timings:
  *
  * ```ts
  * import { defaultDisplayState } from 'attaform'
@@ -1690,17 +1736,16 @@ export type FieldStateDerivedKey =
  * useForm({
  *   schema,
  *   // Defer to the default everywhere, but never show a success check on `username`.
- *   getDisplayState: (field, formMeta) => {
- *     const state = defaultDisplayState(field, formMeta)
- *     return field.path[0] === 'username' && state === 'success' ? 'idle' : state
+ *   getDisplayState: (prev, ctx) => {
+ *     const next = defaultDisplayState(prev, ctx)
+ *     return next.display === 'success' && ctx.field.path[0] === 'username'
+ *       ? { display: 'idle' }
+ *       : next
  *   },
  * })
  * ```
  */
-export type GetDisplayState = (
-  field: Omit<FieldState, FieldStateDerivedKey>,
-  formMeta: Omit<FormMeta, FieldStateDerivedKey>
-) => DisplayState
+export type GetDisplayState = (prev: DisplayMachine, ctx: DisplayCtx) => DisplayMachine
 
 /**
  * Submit handler returned by `handleSubmit(onSubmit, onError)`. Bind

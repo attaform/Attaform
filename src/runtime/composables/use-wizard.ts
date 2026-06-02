@@ -1131,7 +1131,16 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         // always bumps once per invocation.
         for (const key of results.keys()) {
           const store = registry.forms.get(key)
-          if (store !== undefined) store.submissionAttempts.value += 1
+          if (store !== undefined) {
+            store.submissionAttempts.value += 1
+            // Mirror the form's own handleSubmit: a wizard submit is an
+            // explicit reveal, so abort any in-flight per-field validation
+            // (clearing `fieldValidatingSince`) and drop the anti-flash
+            // display state, so leftover show-delay holds or min-visible
+            // spinner timers can't outlive the submit and delay the verdict.
+            store.cancelFieldValidation()
+            store.displayEngine.clear()
+          }
         }
         submissionAttempts.value += 1
 

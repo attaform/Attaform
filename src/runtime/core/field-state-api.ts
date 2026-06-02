@@ -248,7 +248,8 @@ function buildLeafFieldState<F extends GenericForm>(
     getFormMetaBase,
     key,
     validatingSince,
-    false,
+    false, // revealedDescendantError: leaves have no descendants
+    false, // isRoot: a leaf is never the form root
     getDisplayState
   )
 }
@@ -472,6 +473,7 @@ function buildContainerFieldState<F extends GenericForm>(
     key,
     validatingSince,
     revealedDescendantError,
+    segments.length === 0,
     getDisplayState
   )
 }
@@ -507,6 +509,7 @@ function decorateWithDerivedProps<F extends GenericForm>(
   key: PathKey,
   validatingSince: number | null,
   revealedDescendantError: boolean,
+  isRoot: boolean,
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
   const firstError = base.errors[0]
@@ -545,10 +548,20 @@ function decorateWithDerivedProps<F extends GenericForm>(
   // adds the descendant dimension it cannot see from the aggregate base. The
   // four `show*` booleans below project from this single value, so the
   // exactly-one-true invariant holds by construction.
+  // form.meta (the root) also reads as pending while a submit runs its own
+  // validation pass. The submit clears the per-field anchors, so the rollup
+  // cannot see that window; gating on a live submit keeps everyday per-field
+  // validation on the anti-flashed rollup path, and the handler phase
+  // (submitting with no active validation) is never pending, since show*
+  // tracks validation, not submission.
+  const submitValidating =
+    rollupApplies && isRoot && state.submitting.value && state.activeValidations.value > 0
   const displayState: DisplayState =
-    rollupApplies && revealedDescendantError && machine.display !== 'pending'
-      ? 'error'
-      : machine.display
+    machine.display === 'pending' || submitValidating
+      ? 'pending'
+      : rollupApplies && revealedDescendantError
+        ? 'error'
+        : machine.display
   return {
     ...base,
     displayState,

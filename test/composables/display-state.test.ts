@@ -1104,6 +1104,91 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('form.meta tracks the submit validation as pending, then drops out for the handler', async () => {
+    const { form, resolve } = mountGatedRefine()
+    let releaseHandler: () => void = () => {}
+    const handlerGate = new Promise<void>((r) => {
+      releaseHandler = r
+    })
+    // Non-empty value so the refine parks on the external gate instead of
+    // synchronously rejecting, letting us sit inside the submit's validating
+    // window.
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+
+    // Submit. `submitting` flips true at entry and the submit runs its own
+    // validation, which parks on the gate. The per-field anchors were cleared
+    // by the submit, so the rollup alone reads idle; form.meta is pending only
+    // because a submit's validation is in flight.
+    const submitting = form.handleSubmit(async () => {
+      await handlerGate
+    })()
+    await nextTick()
+    expect(form.meta.submitting).toBe(true)
+    expect(form.meta.displayState).toBe('pending')
+    expect(form.meta.showPending).toBe(true)
+    expect(form.meta.showErrors).toBe(false)
+    expect(form.meta.showSuccess).toBe(false)
+    expect(form.meta.showIdle).toBe(false)
+
+    // Resolve the validation clean: validation ends but the handler keeps
+    // running. `submitting` stays true, yet show* tracks validation, not
+    // submission, so form.meta is no longer pending.
+    resolve(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(form.meta.submitting).toBe(true)
+    expect(form.meta.showPending).toBe(false)
+
+    // Release the handler: the submit completes and `submitting` clears.
+    releaseHandler()
+    await submitting
+    await nextTick()
+    expect(form.meta.submitting).toBe(false)
+  })
+
+  it('a submit reflects only on form.meta; a revealed field holds its verdict', async () => {
+    const { form, resolve } = mountGatedRefine()
+    form.setValue('email', 'a@b.c')
+    await nextTick()
+    // A first submit opens the reveal gate; the valid field settles to success,
+    // the state a user is in after filling and leaving a field.
+    const first = form.handleSubmit(() => {})()
+    await nextTick()
+    resolve(true)
+    await first
+    await nextTick()
+    expect(form.fields('email').showSuccess).toBe(true)
+    expect(form.meta.showSuccess).toBe(true)
+
+    // A second submit, with a parked async handler.
+    let releaseHandler: () => void = () => {}
+    const handlerGate = new Promise<void>((r) => {
+      releaseHandler = r
+    })
+    const submitting = form.handleSubmit(async () => {
+      await handlerGate
+    })()
+    await nextTick()
+    // The submit-pending treatment is root-only: form.meta flips to pending, but
+    // the leaf is untouched and keeps its own verdict (no spinner).
+    expect(form.meta.showPending).toBe(true)
+    expect(form.fields('email').showPending).toBe(false)
+
+    // Validation settles; the handler is still running. The gate stays open, so
+    // form.meta returns to the earned success the leaf held all along.
+    resolve(true)
+    await vi.advanceTimersByTimeAsync(0)
+    await nextTick()
+    expect(form.meta.submitting).toBe(true)
+    expect(form.meta.showSuccess).toBe(true)
+    expect(form.fields('email').showSuccess).toBe(true)
+
+    releaseHandler()
+    await submitting
+    await nextTick()
+    expect(form.meta.showSuccess).toBe(true)
+  })
+
   it('wizard submit cancels a held spinner timer on its forms', async () => {
     let resolveValidation: (ok: boolean) => void = () => {}
     const schema = zV4.object({

@@ -104,7 +104,9 @@
       </label>
     </fieldset>
 
-    <button type="submit">Create account</button>
+    <button type="submit" :disabled="form.meta.submitting">
+      {{ form.meta.submitting ? 'Creating account…' : 'Create account' }}
+    </button>
 
     <p class="hint">
       Every group carries the same <code>displayState</code> as a leaf, rolled up from its fields. A
@@ -113,7 +115,9 @@
       child's error becomes visible, and greens only once every child is earned. An untouched
       optional like Nickname never holds the group back, and a field you have not engaged with yet
       never drags the group into <code>error</code>. <code>form.meta</code> is the same rollup at
-      the root, so the banner reflects the whole form.
+      the root, so the banner reflects the whole form. The Create account button binds
+      <code>form.meta.submitting</code>, true only during a submit, while the badges read
+      <code>displayState</code>.
     </p>
   </form>
 </template>
@@ -249,8 +253,12 @@
     font-weight: 500;
     cursor: pointer;
   }
-  button:hover {
+  button:hover:not(:disabled) {
     background: #1d4ed8;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: progress;
   }
   .hint {
     font-size: 0.8rem;

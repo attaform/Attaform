@@ -20,6 +20,16 @@
   `makeDefaultDisplayState({ showDelay, minVisible })`, `DEFAULT_TIMINGS`,
   and the `DisplayMachine` / `DisplayCtx` / `DisplayTimings` types.
 
+- **Container and form-level display rollup.** `displayState` (and the
+  `show*` booleans) on an object, an array row, or `form.meta` now
+  reflect the gated verdicts of everything beneath them: `pending` while
+  any descendant is checking, `error` once a descendant's error has
+  cleared its own reveal gate (so a blurred sibling never surfaces an
+  untouched field's error), `success` when every field is earned,
+  otherwise `idle`. Previously a container resolved only on its own-path
+  error, so `form.meta.showErrors` could not back a form-level "fix the
+  errors below" banner; now it does.
+
 - **Cross-bundler plugins — `attaform/rollup`, `attaform/esbuild`,
   `attaform/webpack`, `attaform/rspack`.** Each rewrites `attaform/zod` to
   the single matching adapter subpath at the consumer's build (joining the
@@ -44,7 +54,7 @@
   persistence, the schema fingerprint walker) lazy-load as async chunks off
   the always-on `useForm` path. With the v3 / v4 adapter shared-core
   consolidation, the eager cost of a minimal `useForm` (zod-v4, production)
-  drops from 47.83 to 43.91 kB gz. A standing `check:eager` byte gate guards
+  drops from 47.83 to 45.00 kB gz. A standing `check:eager` byte gate guards
   it from regressing.
 
 - **`zod-v3` / `zod-v4` adapter parity advances.** The `zod-v3` adapter is

@@ -11,10 +11,12 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * and `persist`, the wizard wires a `?step=<key>` round-trip via
  * `wizard-history.ts`:
  *
- *   - `next()` / `back()` / `goTo()` → `replaceState` on the URL via
- *     the default `persist` watcher (the in-memory wizard state is the
- *     source of truth, so new history entries per step do not earn
- *     their keep over a stable URL bar).
+ *   - `next()` / `back()` / `goTo()` → `pushState` on the URL via the
+ *     default `persist` watcher, so each step earns a real history
+ *     entry and the browser Back / Forward buttons walk the flow (the
+ *     authored contract: a slow multi-step form makes Back-as-real-
+ *     navigation the natural expectation). Pushes are deduped when the
+ *     URL is already on the target step.
  *   - `popstate` → the URL mirror updates, the restore lambda
  *     reactively re-applies the new step.
  *   - Initial URL with `?step=<knownKey>` seeds the active step.
@@ -55,19 +57,19 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     window.history.replaceState(null, '', ORIGINAL_URL)
   })
 
-  it('next() writes the new step key into the URL', async () => {
-    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+  it('next() pushes the new step key into the URL (real history entry)', async () => {
+    const pushSpy = vi.spyOn(window.history, 'pushState')
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hw-next-a', defaultValues: { a: 'a' } })
       const b = useForm({ schema: schemaB, key: 'hw-next-b', defaultValues: { b: 'b' } })
       return useWizard({ steps: [a, b] })
     })
     apps.push(app)
-    replaceSpy.mockClear()
+    pushSpy.mockClear()
     await result.next()
-    expect(replaceSpy).toHaveBeenCalled()
+    expect(pushSpy).toHaveBeenCalled()
     expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-next-b')
-    replaceSpy.mockRestore()
+    pushSpy.mockRestore()
   })
 
   it('goTo() writes the chosen step key into the URL', async () => {
@@ -86,22 +88,42 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-go-a')
   })
 
-  it('popstate re-applies the URL step through the restore lambda', async () => {
+  it('builds a back-stack so a real browser Back returns to the prior step', async () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hw-pop-a', defaultValues: { a: 'a' } })
       const b = useForm({ schema: schemaB, key: 'hw-pop-b', defaultValues: { b: 'b' } })
       return useWizard({ steps: [a, b] })
     })
     apps.push(app)
+    const lengthBeforeNav = window.history.length
     await result.next()
     expect(result.currentStep).toBe('hw-pop-b')
-    // Default persist uses replaceState, so window.history.back() will
-    // not retrace the navigation. Drive popstate directly with a URL
-    // rewrite + manual event dispatch.
-    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=hw-pop-a`)
-    window.dispatchEvent(new PopStateEvent('popstate'))
-    await new Promise((r) => setTimeout(r, 10))
+    // Default persist pushes, so navigating grows the back-stack...
+    expect(window.history.length).toBeGreaterThan(lengthBeforeNav)
+    // ...and a *real* browser Back (not a manual popstate drive) retraces
+    // the navigation back to the prior step.
+    window.history.back()
+    await new Promise((r) => setTimeout(r, 20))
     expect(result.currentStep).toBe('hw-pop-a')
+    expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-pop-a')
+  })
+
+  it('the Back round-trip does not stack a duplicate entry (dedup)', async () => {
+    const { app, result } = mountHarness(() => {
+      const a = useForm({ schema: schemaA, key: 'hw-dd-a', defaultValues: { a: 'a' } })
+      const b = useForm({ schema: schemaB, key: 'hw-dd-b', defaultValues: { b: 'b' } })
+      return useWizard({ steps: [a, b] })
+    })
+    apps.push(app)
+    await result.next()
+    const lengthAfterNav = window.history.length
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    window.history.back() // -> ?step=hw-dd-a; the resulting persist must dedup
+    await new Promise((r) => setTimeout(r, 20))
+    expect(result.currentStep).toBe('hw-dd-a')
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(window.history.length).toBe(lengthAfterNav)
+    pushSpy.mockRestore()
   })
 
   it('seeds initial currentStep from `?step=<knownKey>` on mount', () => {

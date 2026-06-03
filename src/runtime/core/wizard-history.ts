@@ -5,9 +5,12 @@
  * coupling.
  *
  * The handle exposes four operations:
- *   - `replace(key)` — write `key` into `?<param>=<key>` via
- *     replaceState so the history stack doesn't grow. Preserves any
- *     other search params already on the URL.
+ *   - `push(key)` — write `key` into `?<param>=<key>` via pushState so
+ *     each step earns a real history entry and the browser Back /
+ *     Forward buttons walk the flow. Deduped: a no-op when the URL is
+ *     already on `key`, so the popstate -> restore -> persist
+ *     round-trip can't stack a duplicate entry. Preserves any other
+ *     search params already on the URL.
  *   - `read()` — read the current step key from the URL, or
  *     `undefined` if the param is absent.
  *   - `subscribe(cb)` — register a popstate listener; the callback
@@ -20,7 +23,7 @@
  */
 
 export type WizardHistoryHandle = {
-  replace(key: string): void
+  push(key: string): void
   read(): string | undefined
   subscribe(callback: (key: string | undefined) => void): void
   dispose(): void
@@ -32,7 +35,7 @@ export type WizardHistoryHandle = {
  * `history: false`. Every method is a safe call-site shim.
  */
 export const NOOP_WIZARD_HISTORY: WizardHistoryHandle = {
-  replace() {},
+  push() {},
   read() {
     return undefined
   },
@@ -46,6 +49,10 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
   const subscribers: Array<(key: string | undefined) => void> = []
   let disposed = false
 
+  function currentKey(): string | undefined {
+    return new URL(window.location.href).searchParams.get(param) ?? undefined
+  }
+
   function buildUrl(key: string): string {
     const url = new URL(window.location.href)
     url.searchParams.set(param, key)
@@ -54,8 +61,7 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
 
   function handlePopstate(): void {
     if (disposed) return
-    const url = new URL(window.location.href)
-    const value = url.searchParams.get(param) ?? undefined
+    const value = currentKey()
     for (const subscriber of subscribers) subscriber(value)
   }
 
@@ -66,15 +72,21 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
   // sandboxed iframes, and data: URLs. In those, `buildUrl(key)`
   // resolves to a URL whose origin doesn't match the document's
   // (the document inherits the parent's origin, but the synthesized
-  // URL keeps the scheme), and `history.replaceState` throws
+  // URL keeps the scheme), and `history.pushState` throws
   // `SecurityError`. The user-visible step state still works —
   // `current` / `goTo()` drive the form via the in-memory wizard —
   // they just won't appear in the URL bar. Silently swallowing keeps
   // the preview functional without coupling the library to
   // embed-detection logic.
-  function safeReplaceState(key: string): void {
+  function safePushState(key: string): void {
+    // Dedup: skip when the URL is already on `key`. Pushing an
+    // identical step would stack a duplicate entry — most visibly on
+    // the popstate -> restore -> persist round-trip, where a Back that
+    // lands on `?<param>=<key>` re-fires the persist watcher and would
+    // otherwise immediately re-push the same key.
+    if (currentKey() === key) return
     try {
-      window.history.replaceState({}, '', buildUrl(key))
+      window.history.pushState({}, '', buildUrl(key))
     } catch {
       // SecurityError or similar — origin mismatch, sandboxed history,
       // or a host that's locked down the History API. No remediation
@@ -84,13 +96,12 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
   }
 
   return {
-    replace(key) {
+    push(key) {
       if (disposed) return
-      safeReplaceState(key)
+      safePushState(key)
     },
     read() {
-      const url = new URL(window.location.href)
-      return url.searchParams.get(param) ?? undefined
+      return currentKey()
     },
     subscribe(callback) {
       if (disposed) return

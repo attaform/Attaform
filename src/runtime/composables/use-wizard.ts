@@ -774,7 +774,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         ? options.persist
         : (state: WizardRestoreState): void => {
             if (state.step === undefined) return
-            historyHandle.replace(state.step)
+            historyHandle.push(state.step)
           }
 
   // --- Initial active key resolution ------------------------------------

@@ -113,6 +113,7 @@ describe('useWizard — restore: false + persist: false', () => {
 
   it('persist: false alone still applies external restore reads', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?step=hd-mixed-b`)
+    const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hd-mixed-a' })
@@ -121,7 +122,9 @@ describe('useWizard — restore: false + persist: false', () => {
     })
     apps.push(app)
     expect(result.currentStep).toBe('hd-mixed-b')
+    expect(pushSpy).not.toHaveBeenCalled()
     expect(replaceSpy).not.toHaveBeenCalled()
+    pushSpy.mockRestore()
     replaceSpy.mockRestore()
   })
 

@@ -35,6 +35,7 @@ import type { z } from 'zod'
 import type { z as zV3 } from 'zod-v3'
 import { InvalidUseFormConfigError } from '../../core/errors'
 import { isZodV4SchemaShape } from '../../core/zod-shape'
+import type { ZodV4Internals } from './types-zod-major'
 import { useForm as useFormV3 } from '../../composables/use-form'
 import { useForm as useFormV4 } from '../zod-v4'
 import type { StorageShape as StorageShapeV4 } from '../zod-v4/types-storage-shape'
@@ -85,10 +86,15 @@ type V3ReadOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
  * })
  * ```
  *
- * v4 schemas match this overload first via their structural `def`
- * field. v3 schemas fall through to the v3 overload below.
+ * The constraint intersects `ZodV4Internals` (the v4-only `_zod`
+ * brand) so a v3 schema can't bind this overload even when `z`
+ * resolves to v3 in a single-major consumer install; v3 schemas fall
+ * through to the v3 overload below. See `types-zod-major.ts`.
  */
-export function useForm<Schema extends z.ZodObject, K extends FormKey = FormKey>(
+export function useForm<
+  Schema extends z.ZodObject<z.ZodRawShape> & ZodV4Internals,
+  K extends FormKey = FormKey,
+>(
   configuration: Omit<
     UseFormConfiguration<
       V4FormOf<Schema>,

@@ -18,12 +18,20 @@
  *     `wizard.allErrors`, `wizard.forms.<key>`) must compile against the
  *     bundled `.d.ts` without surface-shape drift between src and dist.
  *
+ * A second fixture project, `tests/fixtures/bundled-types-v3/`, compiles
+ * the unified `attaform/zod` entry with `zod` remapped (via tsconfig
+ * `paths`) to a single v3 install — recreating the one-Zod-major
+ * consumer the repo itself can't represent (it installs both majors).
+ * It guards the read-slot regression where the unified entry's v4
+ * overload greedily matched a v3 schema and collapsed `form.values` /
+ * `form.fields` to `never`.
+ *
  * Usage:
  *   pnpm check:bundled-types
  *
  * Side effects:
  *   - Builds `dist/` if missing (calls `pnpm prepack`).
- *   - Runs `tsc --project tests/fixtures/bundled-types/tsconfig.json`.
+ *   - Runs `tsc --project <fixture>/tsconfig.json` for each fixture set.
  *   - Exits non-zero on any compile error.
  */
 import { execSync } from 'node:child_process'
@@ -34,7 +42,16 @@ import { dirname, resolve } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..')
 const distDir = resolve(repoRoot, 'dist')
-const fixtureTsConfig = resolve(repoRoot, 'tests/fixtures/bundled-types/tsconfig.json')
+const fixtureProjects = [
+  {
+    label: 'v4 / default consumer',
+    tsconfig: resolve(repoRoot, 'tests/fixtures/bundled-types/tsconfig.json'),
+  },
+  {
+    label: 'v3-only consumer (zod remapped to a single v3 install)',
+    tsconfig: resolve(repoRoot, 'tests/fixtures/bundled-types-v3/tsconfig.json'),
+  },
+]
 const sentinelDts = resolve(distDir, 'zod-v4.d.ts')
 
 function run(cmd, opts = {}) {
@@ -57,20 +74,27 @@ if (!distIsRealBundle()) {
   run('pnpm prepack')
 }
 
-console.log('[check-bundled-types] typechecking bundled-types fixtures against bundled .d.ts')
-try {
-  run(`pnpm exec tsc --project "${fixtureTsConfig}"`)
-  console.log('[check-bundled-types] ok — bundled-types fixtures compile cleanly')
-} catch {
+let failed = false
+for (const { label, tsconfig } of fixtureProjects) {
+  console.log(`[check-bundled-types] typechecking ${label} against bundled .d.ts`)
+  try {
+    run(`pnpm exec tsc --project "${tsconfig}"`)
+    console.log(`[check-bundled-types] ok — ${label}`)
+  } catch {
+    failed = true
+    console.error(`[check-bundled-types] FAILED — ${label} did not compile.`)
+  }
+}
+
+if (failed) {
   console.error('[check-bundled-types] FAILED — a bundled-types fixture did not compile.')
-  console.error(
-    '  Depth-efficiency regression suspects: DefaultValuesInput, LeafWalker,'
-  )
-  console.error(
-    '  internal-helper exports, WriteShape. Surface-shape drift suspects: any'
-  )
-  console.error(
-    '  recent change to public types that did not propagate through unbuild to dist.'
-  )
+  console.error('  Depth-efficiency regression suspects: DefaultValuesInput, LeafWalker,')
+  console.error('  internal-helper exports, WriteShape. Surface-shape drift suspects: any')
+  console.error('  recent change to public types that did not propagate through unbuild to dist.')
+  console.error('  v3-only consumer regression suspects: the unified entry v4 overload')
+  console.error('  matching a v3 schema (read slot collapses to `never`); see')
+  console.error('  src/runtime/adapters/unified/ and the ZodV4 structural marker.')
   process.exit(1)
 }
+
+console.log('[check-bundled-types] ok — all bundled-types fixtures compile cleanly')

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { nextTick, type Ref } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, nextTick, type EffectScope, type Ref } from 'vue'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { SubmitErrorHandlerError } from '../../src/runtime/core/errors'
 import type { Path } from '../../src/runtime/core/paths'
@@ -23,6 +23,20 @@ async function waitUntilSettled<F>(r: Ref<ReactiveValidationStatus<F>>): Promise
     await nextTick()
   }
   throw new Error('validate() ref did not settle within 16 microtasks')
+}
+
+/**
+ * Run `fn` inside an owned effect scope and return its result. `validate()`
+ * registers a reactive watcher; running it here ties that watcher to the
+ * scope (disposed on `scope.stop()`) instead of leaking it and tripping the
+ * outside-scope dev warning. `EffectScope.run` returns `undefined` only for an
+ * already-stopped scope, which never happens for a fresh one — narrow it away
+ * rather than asserting non-null.
+ */
+function runScoped<T>(scope: EffectScope, fn: () => T): T {
+  const out = scope.run(fn)
+  if (out === undefined) throw new Error('effect scope was already stopped')
+  return out
 }
 
 type Signup = { email: string; password: string }
@@ -56,10 +70,22 @@ describe('buildProcessForm', () => {
   }
 
   describe('validate (as a reactive Ref)', () => {
+    // validate()'s watcher is owned by this scope and disposed after each
+    // test, so these reactive-ref characterizations never leak a watcher or
+    // emit the outside-scope dev warning (the warning itself is covered
+    // separately below).
+    let scope: EffectScope
+    beforeEach(() => {
+      scope = effectScope()
+    })
+    afterEach(() => {
+      scope.stop()
+    })
+
     it('starts pending and settles to success when schema passes', async () => {
       const state = alwaysValid()
       const { validate } = buildProcessForm(state, 'test:inst')
-      const r = validate()
+      const r = runScoped(scope, validate)
       // Initial synchronous read — the async parse hasn't settled yet.
       expect(r.value.pending).toBe(true)
       // Await the microtask pump so the Promise returned by the fake
@@ -74,7 +100,7 @@ describe('buildProcessForm', () => {
     it('settles to failure with errors when schema rejects', async () => {
       const state = alwaysInvalid()
       const { validate } = buildProcessForm(state, 'test:inst')
-      const r = validate()
+      const r = runScoped(scope, validate)
       await waitUntilSettled(r)
       expect(r.value.pending).toBe(false)
       if (r.value.pending) throw new Error('unreachable')
@@ -93,7 +119,7 @@ describe('buildProcessForm', () => {
       const state = alwaysValid()
       const { validate } = buildProcessForm(state, 'test:inst')
       expect(state.activeValidations.value).toBe(0)
-      const r = validate()
+      const r = runScoped(scope, validate)
       // The watchEffect defers the counter bump to a microtask (so the
       // write doesn't re-trigger the effect). Drain one microtask,
       // then the counter must be exactly 1 while the parse is in flight —

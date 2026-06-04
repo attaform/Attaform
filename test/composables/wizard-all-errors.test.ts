@@ -72,8 +72,8 @@ describe('useWizard — allErrors', () => {
       }
     })
     apps.push(app)
-    await result.cargo.validate()
-    await result.review.validate()
+    await result.cargo.validateAsync()
+    await result.review.validateAsync()
     const cargoErrors = result.wizard.allErrors['ae-fill-cargo'] ?? []
     const reviewErrors = result.wizard.allErrors['ae-fill-review'] ?? []
     expect(cargoErrors.length).toBeGreaterThan(0)

@@ -1118,8 +1118,11 @@ describe('surface materialisation — predictable representations + complex erro
     })
     const form = mount(schema, { notify: { channel: 'email', address: 'not-an-email' } })
 
-    // Trigger a schema error on the active variant.
-    form.validate('notify.address')
+    // Trigger a schema error on the active variant. Fire-and-forget
+    // validateAsync (no reactive watcher, so no outside-scope warning) keeps
+    // the original deferred timing: the variant switch below runs before this
+    // settles, exactly as the reactive validate() call did.
+    void form.validateAsync('notify.address')
 
     // After the variant switch, the schema error at notify.address
     // becomes inactive and the serialised tree drops it.

@@ -1242,6 +1242,11 @@ const entries: SmokeEntry[] = [
 const deferred: { slug: string; reason: string }[] = [
   { slug: 'file', reason: 'File API not testable under jsdom; needs an integration runner.' },
   {
+    slug: 'transforms-async',
+    reason:
+      'A file-upload gesture feeding an async transform is not testable under jsdom; needs an integration runner.',
+  },
+  {
     slug: 'multi-tab-sync',
     reason: 'Multi-tab sync requires a real BroadcastChannel across separate Window instances.',
   },

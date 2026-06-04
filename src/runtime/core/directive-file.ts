@@ -1,4 +1,4 @@
-import { effectScope, warn, watch } from 'vue'
+import { effectScope, warn, watch, type VNode } from 'vue'
 import type {
   CustomDirectiveRegisterAssignerFn,
   RegisterModelDynamicCustomDirective,
@@ -23,6 +23,24 @@ function isBlankFileValue(value: unknown): boolean {
   if (typeof FileList !== 'undefined' && value instanceof FileList && value.length === 0)
     return true
   return false
+}
+
+/**
+ * Whether this file input is `multiple`, reliably at any lifecycle point.
+ *
+ * The DOM `el.multiple` property is NOT yet applied inside a directive's
+ * `created` hook (Vue patches an element's attributes AFTER its directive
+ * `created` hooks run), so the created-time blank-seed can't trust it — a
+ * stale `false` makes it seed the single-file shape (`null`) into an array
+ * path, which the slim-primitive gate rejects with a dev warning. Read the
+ * authored vnode prop instead, falling back to the DOM property for the
+ * post-mount callers where it IS live. `multiple` is a boolean attribute:
+ * present as `true` or `''`, absent otherwise.
+ */
+function isMultipleInput(el: HTMLInputElement, vnode: VNode): boolean {
+  if (el.multiple) return true
+  const authored = vnode.props?.['multiple']
+  return authored === true || authored === ''
 }
 
 /**
@@ -122,7 +140,7 @@ export const vRegisterFile: RegisterModelDynamicCustomDirective = {
     // of how the user expressed "optional file" in their schema.
     const currentRaw = value.innerRef.value
     if (isBlankFileValue(currentRaw)) {
-      const blankShape: File[] | null = input.multiple ? [] : null
+      const blankShape: File[] | null = isMultipleInput(input, vnode) ? [] : null
       value.setValueWithInternalPath(blankShape, { blank: true })
     }
 

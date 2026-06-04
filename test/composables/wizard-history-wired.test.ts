@@ -95,13 +95,21 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
       return useWizard({ steps: [a, b] })
     })
     apps.push(app)
-    const lengthBeforeNav = window.history.length
+    // Default persist pushes (vs. replace), so next() earns a real history
+    // entry. Assert the push DIRECTLY via the spy, not via
+    // `history.length`: jsdom shares one `window.history` across the file,
+    // and a prior test's `history.back()` can leave the cursor mid-stack,
+    // where `pushState` truncates the forward entries and length does NOT
+    // grow — an order-dependent (seed-dependent) flake. The spy is
+    // order-independent: it proves a real entry was pushed regardless of
+    // where the shared cursor happens to sit.
+    const pushSpy = vi.spyOn(window.history, 'pushState')
     await result.next()
     expect(result.currentStep).toBe('hw-pop-b')
-    // Default persist pushes, so navigating grows the back-stack...
-    expect(window.history.length).toBeGreaterThan(lengthBeforeNav)
-    // ...and a *real* browser Back (not a manual popstate drive) retraces
-    // the navigation back to the prior step.
+    expect(pushSpy).toHaveBeenCalled()
+    pushSpy.mockRestore()
+    // A *real* browser Back (not a manual popstate drive) retraces the
+    // navigation back to the prior step.
     window.history.back()
     await new Promise((r) => setTimeout(r, 20))
     expect(result.currentStep).toBe('hw-pop-a')

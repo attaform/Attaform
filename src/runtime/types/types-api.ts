@@ -1708,6 +1708,11 @@ export type DisplayMachine = {
  *   not `field.validating`, is the timing anchor: the elapsed wait is
  *   `now - validatingSince`. Pinned to the start of the streak, so
  *   overlapping sub-runs do not reset it.
+ * - `transformingSince` — the same anchor for an in-flight async
+ *   `register` transform, or `null` when none is running. Folds into the
+ *   one in-flight clock the reducer already runs for validation, so a
+ *   deferred transform rides the anti-flash spinner timing identically.
+ *   `null` for a sync-only chain, which never defers.
  * - `now` — the engine's clock, injected so the reducer stays pure and
  *   deterministic (and frozen to `0` under SSR, where there is no clock).
  */
@@ -1715,6 +1720,7 @@ export type DisplayCtx = {
   readonly field: Omit<FieldState, FieldStateDerivedKey>
   readonly formMeta: Omit<FormMeta, FieldStateDerivedKey>
   readonly validatingSince: number | null
+  readonly transformingSince: number | null
   readonly now: number
 }
 
@@ -1851,7 +1857,7 @@ export type RegisterFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPa
 >
 
 /**
- * Sync transformation applied to a field's value as user input flows
+ * A transformation applied to a field's value as user input flows
  * from DOM through the directive's assigner. Composes left-to-right
  * via the `transforms: [...]` array on `register()`.
  *
@@ -1871,19 +1877,33 @@ export type RegisterFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPa
  * doesn't accept gets rejected at write time with a standard
  * diagnostic.
  *
- * Transforms must be sync. A `Promise` return is treated as a
- * pipeline failure: the write is aborted and a console.error is
- * logged. Use async field validation for canonicalize-before-write
- * patterns; use sync transforms for fire-and-forget side effects
- * (`void doIt(value); return value`).
+ * Transforms may be sync or async. The chain stays fully synchronous —
+ * the value reaches form state in the same tick — until a transform
+ * returns a thenable; from there the write defers, the field reads
+ * `busy` / `transforming` while the chain settles, and the resolved
+ * value commits to canonical state once it lands. Rapid edits discard
+ * all but the latest (latest-request-wins), and a rejection surfaces on
+ * `field.transformError` rather than throwing or logging:
  *
- * Throws are caught and aborted: attaform wraps each transform call in
- * try/catch so a buggy or defensive-throw transform doesn't crash
- * the host app. On throw the pipeline aborts (subsequent transforms
- * don't run), nothing is written to form state, and the assigner
- * returns `false`.
+ * ```ts
+ * export const normalize: RegisterTransform = async (v, ctx) => {
+ *   const res = await fetch(`/normalize?q=${v}`, { signal: ctx?.signal })
+ *   return res.text()
+ * }
+ * ```
+ *
+ * `ctx.signal` is an `AbortSignal` aborted when the run is superseded by
+ * a newer edit, or torn down by `reset()` / unmount — thread it into
+ * cancellable I/O so a stale request is dropped. A sync chain never
+ * touches it and allocates no controller.
+ *
+ * A synchronous throw is caught and aborts the pipeline: subsequent
+ * transforms don't run, nothing is written to form state, and the
+ * assigner returns `false` — so a buggy or defensive-throw transform
+ * never crashes the host app. (An async rejection is the
+ * `transformError` channel above, not a throw into the host app.)
  */
-export type RegisterTransform = (value: unknown) => unknown
+export type RegisterTransform = (value: unknown, ctx?: TransformContext) => unknown
 
 /**
  * Runtime type for a slim primitive kind. Used to narrow the
@@ -2037,9 +2057,11 @@ export type RegisterOptions = {
    * form.setValue('email', slugify(lowercase(rawValue)))
    * ```
    *
-   * Transforms must be sync. Throws and Promise returns abort the
-   * write and log to `console.error` (see `RegisterTransform` for
-   * the failure-mode contract).
+   * Transforms may be sync or async: the chain stays synchronous until
+   * one returns a thenable, then the write defers and commits the
+   * resolved value (the field reads `busy` meanwhile). A sync throw
+   * aborts the write; an async rejection lands on `field.transformError`
+   * (see `RegisterTransform` for the full contract).
    *
    * For patterns that need to inspect the `RegisterValue` itself
    * (rejection-with-side-effect, redirection to other fields, custom
@@ -2903,8 +2925,38 @@ export type FieldState<Value = unknown> = {
    * is in flight (`errors.length === 0 && !validating`). Confidence
    * that "we've checked, and we have no problems right now." Use for
    * green-checkmark / `aria-invalid` UX.
+   *
+   * Validation-only: an in-flight async transform does NOT clamp
+   * `valid` to `false`. `valid` is the verdict on the last committed
+   * value; `busy` is the union "work in flight" signal.
    */
   readonly valid: boolean
+  /**
+   * `true` while an async `register` transform is in flight at this
+   * path: a transform returned a thenable and the resolved value has
+   * not yet committed to form state. Always `false` for a sync-only
+   * chain, which reaches form state in the same tick with no deferral.
+   * Containers roll it up as a disjunction (any descendant transforming).
+   */
+  readonly transforming: boolean
+  /**
+   * `transforming || validating` — the union "work is in flight at this
+   * path" signal. Drives `aria-busy` through `displayState` on a
+   * revealed field, and is the surface to bind for a busy indicator on a
+   * field not yet revealed (where `displayState` stays idle by the
+   * reveal gate). Containers roll it up as a disjunction.
+   */
+  readonly busy: boolean
+  /**
+   * The `Error` from the most recent async transform that rejected at
+   * this path, else `null`. A per-field normalization-failure channel
+   * separate from validation `errors`: a transform that rejects (a
+   * failed fetch, a parse error) surfaces here instead of crashing the
+   * host app or logging. Cleared when a fresh transform starts or a
+   * write supersedes it. Leaf-only — containers do not roll it up (it is
+   * always `null` at a container path).
+   */
+  readonly transformError: Error | null
   /**
    * The single display-state verdict at this path: `'idle'`,
    * `'pending'`, `'error'`, or `'success'`. The source of truth the

@@ -8,7 +8,7 @@ import type { UseFormReturn } from '../../src/zod'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { UseFormReturnType, ValidationError } from '../../src/runtime/types/types-api'
+import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
  * Discriminated-union variant switch — when the discriminator value
@@ -480,46 +480,28 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     expect(Array.isArray(stale)).toBe(true)
   })
 
-  it('an object-target held reference reports live length and keys after a flip into the array variant', async () => {
+  it('an inactive-variant container path is an absent node, then a live array once active', async () => {
     const api = mount()
-    // Move to the variant where `payload` doesn't exist BEFORE the
-    // first read, so the cached proxy at this path is minted with
-    // a plain object target (no array shape yet). Non-root container
-    // nodes are object targets — only the root is a function target.
+    // Move to the `single` variant where `payload` (a list-only key)
+    // doesn't exist. Model P: an inactive-variant node reads `undefined`
+    // (no phantom object-target proxy to hold), so consumers re-read
+    // through `form.fields.<path>` after a flip rather than caching a
+    // reference minted while the path was absent.
     api.setValue('body.mode', 'single')
     await nextTick()
+    expect((api.fields as unknown as { body: { payload: unknown } }).body.payload).toBeUndefined()
 
-    const heldObj = (api.fields as unknown as { body: { payload: unknown } }).body.payload
-    expect(Array.isArray(heldObj)).toBe(false)
-    expect(typeof heldObj).toBe('object')
-
-    // Flip into the list variant and add items.
+    // Flip into the list variant and add items — a fresh read returns
+    // a live array-targeted proxy that enumerates the entries.
     api.setValue('body.mode', 'list')
     await nextTick()
     api.append('body.payload', { value: 'a' })
     api.append('body.payload', { value: 'b' })
     await nextTick()
 
-    // Trap-implemented dimensions track live state on the held
-    // reference — `length` interception consults the live shape
-    // (not just the cached one), so an object-target proxy held
-    // across a flip into an array still reports the live count
-    // instead of descending into a phantom child path.
-    expect((heldObj as { length: number }).length).toBe(2)
-    expect(Object.keys(heldObj as object)).toEqual(['0', '1'])
-
-    // Inherent caveat: host-level checks read internal slots off
-    // the original target, which proxy traps cannot rewrite. The
-    // held object-target reference never passes `Array.isArray`
-    // even though the live shape is now an array. Fresh reads
-    // through `form.fields.<path>` produce an array-targeted proxy
-    // that does pass the host check.
-    expect(Array.isArray(heldObj)).toBe(false)
-    expect(typeof heldObj).toBe('object')
-
     const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
     expect(Array.isArray(fresh)).toBe(true)
-    expect(fresh).not.toBe(heldObj)
+    expect((fresh as unknown as { length: number }).length).toBe(2)
     expect(Object.keys(fresh as object)).toEqual(['0', '1'])
   })
 
@@ -1776,12 +1758,10 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     await nextTick()
 
     expect(api.errors('notify.address')).toEqual([])
-    const fields = (
-      api as unknown as {
-        fields: { notify: { address: { errors: ValidationError[] } } }
-      }
-    ).fields.notify.address
-    expect(fields.errors).toEqual([])
+    // Model P: the inactive-variant node is undefined on the dot surface,
+    // so the per-field state reads through the call-form (a schema-aware
+    // stub) — its errors reflect the cleared schema state.
+    expect(api.fields('notify.address').errors).toEqual([])
   })
 
   it('per-field fields preserves USER-injected errors across variant switches', async () => {
@@ -1813,14 +1793,11 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     expect(api.errors('notify.address')).toEqual([])
 
     // Per-field surface retains it (userErrors store, untouched by
-    // schema re-validation).
-    const fields = (
-      api as unknown as {
-        fields: { notify: { address: { errors: ValidationError[] } } }
-      }
-    ).fields.notify.address
-    expect(fields.errors.length).toBeGreaterThan(0)
-    expect(fields.errors[0]?.message).toBe('server says address is taken')
+    // schema re-validation). Model P: the inactive-variant node is
+    // undefined on the dot surface, so read it through the call-form.
+    const addressState = api.fields('notify.address')
+    expect(addressState.errors.length).toBeGreaterThan(0)
+    expect(addressState.errors[0]?.message).toBe('server says address is taken')
   })
 
   it('handleSubmit-populated errors at the active variant flow through the filter cleanly', async () => {
@@ -1852,10 +1829,12 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
 
 /**
  * Cargo 4-variant fixture for the discriminated-union "lift" — runtime
- * smoke that the lifted types match the runtime's stub semantics for
- * inactive-variant chained access. Mirrors the demo schema's shape
- * (`type` discriminator with `dry | refrigerated | hazmat | oversized`)
- * so a regression here would break the canonical demo flow.
+ * smoke that the lifted types match the runtime's TRUTHFUL-ABSENCE
+ * semantics for inactive-variant chained access (model P): a key whose
+ * variant isn't active is an absent node (`undefined`), not a phantom
+ * stub. Mirrors the demo schema's shape (`type` discriminator with
+ * `dry | refrigerated | hazmat | oversized`) so a regression here would
+ * break the canonical demo flow.
  */
 const cargoLiftSchema = z.object({
   reference: z.string(),
@@ -1902,41 +1881,40 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('api.fields.cargo.tempMinC returns a stable stub on the inactive (dry) variant', () => {
+  it('api.fields.cargo.tempMinC is an absent node on the inactive (dry) variant', () => {
     const { app, api } = mountCargoLift()
     apps.push(app)
 
     // Active variant is `dry`; `tempMinC` lives only on `refrigerated`.
-    // The lifted FieldStateMapEntry makes this access type-safe; the
-    // runtime returns a stable FieldStateView stub so consumers don't
-    // need a guard before reading metadata.
-    const tempMin = api.fields.cargo.tempMinC
-    expect(tempMin.value).toBeUndefined()
-    expect(tempMin.errors).toEqual([])
-    expect(tempMin.valid).toBe(true)
-    expect(tempMin.validating).toBe(false)
+    // Model P: the inactive variant's key is an absent node — `undefined`,
+    // not a phantom stub — so a falsy-check agrees with the runtime and
+    // the type (`FieldState<number> | undefined`) forces a `?.` guard.
+    expect(api.fields.cargo.tempMinC).toBeUndefined()
   })
 
-  it('api.fields.cargo.tempMinC.value re-evaluates after a variant switch', async () => {
+  it('api.fields.cargo.tempMinC?.value re-evaluates after a variant switch', async () => {
     const { app, api } = mountCargoLift()
     apps.push(app)
 
     api.setValue('cargo', { type: 'refrigerated', items: [], tempMinC: 4, tempMaxC: 8 })
     await nextTick()
-    expect(api.fields.cargo.tempMinC.value).toBe(4)
-    expect(api.fields.cargo.tempMaxC.value).toBe(8)
+    expect(api.fields.cargo.tempMinC?.value).toBe(4)
+    expect(api.fields.cargo.tempMaxC?.value).toBe(8)
 
-    // Switch back to dry — the lifted leaf collapses to the stub.
+    // Switch back to dry — the refrigerated leaves become absent nodes.
     api.setValue('cargo', { type: 'dry', items: [], fragile: false })
     await nextTick()
-    expect(api.fields.cargo.tempMinC.value).toBeUndefined()
-    expect(api.fields.cargo.fragile.value).toBe(false)
+    expect(api.fields.cargo.tempMinC).toBeUndefined()
+    expect(api.fields.cargo.fragile?.value).toBe(false)
   })
 
-  it('api.errors.cargo.tempMinC chain yields undefined when no errors are present', () => {
+  it('api.errors.cargo — inactive-variant key is undefined; active key with no errors is []', () => {
     const { app, api } = mountCargoLift()
     apps.push(app)
-    expect(api.errors.cargo.tempMinC).toEqual([])
+    // tempMinC lives only on `refrigerated`; the active variant is `dry`,
+    // so its node is absent (model P → undefined). fragile is on the
+    // active `dry` variant with no errors, so it reads an empty array.
+    expect(api.errors.cargo.tempMinC).toBeUndefined()
     expect(api.errors.cargo.fragile).toEqual([])
   })
 
@@ -2086,9 +2064,9 @@ describe('discriminated-union variant switch — whole-union write with unset se
     })
     await nextTick()
 
-    expect(api.fields.cargo.lengthCm.blank).toBe(true)
-    expect(api.fields.cargo.widthCm.blank).toBe(true)
-    expect(api.fields.cargo.heightCm.blank).toBe(true)
-    expect(api.fields.cargo.permitNumber.blank).toBe(true)
+    expect(api.fields.cargo.lengthCm?.blank).toBe(true)
+    expect(api.fields.cargo.widthCm?.blank).toBe(true)
+    expect(api.fields.cargo.heightCm?.blank).toBe(true)
+    expect(api.fields.cargo.permitNumber?.blank).toBe(true)
   })
 })

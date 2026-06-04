@@ -20,9 +20,9 @@ import type {
   LiftedValueShape,
   NestedReadType,
   NestedType,
+  PresentValueOfUnion,
   RecordPath,
   RecordValue,
-  ValueOfUnion,
   WriteShape,
 } from './types-core'
 
@@ -327,6 +327,29 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * `optional(z.tuple([...]))` reports its tuple length.
    */
   arrayShapeAtPath(path: Path): number | null | undefined
+  /**
+   * Whether the schema at `path` is a FIXED object: a closed set of
+   * declared keys (`z.object`), as opposed to an open or union container
+   * (array / record / map / set / union / discriminated union) whose
+   * element schema matches any segment.
+   *
+   * The surface proxies (`form.fields` / `form.errors`) use this to
+   * resolve a collision: a fixed object's declared keys are known ahead
+   * of any data, so a key the schema owns descends to a real terminal
+   * even when the live value hasn't been populated yet (a declared-but-
+   * absent `optional` field stays registrable). An open container can't
+   * make that promise — its element schema accepts ANY segment, so the
+   * proxy must fall back to the keys the data currently holds and read
+   * a genuinely-absent key (out-of-bounds index, missing record key,
+   * inactive variant key) as `undefined` rather than a phantom node.
+   *
+   * The empty path (the root form) is always a fixed object. Wrappers
+   * (optional / nullable / default / readonly / catch / pipe / lazy)
+   * are peeled before the kind check, so `z.object({...}).optional()`
+   * still reports `true`. A path the schema doesn't declare reports
+   * `false`.
+   */
+  isFixedObjectAtPath(path: Path): boolean
   /**
    * Return every sub-schema that could resolve at the given structured
    * path. Multiple results are only expected for discriminated / union
@@ -3237,27 +3260,67 @@ export type LeafWalker<
 > = [T] extends [string | number | boolean | bigint | symbol | null | undefined | Date | File]
   ? LeafSchemeFor<T>[Kind]
   : [T] extends [ReadonlyArray<infer U>]
-    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> } & ContainerSelfErrorsSlot<
-        T,
-        Kind
-      >
+    ? {
+        // Array element: an index signature, so `noUncheckedIndexedAccess`
+        // adds the `| undefined` on a direct index read (`form.fields
+        // .tags[99]`, matching the runtime's truthful gate at an
+        // out-of-bounds index) while `v-for` iteration over present
+        // elements stays guard-free.
+        readonly [K: number]: LeafWalker<U, Kind, StripOptional>
+      } & ContainerSelfErrorsSlot<T, Kind>
     : [T] extends [object]
-      ? [IsUnion<T>] extends [true]
-        ? StripOptional extends true
-          ? {
-              readonly [K in KeyofUnion<T>]-?: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
-          : {
-              readonly [K in KeyofUnion<T>]: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
-        : StripOptional extends true
-          ? {
-              readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
-          : {
-              readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
+      ? string extends keyof T
+        ? {
+            // Record value: the homomorphic map (`[K in keyof T]`) keeps a
+            // type that merely INTERSECTS a record (`{ a: X } & Record<
+            // string, Y>`, e.g. a `.passthrough()` object or a widened
+            // test form) addressable by its declared keys rather than
+            // collapsing to a bare index signature. A pure record reduces
+            // to a string index signature, so `noUncheckedIndexedAccess`
+            // adds the `| undefined` on a missing-key read (matching the
+            // runtime's truthful gate) while `v-for` stays guard-free.
+            readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
+          } & ContainerSelfErrorsSlot<T, Kind>
+        : [IsUnion<T>] extends [true]
+          ? StripOptional extends true
+            ? {
+                readonly [K in KeyofUnion<T>]-?: DiscriminatedLeaf<T, K, Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
+            : {
+                readonly [K in KeyofUnion<T>]: DiscriminatedLeaf<T, K, Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
+          : StripOptional extends true
+            ? {
+                readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
+            : {
+                readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
       : LeafSchemeFor<T>[Kind]
+
+/**
+ * One key of a discriminated-union container in `LeafWalker`. A key
+ * present (and required) in EVERY variant is universal — its node is
+ * always reachable. A variant-only or optional-in-some key is a dynamic
+ * hop: its node is `undefined` when its variant isn't active, so it
+ * carries node-optionality (`LeafWalker<…> | undefined`), NOT value-
+ * optionality (`LeafWalker<… | undefined>`). `PresentValueOfUnion`
+ * strips the synthetic absent-variant `undefined` so the present node
+ * resolves to the precise value type; a genuine `undefined` from an
+ * `optional` declaration survives.
+ *
+ * Universality is `[T] extends [Record<K, unknown>]` — true iff `T`
+ * (the whole union) satisfies "has K, required", which holds only when
+ * every variant declares K as a required property.
+ */
+type DiscriminatedLeaf<
+  T,
+  K extends PropertyKey,
+  Kind extends keyof LeafSchemeFor<unknown>,
+  StripOptional extends boolean,
+> = [T] extends [Record<K, unknown>]
+  ? LeafWalker<PresentValueOfUnion<T, K>, Kind, StripOptional>
+  : LeafWalker<PresentValueOfUnion<T, K>, Kind, StripOptional> | undefined
 
 /**
  * Intersection augmenting every container in the `form.errors` walker
@@ -3276,6 +3339,27 @@ type ContainerSelfErrorsSlot<T, Kind> = Kind extends 'errors'
   : unknown
 
 export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
+
+/**
+ * Result of the `form.fields(path)` string call-form. A path the schema
+ * declares resolves to its `FieldState` — a leaf's value type, or a
+ * container's rolled-up aggregate (every FieldState property exists
+ * regardless of the value type). A path the schema lacks resolves to
+ * `undefined`, because a typo is not a field and the runtime hands back
+ * `undefined` rather than a phantom stub. A non-literal `string` could
+ * be either, so it widens to `FieldState<unknown> | undefined`.
+ *
+ * Named (rather than inlined into the `FieldStateMap` call signature) so
+ * the conditional is one cached type — keeps two structurally-identical
+ * `FieldStateMap` instantiations (e.g. the unified `attaform/zod` return
+ * and `UseFormReturnV4`) relatable instead of collapsing to a nominal
+ * "two different types with this name" mismatch.
+ */
+export type FieldCallResult<Form, P extends string> = [P] extends [FlatPath<Form>]
+  ? FieldState<NestedType<Form, P>>
+  : string extends P
+    ? FieldState<unknown> | undefined
+    : undefined
 
 /**
  * Type of `form.fields` — leaf-aware drillable callable Proxy. At
@@ -3297,18 +3381,14 @@ export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
  * string as a single key. Use chained dot/bracket or the callable
  * form.
  */
-export type FieldStateMap<Form extends GenericForm> = ([IsUnion<Form>] extends [true]
-  ? {
-      readonly [K in KeyofUnion<Form>]-?: FieldStateMapEntry<ValueOfUnion<Form, K>>
-    }
-  : { readonly [K in keyof Form]-?: FieldStateMapEntry<Form[K]> }) & {
+export type FieldStateMap<Form extends GenericForm> = LeafWalker<Form, 'field'> & {
   /**
-   * Dotted-string fallback for dynamic paths. Returns
-   * `FieldState<unknown>` — the runtime always lands on a FieldState
-   * terminal at any depth (leaf or container). Cast to
-   * `FieldState<TypedValue>` when the caller knows the leaf type.
+   * String-path form (dynamic / programmatic). See {@link FieldCallResult}:
+   * a path the schema declares resolves to its precise `FieldState`, a
+   * path it lacks to `undefined`, and a non-literal `string` to
+   * `FieldState<unknown> | undefined`.
    */
-  (path: string): FieldState<unknown>
+  <P extends string>(path: P): FieldCallResult<Form, P>
   /**
    * Tuple-segment form. Returns the typed `FieldStateMapEntry` for
    * the resolved path when the tuple resolves to a known path.
@@ -3321,10 +3401,10 @@ export type FieldStateMap<Form extends GenericForm> = ([IsUnion<Form>] extends [
   /**
    * Dynamic-array fallback for callers passing `Path`-typed (runtime)
    * segment arrays — e.g. forwarding `RegisterValue.segments` to
-   * resolve a field view. Returns `FieldState<unknown>`; cast when
-   * the value type is known.
+   * resolve a field view. The path may not resolve, so the result
+   * widens with `| undefined`; cast when the value type is known.
    */
-  (segments: ReadonlyArray<string | number>): FieldState<unknown>
+  (segments: ReadonlyArray<string | number>): FieldState<unknown> | undefined
   /**
    * No-arg call returns the root FieldState — same as
    * `form.fields([])`. Aggregates over the whole form (one

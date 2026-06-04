@@ -57,16 +57,16 @@
       <label v-if="form.values.transport.kind === 'boat'">
         Hull length (m)
         <input v-register="form.register('transport.hullLengthM')" type="number" min="0" />
-        <em v-if="form.fields.transport.hullLengthM.showErrors">
-          {{ form.fields.transport.hullLengthM.firstError?.message }}
+        <em v-if="form.fields.transport.hullLengthM?.showErrors">
+          {{ form.fields.transport.hullLengthM?.firstError?.message }}
         </em>
       </label>
 
       <label v-else-if="form.values.transport.kind === 'truck'">
         Payload (kg)
         <input v-register="form.register('transport.payloadKg')" type="number" min="0" />
-        <em v-if="form.fields.transport.payloadKg.showErrors">
-          {{ form.fields.transport.payloadKg.firstError?.message }}
+        <em v-if="form.fields.transport.payloadKg?.showErrors">
+          {{ form.fields.transport.payloadKg?.firstError?.message }}
         </em>
       </label>
 

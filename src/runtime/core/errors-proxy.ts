@@ -12,7 +12,7 @@ import {
   type Path,
   type Segment,
 } from './paths'
-import { isArrayPath, liveKeysAtPath } from './proxy-live-keys'
+import { isArrayPath, liveContainerHasKey, liveKeysAtPath } from './proxy-live-keys'
 import { safeAssign, safeOwnRead } from './safe-assign'
 import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
 
@@ -38,11 +38,13 @@ import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
  * - `leafKeys`: undefined. The leaf IS the terminal — an array or
  *   undefined. No further proxy wrap.
  *
- * Path / value contract preserved: errors at unknown paths return a
- * sub-proxy (descend permissively). `form.errors.bogus` is a proxy,
- * not undefined — readers who want existence checks should use the
- * leaf form (`form.errors.bogus.somePath`) which terminates only at
- * schema-leaves.
+ * Truthful absence: a key the schema doesn't declare and the data
+ * doesn't hold reads `undefined`, not a permissive sub-proxy, so
+ * `form.errors.bogus` is `undefined` and an out-of-bounds
+ * `form.errors.items[99]` with no error there is `undefined` too. The
+ * one exception is a server error parked at a non-schema key: the error
+ * stores count as "holding" that key, so `form.errors.ghost` still
+ * descends and surfaces the message.
  */
 export function buildErrorsProxy<F extends GenericForm>(
   state: FormStore<F, GenericForm>
@@ -144,6 +146,14 @@ export function buildErrorsProxy<F extends GenericForm>(
     // library-produced verdicts (schema + derived-blank) at unreachable
     // paths stay hidden; user-supplied errors are unconditional.
     containerOwnKeys: (segments) => errorAwareContainerKeys(state, segments),
+    // Fast path: a key the live form data holds short-circuits before the
+    // O(n) error-store scan, so iterating `form.errors.<array>` over live
+    // indices stays linear. The scan still runs for a key with no live
+    // home — a server error at a non-schema key (`form.errors.ghost`) —
+    // so it keeps surfacing while a genuinely-absent key reads undefined.
+    containerHasOwnKey: (segments, key) =>
+      liveContainerHasKey(state, segments, key) ||
+      errorAwareContainerKeys(state, segments).includes(key),
     isArrayContainer: (segments) => isArrayPath(state, segments),
   })
 }

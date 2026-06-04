@@ -58,6 +58,7 @@ export function buildNoopWizardSchema(
     getEmptyValueAtPath: () => undefined,
     isPreprocessOrCoerceLeaf: () => false,
     arrayShapeAtPath: () => undefined,
+    isFixedObjectAtPath: (path) => path.length === 0,
     getSchemasAtPath: () => [],
     validateAtPath: (): MaybePromise<ValidationResponse<Record<string, never>>> => success,
     getSlimPrimitiveTypesAtPath: () => new Set(EMPTY_SLIM_KINDS),

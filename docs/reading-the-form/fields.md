@@ -46,7 +46,33 @@ form.fields.profile.email.firstError?.message
 form.fields.age.dirty
 ```
 
-Container paths (`form.fields.profile`) descend through the proxy. Call-form (`form.fields('profile')`) returns a FieldState aggregating the descendants. `dirty` is `true` if any leaf under `profile` is dirty; `errors` flattens all descendant errors.
+Container paths (`form.fields.profile`) keep drilling: a container is a navigation node, not a FieldState, so it carries no `dirty` or `errors` of its own on the dot surface. When you want a container's rolled-up state, call it. `form.fields('profile')` returns a FieldState whose `dirty` is `true` if any leaf under `profile` is dirty, and whose `errors` flatten every descendant error.
+
+### Absence reads `undefined`
+
+Dot and index access is pure navigation, so a node that isn't there right now reads `undefined`, never a phantom you can keep chaining off. Three hops are dynamic, where the live shape decides whether the node exists:
+
+- an out-of-bounds array index, `form.fields.tags[99]`,
+- a record key the data doesn't hold, `form.fields.byId.missing`,
+- a discriminated-union key whose variant isn't active, `form.fields.cargo.permitNumber` while the `general` variant is live.
+
+The types say exactly what the runtime does. Each dynamic hop is `FieldState<T> | undefined`, so TypeScript asks for a `?.` right where a read might come back empty, and a truthy check never lies:
+
+```ts
+form.fields.tags[0]?.value
+form.fields.cargo.permitNumber?.firstError?.message
+```
+
+A declared `optional` field is always present, because the schema names it: `form.fields.profile.nickname.value` is a real FieldState whose `value` is `undefined`, not an absent node. Register it, read it, reveal it, no guard required.
+
+### A whole-array binding reads through the call-form
+
+Point one `register` at an `<input type="file" multiple>` and it writes the entire `File[]` through a single array path. The dot surface descends into elements, so that array field's own busy and transform state reads through the call-form:
+
+```ts
+form.fields('links').busy
+form.fields('links').transformError
+```
 
 ## What FieldState carries
 

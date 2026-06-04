@@ -560,6 +560,24 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       return undefined
     },
 
+    isFixedObjectAtPath(path) {
+      // Root form is a fixed object — a closed top-level key set.
+      if (path.length === 0) return true
+      const resolved = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
+      // A path the schema doesn't declare is not a fixed object; the
+      // proxy falls back to live keys there.
+      if (resolved.length === 0) return false
+      // The walker returns the NODE itself at a terminal path (it only
+      // splits a union / DU into variants while descending THROUGH one),
+      // so a record / array / set / union / DU surfaces here as its own
+      // single non-object kind. Multiple candidates appear only when the
+      // path descended through a union and landed on a key present in
+      // several variants; that key is a fixed object iff it's an object
+      // in every variant. Peel wrappers first so `z.object().optional()`
+      // still reads as an object.
+      return resolved.every((s) => intro.kindOf(services.peelAllWrappers(s)) === 'object')
+    },
+
     getSchemasAtPath(path) {
       // Slim-mode walk: v3 strips refinements / defaults / wrappers off
       // the root so the yielded sub-schemas reflect the slim shape (the

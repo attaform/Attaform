@@ -76,8 +76,8 @@ Mix sync and async freely in one array. The pipeline runs synchronously until th
 While an async transform settles, the field reports it:
 
 ```ts
-form.fields('handle')?.busy // true while the chain is in flight
-form.fields('handle')?.transforming // true specifically for transform work
+form.fields.handle.busy // true while the chain is in flight
+form.fields.handle.transforming // true specifically for transform work
 ```
 
 `transforming` is the transform-only signal; `busy` unions it with validation, so one read covers every reason the field is working. Both roll up to `form.meta`, and on a revealed field they drive `displayState` to `'pending'` and set `aria-busy`, the same anti-flash timing a pending validation rides. Bind `busy` directly when you want a spinner the instant work starts, even before the field has been revealed.
@@ -91,7 +91,7 @@ Edit faster than the work settles and only the most recent run commits. Earlier 
 An async transform that rejects routes its error to a dedicated channel instead of throwing into your app or logging to the console:
 
 ```ts
-form.fields('handle')?.transformError // Error | null
+form.fields.handle.transformError // Error | null
 ```
 
 This is a separate surface from validation `errors`: a normalization that could not finish is a different story from a value the schema rejected. The field keeps its prior committed value, and a later successful run clears the error.
@@ -157,7 +157,7 @@ const form = useForm({ schema })
 />
 ```
 
-Because `linesToUrls` reads the file with `await value.text()`, the chain goes async the instant a file is picked: `form.fields('links')?.busy` flips true, the resolved `string[]` commits when the read finishes, and an unreadable file lands its message on `form.fields('links')?.transformError`.
+Because `linesToUrls` reads the file with `await value.text()`, the chain goes async the instant a file is picked: `form.fields.links.busy` flips true, the resolved `string[]` commits when the read finishes, and an unreadable file lands its message on `form.fields.links.transformError`.
 
 ## Throws are caught
 

@@ -45,8 +45,8 @@
     key: 'docs-demo-transforms-async',
   })
 
-  const busy = computed(() => form.fields('links')?.busy ?? false)
-  const transformError = computed(() => form.fields('links')?.transformError ?? null)
+  const busy = computed(() => form.fields.links.busy)
+  const transformError = computed(() => form.fields.links.transformError)
   const links = computed(() => form.values.links ?? [])
 
   const downloadSample = () => {

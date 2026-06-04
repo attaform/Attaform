@@ -169,6 +169,47 @@ export type SurfaceOptions<TLeaf> = {
  */
 export type SurfaceProxy = ((path?: string | Path) => unknown) & Record<string, unknown>
 
+/**
+ * Callable shim returned for `call` / `apply` / `bind` read off a
+ * callable ROOT surface proxy (`form.fields` / `form.errors`). A
+ * transpiler that downlevels optional chaining — sucrase (what
+ * `@vue/repl` strips TS with), or any bundler targeting below ES2020 —
+ * compiles `surface(path)?.x` into a helper that READS `.call` off the
+ * surface and invokes the result to call the surface, while
+ * `surface.call.errors` READS `.call` as a field literally named
+ * `call`. The `get` trap can't tell the two apart, so it returns one
+ * value that serves both: a function — invokable as the matching
+ * `Function.prototype` method against the surface, so the downleveled
+ * call lands in the surface's `apply` trap — that forwards every other
+ * proxy operation to the field descent, so a `call` / `apply` / `bind`
+ * field stays fully reachable. No reserved names. The descent resolves
+ * lazily, so the invoke-only path (the common one) builds no child proxy.
+ */
+function callableInvokeShim(
+  method: 'call' | 'apply' | 'bind',
+  surface: SurfaceProxy,
+  getDescent: () => unknown
+): SurfaceProxy {
+  const fnMethod = Reflect.get(Function.prototype, method) as (
+    this: unknown,
+    ...args: unknown[]
+  ) => unknown
+  return new Proxy((() => {}) as unknown as SurfaceProxy, {
+    apply: (_target, _thisArg, args) => Reflect.apply(fnMethod, surface, args),
+    get: (_target, key) => Reflect.get(getDescent() as object, key),
+    has: (_target, key) => Reflect.has(getDescent() as object, key),
+    ownKeys: () => Reflect.ownKeys(getDescent() as object),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(getDescent() as object, key)
+      // The fresh arrow-function target owns no matching property, so a
+      // descriptor forwarded from the descent must be reported
+      // configurable to satisfy the Proxy own-property invariant.
+      if (descriptor !== undefined) descriptor.configurable = true
+      return descriptor
+    },
+  })
+}
+
 export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfaceProxy {
   // Per-path container Proxy cache. Key = canonical PathKey
   // (`JSON.stringify(segments)`). Lifetime = one buildSurfaceProxy call.
@@ -415,6 +456,16 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // pass-through above; this covers the object-shaped case.
         if (key === 'hasOwnProperty' && !schemaHasPath(childSegs)) {
           return Object.prototype.hasOwnProperty
+        }
+        // `call` / `apply` / `bind` on the callable root. A downleveling
+        // transpiler (sucrase in @vue/repl; any sub-ES2020 target) reads
+        // `.call` off the surface to invoke `form.fields(path)?.x`, while
+        // `form.fields.call.errors` reads it as a field literally named
+        // `call`. One callable shim serves both — see callableInvokeShim.
+        // Root only: non-root nodes aren't callable, so a nested `call`
+        // field (`form.fields.address.call`) keeps plain descent.
+        if (isRoot && (key === 'call' || key === 'apply' || key === 'bind')) {
+          return callableInvokeShim(key, proxy, () => descendOrTerminate(childSegs))
         }
         return descendOrTerminate(childSegs)
       },

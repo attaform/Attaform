@@ -563,7 +563,7 @@ describe('useWizard — handleSubmit lifecycle signals', () => {
     expect(warnings.some((w) => w.includes('wizard.goTo'))).toBe(true)
   })
 
-  it('onSubmit throwing clears submitting and lets navigation resume', async () => {
+  it('onSubmit throwing clears submitting, records submitError, and lets navigation resume', async () => {
     const { app, result } = mountHarness(() => {
       const account = useForm({
         schema: accountSchema,
@@ -582,7 +582,10 @@ describe('useWizard — handleSubmit lifecycle signals', () => {
     const onSubmit = vi.fn(() => {
       throw new Error('handler threw')
     })
-    await expect(result.handleSubmit(onSubmit)()).rejects.toThrow('handler threw')
+    // The handler resolves (no re-throw); the throw lands on `submitError`.
+    // See wizard-submit-no-rethrow.test.ts for the full contract.
+    await expect(result.handleSubmit(onSubmit)()).resolves.toBeUndefined()
+    expect(result.submitError).toBeInstanceOf(Error)
     expect(result.submitting).toBe(false)
     // Navigation resumes after the throw.
     result.back()

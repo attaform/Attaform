@@ -450,6 +450,13 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *  - `submissionAttempts` — count of `wizard.handleSubmit` invocations
  *                    (success or failure). Always bumps, including on
  *                    noop-form steps.
+ *  - `submitError` — the error thrown by the most recent
+ *                    `wizard.handleSubmit` callback (or its `onError`),
+ *                    coerced to a real `Error`. Mirrors
+ *                    `form.meta.submitError`: cleared at submit entry and
+ *                    by `reset()`, parked here rather than re-thrown, so
+ *                    the handler resolves and never manufactures a
+ *                    `window` unhandledrejection. `null` on success.
  *  - `visited`     — append-only breadcrumb of navigated step keys.
  *                    `back()` does not pop; the trail is the audit
  *                    log, not the back-stack.
@@ -483,6 +490,7 @@ export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArra
   readonly done: boolean
   readonly submitting: boolean
   readonly submissionAttempts: number
+  readonly submitError: Error | null
   readonly visited: readonly FormKey[]
   readonly next: () => Promise<void>
   readonly back: () => void

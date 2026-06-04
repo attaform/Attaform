@@ -1,5 +1,5 @@
 import type { Path, Segment } from './paths'
-import { safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
+import { isShadowedKey, safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
 
 /**
  * The minimal slice of `AbstractSchema` the structural-completeness
@@ -60,6 +60,21 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
   }
   const record = value as Record<string, unknown>
   const key = typeof segment === 'number' ? String(segment) : segment
+  // Own-property-safe descent for prototype-shadowed key names
+  // (`hasOwnProperty`, `toString`, `__proto__`, …): `key in record`
+  // answers `true` for the inherited member and `record[key]` returns
+  // it (or, through a Vue reactive proxy, Vue's instrumented
+  // `hasOwnProperty` shim) when no own data slot exists. The own-
+  // descriptor read returns the stored value (NOT_FOUND when purely
+  // inherited) and forwards to the raw descriptor on a reactive proxy.
+  // Reactivity is preserved by the coarse whole-`form`-ref dependency
+  // the field-state computeds establish: every write is copy-on-write,
+  // so the root identity changes and the computed re-evaluates
+  // regardless of per-key `get` tracking.
+  if (isShadowedKey(key)) {
+    if (!safeOwnHas(record, key)) return NOT_FOUND
+    return safeOwnRead(record, key)
+  }
   if (!(key in record)) return NOT_FOUND
   return record[key]
 }
@@ -96,6 +111,10 @@ export function hasAtPath(root: unknown, path: Path): boolean {
     return typeof last === 'number' && last >= 0 && last < current.length
   }
   const key = typeof last === 'number' ? String(last) : last
+  // Own-property existence for prototype-shadowed names — `key in
+  // current` would report `true` for an inherited slot the consumer
+  // never wrote (see descendStep / safeOwnHas).
+  if (isShadowedKey(key)) return safeOwnHas(current as Record<string, unknown>, key)
   return key in (current as Record<string, unknown>)
 }
 

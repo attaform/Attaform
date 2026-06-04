@@ -180,7 +180,7 @@ function isConsumerWrapped(fn: unknown): boolean {
  * installed the noop) falls through with `(value, undefined)` —
  * defensive; the documented happy path always has a real `rv`.
  */
-function fireAssigner(
+export function fireAssigner(
   el: HTMLElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn },
   registerValue: unknown,
   value: unknown
@@ -500,7 +500,7 @@ function transformGateRejectedError(path: PathKey): Error {
  * the resolved value is painted in by the orchestrator's `syncDom`
  * once the run lands.
  */
-function isTransforming(value: unknown): boolean {
+export function isTransforming(value: unknown): boolean {
   return isRegisterValue(value) && (value as InternalRegisterValue).transforming
 }
 
@@ -664,7 +664,7 @@ function makeNoopAssigner(): CustomDirectiveRegisterAssignerFn {
   return noop
 }
 
-function setAssignFunction(
+export function setAssignFunction(
   el: HTMLElement & { [AssignKey: symbol]: CustomDirectiveRegisterAssignerFn },
   vnode: VNode,
   value: RegisterValue<unknown> | undefined

@@ -1,10 +1,14 @@
 import { effectScope, warn, watch } from 'vue'
-import type { RegisterModelDynamicCustomDirective, RegisterValue } from '../types/types-api'
+import type {
+  CustomDirectiveRegisterAssignerFn,
+  RegisterModelDynamicCustomDirective,
+  RegisterValue,
+} from '../types/types-api'
 import { __DEV__ } from './dev'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
 import type { PathKey } from './paths'
 import type { PersistOptInRegistry } from './persistence/opt-in-registry'
-import { isRegisterValue } from './directive'
+import { fireAssigner, isRegisterValue, isTransforming, setAssignFunction } from './directive'
 
 /**
  * True for any value the file directive treats as "no file selected":
@@ -92,13 +96,23 @@ type FileScopeCarrier = { [fileScopeKey]?: () => void }
  * programmatic write browsers permit on file inputs.
  */
 export const vRegisterFile: RegisterModelDynamicCustomDirective = {
-  created(el, { value }) {
+  created(el, { value }, vnode) {
     if (!isRegisterValue(value)) return
     // `resolveDynamicModel` routes here only when `el.tagName === 'INPUT'`
     // and `el.type === 'file'`. The variant union type widens to include
-    // select/textarea, so narrow once per hook.
-    const input = el as HTMLInputElement
+    // select/textarea, so narrow once per hook. The dynamic directive's `el`
+    // (unlike the `CustomRegisterDirective` variants) doesn't carry the
+    // assign-key symbol index, so widen to the assigner carrier here — the
+    // shared `setAssignFunction` / `fireAssigner` both read `el[assignKey]`.
+    const input = el as HTMLInputElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn }
     value.registerElement(input)
+    // Install the shared assigner (the default writer, or a consumer
+    // `@update:registerValue` override) so a file selection routes through the
+    // same transform + coerce + async-orchestration pipeline as every other
+    // input variant. A `transforms: [...]` chain on a file path now runs
+    // (sync or async); an async transform drives the busy / pending / settle
+    // machinery exactly as on a text input.
+    setAssignFunction(input, vnode, value)
     maybeWarnPersistedFile(value)
 
     // Seed the blank-path channel on register. Storage shape gets
@@ -115,8 +129,17 @@ export const vRegisterFile: RegisterModelDynamicCustomDirective = {
     addTrackedListener(input, 'change', () => {
       noteInteraction(value)
       const next = readFilesFromInput(input)
-      const blank = isBlankFileValue(next)
-      value.setValueWithInternalPath(next, blank ? { blank: true } : undefined)
+      // A cleared selection (no file) is a clear, not a normalize: commit the
+      // canonical blank shape directly and skip the pipeline. Only a real
+      // selection flows through `fireAssigner`, so `transforms: [...]` runs and
+      // `coerce` post-fixes the normalized result. An async transform returns
+      // the queued sentinel here; the deferred orchestrator commits the
+      // resolved value once it lands (latest-pick-wins on a rapid re-select).
+      if (isBlankFileValue(next)) {
+        value.setValueWithInternalPath(next, { blank: true })
+        return
+      }
+      fireAssigner(input, value, next)
     })
 
     // Watch storage for programmatic transitions to the blank shape
@@ -157,8 +180,15 @@ export const vRegisterFile: RegisterModelDynamicCustomDirective = {
     //      the path would otherwise drift out of `blankPaths`. The
     //      store's `Set.add` is idempotent, and identity-equal writes
     //      don't trigger re-renders — safe to call on every update.
+    //
+    // Skip entirely while an async transform is in flight: storage is
+    // transiently still the blank shape (the deferred commit hasn't landed)
+    // even though the user already has a file selected. Re-marking blank here
+    // would funnel through the write chokepoint and cancel the live run, and
+    // clearing `el.value` would erase the selection mid-flight. The deferred
+    // commit (or an explicit clear) settles both once the run lands.
     const currentRaw = value.innerRef.value
-    if (isBlankFileValue(currentRaw)) {
+    if (isBlankFileValue(currentRaw) && !isTransforming(value)) {
       value.setValueWithInternalPath(currentRaw, { blank: true })
       if (input.value !== '') input.value = ''
     }

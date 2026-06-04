@@ -1,5 +1,4 @@
 <script setup lang="ts">
-  import { computed } from 'vue'
   import { useForm } from 'attaform/zod'
   import type { RegisterTransform } from 'attaform'
   import { z } from 'zod'
@@ -17,37 +16,42 @@
   ].join('\n')
 
   const linesToUrls: RegisterTransform = async (value) => {
-    if (!(value instanceof File)) return []
-    const lines = (await value.text()).split(/\r?\n/)
-    await new Promise((resolve) => setTimeout(resolve, 700))
+    const files = Array.isArray(value) ? (value as File[]) : []
     const urls: string[] = []
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (trimmed === '' || trimmed.startsWith('#')) continue
-      try {
-        const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
-        if (url.protocol === 'http:' || url.protocol === 'https:') urls.push(url.href)
-      } catch {
-        continue
+    for (const file of files) {
+      for (const line of (await file.text()).split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (trimmed === '' || trimmed.startsWith('#')) continue
+        try {
+          const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
+          if (url.protocol === 'http:' || url.protocol === 'https:') urls.push(url.href)
+        } catch {
+          continue
+        }
       }
     }
     if (urls.length === 0)
-      throw new Error('No web links in that file. Each line should be one address.')
+      throw new Error('No web links in that file. Each line should be one web address.')
     return urls
   }
 
   const lowercase: RegisterTransform = (value) =>
     Array.isArray(value) ? value.map((url) => String(url).toLowerCase()) : value
 
-  const form = useForm({
-    schema: z.object({ links: z.array(z.string()).nullable() }),
-    defaultValues: { links: null },
-    key: 'docs-demo-transforms-async',
-  })
+  const schema = z.object({ links: z.array(z.string()).min(1) })
 
-  const busy = computed(() => form.fields.links.busy)
-  const transformError = computed(() => form.fields.links.transformError)
-  const links = computed(() => form.values.links ?? [])
+  const form = useForm({ schema, key: 'docs-demo-transforms-async' })
+
+  const onSubmit = form.handleSubmit(
+    (data) => {
+      toast.success(`${data.links.length} link${data.links.length === 1 ? '' : 's'} submitted`, {
+        description: data,
+      })
+    },
+    () => {
+      toast.error('Add at least one readable link before submitting.')
+    }
+  )
 
   const downloadSample = () => {
     const url = URL.createObjectURL(new Blob([sample], { type: 'text/plain' }))
@@ -60,12 +64,12 @@
 </script>
 
 <template>
-  <form @submit.prevent>
+  <form @submit.prevent="onSubmit">
     <div class="lead">
       <p>
-        Pick a plain <code>.txt</code> file with one entry per line. Attaform reads it, turns each
-        line into a tidy URL, drops anything that is not a web address, then lowercases the
-        survivors, all before the value reaches your form.
+        Pick one or more plain <code>.txt</code> files with one entry per line. Attaform reads them,
+        turns each line into a tidy URL, drops anything that is not a web address, then lowercases
+        the survivors, all before the value reaches your form.
       </p>
       <p class="get-file">
         <button type="button" @click="downloadSample">Download a sample links.txt</button>
@@ -74,29 +78,36 @@
     </div>
 
     <label>
-      <span>Links file</span>
+      <span>Links files</span>
       <input
         v-register="form.register('links', { transforms: [linesToUrls, lowercase] })"
         type="file"
         accept=".txt,text/plain"
+        multiple
       />
     </label>
 
-    <p v-if="busy" class="status busy">
+    <p v-if="form.fields('links').busy" class="status busy">
       <span class="spinner" aria-hidden="true"></span>
-      Reading your file and tidying the links…
+      Reading your files and tidying the links…
     </p>
-    <p v-else-if="transformError" class="status error">{{ transformError?.message }}</p>
-    <p v-else-if="links.length > 0" class="status done">
-      {{ links.length }} link{{ links.length === 1 ? '' : 's' }} ready.
+    <p v-else-if="form.fields('links').transformError" class="status error">
+      No web links in that file. Each line should be one web address.
+    </p>
+    <p v-else-if="form.values.links.length > 0" class="status done">
+      {{ form.values.links.length }} link{{ form.values.links.length === 1 ? '' : 's' }} ready.
     </p>
 
-    <div v-if="links.length > 0" class="panel">
+    <div v-if="form.values.links.length > 0" class="panel">
       <p class="panel-title">form.values.links</p>
       <ul>
-        <li v-for="url in links" :key="url">{{ url }}</li>
+        <li v-for="url in form.values.links" :key="url">{{ url }}</li>
       </ul>
     </div>
+
+    <button :disabled="form.meta.submitting" type="submit">
+      {{ form.meta.submitting ? 'Submitting…' : 'Submit links' }}
+    </button>
   </form>
 </template>
 
@@ -131,8 +142,8 @@
   .get-file button {
     appearance: none;
     border: 1px solid #2563eb;
-    background: #2563eb;
-    color: #fff;
+    background: #fff;
+    color: #2563eb;
     font-size: 0.8125rem;
     font-weight: 600;
     padding: 0.35rem 0.7rem;
@@ -140,7 +151,7 @@
     cursor: pointer;
   }
   .get-file button:hover {
-    background: #1d4ed8;
+    background: #eff6ff;
   }
   .get-file span {
     color: #6b7280;
@@ -235,5 +246,23 @@
   }
   .panel li {
     word-break: break-all;
+  }
+  button[type='submit'] {
+    margin-top: 0.25rem;
+    padding: 0.55rem 1rem;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button[type='submit']:hover {
+    background: #1d4ed8;
+  }
+  button[type='submit']:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

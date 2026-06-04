@@ -125,19 +125,21 @@ Download the sample below (or write your own), then pick it in the demo. Each li
 Two transforms compose the result. The first reads the file and reshapes its lines; the second lowercases what survives:
 
 ```ts
-const schema = z.object({ links: z.array(z.string()).nullable() })
+const schema = z.object({ links: z.array(z.string()).min(1) })
 
 const linesToUrls: RegisterTransform = async (value) => {
-  if (!(value instanceof File)) return []
+  const files = Array.isArray(value) ? (value as File[]) : []
   const urls: string[] = []
-  for (const line of (await value.text()).split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (trimmed === '' || trimmed.startsWith('#')) continue
-    try {
-      const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
-      if (url.protocol === 'http:' || url.protocol === 'https:') urls.push(url.href)
-    } catch {
-      // a line that cannot become a URL is dropped
+  for (const file of files) {
+    for (const line of (await file.text()).split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (trimmed === '' || trimmed.startsWith('#')) continue
+      try {
+        const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
+        if (url.protocol === 'http:' || url.protocol === 'https:') urls.push(url.href)
+      } catch {
+        // a line that cannot become a URL is dropped
+      }
     }
   }
   return urls
@@ -154,10 +156,11 @@ const form = useForm({ schema })
   v-register="form.register('links', { transforms: [linesToUrls, lowercase] })"
   type="file"
   accept=".txt,text/plain"
+  multiple
 />
 ```
 
-Because `linesToUrls` reads the file with `await value.text()`, the chain goes async the instant a file is picked: `form.fields.links.busy` flips true, the resolved `string[]` commits when the read finishes, and an unreadable file lands its message on `form.fields.links.transformError`.
+Because `linesToUrls` reads each file with `await file.text()`, the chain goes async the instant files are picked: `form.fields('links').busy` flips true, the resolved `string[]` commits when the read finishes, and an unreadable file lands its message on `form.fields('links').transformError`. (`links` is an array field, so its rolled-up state reads through the call-form `form.fields('links')` rather than the dot-form, which would descend into a child path.)
 
 ## Throws are caught
 

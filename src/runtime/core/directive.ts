@@ -384,10 +384,13 @@ function kickoffAsyncTransform(
   const token = rv.beginTransform(holder)
   void run().then(
     (value) => {
-      if (!rv.isCurrentTransform(token)) {
-        rv.endTransform(token)
-        return
-      }
+      const live = rv.isCurrentTransform(token)
+      // Release this run BEFORE committing. The commit funnels through the
+      // store's write chokepoint, which supersedes in-flight transforms on
+      // the path (latest-write-wins) — ending first means a transform
+      // landing its OWN resolved value isn't caught by that supersede.
+      rv.endTransform(token)
+      if (!live) return
       const coerced = applyCoerce(value, rv)
       const wrote = commit(coerced)
       // A `false` commit is the slim-primitive gate refusing the resolved
@@ -397,7 +400,6 @@ function kickoffAsyncTransform(
       // normalized result.
       if (wrote === false) rv.setTransformError(transformGateRejectedError(rv.path))
       else syncDom?.()
-      rv.endTransform(token)
     },
     (err: unknown) => {
       // A rejection on a superseded / cancelled run (commonly an

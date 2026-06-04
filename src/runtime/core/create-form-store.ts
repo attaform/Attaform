@@ -2121,6 +2121,18 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       }
     }
 
+    // Latest-write-wins over the transform channel. The write has cleared
+    // the slim gate + cross-variant guards, so it WILL commit (here, via a
+    // DU reshape below, or the normal mutation) — a committed synchronous
+    // write to this path (or a container write above it) supersedes any
+    // in-flight async transform at or under it, whose eventual resolved
+    // value is now stale. Covers `setValueWithInternalPath`, `markBlank`,
+    // and `form.setValue` uniformly (all funnel through here). The deferred
+    // orchestrator releases its own run before committing, so a transform
+    // landing its own value is not caught. Guarded on `transformRuns.size`
+    // so the common no-transforms write stays allocation-free.
+    if (transformRuns.size !== 0) cancelTransformsUnder(path)
+
     // Discriminated-union variant transitions. Writing a discriminator
     // — whether as a leaf write to the discriminator key or as a
     // wholesale write of the union value carrying a different

@@ -172,4 +172,58 @@ describe.each(adapters)('async-transform store machinery — $name', ({ schema }
     rv.endTransform(token)
     await expect(api.settleTransforms()).resolves.toBeUndefined()
   })
+
+  it('a synchronous form.setValue supersedes an in-flight transform (latest-write-wins)', async () => {
+    const api = mount()
+    const rv = rvOf(api, 'name')
+    const h = holder()
+    const token = rv.beginTransform(h)
+    const signal = touchSignal(h)
+    expect(rv.isCurrentTransform(token)).toBe(true)
+
+    // A committed write through the store chokepoint releases the
+    // in-flight run — the late resolve of the superseded transform would
+    // then discard rather than clobber this value.
+    api.setValue('name', 'direct')
+
+    expect(rv.isCurrentTransform(token)).toBe(false)
+    expect(h.aborted).toBe(true)
+    expect(signal.aborted).toBe(true)
+    expect(api.values.name).toBe('direct')
+    await expect(api.settleTransforms('name')).resolves.toBeUndefined()
+
+    // A late end from the superseded run must not underflow the counters.
+    rv.endTransform(token)
+    expect(api.values.name).toBe('direct')
+    await expect(api.settleTransforms()).resolves.toBeUndefined()
+  })
+
+  it('a rejected write does NOT supersede an in-flight transform', async () => {
+    const api = mount()
+    const rv = rvOf(api, 'name')
+    const token = rv.beginTransform(holder())
+
+    // `name` is `z.string()`; a number is refused by the slim gate, so
+    // the write never commits — the in-flight transform stays live.
+    api.setValue('name', 123 as unknown as string)
+
+    expect(rv.isCurrentTransform(token)).toBe(true)
+    rv.endTransform(token)
+    await expect(api.settleTransforms()).resolves.toBeUndefined()
+  })
+
+  it('markBlank supersedes an in-flight transform', async () => {
+    const api = mount()
+    const rv = rvOf(api, 'name')
+    const h = holder()
+    const token = rv.beginTransform(h)
+
+    // `markBlank` funnels through the same chokepoint, so a clear also
+    // supersedes a pending async transform on the path.
+    rv.markBlank()
+
+    expect(rv.isCurrentTransform(token)).toBe(false)
+    expect(h.aborted).toBe(true)
+    await expect(api.settleTransforms()).resolves.toBeUndefined()
+  })
 })

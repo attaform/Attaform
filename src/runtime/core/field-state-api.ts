@@ -434,6 +434,30 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // OWN path too, so the firstValidationDone gate fires until that
   // pass lands.
   if (!asyncPending && state.pathHasAsyncValidation(segments)) asyncPending = true
+  // A transform or validation registered directly on THIS container path runs
+  // at the container key itself, not at a descendant leaf — the walk above
+  // skips self (`segments.length === entry.segments.length`). The file
+  // directive is the canonical case: `register('roster', { transforms })` on
+  // an `<input type="file">` whose schema slot is an array normalizes the
+  // picked File(s) into the array value at the container path. Fold the
+  // container's own in-flight transform / validation state in so
+  // `transforming` / `validating` / `busy` / `valid` and the spinner anchors
+  // reflect it, exactly as a leaf reflects its own. The anchor is set
+  // unconditionally (the container is its own field; the display reducer
+  // applies the container's reveal gate), matching the leaf builder.
+  if ((state.fieldValidationCounts.get(key) ?? 0) > 0) {
+    validating = true
+    const since = state.fieldValidatingSince.get(key)
+    if (since !== undefined && (validatingSince === null || since < validatingSince))
+      validatingSince = since
+  }
+  if ((state.fieldTransformCounts.get(key) ?? 0) > 0) {
+    transforming = true
+    const since = state.fieldTransformingSince.get(key)
+    if (since !== undefined && (transformingSince === null || since < transformingSince))
+      transformingSince = since
+  }
+  const ownTransformError = state.transformErrors.get(key) ?? null
   const gated = asyncPending && !state.firstValidationDone.value
   const valid = !gated && errors.length === 0 && !validating
   const resolved = state.schema.getFieldMetaAtPath
@@ -461,9 +485,10 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       valid,
       transforming,
       busy: transforming || validating,
-      // Leaf-only channel: a container never rolls up a descendant's
-      // transform failure (it is a per-field normalization error).
-      transformError: null,
+      // A container surfaces its OWN transform failure (a transform registered
+      // on the container path, e.g. a file normalizer) but never rolls up a
+      // descendant leaf's failure — that stays a per-field channel.
+      transformError: ownTransformError,
       path: segments,
       ...computeFieldIdentity(formInstanceId, state.formKey, key),
       key: state.arrayElementKey(segments),

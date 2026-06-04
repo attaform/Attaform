@@ -1134,8 +1134,8 @@ describe('DU hardening — field metadata side-effects of an invalid discriminat
     await nextTick()
 
     // Container proxies aren't leaf-views — `api.fields.notify.valid`
-    // descends; the boolean lives on the call-form `api.fields.notify()`
-    // (or `api.fields('notify')`). Stub-state contract: validation
+    // descends; the aggregated boolean lives on the call-form
+    // `api.fields('notify')`. Stub-state contract: validation
     // surfaces a Zod disc-mismatch error AT or UNDER the union path,
     // so the aggregated `valid` is FALSE.
     const notifyState = (

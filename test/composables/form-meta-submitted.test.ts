@@ -87,10 +87,13 @@ describe('form.meta.submitted', () => {
     const handler = api.handleSubmit(async () => {
       throw new Error('boom')
     })
-    await expect(handler(new Event('submit'))).rejects.toThrow('boom')
+    // The handler resolves (no re-throw); the throw is parked on
+    // `submitError`. See submit-error-no-rethrow.test.ts for the contract.
+    await expect(handler(new Event('submit'))).resolves.toBeUndefined()
     await waitUntil(() => api.meta.submissionAttempts === 1)
     expect(api.meta.submitted).toBe(false)
     expect(api.meta.submissionAttempts).toBe(1)
+    expect(api.meta.submitError).toBeInstanceOf(Error)
   })
 
   it('stays true across subsequent successful submits', async () => {

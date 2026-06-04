@@ -323,7 +323,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * alongside the rest of the submission surface.
    */
   readonly submitted: Ref<boolean>
-  readonly submitError: Ref<unknown>
+  readonly submitError: Ref<Error | null>
 
   // --- wizard navigation lifecycle ---
   // Bumped by `useWizard` each time wizard navigation (`next`, `back`,
@@ -1486,7 +1486,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const activeSubmissions = ref(0)
   const submissionAttempts = ref(0)
   const submitted = ref(false)
-  const submitError = ref<unknown>(null)
+  const submitError = ref<Error | null>(null)
   // Counts wizard departures from this form. Bumped by `useWizard`
   // when `next` / `back` / `goTo` actually leaves this form; zeroed by
   // `reset()` below. Introspection only — the library-default

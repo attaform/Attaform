@@ -67,6 +67,27 @@ export class InvalidUseFormConfigError extends AttaformError {
 export class SubmitErrorHandlerError extends AttaformError {}
 
 /**
+ * Coerce an unknown thrown value into an `Error`. A real `Error`
+ * (including any `AttaformError` subclass) passes through untouched, so
+ * its message, stack, name, and `cause` chain survive. A non-`Error`
+ * throw (a string, a plain object, a rejected primitive) is wrapped in a
+ * fresh `Error` whose `cause` preserves the original value.
+ *
+ * `handleSubmit` routes everything its `onSubmit` / `onError` callbacks
+ * throw through here before parking it on `form.meta.submitError`, so
+ * that slot is always a clean `Error | null` rather than `unknown` —
+ * consumers can read `.message` and `.cause` without a type guard.
+ */
+export function toError(value: unknown): Error {
+  if (value instanceof Error) return value
+  const message =
+    typeof value === 'string' && value.length > 0
+      ? value
+      : `Submit callback threw a non-Error value (${typeof value})`
+  return new Error(message, { cause: value })
+}
+
+/**
  * Thrown when an `attaform` API needs the registry attached to a Vue
  * app but it isn't there yet. Component-level entry points (`useForm`,
  * `injectForm`, `useRegister`) lazy-install the registry on first use,

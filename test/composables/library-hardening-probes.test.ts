@@ -3575,9 +3575,10 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(a.meta.submitting).toBe(true)
     expect(b.meta.submitting).toBe(true)
 
-    // Reject A — its onSubmit rethrows the error.
+    // Reject A — its onSubmit rejects. The handler resolves (no re-throw)
+    // and parks the throw on the shared `submitError`.
     rejectA(boom)
-    await expect(aPromise).rejects.toBe(boom)
+    await expect(aPromise).resolves.toBeUndefined()
     await nextTick()
 
     // Lifecycle clears across BOTH siblings: submitting flips false,
@@ -6289,7 +6290,7 @@ describe('crash — handleSubmit onSuccess callback throws', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it("the throw is reported via Vue's errorHandler, not silently swallowed", async () => {
+  it('the throw is observable via meta.submitError, without an unhandled rejection', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -6297,11 +6298,6 @@ describe('crash — handleSubmit onSuccess callback throws', () => {
     api.setValue('name', 'Ada')
     api.setValue('notify', { channel: 'sms', number: '5551234' })
     await nextTick()
-
-    const captured: unknown[] = []
-    app.config.errorHandler = (err): void => {
-      captured.push(err)
-    }
 
     const submit = api.handleSubmit(
       () => {
@@ -6317,12 +6313,14 @@ describe('crash — handleSubmit onSuccess callback throws', () => {
       promiseRejected = true
     }
 
-    // Either the submit promise rejects (consumer can `.catch`) OR
-    // Vue's errorHandler captures (consumer can wire it). What we
-    // DON'T want: silent swallowing where the user clicks Submit,
-    // sees nothing happen, and has no path to recovery.
-    const observable = promiseRejected || captured.length > 0
-    expect(observable).toBe(true)
+    // The handler resolves rather than re-throwing — bound to a DOM event
+    // it must not manufacture an unhandled rejection. The throw is still
+    // observable, just through the dedicated `meta.submitError` slot
+    // (coerced to a real Error), the single recovery channel. "Silent
+    // swallow with no path to recovery" stays ruled out.
+    expect(promiseRejected).toBe(false)
+    expect(api.meta.submitError).toBeInstanceOf(Error)
+    expect(api.meta.submitError?.message).toBe('onSuccess exploded')
   })
 })
 

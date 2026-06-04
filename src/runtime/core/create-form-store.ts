@@ -3102,6 +3102,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // (a v-if'd-away field that was previously blurred stays
       // touched).
       touchFieldRecord(key, path, { connected: false, focused: null, blurred: null })
+      // The last binding for this path just unmounted: abort any
+      // in-flight async transform so its late resolve can't commit to a
+      // detached field. Gated on `remaining === 0`, so a sibling element
+      // still bound to the same path keeps its run alive.
+      if (transformRuns.size !== 0) cancelTransformsUnder(path)
     }
     return remaining
   }

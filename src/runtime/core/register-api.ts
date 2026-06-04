@@ -457,6 +457,13 @@ export function buildRegister<F extends GenericForm>(
       isCurrentTransform: (token: number): boolean => state.isCurrentTransform(pathKey, token),
       endTransform: (token: number): void => state.endTransform(pathKey, token),
       setTransformError: (err: Error): void => state.setTransformError(pathKey, err),
+      // Synchronous read of "is a transform in flight at this path". The
+      // orchestrator's `beginTransform` bumps the count before the
+      // listener's force-sync block runs, so the directive reads this to
+      // skip reverting the DOM to stale storage mid-flight.
+      get transforming(): boolean {
+        return (state.fieldTransformCounts.get(pathKey) ?? 0) > 0
+      },
 
       path: pathKey,
       // Frozen so a wrapper component can pass `rv.segments` directly

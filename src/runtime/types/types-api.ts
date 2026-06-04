@@ -2398,6 +2398,22 @@ export type RegisterValue<Value = unknown> = Readonly<{
  */
 export type TransformAbortHolder = { controller: AbortController | null; aborted: boolean }
 
+/**
+ * The second argument handed to every transform in a `transforms: [...]`
+ * chain. `signal` is an `AbortSignal` that aborts when the run is
+ * superseded by a newer input, or torn down by a reset / cancel — so a
+ * transform doing cancellable I/O (a `fetch`, a worker round-trip) can
+ * pass `ctx.signal` through and bail the moment its result is no longer
+ * wanted.
+ *
+ * The signal is lazy: the backing `AbortController` is allocated only on
+ * first access, so a purely-synchronous chain that never reaches for
+ * `ctx.signal` allocates nothing. It is meaningful for async transforms;
+ * a sync chain has no in-flight I/O to cancel, so its `signal` simply
+ * never aborts.
+ */
+export type TransformContext = { readonly signal: AbortSignal }
+
 export type InternalRegisterValue<Value = unknown> = RegisterValue<Value> & {
   lastTypedForm: Ref<string | null>
   /**
@@ -2432,6 +2448,15 @@ export type InternalRegisterValue<Value = unknown> = RegisterValue<Value> & {
    * validation `errors`.
    */
   setTransformError: (err: Error) => void
+  /**
+   * `true` while an async transform run is in flight at this path. Set
+   * synchronously by `beginTransform` (the deferred orchestrator opens
+   * the run before the listener's post-write force-sync block runs), so
+   * the directive's force-sync blocks read it to skip snapping the DOM
+   * back to stale storage while a deferred commit is pending — the
+   * resolved value is painted in once the run lands instead.
+   */
+  readonly transforming: boolean
 }
 
 /**
@@ -2497,6 +2522,15 @@ export type CustomRegisterDirective<T, Modifiers extends string = string> = Obje
      * from the user's input.
      */
     _lastAppliedModel?: unknown
+    /**
+     * Variant-specific "repaint the DOM from current storage" closure,
+     * stashed by each input directive's `created` hook (it mirrors that
+     * variant's post-write force-sync block). The deferred async-transform
+     * orchestrator calls it once the resolved value has committed, so a
+     * bare `<input v-register>` with no other reactive reader still paints
+     * the normalized result without depending on a parent re-render.
+     */
+    _syncFromStorage?: () => void
     [S: symbol]: CustomDirectiveRegisterAssignerFn
   },
   RegisterValue | undefined,

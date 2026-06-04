@@ -56,6 +56,7 @@ function makeRegisterValue<T>(
     isCurrentTransform: () => false,
     endTransform: () => undefined,
     setTransformError: () => undefined,
+    transforming: false,
     path,
     segments: Object.freeze([path]),
     formKey: 'mock-form',

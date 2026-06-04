@@ -20,7 +20,7 @@ vi.mock('../../src/runtime/core/dev', () => ({ __DEV__: false }))
 
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'
-import { useForm } from '../../src/zod'
+import { useForm, type UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
@@ -93,15 +93,25 @@ describe('register({ transforms }) — prod log shape (information-leak guard)',
     errSpy.mockRestore()
   })
 
-  it('Promise returns use the same fixed prod string', async () => {
+  it('async transforms defer and commit in prod with no console output', async () => {
+    // The inverse of the old "Promise returns abort + log" contract: a
+    // thenable now defers and commits the resolved value. In prod that
+    // path stays silent — a resolving transform is the happy path, and a
+    // rejecting one surfaces on `field.transformError`, never the console
+    // (the information-leak guard this file exists to hold).
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const schema = z.object({ email: z.string() })
+    const handle: { api?: UseFormReturn<typeof schema> } = {}
     const Parent = defineComponent({
       setup() {
         const api = useForm({
-          schema: z.object({ email: z.string() }),
+          schema,
           key: `prod-async-${Math.random().toString(36).slice(2)}`,
         })
-        const rv = api.register('email', { transforms: [(v: unknown) => Promise.resolve(v)] })
+        handle.api = api
+        const rv = api.register('email', {
+          transforms: [(v: unknown) => Promise.resolve(String(v).toUpperCase())],
+        })
         return () => withDirectives(h('input', { type: 'text' }), [[vRegister, rv]])
       },
     })
@@ -115,18 +125,13 @@ describe('register({ transforms }) — prod log shape (information-leak guard)',
     const input = root.firstElementChild as HTMLInputElement
     input.value = 'abc'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitUntil(() => (errSpy.mock.calls.length > 0 ? true : null))
 
-    expect(errSpy).toHaveBeenCalled()
-    const call = errSpy.mock.calls[0]
-    if (call === undefined) throw new Error('no call')
-    const msg = String(call[0])
-    expect(msg).toContain('transform error')
-    expect(msg).toContain('write aborted')
-    // No async-specific phrasing in prod (otherwise we'd be leaking async-vs-throw).
-    expect(msg).not.toContain('Promise')
-    expect(msg).not.toContain('async field validation')
-    expect(msg).not.toContain('email')
+    const api = handle.api
+    if (api === undefined) throw new Error('no api')
+    await api.settleTransforms()
+
+    expect(api.values.email).toBe('ABC')
+    expect(errSpy).not.toHaveBeenCalled()
 
     errSpy.mockRestore()
   })

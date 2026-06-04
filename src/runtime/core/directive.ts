@@ -54,6 +54,8 @@ import type {
   RegisterTextCustomDirective,
   RegisterTransform,
   RegisterValue,
+  TransformAbortHolder,
+  TransformContext,
 } from '../types/types-api'
 import type { PathKey } from './paths'
 import { getOrAssignElementId } from './persistence/opt-in-registry'
@@ -192,6 +194,19 @@ function fireAssigner(
     return fn(value, undefined)
   }
   const r = runTransforms(value, registerValue)
+  if (r.kind === 'async') {
+    // JIT-wrapped raw consumer fn: invoke it with the resolved, coerced
+    // value once the run lands. No `syncDom` — a consumer-installed
+    // assigner owns its own DOM.
+    kickoffAsyncTransform(
+      registerValue as InternalRegisterValue,
+      r.holder,
+      r.run,
+      (coerced) => fn(coerced, registerValue),
+      undefined
+    )
+    return true
+  }
   if (!r.ok) return false
   const coerced = applyCoerce(r.value, registerValue)
   return fn(coerced, registerValue)
@@ -225,47 +240,173 @@ function shouldBailListener(el: HTMLElement): boolean {
 }
 
 /**
- * Result of running a field's `transforms: [...]` pipeline. Discriminated
- * so each assigner branch can short-circuit on failure without re-checking
- * a sentinel. `ok: false` means the write should be aborted (the helper
- * already logged via `console.error`); the caller returns `false` from
- * the assigner so the existing rejected-write contract carries through.
+ * Result of running a field's `transforms: [...]` pipeline. The chain
+ * stays byte-for-byte synchronous until a transform returns a thenable;
+ * only then does the result switch to `kind: 'async'`, handing the caller
+ * a `run` thunk (the deferred remainder of the chain) plus the run's
+ * abort `holder` so the deferred orchestrator can open a store-backed run
+ * and commit the resolved value.
+ *
+ *  - `kind: 'sync', ok: true`  → committed-ready value (today's fast path).
+ *  - `kind: 'sync', ok: false` → a sync transform threw; the write aborts
+ *    (the helper already logged via `console.error`).
+ *  - `kind: 'async'`           → a transform returned a thenable. `run`
+ *    resolves to the post-chain value (or rejects on a downstream throw /
+ *    rejection); `holder` carries the lazy abort signal.
  */
-type TransformResult = { ok: true; value: unknown } | { ok: false }
+type TransformResult =
+  | { kind: 'sync'; ok: true; value: unknown }
+  | { kind: 'sync'; ok: false }
+  | { kind: 'async'; run: () => Promise<unknown>; holder: TransformAbortHolder }
+
+/**
+ * A transform as the runner invokes it: the public `RegisterTransform`
+ * receives the transform context as its second argument. The cast is
+ * internal to the call site — `RegisterTransform`'s public single-arg
+ * shape stays the stable surface; passing `ctx` to a body that ignores
+ * it is a no-op.
+ */
+type CtxTransform = (value: unknown, ctx: TransformContext) => unknown
+
+/**
+ * Thenable check (not `instanceof Promise`) so a cross-realm or
+ * non-native promise still routes async.
+ */
+function isThenable(x: unknown): x is PromiseLike<unknown> {
+  return (
+    x !== null &&
+    (typeof x === 'object' || typeof x === 'function') &&
+    typeof (x as { then?: unknown }).then === 'function'
+  )
+}
+
+/**
+ * Build the lazy transform context for one pipeline run. `ctx.signal`
+ * materializes its `AbortController` only on first access, so a chain
+ * that never reaches for it allocates nothing. The store latches
+ * `holder.aborted` at teardown, so a signal touched AFTER the run was
+ * superseded is born aborted rather than live.
+ */
+function makeTransformContext(): { ctx: TransformContext; holder: TransformAbortHolder } {
+  const holder: TransformAbortHolder = { controller: null, aborted: false }
+  const ctx: TransformContext = {
+    get signal(): AbortSignal {
+      if (holder.controller === null) {
+        holder.controller = new AbortController()
+        if (holder.aborted) holder.controller.abort()
+      }
+      return holder.controller.signal
+    },
+  }
+  return { ctx, holder }
+}
 
 /**
  * Apply the field's transform pipeline to a value. Each transform runs
  * inside a per-call try/catch so a buggy or defensive-throw transform
- * doesn't crash the host app. On throw the pipeline aborts (subsequent
- * transforms don't run), nothing is written to form state, and the
- * caller returns `false`. A `Promise` return is treated identically —
- * transforms must be sync; canonicalize-before-write patterns belong
- * in async field validation, not the assigner pipeline.
+ * doesn't crash the host app.
  *
- * `transforms` on `RegisterValue` is optional (test fixtures and
- * custom integrations can omit it); a missing array short-circuits to
- * the original value with no allocation.
+ * The chain is sync-fast: while each transform returns a non-thenable the
+ * loop stays synchronous (no Promise allocation, no abort controller, no
+ * busy state) and the result commits in the same tick — byte-for-byte
+ * today's behavior. The moment a transform returns a thenable, that index
+ * and everything after it are captured in a `run` thunk and handed back
+ * as a `kind: 'async'` result; the directive's deferred orchestrator
+ * opens a store-backed run, awaits it, and commits the resolved value
+ * (latest-request-wins).
+ *
+ * On a sync throw the pipeline aborts (subsequent transforms don't run),
+ * nothing is written, and the caller returns `false`. An async failure (a
+ * downstream throw or a rejected thenable) rejects `run` instead — the
+ * orchestrator routes it to `field.transformError` with no console noise
+ * (a network / file failure is an expected channel, not a programmer bug).
+ *
+ * `transforms` on `RegisterValue` is optional (test fixtures and custom
+ * integrations can omit it); a missing array short-circuits to the
+ * original value with no allocation (not even a ctx).
  */
 function runTransforms(initial: unknown, registerValue: RegisterValue): TransformResult {
   const transforms = registerValue.transforms
   if (transforms === undefined || transforms.length === 0) {
-    return { ok: true, value: initial }
+    return { kind: 'sync', ok: true, value: initial }
   }
+  const { ctx, holder } = makeTransformContext()
   let v = initial
   for (let i = 0; i < transforms.length; i++) {
     const fn = transforms[i] as RegisterTransform
+    let out: unknown
     try {
-      v = fn(v)
+      out = (fn as CtxTransform)(v, ctx)
     } catch (err) {
       logTransformFailure(registerValue.path, i, fn, err)
-      return { ok: false }
+      return { kind: 'sync', ok: false }
     }
+    if (isThenable(out)) {
+      // Switch to async for this index and everything after it. The
+      // remaining transforms run in a `.then` chain seeded from the
+      // thenable; a throw or rejection anywhere downstream rejects `run`,
+      // which the orchestrator turns into `field.transformError`.
+      const rest = transforms.slice(i + 1) as RegisterTransform[]
+      const seed = out
+      const run = (): Promise<unknown> =>
+        rest.reduce<Promise<unknown>>(
+          (acc, next) => acc.then((value) => (next as CtxTransform)(value, ctx)),
+          Promise.resolve(seed)
+        )
+      return { kind: 'async', run, holder }
+    }
+    v = out
   }
-  if (v instanceof Promise) {
-    logTransformAsync(registerValue.path)
-    return { ok: false }
-  }
-  return { ok: true, value: v }
+  return { kind: 'sync', ok: true, value: v }
+}
+
+/**
+ * Drive a deferred (async) transform run to its commit. Opens a store-
+ * backed run through the RegisterValue's lifecycle hooks (the directive
+ * never holds the store), awaits the chain, and — only if this run is
+ * still the live one (latest-request-wins) — commits the resolved value
+ * and repaints the bound element. Every path ends in `endTransform`, and
+ * the whole thing is `.then`-guarded so a rejected transform never
+ * escapes as an unhandled rejection.
+ *
+ * `commit` is the write step (default assigner → `setValueWithInternalPath`;
+ * a consumer override → invoke the handler). `syncDom` repaints the bound
+ * element from the freshly-committed storage; it is `undefined` on
+ * consumer-override paths, where the consumer owns its own DOM.
+ */
+function kickoffAsyncTransform(
+  rv: InternalRegisterValue,
+  holder: TransformAbortHolder,
+  run: () => Promise<unknown>,
+  commit: (coerced: unknown) => boolean | undefined,
+  syncDom: (() => void) | undefined
+): void {
+  const token = rv.beginTransform(holder)
+  void run().then(
+    (value) => {
+      if (!rv.isCurrentTransform(token)) {
+        rv.endTransform(token)
+        return
+      }
+      const coerced = applyCoerce(value, rv)
+      const wrote = commit(coerced)
+      // A `false` commit is the slim-primitive gate refusing the resolved
+      // value — surface it on `transformError` and leave the DOM showing
+      // the user's raw input rather than reverting to stale storage. A
+      // successful (or override-`undefined`) commit repaints to the
+      // normalized result.
+      if (wrote === false) rv.setTransformError(transformGateRejectedError(rv.path))
+      else syncDom?.()
+      rv.endTransform(token)
+    },
+    (err: unknown) => {
+      // A rejection on a superseded / cancelled run (commonly an
+      // AbortError) is silently discarded — only the live run's failure
+      // reaches the consumer.
+      if (rv.isCurrentTransform(token)) rv.setTransformError(toTransformError(err))
+      rv.endTransform(token)
+    }
+  )
 }
 
 /**
@@ -323,24 +464,46 @@ function applyElementCoerce(value: unknown, registerValue: RegisterValue): unkno
 }
 
 /**
- * Log a Promise-returning transform. Same dev/prod posture as
- * `logTransformFailure` — informative in dev, opaque in prod.
+ * Normalize a rejected async transform's reason into an `Error` for the
+ * `field.transformError` channel. Mirrors the submit path's `toError`,
+ * with transform-appropriate wording for the rare non-Error rejection.
  */
-function logTransformAsync(path: PathKey): void {
-  if (__DEV__) {
-    console.error(
-      `[attaform] transform pipeline for path '${path}' returned a Promise — ` +
-        `transforms must be sync. Use async field validation for canonicalize-before-write patterns. ` +
-        `Write aborted.`
-    )
-  } else {
-    console.error(
-      `[attaform] transform error — write aborted (set NODE_ENV=development for details).`
-    )
-  }
+function toTransformError(value: unknown): Error {
+  if (value instanceof Error) return value
+  const message =
+    typeof value === 'string' && value.length > 0
+      ? value
+      : `Transform rejected with a non-Error value (${typeof value})`
+  return new Error(message, { cause: value })
+}
+
+/**
+ * The error surfaced on `field.transformError` when an async transform
+ * resolved a value the field's slim-primitive gate refused (the commit
+ * returned `false`). A structured channel the consumer reads, not a
+ * console log, so naming the field path is safe here.
+ */
+function transformGateRejectedError(path: PathKey): Error {
+  return new Error(
+    `[attaform] transform result for path '${path}' was rejected by the field's type gate ` +
+      `(the resolved value did not fit the schema slot).`
+  )
+}
+
+/**
+ * `true` while a deferred async transform is in flight at this path.
+ * `beginTransform` flips it synchronously inside the assigner, so a
+ * listener's post-write force-sync block reads it (right after the
+ * assigner returns) to skip snapping the DOM back to stale storage —
+ * the resolved value is painted in by the orchestrator's `syncDom`
+ * once the run lands.
+ */
+function isTransforming(value: unknown): boolean {
+  return isRegisterValue(value) && (value as InternalRegisterValue).transforming
 }
 
 const getModelAssigner = (
+  el: HTMLElement & { _syncFromStorage?: () => void },
   vnode: VNode,
   registerValue: RegisterValue
 ): CustomDirectiveRegisterAssignerFn => {
@@ -377,6 +540,21 @@ const getModelAssigner = (
       // silent bypass on override would be the surprise. If they want
       // raw, they don't register transforms.
       const r = runTransforms(value, registerValue)
+      if (r.kind === 'async') {
+        // Deferred: invoke the consumer's handlers with the resolved,
+        // coerced value once the run lands. No `syncDom` — a consumer
+        // override owns its own DOM.
+        kickoffAsyncTransform(
+          registerValue as InternalRegisterValue,
+          r.holder,
+          r.run,
+          (coerced) => {
+            invokeArrayFns(fnArr, coerced, registerValue)
+          },
+          undefined
+        )
+        return true
+      }
       if (!r.ok) return false
       // Schema-driven coerce runs AFTER transforms — it's the final
       // type-fixup before storage. Custom override handlers receive
@@ -396,6 +574,16 @@ const getModelAssigner = (
     const handler = fn as CustomDirectiveRegisterAssignerFn
     const wrapped: CustomDirectiveRegisterAssignerFn = (value) => {
       const r = runTransforms(value, registerValue)
+      if (r.kind === 'async') {
+        kickoffAsyncTransform(
+          registerValue as InternalRegisterValue,
+          r.holder,
+          r.run,
+          (coerced) => handler(coerced, registerValue),
+          undefined
+        )
+        return true
+      }
       if (!r.ok) return false
       const coerced = applyCoerce(r.value, registerValue)
       return handler(coerced, registerValue)
@@ -427,6 +615,22 @@ const getModelAssigner = (
       return registerValue.setValueWithInternalPath(undefined)
     }
     const r = runTransforms(value, registerValue)
+    if (r.kind === 'async') {
+      // Deferred: commit the resolved, coerced value via the default
+      // write path once the run lands, then repaint the bound element
+      // (the variant's `_syncFromStorage`, captured at `created`-time).
+      // Return `true` so the listener treats the write as accepted and
+      // skips its synchronous force-sync — `isTransforming(value)` is
+      // already `true` (beginTransform ran inside the kickoff).
+      kickoffAsyncTransform(
+        registerValue as InternalRegisterValue,
+        r.holder,
+        r.run,
+        (coerced) => registerValue.setValueWithInternalPath(coerced),
+        el._syncFromStorage
+      )
+      return true
+    }
     if (!r.ok) return false
     const coerced = applyCoerce(r.value, registerValue)
     return registerValue.setValueWithInternalPath(coerced)
@@ -507,7 +711,7 @@ function setAssignFunction(
     return
   }
 
-  el[assignKey] = getModelAssigner(vnode, value)
+  el[assignKey] = getModelAssigner(el, vnode, value)
 }
 
 // We are exporting the v-model runtime directly as vnode hooks so that it can
@@ -525,6 +729,18 @@ const vRegisterText: RegisterTextCustomDirective = {
     if (isRegisterValue(value)) {
       value.registerElement(el)
       setAssignFunction(el, vnode, value)
+    }
+    // Deferred async-transform repaint: paint the resolved/normalized
+    // value into the input once the run commits (mirrors the post-write
+    // force-sync below). Bare `<input v-register>` has no `innerRef`
+    // watcher, so the orchestrator calls this directly rather than
+    // relying on a parent re-render.
+    el._syncFromStorage = (): void => {
+      if (!isRegisterValue(value)) return
+      const storage = value.innerRef.value
+      const display = storage == null ? '' : String(storage)
+      if (el.value !== display) el.value = display
+      if (liveCastToNumber()) writeLastTypedForm(value, null)
     }
     addTrackedListener(el, lazy === true ? 'change' : 'input', (e) => {
       // Bail if this listener was attached on a non-supported root
@@ -688,7 +904,7 @@ const vRegisterText: RegisterTextCustomDirective = {
       // not update `innerRef.value`. The default assigner's contract
       // ("a successful write reflects in `innerRef.value` immediately")
       // is what makes the post-write storage comparison meaningful.
-      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey])) {
+      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey]) && !isTransforming(value)) {
         const storage = value.innerRef.value
         if (storage !== domValue) {
           const display = storage == null ? '' : String(storage)
@@ -866,6 +1082,14 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
 
     value.registerElement(el)
     setAssignFunction(el, vnode, value)
+    // Deferred async-transform repaint: re-apply checked-state from the
+    // committed value once the run lands (mirrors the post-write force-
+    // sync below).
+    el._syncFromStorage = (): void => {
+      if (!isRegisterValue(value)) return
+      setChecked(el, value)
+      el._lastAppliedModel = value.innerRef.value
+    }
     addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
@@ -934,8 +1158,10 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
       // false transform on an already-false checkbox) — no patch, no
       // render, no `beforeUpdate` setChecked. Without this the DOM
       // stays at the user's click state, divorced from storage.
-      // Skipped for custom assigners (they own DOM/storage sync).
-      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey])) {
+      // Skipped for custom assigners (they own DOM/storage sync) and
+      // while a transform is in flight (the deferred commit hasn't
+      // landed yet — `_syncFromStorage` repaints once it does).
+      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey]) && !isTransforming(value)) {
         setChecked(el, value)
         el._lastAppliedModel = value.innerRef.value
       }
@@ -1020,6 +1246,16 @@ const vRegisterRadio: RegisterRadioCustomDirective = {
 
     value.registerElement(el)
     setAssignFunction(el, vnode, value)
+    // Deferred async-transform repaint: re-apply checked-state from the
+    // committed value once the run lands (mirrors the post-write force-
+    // sync below).
+    el._syncFromStorage = (): void => {
+      if (!isRegisterValue(value)) return
+      const currentModel = value.innerRef.value
+      const target = looseEqual(currentModel, applyCoerce(getValue(el), value))
+      if (el.checked !== target) el.checked = target
+      el._lastAppliedModel = currentModel
+    }
     addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
@@ -1028,8 +1264,9 @@ const vRegisterRadio: RegisterRadioCustomDirective = {
       // current storage. Catches the no-op-write case where a
       // transform maps the click's value to current storage — no
       // patch, no render, no `beforeUpdate` sync. Skipped for custom
-      // assigners (they own DOM/storage sync).
-      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey])) {
+      // assigners (they own DOM/storage sync) and while a transform is
+      // in flight (the deferred commit repaints via `_syncFromStorage`).
+      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey]) && !isTransforming(value)) {
         const currentModel = value.innerRef.value
         const target = looseEqual(currentModel, applyCoerce(getValue(el), value))
         if (el.checked !== target) el.checked = target
@@ -1082,6 +1319,14 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
     if (!isRegisterValue(value)) return
 
     value.registerElement(el)
+    // Deferred async-transform repaint: re-apply the selection from the
+    // committed value once the run lands (mirrors the post-write force-
+    // sync below).
+    el._syncFromStorage = (): void => {
+      if (!isRegisterValue(value)) return
+      setSelected(el, value)
+      el._lastAppliedModel = value.innerRef.value
+    }
     addTrackedListener(el, 'change', () => {
       if (shouldBailListener(el)) return
       noteInteraction(value)
@@ -1117,8 +1362,9 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
       // always-fixed transform) — no patch, no render, no `updated`
       // setSelected. Without this the DOM stays at the user's
       // selection, divorced from storage. Skipped for custom
-      // assigners (they own DOM/storage sync).
-      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey])) {
+      // assigners (they own DOM/storage sync) and while a transform is
+      // in flight (the deferred commit repaints via `_syncFromStorage`).
+      if (isRegisterValue(value) && isDefaultAssigner(el[assignKey]) && !isTransforming(value)) {
         setSelected(el, value)
         el._lastAppliedModel = value.innerRef.value
       }
@@ -1452,6 +1698,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // like `composing: true` (IME in progress) would swallow user input.
     delete (el as { composing?: boolean }).composing
     delete (el as { _assigning?: boolean })._assigning
+    delete (el as { _syncFromStorage?: () => void })._syncFromStorage
     delete (el as unknown as { [k: symbol]: unknown })[assignKey]
   },
   // The lifecycle hooks above don't run on the server (Vue skips

@@ -138,15 +138,28 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     expect(result.currentStep).toBe('hw-seed-b')
   })
 
-  it('writes the URL step param on mount when the URL is cold (no ?step=)', () => {
+  it('canonicalizes a cold URL to the first step in place (replace, not push)', () => {
+    // A bare `/wizard` and `/wizard?step=<first>` are the same effective
+    // page — the wizard resolves an absent param to the first step. So
+    // the on-mount write must REPLACE (canonicalize in place), not push
+    // a dead history entry that Back would land on showing the same
+    // step. Real navigations still push (covered above).
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+    const lengthBeforeMount = window.history.length
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: schemaA, key: 'hw-init-a' })
       const b = useForm({ schema: schemaB, key: 'hw-init-b' })
       return useWizard({ steps: [a, b] })
     })
     apps.push(app)
-    expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-init-a')
     expect(result.currentStep).toBe('hw-init-a')
+    expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-init-a')
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(replaceSpy).toHaveBeenCalled()
+    expect(window.history.length).toBe(lengthBeforeMount)
+    pushSpy.mockRestore()
+    replaceSpy.mockRestore()
   })
 
   it('ignores unknown step keys from the URL and falls back to the first step', () => {

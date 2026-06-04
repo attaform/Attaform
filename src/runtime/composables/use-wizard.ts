@@ -774,7 +774,20 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         ? options.persist
         : (state: WizardRestoreState): void => {
             if (state.step === undefined) return
-            historyHandle.push(state.step)
+            // Resolve the URL's *effective* step: an absent or unknown
+            // `?step=` resolves to the first step (the wizard's
+            // fallback), so a bare `/wizard` is the same effective page
+            // as `?step=<first>`. Writing the step we're already
+            // effectively on is a canonicalization, not a navigation —
+            // replace in place so Back never lands on a dead entry
+            // showing the same step (and the Forward stack survives a
+            // Back round-trip). A genuine step change pushes a real
+            // history entry.
+            const current = historyHandle.read()
+            const effectiveCurrent =
+              current !== undefined && isCompiledKey(current) ? current : firstKey()
+            if (state.step === effectiveCurrent) historyHandle.replace(state.step)
+            else historyHandle.push(state.step)
           }
 
   // --- Initial active key resolution ------------------------------------

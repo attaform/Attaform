@@ -58,6 +58,19 @@ describe('createWizardHistory — primitive', () => {
     handle.dispose()
   })
 
+  it('replace(key) calls replaceState (not pushState) — canonicalize in place', () => {
+    const handle = createWizardHistory('step')
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+    handle.replace('review')
+    expect(replaceSpy).toHaveBeenCalledTimes(1)
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(new URL(window.location.href).searchParams.get('step')).toBe('review')
+    pushSpy.mockRestore()
+    replaceSpy.mockRestore()
+    handle.dispose()
+  })
+
   it('read() returns the current step param value (or undefined)', () => {
     const handle = createWizardHistory('step')
     expect(handle.read()).toBeUndefined()

@@ -429,6 +429,22 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // dominant `setFormErrors` use is the server's verdict on the
         // prior attempt, which a new attempt supersedes.
         state.clearUserErrors()
+        // Drain in-flight async register transforms before validating, so a
+        // submit fired the instant after a keystroke parses the field's
+        // resolved value rather than its stale pre-transform one. This sits
+        // BEFORE `cancelFieldValidation()` deliberately: a transform that
+        // commits during the drain runs `onFormChange` and can schedule a
+        // fresh field validation, and draining first lets the cancel below
+        // sweep those up so no stray run races this submit's authoritative
+        // whole-form pass. The `while` re-checks because a transform can start
+        // during the await (re-entrancy-safe). `settleTransforms` resolves and
+        // never rejects, so a failed transform does not throw the submit — it
+        // proceeds against committed storage (a failed field keeps its prior
+        // value plus `transformError`, which the validation pass may flag).
+        // `meta.submitting` is already `true` here, so the button stays
+        // disabled across the drain; the await is the correctness net for the
+        // case where it is not.
+        while (state.activeTransforms.value > 0) await state.settleTransforms()
         // Abort any in-flight per-field validation runs so their late
         // writes can't clobber the authoritative submit result. Also
         // clears debounce timers that never fired.

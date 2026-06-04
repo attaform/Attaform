@@ -2385,8 +2385,53 @@ export type RegisterValue<Value = unknown> = Readonly<{
  *
  * @internal
  */
+/**
+ * Mutable holder for an async-transform run's `AbortController`, shared
+ * between the directive — which lazily creates the controller the first
+ * time a transform reaches for `ctx.signal` — and the store, which
+ * aborts it when the run is superseded, cancelled, or reset.
+ * `controller` stays `null` until `ctx.signal` is actually touched, so a
+ * purely-sync chain never allocates one. `aborted` latches `true` the
+ * moment the store tears the run down, so a signal accessed AFTER
+ * teardown still resolves to an already-aborted signal rather than a
+ * live one.
+ */
+export type TransformAbortHolder = { controller: AbortController | null; aborted: boolean }
+
 export type InternalRegisterValue<Value = unknown> = RegisterValue<Value> & {
   lastTypedForm: Ref<string | null>
+  /**
+   * Open an async-transform run at this path: bump the path's run
+   * token, increment the in-flight counters (so `field.transforming` /
+   * `field.busy` light up), stamp `transformingSince`, clear any prior
+   * `transformError`, and register `holder` so a later supersede /
+   * cancel / reset can abort the run's signal. Returns the run token —
+   * pass it back to `isCurrentTransform` / `endTransform`. Store-backed;
+   * the directive owns the orchestration (see `directive.ts`).
+   */
+  beginTransform: (holder: TransformAbortHolder) => number
+  /**
+   * `true` while `token` is still the live run at this path — `false`
+   * once a newer input superseded it or a reset / cancel tore it down.
+   * The deferred orchestrator checks this after `await` to decide
+   * commit-vs-discard (latest-request-wins).
+   */
+  isCurrentTransform: (token: number) => boolean
+  /**
+   * Close the run identified by `token`: release the in-flight counters
+   * and flush any `settleTransforms` waiters that just went idle.
+   * Idempotent on the counters when the run was already released by a
+   * supersede / cancel, so the orchestrator can call it unconditionally
+   * in both the resolve and reject paths.
+   */
+  endTransform: (token: number) => void
+  /**
+   * Record a per-field normalization failure (a rejected async
+   * transform, or a resolved value the slim-primitive gate refused).
+   * Surfaces as `field.transformError`; a channel separate from
+   * validation `errors`.
+   */
+  setTransformError: (err: Error) => void
 }
 
 /**
@@ -3792,6 +3837,26 @@ export type UseFormReturnType<
    * `true` while the promise is in flight.
    */
   validateAsync: (path?: FlatPath<Form>) => Promise<ValidationResponseWithoutValue<Form>>
+  /**
+   * Resolve once every in-flight async `register({ transforms })` run
+   * has settled — globally, or (with `path`) only at-or-under that path.
+   * Resolve-never-reject: a transform that throws still settles the
+   * field (its failure lands on `field.transformError`), so the returned
+   * promise always resolves.
+   *
+   * `handleSubmit` awaits this internally before parsing, so a submit
+   * fired the instant after an async transform still validates the
+   * resolved value. Reach for it directly when you need the same
+   * guarantee outside submit — e.g. before reading `form.values` in an
+   * imperative flow or a test:
+   *
+   * ```ts
+   * input.value = '  a@b.com '
+   * await form.settleTransforms('email')
+   * // form.values.email is now the normalized value
+   * ```
+   */
+  settleTransforms: (path?: FlatPath<Form>) => Promise<void>
   /**
    * Imperative one-shot parse. Same pipeline as `validateAsync` —
    * runs refinements, applies `.transform()`s, composes blank-required

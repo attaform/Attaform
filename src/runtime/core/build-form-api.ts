@@ -1068,6 +1068,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       GetValueFormType
     >['validateAsync'],
     parse: gated(parse) as UseFormReturnType<Form, GetValueFormType>['parse'],
+    settleTransforms: gated(state.settleTransforms) as UseFormReturnType<
+      Form,
+      GetValueFormType
+    >['settleTransforms'],
     register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
     // Auto-unwrapping views over the per-store async-defaults lifecycle

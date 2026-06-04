@@ -5,6 +5,7 @@ import type {
   FormKey,
   DefaultValuesResponse,
   GetDisplayState,
+  TransformAbortHolder,
   ValidateOn,
   ValidationError,
   WriteMeta,
@@ -515,6 +516,39 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * the computed to both the streak start (set) and end (delete).
    */
   readonly fieldValidatingSince: Map<PathKey, number>
+  /**
+   * Per-path counter of in-flight async-transform runs (the async
+   * branch of the `register({ transforms })` pipeline). `> 0` drives
+   * `field.transforming` / `field.busy`. Counter, not flag, for the
+   * same overlap reason as `fieldValidationCounts`, except a superseding
+   * input releases the prior run synchronously before incrementing the
+   * new one — so the count is the live in-flight depth at the path
+   * (effectively 0 or 1). Reactive Map, like the validation counters.
+   */
+  readonly fieldTransformCounts: Map<PathKey, number>
+  /**
+   * Per-path `ssr ? 0 : Date.now()` stamp marking when the path's latest
+   * async transform opened; the display reducer reads it (as
+   * `ctx.transformingSince`) to time the gated busy spinner. Mirrors
+   * `fieldValidatingSince` exactly: re-anchored on each run start,
+   * deleted on the `→ 0` edge, reactive for the held-spinner reason.
+   */
+  readonly fieldTransformingSince: Map<PathKey, number>
+  /**
+   * Per-path latest async-transform failure (a rejected transform, or a
+   * resolved value the write gate refused), surfaced as
+   * `field.transformError`. Cleared when a fresh run opens at the path
+   * and on `reset()`. A channel separate from validation `errors`.
+   */
+  readonly transformErrors: Map<PathKey, Error | null>
+  /**
+   * Form-wide count of in-flight async-transform runs. Drives the
+   * `settleTransforms` quiescence guard and the `handleSubmit` drain
+   * barrier. `Math.max(0, …)`-clamped on release so a doubled decrement
+   * (a run's own `endTransform` after a synchronous cancel release)
+   * can't drive it negative.
+   */
+  readonly activeTransforms: Ref<number>
 
   // --- form mutations ---
   /**
@@ -697,6 +731,42 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * at entry (submit validation is authoritative) and by `reset()`.
    */
   cancelFieldValidation(): void
+
+  /**
+   * Open an async-transform run at `key` — bump the run token, increment
+   * the in-flight counters, stamp `transformingSince`, clear any prior
+   * `transformError`, register `holder` for later abort. Returns the run
+   * token. See `InternalRegisterValue.beginTransform`.
+   */
+  beginTransform(key: PathKey, holder: TransformAbortHolder): number
+  /** `true` while `token` is the live async-transform run at `key`. */
+  isCurrentTransform(key: PathKey, token: number): boolean
+  /**
+   * Close the run `token` at `key`: release the counters (no-op if the
+   * run was already released by a supersede / cancel) and flush settled
+   * `settleTransforms` waiters.
+   */
+  endTransform(key: PathKey, token: number): void
+  /** Record a per-field normalization failure at `key` (`field.transformError`). */
+  setTransformError(key: PathKey, err: Error): void
+  /**
+   * Abort + release every in-flight async-transform run (all paths) and
+   * clear `transformErrors`. Mirrors `cancelFieldValidation`; called by
+   * `reset()` and store teardown.
+   */
+  cancelTransforms(): void
+  /**
+   * Path-scoped counterpart to `cancelTransforms`: abort + release only
+   * the runs at-or-under `prefix`, clearing their `transformError`.
+   * Called by `resetField`.
+   */
+  cancelTransformsUnder(prefix: Path): void
+  /**
+   * Resolve once async transforms are quiescent — globally (`path`
+   * omitted) or at-or-under `path`. Resolve-never-reject. See
+   * `UseFormReturnType.settleTransforms`.
+   */
+  settleTransforms(path?: string | Path): Promise<void>
 
   /**
    * Kick off (or schedule) a field-level validation run for `path`. Pass
@@ -1641,6 +1711,157 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     } else {
       fieldValidationCounts.set(key, next)
     }
+  }
+
+  // --- Async register-transform machinery — a near-mirror of the
+  // field-validation counters above. A `register({ transforms })` chain
+  // that returns a thenable defers its write; these counters drive the
+  // busy/pending UX for the duration, the per-path run token enforces
+  // latest-request-wins, and the waiters back `settleTransforms`. The
+  // directive owns the orchestration (`directive.ts`); the
+  // `transforming` / `busy` / `transformError` surfaces live in
+  // `field-state-api.ts`.
+  const fieldTransformCounts: Map<PathKey, number> = reactive(new Map<PathKey, number>())
+  const fieldTransformingSince: Map<PathKey, number> = reactive(new Map<PathKey, number>())
+  const transformErrors: Map<PathKey, Error | null> = reactive(new Map<PathKey, Error | null>())
+  const activeTransforms = ref(0)
+  // Per-path live run: a monotonic `token` (globally unique via
+  // `transformTokenSeq`, so a superseded run can never collide with a
+  // future one even after the entry is deleted and recreated) plus the
+  // directive-owned abort `holder`. `released` guards the count so a
+  // synchronous cancel / supersede release isn't double-counted by the
+  // run's own late `endTransform`. Plain Map — internal bookkeeping, not
+  // a reactive surface.
+  type TransformRun = { token: number; holder: TransformAbortHolder; released: boolean }
+  const transformRuns = new Map<PathKey, TransformRun>()
+  let transformTokenSeq = 0
+  // Pending `settleTransforms` callers: `key === null` waits on the
+  // whole form (`activeTransforms === 0`); a key waits on its own path.
+  const transformWaiters: { key: PathKey | null; resolve: () => void }[] = []
+
+  function incFieldTransform(key: PathKey): void {
+    // Stamp-before-bump, same bracket invariant as `incFieldValidation`:
+    // `transformingSince !== null` is the outer bracket around
+    // `count > 0`, so a reader landing between the two writes never sees
+    // a run as settled while the field still reads `transforming`.
+    fieldTransformingSince.set(key, ssr ? 0 : Date.now())
+    fieldTransformCounts.set(key, (fieldTransformCounts.get(key) ?? 0) + 1)
+  }
+  function decFieldTransform(key: PathKey): void {
+    const next = (fieldTransformCounts.get(key) ?? 0) - 1
+    if (next <= 0) {
+      fieldTransformCounts.delete(key)
+      fieldTransformingSince.delete(key)
+    } else {
+      fieldTransformCounts.set(key, next)
+    }
+  }
+  // Resolve every queued `settleTransforms` waiter that has gone idle —
+  // a keyed waiter when its path count hits 0, a global waiter when
+  // `activeTransforms` hits 0. Re-checks live state per waiter, so it is
+  // safe to call from any `→ 0` edge (`endTransform` / cancel).
+  function flushSettledTransformWaiters(): void {
+    if (transformWaiters.length === 0) return
+    const globalIdle = activeTransforms.value === 0
+    for (let i = transformWaiters.length - 1; i >= 0; i--) {
+      const w = transformWaiters[i]
+      if (w === undefined) continue
+      const idle = w.key === null ? globalIdle : (fieldTransformCounts.get(w.key) ?? 0) === 0
+      if (idle) {
+        transformWaiters.splice(i, 1)
+        w.resolve()
+      }
+    }
+  }
+  // Synchronously tear down one run: latch the abort holder, abort its
+  // controller if the chain ever reached for `ctx.signal`, and release
+  // the counters. Idempotent via `released`, so a supersede / cancel
+  // release and the run's own late `endTransform` don't double-count.
+  // Does NOT remove the map entry — the caller decides that.
+  function releaseTransformRun(key: PathKey, run: TransformRun): void {
+    if (run.released) return
+    run.released = true
+    run.holder.aborted = true
+    run.holder.controller?.abort()
+    activeTransforms.value = Math.max(0, activeTransforms.value - 1)
+    decFieldTransform(key)
+  }
+
+  function beginTransform(key: PathKey, holder: TransformAbortHolder): number {
+    // Supersede: a new input at the same path aborts + releases the
+    // prior run synchronously (so `field.transforming` reflects only the
+    // live run and the count stays 0/1 per path), then this run opens.
+    const prior = transformRuns.get(key)
+    if (prior !== undefined) releaseTransformRun(key, prior)
+    const token = ++transformTokenSeq
+    transformRuns.set(key, { token, holder, released: false })
+    incFieldTransform(key)
+    activeTransforms.value += 1
+    // A fresh run supersedes the prior verdict — drop any stale error so
+    // a recovered input doesn't keep showing the last failure.
+    if (transformErrors.has(key)) transformErrors.delete(key)
+    return token
+  }
+
+  function isCurrentTransform(key: PathKey, token: number): boolean {
+    return transformRuns.get(key)?.token === token
+  }
+
+  function endTransform(key: PathKey, token: number): void {
+    const run = transformRuns.get(key)
+    // Only the live run releases the counters and clears the entry. A
+    // superseded / cancelled run (token no longer matches, or already
+    // released) was released at teardown — its late `endTransform` only
+    // flushes waiters.
+    if (run?.token === token) {
+      if (!run.released) {
+        activeTransforms.value = Math.max(0, activeTransforms.value - 1)
+        decFieldTransform(key)
+      }
+      transformRuns.delete(key)
+    }
+    flushSettledTransformWaiters()
+  }
+
+  function setTransformError(key: PathKey, err: Error): void {
+    transformErrors.set(key, err)
+  }
+
+  function cancelTransforms(): void {
+    for (const [key, run] of [...transformRuns]) {
+      releaseTransformRun(key, run)
+      transformRuns.delete(key)
+    }
+    // A cleared form starts from a clean transform slate — drop
+    // normalization failures that have no in-flight run of their own.
+    if (transformErrors.size > 0) transformErrors.clear()
+    flushSettledTransformWaiters()
+  }
+
+  function cancelTransformsUnder(prefix: Path): void {
+    for (const [key, run] of [...transformRuns]) {
+      const segs = segmentsForPathKey(key)
+      if (segs === null) continue
+      if (!isPathPrefix(prefix, segs)) continue
+      releaseTransformRun(key, run)
+      transformRuns.delete(key)
+      transformErrors.delete(key)
+    }
+    flushSettledTransformWaiters()
+  }
+
+  function settleTransforms(path?: string | Path): Promise<void> {
+    if (path === undefined) {
+      if (activeTransforms.value === 0) return Promise.resolve()
+      return new Promise<void>((resolve) => {
+        transformWaiters.push({ key: null, resolve })
+      })
+    }
+    const { key } = canonicalizePath(path)
+    if ((fieldTransformCounts.get(key) ?? 0) === 0) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      transformWaiters.push({ key, resolve })
+    })
   }
 
   // Populate originals by diffing from empty-form to schema-initial. This is
@@ -2613,6 +2834,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     drainHooks.length = 0
     modules.clear()
     cancelFieldValidation()
+    cancelTransforms()
     fieldValidatingSince.clear()
     formChangeListeners.clear()
     submitSuccessListeners.clear()
@@ -3340,6 +3562,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // that reached the controller-aborted branch resolve to a no-op, so
     // the error store stays clean after the reset clears it above.
     cancelFieldValidation()
+    // Abort + release any in-flight async transforms too, so a deferred
+    // commit from before the reset can't land on the cleared form (the
+    // run's token goes stale, so its resolve discards). Also clears
+    // `transformErrors`.
+    cancelTransforms()
     // Drop any held spinner state so an in-flight min-visible hold can't
     // outlive the reset; clear the streak anchors to match (the cancel above
     // already released the counts, this wipes the parallel map wholesale).
@@ -3394,6 +3621,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // clean. Drop the subtree's blur-dedup snapshots too, so a post-reset blur
     // re-validates instead of skipping against a pre-reset anchor.
     cancelFieldValidationUnder(targetSegments)
+    // Same teardown for async transforms under the reset subtree, so a
+    // deferred commit can't land on the just-reset field.
+    cancelTransformsUnder(targetSegments)
     for (const [snapKey] of [...pathSnapshots]) {
       const segs = segmentsForPathKey(snapKey)
       if (segs === null) continue
@@ -3612,6 +3842,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     pathHasAsyncValidationByKey,
     fieldValidationCounts,
     fieldValidatingSince,
+    fieldTransformCounts,
+    fieldTransformingSince,
+    transformErrors,
+    activeTransforms,
     displayEngine,
 
     applyFormReplacement,
@@ -3646,6 +3880,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     getOriginalAtPath,
     getFirstErrorElement,
     cancelFieldValidation,
+    beginTransform,
+    isCurrentTransform,
+    endTransform,
+    setTransformError,
+    cancelTransforms,
+    cancelTransformsUnder,
+    settleTransforms,
     scheduleFieldValidation,
     onFormChange,
     onSubmitSuccess,

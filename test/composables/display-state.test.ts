@@ -1214,7 +1214,7 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     })
 
     // Clean first wizard submit opens the gate. The wizard validates via
-    // process(), which does not write per-field errors to the store, so the
+    // parse(), which does not write per-field errors to the store, so the
     // empty field reads idle (gate open, nothing surfaced yet) rather than
     // error — that is fine; we only need the gate open to drive a spinner.
     await wizard.handleSubmit(() => {})()

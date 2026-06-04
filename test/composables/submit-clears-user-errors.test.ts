@@ -150,11 +150,11 @@ describe('handleSubmit clears user-set errors at entry', () => {
     expect(formLevel(api.meta.errors)).toHaveLength(0)
   })
 
-  it('does not clear user errors on an imperative process() / validateAsync (submit-only)', async () => {
+  it('does not clear user errors on an imperative parse() / validateAsync (submit-only)', async () => {
     const { app, api } = mount(valid)
     apps.push(app)
     api.setFormErrors([{ message: 'keep me' }])
-    await api.process()
+    await api.parse()
     await api.validateAsync()
     expect(formLevel(api.meta.errors)).toHaveLength(1)
   })

@@ -47,7 +47,7 @@ export type PathInput<Schema extends z.ZodType, Path extends string> =
 /**
  * Type produced at `Path` after the full parse pipeline — the schema's
  * `z.output<Schema>` shape at that path. Matches the `data` payload of
- * `form.process()` and the value handed to `handleSubmit`'s callback.
+ * `form.parse()` and the value handed to `handleSubmit`'s callback.
  *
  * ```ts
  * const schema = z.object({
@@ -136,7 +136,7 @@ export function useForm<Schema extends z.ZodObject, K extends FormKey = FormKey>
   //    / defaultValues accept. Loose for honest-input wrappers
   //    (preprocess accepts `unknown` at the write boundary).
   //  - `Out` (z.output) is the parsed-output view — what handleSubmit
-  //    and form.process() yield. Refinements have fired, transforms
+  //    and form.parse() yield. Refinements have fired, transforms
   //    have run.
   //  - `Read` (StorageShape) is the READ view — what form.values /
   //    form.fields / register's read side / toRef expose. Per-key

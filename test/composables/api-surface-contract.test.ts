@@ -18,7 +18,7 @@ import type { DisplayState, UseFormReturnType } from '../../src/runtime/types/ty
  * The architecture:
  *
  *   ┌─ Lives directly on `api` ───────────────────────────────┐
- *   │  setValue, handleSubmit, validateAsync, process, reset, │
+ *   │  setValue, handleSubmit, validateAsync, parse, reset,   │
  *   │  resetField, register, fields, errors, values, key,     │
  *   │  meta, history, …                                       │
  *   └─────────────────────────────────────────────────────────┘
@@ -125,7 +125,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.resetField).toBe('function')
     expect(typeof api.handleSubmit).toBe('function')
     expect(typeof api.validateAsync).toBe('function')
-    expect(typeof api.process).toBe('function')
+    expect(typeof api.parse).toBe('function')
   })
 
   it('form-level reactive flags live on `api.meta` (not `api`)', () => {

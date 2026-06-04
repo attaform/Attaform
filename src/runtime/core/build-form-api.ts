@@ -194,7 +194,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const {
     validate: validateBuilt,
     validateAsync: validateAsyncBuilt,
-    process: processBuilt,
+    parse: parseBuilt,
     handleSubmit,
   } = buildProcessForm<Form, GetValueFormType>(state, formInstanceId, processOptions)
 
@@ -204,8 +204,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const validateAsync = (pathInput?: string) =>
     validateAsyncBuilt(pathInput) as Promise<ValidationResponseWithoutValue<Form>>
 
-  const process = (pathInput?: string) =>
-    processBuilt(pathInput) as Promise<ValidationResponse<GetValueFormType>>
+  const parse = (pathInput?: string) =>
+    parseBuilt(pathInput) as Promise<ValidationResponse<GetValueFormType>>
 
   // --- toRef escape hatch — Readonly<Ref<...>> for the rare case
   // a consumer needs ref-shaped interop (external composables that
@@ -1067,7 +1067,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       Form,
       GetValueFormType
     >['validateAsync'],
-    process: gated(process) as UseFormReturnType<Form, GetValueFormType>['process'],
+    parse: gated(parse) as UseFormReturnType<Form, GetValueFormType>['parse'],
     register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
     // Auto-unwrapping views over the per-store async-defaults lifecycle

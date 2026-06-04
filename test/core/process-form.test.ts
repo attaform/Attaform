@@ -165,11 +165,11 @@ describe('buildProcessForm', () => {
     })
   })
 
-  describe('process', () => {
+  describe('parse', () => {
     it('resolves with the parsed data on success', async () => {
       const state = alwaysValid()
-      const { process } = buildProcessForm(state, 'test:inst')
-      const response = await process()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const response = await parse()
       expect(response.success).toBe(true)
       if (response.success) {
         expect(response.data).toEqual({ email: 'a@b', password: 'secret1!' })
@@ -178,8 +178,8 @@ describe('buildProcessForm', () => {
 
     it('resolves with a failure response when the schema rejects (errors + no data)', async () => {
       const state = alwaysInvalid()
-      const { process } = buildProcessForm(state, 'test:inst')
-      const response = await process()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const response = await parse()
       expect(response.success).toBe(false)
       expect(response.errors).toEqual([
         {
@@ -192,23 +192,23 @@ describe('buildProcessForm', () => {
     })
 
     it('translates an adapter throw into an AdapterThrew failure response (does NOT reject)', async () => {
-      // Symmetric with validateAsync's adapter-throw test. process()
+      // Symmetric with validateAsync's adapter-throw test. parse()
       // must also defend against bad adapters — a throwing adapter
       // can't be allowed to wreck consumer await chains, especially
-      // when process() is invoked imperatively from UI handlers.
+      // when parse() is invoked imperatively from UI handlers.
       const throwingValidator = (_data: unknown, _path: Path | undefined): never => {
-        throw new Error('process adapter boom')
+        throw new Error('parse adapter boom')
       }
       const state = createFormStore<Signup>({
         formKey: 'pf',
         schema: fakeSchema<Signup>({ email: '', password: '' }, throwingValidator),
       })
-      const { process } = buildProcessForm(state, 'test:inst')
+      const { parse } = buildProcessForm(state, 'test:inst')
 
-      const response = await process()
+      const response = await parse()
       expect(response.success).toBe(false)
       expect(response.errors?.[0]?.code).toBe('atta:adapter-threw')
-      expect(response.errors?.[0]?.message).toContain('process adapter boom')
+      expect(response.errors?.[0]?.message).toContain('parse adapter boom')
       // data field present on the union but undefined for adapter-throw shape.
       expect(response.data).toBeUndefined()
       // Counter still drains cleanly.
@@ -217,8 +217,8 @@ describe('buildProcessForm', () => {
 
     it('decrements activeValidations back to 0 on completion', async () => {
       const state = alwaysValid()
-      const { process } = buildProcessForm(state, 'test:inst')
-      const pending = process()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const pending = parse()
       expect(state.activeValidations.value).toBe(1)
       await pending
       expect(state.activeValidations.value).toBe(0)

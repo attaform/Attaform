@@ -55,24 +55,24 @@
         autocomplete="email"
         placeholder="you@example.com"
       />
-      <em v-if="form.fields.notify.address.showErrors">{{
-        form.fields.notify.address.firstError?.message
+      <em v-if="form.fields.notify.address?.showErrors">{{
+        form.fields.notify.address?.firstError?.message
       }}</em>
     </label>
 
     <label v-else-if="form.values.notify.channel === 'sms'">
       Phone number
       <input v-register="form.register('notify.phone')" type="tel" placeholder="+1 555 0000" />
-      <em v-if="form.fields.notify.phone.showErrors">{{
-        form.fields.notify.phone.firstError?.message
+      <em v-if="form.fields.notify.phone?.showErrors">{{
+        form.fields.notify.phone?.firstError?.message
       }}</em>
     </label>
 
     <label v-else-if="form.values.notify.channel === 'push'">
       Device ID
       <input v-register="form.register('notify.deviceId')" placeholder="abc12345" />
-      <em v-if="form.fields.notify.deviceId.showErrors">{{
-        form.fields.notify.deviceId.firstError?.message
+      <em v-if="form.fields.notify.deviceId?.showErrors">{{
+        form.fields.notify.deviceId?.firstError?.message
       }}</em>
     </label>
 

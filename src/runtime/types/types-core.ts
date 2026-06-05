@@ -180,6 +180,26 @@ export type ValueOfUnion<T, K extends PropertyKey> = T extends unknown
   : never
 
 /**
+ * Value at key `K` across union members of `T`, dropping members that
+ * LACK `K` entirely (they contribute `never`, not `undefined`). The
+ * counterpart to `ValueOfUnion`: where that injects a SYNTHETIC
+ * `undefined` for absent-variant keys (so chained reads stay safe),
+ * this yields only the PRESENT value type.
+ *
+ * `form.fields` uses it at discriminated-union keys so a variant-only
+ * field types as node-optional `FieldState<X> | undefined` (the node is
+ * absent when its variant isn't active) rather than value-optional
+ * `FieldState<X | undefined>` (which would falsely promise a readable
+ * node). A genuine `undefined` from an OPTIONAL declaration survives —
+ * only the synthetic absent-variant `undefined` is stripped.
+ */
+export type PresentValueOfUnion<T, K extends PropertyKey> = T extends unknown
+  ? K extends keyof T
+    ? T[K]
+    : never
+  : never
+
+/**
  * Apply the discriminated-union "lift" to a value shape (i.e., a
  * shape carrying actual values, not metadata leaves like
  * `FieldState`). Single-object types map homomorphically;

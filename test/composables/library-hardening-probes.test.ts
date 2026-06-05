@@ -217,12 +217,10 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     await api.validateAsync()
     await nextTick()
 
-    const notifyField = (
-      api as unknown as {
-        fields: { notify: { firstError?: { message: string } } }
-      }
-    ).fields.notify
-    expect(notifyField.firstError).toBeDefined()
+    // Model P: a container's own rolled-up state reads through the
+    // call-form (`form.fields('notify')`), not field-state keys on the
+    // navigable container node.
+    expect(api.fields('notify').firstError).toBeDefined()
   })
 })
 
@@ -1718,12 +1716,10 @@ describe('DU hardening — array element invalid disc: container-level error rep
     // its elements is broken. Without it, a parent UI bound to the
     // array's summary error has no signal — it has to walk every
     // index manually.
-    const eventsField = (
-      api as unknown as {
-        fields: { events: { firstError?: { message: string } } }
-      }
-    ).fields.events
-    expect(eventsField.firstError).toBeDefined()
+    // Model P: the array container's rolled-up summary error reads
+    // through the call-form (`form.fields('events')`), not field-state
+    // keys on the navigable container node.
+    expect(api.fields('events').firstError).toBeDefined()
   })
 })
 

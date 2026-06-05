@@ -144,6 +144,20 @@ export type SurfaceOptions<TLeaf> = {
    */
   readonly containerOwnKeys?: (segments: readonly Segment[]) => readonly string[]
   /**
+   * O(1) membership test for the truthful descend gate: does the
+   * container at `segments` currently HOLD `key`? An efficient surface
+   * answers without materialising the whole key list (an array bounds
+   * check, an `Object.hasOwn`), so descending each element of a large
+   * field array stays linear rather than quadratic. Semantics must
+   * agree with `containerOwnKeys` (`containerHasOwnKey(segs, k) === true`
+   * iff `containerOwnKeys(segs).includes(k)`).
+   *
+   * Omit to fall back to `containerOwnKeys(segments).includes(key)` —
+   * correct but O(n) per access. Provided by the surfaces prone to
+   * large arrays (`form.fields`, `form.errors`).
+   */
+  readonly containerHasOwnKey?: (segments: readonly Segment[], key: string) => boolean
+  /**
    * Reports whether the container at `segments` is array-shaped. When
    * true, the container proxy is built atop an Array target so
    * `Array.isArray(proxy) === true` and Vue's `renderList` enters the
@@ -168,6 +182,47 @@ export type SurfaceOptions<TLeaf> = {
  * descent.
  */
 export type SurfaceProxy = ((path?: string | Path) => unknown) & Record<string, unknown>
+
+/**
+ * Callable shim returned for `call` / `apply` / `bind` read off a
+ * callable ROOT surface proxy (`form.fields` / `form.errors`). A
+ * transpiler that downlevels optional chaining — sucrase (what
+ * `@vue/repl` strips TS with), or any bundler targeting below ES2020 —
+ * compiles `surface(path)?.x` into a helper that READS `.call` off the
+ * surface and invokes the result to call the surface, while
+ * `surface.call.errors` READS `.call` as a field literally named
+ * `call`. The `get` trap can't tell the two apart, so it returns one
+ * value that serves both: a function — invokable as the matching
+ * `Function.prototype` method against the surface, so the downleveled
+ * call lands in the surface's `apply` trap — that forwards every other
+ * proxy operation to the field descent, so a `call` / `apply` / `bind`
+ * field stays fully reachable. No reserved names. The descent resolves
+ * lazily, so the invoke-only path (the common one) builds no child proxy.
+ */
+function callableInvokeShim(
+  method: 'call' | 'apply' | 'bind',
+  surface: SurfaceProxy,
+  getDescent: () => unknown
+): SurfaceProxy {
+  const fnMethod = Reflect.get(Function.prototype, method) as (
+    this: unknown,
+    ...args: unknown[]
+  ) => unknown
+  return new Proxy((() => {}) as unknown as SurfaceProxy, {
+    apply: (_target, _thisArg, args) => Reflect.apply(fnMethod, surface, args),
+    get: (_target, key) => Reflect.get(getDescent() as object, key),
+    has: (_target, key) => Reflect.has(getDescent() as object, key),
+    ownKeys: () => Reflect.ownKeys(getDescent() as object),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(getDescent() as object, key)
+      // The fresh arrow-function target owns no matching property, so a
+      // descriptor forwarded from the descent must be reported
+      // configurable to satisfy the Proxy own-property invariant.
+      if (descriptor !== undefined) descriptor.configurable = true
+      return descriptor
+    },
+  })
+}
 
 export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfaceProxy {
   // Per-path container Proxy cache. Key = canonical PathKey
@@ -244,6 +299,23 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
     const cacheKey = `${JSON.stringify(segments)}+${isArrayLike ? 'A' : 'O'}`
     const existing = containerCache.get(cacheKey)
     if (existing !== undefined) return existing
+
+    // Fixed object vs open/union container. A fixed object (`z.object`)
+    // has a closed, declared key set; an open container (array, record,
+    // map, set, union, discriminated union) admits keys its element
+    // schema matches positionally / by-variant. Read once per container
+    // (the proxy is cached per path, so this is not on the per-access
+    // hot path) and consumed by the truthful descend gate below to
+    // decide whether a `schemaHasPath` hit is a real declared field or
+    // an any-segment match the proxy must not trust.
+    const isFixedObject = opts.schema.isFixedObjectAtPath(segments)
+    // Does this container currently HOLD `k`? Prefer the surface's O(1)
+    // membership hook so descending a large field array stays linear;
+    // fall back to the enumerated key list when none is supplied.
+    const containerHasKey = (k: string): boolean =>
+      opts.containerHasOwnKey !== undefined
+        ? opts.containerHasOwnKey(segments, k)
+        : opts.containerOwnKeys?.(segments).includes(k) === true
 
     // Container-shaped primitive coercion. The materialiser (when set)
     // is invoked on every call so reactive reads (error stores, the
@@ -416,7 +488,50 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         if (key === 'hasOwnProperty' && !schemaHasPath(childSegs)) {
           return Object.prototype.hasOwnProperty
         }
-        return descendOrTerminate(childSegs)
+        // `call` / `apply` / `bind` on the callable root. A downleveling
+        // transpiler (sucrase in @vue/repl; any sub-ES2020 target) reads
+        // `.call` off the surface to invoke `form.fields(path)?.x`, while
+        // `form.fields.call.errors` reads it as a field literally named
+        // `call`. One callable shim serves both — see callableInvokeShim.
+        // Root only: non-root nodes aren't callable, so a nested `call`
+        // field (`form.fields.address.call`) keeps plain descent.
+        if (isRoot && (key === 'call' || key === 'apply' || key === 'bind')) {
+          return callableInvokeShim(key, proxy, () => descendOrTerminate(childSegs))
+        }
+        // Truthful descend gate (no phantom). A property that is none of
+        // the three reachable kinds below reads `undefined` — an
+        // out-of-bounds array index, a missing record key, an inactive
+        // discriminated-union variant's key, an unknown field. The
+        // matching surface type marks exactly these hops `… | undefined`,
+        // so a `form.fields.rec.missing` falsy-check agrees with the
+        // runtime instead of hitting a permanently-truthy node proxy.
+        //
+        // Three ways a child stays reachable:
+        //  - A surface-declared terminal (`form.errors['']`, the
+        //    container-self error bucket) always resolves — it has no
+        //    live-data home by design.
+        //  - A declared field of a FIXED object descends schema-only,
+        //    data or no data, so a declared-but-absent `optional` field
+        //    stays a real terminal (`register('user.nickname')` keeps
+        //    working after `setValue('user', {…})` drops it). Gated on
+        //    `isFixedObject` because an array / record / DU element
+        //    schema matches ANY segment — `schemaHasPath` can't tell a
+        //    real key from a phantom there, so the open container relies
+        //    on live keys alone.
+        //  - A key the container currently HOLDS (`containerOwnKeys`): a
+        //    live array index, a present record / variant key, or — for
+        //    `form.errors` — a server error at a non-schema key
+        //    (`errorAwareContainerKeys` unions the error stores in, so
+        //    `form.errors.ghost` still surfaces while `form.errors.bogus`
+        //    with neither data nor error reads `undefined`).
+        if (
+          opts.isTerminalAt?.(childSegs) === true ||
+          (isFixedObject && schemaHasPath(childSegs)) ||
+          containerHasKey(key)
+        ) {
+          return descendOrTerminate(childSegs)
+        }
+        return undefined
       },
       has(_, key: string | symbol): boolean {
         if (typeof key === 'symbol') return Reflect.has(target, key)

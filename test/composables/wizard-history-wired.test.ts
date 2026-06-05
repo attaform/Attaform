@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { awaitSettle, waitUntil } from '../utils/form-harness'
 
 /**
  * Default URL synchronization. When the consumer omits both `restore`
@@ -111,7 +112,12 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     // A *real* browser Back (not a manual popstate drive) retraces the
     // navigation back to the prior step.
     window.history.back()
-    await new Promise((r) => setTimeout(r, 20))
+    // `history.back()` fires `popstate` asynchronously; the restore
+    // lambda then re-applies the step and the reactive update flushes.
+    // Poll for the landing rather than sleeping a fixed interval — a
+    // fixed pump blows past its budget under full-suite CPU contention
+    // (the popstate + flush hadn't run yet), an intermittent flake.
+    await waitUntil(() => result.currentStep === 'hw-pop-a' || undefined)
     expect(result.currentStep).toBe('hw-pop-a')
     expect(new URL(window.location.href).searchParams.get('step')).toBe('hw-pop-a')
   })
@@ -127,7 +133,11 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     const lengthAfterNav = window.history.length
     const pushSpy = vi.spyOn(window.history, 'pushState')
     window.history.back() // -> ?step=hw-dd-a; the resulting persist must dedup
-    await new Promise((r) => setTimeout(r, 20))
+    // Poll for the back-navigation to land, then let the persist watcher
+    // run to completion before asserting it did NOT push (fixed sleeps
+    // race the popstate + watcher flush under load).
+    await waitUntil(() => result.currentStep === 'hw-dd-a' || undefined)
+    await awaitSettle()
     expect(result.currentStep).toBe('hw-dd-a')
     expect(pushSpy).not.toHaveBeenCalled()
     expect(window.history.length).toBe(lengthAfterNav)
@@ -196,8 +206,11 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     })
     apps.push(app)
     await result.next()
-    await nextTick()
-    await new Promise((r) => setTimeout(r, 10))
+    // Poll for the persist watcher to write the pushed URL rather than
+    // sleeping a fixed interval that can lapse under load.
+    await waitUntil(
+      () => new URL(window.location.href).searchParams.get('step') === 'hw-other-b' || undefined
+    )
     const url = new URL(window.location.href)
     expect(url.searchParams.get('step')).toBe('hw-other-b')
     expect(url.searchParams.get('utm')).toBe('campaign')

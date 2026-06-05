@@ -197,7 +197,10 @@ describe('initial validity gating — sync-refinement schema', () => {
     // defaultValues as best-effort — locking the form forever
     // because nothing validated would defeat the opt-out.
     expect(api.meta.valid).toBe(true)
-    expect(valid(api, [''])).toBe(true)
+    // Root subtree via the empty-path sentinel (`form.fields([])`), the
+    // same root convention used above; the empty STRING is not a schema
+    // field, so `form.fields('')` is undefined under the truthful gate.
+    expect(valid(api, [[]])).toBe(true)
   })
 })
 

@@ -11,7 +11,7 @@ metaRows:
     value: setValue, defaultValues
     kind: code
   - label: Submit shape
-    value: handleSubmit, form.process()
+    value: handleSubmit, form.parse()
     kind: code
 ---
 
@@ -31,11 +31,11 @@ The demo below shows the same schema across all three views: what `form.values` 
 
 A schema produces three different views of its data, each with a distinct surface:
 
-| Surface                           | Shape      | What it answers                                          |
-| --------------------------------- | ---------- | -------------------------------------------------------- |
-| `form.values` / `form.fields`     | **read**   | What does storage hold now? (`StorageShape<Schema>`)     |
-| `setValue` / `defaultValues`      | **write**  | What may the consumer pass in? (`z.input<Schema>`)       |
-| `handleSubmit` / `form.process()` | **submit** | What does a successful parse yield? (`z.output<Schema>`) |
+| Surface                         | Shape      | What it answers                                          |
+| ------------------------------- | ---------- | -------------------------------------------------------- |
+| `form.values` / `form.fields`   | **read**   | What does storage hold now? (`StorageShape<Schema>`)     |
+| `setValue` / `defaultValues`    | **write**  | What may the consumer pass in? (`z.input<Schema>`)       |
+| `handleSubmit` / `form.parse()` | **submit** | What does a successful parse yield? (`z.output<Schema>`) |
 
 The same schema produces all three; the surface determines which one you're holding.
 
@@ -177,7 +177,7 @@ form.reset() // re-seed from declared defaults
 
 // SUBMIT: once on form submission
 form.handleSubmit((data) => apiPost(data)) // `data` is the post-transform output
-const result = await form.process() // imperative one-shot parse
+const result = await form.parse() // imperative one-shot parse
 ```
 
 Each surface uses the shape that's correct for its purpose. The mental discipline: **don't reach across surfaces.** If you want post-transform output, go through submit. If you want the raw input, go through `form.values`. If you want to write, go through `setValue` or `clear`; `form.values` is read-only on purpose.
@@ -187,4 +187,4 @@ Each surface uses the shape that's correct for its purpose. The mental disciplin
 - [Defaults from the schema](/docs/schemas/defaults): how `.default()` flows into the read shape.
 - [Optional, nullable, defaulted](/docs/schemas/optional-nullable): the three missing-ness modifiers, side by side.
 - [URL availability check](/docs/validation/url-availability-check): a worked example threading `z.preprocess` and async `.refine` against the storage contract.
-- [The validation lifecycle](/docs/validation/lifecycle): `process()` returns the submit shape, parsed.
+- [The validation lifecycle](/docs/validation/lifecycle): `parse()` returns the submit shape, parsed.

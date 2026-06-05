@@ -82,7 +82,7 @@ describe('useWizard — statuses derived from form.meta', () => {
     apps.push(app)
     result.cargo.setValue('description', '')
     result.cargo.setValue('weight', 0)
-    await result.cargo.validate()
+    await result.cargo.validateAsync()
     expect(result.wizard.statuses['st-err-cargo']!.errorCount).toBeGreaterThan(0)
     expect(result.wizard.statuses['st-err-cargo']!.valid).toBe(false)
   })
@@ -102,7 +102,7 @@ describe('useWizard — statuses derived from form.meta', () => {
       }
     })
     apps.push(app)
-    await result.cargo.validate()
+    await result.cargo.validateAsync()
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       await nextTick()
@@ -126,7 +126,7 @@ describe('useWizard — statuses derived from form.meta', () => {
       }
     })
     apps.push(app)
-    await result.cargo.validate()
+    await result.cargo.validateAsync()
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       await nextTick()

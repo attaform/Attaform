@@ -444,7 +444,7 @@
 
   function safeLabelAtPath(formKey: FormKey, path: ReadonlyArray<string | number>): string | null {
     try {
-      return formByKey[formKey].fields(path).label || null
+      return formByKey[formKey].fields(path)?.label || null
     } catch {
       return null
     }
@@ -483,7 +483,7 @@
   function goToError(formKey: FormKey, path: ReadonlyArray<string | number>) {
     wizard.goTo(formKey)
     // nextTick so the active step body paints before we try to focus.
-    nextTick(() => formByKey[formKey].fields(path).element?.focus())
+    nextTick(() => formByKey[formKey].fields(path)?.element?.focus())
   }
 
   // ─── Cargo / service variant switching ───────────────────────────
@@ -806,7 +806,7 @@
 
         <div v-else-if="cargoType === 'refrigerated'" class="grid-2">
           <div class="field" :class="fieldClasses(cargoForm.fields.details.tempMinF)">
-            <label>{{ cargoForm.fields.details.tempMinF.label }}</label>
+            <label>{{ cargoForm.fields.details.tempMinF?.label }}</label>
             <input
               v-register.number="cargoForm.register('details.tempMinF')"
               type="number"
@@ -815,7 +815,7 @@
             <small class="error">{{ errorMessage(cargoForm.fields.details.tempMinF) }}</small>
           </div>
           <div class="field" :class="fieldClasses(cargoForm.fields.details.tempMaxF)">
-            <label>{{ cargoForm.fields.details.tempMaxF.label }}</label>
+            <label>{{ cargoForm.fields.details.tempMaxF?.label }}</label>
             <input
               v-register.number="cargoForm.register('details.tempMaxF')"
               type="number"
@@ -828,17 +828,17 @@
         <div v-else-if="cargoType === 'hazmat'" class="hazmat">
           <div class="grid-2">
             <div class="field" :class="fieldClasses(cargoForm.fields.details.unNumber)">
-              <label>{{ cargoForm.fields.details.unNumber.label }}</label>
-              <small v-if="cargoForm.fields.details.unNumber.description" class="help">
-                {{ cargoForm.fields.details.unNumber.description }}
+              <label>{{ cargoForm.fields.details.unNumber?.label }}</label>
+              <small v-if="cargoForm.fields.details.unNumber?.description" class="help">
+                {{ cargoForm.fields.details.unNumber?.description }}
               </small>
               <input v-register="cargoForm.register('details.unNumber')" placeholder="UN1234" />
               <small class="error">{{ errorMessage(cargoForm.fields.details.unNumber) }}</small>
             </div>
             <div class="field" :class="fieldClasses(cargoForm.fields.details.hazardClass)">
-              <label>{{ cargoForm.fields.details.hazardClass.label }}</label>
-              <small v-if="cargoForm.fields.details.hazardClass.description" class="help">
-                {{ cargoForm.fields.details.hazardClass.description }}
+              <label>{{ cargoForm.fields.details.hazardClass?.label }}</label>
+              <small v-if="cargoForm.fields.details.hazardClass?.description" class="help">
+                {{ cargoForm.fields.details.hazardClass?.description }}
               </small>
               <select v-register="cargoForm.register('details.hazardClass')">
                 <option v-for="c in HAZARD_CLASSES" :key="c" :value="c"> Class {{ c }} </option>
@@ -856,25 +856,25 @@
         <div v-else-if="cargoType === 'oversized'" class="oversized">
           <div class="grid-3">
             <div class="field" :class="fieldClasses(cargoForm.fields.details.lengthIn)">
-              <label>{{ cargoForm.fields.details.lengthIn.label }}</label>
+              <label>{{ cargoForm.fields.details.lengthIn?.label }}</label>
               <input v-register.number="cargoForm.register('details.lengthIn')" type="number" />
               <small class="error">{{ errorMessage(cargoForm.fields.details.lengthIn) }}</small>
             </div>
             <div class="field" :class="fieldClasses(cargoForm.fields.details.widthIn)">
-              <label>{{ cargoForm.fields.details.widthIn.label }}</label>
+              <label>{{ cargoForm.fields.details.widthIn?.label }}</label>
               <input v-register.number="cargoForm.register('details.widthIn')" type="number" />
               <small class="error">{{ errorMessage(cargoForm.fields.details.widthIn) }}</small>
             </div>
             <div class="field" :class="fieldClasses(cargoForm.fields.details.heightIn)">
-              <label>{{ cargoForm.fields.details.heightIn.label }}</label>
+              <label>{{ cargoForm.fields.details.heightIn?.label }}</label>
               <input v-register.number="cargoForm.register('details.heightIn')" type="number" />
               <small class="error">{{ errorMessage(cargoForm.fields.details.heightIn) }}</small>
             </div>
           </div>
           <div class="field">
-            <label>{{ cargoForm.fields.details.permitNumber.label }}</label>
-            <small v-if="cargoForm.fields.details.permitNumber.description" class="help">
-              {{ cargoForm.fields.details.permitNumber.description }}
+            <label>{{ cargoForm.fields.details.permitNumber?.label }}</label>
+            <small v-if="cargoForm.fields.details.permitNumber?.description" class="help">
+              {{ cargoForm.fields.details.permitNumber?.description }}
             </small>
             <input v-register="cargoForm.register('details.permitNumber')" />
             <small v-if="!cargoForm.values.details.permitNumber" class="muted">
@@ -966,7 +966,7 @@
 
         <div v-if="serviceMode === 'truck'" class="grid-2">
           <div class="field" :class="fieldClasses(serviceForm.fields.service.truckType)">
-            <label>{{ serviceForm.fields.service.truckType.label }}</label>
+            <label>{{ serviceForm.fields.service.truckType?.label }}</label>
             <select v-register="serviceForm.register('service.truckType')">
               <option v-for="t in TRUCK_TYPES" :key="t" :value="t">{{
                 TRUCK_TYPE_LABELS[t]
@@ -975,20 +975,20 @@
           </div>
           <label class="checkbox align-end">
             <input v-register="serviceForm.register('service.liftgate')" type="checkbox" />
-            {{ serviceForm.fields.service.liftgate.label }}
+            {{ serviceForm.fields.service.liftgate?.label }}
           </label>
         </div>
 
         <div v-else-if="serviceMode === 'air'" class="grid-2">
           <div class="field" :class="fieldClasses(serviceForm.fields.service.airline)">
-            <label>{{ serviceForm.fields.service.airline.label }}</label>
+            <label>{{ serviceForm.fields.service.airline?.label }}</label>
             <input v-register="serviceForm.register('service.airline')" placeholder="Lufthansa" />
             <small class="error">{{ errorMessage(serviceForm.fields.service.airline) }}</small>
           </div>
           <div class="field" :class="fieldClasses(serviceForm.fields.service.awbPrefix)">
-            <label>{{ serviceForm.fields.service.awbPrefix.label }}</label>
-            <small v-if="serviceForm.fields.service.awbPrefix.description" class="help">
-              {{ serviceForm.fields.service.awbPrefix.description }}
+            <label>{{ serviceForm.fields.service.awbPrefix?.label }}</label>
+            <small v-if="serviceForm.fields.service.awbPrefix?.description" class="help">
+              {{ serviceForm.fields.service.awbPrefix?.description }}
             </small>
             <input v-register="serviceForm.register('service.awbPrefix')" placeholder="220" />
             <small class="error">{{ errorMessage(serviceForm.fields.service.awbPrefix) }}</small>
@@ -997,12 +997,12 @@
 
         <div v-else-if="serviceMode === 'ocean'" class="grid-2">
           <div class="field" :class="fieldClasses(serviceForm.fields.service.vessel)">
-            <label>{{ serviceForm.fields.service.vessel.label }}</label>
+            <label>{{ serviceForm.fields.service.vessel?.label }}</label>
             <input v-register="serviceForm.register('service.vessel')" placeholder="MSC Aurelia" />
             <small class="error">{{ errorMessage(serviceForm.fields.service.vessel) }}</small>
           </div>
           <div class="field" :class="fieldClasses(serviceForm.fields.service.containerSize)">
-            <label>{{ serviceForm.fields.service.containerSize.label }}</label>
+            <label>{{ serviceForm.fields.service.containerSize?.label }}</label>
             <select v-register="serviceForm.register('service.containerSize')">
               <option v-for="s in CONTAINER_SIZES" :key="s" :value="s">{{
                 CONTAINER_SIZE_LABELS[s]

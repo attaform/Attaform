@@ -326,17 +326,36 @@ describe('useForm type inference — fields() callable tuple form', () => {
     expectTypeOf(f.value).toEqualTypeOf<string>()
   })
 
-  it('dynamic Path-typed segments resolve to FieldState<unknown>', () => {
+  it('dynamic Path-typed segments resolve to FieldState<unknown> | undefined', () => {
     // Forwarding `RegisterValue.segments` (typed as Path) skips the
     // tuple overload (`JoinSegments<Path>` → plain `string`) and lands
-    // on the dynamic-array fallback. The call-form always lands on a
-    // FieldState terminal at any path — the type signature mirrors
-    // that with `FieldState<unknown>`, so consumers get a usable
-    // shape without casting.
+    // on the dynamic-array fallback. A dynamic path may not resolve in
+    // the schema, so the call-form widens with `| undefined`; chain `?.`.
     const dynamic: ReadonlyArray<string | number> = ['email']
     const result = form.fields(dynamic)
-    expectTypeOf(result.valid).toEqualTypeOf<boolean>()
-    expectTypeOf(result.path).toMatchTypeOf<readonly (string | number)[]>()
+    expectTypeOf(result).toMatchTypeOf<{ valid: boolean } | undefined>()
+    expectTypeOf(result?.valid).toEqualTypeOf<boolean | undefined>()
+    expectTypeOf(result?.path).toMatchTypeOf<readonly (string | number)[] | undefined>()
+  })
+})
+
+describe('useForm type inference — fields() string call-form (precise + invalid→undefined)', () => {
+  it('a valid literal leaf resolves to its precise FieldState, no guard', () => {
+    // No `?.` — a schema-declared path is never undefined, and the value
+    // type is precise.
+    expectTypeOf(form.fields('email').value).toEqualTypeOf<string>()
+    expectTypeOf(form.fields('profile.name').value).toEqualTypeOf<string>()
+  })
+
+  it('a valid container path resolves to a FieldState aggregate', () => {
+    // A FieldState property reads without a guard, proving the node is a
+    // FieldState and not `undefined`.
+    expectTypeOf(form.fields('profile').dirty).toEqualTypeOf<boolean>()
+  })
+
+  it('a path the schema lacks is `undefined` (a typo is not a field)', () => {
+    expectTypeOf(form.fields('nonexistent')).toEqualTypeOf<undefined>()
+    expectTypeOf(form.fields('profile.nope')).toEqualTypeOf<undefined>()
   })
 })
 

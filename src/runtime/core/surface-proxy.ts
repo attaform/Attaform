@@ -21,10 +21,15 @@ import { makeReadonlyCoercion, warnReadOnly } from './proxy-readonly-helpers'
  *     exposes only `leafKeys` as terminal reads off `resolveLeaf`'s
  *     return. FIELD_STATE_KEYS injection happens HERE only.
  *
- * Both proxies are callable (function-target with `apply` trap):
- * - `proxy()` → root proxy (same as no-paren)
- * - `proxy('a.b.c')` / `proxy(['a', 'b', 'c'])` → walks to that path,
- *   returns whatever the dotted form would (leaf or container proxy).
+ * Only the ROOT proxy is callable. It alone gets a function target, so
+ * its `apply` trap fires; every non-root container and every leaf-view
+ * is a plain object (or Array) target, so dot/bracket descent is their
+ * only access mode and `form.fields.address()` throws like any
+ * non-function. `form.fields(path)` / `form.errors(path)` is the single
+ * aggregate API at any depth:
+ * - `proxy()` → resolves the call-target at the root (whole-form aggregate)
+ * - `proxy('a.b.c')` / `proxy(['a', 'b', 'c'])` → resolves the call-target
+ *   at that path (the same aggregate the dotted form would describe).
  *
  * Symbol keys pass through to the function target so Vue's reactivity
  * sigils (`Symbol(__v_isRef)`, `Symbol(__v_isReadonly)`, etc.) and
@@ -139,18 +144,33 @@ export type SurfaceOptions<TLeaf> = {
    */
   readonly containerOwnKeys?: (segments: readonly Segment[]) => readonly string[]
   /**
+   * O(1) membership test for the truthful descend gate: does the
+   * container at `segments` currently HOLD `key`? An efficient surface
+   * answers without materialising the whole key list (an array bounds
+   * check, an `Object.hasOwn`), so descending each element of a large
+   * field array stays linear rather than quadratic. Semantics must
+   * agree with `containerOwnKeys` (`containerHasOwnKey(segs, k) === true`
+   * iff `containerOwnKeys(segs).includes(k)`).
+   *
+   * Omit to fall back to `containerOwnKeys(segments).includes(key)` —
+   * correct but O(n) per access. Provided by the surfaces prone to
+   * large arrays (`form.fields`, `form.errors`).
+   */
+  readonly containerHasOwnKey?: (segments: readonly Segment[], key: string) => boolean
+  /**
    * Reports whether the container at `segments` is array-shaped. When
    * true, the container proxy is built atop an Array target so
    * `Array.isArray(proxy) === true` and Vue's `renderList` enters the
    * indexed array branch (`for (let i = 0; i < source.length; i++)`).
-   * Without this, `v-for` over a function-target proxy never reaches
-   * the Object.keys path either — Vue's `isObject` check requires
-   * `typeof === 'object'`, which is false for function targets.
+   * Without an Array target, `Array.isArray(proxy)` is false and
+   * `renderList` falls back to the Object.keys branch, which is correct
+   * for object-shaped containers but wrong for arrays.
    *
-   * Omit (or return false) to fall back to the function target, which
-   * preserves the callable form (`form.fields(path)`) — apply traps
-   * only fire on function targets, so this option deliberately scopes
-   * to paths where the callable form is unused.
+   * Omit (or return false) for object-shaped containers (plain object
+   * target). The callable form is a ROOT-only concern — only the root
+   * container carries a function target for `form.fields(path)` /
+   * `form.errors(path)`; every non-root node is non-callable regardless
+   * of this flag.
    */
   readonly isArrayContainer?: (segments: readonly Segment[]) => boolean
 }
@@ -162,6 +182,47 @@ export type SurfaceOptions<TLeaf> = {
  * descent.
  */
 export type SurfaceProxy = ((path?: string | Path) => unknown) & Record<string, unknown>
+
+/**
+ * Callable shim returned for `call` / `apply` / `bind` read off a
+ * callable ROOT surface proxy (`form.fields` / `form.errors`). A
+ * transpiler that downlevels optional chaining — sucrase (what
+ * `@vue/repl` strips TS with), or any bundler targeting below ES2020 —
+ * compiles `surface(path)?.x` into a helper that READS `.call` off the
+ * surface and invokes the result to call the surface, while
+ * `surface.call.errors` READS `.call` as a field literally named
+ * `call`. The `get` trap can't tell the two apart, so it returns one
+ * value that serves both: a function — invokable as the matching
+ * `Function.prototype` method against the surface, so the downleveled
+ * call lands in the surface's `apply` trap — that forwards every other
+ * proxy operation to the field descent, so a `call` / `apply` / `bind`
+ * field stays fully reachable. No reserved names. The descent resolves
+ * lazily, so the invoke-only path (the common one) builds no child proxy.
+ */
+function callableInvokeShim(
+  method: 'call' | 'apply' | 'bind',
+  surface: SurfaceProxy,
+  getDescent: () => unknown
+): SurfaceProxy {
+  const fnMethod = Reflect.get(Function.prototype, method) as (
+    this: unknown,
+    ...args: unknown[]
+  ) => unknown
+  return new Proxy((() => {}) as unknown as SurfaceProxy, {
+    apply: (_target, _thisArg, args) => Reflect.apply(fnMethod, surface, args),
+    get: (_target, key) => Reflect.get(getDescent() as object, key),
+    has: (_target, key) => Reflect.has(getDescent() as object, key),
+    ownKeys: () => Reflect.ownKeys(getDescent() as object),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(getDescent() as object, key)
+      // The fresh arrow-function target owns no matching property, so a
+      // descriptor forwarded from the descent must be reported
+      // configurable to satisfy the Proxy own-property invariant.
+      if (descriptor !== undefined) descriptor.configurable = true
+      return descriptor
+    },
+  })
+}
 
 export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfaceProxy {
   // Per-path container Proxy cache. Key = canonical PathKey
@@ -239,6 +300,23 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
     const existing = containerCache.get(cacheKey)
     if (existing !== undefined) return existing
 
+    // Fixed object vs open/union container. A fixed object (`z.object`)
+    // has a closed, declared key set; an open container (array, record,
+    // map, set, union, discriminated union) admits keys its element
+    // schema matches positionally / by-variant. Read once per container
+    // (the proxy is cached per path, so this is not on the per-access
+    // hot path) and consumed by the truthful descend gate below to
+    // decide whether a `schemaHasPath` hit is a real declared field or
+    // an any-segment match the proxy must not trust.
+    const isFixedObject = opts.schema.isFixedObjectAtPath(segments)
+    // Does this container currently HOLD `k`? Prefer the surface's O(1)
+    // membership hook so descending a large field array stays linear;
+    // fall back to the enumerated key list when none is supplied.
+    const containerHasKey = (k: string): boolean =>
+      opts.containerHasOwnKey !== undefined
+        ? opts.containerHasOwnKey(segments, k)
+        : opts.containerOwnKeys?.(segments).includes(k) === true
+
     // Container-shaped primitive coercion. The materialiser (when set)
     // is invoked on every call so reactive reads (error stores, the
     // form Ref) are tracked inside the consumer's active effect — the
@@ -256,22 +334,28 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
       toPrimitive: containerToPrimitive,
     } = makeReadonlyCoercion(snapshotContainer)
 
-    // Target shape: Array for array-shaped paths so `Array.isArray(proxy)`
-    // is true and Vue's `renderList` takes its indexed-array branch
-    // (reads `source.length` and `source[i]`, both intercepted by our
-    // get trap). Function otherwise so `proxy()` / `proxy(path)` apply
-    // traps fire — Apply only triggers on `typeof target === 'function'`.
-    // The trade is per-path: array containers lose the callable form
-    // (rarely used at array paths, where `form.fields('items')` is the
-    // alternative spelling) in exchange for natural `v-for` iteration.
-    const target = isArrayLike
-      ? ([] as unknown as SurfaceProxy)
-      : ((() => {}) as unknown as SurfaceProxy)
+    // Target shape. Only the ROOT is a function target — it alone needs
+    // the `apply` trap to fire for the `form.fields(path)` /
+    // `form.errors(path)` call-form. Every non-root container is a plain
+    // object (or an Array for array-shaped paths), so a node-level call
+    // (`form.fields.address()`) throws like any non-function and the two
+    // surfaces stay uniformly non-callable below the root. Array targets
+    // additionally make `Array.isArray(proxy)` true so Vue's `renderList`
+    // takes its indexed branch (reads `length` / `[i]`, both intercepted
+    // by the get trap).
+    const isRoot = segments.length === 0
+    const target: SurfaceProxy = isRoot
+      ? ((() => {}) as unknown as SurfaceProxy)
+      : isArrayLike
+        ? ([] as unknown as SurfaceProxy)
+        : ({} as unknown as SurfaceProxy)
     const proxy = new Proxy(target, {
       apply(_, __, args: unknown[]): unknown {
-        // proxy() returns the call-target at THIS path (so
-        // `form.fields()` resolves the root aggregation). proxy(arg)
-        // walks the absolutised arg path through the call-target.
+        // Only the root carries a function target, so this trap fires
+        // for the root call-form alone: `form.fields()` resolves the
+        // whole-form aggregate (`segments` is `[]` here), `form.fields(arg)`
+        // resolves the absolutised arg path. Non-root containers are
+        // object / Array targets and never reach this trap.
         const arg = args[0] as string | Path | undefined
         if (arg === undefined) return opts.resolveCallTarget(segments as Path)
         const { segments: argSegs } = canonicalizePath(arg)
@@ -313,10 +397,12 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         ) {
           return undefined
         }
-        // `toJSON`: containers serialise to `{}`. The function-target
-        // Proxy is `typeof === 'function'`, which JSON.stringify normally
-        // omits — `toJSON` short-circuits that path. Consumers who want
-        // structural data use `form.values.<container>` instead.
+        // `toJSON`: every container serialises through
+        // `materializeContainer` (falling back to `{}` when a surface
+        // sets no materialiser). At the root (function target) this also
+        // rescues the proxy from JSON.stringify's default omission of
+        // functions; at non-root object / Array targets it replaces the
+        // empty default enumeration with the surface's materialised tree.
         if (key === 'toJSON') return containerToJSON
         // Array-shaped containers: `length` is what Vue's `renderList`
         // and any native array-iteration code reads to drive the loop.
@@ -326,7 +412,7 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // length agree.
         //
         // The gate is `cached isArrayLike OR live isArrayContainer`
-        // so a function-target proxy held across a variant flip into
+        // so an object-target proxy held across a variant flip into
         // an array also reports the live length — the proxy target is
         // frozen at construction, but the get trap re-evaluates shape
         // on every read, so `held.length` tracks reality even when the
@@ -386,7 +472,66 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
           }
           // Schema has it — fall through to descent.
         }
-        return descendOrTerminate(childSegs)
+        // `hasOwnProperty`: a universal Object method that tooling (Vue's
+        // reactivity instrumentation) and consumers reasonably call
+        // against any object-like value. Schema descent would otherwise
+        // shadow it with a non-callable node proxy (node calls throw by
+        // design), so we resolve it with the same schema authority as
+        // toString / valueOf: a literal `hasOwnProperty` schema field at
+        // this depth wins (descent proceeds); otherwise hand back the
+        // real `Object.prototype.hasOwnProperty`, which routes through
+        // this proxy's `getOwnPropertyDescriptor` trap — so
+        // `form.errors.hasOwnProperty(k)` agrees with
+        // `Object.keys(form.errors).includes(k)`. Array-shaped containers
+        // already get the real method via the Array.prototype
+        // pass-through above; this covers the object-shaped case.
+        if (key === 'hasOwnProperty' && !schemaHasPath(childSegs)) {
+          return Object.prototype.hasOwnProperty
+        }
+        // `call` / `apply` / `bind` on the callable root. A downleveling
+        // transpiler (sucrase in @vue/repl; any sub-ES2020 target) reads
+        // `.call` off the surface to invoke `form.fields(path)?.x`, while
+        // `form.fields.call.errors` reads it as a field literally named
+        // `call`. One callable shim serves both — see callableInvokeShim.
+        // Root only: non-root nodes aren't callable, so a nested `call`
+        // field (`form.fields.address.call`) keeps plain descent.
+        if (isRoot && (key === 'call' || key === 'apply' || key === 'bind')) {
+          return callableInvokeShim(key, proxy, () => descendOrTerminate(childSegs))
+        }
+        // Truthful descend gate (no phantom). A property that is none of
+        // the three reachable kinds below reads `undefined` — an
+        // out-of-bounds array index, a missing record key, an inactive
+        // discriminated-union variant's key, an unknown field. The
+        // matching surface type marks exactly these hops `… | undefined`,
+        // so a `form.fields.rec.missing` falsy-check agrees with the
+        // runtime instead of hitting a permanently-truthy node proxy.
+        //
+        // Three ways a child stays reachable:
+        //  - A surface-declared terminal (`form.errors['']`, the
+        //    container-self error bucket) always resolves — it has no
+        //    live-data home by design.
+        //  - A declared field of a FIXED object descends schema-only,
+        //    data or no data, so a declared-but-absent `optional` field
+        //    stays a real terminal (`register('user.nickname')` keeps
+        //    working after `setValue('user', {…})` drops it). Gated on
+        //    `isFixedObject` because an array / record / DU element
+        //    schema matches ANY segment — `schemaHasPath` can't tell a
+        //    real key from a phantom there, so the open container relies
+        //    on live keys alone.
+        //  - A key the container currently HOLDS (`containerOwnKeys`): a
+        //    live array index, a present record / variant key, or — for
+        //    `form.errors` — a server error at a non-schema key
+        //    (`errorAwareContainerKeys` unions the error stores in, so
+        //    `form.errors.ghost` still surfaces while `form.errors.bogus`
+        //    with neither data nor error reads `undefined`).
+        if (
+          opts.isTerminalAt?.(childSegs) === true ||
+          (isFixedObject && schemaHasPath(childSegs)) ||
+          containerHasKey(key)
+        ) {
+          return descendOrTerminate(childSegs)
+        }
+        return undefined
       },
       has(_, key: string | symbol): boolean {
         if (typeof key === 'symbol') return Reflect.has(target, key)
@@ -499,18 +644,13 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
       toPrimitive: leafToPrimitive,
     } = makeReadonlyCoercion(snapshotLeaf)
 
-    const target = (() => {}) as unknown as SurfaceProxy
+    // Plain object target: leaf-views are non-callable. Only the root
+    // surface proxy carries a function target (for `form.fields(path)`),
+    // so `form.fields.email()` throws like any non-function. Coercion
+    // (`String` / `JSON.stringify` / `Object.keys`) is handled by the
+    // traps below, none of which need a function target.
+    const target = {} as unknown as SurfaceProxy
     const proxy = new Proxy(target, {
-      apply(_, __, args: unknown[]): unknown {
-        // Same call-target dispatch as `containerProxyAt` so
-        // `form.fields.email(somePath)` reads identically to
-        // `form.fields(somePath)` — the call-form always lands on
-        // the FieldState terminal.
-        const arg = args[0] as string | Path | undefined
-        if (arg === undefined) return opts.resolveCallTarget(segments as Path)
-        const { segments: argSegs } = canonicalizePath(arg)
-        return opts.resolveCallTarget(argSegs)
-      },
       get(_, key: string | symbol): unknown {
         if (typeof key === 'symbol') {
           // See containerProxyAt for the rationale. Leaf-views return
@@ -537,6 +677,18 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // templates stringify `form.fields.<leaf>` straight into the
         // hydration payload.
         if (key === 'toJSON') return leafToJSONHandler
+        // `hasOwnProperty`: same universal-method handling as the
+        // container trap. Leaf-views are non-callable, so schema descent
+        // would otherwise shadow this method with a node proxy that
+        // throws when called. Schema authority: a literal `hasOwnProperty`
+        // field hanging off this leaf path wins; otherwise the real
+        // method routes through this leaf-view's
+        // `getOwnPropertyDescriptor` trap, so
+        // `form.fields.email.hasOwnProperty(k)` agrees with the exposed
+        // FIELD_STATE_KEYS.
+        if (key === 'hasOwnProperty' && !schemaHasPath([...segments, keyToSegment(key)])) {
+          return Object.prototype.hasOwnProperty
+        }
         // Reads inside the trap stay inside the consumer's active effect —
         // `resolveLeaf` returns a `ComputedRef` (for fields) and `.value`
         // is read inside `readLeafKey`, so Vue's dep tracking captures
@@ -567,8 +719,8 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         return true
       },
       // Iteration: leaf-views expose the leaf-key set so
-      // `JSON.stringify(form.fields.email)` produces a FieldState
-      // snapshot rather than the function-target placeholder.
+      // `Object.keys(form.fields.email)` / spread enumerate the
+      // FieldState props. (`JSON.stringify` routes through `toJSON` above.)
       ownKeys: () => Array.from(leafKeys),
       getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
         if (typeof key !== 'string') return undefined

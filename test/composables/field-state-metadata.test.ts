@@ -316,12 +316,14 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     )
     // Container label resolves at the DU root.
     expect(form.fields('cargo').label).toBe('Cargo')
-    // Active-variant key reads its registered label.
-    expect(form.fields.cargo.fragile.label).toBe('Fragile')
-    // Inactive-variant key still reads its registered label —
-    // FieldStateMapEntry's union-key merge exposes every variant's
-    // shape, and the walker registered metadata for both branches.
-    expect(form.fields.cargo.unNumber.label).toBe('UN number')
+    // Active-variant key reads its registered label via dot (`?.` past
+    // the discriminated-union boundary).
+    expect(form.fields.cargo.fragile?.label).toBe('Fragile')
+    // An INACTIVE-variant key is an absent node on the dot surface
+    // (model P), so its registered metadata reads through the call-form,
+    // which resolves the FieldState at the path regardless of which
+    // variant is currently active.
+    expect(form.fields('cargo.unNumber').label).toBe('UN number')
   })
 })
 

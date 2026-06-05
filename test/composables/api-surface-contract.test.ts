@@ -18,7 +18,7 @@ import type { DisplayState, UseFormReturnType } from '../../src/runtime/types/ty
  * The architecture:
  *
  *   ┌─ Lives directly on `api` ───────────────────────────────┐
- *   │  setValue, handleSubmit, validateAsync, process, reset, │
+ *   │  setValue, handleSubmit, validateAsync, parse, reset,   │
  *   │  resetField, register, fields, errors, values, key,     │
  *   │  meta, history, …                                       │
  *   └─────────────────────────────────────────────────────────┘
@@ -125,7 +125,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.resetField).toBe('function')
     expect(typeof api.handleSubmit).toBe('function')
     expect(typeof api.validateAsync).toBe('function')
-    expect(typeof api.process).toBe('function')
+    expect(typeof api.parse).toBe('function')
   })
 
   it('form-level reactive flags live on `api.meta` (not `api`)', () => {
@@ -164,21 +164,19 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
   it('field accessors live directly on `api`', () => {
     const { api } = mountForm()
 
-    // `api.fields` is a callable proxy — supports both
-    // `api.fields.email` (property access) and a function-form
-    // signature. typeof returns 'function' for callable proxies.
-    expect(typeof api.fields === 'function' || typeof api.fields === 'object').toBe(true)
+    // The three surface ROOTS are callable proxies — `api.fields(path)`
+    // / `api.errors(path)` / `api.values(path)` is the aggregate API, so
+    // `typeof` is 'function' at the root and only at the root.
+    expect(typeof api.fields).toBe('function')
     expect(typeof api.errors).toBe('function')
-    expect(typeof api.values === 'function' || typeof api.values === 'object').toBe(true)
+    expect(typeof api.values).toBe('function')
     expect(typeof api.register).toBe('function')
     expect(typeof api.key).toBe('string')
 
-    // Property access works as advertised. FieldState entries are
-    // also callable proxies (lift signature), so typeof returns
-    // 'function' rather than 'object' even for leaf fields.
-    expect(typeof api.fields.email === 'function' || typeof api.fields.email === 'object').toBe(
-      true
-    )
+    // Below the root, nodes are non-callable: a leaf FieldState view is
+    // a plain object (`api.fields.email()` would throw), so `typeof` is
+    // 'object', not 'function'.
+    expect(typeof api.fields.email).toBe('object')
     expect(typeof api.values.email).toBe('string')
   })
 

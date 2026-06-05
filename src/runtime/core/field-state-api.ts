@@ -165,6 +165,8 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   if (blankForKey !== undefined) errors.push(...blankForKey)
   if (userForKey !== undefined) errors.push(...userForKey)
   const validating = (state.fieldValidationCounts.get(key) ?? 0) > 0
+  const transforming = (state.fieldTransformCounts.get(key) ?? 0) > 0
+  const transformError = state.transformErrors.get(key) ?? null
   // `valid` mirrors `meta.valid` per-path: when the sub-schema at
   // this path declares async work, gate the answer on the form-wide
   // `firstValidationDone` so the surface doesn't lie about a
@@ -213,6 +215,9 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     errors,
     validating,
     valid,
+    transforming,
+    busy: transforming || validating,
+    transformError,
     path: segments,
     ...computeFieldIdentity(formInstanceId, state.formKey, key),
     key: state.arrayElementKey(segments),
@@ -242,12 +247,14 @@ function buildLeafFieldState<F extends GenericForm>(
 ): FieldState<unknown> {
   const base = buildLeafFieldStateBase(state, segments, key, formInstanceId)
   const validatingSince = state.fieldValidatingSince.get(key) ?? null
+  const transformingSince = state.fieldTransformingSince.get(key) ?? null
   return decorateWithDerivedProps(
     base,
     state,
     getFormMetaBase,
     key,
     validatingSince,
+    transformingSince,
     false, // revealedDescendantError: leaves have no descendants
     false, // isRoot: a leaf is never the form root
     getDisplayState
@@ -282,6 +289,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
 ): {
   readonly base: FieldStateBase
   readonly validatingSince: number | null
+  readonly transformingSince: number | null
   readonly revealedDescendantError: boolean
 } {
   // Read live form value first so the access participates in dep
@@ -313,6 +321,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   let connected = false
   let validating = false
   let validatingSince: number | null = null
+  let transforming = false
+  let transformingSince: number | null = null
   let updatedAt: string | null = null
   let asyncPending = false
   // For the descendant display rollup: submit opens every gate at once;
@@ -359,6 +369,21 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
         (validatingSince === null || since < validatingSince)
       )
         validatingSince = since
+    }
+    if ((state.fieldTransformCounts.get(leafKey) ?? 0) > 0) {
+      transforming = true
+      // Anchor the container's transform spinner at its earliest still-
+      // transforming leaf, same reveal-gate rule as validating: only a
+      // leaf whose own gate is open contributes the anchor, so a
+      // descendant transforming pre-reveal never lights the container.
+      const leafGateOpen = submissionAttempts > 0 || leafRecord?.blurredAfterInteraction === true
+      const since = state.fieldTransformingSince.get(leafKey)
+      if (
+        leafGateOpen &&
+        since !== undefined &&
+        (transformingSince === null || since < transformingSince)
+      )
+        transformingSince = since
     }
     if (state.pathHasAsyncValidationByKey(leafKey, entry.segments)) asyncPending = true
     const ts = leafRecord?.updatedAt
@@ -409,6 +434,30 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // OWN path too, so the firstValidationDone gate fires until that
   // pass lands.
   if (!asyncPending && state.pathHasAsyncValidation(segments)) asyncPending = true
+  // A transform or validation registered directly on THIS container path runs
+  // at the container key itself, not at a descendant leaf — the walk above
+  // skips self (`segments.length === entry.segments.length`). The file
+  // directive is the canonical case: `register('roster', { transforms })` on
+  // an `<input type="file">` whose schema slot is an array normalizes the
+  // picked File(s) into the array value at the container path. Fold the
+  // container's own in-flight transform / validation state in so
+  // `transforming` / `validating` / `busy` / `valid` and the spinner anchors
+  // reflect it, exactly as a leaf reflects its own. The anchor is set
+  // unconditionally (the container is its own field; the display reducer
+  // applies the container's reveal gate), matching the leaf builder.
+  if ((state.fieldValidationCounts.get(key) ?? 0) > 0) {
+    validating = true
+    const since = state.fieldValidatingSince.get(key)
+    if (since !== undefined && (validatingSince === null || since < validatingSince))
+      validatingSince = since
+  }
+  if ((state.fieldTransformCounts.get(key) ?? 0) > 0) {
+    transforming = true
+    const since = state.fieldTransformingSince.get(key)
+    if (since !== undefined && (transformingSince === null || since < transformingSince))
+      transformingSince = since
+  }
+  const ownTransformError = state.transformErrors.get(key) ?? null
   const gated = asyncPending && !state.firstValidationDone.value
   const valid = !gated && errors.length === 0 && !validating
   const resolved = state.schema.getFieldMetaAtPath
@@ -434,6 +483,12 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       errors,
       validating,
       valid,
+      transforming,
+      busy: transforming || validating,
+      // A container surfaces its OWN transform failure (a transform registered
+      // on the container path, e.g. a file normalizer) but never rolls up a
+      // descendant leaf's failure — that stays a per-field channel.
+      transformError: ownTransformError,
       path: segments,
       ...computeFieldIdentity(formInstanceId, state.formKey, key),
       key: state.arrayElementKey(segments),
@@ -444,6 +499,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       meta: resolved.meta,
     },
     validatingSince,
+    transformingSince,
     revealedDescendantError,
   }
 }
@@ -460,18 +516,15 @@ function buildContainerFieldState<F extends GenericForm>(
   getFormMetaBase: FormMetaBaseGetter,
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
-  const { base, validatingSince, revealedDescendantError } = buildContainerFieldStateBase(
-    state,
-    segments,
-    key,
-    formInstanceId
-  )
+  const { base, validatingSince, transformingSince, revealedDescendantError } =
+    buildContainerFieldStateBase(state, segments, key, formInstanceId)
   return decorateWithDerivedProps(
     base,
     state,
     getFormMetaBase,
     key,
     validatingSince,
+    transformingSince,
     revealedDescendantError,
     segments.length === 0,
     getDisplayState
@@ -508,6 +561,7 @@ function decorateWithDerivedProps<F extends GenericForm>(
   getFormMetaBase: FormMetaBaseGetter,
   key: PathKey,
   validatingSince: number | null,
+  transformingSince: number | null,
   revealedDescendantError: boolean,
   isRoot: boolean,
   getDisplayState?: GetDisplayState
@@ -519,6 +573,7 @@ function decorateWithDerivedProps<F extends GenericForm>(
     field: base,
     formMeta,
     validatingSince,
+    transformingSince,
     // The engine's clock. Frozen to 0 under SSR (no clock, nothing in
     // flight) so the reducer returns the plain verdict and hydration matches.
     now: state.ssr ? 0 : Date.now(),

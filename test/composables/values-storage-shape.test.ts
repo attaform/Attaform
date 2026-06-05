@@ -29,7 +29,7 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  *  - Array index access past `length` — tainted by
  *    `noUncheckedIndexedAccess`, not by the storage invariant.
  *  - `.transform()` — storage holds pre-transform input; post-transform
- *    output is exposed via `handleSubmit` / `form.process()`.
+ *    output is exposed via `handleSubmit` / `form.parse()`.
  */
 
 function makeFormProxy<T>(): T {
@@ -656,7 +656,7 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
     // read side, then `WriteShape` widens primitive literals to their
     // primitive supertype at the `form.values` surface — the slim
     // write-time contract documented in `WriteShape`. The runtime still
-    // reports the literal at parse time (handleSubmit / process), so
+    // reports the literal at parse time (handleSubmit / parse), so
     // narrowing happens at the validation boundary, not on direct reads.
     expectTypeOf(formT.values.cargo.details.type).toEqualTypeOf<string>()
     expectTypeOf(formT.values.service.mode).toEqualTypeOf<string>()

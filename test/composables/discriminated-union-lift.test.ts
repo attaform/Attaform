@@ -87,18 +87,23 @@ describe('FieldStateMapEntry — discriminated-union lift (synthetic fixtures)',
     expectTypeOf<T>().toEqualTypeOf<FieldState<'dry' | 'refrigerated' | 'hazmat' | 'oversized'>>()
   })
 
-  it('per-variant key (only on one variant) types as `T | undefined`', () => {
+  it('per-variant key (only on one variant) is node-optional `FieldState<T> | undefined`', () => {
+    // Model P: the NODE is absent when its variant is inactive, so the
+    // key carries node-optionality (`FieldState<T> | undefined`), not
+    // value-optionality (`FieldState<T | undefined>`). The present node's
+    // value type is precise — the synthetic absent-variant `undefined`
+    // is stripped.
     type FragileLeaf = FieldStateMapEntry<Cargo>['fragile']
-    expectTypeOf<FragileLeaf>().toEqualTypeOf<FieldState<boolean | undefined>>()
+    expectTypeOf<FragileLeaf>().toEqualTypeOf<FieldState<boolean> | undefined>()
 
     type TempMinLeaf = FieldStateMapEntry<Cargo>['tempMinC']
-    expectTypeOf<TempMinLeaf>().toEqualTypeOf<FieldState<number | undefined>>()
+    expectTypeOf<TempMinLeaf>().toEqualTypeOf<FieldState<number> | undefined>()
 
     type UnNumberLeaf = FieldStateMapEntry<Cargo>['unNumber']
-    expectTypeOf<UnNumberLeaf>().toEqualTypeOf<FieldState<string | undefined>>()
+    expectTypeOf<UnNumberLeaf>().toEqualTypeOf<FieldState<string> | undefined>()
 
     type LengthLeaf = FieldStateMapEntry<Cargo>['lengthCm']
-    expectTypeOf<LengthLeaf>().toEqualTypeOf<FieldState<number | undefined>>()
+    expectTypeOf<LengthLeaf>().toEqualTypeOf<FieldState<number> | undefined>()
   })
 
   it('single-object regression: literal keys stay literal, no extra `| undefined`', () => {
@@ -156,12 +161,14 @@ const form: CargoForm = (() => {
 })()
 
 describe('useForm — chained access on form.fields with cargo schema', () => {
-  it('per-variant fields are reachable regardless of active variant', () => {
-    expectTypeOf(form.fields.cargo.tempMinC.value).toEqualTypeOf<number | undefined>()
-    expectTypeOf(form.fields.cargo.tempMaxC.value).toEqualTypeOf<number | undefined>()
-    expectTypeOf(form.fields.cargo.fragile.value).toEqualTypeOf<boolean | undefined>()
-    expectTypeOf(form.fields.cargo.unNumber.value).toEqualTypeOf<string | undefined>()
-    expectTypeOf(form.fields.cargo.lengthCm.value).toEqualTypeOf<number | undefined>()
+  it('per-variant fields are reachable via `?.` regardless of active variant', () => {
+    // The node is optional (absent when its variant is inactive), so the
+    // read chains through `?.`; the resolved value type stays precise.
+    expectTypeOf(form.fields.cargo.tempMinC?.value).toEqualTypeOf<number | undefined>()
+    expectTypeOf(form.fields.cargo.tempMaxC?.value).toEqualTypeOf<number | undefined>()
+    expectTypeOf(form.fields.cargo.fragile?.value).toEqualTypeOf<boolean | undefined>()
+    expectTypeOf(form.fields.cargo.unNumber?.value).toEqualTypeOf<string | undefined>()
+    expectTypeOf(form.fields.cargo.lengthCm?.value).toEqualTypeOf<number | undefined>()
   })
 
   it('common keys typecheck; non-existent keys are rejected', () => {

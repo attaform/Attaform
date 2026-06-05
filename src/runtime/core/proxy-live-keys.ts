@@ -31,6 +31,35 @@ export function liveKeysAtPath<F extends GenericForm>(
 }
 
 /**
+ * O(1) membership test: does the live container at `segments` currently
+ * hold `key`? The truthful descend gate in `surface-proxy.ts` calls this
+ * per access, so it avoids materialising the full key list that
+ * `liveKeysAtPath` builds — an array bounds check or an `Object.hasOwn`,
+ * not an allocate-and-scan. Semantics match `liveKeysAtPath`: an array
+ * index is present iff it's a canonical in-bounds integer string
+ * (`'0'`, `'1'`, …, no leading zeros), an object / record key iff the
+ * live value owns it; primitives and nullish values hold nothing.
+ *
+ * Reads happen inside the consumer's active effect, so Vue tracks
+ * `state.form.value` and the gate re-evaluates on append / remove.
+ */
+export function liveContainerHasKey<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: readonly Segment[],
+  key: string
+): boolean {
+  const value = getAtPath(state.form.value, segments)
+  if (value === null || value === undefined || typeof value !== 'object') return false
+  if (Array.isArray(value)) {
+    const index = Number(key)
+    // `String(index) === key` rejects non-canonical forms (`'01'`, `''`,
+    // `'1.5'`) so membership agrees with `liveKeysAtPath`'s `String(i)`.
+    return Number.isInteger(index) && index >= 0 && index < value.length && String(index) === key
+  }
+  return Object.hasOwn(value as Record<string, unknown>, key)
+}
+
+/**
  * Whether the path resolves to an array container RIGHT NOW. The live
  * form value is the source of truth so a discriminated-union variant
  * switch that swaps the shape at this path produces a freshly-targeted

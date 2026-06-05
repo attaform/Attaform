@@ -158,10 +158,18 @@ describe('persistence hydration — validation runs against the rehydrated value
     apps.push(app)
     await waitUntil(() => (api.values.email === 'taken@example.com' ? true : null))
     expect(api.values.email).toBe('taken@example.com')
-    const errorMessage = await waitUntil(() => api.errors.email?.[0]?.message ?? null)
-    expect(errorMessage).toBe('That email is already registered.')
-    expect(api.meta.valid).toBe(false)
+    // The empty default fails z.email() synchronously at construction, so a
+    // stale 'Invalid email address' rides the field until the post-hydration
+    // pass clears it and the async refine settles. Observe the full
+    // true -> false validation cycle before reading the error, so the
+    // assertion reflects the settled verdict and never latches that transient
+    // construction-time message (the prior first-non-null read could, under
+    // full-suite load).
+    await waitUntil(() => (api.meta.validating === true ? true : null))
     await waitUntil(() => (api.meta.validating === false ? true : null))
+    await nextTick()
+    expect(api.errors.email?.[0]?.message).toBe('That email is already registered.')
+    expect(api.meta.valid).toBe(false)
     expect(api.meta.validating).toBe(false)
   })
 
@@ -175,8 +183,13 @@ describe('persistence hydration — validation runs against the rehydrated value
     const { app, api } = mountAsyncForm('test-async-hydrate-lax', false)
     apps.push(app)
     await waitUntil(() => (api.values.email === 'taken@example.com' ? true : null))
-    const errorMessage = await waitUntil(() => api.errors.email?.[0]?.message ?? null)
-    expect(errorMessage).toBe('That email is already registered.')
+    // Lax carries no construction-time error, but read the settled verdict the
+    // same robust way: wait out the post-hydration validation cycle before
+    // asserting rather than catching the first error observed.
+    await waitUntil(() => (api.meta.validating === true ? true : null))
+    await waitUntil(() => (api.meta.validating === false ? true : null))
+    await nextTick()
+    expect(api.errors.email?.[0]?.message).toBe('That email is already registered.')
     expect(api.meta.valid).toBe(false)
   })
 

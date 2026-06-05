@@ -6,6 +6,7 @@ import type {
   RegisterOptions,
   RegisterTransform,
   RegisterValue,
+  TransformAbortHolder,
   WriteMeta,
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
@@ -443,6 +444,25 @@ export function buildRegister<F extends GenericForm>(
       // remains the source of truth.
       markConnectedOptimistically: (): void => {
         state.markConnectedOptimistically(segments)
+      },
+
+      // --- Async transform lifecycle (internal; the directive's
+      // deferred orchestrator is the only legitimate consumer). Thin
+      // path-bound delegates to the store's per-path token / counter
+      // machinery — same pattern as `markBlank` / `setValueWithInternalPath`,
+      // so the directive (which holds only this RegisterValue, never the
+      // store) can drive the busy/discard/error bookkeeping. ---
+      beginTransform: (holder: TransformAbortHolder): number =>
+        state.beginTransform(pathKey, holder),
+      isCurrentTransform: (token: number): boolean => state.isCurrentTransform(pathKey, token),
+      endTransform: (token: number): void => state.endTransform(pathKey, token),
+      setTransformError: (err: Error): void => state.setTransformError(pathKey, err),
+      // Synchronous read of "is a transform in flight at this path". The
+      // orchestrator's `beginTransform` bumps the count before the
+      // listener's force-sync block runs, so the directive reads this to
+      // skip reverting the DOM to stale storage mid-flight.
+      get transforming(): boolean {
+        return (state.fieldTransformCounts.get(pathKey) ?? 0) > 0
       },
 
       path: pathKey,

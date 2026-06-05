@@ -98,6 +98,32 @@ export function fakeSchema<F extends GenericForm>(
       void path
       return undefined
     },
+    isFixedObjectAtPath(path) {
+      // Data-keyed: a fixed object is a plain (non-array) object in the
+      // defaults shape; records and objects are indistinguishable here,
+      // so a plain object reads as fixed and the permissive write-gate
+      // keeps fake-schema object descent unchanged. Root is always the
+      // form object. Mirrors the `isLeafAtPath` walk.
+      if (path.length === 0) return true
+      let current: unknown = defaults
+      for (const seg of path) {
+        if (current === null || current === undefined || typeof current !== 'object') return false
+        const key = typeof seg === 'number' ? String(seg) : seg
+        if (Array.isArray(current)) {
+          if (typeof seg !== 'number' || seg < 0 || seg >= current.length) return false
+          current = current[seg]
+        } else {
+          if (!(key in current)) return false
+          current = (current as Record<string, unknown>)[key]
+        }
+      }
+      return (
+        current !== null &&
+        typeof current === 'object' &&
+        !Array.isArray(current) &&
+        !(current instanceof Date)
+      )
+    },
     getSchemasAtPath(path) {
       void path
       return []

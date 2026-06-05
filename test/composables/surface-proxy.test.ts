@@ -548,6 +548,87 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
   })
 })
 
+describe('surface proxies — hasOwnProperty resolves to the real method (not a node call)', () => {
+  // Container nodes and leaf-views are non-callable, but `hasOwnProperty`
+  // is a universal Object method that tooling (Vue's reactivity) and
+  // consumers call against any object-like value. The surfaces hand back
+  // the real `Object.prototype.hasOwnProperty`, which routes through
+  // their own-key traps — so the result agrees with `Object.keys(...)`
+  // (containers) / the exposed FieldState keys (leaf-views) instead of
+  // throwing "not a function".
+  const schema = z.object({
+    email: z.string(),
+    address: z.object({ city: z.string() }),
+  })
+
+  // Direct `.hasOwnProperty(...)` is the consumer/tooling call pattern
+  // under test; the lint opt-out lives in this one helper.
+  const ownHas = (o: unknown, k: string): boolean =>
+    // eslint-disable-next-line no-prototype-builtins
+    (o as { hasOwnProperty(k: string): boolean }).hasOwnProperty(k)
+
+  it('container (errors): hasOwnProperty agrees with Object.keys', () => {
+    const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
+    form.setFieldErrors([
+      { path: ['email'], message: 'taken', formKey: form.key, code: 'api:validation' },
+    ])
+    expect(ownHas(form.errors, 'email')).toBe(true)
+    expect(ownHas(form.errors, 'not-a-field')).toBe(false)
+    expect(ownHas(form.errors, 'email')).toBe(Object.keys(form.errors).includes('email'))
+  })
+
+  it('container (fields): hasOwnProperty reflects the live keys', () => {
+    const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
+    expect(ownHas(form.fields, 'email')).toBe(true)
+    expect(ownHas(form.fields, 'address')).toBe(true)
+    expect(ownHas(form.fields, 'ghost')).toBe(false)
+  })
+
+  it('leaf-view: hasOwnProperty reflects the FieldState keys', () => {
+    const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
+    expect(ownHas(form.fields.email, 'value')).toBe(true)
+    expect(ownHas(form.fields.email, 'dirty')).toBe(true)
+    expect(ownHas(form.fields.email, 'not-a-fieldstate-key')).toBe(false)
+  })
+
+  it('a non-callable node still answers hasOwnProperty without throwing', () => {
+    const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
+    // `form.fields.address()` throws (container nodes are non-callable),
+    // but `.hasOwnProperty(...)` must still work as the real method.
+    expect(() => ownHas(form.fields.address, 'city')).not.toThrow()
+    expect(ownHas(form.fields.address, 'city')).toBe(true)
+    // The errors container enumerates live data keys (so `v-for` over
+    // errors works), so `city` is an own key even with no error there.
+    expect(ownHas(form.errors.address, 'city')).toBe(true)
+    expect(ownHas(form.errors.address, 'ghost')).toBe(false)
+  })
+
+  it('schema authority: a literal `hasOwnProperty` field descends to the schema leaf', () => {
+    const collisionSchema = z.object({
+      wrap: z.object({
+        hasOwnProperty: z.string(),
+        city: z.string(),
+      }),
+    })
+    const form = mount(collisionSchema, {
+      wrap: { hasOwnProperty: 'literal-field', city: 'NYC' },
+    })
+    // Schema authority: dot-access resolves to the FieldState leaf-view
+    // for the `hasOwnProperty` field, NOT the Object.prototype method.
+    // (The leaf-view is a non-callable object at the field's path; we
+    // assert on `path`, which is derived from the segments rather than
+    // the stored value — a field literally named `hasOwnProperty` trips
+    // a separate, pre-existing storage-layer collision that this test
+    // deliberately does not depend on.)
+    const node = form.fields.wrap.hasOwnProperty
+    expect(node).not.toBe(Object.prototype.hasOwnProperty)
+    expect(typeof node).toBe('object')
+    expect(node.path).toEqual(['wrap', 'hasOwnProperty'])
+    // The sibling field is unaffected.
+    expect(form.fields.wrap.city.value).toBe('NYC')
+  })
+})
+
 describe('form.fields — discriminated unions (DU)', () => {
   const schema = z.object({
     name: z.string(),
@@ -1037,8 +1118,11 @@ describe('surface materialisation — predictable representations + complex erro
     })
     const form = mount(schema, { notify: { channel: 'email', address: 'not-an-email' } })
 
-    // Trigger a schema error on the active variant.
-    form.validate('notify.address')
+    // Trigger a schema error on the active variant. Fire-and-forget
+    // validateAsync (no reactive watcher, so no outside-scope warning) keeps
+    // the original deferred timing: the variant switch below runs before this
+    // settles, exactly as the reactive validate() call did.
+    void form.validateAsync('notify.address')
 
     // After the variant switch, the schema error at notify.address
     // becomes inactive and the serialised tree drops it.

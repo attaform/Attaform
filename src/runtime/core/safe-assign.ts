@@ -33,29 +33,56 @@ export function safeAssign<T>(target: Record<string, T>, key: string, value: T):
 }
 
 /**
+ * A string key whose name is shadowed by a member inherited from
+ * `Object.prototype` (`__proto__`, `hasOwnProperty`, `toString`,
+ * `valueOf`, `constructor`, `isPrototypeOf`, `propertyIsEnumerable`,
+ * `toLocaleString`, the `__defineGetter__` / `__lookupGetter__`
+ * family). For these names — and ONLY these — `target[key]` falls
+ * through to the inherited member when no own slot exists, and
+ * `key in target` answers `true` for the inherited slot; both leak the
+ * prototype chain into data flow. (`hasOwnProperty` is additionally
+ * shimmed by Vue on every reactive / readonly proxy, so reading it off
+ * a tracked object returns Vue's instrumentation rather than the stored
+ * datum.) The own-property-safe read / existence primitives branch on
+ * exactly this predicate.
+ *
+ * `key in Object.prototype` is a membership test against a single
+ * constant object: `true` for every inherited member name, `false` for
+ * every ordinary data key — so the common path pays nothing.
+ */
+export function isShadowedKey(key: string): boolean {
+  return key in Object.prototype
+}
+
+/**
  * Own-property read that returns `undefined` for an absent key or for
  * a slot whose only source is the inherited prototype chain. Pairs
  * with `safeAssign` at every untrusted-key read site that's about to
  * descend into a subtree.
  *
- * The hazard this defends: `target[key]` for `key === '__proto__'`
- * invokes `Object.prototype`'s inherited `__proto__` getter and
- * returns `Object.prototype` itself when the target has no own
- * `__proto__` slot. Naive callers then treat that result as "the
- * value we have at this path" and either descend through it (writing
- * inherited properties into the descendant flow) or, worse, write
- * back at the same key — landing the next mutation on
- * `Object.prototype` directly.
+ * The hazard this defends, for any prototype-shadowed key name
+ * (`isShadowedKey`): `target[key]` resolves the inherited member when
+ * the target has no own slot — `__proto__` returns `Object.prototype`
+ * via the inherited getter, `hasOwnProperty` / `toString` / … return
+ * the inherited methods (and, through a Vue reactive proxy,
+ * `hasOwnProperty` returns Vue's instrumentation shim even WHEN an own
+ * data slot exists). Naive callers then treat that result as "the value
+ * at this path" and either descend through it or write it back. The
+ * own-descriptor read returns the stored own value (or `undefined` when
+ * the slot is purely inherited), and on a reactive proxy it forwards to
+ * the raw descriptor — sidestepping the shim.
  *
- * Reads at any other key fall through to `target[key]`; non-
- * `__proto__` inherited slots (`toString`, `constructor`, …) on a
- * fresh `{}` are non-enumerable and never inhabit a payload-key path
- * that's about to be descended into.
+ * Reads at any non-shadowed key fall through to `target[key]`, which on
+ * a reactive proxy keeps Vue's per-key dependency tracking intact.
  */
 export function safeOwnRead(target: Record<string, unknown>, key: string): unknown {
-  if (key === '__proto__') {
-    const desc = Object.getOwnPropertyDescriptor(target, '__proto__')
-    return desc?.value
+  if (isShadowedKey(key)) {
+    const desc = Object.getOwnPropertyDescriptor(target, key)
+    if (desc === undefined) return undefined
+    // Own data property → its stored value. Own accessor (never minted
+    // by the runtime's own writes, but a consumer could hand one in) →
+    // resolve through the target so the getter still runs.
+    return 'value' in desc ? desc.value : target[key]
   }
   return target[key]
 }

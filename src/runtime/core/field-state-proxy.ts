@@ -9,7 +9,7 @@ import {
 } from './field-state-api'
 import { getAtPath } from './path-walker'
 import type { Path, Segment } from './paths'
-import { isArrayPath, liveKeysAtPath } from './proxy-live-keys'
+import { isArrayPath, liveContainerHasKey, liveKeysAtPath } from './proxy-live-keys'
 import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
 
 /**
@@ -22,13 +22,13 @@ import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
  * surface-proxy.ts where `outer.dirty` becomes a leaf-VIEW proxy and
  * `.dirty` on it reads the FieldState's `dirty` boolean).
  *
- * Container paths do NOT inject these keys via dot-access —
- * `form.fields.address.dirty` (where `address` is a container with
- * no `dirty` field) descends to a sub-proxy at `address.dirty` so
- * schema fields literally named `dirty` at depth 2+ stay
- * reachable. The container aggregation is reached via call-form:
- * `form.fields('address').dirty` returns the disjunction over
- * descendants.
+ * Container paths do NOT inject these keys via dot-access. A schema
+ * field literally named `dirty` at depth 2+ stays reachable — it's a
+ * declared field, so `form.fields.address.dirty` descends to it — while
+ * a `dirty` the container neither declares nor currently holds reads
+ * `undefined` (truthful absence, no phantom). The container's own
+ * rolled-up state is the call-form: `form.fields('address').dirty`
+ * returns the disjunction over descendants.
  */
 const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>([
   'value',
@@ -47,6 +47,9 @@ const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>
   'errors',
   'validating',
   'valid',
+  'transforming',
+  'busy',
+  'transformError',
   'displayState',
   'showErrors',
   'showPending',
@@ -194,14 +197,25 @@ export function buildFieldStateProxy<F extends GenericForm>(
     terminalCache.set(cacheKey, proxy)
     return proxy
   }
+  const surfaceSchema = state.schema as unknown as Parameters<typeof buildSurfaceProxy>[0]['schema']
   return buildSurfaceProxy<ReturnType<typeof getFieldStateAt>>({
-    schema: state.schema as unknown as Parameters<typeof buildSurfaceProxy>[0]['schema'],
+    schema: surfaceSchema,
     resolveLeaf: (path) => getFieldStateAt(path as Parameters<typeof getFieldStateAt>[0]),
     leafKeys: FIELD_STATE_KEYS,
     readLeafKey: (computed, key) => (computed.value as Record<string, unknown>)[key],
     materializeContainer: (segments) => materializeFields(state, segments, snapshotFieldStateAt),
-    resolveCallTarget: (path) => fieldStateTerminalAt(path),
+    // `form.fields(path)` resolves a FieldState for any path the SCHEMA
+    // declares — a leaf, a container, an inactive discriminated-union
+    // variant key, or an out-of-bounds array index (the element schema
+    // admits any index). A path the schema doesn't have is a typo, not a
+    // field, so it reads `undefined` rather than a phantom stub. The
+    // empty path (`form.fields()`) is the root object, always valid.
+    resolveCallTarget: (path) =>
+      surfaceSchema.getSlimPrimitiveTypesAtPath(path).size > 0
+        ? fieldStateTerminalAt(path)
+        : undefined,
     containerOwnKeys: (segments) => liveKeysAtPath(state, segments),
+    containerHasOwnKey: (segments, key) => liveContainerHasKey(state, segments, key),
     isArrayContainer: (segments) => isArrayPath(state, segments),
   })
 }

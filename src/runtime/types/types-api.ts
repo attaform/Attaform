@@ -20,9 +20,9 @@ import type {
   LiftedValueShape,
   NestedReadType,
   NestedType,
+  PresentValueOfUnion,
   RecordPath,
   RecordValue,
-  ValueOfUnion,
   WriteShape,
 } from './types-core'
 
@@ -327,6 +327,29 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * `optional(z.tuple([...]))` reports its tuple length.
    */
   arrayShapeAtPath(path: Path): number | null | undefined
+  /**
+   * Whether the schema at `path` is a FIXED object: a closed set of
+   * declared keys (`z.object`), as opposed to an open or union container
+   * (array / record / map / set / union / discriminated union) whose
+   * element schema matches any segment.
+   *
+   * The surface proxies (`form.fields` / `form.errors`) use this to
+   * resolve a collision: a fixed object's declared keys are known ahead
+   * of any data, so a key the schema owns descends to a real terminal
+   * even when the live value hasn't been populated yet (a declared-but-
+   * absent `optional` field stays registrable). An open container can't
+   * make that promise — its element schema accepts ANY segment, so the
+   * proxy must fall back to the keys the data currently holds and read
+   * a genuinely-absent key (out-of-bounds index, missing record key,
+   * inactive variant key) as `undefined` rather than a phantom node.
+   *
+   * The empty path (the root form) is always a fixed object. Wrappers
+   * (optional / nullable / default / readonly / catch / pipe / lazy)
+   * are peeled before the kind check, so `z.object({...}).optional()`
+   * still reports `true`. A path the schema doesn't declare reports
+   * `false`.
+   */
+  isFixedObjectAtPath(path: Path): boolean
   /**
    * Return every sub-schema that could resolve at the given structured
    * path. Multiple results are only expected for discriminated / union
@@ -1708,6 +1731,11 @@ export type DisplayMachine = {
  *   not `field.validating`, is the timing anchor: the elapsed wait is
  *   `now - validatingSince`. Pinned to the start of the streak, so
  *   overlapping sub-runs do not reset it.
+ * - `transformingSince` — the same anchor for an in-flight async
+ *   `register` transform, or `null` when none is running. Folds into the
+ *   one in-flight clock the reducer already runs for validation, so a
+ *   deferred transform rides the anti-flash spinner timing identically.
+ *   `null` for a sync-only chain, which never defers.
  * - `now` — the engine's clock, injected so the reducer stays pure and
  *   deterministic (and frozen to `0` under SSR, where there is no clock).
  */
@@ -1715,6 +1743,7 @@ export type DisplayCtx = {
   readonly field: Omit<FieldState, FieldStateDerivedKey>
   readonly formMeta: Omit<FormMeta, FieldStateDerivedKey>
   readonly validatingSince: number | null
+  readonly transformingSince: number | null
   readonly now: number
 }
 
@@ -1851,7 +1880,7 @@ export type RegisterFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPa
 >
 
 /**
- * Sync transformation applied to a field's value as user input flows
+ * A transformation applied to a field's value as user input flows
  * from DOM through the directive's assigner. Composes left-to-right
  * via the `transforms: [...]` array on `register()`.
  *
@@ -1871,19 +1900,33 @@ export type RegisterFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPa
  * doesn't accept gets rejected at write time with a standard
  * diagnostic.
  *
- * Transforms must be sync. A `Promise` return is treated as a
- * pipeline failure: the write is aborted and a console.error is
- * logged. Use async field validation for canonicalize-before-write
- * patterns; use sync transforms for fire-and-forget side effects
- * (`void doIt(value); return value`).
+ * Transforms may be sync or async. The chain stays fully synchronous —
+ * the value reaches form state in the same tick — until a transform
+ * returns a thenable; from there the write defers, the field reads
+ * `busy` / `transforming` while the chain settles, and the resolved
+ * value commits to canonical state once it lands. Rapid edits discard
+ * all but the latest (latest-request-wins), and a rejection surfaces on
+ * `field.transformError` rather than throwing or logging:
  *
- * Throws are caught and aborted: attaform wraps each transform call in
- * try/catch so a buggy or defensive-throw transform doesn't crash
- * the host app. On throw the pipeline aborts (subsequent transforms
- * don't run), nothing is written to form state, and the assigner
- * returns `false`.
+ * ```ts
+ * export const normalize: RegisterTransform = async (v, ctx) => {
+ *   const res = await fetch(`/normalize?q=${v}`, { signal: ctx?.signal })
+ *   return res.text()
+ * }
+ * ```
+ *
+ * `ctx.signal` is an `AbortSignal` aborted when the run is superseded by
+ * a newer edit, or torn down by `reset()` / unmount — thread it into
+ * cancellable I/O so a stale request is dropped. A sync chain never
+ * touches it and allocates no controller.
+ *
+ * A synchronous throw is caught and aborts the pipeline: subsequent
+ * transforms don't run, nothing is written to form state, and the
+ * assigner returns `false` — so a buggy or defensive-throw transform
+ * never crashes the host app. (An async rejection is the
+ * `transformError` channel above, not a throw into the host app.)
  */
-export type RegisterTransform = (value: unknown) => unknown
+export type RegisterTransform = (value: unknown, ctx?: TransformContext) => unknown
 
 /**
  * Runtime type for a slim primitive kind. Used to narrow the
@@ -2037,9 +2080,11 @@ export type RegisterOptions = {
    * form.setValue('email', slugify(lowercase(rawValue)))
    * ```
    *
-   * Transforms must be sync. Throws and Promise returns abort the
-   * write and log to `console.error` (see `RegisterTransform` for
-   * the failure-mode contract).
+   * Transforms may be sync or async: the chain stays synchronous until
+   * one returns a thenable, then the write defers and commits the
+   * resolved value (the field reads `busy` meanwhile). A sync throw
+   * aborts the write; an async rejection lands on `field.transformError`
+   * (see `RegisterTransform` for the full contract).
    *
    * For patterns that need to inspect the `RegisterValue` itself
    * (rejection-with-side-effect, redirection to other fields, custom
@@ -2385,8 +2430,78 @@ export type RegisterValue<Value = unknown> = Readonly<{
  *
  * @internal
  */
+/**
+ * Mutable holder for an async-transform run's `AbortController`, shared
+ * between the directive — which lazily creates the controller the first
+ * time a transform reaches for `ctx.signal` — and the store, which
+ * aborts it when the run is superseded, cancelled, or reset.
+ * `controller` stays `null` until `ctx.signal` is actually touched, so a
+ * purely-sync chain never allocates one. `aborted` latches `true` the
+ * moment the store tears the run down, so a signal accessed AFTER
+ * teardown still resolves to an already-aborted signal rather than a
+ * live one.
+ */
+export type TransformAbortHolder = { controller: AbortController | null; aborted: boolean }
+
+/**
+ * The second argument handed to every transform in a `transforms: [...]`
+ * chain. `signal` is an `AbortSignal` that aborts when the run is
+ * superseded by a newer input, or torn down by a reset / cancel — so a
+ * transform doing cancellable I/O (a `fetch`, a worker round-trip) can
+ * pass `ctx.signal` through and bail the moment its result is no longer
+ * wanted.
+ *
+ * The signal is lazy: the backing `AbortController` is allocated only on
+ * first access, so a purely-synchronous chain that never reaches for
+ * `ctx.signal` allocates nothing. It is meaningful for async transforms;
+ * a sync chain has no in-flight I/O to cancel, so its `signal` simply
+ * never aborts.
+ */
+export type TransformContext = { readonly signal: AbortSignal }
+
 export type InternalRegisterValue<Value = unknown> = RegisterValue<Value> & {
   lastTypedForm: Ref<string | null>
+  /**
+   * Open an async-transform run at this path: bump the path's run
+   * token, increment the in-flight counters (so `field.transforming` /
+   * `field.busy` light up), stamp `transformingSince`, clear any prior
+   * `transformError`, and register `holder` so a later supersede /
+   * cancel / reset can abort the run's signal. Returns the run token —
+   * pass it back to `isCurrentTransform` / `endTransform`. Store-backed;
+   * the directive owns the orchestration (see `directive.ts`).
+   */
+  beginTransform: (holder: TransformAbortHolder) => number
+  /**
+   * `true` while `token` is still the live run at this path — `false`
+   * once a newer input superseded it or a reset / cancel tore it down.
+   * The deferred orchestrator checks this after `await` to decide
+   * commit-vs-discard (latest-request-wins).
+   */
+  isCurrentTransform: (token: number) => boolean
+  /**
+   * Close the run identified by `token`: release the in-flight counters
+   * and flush any `settleTransforms` waiters that just went idle.
+   * Idempotent on the counters when the run was already released by a
+   * supersede / cancel, so the orchestrator can call it unconditionally
+   * in both the resolve and reject paths.
+   */
+  endTransform: (token: number) => void
+  /**
+   * Record a per-field normalization failure (a rejected async
+   * transform, or a resolved value the slim-primitive gate refused).
+   * Surfaces as `field.transformError`; a channel separate from
+   * validation `errors`.
+   */
+  setTransformError: (err: Error) => void
+  /**
+   * `true` while an async transform run is in flight at this path. Set
+   * synchronously by `beginTransform` (the deferred orchestrator opens
+   * the run before the listener's post-write force-sync block runs), so
+   * the directive's force-sync blocks read it to skip snapping the DOM
+   * back to stale storage while a deferred commit is pending — the
+   * resolved value is painted in once the run lands instead.
+   */
+  readonly transforming: boolean
 }
 
 /**
@@ -2452,6 +2567,15 @@ export type CustomRegisterDirective<T, Modifiers extends string = string> = Obje
      * from the user's input.
      */
     _lastAppliedModel?: unknown
+    /**
+     * Variant-specific "repaint the DOM from current storage" closure,
+     * stashed by each input directive's `created` hook (it mirrors that
+     * variant's post-write force-sync block). The deferred async-transform
+     * orchestrator calls it once the resolved value has committed, so a
+     * bare `<input v-register>` with no other reactive reader still paints
+     * the normalized result without depending on a parent re-render.
+     */
+    _syncFromStorage?: () => void
     [S: symbol]: CustomDirectiveRegisterAssignerFn
   },
   RegisterValue | undefined,
@@ -2824,8 +2948,38 @@ export type FieldState<Value = unknown> = {
    * is in flight (`errors.length === 0 && !validating`). Confidence
    * that "we've checked, and we have no problems right now." Use for
    * green-checkmark / `aria-invalid` UX.
+   *
+   * Validation-only: an in-flight async transform does NOT clamp
+   * `valid` to `false`. `valid` is the verdict on the last committed
+   * value; `busy` is the union "work in flight" signal.
    */
   readonly valid: boolean
+  /**
+   * `true` while an async `register` transform is in flight at this
+   * path: a transform returned a thenable and the resolved value has
+   * not yet committed to form state. Always `false` for a sync-only
+   * chain, which reaches form state in the same tick with no deferral.
+   * Containers roll it up as a disjunction (any descendant transforming).
+   */
+  readonly transforming: boolean
+  /**
+   * `transforming || validating` — the union "work is in flight at this
+   * path" signal. Drives `aria-busy` through `displayState` on a
+   * revealed field, and is the surface to bind for a busy indicator on a
+   * field not yet revealed (where `displayState` stays idle by the
+   * reveal gate). Containers roll it up as a disjunction.
+   */
+  readonly busy: boolean
+  /**
+   * The `Error` from the most recent async transform that rejected at
+   * this path, else `null`. A per-field normalization-failure channel
+   * separate from validation `errors`: a transform that rejects (a
+   * failed fetch, a parse error) surfaces here instead of crashing the
+   * host app or logging. Cleared when a fresh transform starts or a
+   * write supersedes it. Leaf-only — containers do not roll it up (it is
+   * always `null` at a container path).
+   */
+  readonly transformError: Error | null
   /**
    * The single display-state verdict at this path: `'idle'`,
    * `'pending'`, `'error'`, or `'success'`. The source of truth the
@@ -3106,27 +3260,67 @@ export type LeafWalker<
 > = [T] extends [string | number | boolean | bigint | symbol | null | undefined | Date | File]
   ? LeafSchemeFor<T>[Kind]
   : [T] extends [ReadonlyArray<infer U>]
-    ? { readonly [K: number]: LeafWalker<U, Kind, StripOptional> } & ContainerSelfErrorsSlot<
-        T,
-        Kind
-      >
+    ? {
+        // Array element: an index signature, so `noUncheckedIndexedAccess`
+        // adds the `| undefined` on a direct index read (`form.fields
+        // .tags[99]`, matching the runtime's truthful gate at an
+        // out-of-bounds index) while `v-for` iteration over present
+        // elements stays guard-free.
+        readonly [K: number]: LeafWalker<U, Kind, StripOptional>
+      } & ContainerSelfErrorsSlot<T, Kind>
     : [T] extends [object]
-      ? [IsUnion<T>] extends [true]
-        ? StripOptional extends true
-          ? {
-              readonly [K in KeyofUnion<T>]-?: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
-          : {
-              readonly [K in KeyofUnion<T>]: LeafWalker<ValueOfUnion<T, K>, Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
-        : StripOptional extends true
-          ? {
-              readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
-          : {
-              readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
-            } & ContainerSelfErrorsSlot<T, Kind>
+      ? string extends keyof T
+        ? {
+            // Record value: the homomorphic map (`[K in keyof T]`) keeps a
+            // type that merely INTERSECTS a record (`{ a: X } & Record<
+            // string, Y>`, e.g. a `.passthrough()` object or a widened
+            // test form) addressable by its declared keys rather than
+            // collapsing to a bare index signature. A pure record reduces
+            // to a string index signature, so `noUncheckedIndexedAccess`
+            // adds the `| undefined` on a missing-key read (matching the
+            // runtime's truthful gate) while `v-for` stays guard-free.
+            readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
+          } & ContainerSelfErrorsSlot<T, Kind>
+        : [IsUnion<T>] extends [true]
+          ? StripOptional extends true
+            ? {
+                readonly [K in KeyofUnion<T>]-?: DiscriminatedLeaf<T, K, Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
+            : {
+                readonly [K in KeyofUnion<T>]: DiscriminatedLeaf<T, K, Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
+          : StripOptional extends true
+            ? {
+                readonly [K in keyof T]-?: LeafWalker<T[K], Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
+            : {
+                readonly [K in keyof T]: LeafWalker<T[K], Kind, StripOptional>
+              } & ContainerSelfErrorsSlot<T, Kind>
       : LeafSchemeFor<T>[Kind]
+
+/**
+ * One key of a discriminated-union container in `LeafWalker`. A key
+ * present (and required) in EVERY variant is universal — its node is
+ * always reachable. A variant-only or optional-in-some key is a dynamic
+ * hop: its node is `undefined` when its variant isn't active, so it
+ * carries node-optionality (`LeafWalker<…> | undefined`), NOT value-
+ * optionality (`LeafWalker<… | undefined>`). `PresentValueOfUnion`
+ * strips the synthetic absent-variant `undefined` so the present node
+ * resolves to the precise value type; a genuine `undefined` from an
+ * `optional` declaration survives.
+ *
+ * Universality is `[T] extends [Record<K, unknown>]` — true iff `T`
+ * (the whole union) satisfies "has K, required", which holds only when
+ * every variant declares K as a required property.
+ */
+type DiscriminatedLeaf<
+  T,
+  K extends PropertyKey,
+  Kind extends keyof LeafSchemeFor<unknown>,
+  StripOptional extends boolean,
+> = [T] extends [Record<K, unknown>]
+  ? LeafWalker<PresentValueOfUnion<T, K>, Kind, StripOptional>
+  : LeafWalker<PresentValueOfUnion<T, K>, Kind, StripOptional> | undefined
 
 /**
  * Intersection augmenting every container in the `form.errors` walker
@@ -3145,6 +3339,27 @@ type ContainerSelfErrorsSlot<T, Kind> = Kind extends 'errors'
   : unknown
 
 export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
+
+/**
+ * Result of the `form.fields(path)` string call-form. A path the schema
+ * declares resolves to its `FieldState` — a leaf's value type, or a
+ * container's rolled-up aggregate (every FieldState property exists
+ * regardless of the value type). A path the schema lacks resolves to
+ * `undefined`, because a typo is not a field and the runtime hands back
+ * `undefined` rather than a phantom stub. A non-literal `string` could
+ * be either, so it widens to `FieldState<unknown> | undefined`.
+ *
+ * Named (rather than inlined into the `FieldStateMap` call signature) so
+ * the conditional is one cached type — keeps two structurally-identical
+ * `FieldStateMap` instantiations (e.g. the unified `attaform/zod` return
+ * and `UseFormReturnV4`) relatable instead of collapsing to a nominal
+ * "two different types with this name" mismatch.
+ */
+export type FieldCallResult<Form, P extends string> = [P] extends [FlatPath<Form>]
+  ? FieldState<NestedType<Form, P>>
+  : string extends P
+    ? FieldState<unknown> | undefined
+    : undefined
 
 /**
  * Type of `form.fields` — leaf-aware drillable callable Proxy. At
@@ -3166,18 +3381,14 @@ export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
  * string as a single key. Use chained dot/bracket or the callable
  * form.
  */
-export type FieldStateMap<Form extends GenericForm> = ([IsUnion<Form>] extends [true]
-  ? {
-      readonly [K in KeyofUnion<Form>]-?: FieldStateMapEntry<ValueOfUnion<Form, K>>
-    }
-  : { readonly [K in keyof Form]-?: FieldStateMapEntry<Form[K]> }) & {
+export type FieldStateMap<Form extends GenericForm> = LeafWalker<Form, 'field'> & {
   /**
-   * Dotted-string fallback for dynamic paths. Returns
-   * `FieldState<unknown>` — the runtime always lands on a FieldState
-   * terminal at any depth (leaf or container). Cast to
-   * `FieldState<TypedValue>` when the caller knows the leaf type.
+   * String-path form (dynamic / programmatic). See {@link FieldCallResult}:
+   * a path the schema declares resolves to its precise `FieldState`, a
+   * path it lacks to `undefined`, and a non-literal `string` to
+   * `FieldState<unknown> | undefined`.
    */
-  (path: string): FieldState<unknown>
+  <P extends string>(path: P): FieldCallResult<Form, P>
   /**
    * Tuple-segment form. Returns the typed `FieldStateMapEntry` for
    * the resolved path when the tuple resolves to a known path.
@@ -3190,10 +3401,10 @@ export type FieldStateMap<Form extends GenericForm> = ([IsUnion<Form>] extends [
   /**
    * Dynamic-array fallback for callers passing `Path`-typed (runtime)
    * segment arrays — e.g. forwarding `RegisterValue.segments` to
-   * resolve a field view. Returns `FieldState<unknown>`; cast when
-   * the value type is known.
+   * resolve a field view. The path may not resolve, so the result
+   * widens with `| undefined`; cast when the value type is known.
    */
-  (segments: ReadonlyArray<string | number>): FieldState<unknown>
+  (segments: ReadonlyArray<string | number>): FieldState<unknown> | undefined
   /**
    * No-arg call returns the root FieldState — same as
    * `form.fields([])`. Aggregates over the whole form (one
@@ -3545,7 +3756,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
  *
  * - `GetValueFormType` — the **output / parsed shape**
  *   (`z.output<Schema>`). Used by `handleSubmit`'s `onSubmit`
- *   callback and by `form.process()`'s success payload. This is the
+ *   callback and by `form.parse()`'s success payload. This is the
  *   shape after refinements have fired and transforms have run.
  *
  * - `ReadForm` — the **read / storage shape**. Used by `values`,
@@ -3650,7 +3861,7 @@ export type UseFormReturnType<
    * `z.input<Schema>` shape — `.transform()`s have NOT run, so for
    * a schema like `z.string().transform(v => v.length > 10)` the
    * value reads as `string`, not `boolean`. Use `handleSubmit` or
-   * `form.process()` when you need the post-transform output shape.
+   * `form.parse()` when you need the post-transform output shape.
    */
   values: ValuesSurface<WriteShape<ReadForm>>
 
@@ -3793,6 +4004,26 @@ export type UseFormReturnType<
    */
   validateAsync: (path?: FlatPath<Form>) => Promise<ValidationResponseWithoutValue<Form>>
   /**
+   * Resolve once every in-flight async `register({ transforms })` run
+   * has settled — globally, or (with `path`) only at-or-under that path.
+   * Resolve-never-reject: a transform that throws still settles the
+   * field (its failure lands on `field.transformError`), so the returned
+   * promise always resolves.
+   *
+   * `handleSubmit` awaits this internally before parsing, so a submit
+   * fired the instant after an async transform still validates the
+   * resolved value. Reach for it directly when you need the same
+   * guarantee outside submit — e.g. before reading `form.values` in an
+   * imperative flow or a test:
+   *
+   * ```ts
+   * input.value = '  a@b.com '
+   * await form.settleTransforms('email')
+   * // form.values.email is now the normalized value
+   * ```
+   */
+  settleTransforms: (path?: FlatPath<Form>) => Promise<void>
+  /**
    * Imperative one-shot parse. Same pipeline as `validateAsync` —
    * runs refinements, applies `.transform()`s, composes blank-required
    * errors — but RETAINS the parsed data instead of stripping it.
@@ -3801,11 +4032,11 @@ export type UseFormReturnType<
    * preprocess normalization applied but `.transform()` deferred. For
    * schemas where the input type differs from the output type (e.g.,
    * `z.string().transform(v => v.length > 10)`), `form.values.X` is
-   * the input shape and `(await form.process()).data?.X` is the
+   * the input shape and `(await form.parse()).data?.X` is the
    * output shape.
    *
    * ```ts
-   * const result = await form.process()
+   * const result = await form.parse()
    * if (result.success) {
    *   // result.data matches z.output<typeof schema>
    * } else {
@@ -3813,11 +4044,16 @@ export type UseFormReturnType<
    * }
    * ```
    *
-   * Pass a path to parse a subtree only. Async because refinements may
-   * be async. `meta.validating` flips `true` while the promise is in
-   * flight (shared with validateAsync).
+   * Always async, and there is no synchronous variant by design: a
+   * schema can carry async refinements or transforms, so a sync parse
+   * would silently miss them the moment one is added. One always-
+   * awaited `parse` closes that category of bug entirely. The returned
+   * promise never rejects (a thrown adapter lands as a `success: false`
+   * response). Pass a path to parse a subtree only. `meta.validating`
+   * flips `true` while the promise is in flight (shared with
+   * validateAsync).
    */
-  process: (path?: FlatPath<Form>) => Promise<ValidationResponse<GetValueFormType>>
+  parse: (path?: FlatPath<Form>) => Promise<ValidationResponse<GetValueFormType>>
   /**
    * Bind a path to a native input via `v-register`. Returns a
    * `RegisterValue` carrying the live ref and event handlers the

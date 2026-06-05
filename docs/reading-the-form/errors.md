@@ -38,7 +38,7 @@ form.errors.email[0]?.message // 'Enter a valid email' | undefined
 form.errors.email.length // 0 when valid
 ```
 
-A leaf read always returns an array. Static object leaves and record keys resolve to `readonly ValidationError[]`; reading a numeric index on an array (`form.errors.todos[3]?.title`) or a field that only exists on an inactive discriminated-union variant carries `| undefined`, because the sub-proxy at that index / inactive variant is itself optional.
+A static object leaf always returns an array, `readonly ValidationError[]`, empty when valid. Reads past a dynamic boundary carry `| undefined`, because the node there may be absent: a numeric array index (`form.errors.todos[3]?.title`), a record key (`form.errors.byId.missing`), or a field that only exists on an inactive discriminated-union variant. That `| undefined` is honest. Dot and index access is pure navigation, so a key the schema doesn't declare and the data doesn't hold reads `undefined`, never a stand-in proxy, and a truthy check agrees with the runtime. The one exception is a server error parked at a non-schema key: the error stores count as holding it, so it stays reachable and its message lands on the [`''` container-self sentinel](#the-sentinel-container-self-errors) (`form.errors.ghost['']`).
 
 The first error's `.message` is what most templates render:
 

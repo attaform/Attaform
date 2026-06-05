@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { nextTick, type Ref } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, nextTick, type EffectScope, type Ref } from 'vue'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { SubmitErrorHandlerError } from '../../src/runtime/core/errors'
 import type { Path } from '../../src/runtime/core/paths'
@@ -23,6 +23,20 @@ async function waitUntilSettled<F>(r: Ref<ReactiveValidationStatus<F>>): Promise
     await nextTick()
   }
   throw new Error('validate() ref did not settle within 16 microtasks')
+}
+
+/**
+ * Run `fn` inside an owned effect scope and return its result. `validate()`
+ * registers a reactive watcher; running it here ties that watcher to the
+ * scope (disposed on `scope.stop()`) instead of leaking it and tripping the
+ * outside-scope dev warning. `EffectScope.run` returns `undefined` only for an
+ * already-stopped scope, which never happens for a fresh one — narrow it away
+ * rather than asserting non-null.
+ */
+function runScoped<T>(scope: EffectScope, fn: () => T): T {
+  const out = scope.run(fn)
+  if (out === undefined) throw new Error('effect scope was already stopped')
+  return out
 }
 
 type Signup = { email: string; password: string }
@@ -56,10 +70,22 @@ describe('buildProcessForm', () => {
   }
 
   describe('validate (as a reactive Ref)', () => {
+    // validate()'s watcher is owned by this scope and disposed after each
+    // test, so these reactive-ref characterizations never leak a watcher or
+    // emit the outside-scope dev warning (the warning itself is covered
+    // separately below).
+    let scope: EffectScope
+    beforeEach(() => {
+      scope = effectScope()
+    })
+    afterEach(() => {
+      scope.stop()
+    })
+
     it('starts pending and settles to success when schema passes', async () => {
       const state = alwaysValid()
       const { validate } = buildProcessForm(state, 'test:inst')
-      const r = validate()
+      const r = runScoped(scope, validate)
       // Initial synchronous read — the async parse hasn't settled yet.
       expect(r.value.pending).toBe(true)
       // Await the microtask pump so the Promise returned by the fake
@@ -74,7 +100,7 @@ describe('buildProcessForm', () => {
     it('settles to failure with errors when schema rejects', async () => {
       const state = alwaysInvalid()
       const { validate } = buildProcessForm(state, 'test:inst')
-      const r = validate()
+      const r = runScoped(scope, validate)
       await waitUntilSettled(r)
       expect(r.value.pending).toBe(false)
       if (r.value.pending) throw new Error('unreachable')
@@ -93,7 +119,7 @@ describe('buildProcessForm', () => {
       const state = alwaysValid()
       const { validate } = buildProcessForm(state, 'test:inst')
       expect(state.activeValidations.value).toBe(0)
-      const r = validate()
+      const r = runScoped(scope, validate)
       // The watchEffect defers the counter bump to a microtask (so the
       // write doesn't re-trigger the effect). Drain one microtask,
       // then the counter must be exactly 1 while the parse is in flight —
@@ -165,11 +191,11 @@ describe('buildProcessForm', () => {
     })
   })
 
-  describe('process', () => {
+  describe('parse', () => {
     it('resolves with the parsed data on success', async () => {
       const state = alwaysValid()
-      const { process } = buildProcessForm(state, 'test:inst')
-      const response = await process()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const response = await parse()
       expect(response.success).toBe(true)
       if (response.success) {
         expect(response.data).toEqual({ email: 'a@b', password: 'secret1!' })
@@ -178,8 +204,8 @@ describe('buildProcessForm', () => {
 
     it('resolves with a failure response when the schema rejects (errors + no data)', async () => {
       const state = alwaysInvalid()
-      const { process } = buildProcessForm(state, 'test:inst')
-      const response = await process()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const response = await parse()
       expect(response.success).toBe(false)
       expect(response.errors).toEqual([
         {
@@ -192,23 +218,23 @@ describe('buildProcessForm', () => {
     })
 
     it('translates an adapter throw into an AdapterThrew failure response (does NOT reject)', async () => {
-      // Symmetric with validateAsync's adapter-throw test. process()
+      // Symmetric with validateAsync's adapter-throw test. parse()
       // must also defend against bad adapters — a throwing adapter
       // can't be allowed to wreck consumer await chains, especially
-      // when process() is invoked imperatively from UI handlers.
+      // when parse() is invoked imperatively from UI handlers.
       const throwingValidator = (_data: unknown, _path: Path | undefined): never => {
-        throw new Error('process adapter boom')
+        throw new Error('parse adapter boom')
       }
       const state = createFormStore<Signup>({
         formKey: 'pf',
         schema: fakeSchema<Signup>({ email: '', password: '' }, throwingValidator),
       })
-      const { process } = buildProcessForm(state, 'test:inst')
+      const { parse } = buildProcessForm(state, 'test:inst')
 
-      const response = await process()
+      const response = await parse()
       expect(response.success).toBe(false)
       expect(response.errors?.[0]?.code).toBe('atta:adapter-threw')
-      expect(response.errors?.[0]?.message).toContain('process adapter boom')
+      expect(response.errors?.[0]?.message).toContain('parse adapter boom')
       // data field present on the union but undefined for adapter-throw shape.
       expect(response.data).toBeUndefined()
       // Counter still drains cleanly.
@@ -217,8 +243,8 @@ describe('buildProcessForm', () => {
 
     it('decrements activeValidations back to 0 on completion', async () => {
       const state = alwaysValid()
-      const { process } = buildProcessForm(state, 'test:inst')
-      const pending = process()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const pending = parse()
       expect(state.activeValidations.value).toBe(1)
       await pending
       expect(state.activeValidations.value).toBe(0)

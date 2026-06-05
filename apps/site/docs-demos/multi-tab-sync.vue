@@ -1,7 +1,6 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
-  import { ref, onMounted } from 'vue'
 
   const form = useForm({
     schema: z.object({
@@ -12,27 +11,11 @@
     key: 'docs-demo-multi-tab-sync',
     multiTab: true,
   })
-
-  // The standalone playground renders this demo inside a sandboxed
-  // <iframe>, where cross-tab sync can't establish. Detect the embed so
-  // the instructions point readers at the docs page (top-level, where
-  // sync works) rather than asking them to duplicate a tab that won't
-  // converge.
-  const embedded = ref(false)
-  onMounted(() => {
-    embedded.value = window.self !== window.top
-  })
 </script>
 
 <template>
   <form @submit.prevent>
-    <p v-if="embedded" class="hint open">
-      This standalone playground runs in a sandboxed frame, so cross-tab sync stays local to it.
-      Open the <code>multi-tab-sync</code> demo on the docs page in two browser tabs to watch them
-      converge. The form still opts in here with <code>multiTab: true</code> on a keyed
-      <code>useForm</code>.
-    </p>
-    <p v-else class="hint open">
+    <p class="hint open">
       Open this page in a <strong>second tab</strong> (right-click the title and pick
       &quot;Duplicate&quot;), then type in either one. The other tab converges within a microtask.
       The demo opts in with <code>multiTab: true</code> on a keyed <code>useForm</code>; the rest is

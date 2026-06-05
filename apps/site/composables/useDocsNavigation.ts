@@ -187,6 +187,20 @@ export const docsLinksFlat: ReadonlyArray<DocsLink> = docsNavigation.flatMap((se
   section.links.filter(isDocsLink)
 )
 
+// Normalize a route path before matching it against a nav `to`. Docs
+// pages render to `foo/index.html`, so the canonical URL (and every
+// Pagefind result link) carries a trailing slash (`/docs/foo/`), while
+// the `to` values above do not (`/docs/foo`). A bare `=== route.path`
+// then misses the moment a reader arrives via search or a shared
+// canonical link: the breadcrumb collapses to "Docs", the sidebar
+// deselects, and the pager loses prev/next. Dropping the trailing slash
+// on both sides (root "/" preserved) makes the match resilient to
+// however the reader reached the page. Exported so DocsSidebar derives
+// its active state through the same rule.
+export function normalizePath(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, '') : path
+}
+
 // Returns the prev/next link for the current route. Composables that
 // rely on `useRoute` only work inside Nuxt's reactivity scope — so
 // pager components import and call this directly. Returns nulls at
@@ -194,7 +208,8 @@ export const docsLinksFlat: ReadonlyArray<DocsLink> = docsNavigation.flatMap((se
 export function useDocsPagination() {
   const route = useRoute()
   return computed(() => {
-    const idx = docsLinksFlat.findIndex((l) => l.to === route.path)
+    const current = normalizePath(route.path)
+    const idx = docsLinksFlat.findIndex((l) => normalizePath(l.to) === current)
     return {
       prev: idx > 0 ? docsLinksFlat[idx - 1] : null,
       next: idx >= 0 && idx < docsLinksFlat.length - 1 ? docsLinksFlat[idx + 1] : null,
@@ -212,9 +227,10 @@ export function useDocsBreadcrumb() {
   const route = useRoute()
   return computed(() => {
     const segments: Array<{ label: string; to?: string }> = [{ label: 'Docs', to: '/docs' }]
+    const current = normalizePath(route.path)
     for (const section of docsNavigation) {
       const link = section.links.find(
-        (item): item is DocsLink => isDocsLink(item) && item.to === route.path
+        (item): item is DocsLink => isDocsLink(item) && normalizePath(item.to) === current
       )
       if (link) {
         segments.push({ label: section.heading })

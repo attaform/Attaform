@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm, withMeta } from 'attaform/zod'
   import { z } from 'zod'
+  import { ref, onMounted } from 'vue'
 
   const schema = z.object({
     email: withMeta(
@@ -21,9 +22,21 @@
     toast.success(`Submitted as ${values.email}`, { description: values })
   })
 
+  // toLocaleTimeString() is locale/timezone dependent and updatedAt is
+  // wall-clock state, so the time can't match between the SSR pass and
+  // the client — hold a placeholder until mounted to keep hydration in
+  // agreement, then fill in the live time on the client.
+  const mounted = ref(false)
+  onMounted(() => {
+    mounted.value = true
+  })
+
   const formatPath = (path: ReadonlyArray<string | number>) => JSON.stringify(path)
-  const formatTime = (iso: string | null) =>
-    iso === null ? 'null' : new Date(iso).toLocaleTimeString()
+  const formatTime = (iso: string | null) => {
+    if (iso === null) return 'null'
+    if (!mounted.value) return '…'
+    return new Date(iso).toLocaleTimeString()
+  }
 </script>
 
 <template>

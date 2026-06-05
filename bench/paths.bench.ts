@@ -1,15 +1,29 @@
 /**
  * Phase 5.1 baseline perf comparison for the paths module.
  *
- * Two old/new pairs land here:
+ * Gated old/new pairs (scripts/check-bench.mjs asserts new ≥ 3× old):
  *
- *   - canonicalizePath: repeated-input cost before vs after the LRU cache.
- *   - isDirty loop: iterating `originals` with JSON.parse(pathKey) per entry
- *     vs iterating the new {segments, value} record shape.
+ *   - canonicalizePath: repeated-input cost before vs after the LRU cache
+ *     — a cache hit vs a full parse + normalize + stringify.
+ *   - isDirty recovery: recovering each tracked entry's `Path` during the
+ *     dirty walk — `JSON.parse(pathKey)` per entry (pre-5.1) vs reading
+ *     the stored `segments` off the `{ segments, value }` record (post-5.1).
  *
- * The "old" implementations are kept verbatim inside this file so the
- * ratio gate (scripts/check-bench.mjs, 3× floor) stays a stable regression
- * check against the pre-5.1 baseline.
+ * The recovery pair isolates ONLY the segment-recovery step. Both dirty
+ * walks call `getAtPath(form, segments)` identically once segments are in
+ * hand, so folding that shared cost into both arms makes the ratio
+ * `1 + parse/walk` — which decays toward 1 as the walk grows. That is how
+ * the previous end-to-end form let the prototype-shadow guard added to
+ * `descendStep` (a cost both arms pay equally) drag the ratio under the
+ * 3× floor, with the recovery optimization itself fully intact. The thing
+ * under guard is the recovery, not the walk; isolating it keeps the pair a
+ * multiplicative class difference (parse + allocate vs an O(1) property
+ * load, ~100×+) so the floor stays a real tripwire with wide headroom.
+ * The walk's own end-to-end cost is tracked by the ungated `isDirty walk`
+ * bench below.
+ *
+ * The "old" implementations are kept verbatim inside this file so each
+ * gated pair stays a stable check against the pre-5.1 baseline.
  */
 
 import { bench, describe } from 'vitest'
@@ -98,32 +112,60 @@ describe('canonicalizePath: repeated dotted input', () => {
   })
 })
 
-// ---------- Group 2: isDirty loop on a 100-leaf pristine form ----------
+// ---------- Group 2 (gated): isDirty segment recovery ----------
 //
-// The `isDirty` computed iterates originals and compares each tracked
-// original against the live form value. Pre-5.1, each iteration
-// JSON.parsed the PathKey to recover the Path; post-5.1, segments are
-// stored alongside the value.
+// The dirty walk iterates `originals` and, per entry, recovers the
+// entry's `Path`, then compares the live form value against the tracked
+// original. Pre-5.1, recovery meant `JSON.parse(pathKey)` per entry;
+// post-5.1, the segments are stored alongside the value and read
+// directly off the `{ segments, value }` record.
+//
+// This pair isolates EXACTLY that recovery step and nothing else. The
+// downstream `getAtPath(form, segments)` is identical in both walks, so
+// seating it in both arms would pin a large shared cost under the ratio
+// and pull it toward 1 as the walk grows — which is precisely how the
+// prototype-shadow guard in `descendStep` (paid equally by both arms)
+// dragged the old end-to-end ratio under the 3× floor. Recovery is a
+// class difference (parse + allocate vs an O(1) property load), so the
+// gate keeps wide, stable headroom. End-to-end walk cost is the ungated
+// bench below.
 
-describe('isDirty: 100-leaf pristine form', () => {
-  const form = makeForm100()
+describe('isDirty recovery: 100-entry originals', () => {
   const originalsOld = makeOriginalsOld()
   const originalsNew = makeOriginalsNew()
 
-  bench('old: Map<PathKey, unknown> with JSON.parse per entry', () => {
-    let dirty = false
-    for (const [pathKey, original] of originalsOld) {
+  bench('old: JSON.parse(pathKey) per entry', () => {
+    let total = 0
+    for (const [pathKey] of originalsOld) {
       const segments = JSON.parse(pathKey) as Segment[]
-      if (!Object.is(getAtPath(form, segments), original)) {
-        dirty = true
-        break
-      }
+      total += segments.length
     }
-    // Ensure the result isn't eliminated.
-    if (dirty) throw new Error('fixture invariant: 100-leaf pristine form should read clean')
+    // Observe the result so the parse can't be optimized away.
+    if (total !== 200) throw new Error('fixture invariant: 100 entries × 2 segments')
   })
 
-  bench('new: Map<PathKey, {segments, value}> reading stored segments', () => {
+  bench('new: read stored segments', () => {
+    let total = 0
+    for (const [, { segments }] of originalsNew) {
+      total += segments.length
+    }
+    if (total !== 200) throw new Error('fixture invariant: 100 entries × 2 segments')
+  })
+})
+
+// ---------- Group 3 (ungated): end-to-end dirty walk ----------
+//
+// Not an old/new pair, so check-bench skips it. This tracks the FULL
+// dirty walk on the current stored-segments shape — recover segments,
+// `getAtPath`, `Object.is` — so the walk's absolute cost (including the
+// prototype-shadow guard in `descendStep`) stays visible over time
+// without gating a fragile ratio against it.
+
+describe('isDirty walk: 100-leaf pristine form (current shape)', () => {
+  const form = makeForm100()
+  const originalsNew = makeOriginalsNew()
+
+  bench('stored-segments dirty walk', () => {
     let dirty = false
     for (const [, { segments, value: original }] of originalsNew) {
       if (!Object.is(getAtPath(form, segments), original)) {

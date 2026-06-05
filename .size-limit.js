@@ -593,7 +593,13 @@ export default [
     // Raised 58 → 59 KB tracking index.mjs's timed-display-state bump (#343):
     // same shared core chunk (timed display reducer + per-form engine).
     // Measured at 58.63 KB.
-    limit: '59 KB',
+    //
+    // Raised 59 → 60 KB tracking the v-register external-update sync (#362):
+    // the shared-core directive-value-sync watcher (mirrors store changes
+    // that don't ride a re-render onto the bound DOM control) ticks every
+    // adapter's inlined total up; zod-v3.mjs, the tightest, crossed 59.
+    // Measured at 59.05 KB.
+    limit: '60 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

@@ -1,5 +1,30 @@
 # Releases
 
+## v0.21.1 — 2026-06-05
+
+## What's Changed
+* ci(codeql): emit single-language check name to match required context by @ozzyfromspace in https://github.com/attaform/Attaform/pull/352
+* chore(deps-dev): bump the dev-dependencies group across 1 directory with 6 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/351
+* fix: docs-site demo bugs + v-register external-update reactivity by @ozzyfromspace in https://github.com/attaform/Attaform/pull/362
+* fix(playground): grant the @vue/repl preview iframe allow-downloads by @ozzyfromspace in https://github.com/attaform/Attaform/pull/363
+* fix(zod): keep the unified entry's v3 read shape from collapsing to never by @ozzyfromspace in https://github.com/attaform/Attaform/pull/353
+* feat(wizard): push step history so browser Back/Forward walk the flow by @ozzyfromspace in https://github.com/attaform/Attaform/pull/354
+* fix(submit): handleSubmit records a rejecting callback on submitError instead of re-throwing by @ozzyfromspace in https://github.com/attaform/Attaform/pull/355
+* fix(wizard): handleSubmit records a rejecting callback on submitError (parity with form) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/356
+* fix(submit): clear user-set errors at handleSubmit entry by @ozzyfromspace in https://github.com/attaform/Attaform/pull/357
+* fix(wizard): clear processed forms' user-set errors at handleSubmit entry by @ozzyfromspace in https://github.com/attaform/Attaform/pull/358
+* refactor(api): rename form.process() to form.parse() by @ozzyfromspace in https://github.com/attaform/Attaform/pull/359
+* refactor(proxy): non-callable surface nodes + prototype-shadowed-key safety by @ozzyfromspace in https://github.com/attaform/Attaform/pull/360
+* feat(transforms): async register transforms + file-pipeline unification by @ozzyfromspace in https://github.com/attaform/Attaform/pull/361
+* docs(transforms): async register transforms + file-upload demo by @ozzyfromspace in https://github.com/attaform/Attaform/pull/364
+* refactor(surface): truthful absence on form.fields / form.errors / form.values (model P) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/365
+* docs(changelog): capture unreleased changes since v0.21.0 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/366
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.21.0...v0.21.1
+
+---
+
 ## v0.21.0 — 2026-06-02
 
 ## What's Changed

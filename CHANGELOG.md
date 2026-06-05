@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.21.1
 ### Added
 
 - **Async register transforms, with the file input unified into the same

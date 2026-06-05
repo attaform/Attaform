@@ -2,7 +2,67 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Added
+
+- **Wizard step history, so the browser Back and Forward buttons walk the
+  flow.** When a wizard syncs steps to the URL, advancing now pushes a real
+  history entry per step. The default previously used `replaceState`, so the
+  history stack never grew and Back exited the app instead of returning to
+  the prior step. The write deduplicates (re-writing the current step is a
+  no-op) and canonicalizes the effective step: a bare `/wizard` or an unknown
+  `?step=` resolves to the first step and replaces in place rather than
+  pushing a dead entry that Back would land on still showing the same step,
+  which also preserves the Forward stack across a popstate round-trip. Only
+  the default `persist` changes; `replace`-style behavior stays available
+  through a custom `persist`. (#354)
+
+### Changed
+
+- **`handleSubmit` resolves instead of re-throwing a rejecting callback.**
+  The function you bind to `@submit.prevent` no longer re-throws when your
+  `onSubmit` (or `onError`) rejects, so a bound DOM event can never
+  manufacture a phantom `window` `unhandledrejection` for an already-handled
+  server failure. The throw lands on a first-class render slot:
+  `form.meta.submitError` (now typed `Error | null`, coerced through a new
+  `toError` helper that keeps a non-`Error` origin on `.cause`), plus a new
+  flat `wizard.submitError` getter for wizards. A throwing `onError` stays
+  wrapped in `SubmitErrorHandlerError`, so "my error handler crashed" stays
+  distinct from "my submit body failed". `submitting` still resets in
+  `finally` (no stranded button), and nothing auto-injects into your curated
+  error store. (#355, #356)
+
+- **`handleSubmit` clears user-set errors at entry.** A fresh submit now
+  clears the user-set error store (`setFormErrors` / `setFieldErrors`) at
+  entry, before validation and before your callback, so a prior attempt's
+  server errors no longer linger into the next attempt (even a successful
+  one). The clear is unconditional and total (form-level and field-level).
+  Imperative `process()` / `validateAsync()` stay hands-off. (#357)
+
+### Fixed
+
+- **`v-register` reflects form changes that originate outside its
+  component.** A bound `<input>`, `<textarea>`, checkbox, radio, or
+  `<select>` now repaints when the store is updated by something other than a
+  host re-render: cross-tab multi-tab sync, a sibling component's `setValue` /
+  `reset` / `clear`, or any imperative write, even on a display-only form
+  whose template reads no field state. Previously the directive wrote the DOM
+  only in its `mounted` / `beforeUpdate` / `updated` hooks (which fire on a
+  re-render), so such a control stayed stale while the store itself was
+  correct. A focus-gated reactive watch now mirrors the value onto the DOM:
+  text and textarea skip the write while the element is focused (never
+  disturbing an in-flight edit or moving the caret), while checkbox, radio,
+  and select reflect an external change even when focused. (#362)
+
+- **The Zod-v3 unified read shape no longer collapses to `never`.** In a
+  Zod-v3-only install, the unified `attaform/zod` entry's v4 `useForm`
+  overload wrongly bound v3 schemas (bare `z.ZodObject` degrades to an
+  `any`-like type when `z` resolves to a single Zod major), so `form.values`
+  and `form.fields` projected through the v4 storage shape and collapsed to
+  `never` under `vue-tsc`, even though the app still ran. The overload is now
+  gated on a structural `ZodV4Internals` marker and constrained on
+  `z.ZodObject<z.ZodRawShape>`, so v3 schemas fall through to the v3 overload.
+  No runtime or public-API change, and v4 is unaffected. A built-`.d.mts`
+  regression fixture (`bundled-types-v3`) now guards it in CI. (#353)
 
 ## v0.21.0
 ### Added

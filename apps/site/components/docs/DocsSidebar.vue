@@ -6,6 +6,15 @@
   // the template (it doesn't see Nuxt's global auto-import declarations
   // through the template compiler at type time).
   const sections = docsNavigation
+
+  // Active-link state follows the same rule as the breadcrumb and pager:
+  // compare the current path to each `to` with the trailing slash
+  // normalized away, so a reader who landed on the canonical `/docs/foo/`
+  // URL (via search or a shared link) still lights up the right entry.
+  // `exact-active-class` can't do this — its comparison is verbatim, so
+  // the slash slips through and the sidebar deselects.
+  const route = useRoute()
+  const isActive = (to: string) => normalizePath(route.path) === normalizePath(to)
 </script>
 
 <template>
@@ -28,7 +37,8 @@
               {{ item.subheading }}
             </li>
             <li v-else :key="`link-${item.to}-${idx}`">
-              <!-- exact-active-class flips the link to the active state.
+              <!-- isActive flips the link to the active state (trailing
+                   slash normalized, unlike the verbatim exact-active-class).
                    The `.docs-nav-item` styles below replace the simple
                    `border-l` with a pseudo-element that scales in from
                    the center on activate — state changes feel intentional
@@ -36,8 +46,8 @@
                    so the link doesn't reflow when the indicator appears. -->
               <NuxtLink
                 :to="item.to"
-                exact-active-class="docs-nav-item--active"
                 class="docs-nav-item relative block py-1.5 pr-2 pl-4 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:text-fg"
+                :class="{ 'docs-nav-item--active': isActive(item.to) }"
               >
                 {{ item.title }}
               </NuxtLink>

@@ -47,6 +47,9 @@ type SyncForm = {
     readonly password: string
     readonly comment: string
   }
+  readonly fields: {
+    readonly username: { readonly connected: boolean }
+  }
   setValue: (path: string, value: unknown) => boolean
 }
 
@@ -225,5 +228,58 @@ describe('multi-tab sync — no-plugin lazy-install path', () => {
     // Local-side state still carries the password (the sensitive
     // filter is an outbound/inbound gate, not a local write block).
     expect(formA.values.password).toBe('hunter2')
+  })
+})
+
+describe('multi-tab sync — state crosses tabs with no registered components', () => {
+  it('a programmatic setValue in tab A syncs to tab B though neither tab binds an input', async () => {
+    const captureA: { form?: SyncForm } = {}
+    const captureB: { form?: SyncForm } = {}
+
+    // Both apps render an empty <div> via `mountBareApp` — no v-register,
+    // so `register()` is never called and no field is ever connected to a
+    // DOM element. This isolates the cross-tab contract from the DOM.
+    const appA = mountBareApp(() => {
+      captureA.form = useForm({
+        schema,
+        key: 'multitab-headless',
+        multiTab: true,
+        defaultValues: { username: '', password: '', comment: '' },
+      }) as unknown as SyncForm
+    })
+    const appB = mountBareApp(() => {
+      captureB.form = useForm({
+        schema,
+        key: 'multitab-headless',
+        multiTab: true,
+        defaultValues: { username: '', password: '', comment: '' },
+      }) as unknown as SyncForm
+    })
+
+    const formA = captureA.form
+    const formB = captureB.form
+    if (formA === undefined || formB === undefined) throw new Error('setup did not capture form')
+
+    await waitForEstablished([appA, appB])
+
+    // Precondition: with no input bound, the field reports unconnected in
+    // both tabs — there is genuinely no registered component in play.
+    expect(formA.fields.username.connected).toBe(false)
+    expect(formB.fields.username.connected).toBe(false)
+
+    // Tab A writes purely through the store API — no DOM, no v-register.
+    expect(formA.setValue('username', 'alice')).toBe(true)
+
+    // Tab B's form STATE converges anyway. Cross-tab sync rides the
+    // store's `onFormChange` (which `setValue` fires), independent of any
+    // binding; the value-sync directive only matters for mirroring
+    // received state onto an input WHEN one is bound.
+    const synced = await waitFor(() =>
+      formB.values.username === 'alice' ? formB.values.username : undefined
+    )
+    expect(synced).toBe('alice')
+    // Still no component anywhere, and untouched fields keep their default.
+    expect(formB.fields.username.connected).toBe(false)
+    expect(formB.values.comment).toBe('')
   })
 })

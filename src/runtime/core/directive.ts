@@ -43,6 +43,7 @@ import {
   syncPersistOptIn,
 } from './directive-lifecycle'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
+import { setupValueSync, teardownValueSync } from './directive-value-sync'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import type {
   CustomDirectiveRegisterAssignerFn,
@@ -810,6 +811,15 @@ const vRegisterText: RegisterTextCustomDirective = {
     // the assigner — wiping the blank flag and locking the user
     // out of the empty display state.
     el.value = value.displayValue.value
+
+    // Reactive value sync: `beforeUpdate` only repaints the DOM when the
+    // host component re-renders, so a form mutation that originates
+    // outside this component (cross-tab sync, a sibling's setValue /
+    // reset / clear, any imperative write while the template reads no
+    // field state) wouldn't reach the input. Watch `displayValue` in its
+    // own scope to close that gap — torn down via `teardownValueSync` in
+    // the dispatcher's `beforeUnmount`.
+    setupValueSync(el, value)
   },
   beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim } }, vnode) {
     setAssignFunction(el, vnode, value)
@@ -1430,6 +1440,10 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // Stop the aria watch and clear the attributes we set. A reused
     // element (KeepAlive / v-show) starts clean on its next activation.
     teardownAria(el as AriaCarrier)
+
+    // Stop the reactive value-sync watch (text / textarea bindings). A
+    // no-op for variants that never set one up.
+    teardownValueSync(el)
 
     // Drop every opt-in this element ever held — `removeAllFor` sweeps
     // by elementId rather than (id, path), which covers the case where

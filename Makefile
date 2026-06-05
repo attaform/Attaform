@@ -1,4 +1,4 @@
-.PHONY: help build up down clean clean-orphans restart logs shell install test test-watch lint format check prepare typecheck bundle-repl publish-prep watch watch-bg unwatch
+.PHONY: help build up down clean clean-orphans restart logs shell install test test-watch lint format check fallow prepare typecheck bundle-repl publish-prep watch watch-bg unwatch
 .DEFAULT_GOAL := help
 
 CONTAINER := attaform-dev
@@ -72,6 +72,17 @@ format:  ## Format
 
 check:  ## Lint + format check + typecheck
 	docker compose exec attaform pnpm check
+
+# Non-gating code-intelligence pass (unused code, dependency hygiene,
+# duplication, circular deps, complexity). Reads the calibrated
+# .fallowrc.jsonc; telemetry hard-disabled via the `fallow` script env.
+# fallow is fetched with a pinned `npx fallow@<version>` (see the `fallow`
+# script in package.json) rather than added to the lockfile, keeping the
+# zero-runtime-deps posture intact. Runs in-container like the rest, so it
+# shares the dev env (and a future coverage variant path-matches without
+# a host/container remap).
+fallow:  ## Run fallow code-intelligence (unused code, dupes, complexity) — non-gating
+	docker compose exec attaform pnpm fallow
 
 typecheck:  ## TypeScript check
 	docker compose exec attaform pnpm typecheck

@@ -73,6 +73,45 @@
     })
   }
 
+  // Grant `allow-downloads` to @vue/repl's preview iframe.
+  //
+  // @vue/repl renders the live preview inside an <iframe> whose sandbox
+  // it hardcodes (allow-forms allow-modals allow-pointer-lock
+  // allow-popups allow-same-origin allow-scripts
+  // allow-top-navigation-by-user-activation) and exposes no hook to
+  // extend. It omits `allow-downloads`, so a demo that triggers a file
+  // download — the async-transforms file demo's "Download a sample
+  // links.txt" button — is silently blocked in the playground. (It works
+  // in the inline <DocsDemo>, which renders the SFC compiled, not in an
+  // iframe.) Patching after the fact can't help: @vue/repl sets the
+  // sandbox on a detached iframe and appends it, so by the time a
+  // MutationObserver sees it the first load is already underway, and a
+  // sandbox change doesn't re-apply to a loaded document (its own
+  // `location.reload()` keeps the original flags).
+  //
+  // Same monkey-patch shape as the Worker override above: install once
+  // per window, guarded by a marker. Intercept `setAttribute` and, when
+  // @vue/repl sets a script-allowing sandbox, append `allow-downloads`
+  // BEFORE the iframe is appended and first loads — so the permission is
+  // in force from the start. Scoped tightly: only a `sandbox` attribute
+  // that already grants `allow-scripts` (the preview iframe's signature)
+  // is touched, and nothing beyond user-activated downloads is loosened.
+  if (import.meta.client && !('__attaformReplDownloadsPatched' in self)) {
+    Object.defineProperty(self, '__attaformReplDownloadsPatched', { value: true })
+    const originalSetAttribute = HTMLIFrameElement.prototype.setAttribute
+    HTMLIFrameElement.prototype.setAttribute = function (name: string, value: string) {
+      if (
+        name === 'sandbox' &&
+        typeof value === 'string' &&
+        value.includes('allow-scripts') &&
+        !value.includes('allow-downloads')
+      ) {
+        return originalSetAttribute.call(this, name, `${value} allow-downloads`)
+      }
+      return originalSetAttribute.call(this, name, value)
+    }
+  }
+
   // Monaco uses a `CancellationError` (name=Canceled, message=Canceled)
   // as a sentinel to abort pending Delayers when disposing model-bound
   // contributions like `WordHighlighter`. The error is functionally

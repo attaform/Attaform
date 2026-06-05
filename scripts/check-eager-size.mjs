@@ -188,7 +188,20 @@ export async function measureEager(define = PROD_DEFINE) {
 // headroom for minifier-version drift. The lazy-loading work tightens this as
 // optional features move to the async path; never loosen it without a recorded
 // reason in the commit.
-const BUDGET_GZ = 46_592
+//
+// RECORDED LOOSENING (async register transforms, #361): the async-transform
+// feature (Stage 1 store primitive — beginTransform / endTransform /
+// settleTransforms + activeTransforms + transformErrors; Stage 2 vRegisterFile
+// unification) sits on the always-on useForm path. register() runs the
+// sync-fast transform pipeline on every write, handleSubmit drains in-flight
+// transforms before its authoritative pass, and form.settleTransforms is a
+// public surface — none has an async seam. Deferring only the await/commit
+// orchestrator was evaluated and declined: it reclaims a fraction of the cost
+// and would push the synchronous `transforming` flip (beginTransform runs
+// inside the assigner) behind a dynamic import, lagging the busy state by a
+// microtask. Keeping it eager is the deliberate trade. Measured at 46.67 kB gz;
+// budget raised to restore ~0.5 kB headroom for minifier-version drift.
+const BUDGET_GZ = 48_384
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

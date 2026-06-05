@@ -56,6 +56,11 @@ function makeRegisterValue<T>(initial: T): MutableMockRv<T> {
     multiTab: true,
     acceptsUndefined: false,
     acceptsString: true,
+    beginTransform: () => 0,
+    isCurrentTransform: () => false,
+    endTransform: () => undefined,
+    setTransformError: () => undefined,
+    transforming: false,
   }
 }
 

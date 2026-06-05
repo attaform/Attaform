@@ -803,6 +803,13 @@ describe('persistence — per-element opt-in', () => {
     document.body.appendChild(root)
     app.mount(root)
     apps.push(app)
+    // Establish the dynamically-imported persistence subscription before
+    // driving input. The per-element write gate fires on the onFormChange
+    // for an opted-in keystroke and there is no snapshot-on-attach, so an
+    // event dispatched before the chunk wires its listener is silently lost
+    // — the opted-in write below would then never persist. (Input B stays
+    // unpersisted regardless: its write carries no `persist` meta.)
+    await waitForPersistence(app)
 
     // Input B fires first — should NOT persist.
     const b = handle.b as HTMLInputElement

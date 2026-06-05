@@ -674,22 +674,21 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('9. Promise return — write aborted with async-specific dev message', async () => {
+  it('9. Promise return — defers and commits the resolved value (no console)', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const asyncTransform = (v: unknown): unknown => Promise.resolve(v)
+    const asyncTransform = (v: unknown): unknown => Promise.resolve(String(v).toUpperCase())
     mounted = await mountWithChild(ChildInput, { transforms: [asyncTransform] })
 
     const input = mounted.rootEl as HTMLInputElement
     input.value = 'abc'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitUntil(() => (errSpy.mock.calls.length > 0 ? true : null))
+    await mounted.api.settleTransforms()
 
-    expect(errSpy).toHaveBeenCalled()
-    const msg = errSpy.mock.calls[0]?.[0] as string
-    expect(msg).toContain('returned a Promise')
-    expect(msg).toContain('email')
-    expect(msg).toContain('Use async field validation')
-    expect(mounted.api.values.email).toBe('')
+    // The thenable no longer aborts: it defers, then commits the resolved
+    // value into form state — silently (async failures surface on
+    // `field.transformError`, never the console).
+    expect(mounted.api.values.email).toBe('ABC')
+    expect(errSpy).not.toHaveBeenCalled()
     errSpy.mockRestore()
   })
 

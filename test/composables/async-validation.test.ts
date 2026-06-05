@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
-import { createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  createApp,
+  defineComponent,
+  effectScope,
+  h,
+  nextTick,
+  type App,
+  type EffectScope,
+} from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
@@ -31,6 +39,19 @@ const signupSchema = z.object({
     }, 'Email already registered'),
   password: z.string().min(8),
 })
+
+/**
+ * Run `fn` inside an owned effect scope and return its result. The reactive
+ * `validate()` registers a watcher; running it here ties that watcher to the
+ * scope (disposed on `scope.stop()`) instead of leaking it and tripping the
+ * outside-scope dev warning. `EffectScope.run` returns `undefined` only for an
+ * already-stopped scope, which never happens for a fresh one.
+ */
+function runScoped<T>(scope: EffectScope, fn: () => T): T {
+  const out = scope.run(fn)
+  if (out === undefined) throw new Error('effect scope was already stopped')
+  return out
+}
 
 function mountForm(onCreated: (form: UseFormReturn<typeof signupSchema>) => void) {
   type Returned = UseFormReturn<typeof signupSchema>
@@ -344,7 +365,15 @@ describe('form.meta.valid — `valid && !validating`', () => {
 
 describe('validate() reactive ref — pending + cancellation', () => {
   const apps: App[] = []
+  // validate()'s watcher is owned by this scope and disposed after each test,
+  // so these reactive-ref characterizations never leak a watcher or emit the
+  // outside-scope dev warning.
+  let scope: EffectScope
+  beforeEach(() => {
+    scope = effectScope()
+  })
   afterEach(() => {
+    scope.stop()
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
@@ -352,7 +381,7 @@ describe('validate() reactive ref — pending + cancellation', () => {
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))
     apps.push(app)
-    const status = api.validate()
+    const status = runScoped(scope, () => api.validate())
     expect(status.value.pending).toBe(true)
     // Drain several microtask + Vue ticks — the async parse needs to
     // resolve and the watchEffect callback needs to re-enter.
@@ -373,7 +402,7 @@ describe('validate() reactive ref — pending + cancellation', () => {
     apps.push(app)
     api.setValue('email', 'taken@example.com')
     api.setValue('password', 'very-secret')
-    const status = api.validate()
+    const status = runScoped(scope, () => api.validate())
     // Fire a second mutation before the first run settles.
     api.setValue('email', 'alice@example.com')
     for (let i = 0; i < 16 && status.value.pending; i++) {

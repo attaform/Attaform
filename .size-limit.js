@@ -226,7 +226,17 @@ export default [
     // display-engine.ts per-form clock / single timer / machine map) lands in
     // the shared core chunk, read synchronously on every field access so it
     // cannot defer behind an async seam. Measured at 49.48 KB.
-    limit: '50 KB',
+    //
+    // Raised 50 → 52 KB on the async-register-transforms branch (#361):
+    // the store-level transform primitive (beginTransform / endTransform /
+    // isCurrentTransform / settleTransforms + activeTransforms counter +
+    // per-field abort holder, committed through onFormChange), the
+    // pre-validate drain in process-form's handleSubmit (await
+    // settleTransforms before the authoritative pass), form.settleTransforms
+    // on the public surface, the field / container `transforming` rollup,
+    // and the vRegisterFile unification onto the shared transform pipeline
+    // (Stage 2). Measured at 51.28 KB.
+    limit: '52 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -354,7 +364,12 @@ export default [
     // Raised 63 → 64 KB tracking index.mjs's timed-display-state bump (#343):
     // same shared core chunk (timed getDisplayState reducer + per-form display
     // engine). Measured at 63.23 KB.
-    limit: '64 KB',
+    //
+    // Raised 64 → 66 KB tracking index.mjs's async-register-transforms bump
+    // (#361): same shared core chunk (transform primitive + handleSubmit
+    // drain + settleTransforms surface + transforming rollup + vRegisterFile
+    // unification). Measured at 65.09 KB.
+    limit: '66 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -445,7 +460,10 @@ export default [
     // Raised 57 → 58 KB tracking index.mjs's timed-display-state bump (#343):
     // same shared core chunk (timed display reducer + per-form engine).
     // Measured at 57.46 KB.
-    limit: '58 KB',
+    //
+    // Raised 58 → 60 KB tracking index.mjs's async-register-transforms bump
+    // (#361): same shared core chunk. Measured at 59.27 KB.
+    limit: '60 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -599,7 +617,10 @@ export default [
     // that don't ride a re-render onto the bound DOM control) ticks every
     // adapter's inlined total up; zod-v3.mjs, the tightest, crossed 59.
     // Measured at 59.05 KB.
-    limit: '60 KB',
+    //
+    // Raised 60 → 61 KB tracking index.mjs's async-register-transforms bump
+    // (#361): same shared core chunk. Measured at 60.44 KB.
+    limit: '61 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

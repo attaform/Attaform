@@ -51,27 +51,42 @@ function computeVerdict(field: DisplayCtx['field'], formMeta: DisplayCtx['formMe
 }
 
 /**
+ * The earlier of two in-flight clocks, ignoring `null` (a clock that is not
+ * running). Returns `null` only when neither is running. Folds the validation
+ * clock and the async-transform clock into one anti-flash timer: the spinner
+ * tracks whichever piece of work started first and settles only once both are
+ * done, so a field that is validating and transforming at once shows a single
+ * continuous `'pending'` rather than flickering between the two.
+ */
+function earliestNonNull(a: number | null, b: number | null): number | null {
+  if (a === null) return b
+  if (b === null) return a
+  return a < b ? a : b
+}
+
+/**
  * Anti-flash timing for the library-default display reducer.
  *
- * - `showDelay` — how long a validation may run before its spinner is
- *   allowed to show. A validation that settles inside this window never
- *   reveals `'pending'` at all, so a fast (often synchronous) check does
- *   not flash a spinner on every keystroke.
- * - `minVisible` — once shown, the minimum time the spinner stays up. A
- *   validation that lands just past `showDelay` is held here so the
- *   spinner does not itself flash on and immediately off.
+ * - `showDelay` — how long in-flight work (a validation run or an async
+ *   register transform) may run before its spinner is allowed to show. Work
+ *   that settles inside this window never reveals `'pending'` at all, so a
+ *   fast (often synchronous) check does not flash a spinner on every keystroke.
+ * - `minVisible` — once shown, the minimum time the spinner stays up. Work
+ *   that lands just past `showDelay` is held here so the spinner does not
+ *   itself flash on and immediately off.
  *
  * Both are milliseconds.
  */
 export type DisplayTimings = { readonly showDelay: number; readonly minVisible: number }
 
 /**
- * Library-default anti-flash timings. `showDelay: 100` cleanly swallows
- * synchronous, microtask-resolved, and tiny-async validators (no spinner
- * for any of them); `minVisible: 120` keeps a shown spinner snappy.
+ * Library-default anti-flash timings. `showDelay: 120` cleanly swallows
+ * synchronous, microtask-resolved, and tiny-async work (validation runs and
+ * async register transforms alike) so none of them flash a spinner;
+ * `minVisible: 120` keeps a shown spinner snappy once one does land.
  * Retune via {@link makeDefaultDisplayState} without touching the engine.
  */
-export const DEFAULT_TIMINGS: DisplayTimings = { showDelay: 100, minVisible: 120 }
+export const DEFAULT_TIMINGS: DisplayTimings = { showDelay: 120, minVisible: 120 }
 
 /**
  * How long the show-delay collapses to once the field is focused out. The
@@ -125,7 +140,10 @@ export function makeDefaultDisplayState({
   showDelay,
   minVisible,
 }: DisplayTimings): GetDisplayState {
-  const reducer: GetDisplayState = (prev, { field, formMeta, validatingSince, now }) => {
+  const reducer: GetDisplayState = (
+    prev,
+    { field, formMeta, validatingSince, transformingSince, now }
+  ) => {
     const verdict = computeVerdict(field, formMeta)
     // The reveal gate governs the spinner too: until it opens, a field stays
     // idle — no spinner mid-first-entry — exactly as errors and success are
@@ -139,10 +157,15 @@ export function makeDefaultDisplayState({
     // at first client render) would surface a timed verdict the server never
     // emitted and break that guarantee.
     if (!isGateOpen(field, formMeta)) return { display: verdict }
+    // The spinner tracks one merged in-flight clock: a validation run, an
+    // async register transform, or both at once (whichever started first, held
+    // until both settle). Folding them here keeps a field that validates and
+    // transforms together on a single continuous `'pending'`.
+    const inFlightSince = earliestNonNull(validatingSince, transformingSince)
     // Settled — nothing in flight. Show the true verdict, unless a spinner
-    // is still inside its minimum-visible window: hold it so a validation
-    // that landed just past the show-delay does not flash on and off.
-    if (validatingSince === null) {
+    // is still inside its minimum-visible window: hold it so work that landed
+    // just past the show-delay does not flash on and off.
+    if (inFlightSince === null) {
       if (prev.display === 'pending') {
         const shownAt = prev.pendingShownAt ?? now
         if (now < shownAt + minVisible)
@@ -150,16 +173,16 @@ export function makeDefaultDisplayState({
       }
       return { display: verdict }
     }
-    // Validating, spinner already up: keep it. No `reviewAt` — the next
+    // In flight, spinner already up: keep it. No `reviewAt` — the next
     // re-evaluation comes from the run settling (a reactive change), so
     // there is nothing for the engine's timer to wait on.
     if (prev.display === 'pending')
       return { display: 'pending', pendingShownAt: prev.pendingShownAt ?? now }
-    // Validating, still inside the show-delay window: hold whatever was on
+    // In flight, still inside the show-delay window: hold whatever was on
     // screen before the run began (`prev.display`) rather than the in-flight
     // verdict, which reads `valid: false` only because a check is running. A
-    // fast validation settles before `reviewAt` and the spinner never shows; a
-    // slow one surfaces it at the window edge. The hold is uniform across every
+    // fast run settles before `reviewAt` and the spinner never shows; a slow
+    // one surfaces it at the window edge. The hold is uniform across every
     // prior verdict — error, success, idle alike — so editing a field
     // re-validates as [prior] -> pending -> [settled], never flashing idle in
     // between. Holding a green check over a value mid-edit is the same
@@ -173,13 +196,13 @@ export function makeDefaultDisplayState({
     // cross-field run on an unbound field) the full `showDelay` holds. The
     // instant the user focuses out, the window shrinks: a fast check settles
     // inside the grace and resolves straight to its verdict (no spinner), while
-    // a validation still in flight past the grace surfaces `'pending'` promptly
+    // work still in flight past the grace surfaces `'pending'` promptly
     // instead of waiting out a window meant for editing.
     const window = field.focused === false ? Math.min(showDelay, FOCUS_OUT_GRACE) : showDelay
-    if (now - validatingSince < window) {
-      return { display: prev.display, reviewAt: validatingSince + window }
+    if (now - inFlightSince < window) {
+      return { display: prev.display, reviewAt: inFlightSince + window }
     }
-    // Window elapsed and still validating: the spinner has earned its place.
+    // Window elapsed and still in flight: the spinner has earned its place.
     return { display: 'pending', pendingShownAt: now, reviewAt: now + minVisible }
   }
   defaultFamily.add(reducer)

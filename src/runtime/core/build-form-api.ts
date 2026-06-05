@@ -680,6 +680,25 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // keep the explicit form-level computation for the gate.
       valid,
       errors: metaErrors,
+      // Whole-form transforming mirrors the global `activeTransforms`
+      // counter ORed with any per-leaf transform in flight (the root
+      // rollup), exactly as `validating` composes its lifecycle and
+      // per-field sources. `busy` is the union of both work signals at
+      // the form level. `transformError` is leaf-only, so the root
+      // rollup reads it as `null` (kept for FieldState-shape parity).
+      transforming: computed(
+        () => state.activeTransforms.value > 0 || rootFieldState.value.transforming
+      ),
+      busy: computed(
+        () =>
+          state.activeValidations.value > 0 ||
+          state.activeTransforms.value > 0 ||
+          rootFieldState.value.validating ||
+          rootFieldState.value.transforming
+      ),
+      get transformError() {
+        return rootFieldState.value.transformError
+      },
       // `displayState` / the `show*` booleans / `firstError` flow
       // through the same root field-state computed as the rest of the
       // FieldState surface, so `form.meta.displayState` matches
@@ -1068,6 +1087,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       GetValueFormType
     >['validateAsync'],
     parse: gated(parse) as UseFormReturnType<Form, GetValueFormType>['parse'],
+    settleTransforms: gated(state.settleTransforms) as UseFormReturnType<
+      Form,
+      GetValueFormType
+    >['settleTransforms'],
     register: gated(register) as UseFormReturnType<Form, GetValueFormType>['register'],
     key: state.formKey,
     // Auto-unwrapping views over the per-store async-defaults lifecycle

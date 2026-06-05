@@ -47,7 +47,14 @@ function meta(over: Record<string, unknown> = {}): DisplayCtx['formMeta'] {
   return { submissionAttempts: 0, ...over } as unknown as DisplayCtx['formMeta']
 }
 function ctx(over: Partial<DisplayCtx> = {}): DisplayCtx {
-  return { field: field(), formMeta: meta(), validatingSince: null, now: 0, ...over }
+  return {
+    field: field(),
+    formMeta: meta(),
+    validatingSince: null,
+    transformingSince: null,
+    now: 0,
+    ...over,
+  }
 }
 
 describe('default reducer — settled verdict (validatingSince: null)', () => {

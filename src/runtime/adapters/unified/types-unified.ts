@@ -18,6 +18,7 @@
  */
 import type { z } from 'zod'
 import type { z as zV3 } from 'zod-v3'
+import type { ZodV4Internals } from './types-zod-major'
 import type { StorageShape as StorageShapeV4 } from '../zod-v4/types-storage-shape'
 import type { StorageShape as StorageShapeV3 } from '../zod-v3/types-storage-shape'
 import type { UnwrapZodObject } from '../zod-v3/types-zod-adapter'
@@ -108,7 +109,10 @@ export type UseFormConfigV3<
  * this helper stays deferred and TS can't prove return-type
  * compatibility.
  */
-export type UseFormReturn<Schema, K extends FormKey = FormKey> = Schema extends z.ZodObject
+export type UseFormReturn<
+  Schema,
+  K extends FormKey = FormKey,
+> = Schema extends z.ZodObject<z.ZodRawShape> & ZodV4Internals
   ? UseFormReturnType<V4FormOf<Schema>, V4OutOf<Schema>, V4ReadOf<Schema>, K>
   : Schema extends zV3.ZodObject<zV3.ZodRawShape>
     ? UseFormReturnType<V3FormOf<Schema>, V3OutOf<Schema>, V3ReadOf<Schema>, K>
@@ -119,7 +123,10 @@ export type UseFormReturn<Schema, K extends FormKey = FormKey> = Schema extends 
  * schema. Mirrors `UseFormReturn`'s dispatch — replaces
  * `Parameters<typeof useForm<Schema, K>>[0]` in test code.
  */
-export type UseFormConfig<Schema, K extends FormKey = FormKey> = Schema extends z.ZodObject
+export type UseFormConfig<
+  Schema,
+  K extends FormKey = FormKey,
+> = Schema extends z.ZodObject<z.ZodRawShape> & ZodV4Internals
   ? Omit<
       UseFormConfiguration<
         V4FormOf<Schema>,

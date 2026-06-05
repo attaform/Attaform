@@ -3455,15 +3455,23 @@ export type FormMeta<F = unknown> = FieldState<F> & {
   readonly departAttempts: number
 
   /**
-   * The error thrown or rejected by the most recent submit callback
-   * (or its `onError` handler). Cleared to `null` at the start of
-   * each new submission attempt; stays `null` on success.
+   * The error thrown or rejected by the most recent submit callback (or
+   * its `onError` handler), coerced to a real `Error` (a non-`Error`
+   * throw keeps its origin on `.cause`). Cleared to `null` at the start
+   * of each new submission attempt; stays `null` on success.
    *
-   * The submit handler still throws normally — this is the reactive
-   * mirror for templates. Imperative callers can use
-   * `try { await onSubmit() }` instead.
+   * The submit handler does NOT re-throw — its returned promise always
+   * resolves, so binding it to `@submit.prevent` never manufactures a
+   * `window` unhandledrejection. This is the single channel for "the
+   * submit failed", read the same way in templates and after an
+   * imperative `await submit()`. Like `hydrateError`, it stays distinct
+   * from the curated user-error store: render it where you choose:
+   *
+   * ```vue
+   * <p v-if="form.meta.submitError">{{ form.meta.submitError.message }}</p>
+   * ```
    */
-  readonly submitError: unknown
+  readonly submitError: Error | null
 
   /**
    * Scalar mirror of `meta.errors.length`. Read it from templates and

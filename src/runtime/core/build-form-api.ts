@@ -515,7 +515,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const submitting = computed<boolean>(() => state.submitting.value)
   const submissionAttempts = computed<number>(() => state.submissionAttempts.value)
   const submitted = computed<boolean>(() => state.submitted.value)
-  const submitError = computed<unknown>(() => state.submitError.value)
+  const submitError = computed<Error | null>(() => state.submitError.value)
 
   // --- Wizard departure lifecycle ---
   // `useWizard` bumps `state.departAttempts` whenever navigation

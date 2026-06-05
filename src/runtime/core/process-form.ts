@@ -14,7 +14,7 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { AttaformErrorCode } from './error-codes'
-import { SubmitErrorHandlerError } from './errors'
+import { SubmitErrorHandlerError, toError } from './errors'
 import { canonicalizePath, segmentsForPathKey, type Path, type Segment } from './paths'
 
 /**
@@ -352,9 +352,10 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    * clear errors, call onSubmit. On failure: populate errors via
    * setAllErrors, then call onError if provided.
    *
-   * If the user's onError throws/rejects, the thrown value is re-thrown
-   * wrapped in SubmitErrorHandlerError — prior versions swallowed this
-   * into a console.error, which masked real bugs.
+   * If the user's onError throws/rejects, the thrown value is wrapped in
+   * SubmitErrorHandlerError so inspection can tell "my error handler
+   * crashed" apart from "my submit body failed". Both converge on
+   * `submitError` (see below); neither re-throws out of the handler.
    *
    * Drives the submission-lifecycle refs on FormStore:
    *   - `submitting` flips true at entry, false in `finally`.
@@ -362,10 +363,13 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    *     "how many times did the user click submit" is the consumer-facing
    *     question, independent of whether anything awaited.
    *   - `submitError` clears at entry and captures anything thrown from
-   *     the user callback (or the wrapped error-handler error). Re-throws
-   *     after capturing so imperative callers (`await handler(event)`)
-   *     still see the rejection; template `@submit="..."` callers read
-   *     `submitError` instead.
+   *     the user callback (or the wrapped error-handler error), coerced to
+   *     a real `Error` via `toError`. The handler does NOT re-throw: a
+   *     rejecting `onSubmit` bound to `@submit.prevent` would otherwise
+   *     surface as a `window` unhandledrejection (a phantom crash for an
+   *     already-handled server failure). Both template and imperative
+   *     callers read the outcome from `submitError` / `submitted`; the
+   *     returned promise always resolves.
    *
    * Phase 5.6: the pre-dispatch validation is now async, so the handler
    * awaits `runValidation` before branching on success/failure. The
@@ -492,12 +496,20 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // Only publish the error if `reset()` hasn't fired since this
         // submission began. Otherwise the consumer just zeroed the
         // submission surface and we'd undo their intent by re-raising
-        // into `submitError`. We still re-throw so imperative callers
-        // (`await handler(event)`) observe the rejection.
+        // into `submitError`. Coerce to a real `Error` so the slot is
+        // `Error | null`, never `unknown` (a non-Error throw keeps its
+        // origin on `.cause`).
+        //
+        // Deliberately NOT re-thrown: the handler is bound to DOM events
+        // (`@submit.prevent` / `@click`), so a rejected promise here would
+        // surface as a `window` unhandledrejection — a phantom crash for
+        // what is usually an already-handled server failure. The error is
+        // recorded on `submitError` for both template and imperative
+        // callers; the `finally` still resets `submitting`, so a rejected
+        // submit never strands the button.
         if (state.submissionGeneration.value === genAtEntry) {
-          state.submitError.value = err
+          state.submitError.value = toError(err)
         }
-        throw err
       } finally {
         // If validation threw before we decremented, drop the counter now
         // so `validating` doesn't hang true after a failed submit.

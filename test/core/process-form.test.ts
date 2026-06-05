@@ -265,8 +265,9 @@ describe('buildProcessForm', () => {
       expect(state.getErrorsForPath(['email'])).toHaveLength(1)
     })
 
-    it('propagates a thrown onError as SubmitErrorHandlerError', async () => {
-      // Pre-rewrite swallowed this into console.error. Fixed.
+    it('captures a thrown onError as SubmitErrorHandlerError in submitError', async () => {
+      // Pre-rewrite swallowed this into console.error. A throwing onError
+      // now lands on `submitError` (wrapped) without re-throwing.
       const state = alwaysInvalid()
       const { handleSubmit } = buildProcessForm(state, 'test:inst')
       const handler = handleSubmit(
@@ -276,7 +277,8 @@ describe('buildProcessForm', () => {
           throw new Error('user handler crash')
         }
       )
-      await expect(handler()).rejects.toBeInstanceOf(SubmitErrorHandlerError)
+      await expect(handler()).resolves.toBeUndefined()
+      expect(state.submitError.value).toBeInstanceOf(SubmitErrorHandlerError)
     })
 
     it('calls preventDefault on a submitted Event', async () => {
@@ -332,11 +334,11 @@ describe('buildProcessForm', () => {
           throw new Error('boom')
         }
       )
-      await expect(handler()).rejects.toThrow('boom')
+      await expect(handler()).resolves.toBeUndefined()
       expect(state.submissionAttempts.value).toBe(1)
     })
 
-    it('captures a thrown onSubmit into submitError (and still re-throws)', async () => {
+    it('captures a thrown onSubmit into submitError (no re-throw)', async () => {
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state, 'test:inst')
       const err = new Error('callback crash')
@@ -346,7 +348,9 @@ describe('buildProcessForm', () => {
           throw err
         }
       )
-      await expect(handler()).rejects.toBe(err)
+      // Resolves rather than rejecting; the Error passes through `toError`
+      // untouched, so `submitError` holds the very instance thrown.
+      await expect(handler()).resolves.toBeUndefined()
       expect(state.submitError.value).toBe(err)
       expect(state.submitting.value).toBe(false)
     })
@@ -361,7 +365,7 @@ describe('buildProcessForm', () => {
           throw new Error('first')
         }
       )
-      await expect(failing()).rejects.toThrow('first')
+      await expect(failing()).resolves.toBeUndefined()
       expect(state.submitError.value).toBeInstanceOf(Error)
 
       // Second run: callback succeeds — prior error must be cleared.
@@ -379,7 +383,7 @@ describe('buildProcessForm', () => {
           throw new Error('onError crash')
         }
       )
-      await expect(handler()).rejects.toBeInstanceOf(SubmitErrorHandlerError)
+      await expect(handler()).resolves.toBeUndefined()
       expect(state.submitError.value).toBeInstanceOf(SubmitErrorHandlerError)
     })
 
@@ -524,7 +528,7 @@ describe('buildProcessForm', () => {
           throw err
         }
       )
-      await expect(handler()).rejects.toBe(err)
+      await expect(handler()).resolves.toBeUndefined()
       expect(state.submitError.value).toBe(err)
       expect(state.submissionAttempts.value).toBe(1)
     })

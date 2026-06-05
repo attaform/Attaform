@@ -570,7 +570,7 @@ describe('useForm type inference — form-level state bundle', () => {
     expectTypeOf(form.meta.submitting).toEqualTypeOf<boolean>()
     expectTypeOf(form.meta.validating).toEqualTypeOf<boolean>()
     expectTypeOf(form.meta.submissionAttempts).toEqualTypeOf<number>()
-    expectTypeOf(form.meta.submitError).toEqualTypeOf<unknown>()
+    expectTypeOf(form.meta.submitError).toEqualTypeOf<Error | null>()
     expectTypeOf(form.history.canUndo).toEqualTypeOf<boolean>()
     expectTypeOf(form.history.canRedo).toEqualTypeOf<boolean>()
     expectTypeOf(form.history.size).toEqualTypeOf<number>()

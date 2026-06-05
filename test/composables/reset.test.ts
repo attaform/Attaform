@@ -123,7 +123,8 @@ describe('useForm — reset()', () => {
     const handler = form.handleSubmit(async () => {
       throw new Error('boom')
     })
-    await expect(handler()).rejects.toThrow('boom')
+    // The handler resolves; the throw lands on `submitError` (no re-throw).
+    await expect(handler()).resolves.toBeUndefined()
     expect(form.meta.submissionAttempts).toBe(1)
     expect(form.meta.submitError).toBeInstanceOf(Error)
 

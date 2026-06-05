@@ -21,7 +21,7 @@
  */
 
 import { createIndex } from 'pagefind'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, rm } from 'node:fs/promises'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Marked } from 'marked'
@@ -130,6 +130,13 @@ async function indexAll() {
     meta: { title: 'Documentation' },
   })
 
+  // Pagefind's writeFiles doesn't purge the output directory first, so
+  // pages that were removed or renamed leave orphaned content-hashed
+  // fragments behind. They aren't referenced by the freshly-written
+  // index (so they don't surface in search), but they accumulate across
+  // dev runs. Clear the directory so the index is an exact mirror of the
+  // current docs/ source.
+  await rm(outDir, { recursive: true, force: true })
   const { errors: writeErrors } = await index.writeFiles({ outputPath: outDir })
   if (writeErrors.length) {
     console.error('[index:search:dev] writeFiles errors:', writeErrors)

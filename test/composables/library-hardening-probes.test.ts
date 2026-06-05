@@ -2940,17 +2940,17 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     // (so the input element shows what they typed, not 'ADA'). The bug
     // case: the form pre-applies the transform and the user sees their
     // text reformatted on every keystroke. The post-transform OUTPUT
-    // is reachable via `form.process()` below — keeps storage as the
+    // is reachable via `form.parse()` below — keeps storage as the
     // honest input view, exposes the output on demand.
     expect(api.values.name).toBe('  ada  ')
   })
 
-  it('form.process() returns the post-transform OUTPUT shape while form.values stays as input', async () => {
+  it('form.parse() returns the post-transform OUTPUT shape while form.values stays as input', async () => {
     // The input/output asymmetry contract: storage (and form.values)
     // holds the pre-transform value the consumer wrote;
-    // `form.process()` runs the full parse pipeline (refinements +
+    // `form.parse()` runs the full parse pipeline (refinements +
     // transforms) and returns the post-transform value. handleSubmit's
-    // callback already receives this same shape — `process()` is the
+    // callback already receives this same shape — `parse()` is the
     // standalone way to ask for it.
     const schema = z.object({
       isLongEmail: z.string().transform((v) => v.length > 10),
@@ -2959,7 +2959,7 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     type Api = Omit<UseFormReturnType<z.output<typeof schema>>, 'setValue'> & {
       setValue: (path: string, value: unknown) => boolean
       values: { isLongEmail: unknown; count: unknown }
-      process: () => Promise<{
+      parse: () => Promise<{
         success: boolean
         data?: { isLongEmail: boolean; count: number }
         errors?: ReadonlyArray<{ message: string }>
@@ -2970,7 +2970,7 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
       setup() {
         handle.api = useForm({
           schema,
-          key: `chaos-process-transform-${Math.random().toString(36).slice(2)}`,
+          key: `chaos-parse-transform-${Math.random().toString(36).slice(2)}`,
           defaultValues: { isLongEmail: 'a@b.co', count: '42' } as never,
         }) as unknown as Api
         return () => h('div')
@@ -2989,10 +2989,10 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     expect(api.values.isLongEmail).toBe('a@b.co')
     expect(api.values.count).toBe('42')
 
-    // process() runs the full parse pipeline (refinements + transforms)
+    // parse() runs the full parse pipeline (refinements + transforms)
     // and returns the POST-transform output. This is the same shape
     // handleSubmit's callback receives.
-    const result = await api.process()
+    const result = await api.parse()
     expect(result.success).toBe(true)
     expect(result.data?.isLongEmail).toBe(false) // 'a@b.co' is 6 chars, < 10 → false
     expect(result.data?.count).toBe(42) // string '42' → number 42
@@ -3001,11 +3001,11 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     api.setValue('isLongEmail', 'a-really-long-email@example.com')
     await nextTick()
     expect(api.values.isLongEmail).toBe('a-really-long-email@example.com')
-    const result2 = await api.process()
+    const result2 = await api.parse()
     expect(result2.data?.isLongEmail).toBe(true) // 31 chars, > 10 → true
   })
 
-  it('TYPES: input/output asymmetry threads through useForm — values stays z.input, handleSubmit/process resolve to z.output', () => {
+  it('TYPES: input/output asymmetry threads through useForm — values stays z.input, handleSubmit/parse resolve to z.output', () => {
     // Type-level probe. The body is a no-op at runtime — `expectTypeOf`
     // assertions run at compile time, not at runtime — but the test
     // function still has to exist for Vitest to report the file's
@@ -3049,11 +3049,11 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     expectTypeOf<OnSubmitParam['count']>().toEqualTypeOf<number>()
     expectTypeOf<OnSubmitParam['name']>().toEqualTypeOf<string>()
 
-    // form.process()'s `.data` payload resolves to z.output too.
-    type ProcessResult = Awaited<ReturnType<FormApi['process']>>
-    type ProcessSuccess = Extract<ProcessResult, { success: true }>
-    expectTypeOf<ProcessSuccess['data']['isLongEmail']>().toEqualTypeOf<boolean>()
-    expectTypeOf<ProcessSuccess['data']['count']>().toEqualTypeOf<number>()
+    // form.parse()'s `.data` payload resolves to z.output too.
+    type ParseResult = Awaited<ReturnType<FormApi['parse']>>
+    type ParseSuccess = Extract<ParseResult, { success: true }>
+    expectTypeOf<ParseSuccess['data']['isLongEmail']>().toEqualTypeOf<boolean>()
+    expectTypeOf<ParseSuccess['data']['count']>().toEqualTypeOf<number>()
   })
 })
 

@@ -28,12 +28,12 @@
     lastResult.value = `form.validateAsync() → ${res.success ? '✓ valid' : '✗ invalid'}`
   }
 
-  async function runProcess() {
-    lastResult.value = 'form.process() → awaiting…'
-    const res = await form.process()
+  async function runParse() {
+    lastResult.value = 'form.parse() → awaiting…'
+    const res = await form.parse()
     lastResult.value = res.success
-      ? `form.process() → ✓ parsed: ${JSON.stringify(res.data, (_, v) => (v === undefined ? '(undefined)' : v))}`
-      : `form.process() → ✗ invalid`
+      ? `form.parse() → ✓ parsed: ${JSON.stringify(res.data, (_, v) => (v === undefined ? '(undefined)' : v))}`
+      : `form.parse() → ✗ invalid`
   }
 </script>
 
@@ -54,7 +54,7 @@
     <div class="actions">
       <button type="button" @click="runValidate">form.validate() — sync</button>
       <button type="button" @click="runValidateAsync">form.validateAsync() — awaited</button>
-      <button type="button" @click="runProcess">form.process() — parsed payload</button>
+      <button type="button" @click="runParse">form.parse() — parsed payload</button>
     </div>
 
     <p class="result">{{ lastResult }}</p>

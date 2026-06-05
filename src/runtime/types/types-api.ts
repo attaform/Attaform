@@ -3545,7 +3545,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
  *
  * - `GetValueFormType` — the **output / parsed shape**
  *   (`z.output<Schema>`). Used by `handleSubmit`'s `onSubmit`
- *   callback and by `form.process()`'s success payload. This is the
+ *   callback and by `form.parse()`'s success payload. This is the
  *   shape after refinements have fired and transforms have run.
  *
  * - `ReadForm` — the **read / storage shape**. Used by `values`,
@@ -3650,7 +3650,7 @@ export type UseFormReturnType<
    * `z.input<Schema>` shape — `.transform()`s have NOT run, so for
    * a schema like `z.string().transform(v => v.length > 10)` the
    * value reads as `string`, not `boolean`. Use `handleSubmit` or
-   * `form.process()` when you need the post-transform output shape.
+   * `form.parse()` when you need the post-transform output shape.
    */
   values: ValuesSurface<WriteShape<ReadForm>>
 
@@ -3801,11 +3801,11 @@ export type UseFormReturnType<
    * preprocess normalization applied but `.transform()` deferred. For
    * schemas where the input type differs from the output type (e.g.,
    * `z.string().transform(v => v.length > 10)`), `form.values.X` is
-   * the input shape and `(await form.process()).data?.X` is the
+   * the input shape and `(await form.parse()).data?.X` is the
    * output shape.
    *
    * ```ts
-   * const result = await form.process()
+   * const result = await form.parse()
    * if (result.success) {
    *   // result.data matches z.output<typeof schema>
    * } else {
@@ -3813,11 +3813,16 @@ export type UseFormReturnType<
    * }
    * ```
    *
-   * Pass a path to parse a subtree only. Async because refinements may
-   * be async. `meta.validating` flips `true` while the promise is in
-   * flight (shared with validateAsync).
+   * Always async, and there is no synchronous variant by design: a
+   * schema can carry async refinements or transforms, so a sync parse
+   * would silently miss them the moment one is added. One always-
+   * awaited `parse` closes that category of bug entirely. The returned
+   * promise never rejects (a thrown adapter lands as a `success: false`
+   * response). Pass a path to parse a subtree only. `meta.validating`
+   * flips `true` while the promise is in flight (shared with
+   * validateAsync).
    */
-  process: (path?: FlatPath<Form>) => Promise<ValidationResponse<GetValueFormType>>
+  parse: (path?: FlatPath<Form>) => Promise<ValidationResponse<GetValueFormType>>
   /**
    * Bind a path to a native input via `v-register`. Returns a
    * `RegisterValue` carrying the live ref and event handlers the

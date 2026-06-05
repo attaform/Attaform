@@ -254,27 +254,30 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    *
    * For a schema like `z.object({ email: z.string().transform(v =>
    * v.length > 10) })`, `form.values.email` is the string the user
-   * wrote, while `(await form.process()).data?.email` is the boolean
+   * wrote, while `(await form.parse()).data?.email` is the boolean
    * the transform produces. handleSubmit's callback already receives
    * this same shape (it's what the parse pipeline emits before
-   * onSubmit runs); `process()` is the standalone read-only form.
+   * onSubmit runs); `parse()` is the standalone read-only form.
    *
-   * Async because refinements may be async (`.refine(async ...)`).
-   * The path-scoped variant mirrors `validateAsync(path?)` —
-   * `process('email')` returns the parsed value at that path only.
+   * Always async, and there is no synchronous variant by design. A
+   * schema can carry async refinements (`.refine(async ...)`) or async
+   * transforms, so a sync parse would silently miss them the moment
+   * one is added — a latent correctness bug. One always-awaited `parse`
+   * closes that category entirely. The path-scoped variant mirrors
+   * `validateAsync(path?)` — `parse('email')` returns the parsed value
+   * at that path only.
    *
-   * Unlike `validateAsync`, `process` does NOT cancel in-flight
-   * field validation and does NOT commit the parsed result to
-   * `schemaErrors` — `process` is a pure read of "what would the
-   * parsed form look like right now", independent of the live
-   * `form.errors` surface.
+   * Unlike `validateAsync`, `parse` does NOT cancel in-flight field
+   * validation and does NOT commit the parsed result to `schemaErrors`
+   * — `parse` is a pure read of "what would the parsed form look like
+   * right now", independent of the live `form.errors` surface.
    *
    * Like `validateAsync`, this never rejects on adapter misbehavior:
    * a throwing adapter (or any pipeline failure) lands in the
    * response as a `success: false, errors: [{ code: AdapterThrew }]`
    * shape so the library stays robust against a bad adapter.
    */
-  async function process(pathInput?: string | Path): Promise<ValidationResponse<Out>> {
+  async function parse(pathInput?: string | Path): Promise<ValidationResponse<Out>> {
     const result = await runImperativeValidation(pathInput, {
       cancelInFlight: false,
       commitToSchemaErrors: false,
@@ -285,7 +288,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
 
   /**
    * Build an adapter-threw failure response. Shared between
-   * `validateAsync`, `process`, and the reactive `validate()`'s
+   * `validateAsync`, `parse`, and the reactive `validate()`'s
    * kickoff so every imperative validation surface presents the same
    * shape on adapter misbehavior: `{ success: false, errors: [{ code
    * AdapterThrew, message: adapterThrowMessage(err), path: [],
@@ -545,7 +548,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     return submitHandler
   }
 
-  return { validate, validateAsync, process, handleSubmit }
+  return { validate, validateAsync, parse, handleSubmit }
 }
 
 function toSegments(pathInput: string | Path): Path {

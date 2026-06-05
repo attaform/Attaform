@@ -91,7 +91,7 @@ type StatusSourceForm = Pick<UseFormReturnType<GenericForm>, 'meta' | 'values'>
  */
 type SubmissionSourceForm = Pick<
   UseFormReturnType<GenericForm>,
-  'meta' | 'values' | 'activate' | 'process' | 'applyInvalidSubmitPolicy' | 'reset' | 'hydrateError'
+  'meta' | 'values' | 'activate' | 'parse' | 'applyInvalidSubmitPolicy' | 'reset' | 'hydrateError'
 >
 
 /**
@@ -1082,7 +1082,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         formKey: form.key,
       }
     }
-    return full.process()
+    return full.parse()
   }
 
   function collectErrors(

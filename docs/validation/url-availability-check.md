@@ -138,7 +138,7 @@ const onSubmit = form.handleSubmit((data) => {
 })
 ```
 
-If you need the typed shape outside submit, call `form.validateAsync()` or `form.process()`. Both run the same pipeline against current storage and return the post-parse output.
+If you need the typed shape outside submit, call `form.validateAsync()` or `form.parse()`. Both run the same pipeline against current storage and return the post-parse output.
 
 ## Tweaks
 

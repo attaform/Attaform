@@ -16,6 +16,7 @@ import { __DEV__ } from '../core/dev'
 import { ANONYMOUS_WIZARD_KEY_PREFIX } from '../core/defaults'
 import { captureUserCallSite } from '../core/dev-stack-trace'
 import { AttaformErrorCode } from '../core/error-codes'
+import { SubmitErrorHandlerError, toError } from '../core/errors'
 import {
   kAttaformAncestorWizard,
   kAttaformWizardActiveStepResolver,
@@ -923,6 +924,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   const submitting = ref(false)
   const submissionAttempts = ref(0)
+  // The error thrown or rejected by the most recent `wizard.handleSubmit`
+  // callback (or its `onError`), coerced to a real `Error`. Mirrors
+  // `form.meta.submitError`: cleared at submit entry, parked here instead
+  // of re-thrown, so binding the handler to `@submit.prevent` never
+  // manufactures a `window` unhandledrejection.
+  const submitError = ref<Error | null>(null)
   // Monotonic latch: flips true the first time a final-step
   // `handleSubmit` resolves without throwing, and stays true through
   // subsequent edits or invalidations. Only `reset()` flips it back
@@ -1113,6 +1120,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         return
       }
       submitting.value = true
+      submitError.value = null
       try {
         const currentKey = activeKey.value
         const final = isFinalStep.value
@@ -1182,7 +1190,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
             if (target !== undefined) moveTo(target.key)
           }
         } else {
-          if (onError !== undefined) await onError(errors)
+          // Apply the invalid-submit focus policy BEFORE onError, mirroring
+          // form.handleSubmit: the consumer's onError can override the
+          // focus, and a throwing onError still leaves the first error
+          // focused rather than stranding the user.
           if (options.focusFirstError !== false) {
             const firstFailedKey = errors[0]?.formKey
             if (firstFailedKey !== undefined && isCompiledKey(firstFailedKey)) {
@@ -1197,7 +1208,22 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
               }
             }
           }
+          if (onError !== undefined) {
+            try {
+              await onError(errors)
+            } catch (cause) {
+              throw new SubmitErrorHandlerError('User-provided onError threw', { cause })
+            }
+          }
         }
+      } catch (err) {
+        // Park the throw on `submitError`, coerced to a real Error; never
+        // re-throw. The handler is bound to DOM events (`@submit.prevent`),
+        // so a rejected promise would surface as a `window`
+        // unhandledrejection — a phantom crash for an already-handled
+        // failure. The `finally` still resets `submitting`, so navigation
+        // resumes and the button is never stranded.
+        submitError.value = toError(err)
       } finally {
         submitting.value = false
       }
@@ -1209,6 +1235,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   function reset(): void {
     submissionAttempts.value = 0
     done.value = false
+    submitError.value = null
     // Bump the lazy epoch so every `lazy()` slot's memoized computed
     // re-fires on the next compile pass. Without this, expensive
     // one-shot lookups would stay glued to their first resolution
@@ -1304,6 +1331,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     },
     get submissionAttempts(): number {
       return submissionAttempts.value
+    },
+    get submitError(): Error | null {
+      return submitError.value
     },
     get visited(): readonly FormKey[] {
       return visited.value

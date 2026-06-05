@@ -818,8 +818,17 @@ const vRegisterText: RegisterTextCustomDirective = {
     // reset / clear, any imperative write while the template reads no
     // field state) wouldn't reach the input. Watch `displayValue` in its
     // own scope to close that gap — torn down via `teardownValueSync` in
-    // the dispatcher's `beforeUnmount`.
-    setupValueSync(el, value)
+    // the dispatcher's `beforeUnmount`. Focus-gated so it never disturbs
+    // an in-flight edit; `beforeUpdate` writes the same target value.
+    setupValueSync(
+      el,
+      value.displayValue,
+      () => {
+        const next = value.displayValue.value
+        if (el.value !== next) el.value = next
+      },
+      { skipWhileFocused: true }
+    )
   },
   beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim } }, vnode) {
     setAssignFunction(el, vnode, value)
@@ -954,7 +963,17 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
   // set initial checked on mount to wait for true-value/false-value
   mounted(el, { value }) {
     setChecked(el, value)
-    if (isRegisterValue(value)) el._lastAppliedModel = value.innerRef.value
+    if (!isRegisterValue(value)) return
+    el._lastAppliedModel = value.innerRef.value
+    // External model changes that don't trigger a host re-render
+    // (cross-tab sync, a sibling's setValue / reset / clear) re-run the
+    // same `setChecked` the `beforeUpdate` path uses. Not focus-gated:
+    // an external change must reflect even on a focused checkbox, and the
+    // write is idempotent (`setChecked` skips when `el.checked` matches).
+    setupValueSync(el, value.innerRef, () => {
+      setChecked(el, value)
+      el._lastAppliedModel = value.innerRef.value
+    })
   },
   // Skip the DOM sync when the model is identity-unchanged from the
   // last application. Pre-fix the scalar branch in `setChecked`
@@ -1064,6 +1083,14 @@ const vRegisterRadio: RegisterRadioCustomDirective = {
     // the comparison stays symmetric — see setChecked's note.
     el.checked = looseEqual(value.innerRef.value, applyCoerce(getValue(el), value))
     el._lastAppliedModel = value.innerRef.value
+    // External model changes that don't trigger a host re-render re-run
+    // the same checked computation the `beforeUpdate` path uses. Not
+    // focus-gated: an external change must reflect even on a focused
+    // radio, and writing `el.checked` is atomic.
+    setupValueSync(el, value.innerRef, () => {
+      el.checked = looseEqual(value.innerRef.value, applyCoerce(getValue(el), value))
+      el._lastAppliedModel = value.innerRef.value
+    })
   },
   // Skip the DOM sync when the model is identity-unchanged from the
   // last application. Pre-fix the guard read `value.innerRef.value
@@ -1139,7 +1166,17 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
   // <option>s.
   mounted(el, { value }) {
     setSelected(el, value)
-    if (isRegisterValue(value)) el._lastAppliedModel = value.innerRef.value
+    if (!isRegisterValue(value)) return
+    el._lastAppliedModel = value.innerRef.value
+    // External model changes that don't trigger a host re-render re-run
+    // the same `setSelected` the `updated` path uses. The `_assigning`
+    // guard short-circuits the mid-click window (mousedown → change) so
+    // an in-progress multi-select isn't clobbered, matching `updated`.
+    setupValueSync(el, value.innerRef, () => {
+      if (el._assigning === true) return
+      setSelected(el, value)
+      el._lastAppliedModel = value.innerRef.value
+    })
   },
   beforeUpdate(el, binding, vnode) {
     setAssignFunction(el, vnode, binding.value)

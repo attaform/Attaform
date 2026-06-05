@@ -1,5 +1,4 @@
-import { effectScope, watch } from 'vue'
-import type { RegisterValue } from '../types/types-api'
+import { effectScope, watch, type WatchSource } from 'vue'
 
 /**
  * Per-element teardown slot for the value-sync watch. `Symbol.for(...)`
@@ -12,7 +11,7 @@ type ValueSyncCarrier = HTMLElement & {
 
 /**
  * ShadowRoot-aware "is this element the focused one" check. A
- * v-register'd input mounted inside a shadow tree reports its focus on
+ * v-register'd control mounted inside a shadow tree reports its focus on
  * the rootNode, not on `document` — mirrors the activeElement lookup in
  * the directive's `beforeUpdate` and `register-api`'s focus probe.
  */
@@ -23,42 +22,56 @@ function isElementFocused(el: HTMLElement): boolean {
   return activeElement === el
 }
 
+export interface ValueSyncOptions {
+  /**
+   * Skip the write while the element is focused. Set for text / textarea
+   * so the watch never overwrites the user's in-flight edit or moves
+   * their caret — the keystroke path and `beforeUpdate` own the focused
+   * case. Left off for checkbox / radio / select: their DOM writes are
+   * atomic and idempotent, so an external change must reflect even on a
+   * focused control (that's the failure surface this closes), and the
+   * in-flight-interaction window is guarded by `apply` itself (the
+   * select's `_assigning` flag).
+   */
+  skipWhileFocused?: boolean
+}
+
 /**
- * Reactively mirror a text / number input's `displayValue` onto the DOM.
- *
- * The directive's `beforeUpdate` hook only re-syncs `el.value` when the
- * host component re-renders. A form mutation that originates OUTSIDE the
- * component never triggers that re-render on its own:
+ * Reactively mirror a register binding's reactive source onto the DOM for
+ * changes that DON'T ride a host re-render:
  *
  *   - cross-tab sync (`applyFormReplacement` from the multi-tab module),
  *   - a sibling component's `setValue` / `reset` / `clear`,
  *   - any imperative store write while the bound component's template
  *     reads no field state (a display-only form never re-renders).
  *
- * In all of these the store and `displayValue` update correctly, but the
- * `<input>` would stay stale. Watching `displayValue` in its own effect
- * scope closes the gap — the same way the aria and file directives watch
- * their reactive sources for ticks that don't ride a parent re-render.
+ * The directive's `beforeUpdate` / `updated` hooks only fire on a host
+ * re-render, so without this the store updates but the control stays
+ * stale. `apply` performs the type-specific DOM write — `el.value` for
+ * text, `el.checked` for checkbox / radio, `<option>.selected` for select
+ * — and is the SAME write the re-render path runs, so both stay in
+ * lockstep. Runs in its own effect scope, torn down by
+ * `teardownValueSync` from the dispatcher's `beforeUnmount`.
  *
- * Skipped while the element is focused or mid-IME-composition so the
- * watch never overwrites the user's in-flight edit or moves their caret;
- * the keystroke path and `beforeUpdate` own the focused case. The
- * `el.value !== next` guard keeps the write idempotent, and a
- * programmatic `el.value` assignment doesn't dispatch `input`, so there's
- * no write-back echo loop.
+ * Mid-IME-composition writes are always skipped (text only; inert
+ * elsewhere). A programmatic DOM write doesn't dispatch `input` / `change`,
+ * so there's no write-back echo loop.
  */
 export function setupValueSync(
-  el: HTMLInputElement | HTMLTextAreaElement,
-  rv: RegisterValue
+  el: HTMLElement,
+  source: WatchSource,
+  apply: () => void,
+  options: ValueSyncOptions = {}
 ): void {
+  const skipWhileFocused = options.skipWhileFocused === true
   const scope = effectScope(true)
   scope.run(() => {
     watch(
-      rv.displayValue,
-      (next) => {
+      source,
+      () => {
         if ((el as { composing?: boolean }).composing === true) return
-        if (isElementFocused(el)) return
-        if (el.value !== next) el.value = next
+        if (skipWhileFocused && isElementFocused(el)) return
+        apply()
       },
       { flush: 'post' }
     )
@@ -68,7 +81,7 @@ export function setupValueSync(
 
 /**
  * Stop the value-sync watch. Gated on an active scope so an element that
- * never set one up (checkbox / radio / select / file) is a no-op.
+ * never set one up is a no-op.
  */
 export function teardownValueSync(el: HTMLElement): void {
   const carrier = el as ValueSyncCarrier

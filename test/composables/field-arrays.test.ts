@@ -215,14 +215,15 @@ describe('useForm — field array helpers', () => {
       const entries = Object.entries(form.fields.posts)
       expect(entries).toHaveLength(2)
       expect(entries.map(([k]) => k)).toEqual(['0', '1'])
-      // Each entry value is a descended surface proxy (callable
-      // function target). Identity matches dot-access to confirm the
-      // descriptor returns the same proxy `form.fields.posts[idx]`
-      // would yield — the load-bearing guarantee for v-for templates
-      // that read `item.title.errors`, `item.sku.validating`, etc.
+      // Each entry value is a descended surface proxy — a non-callable
+      // object target (container nodes are non-callable below the root).
+      // Identity matches dot-access to confirm the descriptor returns
+      // the same proxy `form.fields.posts[idx]` would yield — the
+      // load-bearing guarantee for v-for templates that read
+      // `item.title.errors`, `item.sku.validating`, etc.
       const directAtZero = (form.fields.posts as unknown as Record<string, unknown>)['0']
       expect(entries[0]?.[1]).toBe(directAtZero)
-      expect(typeof entries[0]?.[1]).toBe('function')
+      expect(typeof entries[0]?.[1]).toBe('object')
     })
 
     it('removed indices drop from the enumerated key set', () => {
@@ -349,11 +350,9 @@ describe('useForm — field array helpers', () => {
       const { app, form } = profileHarness()
       apps.push(app)
       expect(Object.keys(form.fields.user).sort()).toEqual(['city', 'name'])
-      // Object containers keep their function target so the callable
-      // aggregate (`form.fields.user()`) still resolves the FieldState
-      // for the whole object — regression guard against accidentally
-      // widening the Array-target switch to objects.
-      const aggregate = (form.fields.user as unknown as () => unknown)()
+      // Container nodes are non-callable; the aggregate FieldState for
+      // the whole object comes from the root call-form, not a node call.
+      const aggregate = form.fields('user')
       expect(aggregate).toBeDefined()
     })
   })

@@ -37,6 +37,22 @@ export interface CallableReadonlySnapshotOptions<T> {
    */
   readonly snapshot: () => T
   /**
+   * Optional snapshot used SOLELY by the coercion handlers (`toJSON`,
+   * `toString`, `valueOf`, `Symbol.toPrimitive`) when serialising the
+   * surface. Defaults to `snapshot`.
+   *
+   * The split exists because `snapshot()` may return a Vue reactive /
+   * readonly proxy (so `proxy()` hands consumers a live, tracked view),
+   * but Vue shims `hasOwnProperty` on such proxies — so a data field
+   * literally named `hasOwnProperty` would serialise as Vue's function
+   * shim (and `JSON.stringify` would drop it). A surface whose snapshot
+   * is reactive supplies a raw (`toRaw`'d) snapshot here so
+   * stringification reflects the stored data faithfully. Reactivity is
+   * still tracked: the handler reads the reactive source before
+   * unwrapping, inside the consumer's active effect.
+   */
+  readonly coercionSnapshot?: () => T
+  /**
    * Resolve a `string` property access against the underlying source.
    * Called from the `get` trap (after the coercion-key / symbol
    * branches) so consumer-supplied logic can decide what each key
@@ -120,7 +136,9 @@ export function buildCallableReadonlySnapshotProxy<T>(
 ): CallableReadonlySnapshotProxy<T> {
   const target = (() => {}) as unknown as CallableReadonlySnapshotProxy<T>
 
-  const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(opts.snapshot)
+  const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(
+    opts.coercionSnapshot ?? opts.snapshot
+  )
   const callResolve = opts.resolveCall ?? ((arg: unknown): unknown => opts.resolveKey(String(arg)))
 
   return new Proxy(target, {

@@ -466,8 +466,8 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     await nextTick()
 
     // The container cache keys off (segments, shape). With the
-    // live value now `undefined`, the next fresh read produces a
-    // function-target proxy — `Array.isArray` reports the truth.
+    // live value now `undefined`, the next fresh read produces an
+    // object-target proxy — `Array.isArray` reports the truth.
     const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
     expect(Array.isArray(fresh)).toBe(false)
     expect(fresh).not.toBe(stale)
@@ -480,17 +480,18 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     expect(Array.isArray(stale)).toBe(true)
   })
 
-  it('a function-target held reference reports live length and keys after a flip into the array variant', async () => {
+  it('an object-target held reference reports live length and keys after a flip into the array variant', async () => {
     const api = mount()
     // Move to the variant where `payload` doesn't exist BEFORE the
     // first read, so the cached proxy at this path is minted with
-    // a function target (no array shape yet).
+    // a plain object target (no array shape yet). Non-root container
+    // nodes are object targets — only the root is a function target.
     api.setValue('body.mode', 'single')
     await nextTick()
 
-    const heldFn = (api.fields as unknown as { body: { payload: unknown } }).body.payload
-    expect(Array.isArray(heldFn)).toBe(false)
-    expect(typeof heldFn).toBe('function')
+    const heldObj = (api.fields as unknown as { body: { payload: unknown } }).body.payload
+    expect(Array.isArray(heldObj)).toBe(false)
+    expect(typeof heldObj).toBe('object')
 
     // Flip into the list variant and add items.
     api.setValue('body.mode', 'list')
@@ -501,24 +502,24 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
 
     // Trap-implemented dimensions track live state on the held
     // reference — `length` interception consults the live shape
-    // (not just the cached one), so a function-target proxy held
+    // (not just the cached one), so an object-target proxy held
     // across a flip into an array still reports the live count
     // instead of descending into a phantom child path.
-    expect((heldFn as { length: number }).length).toBe(2)
-    expect(Object.keys(heldFn as object)).toEqual(['0', '1'])
+    expect((heldObj as { length: number }).length).toBe(2)
+    expect(Object.keys(heldObj as object)).toEqual(['0', '1'])
 
     // Inherent caveat: host-level checks read internal slots off
     // the original target, which proxy traps cannot rewrite. The
-    // held function-target reference stays `typeof === 'function'`
-    // and never passes `Array.isArray` even though the live shape
-    // is now an array. Fresh reads through `form.fields.<path>`
-    // produce an array-targeted proxy that does pass the host check.
-    expect(Array.isArray(heldFn)).toBe(false)
-    expect(typeof heldFn).toBe('function')
+    // held object-target reference never passes `Array.isArray`
+    // even though the live shape is now an array. Fresh reads
+    // through `form.fields.<path>` produce an array-targeted proxy
+    // that does pass the host check.
+    expect(Array.isArray(heldObj)).toBe(false)
+    expect(typeof heldObj).toBe('object')
 
     const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
     expect(Array.isArray(fresh)).toBe(true)
-    expect(fresh).not.toBe(heldFn)
+    expect(fresh).not.toBe(heldObj)
     expect(Object.keys(fresh as object)).toEqual(['0', '1'])
   })
 

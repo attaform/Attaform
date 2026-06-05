@@ -1133,6 +1133,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           // sum of all forms.
           await Promise.all(
             list.map(async (step) => {
+              // Entry-clear user-set errors before validating, mirroring
+              // form.handleSubmit: a fresh attempt starts each PROCESSED
+              // form from a clean user-error slate. A final submit
+              // re-validates every step, so every step is cleared.
+              registry.forms.get(step.key)?.clearUserErrors()
               const result = await processOne(step.form)
               results.set(step.key, result)
             })
@@ -1140,8 +1145,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         } else {
           // Intermediate submission: validate the active form only and
           // advance on success. The empty-list short-circuit above
-          // guarantees `activeForm.value` is defined here.
+          // guarantees `activeForm.value` is defined here. Only the active
+          // form is processed, so only its user errors are cleared — other
+          // steps keep theirs.
           const active = activeForm.value as AnyForm
+          registry.forms.get(active.key)?.clearUserErrors()
           const result = await processOne(active)
           results.set(active.key, result)
         }

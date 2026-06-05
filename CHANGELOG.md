@@ -2,7 +2,127 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Added
+
+- **Async register transforms, with the file input unified into the same
+  pipeline.** `register('field', { transforms })` stays byte-for-byte
+  synchronous until a transform returns a thenable, then defers the write,
+  commits the resolved value (latest-request-wins, so a superseding sync write
+  or a newer input discards a stale in-flight run), and drives a busy /
+  pending affordance for the duration. `<input type="file">` routes a
+  selection through the same machinery, so you can normalize a dropped file
+  into canonical form state (`File` to `string[]`) inline. New reads on
+  `FieldState`, `form.fields`, and `form.meta`: `transforming`, `busy`, and
+  `transformError` (a rejected transform lands there with no console noise and
+  no `unhandledrejection`). An in-flight transform rides the existing
+  anti-flash spinner clock, gated so it never trips `pending` where a
+  validation would not. `handleSubmit` drains in-flight transforms before
+  validating, so a submit immediately after input captures the resolved value,
+  and a container now reflects its own in-flight transform or validation (not
+  only its descendant leaves), so `form.fields('roster').busy` is live for an
+  array-valued file field. Tested against both the Zod v3 and v4 adapters;
+  zero new runtime dependencies. (#361)
+
+- **Wizard step history, so the browser Back and Forward buttons walk the
+  flow.** When a wizard syncs steps to the URL, advancing now pushes a real
+  history entry per step. The default previously used `replaceState`, so the
+  history stack never grew and Back exited the app instead of returning to
+  the prior step. The write deduplicates (re-writing the current step is a
+  no-op) and canonicalizes the effective step: a bare `/wizard` or an unknown
+  `?step=` resolves to the first step and replaces in place rather than
+  pushing a dead entry that Back would land on still showing the same step,
+  which also preserves the Forward stack across a popstate round-trip. Only
+  the default `persist` changes; `replace`-style behavior stays available
+  through a custom `persist`. (#354)
+
+### Changed
+
+- **Truthful absence on `form.fields` / `form.errors` / `form.values`.** Dot
+  and index access is now pure navigation to a true leaf of the form graph
+  (`form.fields.email.value`, `form.fields.links[0].value`); a key the
+  container neither declares (a fixed object's field) nor currently holds reads
+  `undefined` rather than a permanently-truthy phantom, so an out-of-bounds
+  array index, a missing record key, and an inactive discriminated-union
+  variant's key are all honestly absent. A container's own aggregate state
+  moves to the call-form: `form.fields('path')` (and `form.errors('path')` /
+  `form.values('path')`) is the single accessor at any depth, and only the root
+  surface is callable now, so every non-root node is a plain object or array
+  (`v-for` and `Array.isArray` work uniformly, and `form.fields.address()`
+  throws like any non-function). The type side marks each dynamic hop
+  `… | undefined`, so the runtime and the types agree. (#360, #365)
+
+- **`form.process()` is renamed to `form.parse()`.** The imperative one-shot
+  parse now names its action and mirrors the parsed result it returns. It stays
+  always-async by design (a schema can carry async refinements or transforms,
+  so there is deliberately no sync variant that could silently skip them) and
+  keeps the exact semantics of `process()`: a pure read with no commit to
+  `form.errors` and no in-flight cancel, distinct from `validateAsync()`, which
+  publishes to the reactive error surface. No back-compat alias (pre-1.0).
+  (#359)
+
+- **`handleSubmit` resolves instead of re-throwing a rejecting callback.**
+  The function you bind to `@submit.prevent` no longer re-throws when your
+  `onSubmit` (or `onError`) rejects, so a bound DOM event can never
+  manufacture a phantom `window` `unhandledrejection` for an already-handled
+  server failure. The throw lands on a first-class render slot:
+  `form.meta.submitError` (now typed `Error | null`, coerced through a new
+  `toError` helper that keeps a non-`Error` origin on `.cause`), plus a new
+  flat `wizard.submitError` getter for wizards. A throwing `onError` stays
+  wrapped in `SubmitErrorHandlerError`, so "my error handler crashed" stays
+  distinct from "my submit body failed". `submitting` still resets in
+  `finally` (no stranded button), and nothing auto-injects into your curated
+  error store. (#355, #356)
+
+- **`handleSubmit` clears user-set errors at entry.** A fresh submit now
+  clears the user-set error store (`setFormErrors` / `setFieldErrors`) at
+  entry, before validation and before your callback, so a prior attempt's
+  server errors no longer linger into the next attempt (even a successful
+  one). The clear is unconditional and total (form-level and field-level), and
+  the wizard reaches parity: `wizard.handleSubmit` clears exactly the forms it
+  processes (every step on a final-step submit, only the active form on an
+  intermediate one). Errors set during the callback survive, and the clear
+  fires even when validation fails. Imperative `parse()` / `validateAsync()`
+  stay hands-off. (#357, #358)
+
+### Fixed
+
+- **Prototype-shadowed data keys read as data, not inherited members.** A field
+  whose name collides with an `Object.prototype` member (`hasOwnProperty`,
+  `toString`, `valueOf`, `constructor`, `isPrototypeOf`, `__proto__`)
+  previously read back as the inherited member instead of its stored value (and
+  Vue's reactive proxy shims `hasOwnProperty`, masking the datum even when a
+  real slot exists). Reads across `form.fields`, `form.errors`, and
+  `form.values` now take own-descriptor reads for shadowed names, so such a key
+  round-trips its value without ever resolving up the prototype chain; storage
+  was already pollution-safe, and this extends the guarantee to every read
+  surface. One residual Vue-platform limitation: deep dot access on a nested
+  object for a field literally named `hasOwnProperty` still returns Vue's shim,
+  so reach it through the call-form (`form.values('wrap.hasOwnProperty')`) or
+  `.value` (`form.fields.wrap.hasOwnProperty.value`). (#360)
+
+- **`v-register` reflects form changes that originate outside its
+  component.** A bound `<input>`, `<textarea>`, checkbox, radio, or
+  `<select>` now repaints when the store is updated by something other than a
+  host re-render: cross-tab multi-tab sync, a sibling component's `setValue` /
+  `reset` / `clear`, or any imperative write, even on a display-only form
+  whose template reads no field state. Previously the directive wrote the DOM
+  only in its `mounted` / `beforeUpdate` / `updated` hooks (which fire on a
+  re-render), so such a control stayed stale while the store itself was
+  correct. A focus-gated reactive watch now mirrors the value onto the DOM:
+  text and textarea skip the write while the element is focused (never
+  disturbing an in-flight edit or moving the caret), while checkbox, radio,
+  and select reflect an external change even when focused. (#362)
+
+- **The Zod-v3 unified read shape no longer collapses to `never`.** In a
+  Zod-v3-only install, the unified `attaform/zod` entry's v4 `useForm`
+  overload wrongly bound v3 schemas (bare `z.ZodObject` degrades to an
+  `any`-like type when `z` resolves to a single Zod major), so `form.values`
+  and `form.fields` projected through the v4 storage shape and collapsed to
+  `never` under `vue-tsc`, even though the app still ran. The overload is now
+  gated on a structural `ZodV4Internals` marker and constrained on
+  `z.ZodObject<z.ZodRawShape>`, so v3 schemas fall through to the v3 overload.
+  No runtime or public-API change, and v4 is unaffected. A built-`.d.mts`
+  regression fixture (`bundled-types-v3`) now guards it in CI. (#353)
 
 ## v0.21.0
 ### Added

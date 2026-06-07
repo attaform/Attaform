@@ -101,7 +101,7 @@ function captureErrorEntries(map: Map<PathKey, ValidationError[]>): ErrorEntries
   return out
 }
 
-function errorsEqual(a: ErrorEntries, b: ErrorEntries): boolean {
+export function errorsEqual(a: ErrorEntries, b: ErrorEntries): boolean {
   if (a.length !== b.length) return false
   const bMap = new Map<PathKey, ValidationError[]>()
   for (const [k, v] of b) bMap.set(k, v)

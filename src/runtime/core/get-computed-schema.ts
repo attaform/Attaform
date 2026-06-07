@@ -1,16 +1,5 @@
-import type { AbstractSchema, FormKey } from '../types/types-api'
+import type { AbstractSchema, FormKey, SchemaFactoryOptions } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
-
-/**
- * Per-form options threaded from `useForm` into the adapter factory.
- * Today carries the resolved `maxRecursionDepth` so adapter walks can
- * cap their descent through recursive schemas; future per-form runtime
- * knobs land here too.
- */
-export interface SchemaFactoryOptions {
-  /** Resolved recursion ceiling (per-form > app-default > library default). */
-  maxRecursionDepth: number
-}
 
 /**
  * Accept schema as either a direct value or a factory function

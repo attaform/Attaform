@@ -5,13 +5,13 @@ import type {
   FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
+  SchemaFactoryOptions,
 } from '../../types/types-api'
 import {
   createAbstractSchema,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
 import { getFieldMeta, getFieldMetaList } from './field-meta'
-import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path } from '../../core/paths'
 import type { DeepPartial, GenericForm } from '../../types/types-core'

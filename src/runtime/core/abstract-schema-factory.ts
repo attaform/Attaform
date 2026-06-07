@@ -43,8 +43,8 @@ import type {
   ValidationError,
   ValidationResponse,
   ValidateOptions,
+  SchemaFactoryOptions,
 } from '../types/types-api'
-import type { SchemaFactoryOptions } from './get-computed-schema'
 import { AttaformErrorCode } from './error-codes'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 

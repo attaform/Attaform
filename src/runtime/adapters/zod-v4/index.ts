@@ -6,13 +6,13 @@
 import type { z } from 'zod'
 import { useAbstractForm } from '../../composables/use-abstract-form'
 import { InvalidUseFormConfigError } from '../../core/errors'
-import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import type {
   AbstractSchema,
   FormKey,
   ValidateOnConfig,
   UseFormReturnType,
   UseFormConfiguration,
+  SchemaFactoryOptions,
 } from '../../types/types-api'
 import type { DefaultValuesInput, FlatPath, GenericForm, NestedType } from '../../types/types-core'
 import { zodV4Adapter } from './adapter'

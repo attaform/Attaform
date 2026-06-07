@@ -10,6 +10,7 @@ import type {
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
   ValidationError,
+  SchemaFactoryOptions,
 } from '../../types/types-api'
 import {
   createAbstractSchema,
@@ -23,7 +24,6 @@ import {
   peelEmbeddedDefault,
   NO_EMBEDDED_DEFAULT,
 } from '../../core/walk-derive-default'
-import type { SchemaFactoryOptions } from '../../core/get-computed-schema'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path } from '../../core/paths'
 import { slimKindOf } from '../../core/slim-primitive-gate'

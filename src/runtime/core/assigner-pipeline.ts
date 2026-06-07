@@ -120,23 +120,15 @@ export function fireAssigner(
   if (!isRegisterValue(registerValue)) {
     return fn(value, undefined)
   }
-  const r = runTransforms(value, registerValue)
-  if (r.kind === 'async') {
-    // JIT-wrapped raw consumer fn: invoke it with the resolved, coerced
-    // value once the run lands. No `syncDom` — a consumer-installed
-    // assigner owns its own DOM.
-    kickoffAsyncTransform(
-      registerValue as InternalRegisterValue,
-      r.holder,
-      r.run,
-      (coerced) => fn(coerced, registerValue),
-      undefined
-    )
-    return true
-  }
-  if (!r.ok) return false
-  const coerced = applyCoerce(r.value, registerValue)
-  return fn(coerced, registerValue)
+  // JIT-wrap the raw consumer fn: it gets the resolved, coerced value
+  // (sync, or via the async kickoff). No `syncDom` — a consumer-installed
+  // assigner owns its own DOM.
+  return wrapWithTransforms(
+    value,
+    registerValue,
+    (coerced) => fn(coerced, registerValue),
+    undefined
+  )
 }
 
 /**
@@ -354,6 +346,36 @@ export function applyCoerce(value: unknown, registerValue: RegisterValue): unkno
 }
 
 /**
+ * Run one write through the transform pipeline, then commit it. The
+ * shared skeleton behind every assigner (`fireAssigner` plus
+ * `getModelAssigner`'s override / multi-listener / default variants):
+ * run transforms; when a transform goes async, hand off to
+ * `kickoffAsyncTransform` and return `true` so the listener treats the
+ * write as accepted; on a sync throw abort with `false`; otherwise
+ * coerce and pass the value to `commit`.
+ *
+ * `commit` receives the post-transform, post-coerce value on the sync
+ * path and (via the kickoff) on the async path. `syncDom` repaints the
+ * bound element after an async commit; it is `undefined` on
+ * consumer-override paths that own their own DOM.
+ */
+function wrapWithTransforms(
+  value: unknown,
+  registerValue: RegisterValue,
+  commit: (coerced: unknown) => boolean | undefined,
+  syncDom: (() => void) | undefined
+): boolean | undefined {
+  const r = runTransforms(value, registerValue)
+  if (r.kind === 'async') {
+    kickoffAsyncTransform(registerValue as InternalRegisterValue, r.holder, r.run, commit, syncDom)
+    return true
+  }
+  if (!r.ok) return false
+  const coerced = applyCoerce(r.value, registerValue)
+  return commit(coerced)
+}
+
+/**
  * Normalize a rejected async transform's reason into an `Error` for the
  * `field.transformError` channel. Mirrors the submit path's `toError`,
  * with transform-appropriate wording for the rare non-Error rejection.
@@ -417,33 +439,20 @@ const getModelAssigner = (
       // who declared `transforms: [...]` intended "always normalize"; a
       // silent bypass on override would be the surprise. If they want
       // raw, they don't register transforms.
-      const r = runTransforms(value, registerValue)
-      if (r.kind === 'async') {
-        // Deferred: invoke the consumer's handlers with the resolved,
-        // coerced value once the run lands. No `syncDom` — a consumer
-        // override owns its own DOM.
-        kickoffAsyncTransform(
-          registerValue as InternalRegisterValue,
-          r.holder,
-          r.run,
-          (coerced) => {
-            invokeArrayFns(fnArr, coerced, registerValue)
-          },
-          undefined
-        )
-        return true
-      }
-      if (!r.ok) return false
-      // Schema-driven coerce runs AFTER transforms — it's the final
-      // type-fixup before storage. Custom override handlers receive
-      // the coerced value, mirroring how transforms compose with
-      // overrides today. Consumers who want raw don't enable coerce.
-      const coerced = applyCoerce(r.value, registerValue)
-      invokeArrayFns(fnArr, coerced, registerValue)
-      // Multi-listener case: no single boolean to surface. Return
-      // undefined so the listener treats this as "succeeded" — matches
-      // the contract for single-handler consumer assigners.
-      return undefined
+      // Schema-driven coerce runs AFTER transforms (the final type-fixup
+      // before storage); override handlers receive the coerced value. The
+      // multi-listener case has no single boolean to surface, so commit
+      // returns undefined ("succeeded"), matching the single-handler
+      // contract. No `syncDom` — a consumer override owns its own DOM.
+      return wrapWithTransforms(
+        value,
+        registerValue,
+        (coerced) => {
+          invokeArrayFns(fnArr, coerced, registerValue)
+          return undefined
+        },
+        undefined
+      )
     }
     ;(wrapped as unknown as ConsumerWrappedCarrier)[CONSUMER_WRAPPED_TAG] = true
     return wrapped
@@ -451,20 +460,12 @@ const getModelAssigner = (
   if (isFunction(fn)) {
     const handler = fn as CustomDirectiveRegisterAssignerFn
     const wrapped: CustomDirectiveRegisterAssignerFn = (value) => {
-      const r = runTransforms(value, registerValue)
-      if (r.kind === 'async') {
-        kickoffAsyncTransform(
-          registerValue as InternalRegisterValue,
-          r.holder,
-          r.run,
-          (coerced) => handler(coerced, registerValue),
-          undefined
-        )
-        return true
-      }
-      if (!r.ok) return false
-      const coerced = applyCoerce(r.value, registerValue)
-      return handler(coerced, registerValue)
+      return wrapWithTransforms(
+        value,
+        registerValue,
+        (coerced) => handler(coerced, registerValue),
+        undefined
+      )
     }
     ;(wrapped as unknown as ConsumerWrappedCarrier)[CONSUMER_WRAPPED_TAG] = true
     return wrapped
@@ -492,26 +493,17 @@ const getModelAssigner = (
       // path consumer-installed assigners get for free.
       return registerValue.setValueWithInternalPath(undefined)
     }
-    const r = runTransforms(value, registerValue)
-    if (r.kind === 'async') {
-      // Deferred: commit the resolved, coerced value via the default
-      // write path once the run lands, then repaint the bound element
-      // (the variant's `_syncFromStorage`, captured at `created`-time).
-      // Return `true` so the listener treats the write as accepted and
-      // skips its synchronous force-sync — `isTransforming(value)` is
-      // already `true` (beginTransform ran inside the kickoff).
-      kickoffAsyncTransform(
-        registerValue as InternalRegisterValue,
-        r.holder,
-        r.run,
-        (coerced) => registerValue.setValueWithInternalPath(coerced),
-        el._syncFromStorage
-      )
-      return true
-    }
-    if (!r.ok) return false
-    const coerced = applyCoerce(r.value, registerValue)
-    return registerValue.setValueWithInternalPath(coerced)
+    // Default write path. On the async branch the resolved value lands
+    // via setValueWithInternalPath, then `_syncFromStorage` (captured at
+    // `created`-time) repaints the bound element; returning `true` lets
+    // the listener skip its synchronous force-sync (the write is already
+    // in flight — `isTransforming(value)` is true).
+    return wrapWithTransforms(
+      value,
+      registerValue,
+      (coerced) => registerValue.setValueWithInternalPath(coerced),
+      el._syncFromStorage
+    )
   }
   ;(defaultAssigner as unknown as DefaultAssignerCarrier)[DEFAULT_ASSIGNER_TAG] = true
   return defaultAssigner

@@ -132,9 +132,11 @@ workflow when you can.
 ## Commit style
 
 Conventional commits: `feat:` / `fix:` / `ci:` / `docs:` / `perf:` /
-`test:` / `chore:` / `refactor:`. The release tooling
-(`changelogen`) parses these into the CHANGELOG. Keep subject lines
-short; put reasoning in the body.
+`test:` / `chore:` / `refactor:`, enforced by `commitlint` on the
+`commit-msg` hook. GitHub groups them into the auto-generated release
+notes (`RELEASES.md`); the `CHANGELOG.md` `## Unreleased` block is
+hand-maintained and promoted to the tagged version on `pnpm version`.
+Keep subject lines short; put reasoning in the body.
 
 Where a commit lands a phase from a plan doc, reference it in the
 subject: `feat: phase 9.1 — ...`. Not mandatory, just helps the log

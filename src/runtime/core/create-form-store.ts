@@ -2008,6 +2008,24 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }
   }
 
+  /**
+   * The single write funnel: every value mutation (consumer `setValue`,
+   * directive assign, array op, DU variant reshape) lands here. Kept whole
+   * as deliberate complexity — it closes over essentially all of the
+   * store's reactive state, and the ordering of its phases (the
+   * slim-primitive gate, DU reshape, structural fill, storage write, then
+   * blank / error bookkeeping and the change-listener notify) is itself
+   * the correctness. Splitting it into argument-passed helpers would
+   * scatter that ordering and trade a single source of truth for a
+   * fan-out of partial writers (net-negative).
+   *
+   * Its observable contracts are pinned by characterization suites rather
+   * than unit-tested internals: variant-memory restore + nested-DU stub
+   * correction (discriminated-union-variant-switch, du-variant-persistence),
+   * blank-path insertion-order stability (blank-paths-order-stability), and
+   * the same-tick value + schemaErrors commit / no-flicker reshape
+   * (du-variant-error-flicker).
+   */
   function setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean {
     // Drop any Symbol-keyed properties before the value flows through
     // the gate, DU reshape, or storage. Form values are string-keyed
@@ -2336,6 +2354,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
    * foreign keys from the FIRST variant (the union's
    * `getDefaultAtPath` falls back to the first option), which is
    * exactly what the reshape is meant to clear.
+   *
+   * Deliberate-complexity: the sync-ahead reshape (storage + schema
+   * errors committed in the same tick) is the no-flicker mitigation no
+   * unit test can verify in isolation, so it stays inline rather than
+   * fragmenting into argument-passed helpers. Its observable contracts
+   * are pinned by characterization suites — the same-tick no-flicker
+   * transition (du-variant-error-flicker), variant-memory restore
+   * (discriminated-union-variant-switch, du-variant-persistence), and
+   * blank-path order stability (blank-paths-order-stability).
    */
   function reshapeUnionVariant(
     parentPath: Path,

@@ -8,7 +8,8 @@ import { __DEV__ } from './dev'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
 import type { PathKey } from './paths'
 import type { PersistOptInRegistry } from './persistence/opt-in-registry'
-import { fireAssigner, isRegisterValue, isTransforming, setAssignFunction } from './directive'
+import { fireAssigner, setAssignFunction } from './directive'
+import { isRegisterValue, isTransforming } from './register-protocol'
 
 /**
  * True for any value the file directive treats as "no file selected":

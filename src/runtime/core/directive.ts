@@ -25,8 +25,13 @@ import {
   looseToNumber,
 } from './vue-shared-shim'
 import type { DirectiveBinding, DirectiveHook, ObjectDirective, VNode } from 'vue'
-import { isRef, nextTick, warn } from 'vue'
-import { REGISTER_OWNER_MARKER } from '../composables/use-register'
+import { nextTick, warn } from 'vue'
+import {
+  isRegisterValue,
+  isTransforming,
+  REGISTER_OWNER_MARKER,
+  V_REGISTER_MARKER,
+} from './register-protocol'
 import { __DEV__ } from './dev'
 import {
   applyAria,
@@ -83,30 +88,6 @@ import { getOrAssignElementId } from './persistence/opt-in-registry'
 // directive registration came from. Same reasoning for `listenersKey`
 // and `DEFAULT_ASSIGNER_TAG` below.
 export const assignKey: unique symbol = Symbol.for('attaform:assign-key')
-
-/**
- * Type guard for a `RegisterValue`. Returns `true` when `val` looks
- * like the object returned from `form.register(path)`.
- *
- * ```ts
- * if (isRegisterValue(slotValue)) {
- *   // slotValue.innerRef is now a Ref<unknown>
- * }
- * ```
- *
- * Useful when building wrapper components that accept either a
- * `RegisterValue` or a plain ref via the same prop.
- */
-export function isRegisterValue<Value = unknown>(val: unknown): val is RegisterValue<Value> {
-  if (typeof val !== 'object' || val === null) return false
-  if (!('innerRef' in val)) return false
-  if (!isRef(val.innerRef)) return false
-  if (!('registerElement' in val)) return false
-  if (typeof val.registerElement !== 'function') return false
-  if (!('setValueWithInternalPath' in val)) return false
-  if (typeof val.setValueWithInternalPath !== 'function') return false
-  return true
-}
 
 type ComposingTarget = (EventTarget & { composing: boolean }) | null
 
@@ -491,18 +472,6 @@ function transformGateRejectedError(path: PathKey): Error {
     `[attaform] transform result for path '${path}' was rejected by the field's type gate ` +
       `(the resolved value did not fit the schema slot).`
   )
-}
-
-/**
- * `true` while a deferred async transform is in flight at this path.
- * `beginTransform` flips it synchronously inside the assigner, so a
- * listener's post-write force-sync block reads it (right after the
- * assigner returns) to skip snapping the DOM back to stale storage —
- * the resolved value is painted in by the orchestrator's `syncDom`
- * once the run lands.
- */
-export function isTransforming(value: unknown): boolean {
-  return isRegisterValue(value) && (value as InternalRegisterValue).transforming
 }
 
 const getModelAssigner = (
@@ -1805,17 +1774,6 @@ export type VXCustomDirective =
   | typeof vRegisterSelect
   | typeof vRegisterRadio
   | typeof vRegisterDynamic
-
-/**
- * Marker installed on the v-register directive object so consumers
- * (notably `useRegister`) can identify it in a child vnode's
- * directive list even when the consumer's bundler hasn't installed
- * attaform's compile-time transforms. `Symbol.for(...)` round-trips
- * across duplicate bundle copies: `attaform` and `attaform/zod` can
- * land on different `vRegister` references in the playground or
- * under pnpm-hoist edge cases, but both carry the same marker.
- */
-export const V_REGISTER_MARKER: unique symbol = Symbol.for('attaform:v-register-directive')
 
 /**
  * The `v-register` directive. Bind a form field to a native input,

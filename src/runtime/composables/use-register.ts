@@ -68,7 +68,7 @@ import {
 } from 'vue'
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
-import { V_REGISTER_MARKER } from '../core/directive'
+import { REGISTER_OWNER_MARKER, V_REGISTER_MARKER } from '../core/register-protocol'
 import { ensureAttaformInstalled } from '../core/plugin'
 import type { RegisterValue } from '../types/types-api'
 
@@ -86,22 +86,6 @@ import type { RegisterValue } from '../types/types-api'
  * keeps working; new code can write `rv.path` directly.
  */
 export type UseRegisterReturn<V = unknown> = RegisterValue<V> & Ref<RegisterValue<V> | undefined>
-
-/**
- * Marker on the rendered root DOM element. Set by `useRegister`'s
- * `onMounted` hook; read by the directive's deferred warn check to
- * skip the "is a no-op" warn for components that handle binding via
- * an inner v-register.
- *
- * `Symbol.for(...)` so the marker round-trips across duplicate copies
- * of attaform — see `assignKey` in core/directive.ts for the same
- * reasoning. `useRegister` and the directive are typically loaded
- * from the same module copy, but a consumer importing from
- * `attaform/zod` (Vite-optimized bundle) and the Nuxt
- * plugin's relative-path import (live ESM) can land on different
- * copies; a global symbol means the marker check still works.
- */
-export const REGISTER_OWNER_MARKER: unique symbol = Symbol.for('attaform:register-owner-marker')
 
 const warnedNoParentRV: WeakSet<object> | null = __DEV__ ? new WeakSet<object>() : null
 let warnedOutsideSetup = false

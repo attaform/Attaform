@@ -1,5 +1,5 @@
 import type { RegisterValue } from '../types/types-api'
-import { isRegisterValue } from './directive'
+import { isRegisterValue } from './register-protocol'
 import { getOrAssignElementId } from './persistence/opt-in-registry'
 import { allowSensitivePersist } from './persistence/sensitive-names'
 

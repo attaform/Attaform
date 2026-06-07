@@ -44,7 +44,8 @@ export * from './runtime/_shared-exports'
 
 // The v-register directive (registered automatically by createAttaform,
 // but exported for advanced consumers who install directives themselves).
-export { vRegister, isRegisterValue, assignKey } from './runtime/core/directive'
+export { vRegister, assignKey } from './runtime/core/directive'
+export { isRegisterValue } from './runtime/core/register-protocol'
 export { defaultCoercionRules, defineCoercion } from './runtime/core/schema-coerce'
 
 // Public types

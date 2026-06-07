@@ -125,13 +125,12 @@ describe('unset-walker — contracts shared by both entry points', () => {
       })
     )
     const walked = walkUnsetSentinels({ notify: unset }, schema)
-    const walkedNotify = (walked.cleanedValues as Record<string, Record<string, unknown>>).notify
+    const walkedNotify = walked.cleanedValues.notify as unknown as Record<string, unknown>
     expect(Object.keys(walkedNotify)).toEqual(['channel'])
     expect(walked.paths).toEqual([keyFor(['notify', 'channel'])])
 
     const substituted = substituteUnsetSentinels({ notify: unset }, [], schema)
-    const substitutedNotify = (substituted.cleanedValues as Record<string, Record<string, unknown>>)
-      .notify
+    const substitutedNotify = substituted.cleanedValues.notify as unknown as Record<string, unknown>
     expect(Object.keys(substitutedNotify)).toEqual(['channel'])
     expect(substituted.paths).toEqual([keyFor(['notify', 'channel'])])
   })
@@ -140,8 +139,8 @@ describe('unset-walker — contracts shared by both entry points', () => {
     const schema = adapterFor(z.object({ when: z.date() }))
     const when = new Date('2020-01-01T00:00:00.000Z')
     const walked = walkUnsetSentinels({ when }, schema)
-    expect((walked.cleanedValues as Record<string, unknown>).when).toBe(when)
+    expect(walked.cleanedValues.when).toBe(when)
     const substituted = substituteUnsetSentinels({ when }, [], schema)
-    expect((substituted.cleanedValues as Record<string, unknown>).when).toBe(when)
+    expect(substituted.cleanedValues.when).toBe(when)
   })
 })

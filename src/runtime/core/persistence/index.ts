@@ -4,6 +4,7 @@ import type {
   FormStorageKind,
   PersistConfig,
   PersistConfigOptions,
+  UnionDiscriminatorContext,
 } from '../../types/types-api'
 import { PERSISTENCE_KEY_PREFIX } from '../defaults'
 import { isPlainRecord } from '../path-walker'
@@ -301,87 +302,114 @@ function mergeDeep(
   if (source === null || typeof source !== 'object') return source
   if (Array.isArray(source)) return source
   if (!isPlainRecord(source)) return source
-  // DU-aware merge at a discriminated-union path. Three sub-cases the
-  // plain deep-merge below can't get right on its own:
-  //   1. source's disc selects a different variant than target's →
-  //      rebase target onto the matched variant's slim default so the
-  //      prior variant's keys don't bleed alongside the new ones.
-  //   2. source's disc is unknown to the schema → collapse to a
-  //      disc-only stub `{ [discKey]: discValue }` (mirrors the
-  //      runtime stub-state contract; validation surfaces the
-  //      mismatch on first validateAsync).
-  //   3. source carries foreign keys (sibling-variant fields the
-  //      active variant doesn't declare) → drop them; the merge only
-  //      keeps source keys that exist in the matched variant default.
+  // At a discriminated-union path the plain deep-merge can't keep the
+  // shape consistent across variants, so hand off to the DU-aware merge.
   // Skipped when no schema is provided (callers without an adapter
-  // handle, including older tests) — those fall through to plain
-  // deep-merge.
+  // handle, including older tests) — those fall through to the plain
+  // object merge below.
   if (schema !== undefined) {
     const du = schema.getUnionDiscriminatorAtPath(path as Segment[])
-    if (du !== undefined) {
-      const sourceRecord = source as Record<string, unknown>
-      const sourceDisc = sourceRecord[du.discriminatorKey]
-      if (sourceDisc !== undefined && !du.isVariantSelected(sourceDisc)) {
-        return { [du.discriminatorKey]: sourceDisc }
-      }
-      if (sourceDisc !== undefined) {
-        const variantDefault = du.getVariantDefault(sourceDisc)
-        if (isPlainRecord(variantDefault)) {
-          // Object spread carries `variantDefault`'s own properties
-          // via `CreateDataProperty`, bypassing the inherited
-          // `__proto__` setter — so a variant default that legitimately
-          // declares `__proto__` is copied through without reassigning
-          // the result's prototype chain. Per-key writes route through
-          // `safeAssign`: a literal `__proto__` key from a hostile
-          // persisted payload (when the variant declares it) lands as
-          // an own data property. The variant-filter below
-          // (`key in variantDefault`) still excludes prototype-
-          // corrupting keys for the DU-variant case unless the schema
-          // legitimately declares them.
-          const out: Record<string, unknown> = { ...variantDefault }
-          for (const key of Object.keys(sourceRecord)) {
-            // Own-property check — the variant-filter must treat
-            // inherited slots as absent so `'__proto__' in variantDefault`
-            // doesn't smuggle a hostile payload key into the merge.
-            if (!safeOwnHas(variantDefault, key) && key !== du.discriminatorKey) continue
-            safeAssign(
-              out,
-              key,
-              mergeDeep(
-                safeOwnRead(out, key),
-                safeOwnRead(sourceRecord, key),
-                [...path, key],
-                schema
-              )
-            )
-          }
-          return out
-        }
-      }
-      // No disc in source — empty stub keeps the slot in a "between
-      // selections" state so a subsequent disc write reshapes cleanly.
-      return {}
+    if (du !== undefined) return mergeDuAwareKeys(source, path, schema, du)
+  }
+  return mergeObjectKeys(target, source, path, schema)
+}
+
+/**
+ * DU-aware merge at a discriminated-union path. Three sub-cases the
+ * plain deep-merge can't get right on its own:
+ *   1. source's disc selects a different variant than target's →
+ *      rebase target onto the matched variant's slim default so the
+ *      prior variant's keys don't bleed alongside the new ones.
+ *   2. source's disc is unknown to the schema → collapse to a
+ *      disc-only stub `{ [discKey]: discValue }` (mirrors the
+ *      runtime stub-state contract; validation surfaces the
+ *      mismatch on first validateAsync).
+ *   3. source carries foreign keys (sibling-variant fields the
+ *      active variant doesn't declare) → drop them; the merge only
+ *      keeps source keys that exist in the matched variant default.
+ */
+function mergeDuAwareKeys(
+  source: Record<string, unknown>,
+  path: readonly Segment[],
+  schema: AbstractSchema<unknown, unknown>,
+  du: UnionDiscriminatorContext
+): unknown {
+  const sourceDisc = source[du.discriminatorKey]
+  if (sourceDisc !== undefined && !du.isVariantSelected(sourceDisc)) {
+    return { [du.discriminatorKey]: sourceDisc }
+  }
+  if (sourceDisc !== undefined) {
+    const variantDefault = du.getVariantDefault(sourceDisc)
+    if (isPlainRecord(variantDefault)) {
+      return mergeVariantKeys(source, variantDefault, path, schema, du)
     }
   }
-  const mergeTarget = target
-  // Object spread carries `mergeTarget`'s own properties via
+  // No (usable) disc in source — empty stub keeps the slot in a "between
+  // selections" state so a subsequent disc write reshapes cleanly.
+  return {}
+}
+
+/**
+ * Merge persisted `source` over the matched variant's slim
+ * `variantDefault`: spread the variant default, then fold in only the
+ * source keys the variant declares (plus the discriminator), dropping
+ * foreign sibling-variant fields.
+ */
+function mergeVariantKeys(
+  source: Record<string, unknown>,
+  variantDefault: Record<string, unknown>,
+  path: readonly Segment[],
+  schema: AbstractSchema<unknown, unknown>,
+  du: UnionDiscriminatorContext
+): Record<string, unknown> {
+  // Object spread carries `variantDefault`'s own properties via
+  // `CreateDataProperty`, bypassing the inherited `__proto__` setter —
+  // so a variant default that legitimately declares `__proto__` is
+  // copied through without reassigning the result's prototype chain.
+  // Per-key writes route through `safeAssign`: a literal `__proto__`
+  // key from a hostile persisted payload (when the variant declares it)
+  // lands as an own data property. The variant-filter below
+  // (`key in variantDefault`) still excludes prototype-corrupting keys
+  // for the DU-variant case unless the schema legitimately declares them.
+  const out: Record<string, unknown> = { ...variantDefault }
+  for (const key of Object.keys(source)) {
+    // Own-property check — the variant-filter must treat inherited slots
+    // as absent so `'__proto__' in variantDefault` doesn't smuggle a
+    // hostile payload key into the merge.
+    if (!safeOwnHas(variantDefault, key) && key !== du.discriminatorKey) continue
+    safeAssign(
+      out,
+      key,
+      mergeDeep(safeOwnRead(out, key), safeOwnRead(source, key), [...path, key], schema)
+    )
+  }
+  return out
+}
+
+/**
+ * Plain recursive object merge for non-DU paths: spread `target` (when
+ * it's a record), then fold every `source` key over it via `safeAssign`
+ * with a recursive `mergeDeep` on each value.
+ */
+function mergeObjectKeys(
+  target: unknown,
+  source: Record<string, unknown>,
+  path: readonly Segment[],
+  schema: AbstractSchema<unknown, unknown> | undefined
+): Record<string, unknown> {
+  // Object spread carries `target`'s own properties via
   // `CreateDataProperty`, which bypasses the `__proto__` setter
   // inherited from `Object.prototype`. The per-key `safeAssign` lands
   // a literal `__proto__` key smuggled into the persisted JSON as an
   // own data property here too, with no path to `Object.prototype`.
-  // Legitimate `prototype` / `constructor` / `__proto__` fields in
-  // a consumer schema persist and restore at their declared path.
-  const out: Record<string, unknown> = isPlainRecord(mergeTarget) ? { ...mergeTarget } : {}
+  // Legitimate `prototype` / `constructor` / `__proto__` fields in a
+  // consumer schema persist and restore at their declared path.
+  const out: Record<string, unknown> = isPlainRecord(target) ? { ...target } : {}
   for (const key of Object.keys(source)) {
     safeAssign(
       out,
       key,
-      mergeDeep(
-        safeOwnRead(out, key),
-        safeOwnRead(source as Record<string, unknown>, key),
-        [...path, key],
-        schema
-      )
+      mergeDeep(safeOwnRead(out, key), safeOwnRead(source, key), [...path, key], schema)
     )
   }
   return out

@@ -10,11 +10,12 @@
   // ── Dependencies ────────────────────────────────────────────────
   // Only entries fallow cannot trace because the consumer is a config
   // file / plugin-host auto-discovery, or the dep is deliberately
-  // peer / transitive / hoisted. The other 10 flagged devDeps
+  // peer / transitive / hoisted / resolved-by-name at runtime. The ten
+  // devDeps fallow previously flagged with no code or config reference
   // (@typescript-eslint/*, @nuxt/eslint-config, eslint-config-prettier,
   // @nuxt/module-builder, @vue/language-server, @vue/typescript-plugin,
-  // changelogen, immer, vite-plugin-dts) are NOT listed here: they have
-  // no code/config reference and are real "still needed?" candidates.
+  // changelogen, immer, vite-plugin-dts) were genuinely unused: they
+  // have been removed, not suppressed, so they no longer surface here.
   "ignoreDependencies": [
     // Consumed by size-limit's preset auto-discovery; never imported by
     // name, so fallow's module graph can't see the edge.
@@ -32,7 +33,19 @@
     "zod",
     // apps/site/nuxt.config.ts; `npm:zod@^3.24` alias fallow doesn't
     // decode, same root-hoist story as `zod`.
-    "zod-v3"
+    "zod-v3",
+    // Optional peerDependency of @nuxt/content (apps/site content
+    // pipeline). The native SQLite connector @nuxt/content loads BY NAME
+    // at runtime for the local content database, so fallow's module graph
+    // can't see the edge. Drop it and @nuxt/content falls back to its
+    // bundled WASM SQLite; declaring it deliberately picks the faster
+    // native driver.
+    "better-sqlite3",
+    // Optional peerDependency of nuxt-og-image (pulled in by @nuxtjs/seo).
+    // The docs site renders OG images through satori
+    // (apps/site/components/OgImage/Default.satori.vue), which
+    // nuxt-og-image loads by name; no authored source imports it directly.
+    "satori"
   ],
 
   // ── Unresolved imports ──────────────────────────────────────────

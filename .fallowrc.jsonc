@@ -10,12 +10,12 @@
   // ── Dependencies ────────────────────────────────────────────────
   // Only entries fallow cannot trace because the consumer is a config
   // file / plugin-host auto-discovery, or the dep is deliberately
-  // peer / transitive / hoisted / resolved-by-name at runtime. The ten
-  // devDeps fallow previously flagged with no code or config reference
-  // (@typescript-eslint/*, @nuxt/eslint-config, eslint-config-prettier,
-  // @nuxt/module-builder, @vue/language-server, @vue/typescript-plugin,
-  // changelogen, immer, vite-plugin-dts) were genuinely unused: they
-  // have been removed, not suppressed, so they no longer surface here.
+  // peer / transitive / hoisted / resolved-by-name at runtime / resolved
+  // by the editor's language server. Eight devDeps fallow flagged with no
+  // code or config reference (@typescript-eslint/*, @nuxt/eslint-config,
+  // eslint-config-prettier, @nuxt/module-builder, changelogen, immer,
+  // vite-plugin-dts) were genuinely unused and have been removed, not
+  // suppressed, so they no longer surface here.
   "ignoreDependencies": [
     // Consumed by size-limit's preset auto-discovery; never imported by
     // name, so fallow's module graph can't see the edge.
@@ -45,7 +45,16 @@
     // The docs site renders OG images through satori
     // (apps/site/components/OgImage/Default.satori.vue), which
     // nuxt-og-image loads by name; no authored source imports it directly.
-    "satori"
+    "satori",
+    // Workspace-pinned Vue language toolchain. No code or build step
+    // imports these; the editor's Volar LSP resolves them from
+    // node_modules to provide .vue IntelliSense (nvim's vue_ls binary is
+    // node_modules/.bin/vue-language-server, and the TS server loads
+    // @vue/typescript-plugin for .vue type info). Removing them breaks
+    // editor IntelliSense, so they stay as devDeps even though fallow's
+    // module graph sees no importer.
+    "@vue/language-server",
+    "@vue/typescript-plugin"
   ],
 
   // ── Unresolved imports ──────────────────────────────────────────

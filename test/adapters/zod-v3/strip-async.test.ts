@@ -135,3 +135,102 @@ describe('stripAsyncChecks (v3)', () => {
     expect(stripped.safeParse({ name: 'root', children: [] }).success).toBe(true)
   })
 })
+
+// Branch coverage for the wrapper + container long tail, mirroring the
+// v4 suite (`test/adapters/zod-v4/strip.test.ts`). v3 drops every
+// ZodEffects wholesale, so each case puts a refine on / inside the kind
+// and asserts the parse contract once the effect is gone.
+describe('stripAsyncChecks (v3) — wrapper + container long tail', () => {
+  it('recurses through .catch()', () => {
+    const schema = z
+      .string()
+      .refine(() => false, 'x')
+      .catch('fb')
+    const stripped = stripAsyncChecks(schema)
+    const parsed = stripped.safeParse('value')
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data).toBe('value')
+  })
+
+  it('recurses through .readonly()', () => {
+    const schema = z
+      .string()
+      .refine(() => false, 'x')
+      .readonly()
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse('value').success).toBe(true)
+  })
+
+  it('unwraps .brand() and strips the inner effect', () => {
+    const schema = z
+      .string()
+      .refine(() => false, 'x')
+      .brand('Branded')
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse('value').success).toBe(true)
+  })
+
+  it('recurses the input side of a .pipe()', () => {
+    const schema = z.string().pipe(z.string().min(5))
+    const stripped = stripAsyncChecks(schema)
+    // The output leg (.min(5)) is dropped; the input string survives.
+    expect(stripped.safeParse('ab').success).toBe(true)
+  })
+
+  it('strips effects inside z.tuple', () => {
+    const schema = z.tuple([z.string().refine(() => false, 'x'), z.number()])
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse(['anything', 1]).success).toBe(true)
+  })
+
+  it('strips effects inside z.record (one-arg and two-arg forms)', () => {
+    const oneArg = stripAsyncChecks(z.record(z.string().refine(() => false, 'x')))
+    expect(oneArg.safeParse({ k: 'v' }).success).toBe(true)
+    const twoArg = stripAsyncChecks(
+      z.record(
+        z.string(),
+        z.string().refine(() => false, 'x')
+      )
+    )
+    expect(twoArg.safeParse({ k: 'v' }).success).toBe(true)
+  })
+
+  it('strips effects inside z.union', () => {
+    const schema = z.union([z.string().refine(() => false, 'x'), z.number()])
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse('anything').success).toBe(true)
+  })
+
+  it('strips effects inside z.discriminatedUnion variants', () => {
+    const schema = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a'), v: z.string().refine(() => false, 'x') }),
+      z.object({ kind: z.literal('b'), n: z.number() }),
+    ])
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse({ kind: 'a', v: 'anything' }).success).toBe(true)
+  })
+
+  it('recurses both sides of z.intersection', () => {
+    const schema = z.intersection(
+      z.object({ a: z.string().refine(() => false, 'x') }),
+      z.object({ b: z.number() })
+    )
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse({ a: 'anything', b: 1 }).success).toBe(true)
+  })
+
+  it('preserves .passthrough() on z.object', () => {
+    const schema = z.object({ x: z.string() }).passthrough()
+    const stripped = stripAsyncChecks(schema)
+    const parsed = stripped.safeParse({ x: 'a', extra: 1 })
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data).toMatchObject({ x: 'a', extra: 1 })
+  })
+
+  it('preserves .catchall() on z.object', () => {
+    const schema = z.object({ x: z.string() }).catchall(z.number())
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse({ x: 'a', extra: 5 }).success).toBe(true)
+    expect(stripped.safeParse({ x: 'a', extra: 'not-a-number' }).success).toBe(false)
+  })
+})

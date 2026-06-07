@@ -140,34 +140,7 @@ export function parseApiErrors(
   payload: ApiErrorEnvelope | ApiErrorDetails | null | undefined | unknown,
   options: ParseApiErrorsOptions
 ): ParseApiErrorsResult {
-  // Sanitise the caps. Comparison gates (`>` against the count /
-  // depth) yield `false` for `NaN`, so without sanitisation a
-  // hostile or malformed `NaN` cap would let pathological payloads
-  // run unbounded. `Infinity` would do the same. Negatives and
-  // non-integers would discard legitimate entries. Falls back to
-  // the library default on garbage.
-  const maxEntries = normalizeNumericOption({
-    value: options.maxEntries ?? PARSE_API_ERRORS_DEFAULTS.maxEntries,
-    source: 'parseApiErrors.maxEntries',
-    allowInfinity: false,
-    min: 0,
-    defaultValue: PARSE_API_ERRORS_DEFAULTS.maxEntries,
-  })
-  const maxPathDepth = normalizeNumericOption({
-    value: options.maxPathDepth ?? PARSE_API_ERRORS_DEFAULTS.maxPathDepth,
-    source: 'parseApiErrors.maxPathDepth',
-    allowInfinity: false,
-    min: 0,
-    defaultValue: PARSE_API_ERRORS_DEFAULTS.maxPathDepth,
-  })
-  const maxTotalSegments = normalizeNumericOption({
-    value: options.maxTotalSegments ?? PARSE_API_ERRORS_DEFAULTS.maxTotalSegments,
-    source: 'parseApiErrors.maxTotalSegments',
-    allowInfinity: false,
-    min: 0,
-    defaultValue: PARSE_API_ERRORS_DEFAULTS.maxTotalSegments,
-  })
-  const defaultCode = options.defaultCode ?? PARSE_API_ERRORS_DEFAULTS.defaultCode
+  const { maxEntries, maxPathDepth, maxTotalSegments, defaultCode } = normalizeParseCaps(options)
 
   if (payload === null || payload === undefined) {
     return { ok: true, errors: [] }
@@ -194,6 +167,74 @@ export function parseApiErrors(
     }
   }
 
+  return convertDetailsToErrors(
+    details,
+    options.formKey,
+    maxPathDepth,
+    maxTotalSegments,
+    defaultCode
+  )
+}
+
+/** Resolved, sanitised size caps plus the fallback code for one `parseApiErrors` call. */
+type NormalizedParseCaps = {
+  readonly maxEntries: number
+  readonly maxPathDepth: number
+  readonly maxTotalSegments: number
+  readonly defaultCode: string
+}
+
+/**
+ * Resolve the optional size caps against `PARSE_API_ERRORS_DEFAULTS` and
+ * sanitise them into safe integers.
+ *
+ * Comparison gates (`>` against the count / depth) yield `false` for
+ * `NaN`, so without sanitisation a hostile or malformed `NaN` cap would
+ * let pathological payloads run unbounded. `Infinity` would do the same.
+ * Negatives and non-integers would discard legitimate entries. Falls
+ * back to the library default on garbage.
+ */
+function normalizeParseCaps(options: ParseApiErrorsOptions): NormalizedParseCaps {
+  const maxEntries = normalizeNumericOption({
+    value: options.maxEntries ?? PARSE_API_ERRORS_DEFAULTS.maxEntries,
+    source: 'parseApiErrors.maxEntries',
+    allowInfinity: false,
+    min: 0,
+    defaultValue: PARSE_API_ERRORS_DEFAULTS.maxEntries,
+  })
+  const maxPathDepth = normalizeNumericOption({
+    value: options.maxPathDepth ?? PARSE_API_ERRORS_DEFAULTS.maxPathDepth,
+    source: 'parseApiErrors.maxPathDepth',
+    allowInfinity: false,
+    min: 0,
+    defaultValue: PARSE_API_ERRORS_DEFAULTS.maxPathDepth,
+  })
+  const maxTotalSegments = normalizeNumericOption({
+    value: options.maxTotalSegments ?? PARSE_API_ERRORS_DEFAULTS.maxTotalSegments,
+    source: 'parseApiErrors.maxTotalSegments',
+    allowInfinity: false,
+    min: 0,
+    defaultValue: PARSE_API_ERRORS_DEFAULTS.maxTotalSegments,
+  })
+  const defaultCode = options.defaultCode ?? PARSE_API_ERRORS_DEFAULTS.defaultCode
+  return { maxEntries, maxPathDepth, maxTotalSegments, defaultCode }
+}
+
+/**
+ * Walk an already-extracted, already-entry-capped details record into
+ * `ValidationError[]`. Per-key paths are canonicalised, depth-capped,
+ * and bounded by a running total-segment budget; each key's entries
+ * expand to one `ValidationError` per non-empty message. Returns
+ * `ok: false` only when the total-segment budget overflows mid-walk
+ * (rejected wholesale, never partially applied).
+ */
+function convertDetailsToErrors(
+  details: ApiErrorDetails,
+  formKey: FormKey,
+  maxPathDepth: number,
+  maxTotalSegments: number,
+  defaultCode: string
+): ParseApiErrorsResult {
   const errors: ValidationError[] = []
   let totalSegments = 0
   for (const [key, value] of Object.entries(details)) {
@@ -229,7 +270,7 @@ export function parseApiErrors(
     }
     for (const entry of entryList) {
       // Bare-string entries (Rails / DRF / Laravel shape) synthesize a
-      // `code` from `options.defaultCode`; structured `{ message, code }`
+      // `code` from `defaultCode`; structured `{ message, code }`
       // entries forward `code` verbatim. Empty messages drop silently
       // (`{ message: '' }` or `''`) — same recoverable-malformed-server
       // policy as before.
@@ -239,7 +280,7 @@ export function parseApiErrors(
       errors.push({
         message,
         path: Array.from(segments),
-        formKey: options.formKey,
+        formKey,
         code,
       })
     }

@@ -65,6 +65,18 @@
   // on the host.
   "ignoreUnresolvedImports": ["/app/**"],
 
+  // ── Entry points ────────────────────────────────────────────────
+  // Standalone manual-regeneration scripts fallow can't reach from any
+  // auto-detected entry point: they aren't wired into package.json
+  // scripts, they're run by hand when their committed output needs a
+  // refresh. Declaring them as entry points reflects the truth (they ARE
+  // roots) rather than suppressing a "dead file" that isn't dead.
+  //   - scripts/build-bestpractices-json.mjs regenerates .bestpractices.json
+  //     (the OpenSSF Best Practices badge data).
+  //   - apps/site/scripts/generate-favicons.mjs regenerates the committed
+  //     favicons from the source SVG (imports @resvg/resvg-js).
+  "entry": ["scripts/build-bestpractices-json.mjs", "apps/site/scripts/generate-favicons.mjs"],
+
   // ── Duplication ─────────────────────────────────────────────────
   // Duplication is a source-DRY signal, so scope it to the shipped
   // library. The bulk of the raw 18.6% is DELIBERATE: the zod v3/v4

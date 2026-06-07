@@ -8,7 +8,7 @@ import { __DEV__ } from './dev'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
 import type { PathKey } from './paths'
 import type { PersistOptInRegistry } from './persistence/opt-in-registry'
-import { fireAssigner, setAssignFunction } from './directive'
+import { fireAssigner, setAssignFunction } from './assigner-pipeline'
 import { isRegisterValue, isTransforming } from './register-protocol'
 
 /**

@@ -16,7 +16,7 @@ import {
 } from './paths'
 import { diffAndApply } from './diff-apply'
 import { getAtPath } from './path-walker'
-import type { ElementRecord, FieldRecord, OriginalsRecord } from './create-form-store'
+import type { ElementRecord, FieldRecord, OriginalsRecord } from './store-records'
 
 /**
  * Per-(field-path) async validation entry. Owns the AbortController +

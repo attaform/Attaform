@@ -73,30 +73,12 @@ export function diffAndApply(
   // this granularity. Other shape mismatches (primitive <-> object, array <->
   // object) are treated as atomic replacements.
   if (oldValue === undefined && newIsDescendable) {
-    if (Array.isArray(newValue)) {
-      for (let i = 0; i < newValue.length; i++) {
-        diffAndApply(undefined, newValue[i], appendSegment(prefix, i), visit)
-      }
-    } else {
-      const rec = newValue as Record<string, unknown>
-      for (const k of Object.keys(rec)) {
-        diffAndApply(undefined, rec[k], appendSegment(prefix, k), visit)
-      }
-    }
+    walkNewDescendable(newValue, prefix, visit)
     return
   }
 
   if (oldIsDescendable && newValue === undefined) {
-    if (Array.isArray(oldValue)) {
-      for (let i = 0; i < oldValue.length; i++) {
-        diffAndApply(oldValue[i], undefined, appendSegment(prefix, i), visit)
-      }
-    } else {
-      const rec = oldValue as Record<string, unknown>
-      for (const k of Object.keys(rec)) {
-        diffAndApply(rec[k], undefined, appendSegment(prefix, k), visit)
-      }
-    }
+    walkOldDescendable(oldValue, prefix, visit)
     return
   }
 
@@ -105,27 +87,17 @@ export function diffAndApply(
     const newIsArray = Array.isArray(newValue)
 
     if (oldIsArray && newIsArray) {
-      const oldArr = oldValue
-      const newArr = newValue
-      const max = Math.max(oldArr.length, newArr.length)
-      for (let i = 0; i < max; i++) {
-        diffAndApply(oldArr[i], newArr[i], appendSegment(prefix, i), visit)
-      }
+      diffArraysLockstep(oldValue, newValue, prefix, visit)
       return
     }
 
     if (!oldIsArray && !newIsArray) {
-      const oldRec = oldValue as Record<string, unknown>
-      const newRec = newValue as Record<string, unknown>
-      const seen = new Set<string>()
-      for (const k of Object.keys(oldRec)) {
-        seen.add(k)
-        diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
-      }
-      for (const k of Object.keys(newRec)) {
-        if (seen.has(k)) continue
-        diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
-      }
+      diffObjectsLockstep(
+        oldValue as Record<string, unknown>,
+        newValue as Record<string, unknown>,
+        prefix,
+        visit
+      )
       return
     }
 
@@ -154,6 +126,90 @@ export function diffAndApply(
     return
   }
   visit({ kind: 'changed', path: prefix, oldValue, newValue })
+}
+
+/**
+ * Walk a descendable `newValue` whose old counterpart was `undefined`,
+ * emitting an atomic `'added'` patch for every leaf (via the recursive
+ * `diffAndApply`). Hot-path helper — module-level so no closure is
+ * allocated per recursion; `prefix` + `visit` thread through explicitly.
+ */
+function walkNewDescendable(
+  newValue: Record<string, unknown> | readonly unknown[],
+  prefix: Path,
+  visit: (patch: Patch) => void
+): void {
+  if (Array.isArray(newValue)) {
+    for (let i = 0; i < newValue.length; i++) {
+      diffAndApply(undefined, newValue[i], appendSegment(prefix, i), visit)
+    }
+  } else {
+    const rec = newValue as Record<string, unknown>
+    for (const k of Object.keys(rec)) {
+      diffAndApply(undefined, rec[k], appendSegment(prefix, k), visit)
+    }
+  }
+}
+
+/**
+ * Mirror of `walkNewDescendable` for the removal direction: walk a
+ * descendable `oldValue` whose new counterpart is `undefined`, emitting
+ * an atomic `'removed'` patch for every leaf.
+ */
+function walkOldDescendable(
+  oldValue: Record<string, unknown> | readonly unknown[],
+  prefix: Path,
+  visit: (patch: Patch) => void
+): void {
+  if (Array.isArray(oldValue)) {
+    for (let i = 0; i < oldValue.length; i++) {
+      diffAndApply(oldValue[i], undefined, appendSegment(prefix, i), visit)
+    }
+  } else {
+    const rec = oldValue as Record<string, unknown>
+    for (const k of Object.keys(rec)) {
+      diffAndApply(rec[k], undefined, appendSegment(prefix, k), visit)
+    }
+  }
+}
+
+/**
+ * Diff two arrays in lockstep over the longer length, recursing per
+ * index. Out-of-range slots on the shorter side read as `undefined`, so
+ * length changes surface as `'added'` / `'removed'` leaf patches.
+ */
+function diffArraysLockstep(
+  oldArr: readonly unknown[],
+  newArr: readonly unknown[],
+  prefix: Path,
+  visit: (patch: Patch) => void
+): void {
+  const max = Math.max(oldArr.length, newArr.length)
+  for (let i = 0; i < max; i++) {
+    diffAndApply(oldArr[i], newArr[i], appendSegment(prefix, i), visit)
+  }
+}
+
+/**
+ * Diff two plain objects in lockstep: recurse on every key present in
+ * either side (old keys first, then new-only keys) so additions and
+ * removals both surface. A `seen` set dedupes the two passes.
+ */
+function diffObjectsLockstep(
+  oldRec: Record<string, unknown>,
+  newRec: Record<string, unknown>,
+  prefix: Path,
+  visit: (patch: Patch) => void
+): void {
+  const seen = new Set<string>()
+  for (const k of Object.keys(oldRec)) {
+    seen.add(k)
+    diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
+  }
+  for (const k of Object.keys(newRec)) {
+    if (seen.has(k)) continue
+    diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
+  }
 }
 
 /**

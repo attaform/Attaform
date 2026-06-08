@@ -146,3 +146,47 @@ describe('getSlimPrimitiveTypesAtPath — literal-dot key disambiguation (V4-6)'
     expect(nestedKind.has('string')).toBe(false)
   })
 })
+
+// Branch coverage for the walker's long tail — the leaf, wrapper, and
+// composite cases the suite above doesn't reach.
+describe('getSlimPrimitiveTypesAtPath — walker long tail', () => {
+  it('z.nan() → {number}', () => {
+    expect([...probe(z.object({ x: z.nan() }), ['x'])]).toEqual(['number'])
+  })
+
+  it('z.null() → {null}', () => {
+    expect([...probe(z.object({ x: z.null() }), ['x'])]).toEqual(['null'])
+  })
+
+  it('z.file() → {file, null}', () => {
+    const set = probe(z.object({ x: z.file() }), ['x'])
+    expect(set.has('file')).toBe(true)
+    expect(set.has('null')).toBe(true)
+    expect(set.size).toBe(2)
+  })
+
+  it('z.string().catch("x") → {string}', () => {
+    expect([...probe(z.object({ x: z.string().catch('x') }), ['x'])]).toEqual(['string'])
+  })
+
+  it('.transform(): pipe takes the source (input) side → {string}', () => {
+    expect([...probe(z.object({ x: z.string().transform((s) => s.length) }), ['x'])]).toEqual([
+      'string',
+    ])
+  })
+
+  it('z.preprocess(fn, inner): pipe takes the output (inner) side → {string}', () => {
+    const schema = z.object({ x: z.preprocess((v) => String(v), z.string()) })
+    expect([...probe(schema, ['x'])]).toEqual(['string'])
+  })
+
+  it('z.lazy(() => leaf): recurses under the depth cap → {string}', () => {
+    const schema = z.object({ x: z.lazy(() => z.string()) })
+    expect([...probe(schema, ['x'])]).toEqual(['string'])
+  })
+
+  it('z.intersection(string, string): intersects to {string}', () => {
+    const schema = z.object({ x: z.intersection(z.string(), z.string()) })
+    expect([...probe(schema, ['x'])]).toEqual(['string'])
+  })
+})

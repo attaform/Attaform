@@ -14,7 +14,7 @@ import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { defaultDisplayState, isDefaultDisplayState } from './display-state'
 import { computeFieldIdentity } from './field-ids'
-import { EMPTY_RESOLVED_FIELD_META } from './field-meta'
+import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath } from './path-walker'
 import {
@@ -142,6 +142,24 @@ export function buildFieldStateAccessor<F extends GenericForm>(
 }
 
 /**
+ * Resolve a path's adapter-supplied field meta (label / description /
+ * placeholder / meta) plus its display label. The label falls back to a
+ * humanized last segment when the adapter supplies none. Shared by the
+ * leaf and container base builders.
+ */
+function resolveFieldMetaAndLabel<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: Path
+): { resolved: ResolvedFieldMeta; label: string } {
+  const resolved = state.schema.getFieldMetaAtPath
+    ? state.schema.getFieldMetaAtPath(segments)
+    : EMPTY_RESOLVED_FIELD_META
+  const lastSegment = segments.length === 0 ? '' : (segments[segments.length - 1] ?? '')
+  const label = resolved.label || humanize(lastSegment)
+  return { resolved, label }
+}
+
+/**
  * Per-leaf computation of the predicate-safe base shape. Reads the
  * leaf-specific reactive sources only; does NOT compute
  * `showErrors` / `firstError` (those are layered on by
@@ -193,11 +211,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     ? Object.freeze([...elementRecord.elements])
     : EMPTY_ELEMENTS
   const firstElement: HTMLElement | null = elementsArr[0] ?? null
-  const resolved = state.schema.getFieldMetaAtPath
-    ? state.schema.getFieldMetaAtPath(segments)
-    : EMPTY_RESOLVED_FIELD_META
-  const lastSegment = segments.length === 0 ? '' : (segments[segments.length - 1] ?? '')
-  const label = resolved.label || humanize(lastSegment)
+  const { resolved, label } = resolveFieldMetaAndLabel(state, segments)
   return {
     value,
     original,
@@ -460,11 +474,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   const ownTransformError = state.transformErrors.get(key) ?? null
   const gated = asyncPending && !state.firstValidationDone.value
   const valid = !gated && errors.length === 0 && !validating
-  const resolved = state.schema.getFieldMetaAtPath
-    ? state.schema.getFieldMetaAtPath(segments)
-    : EMPTY_RESOLVED_FIELD_META
-  const lastSegment = segments.length === 0 ? '' : (segments[segments.length - 1] ?? '')
-  const label = resolved.label || humanize(lastSegment)
+  const { resolved, label } = resolveFieldMetaAndLabel(state, segments)
   return {
     base: {
       value,

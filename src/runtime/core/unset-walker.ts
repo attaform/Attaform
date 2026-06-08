@@ -65,75 +65,103 @@ export function walkUnsetSentinels<T>(
     walkUnspecified(rootSlim, [], paths)
     return { cleanedValues: undefined as unknown as T, paths }
   }
-  const cleaned = walk(values as unknown, [], schema, paths)
+  const cleaned = walkCore(values as unknown, [], schema, paths, true)
   return { cleanedValues: cleaned as T, paths }
 }
 
-function walk(
+/**
+ * `true` for the non-recursable container kinds (`Date`, `RegExp`,
+ * `Map`, `Set`, functions) the walkers treat as opaque leaf values:
+ * passed through unchanged rather than descended into.
+ */
+function isOpaqueLeaf(value: unknown): boolean {
+  return (
+    value instanceof Date ||
+    value instanceof RegExp ||
+    value instanceof Map ||
+    value instanceof Set ||
+    typeof value === 'function'
+  )
+}
+
+/**
+ * Shared depth-first walker behind both unset-walker entry points.
+ * `synthesizeSchemaKeys` selects the boundary:
+ *
+ *   - `true` (construction-time `walkUnsetSentinels`): an unspecified key
+ *     falls through to `walkUnspecified` on the schema's slim default so
+ *     numeric leaves auto-mark, and object paths also synthesize
+ *     schema-only keys so a partially-supplied object still marks the
+ *     leaves it omitted. An explicit consumer `undefined` at a key is
+ *     preserved rather than filled.
+ *   - `false` (setValue-time `substituteUnsetSentinels`): the caller's
+ *     shape is authoritative — no auto-marking, no schema-only key
+ *     synthesis. `undefined` / `null` pass through untouched.
+ *
+ * Reference-stable in both modes: a subtree with no substitution /
+ * synthesis returns its original `input` reference so deep watchers on
+ * untouched peers stay quiet (a watcher that writes back to the form on
+ * an identity-changed peer would otherwise loop forever).
+ */
+function walkCore(
   input: unknown,
   segments: Segment[],
   schema: AbstractSchema<GenericForm, GenericForm>,
-  paths: PathKey[]
+  paths: PathKey[],
+  synthesizeSchemaKeys: boolean
 ): unknown {
   if (isUnset(input)) {
     return expandUnsetAt(segments, schema, paths)
   }
-  // User omitted this key — fall through to walkUnspecified on the
-  // schema's slim default at this path so primitive leaves get marked.
+  // Unspecified key. In synthesize mode, fall through to walkUnspecified
+  // on the schema's slim default so primitive leaves get marked;
+  // otherwise the caller's `undefined` is authoritative and passes through.
   if (input === undefined) {
-    const slim = schema.getDefaultAtPath(segments)
-    return walkUnspecified(slim, segments, paths)
+    if (synthesizeSchemaKeys) {
+      const slim = schema.getDefaultAtPath(segments)
+      return walkUnspecified(slim, segments, paths)
+    }
+    return input
   }
   // Explicit null is the user's choice, not absence — pass through.
   if (input === null) return null
-  if (
-    input instanceof Date ||
-    input instanceof RegExp ||
-    input instanceof Map ||
-    input instanceof Set ||
-    typeof input === 'function'
-  ) {
-    return input
-  }
-  // Reference stability: when an array's elements all walk to themselves
-  // (no unset substitutions, no schema-only keys synthesized), return the
-  // ORIGINAL `input` reference. Without this, a whole-form setValue with
-  // a structurally-unchanged subtree (e.g., the `pickup` half of
-  // `({ ...prev, delivery: prev.pickup })`) still produces a new clone of
-  // pickup, which then re-fires any deep watch on `form.values.pickup` —
-  // and a watcher that reacts by writing back to the form loops forever.
-  // Returning the original reference for unchanged subtrees keeps Vue's
-  // reactivity quiet on identity-equal slots.
+  if (isOpaqueLeaf(input)) return input
   if (Array.isArray(input)) {
     const out = new Array(input.length)
     let mutated = false
     for (let i = 0; i < input.length; i++) {
-      const walked = walk(input[i], [...segments, i], schema, paths)
+      const walked = walkCore(input[i], [...segments, i], schema, paths, synthesizeSchemaKeys)
       out[i] = walked
       if (walked !== input[i]) mutated = true
     }
     return mutated ? out : input
   }
   if (typeof input === 'object') {
-    // Walk both user-supplied keys AND schema-only keys so unspecified
-    // primitive leaves get auto-marked even inside a partially-supplied
-    // object (e.g., `defaultValues: { user: { name: 'a' } }` against a
-    // schema with `user.{name, age}` marks `user.age`).
-    const slim = schema.getDefaultAtPath(segments)
-    const inputKeys = Object.keys(input as object)
-    const inputKeysSet = new Set(inputKeys)
-    const allKeys = new Set<string>(inputKeys)
-    if (
-      slim !== null &&
-      slim !== undefined &&
-      typeof slim === 'object' &&
-      !Array.isArray(slim) &&
-      !(slim instanceof Date) &&
-      !(slim instanceof RegExp) &&
-      !(slim instanceof Map) &&
-      !(slim instanceof Set)
-    ) {
-      for (const k of Object.keys(slim as object)) allKeys.add(k)
+    const obj = input as Record<string, unknown>
+    const inputKeys = Object.keys(obj)
+    // setValue boundary: iterate only consumer-supplied keys.
+    // Construction boundary: ALSO synthesize schema-only keys so
+    // unspecified primitive leaves auto-mark even inside a
+    // partially-supplied object (e.g. `{ user: { name: 'a' } }` against a
+    // `user.{name, age}` schema marks `user.age`).
+    let keys: Iterable<string> = inputKeys
+    let mutated = false
+    let inputKeysSet: Set<string> | null = null
+    if (synthesizeSchemaKeys) {
+      inputKeysSet = new Set(inputKeys)
+      const allKeys = new Set<string>(inputKeys)
+      const slim = schema.getDefaultAtPath(segments)
+      if (
+        slim !== null &&
+        slim !== undefined &&
+        typeof slim === 'object' &&
+        !Array.isArray(slim) &&
+        !isOpaqueLeaf(slim)
+      ) {
+        for (const k of Object.keys(slim as object)) allKeys.add(k)
+      }
+      keys = allKeys
+      mutated = allKeys.size !== inputKeys.length
     }
     // Container carries `Object.prototype` and writes route through
     // `safeAssign` so a consumer schema using a literal `__proto__`
@@ -141,21 +169,20 @@ function walk(
     // Output stays structurally identical to `setAtPath`'s so a value
     // flowing through both surfaces the same shape.
     const out: Record<string, unknown> = {}
-    let mutated = allKeys.size !== inputKeys.length
-    for (const key of allKeys) {
-      const orig = (input as Record<string, unknown>)[key]
-      // Explicit consumer-supplied `undefined` at a key: the consumer
-      // named the slot empty. Preserve the signal in storage instead
-      // of treating it like "key absent" and filling from the schema's
-      // slim default — distinct semantics with distinct implications
-      // for the schema-error filter (the path lands in
+    for (const key of keys) {
+      const orig = obj[key]
+      // Construction boundary only: an explicit consumer-supplied
+      // `undefined` at a key means the consumer named the slot empty.
+      // Preserve the signal in storage instead of filling from the
+      // schema's slim default — distinct semantics with distinct
+      // implications for the schema-error filter (the path lands in
       // `authoredPaths` and validation runs against undefined).
-      if (orig === undefined && inputKeysSet.has(key)) {
+      if (synthesizeSchemaKeys && orig === undefined && inputKeysSet?.has(key) === true) {
         safeAssign(out, key, undefined)
         mutated = true
         continue
       }
-      const walked = walk(orig, [...segments, key], schema, paths)
+      const walked = walkCore(orig, [...segments, key], schema, paths, synthesizeSchemaKeys)
       safeAssign(out, key, walked)
       if (walked !== orig) mutated = true
     }
@@ -166,9 +193,10 @@ function walk(
 
 /**
  * Recurse into a schema slim-default subtree, auto-marking every
- * **numeric** primitive leaf encountered. Called from `walk` whenever
- * the user's payload is missing at a path, and from the top-level
- * walker entry point when no defaults are supplied at all. Strings,
+ * **numeric** primitive leaf encountered. Called from `walkCore` (in
+ * synthesize mode) whenever the user's payload is missing at a path, and
+ * from the top-level walker entry point when no defaults are supplied at
+ * all. Strings,
  * booleans, and other non-numeric leaves are left unmarked — the
  * library only auto-marks where storage and display diverge, which
  * for slim primitives is exclusively `number` and `bigint`. See the
@@ -185,13 +213,7 @@ export function walkUnspecified(slim: unknown, segments: Segment[], paths: PathK
     }
     return slim
   }
-  if (
-    slim instanceof Date ||
-    slim instanceof RegExp ||
-    slim instanceof Map ||
-    slim instanceof Set ||
-    typeof slim === 'function'
-  ) {
+  if (isOpaqueLeaf(slim)) {
     return slim
   }
   // Arrays: pass through without recursion. Elements are runtime-added;
@@ -243,51 +265,8 @@ export function substituteUnsetSentinels<T>(
   schema: AbstractSchema<GenericForm, GenericForm>
 ): { cleanedValues: T; paths: PathKey[] } {
   const paths: PathKey[] = []
-  const cleaned = substitute(value as unknown, [...prefix], schema, paths)
+  const cleaned = walkCore(value as unknown, [...prefix], schema, paths, false)
   return { cleanedValues: cleaned as T, paths }
-}
-
-function substitute(
-  input: unknown,
-  segments: Segment[],
-  schema: AbstractSchema<GenericForm, GenericForm>,
-  paths: PathKey[]
-): unknown {
-  if (isUnset(input)) {
-    return expandUnsetAt(segments, schema, paths)
-  }
-  if (input === undefined || input === null) return input
-  if (
-    input instanceof Date ||
-    input instanceof RegExp ||
-    input instanceof Map ||
-    input instanceof Set ||
-    typeof input === 'function'
-  ) {
-    return input
-  }
-  if (Array.isArray(input)) {
-    let mutated = false
-    const out = new Array(input.length)
-    for (let i = 0; i < input.length; i++) {
-      const walked = substitute(input[i], [...segments, i], schema, paths)
-      out[i] = walked
-      if (walked !== input[i]) mutated = true
-    }
-    return mutated ? out : input
-  }
-  if (typeof input === 'object') {
-    let mutated = false
-    const out: Record<string, unknown> = {}
-    for (const key of Object.keys(input as object)) {
-      const orig = (input as Record<string, unknown>)[key]
-      const walked = substitute(orig, [...segments, key], schema, paths)
-      safeAssign(out, key, walked)
-      if (walked !== orig) mutated = true
-    }
-    return mutated ? out : input
-  }
-  return input
 }
 
 function isPrimitiveOrEmpty(value: unknown): boolean {
@@ -338,9 +317,9 @@ export function blankForKind(slimDefault: unknown): unknown {
 /**
  * Recursive translation of an explicit `unset` at `segments` into the
  * cleaned storage value plus the list of paths to mark blank. Used at
- * three callsites: the `walk()` recursor inside `walkUnsetSentinels`,
- * the `substitute()` recursor inside `substituteUnsetSentinels`, and
- * the `setValue(path, unset)` direct case in `build-form-api.ts`.
+ * two callsites: the shared `walkCore` recursor (reached from both
+ * `walkUnsetSentinels` and `substituteUnsetSentinels`), and the
+ * `setValue(path, unset)` direct case in `build-form-api.ts`.
  *
  * Detection order, applied at every recursion level:
  *
@@ -364,8 +343,8 @@ export function blankForKind(slimDefault: unknown): unknown {
  *   4. **Array / tuple / record** — write the schema's slim concrete
  *      (`[]` / slim tuple / `{}`) with no per-element marks.
  *      Per-element opt-in still works via the existing `[unset, …]`
- *      syntax handled by the surrounding `walk`/`substitute` recursion
- *      on non-unset inputs.
+ *      syntax handled by the surrounding `walkCore` recursion on
+ *      non-unset inputs.
  *
  *   5. **Bare object** — recurse into every key via `expandUnsetAt` so
  *      DU detection re-applies at each child level.
@@ -390,13 +369,7 @@ export function expandUnsetAt(
     return slim
   }
 
-  if (
-    slim instanceof Date ||
-    slim instanceof RegExp ||
-    slim instanceof Map ||
-    slim instanceof Set ||
-    typeof slim === 'function'
-  ) {
+  if (isOpaqueLeaf(slim)) {
     paths.push(canonicalizePath(segments).key)
     return slim
   }

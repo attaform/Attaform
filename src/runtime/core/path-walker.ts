@@ -324,43 +324,10 @@ function mergeStructuralImpl(
   // null-vs-non-nullable; runtime doesn't override consumer intent.
   if (consumer === null) return null
 
-  // Array branch: distinguish tuple-like (fixed length) from array
-  // (unbounded) via `arrayShapeAtPath`. Tuples pad consumer to the
-  // structural length; unbounded arrays follow the consumer's length
-  // and reuse one element default across positions.
+  // Array branch: tuple-like (fixed length) vs unbounded array — see
+  // mergeStructuralArray.
   if (Array.isArray(consumer)) {
-    const shape = resolveArrayShape(schema, scratch)
-    const isTuple = typeof shape === 'number'
-    const targetLen = isTuple ? shape : consumer.length
-    // Unbounded array: every position resolves to the same element
-    // default — query once and reuse. Tuples query per-position
-    // since each slot carries its own default.
-    let cachedElementDefault: unknown
-    let cachedElementDefaultRead = false
-    let mutated = targetLen > consumer.length
-    const out = consumer.slice() as unknown[]
-    while (out.length < targetLen) out.push(undefined)
-    for (let i = 0; i < targetLen; i++) {
-      scratch.push(i)
-      let elemDefault: unknown
-      if (isTuple) {
-        elemDefault = schema.getDefaultAtPath(scratch)
-      } else {
-        if (!cachedElementDefaultRead) {
-          cachedElementDefault = schema.getDefaultAtPath(scratch)
-          cachedElementDefaultRead = true
-        }
-        elemDefault = cachedElementDefault
-      }
-      const consumerElem = i < consumer.length ? consumer[i] : undefined
-      const merged = mergeStructuralImpl(schema, scratch, consumerElem, elemDefault)
-      scratch.pop()
-      if (merged !== consumerElem) {
-        out[i] = merged
-        mutated = true
-      }
-    }
-    return mutated ? out : consumer
+    return mergeStructuralArray(schema, scratch, consumer)
   }
 
   // Plain object: fill missing keys from default, recurse on present
@@ -372,7 +339,6 @@ function mergeStructuralImpl(
       // keys that the schema knows about at deeper paths (rare).
       return consumer
     }
-    let mutated = false
     // Merge target carries `Object.prototype`, matching `setAtPath` and
     // `mergeDeep` elsewhere in the runtime. Object spread uses
     // `CreateDataProperty` per the spec, which bypasses the inherited
@@ -380,53 +346,128 @@ function mergeStructuralImpl(
     // own property survives the spread without reassigning the result's
     // prototype chain.
     const out: Record<string, unknown> = { ...consumer }
-    // Fill schema-default keys that are MISSING from consumer (key
-    // not present at all). An explicit `consumer[key] = undefined`
-    // means the consumer named the slot empty on purpose — distinct
-    // from omitting the key — and the schema default doesn't override
-    // it.
-    for (const key of Object.keys(defaultValue)) {
-      // Own-property check — `'__proto__' in consumer` would always
-      // be `true` for a regular consumer record, falsely declaring
-      // "consumer wrote here" and skipping the default-fill for a
-      // legitimate `__proto__` schema field.
-      if (!safeOwnHas(consumer, key)) {
-        const defAtKey = safeOwnRead(defaultValue, key)
-        // Recurse so that filling produces a structurally-complete
-        // sub-tree (covers nested-object defaults that themselves
-        // contain wrappers / unions).
-        scratch.push(key)
-        const filled = mergeStructuralImpl(schema, scratch, undefined, defAtKey)
-        scratch.pop()
-        if (filled !== undefined) {
-          safeAssign(out, key, filled)
-          mutated = true
-        }
-      }
-    }
-    // Recurse into consumer-supplied keys to catch nested gaps. Skip
-    // keys whose consumer value is `undefined` — the spread above
-    // already kept them, and recursing would re-fill from the
-    // schema default (mergeStructuralImpl's leaf branch returns the
-    // default for an undefined consumer), erasing the consumer's
-    // explicit empty.
-    for (const key of Object.keys(consumer)) {
-      const cVal = safeOwnRead(consumer, key)
-      if (cVal === undefined) continue
-      scratch.push(key)
-      const merged = mergeStructuralImpl(schema, scratch, cVal, safeOwnRead(defaultValue, key))
-      scratch.pop()
-      if (merged !== cVal) {
-        safeAssign(out, key, merged)
-        mutated = true
-      }
-    }
-    return mutated ? out : consumer
+    const filledAny = fillMissingKeysFromDefault(schema, scratch, consumer, defaultValue, out)
+    const recursedAny = recurseIntoConsumerKeys(schema, scratch, consumer, defaultValue, out)
+    return filledAny || recursedAny ? out : consumer
   }
 
   // Leaf-ish (primitives, Date, RegExp, Map, Set, class instances) —
   // consumer wins, no recursion.
   return consumer
+}
+
+/**
+ * Merge a consumer array against the schema. Tuple-like paths (fixed
+ * length via `arrayShapeAtPath`) pad the consumer up to the structural
+ * length and query a per-position default; unbounded arrays follow the
+ * consumer's length and reuse one element default across positions.
+ * Returns the merged array, or the original `consumer` when nothing
+ * changed.
+ */
+function mergeStructuralArray(
+  schema: SchemaForFill,
+  scratch: Segment[],
+  consumer: readonly unknown[]
+): unknown {
+  const shape = resolveArrayShape(schema, scratch)
+  const isTuple = typeof shape === 'number'
+  const targetLen = isTuple ? shape : consumer.length
+  // Unbounded array: every position resolves to the same element
+  // default — query once and reuse. Tuples query per-position
+  // since each slot carries its own default.
+  let cachedElementDefault: unknown
+  let cachedElementDefaultRead = false
+  let mutated = targetLen > consumer.length
+  const out: unknown[] = consumer.slice()
+  while (out.length < targetLen) out.push(undefined)
+  for (let i = 0; i < targetLen; i++) {
+    scratch.push(i)
+    let elemDefault: unknown
+    if (isTuple) {
+      elemDefault = schema.getDefaultAtPath(scratch)
+    } else {
+      if (!cachedElementDefaultRead) {
+        cachedElementDefault = schema.getDefaultAtPath(scratch)
+        cachedElementDefaultRead = true
+      }
+      elemDefault = cachedElementDefault
+    }
+    const consumerElem = i < consumer.length ? consumer[i] : undefined
+    const merged = mergeStructuralImpl(schema, scratch, consumerElem, elemDefault)
+    scratch.pop()
+    if (merged !== consumerElem) {
+      out[i] = merged
+      mutated = true
+    }
+  }
+  return mutated ? out : consumer
+}
+
+/**
+ * Fill the schema-default keys MISSING from `consumer` (key not present
+ * at all) into `out`, recursing so each fill produces a
+ * structurally-complete sub-tree (covers nested-object defaults that
+ * themselves contain wrappers / unions). An explicit
+ * `consumer[key] = undefined` means the consumer named the slot empty on
+ * purpose — distinct from omitting the key — so the schema default does
+ * NOT override it. Mutates `out` in place; returns whether anything was
+ * filled.
+ */
+function fillMissingKeysFromDefault(
+  schema: SchemaForFill,
+  scratch: Segment[],
+  consumer: Record<string, unknown>,
+  defaultValue: Record<string, unknown>,
+  out: Record<string, unknown>
+): boolean {
+  let mutated = false
+  for (const key of Object.keys(defaultValue)) {
+    // Own-property check — `'__proto__' in consumer` would always be
+    // `true` for a regular consumer record, falsely declaring "consumer
+    // wrote here" and skipping the default-fill for a legitimate
+    // `__proto__` schema field.
+    if (!safeOwnHas(consumer, key)) {
+      const defAtKey = safeOwnRead(defaultValue, key)
+      scratch.push(key)
+      const filled = mergeStructuralImpl(schema, scratch, undefined, defAtKey)
+      scratch.pop()
+      if (filled !== undefined) {
+        safeAssign(out, key, filled)
+        mutated = true
+      }
+    }
+  }
+  return mutated
+}
+
+/**
+ * Recurse into every consumer-supplied key to catch nested gaps, writing
+ * merged results into `out`. Keys whose consumer value is `undefined`
+ * are skipped — the caller's spread already kept them, and recursing
+ * would re-fill from the schema default (the leaf branch returns the
+ * default for an undefined consumer), erasing the consumer's explicit
+ * empty. Mutates `out` in place; returns whether anything changed.
+ */
+function recurseIntoConsumerKeys(
+  schema: SchemaForFill,
+  scratch: Segment[],
+  consumer: Record<string, unknown>,
+  defaultValue: Record<string, unknown>,
+  out: Record<string, unknown>
+): boolean {
+  let mutated = false
+  for (const key of Object.keys(consumer)) {
+    const cVal = safeOwnRead(consumer, key)
+    if (cVal === undefined) continue
+    scratch.push(key)
+    const merged = mergeStructuralImpl(schema, scratch, cVal, safeOwnRead(defaultValue, key))
+    scratch.pop()
+    if (merged !== cVal) {
+      safeAssign(out, key, merged)
+      mutated = true
+    }
+  }
+  return mutated
 }
 
 /**

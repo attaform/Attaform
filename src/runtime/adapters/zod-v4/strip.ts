@@ -70,6 +70,18 @@ function carryChecks<Rebuilt extends z.ZodType>(
 }
 
 /**
+ * Compile-time exhaustiveness pin + runtime guard for the kind-switches
+ * in this file. Passing the switch discriminant to a `never` parameter
+ * means that if `ZodKind` grows a new variant, the offending `default`
+ * call breaks first — pointing at the exact switch — instead of a
+ * diffuse "function lacks return statement" elsewhere in the file.
+ * Mirrors the pattern in assertSupportedKinds.
+ */
+function unhandledZodKind(fnName: string, kind: never): never {
+  throw new Error(`${fnName}: unhandled ZodKind '${kind as string}'`)
+}
+
+/**
  * stripRefinements: rebuild the schema tree with all refinement checks
  * (`z.string().min(3)`, `z.number().multipleOf(2)`, etc.) removed. The
  * validate-then-fix loop uses this so a default like `''` can satisfy a
@@ -179,14 +191,8 @@ export function stripRefinements(schema: z.ZodType): z.ZodType {
     case 'symbol':
     case 'function':
       return schema
-    default: {
-      // Compile-time exhaustiveness pin. If `ZodKind` grows a new
-      // variant, this line breaks first — pointing at the offending
-      // value — instead of a diffuse "function lacks return statement"
-      // elsewhere in the file. Mirrors the pattern in assertSupportedKinds.
-      const _exhaustive: never = kind
-      throw new Error(`stripRefinements: unhandled ZodKind '${_exhaustive as string}'`)
-    }
+    default:
+      return unhandledZodKind('stripRefinements', kind)
   }
 }
 
@@ -374,10 +380,8 @@ export function stripAsyncChecks(schema: z.ZodType): z.ZodType {
       case 'symbol':
       case 'function':
         return s
-      default: {
-        const _exhaustive: never = kind
-        throw new Error(`stripAsyncChecks: unhandled ZodKind '${_exhaustive as string}'`)
-      }
+      default:
+        return unhandledZodKind('stripAsyncChecks', kind)
     }
   }
 
@@ -606,9 +610,7 @@ function walkSlim(
       // `file` has no refinements to strip beyond what the leaf schema
       // already represents. Pass through unchanged.
       return schema
-    default: {
-      const _exhaustive: never = kind
-      throw new Error(`getSlimSchema: unhandled ZodKind '${_exhaustive as string}'`)
-    }
+    default:
+      return unhandledZodKind('getSlimSchema', kind)
   }
 }

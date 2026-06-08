@@ -19,9 +19,6 @@
 import type { z } from 'zod'
 import type { z as zV3 } from 'zod-v3'
 import type { ZodV4Internals } from './types-zod-major'
-import type { StorageShape as StorageShapeV4 } from '../zod-v4/types-storage-shape'
-import type { StorageShape as StorageShapeV3 } from '../zod-v3/types-storage-shape'
-import type { UnwrapZodObject } from '../zod-v3/types-zod-adapter'
 import type {
   AbstractSchema,
   FormKey,
@@ -29,21 +26,8 @@ import type {
   UseFormReturnType,
   ValidateOnConfig,
 } from '../../types/types-api'
-import type { DefaultValuesInput, GenericForm } from '../../types/types-core'
-
-type V4FormOf<S extends z.ZodObject> = z.input<S> extends GenericForm ? z.input<S> : never
-type V4OutOf<S extends z.ZodObject> = z.output<S> extends GenericForm ? z.output<S> : never
-type V4ReadOf<S extends z.ZodObject> =
-  StorageShapeV4<S> extends GenericForm ? StorageShapeV4<S> : never
-
-type V3FormOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
-  zV3.input<UnwrapZodObject<S>> extends GenericForm ? zV3.input<UnwrapZodObject<S>> : never
-type V3OutOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
-  zV3.output<UnwrapZodObject<S>> extends GenericForm ? zV3.output<UnwrapZodObject<S>> : never
-type V3ReadOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
-  StorageShapeV3<UnwrapZodObject<S>> extends GenericForm
-    ? StorageShapeV3<UnwrapZodObject<S>>
-    : never
+import type { DefaultValuesInput } from '../../types/types-core'
+import type { V3FormOf, V3OutOf, V3ReadOf, V4FormOf, V4OutOf, V4ReadOf } from './types-projections'
 
 /**
  * Direct V4 projection — no major-dispatch. Use when the schema's

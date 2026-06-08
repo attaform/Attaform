@@ -145,3 +145,43 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — literal-dot key disambiguation
     expect(nestedKind.has('string')).toBe(false)
   })
 })
+
+// Branch coverage for the walker's long tail, including the v3-only
+// kinds (native-enum / branded / effects / pipeline) that have no v4
+// counterpart.
+describe('zod v3: getSlimPrimitiveTypesAtPath — walker long tail', () => {
+  it('z.nan() → {number}', () => {
+    expect([...probe(z.object({ x: z.nan() }), ['x'])]).toEqual(['number'])
+  })
+
+  it('z.nativeEnum(stringObject) → {string}', () => {
+    const Fruit = { Apple: 'apple', Banana: 'banana' } as const
+    expect([...probe(z.object({ x: z.nativeEnum(Fruit) }), ['x'])]).toEqual(['string'])
+  })
+
+  it('z.string().brand("B") → {string}', () => {
+    expect([...probe(z.object({ x: z.string().brand('B') }), ['x'])]).toEqual(['string'])
+  })
+
+  it('z.string().refine(...) (ZodEffects) peels to the source → {string}', () => {
+    expect([...probe(z.object({ x: z.string().refine(() => true) }), ['x'])]).toEqual(['string'])
+  })
+
+  it('z.string().pipe(z.number()) takes the input side → {string}', () => {
+    expect([...probe(z.object({ x: z.string().pipe(z.number()) }), ['x'])]).toEqual(['string'])
+  })
+
+  it('z.string().catch("x") → {string}', () => {
+    expect([...probe(z.object({ x: z.string().catch('x') }), ['x'])]).toEqual(['string'])
+  })
+
+  it('z.lazy(() => leaf): recurses under the depth cap → {string}', () => {
+    const schema = z.object({ x: z.lazy(() => z.string()) })
+    expect([...probe(schema, ['x'])]).toEqual(['string'])
+  })
+
+  it('z.intersection(string, string): intersects to {string}', () => {
+    const schema = z.object({ x: z.intersection(z.string(), z.string()) })
+    expect([...probe(schema, ['x'])]).toEqual(['string'])
+  })
+})

@@ -10,11 +10,12 @@
   // ── Dependencies ────────────────────────────────────────────────
   // Only entries fallow cannot trace because the consumer is a config
   // file / plugin-host auto-discovery, or the dep is deliberately
-  // peer / transitive / hoisted. The other 10 flagged devDeps
-  // (@typescript-eslint/*, @nuxt/eslint-config, eslint-config-prettier,
-  // @nuxt/module-builder, @vue/language-server, @vue/typescript-plugin,
-  // changelogen, immer, vite-plugin-dts) are NOT listed here: they have
-  // no code/config reference and are real "still needed?" candidates.
+  // peer / transitive / hoisted / resolved-by-name at runtime / resolved
+  // by the editor's language server. Eight devDeps fallow flagged with no
+  // code or config reference (@typescript-eslint/*, @nuxt/eslint-config,
+  // eslint-config-prettier, @nuxt/module-builder, changelogen, immer,
+  // vite-plugin-dts) were genuinely unused and have been removed, not
+  // suppressed, so they no longer surface here.
   "ignoreDependencies": [
     // Consumed by size-limit's preset auto-discovery; never imported by
     // name, so fallow's module graph can't see the edge.
@@ -32,7 +33,28 @@
     "zod",
     // apps/site/nuxt.config.ts; `npm:zod@^3.24` alias fallow doesn't
     // decode, same root-hoist story as `zod`.
-    "zod-v3"
+    "zod-v3",
+    // Optional peerDependency of @nuxt/content (apps/site content
+    // pipeline). The native SQLite connector @nuxt/content loads BY NAME
+    // at runtime for the local content database, so fallow's module graph
+    // can't see the edge. Drop it and @nuxt/content falls back to its
+    // bundled WASM SQLite; declaring it deliberately picks the faster
+    // native driver.
+    "better-sqlite3",
+    // Optional peerDependency of nuxt-og-image (pulled in by @nuxtjs/seo).
+    // The docs site renders OG images through satori
+    // (apps/site/components/OgImage/Default.satori.vue), which
+    // nuxt-og-image loads by name; no authored source imports it directly.
+    "satori",
+    // Workspace-pinned Vue language toolchain. No code or build step
+    // imports these; the editor's Volar LSP resolves them from
+    // node_modules to provide .vue IntelliSense (nvim's vue_ls binary is
+    // node_modules/.bin/vue-language-server, and the TS server loads
+    // @vue/typescript-plugin for .vue type info). Removing them breaks
+    // editor IntelliSense, so they stay as devDeps even though fallow's
+    // module graph sees no importer.
+    "@vue/language-server",
+    "@vue/typescript-plugin"
   ],
 
   // ── Unresolved imports ──────────────────────────────────────────
@@ -42,6 +64,18 @@
   // jiti-shim staleness explanation). No real import; never resolvable
   // on the host.
   "ignoreUnresolvedImports": ["/app/**"],
+
+  // ── Entry points ────────────────────────────────────────────────
+  // Standalone manual-regeneration scripts fallow can't reach from any
+  // auto-detected entry point: they aren't wired into package.json
+  // scripts, they're run by hand when their committed output needs a
+  // refresh. Declaring them as entry points reflects the truth (they ARE
+  // roots) rather than suppressing a "dead file" that isn't dead.
+  //   - scripts/build-bestpractices-json.mjs regenerates .bestpractices.json
+  //     (the OpenSSF Best Practices badge data).
+  //   - apps/site/scripts/generate-favicons.mjs regenerates the committed
+  //     favicons from the source SVG (imports @resvg/resvg-js).
+  "entry": ["scripts/build-bestpractices-json.mjs", "apps/site/scripts/generate-favicons.mjs"],
 
   // ── Duplication ─────────────────────────────────────────────────
   // Duplication is a source-DRY signal, so scope it to the shipped

@@ -43,8 +43,8 @@ import type {
   ValidationError,
   ValidationResponse,
   ValidateOptions,
+  SchemaFactoryOptions,
 } from '../types/types-api'
-import type { SchemaFactoryOptions } from './get-computed-schema'
 import { AttaformErrorCode } from './error-codes'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 
@@ -703,37 +703,34 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       }
       return runAsync()
 
+      // Post-parse aggregation core shared by runSync / runAsync: map a
+      // single safe-parse result to a ValidationResponse. The parse call
+      // (sync vs async + its try/catch) stays in each runner; only the
+      // success/issues -> response shaping is shared here.
+      function parseResultToResponse(
+        result: { success: true; data: unknown } | { success: false; issues: readonly unknown[] }
+      ): ValidationResponse<GetValueFormType> {
+        return result.success
+          ? { data: result.data as GetValueFormType, errors: undefined, success: true, formKey }
+          : {
+              data: undefined,
+              errors: services.issuesToValidationErrors(result.issues, formKey),
+              success: false,
+              formKey,
+            }
+      }
+
       function runSync(): ValidationResponse<GetValueFormType> {
         if (path === undefined) {
-          const result = services.safeParseSync(rootSchema, data)
-          return result.success
-            ? {
-                data: result.data as GetValueFormType,
-                errors: undefined,
-                success: true,
-                formKey,
-              }
-            : {
-                data: undefined,
-                errors: services.issuesToValidationErrors(result.issues, formKey),
-                success: false,
-                formKey,
-              }
+          return parseResultToResponse(services.safeParseSync(rootSchema, data))
         }
         const resolved = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
         if (resolved.length === 0) return pathNotFound(path)
         const aggregated: ValidationError[] = []
         for (const candidate of resolved) {
-          const result = services.safeParseSync(candidate, data)
-          if (result.success) {
-            return {
-              data: result.data as GetValueFormType,
-              errors: undefined,
-              success: true,
-              formKey,
-            }
-          }
-          aggregated.push(...services.issuesToValidationErrors(result.issues, formKey))
+          const response = parseResultToResponse(services.safeParseSync(candidate, data))
+          if (response.success) return response
+          aggregated.push(...response.errors)
         }
         return { data: undefined, errors: aggregated, success: false, formKey }
       }
@@ -746,19 +743,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           } catch (err) {
             return validatorThrewResponse(err, [])
           }
-          return result.success
-            ? {
-                data: result.data as GetValueFormType,
-                errors: undefined,
-                success: true,
-                formKey,
-              }
-            : {
-                data: undefined,
-                errors: services.issuesToValidationErrors(result.issues, formKey),
-                success: false,
-                formKey,
-              }
+          return parseResultToResponse(result)
         }
         const resolved = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
         if (resolved.length === 0) return pathNotFound(path)
@@ -772,15 +757,9 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           } catch (err) {
             return validatorThrewResponse(err, path)
           }
-          if (result.success) {
-            return {
-              data: result.data as GetValueFormType,
-              errors: undefined,
-              success: true,
-              formKey,
-            }
-          }
-          aggregated.push(...services.issuesToValidationErrors(result.issues, formKey))
+          const response = parseResultToResponse(result)
+          if (response.success) return response
+          aggregated.push(...response.errors)
         }
         return { data: undefined, errors: aggregated, success: false, formKey }
       }

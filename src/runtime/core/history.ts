@@ -101,7 +101,34 @@ function captureErrorEntries(map: Map<PathKey, ValidationError[]>): ErrorEntries
   return out
 }
 
-function errorsEqual(a: ErrorEntries, b: ErrorEntries): boolean {
+/**
+ * Structural equality for two error paths: same length and identical
+ * elements in order (numeric and string segments compared with `!==`).
+ */
+function pathsEqual(a: readonly (string | number)[], b: readonly (string | number)[]): boolean {
+  if (a.length !== b.length) return false
+  for (let j = 0; j < a.length; j++) {
+    if (a[j] !== b[j]) return false
+  }
+  return true
+}
+
+/**
+ * Field-by-field equality for two ValidationErrors. Identity-equal first:
+ * ValidationError objects pass by reference through the snapshot chain
+ * (not cloned), so most comparisons short-circuit here. On an identity
+ * miss, compare message / code / formKey and the path (reference-equal or
+ * structurally equal).
+ */
+function errorFieldsEqual(av: ValidationError, bvi: ValidationError): boolean {
+  if (av === bvi) return true
+  if (av.message !== bvi.message) return false
+  if (av.code !== bvi.code) return false
+  if (av.formKey !== bvi.formKey) return false
+  return av.path === bvi.path || pathsEqual(av.path, bvi.path)
+}
+
+export function errorsEqual(a: ErrorEntries, b: ErrorEntries): boolean {
   if (a.length !== b.length) return false
   const bMap = new Map<PathKey, ValidationError[]>()
   for (const [k, v] of b) bMap.set(k, v)
@@ -110,21 +137,7 @@ function errorsEqual(a: ErrorEntries, b: ErrorEntries): boolean {
     if (bv === undefined) return false
     if (v.length !== bv.length) return false
     for (let i = 0; i < v.length; i++) {
-      const av = v[i] as ValidationError
-      const bvi = bv[i] as ValidationError
-      // Identity-equal: ValidationError objects pass by reference through
-      // the snapshot chain (not cloned), so most comparisons short-circuit
-      // here. Fall back to field-by-field compare only on identity miss.
-      if (av === bvi) continue
-      if (av.message !== bvi.message) return false
-      if (av.code !== bvi.code) return false
-      if (av.formKey !== bvi.formKey) return false
-      if (av.path !== bvi.path) {
-        if (av.path.length !== bvi.path.length) return false
-        for (let j = 0; j < av.path.length; j++) {
-          if (av.path[j] !== bvi.path[j]) return false
-        }
-      }
+      if (!errorFieldsEqual(v[i] as ValidationError, bv[i] as ValidationError)) return false
     }
   }
   return true

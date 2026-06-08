@@ -283,3 +283,326 @@ describe('stripAsyncChecks', () => {
     expect(stripped.safeParse({ a: 'abc', b: -1 }).success).toBe(false)
   })
 })
+
+// ───────────────────────────────────────────────────────────────────
+// Branch coverage for the long tail of the kind switches. The blocks
+// above assert the high-value paths; these reach the container,
+// wrapper, and leaf cases that production schemas hit less often. Every
+// assertion is on the parse/derivation CONTRACT, except the deliberate
+// identity (`toBe`) checks, which ARE the contract for pass-through
+// leaves and for stripRefinements' wrapper delegation.
+// ───────────────────────────────────────────────────────────────────
+
+describe('stripRefinements — container long tail', () => {
+  it('z.set: strips element refinements', () => {
+    const slimmed = stripRefinements(z.set(z.string().min(3)))
+    expect(slimmed.safeParse(new Set([''])).success).toBe(true)
+  })
+
+  it('z.tuple: strips per-item refinements', () => {
+    const slimmed = stripRefinements(z.tuple([z.string().min(3), z.number().positive()]))
+    expect(slimmed.safeParse(['', 0]).success).toBe(true)
+  })
+
+  it('z.record: strips value refinements', () => {
+    const slimmed = stripRefinements(z.record(z.string(), z.string().min(3)))
+    expect(slimmed.safeParse({ k: '' }).success).toBe(true)
+  })
+
+  it('z.union: strips each option refinement', () => {
+    const slimmed = stripRefinements(z.union([z.string().min(3), z.number().positive()]))
+    expect(slimmed.safeParse('').success).toBe(true)
+  })
+
+  it('z.discriminatedUnion: strips variant refinements, keeps discriminator routing', () => {
+    const slimmed = stripRefinements(
+      z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('a'), v: z.string().min(3) }),
+        z.object({ kind: z.literal('b'), n: z.number().positive() }),
+      ])
+    )
+    expect(slimmed.safeParse({ kind: 'a', v: '' }).success).toBe(true)
+    // The discriminator still routes — an unknown tag is rejected.
+    expect(slimmed.safeParse({ kind: 'c', v: '' }).success).toBe(false)
+  })
+
+  it('z.intersection: strips both sides', () => {
+    const slimmed = stripRefinements(
+      z.intersection(z.object({ a: z.string().min(3) }), z.object({ b: z.number().positive() }))
+    )
+    expect(slimmed.safeParse({ a: '', b: 0 }).success).toBe(true)
+  })
+
+  it('z.lazy: strips the resolved inner', () => {
+    const slimmed = stripRefinements(z.lazy(() => z.string().min(3)))
+    expect(slimmed.safeParse('').success).toBe(true)
+  })
+
+  it('z.bigint: strips checks', () => {
+    const slimmed = stripRefinements(z.bigint().refine((v) => v > 100n, 'too small'))
+    expect(slimmed.safeParse(0n).success).toBe(true)
+  })
+
+  it('.catch(): strips the inner refinement so the fallback never fires', () => {
+    const slimmed = stripRefinements(z.string().min(3).catch('fallback'))
+    const parsed = slimmed.safeParse('')
+    expect(parsed.success).toBe(true)
+    // The empty string is now valid, so the catch fallback is not used.
+    if (parsed.success) expect(parsed.data).toBe('')
+  })
+})
+
+describe('stripRefinements — leaf pass-through by identity', () => {
+  // The leaf case block returns the schema unchanged. Identity (`toBe`)
+  // is the precise contract: no rebuild, no allocation.
+  const leaves: ReadonlyArray<readonly [string, z.ZodType]> = [
+    ['boolean', z.boolean()],
+    ['date', z.date()],
+    ['enum', z.enum(['a', 'b'])],
+    ['literal', z.literal('x')],
+    ['null', z.null()],
+    ['undefined', z.undefined()],
+    ['any', z.any()],
+    ['unknown', z.unknown()],
+    ['nan', z.nan()],
+    ['void', z.void()],
+    ['never', z.never()],
+    ['symbol', z.symbol()],
+    ['file', z.file()],
+    ['map', z.map(z.string(), z.number())],
+  ]
+  for (const [name, schema] of leaves) {
+    it(`${name}: returned unchanged`, () => {
+      expect(stripRefinements(schema)).toBe(schema)
+    })
+  }
+})
+
+describe('stripRefinements — wrapper descent is getSlimSchema’s job', () => {
+  // stripRefinements is the leaf-stripper. Bare optional/nullable/default/
+  // readonly/pipe wrappers are returned unchanged BY DESIGN — the
+  // production path (walkSlim) only ever hands stripRefinements a
+  // string/number/bigint leaf, peeling wrappers itself. getSlimSchema is
+  // where wrapper descent and refinement stripping actually compose.
+  it('a bare optional wrapper passes through untouched', () => {
+    const s = z.string().email().optional()
+    expect(stripRefinements(s)).toBe(s)
+  })
+
+  it('getSlimSchema strips a refinement nested inside .optional()', () => {
+    const slim = getSlimSchema(z.string().email().optional(), { stripRefinements: true }, 64)
+    expect(slim.safeParse('').success).toBe(true)
+    expect(slim.safeParse(undefined).success).toBe(true)
+  })
+
+  it('getSlimSchema strips a refinement nested inside .nullable()', () => {
+    const slim = getSlimSchema(z.string().email().nullable(), { stripRefinements: true }, 64)
+    expect(slim.safeParse('').success).toBe(true)
+    expect(slim.safeParse(null).success).toBe(true)
+  })
+})
+
+describe('stripAsyncChecks — container long tail', () => {
+  it('strips an async refine inside z.array', () => {
+    const schema = z.array(z.string().refine(async () => Promise.resolve(false), 'a'))
+    const stripped = stripAsyncChecks(schema)
+    expect(() => stripped.safeParse(['x'])).not.toThrow()
+    expect(stripped.safeParse(['x']).success).toBe(true)
+  })
+
+  it('strips an async refine inside z.set', () => {
+    const schema = z.set(z.string().refine(async () => Promise.resolve(false), 'a'))
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse(new Set(['x'])).success).toBe(true)
+  })
+
+  it('strips an async refine inside z.tuple', () => {
+    const schema = z.tuple([z.string().refine(async () => Promise.resolve(false), 'a')])
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse(['x']).success).toBe(true)
+  })
+
+  it('strips an async refine inside z.record', () => {
+    const schema = z.record(
+      z.string(),
+      z.string().refine(async () => Promise.resolve(false), 'a')
+    )
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse({ k: 'x' }).success).toBe(true)
+  })
+
+  it('strips an async refine inside z.union', () => {
+    const schema = z.union([z.string().refine(async () => Promise.resolve(false), 'a'), z.number()])
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse('x').success).toBe(true)
+  })
+
+  it('strips async checks on number / bigint leaves', () => {
+    const num = stripAsyncChecks(z.number().refine(async () => Promise.resolve(false), 'a'))
+    expect(num.safeParse(5).success).toBe(true)
+    const big = stripAsyncChecks(z.bigint().refine(async () => Promise.resolve(false), 'a'))
+    expect(big.safeParse(5n).success).toBe(true)
+  })
+
+  it('recurses through .readonly()', () => {
+    const schema = z
+      .string()
+      .refine(async () => Promise.resolve(false), 'a')
+      .readonly()
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse('x').success).toBe(true)
+  })
+
+  it('recurses through z.intersection', () => {
+    const schema = z.intersection(
+      z.object({ a: z.string().refine(async () => Promise.resolve(false), 'a') }),
+      z.object({ b: z.number() })
+    )
+    const stripped = stripAsyncChecks(schema)
+    expect(stripped.safeParse({ a: 'x', b: 1 }).success).toBe(true)
+  })
+
+  it('recurses through .catch()', () => {
+    const schema = z
+      .string()
+      .refine(async () => Promise.resolve(false), 'a')
+      .catch('fb')
+    const stripped = stripAsyncChecks(schema)
+    const parsed = stripped.safeParse('x')
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data).toBe('x')
+  })
+
+  it('leaves a pipe / transform unchanged (async surfaces from the inner catch)', () => {
+    const p = z.string().transform((s) => s.length)
+    expect(stripAsyncChecks(p)).toBe(p)
+  })
+
+  it('passes pure-sync leaves through by identity', () => {
+    const leaves: ReadonlyArray<z.ZodType> = [
+      z.boolean(),
+      z.date(),
+      z.literal('x'),
+      z.null(),
+      z.undefined(),
+      z.nan(),
+      z.symbol(),
+      z.file(),
+      z.map(z.string(), z.number()),
+    ]
+    for (const leaf of leaves) {
+      expect(stripAsyncChecks(leaf)).toBe(leaf)
+    }
+  })
+})
+
+describe('getSlimSchema — wrapper + container long tail', () => {
+  it('readonly: re-wraps the slimmed inner', () => {
+    const slim = getSlimSchema(z.string().email().readonly(), { stripRefinements: true }, 64)
+    expect(slim.safeParse('').success).toBe(true)
+  })
+
+  it('pipe with stripPipe: returns the non-transform leg', () => {
+    const slim = getSlimSchema(
+      z.string().transform((s) => s.length),
+      { stripPipe: true },
+      64
+    )
+    const parsed = slim.safeParse('hello')
+    expect(parsed.success).toBe(true)
+    // The transform is dropped: data stays the source string, not its length.
+    if (parsed.success) expect(parsed.data).toBe('hello')
+  })
+
+  it('pipe without stripPipe: keeps the transform', () => {
+    const slim = getSlimSchema(
+      z.string().transform((s) => s.length),
+      {},
+      64
+    )
+    const parsed = slim.safeParse('hello')
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data).toBe(5)
+  })
+
+  it('set: strips element refinements through the walker', () => {
+    const slim = getSlimSchema(z.set(z.string().min(3)), { stripRefinements: true }, 64)
+    expect(slim.safeParse(new Set([''])).success).toBe(true)
+  })
+
+  it('tuple: strips item refinements through the walker', () => {
+    const slim = getSlimSchema(z.tuple([z.string().min(3)]), { stripRefinements: true }, 64)
+    expect(slim.safeParse(['']).success).toBe(true)
+  })
+
+  it('record: strips value refinements through the walker', () => {
+    const slim = getSlimSchema(
+      z.record(z.string(), z.string().min(3)),
+      { stripRefinements: true },
+      64
+    )
+    expect(slim.safeParse({ k: '' }).success).toBe(true)
+  })
+
+  it('union: strips option refinements through the walker', () => {
+    const slim = getSlimSchema(
+      z.union([z.string().min(3), z.number().positive()]),
+      { stripRefinements: true },
+      64
+    )
+    expect(slim.safeParse('').success).toBe(true)
+  })
+
+  it('discriminatedUnion: strips variant refinements through the walker', () => {
+    const slim = getSlimSchema(
+      z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('a'), v: z.string().min(3) }),
+        z.object({ kind: z.literal('b'), n: z.number().positive() }),
+      ]),
+      { stripRefinements: true },
+      64
+    )
+    expect(slim.safeParse({ kind: 'a', v: '' }).success).toBe(true)
+  })
+
+  it('intersection: strips both sides through the walker', () => {
+    const slim = getSlimSchema(
+      z.intersection(z.object({ a: z.string().min(3) }), z.object({ b: z.number().positive() })),
+      { stripRefinements: true },
+      64
+    )
+    expect(slim.safeParse({ a: '', b: 0 }).success).toBe(true)
+  })
+
+  it('catch: re-wraps the slimmed inner so the fallback survives', () => {
+    const slim = getSlimSchema(z.string().min(3).catch('fb'), { stripRefinements: true }, 64)
+    const parsed = slim.safeParse('')
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data).toBe('')
+  })
+
+  it('lazy: recurses when under the depth cap', () => {
+    const slim = getSlimSchema(
+      z.lazy(() => z.string().min(3)),
+      { stripRefinements: true },
+      64
+    )
+    expect(slim.safeParse('').success).toBe(true)
+  })
+
+  it('lazy: left intact at the depth cap (maxDepth 0)', () => {
+    const slim = getSlimSchema(
+      z.lazy(() => z.string().min(3)),
+      { stripRefinements: true },
+      0
+    )
+    // At the cap the original lazy passes through, so the refinement still applies.
+    expect(slim.safeParse('').success).toBe(false)
+    expect(slim.safeParse('abc').success).toBe(true)
+  })
+
+  it('file: passes through unchanged', () => {
+    const f = z.file()
+    expect(getSlimSchema(f, {}, 64)).toBe(f)
+  })
+})

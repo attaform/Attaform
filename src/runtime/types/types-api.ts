@@ -1,6 +1,5 @@
 import type { ComputedRef, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
-import type { SchemaFactoryOptions } from '../core/get-computed-schema'
 import type { Path, PathKey } from '../core/paths'
 import type { PersistOptInRegistry } from '../core/persistence/opt-in-registry'
 
@@ -35,6 +34,17 @@ import type {
  * stable identity.
  */
 export type FormKey = string
+
+/**
+ * Per-form options threaded from `useForm` into the adapter factory.
+ * Today carries the resolved `maxRecursionDepth` so adapter walks can
+ * cap their descent through recursive schemas; future per-form runtime
+ * knobs land here too.
+ */
+export interface SchemaFactoryOptions {
+  /** Resolved recursion ceiling (per-form > app-default > library default). */
+  maxRecursionDepth: number
+}
 
 /**
  * One validation failure. `path` points at the offending field as a

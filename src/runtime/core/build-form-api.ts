@@ -129,6 +129,23 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return meta === undefined ? { instance: instanceMeta } : { ...meta, instance: instanceMeta }
   }
 
+  // Re-mark each substituted leaf blank via a same-value setValueAtPath
+  // with `{ blank: true }` so the gate hook re-adds them (any DU reshape
+  // that ran during the parent write trimmed blanks under the variant
+  // path). Reading from storage rather than `getEmptyValueAtPath` keeps
+  // DU discriminator stubs intact.
+  const reMarkBlanksAfterSubstitution = (paths: readonly PathKey[]): void => {
+    for (const pathKey of paths) {
+      const blankSegments = segmentsForPathKey(pathKey)
+      if (blankSegments === null) continue
+      state.setValueAtPath(
+        blankSegments,
+        state.getValueAtPath(blankSegments),
+        withInstanceMeta({ blank: true })
+      )
+    }
+  }
+
   // Thunk producing a fresh `FormMetaBase` snapshot on each call —
   // the omit'd-shape second argument to `state.getDisplayState`.
   // Reads run inside the field-state computed, so every reactive
@@ -246,15 +263,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       )
       const ok = state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
       if (!ok) return false
-      for (const pathKey of walked.paths) {
-        const blankSegments = segmentsForPathKey(pathKey)
-        if (blankSegments === null) continue
-        state.setValueAtPath(
-          blankSegments,
-          state.getValueAtPath(blankSegments),
-          withInstanceMeta({ blank: true })
-        )
-      }
+      reMarkBlanksAfterSubstitution(walked.paths)
       return true
     }
     const segments = canonicalizePath(pathOrValue as string | Path).segments
@@ -365,20 +374,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     )
     const ok = state.setValueAtPath(segments, walked.cleanedValues, withInstanceMeta())
     if (!ok) return false
-    // Re-mark each substituted leaf blank via a same-value setValueAtPath
-    // with `{blank: true}` so the gate hook re-adds them (any DU reshape
-    // that ran during the parent write trimmed blanks under the variant
-    // path). Reading from storage rather than `getEmptyValueAtPath`
-    // keeps DU discriminator stubs intact.
-    for (const pathKey of walked.paths) {
-      const blankSegments = segmentsForPathKey(pathKey)
-      if (blankSegments === null) continue
-      state.setValueAtPath(
-        blankSegments,
-        state.getValueAtPath(blankSegments),
-        withInstanceMeta({ blank: true })
-      )
-    }
+    reMarkBlanksAfterSubstitution(walked.paths)
     return true
   }
 

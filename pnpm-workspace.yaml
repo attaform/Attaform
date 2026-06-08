@@ -9,6 +9,14 @@ overrides:
   '@nuxt/kit': $nuxt
   '@nuxt/schema': $nuxt
   fast-uri: ^3.1.2
+  # Pin a single rollup so the dev tree never carries two copies. vite and
+  # @rollup/plugin-alias float their rollup independently of unbuild's, and
+  # when a bump lands them on different 4.x patches, `tsc` sees two distinct
+  # `Plugin` / `PluginContext` types (vite augments `PluginContext` with
+  # `environment`) and rejects `build.config.ts`'s aliasPlugin against
+  # unbuild's plugin array under `exactOptionalPropertyTypes`. One version
+  # makes the types identical. Bump this in lockstep with vite/rollup.
+  rollup: 4.61.1
 
 # Install-script allowlist. Any package NOT listed here has its
 # install / postinstall / preinstall scripts skipped at install

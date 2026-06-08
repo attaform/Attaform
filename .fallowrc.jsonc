@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+
+  // Calibration for fallow's static analysis. The guiding rule mirrors
+  // scripts/check-eager-size.mjs: only suppress PROVEN false positives,
+  // and document why each one is noise. Anything fallow flags that is a
+  // genuine candidate (e.g. an actually-unreferenced devDep) is left
+  // visible on purpose so the signal stays honest.
+
+  // ── Dependencies ────────────────────────────────────────────────
+  // Only entries fallow cannot trace because the consumer is a config
+  // file / plugin-host auto-discovery, or the dep is deliberately
+  // peer / transitive / hoisted. The other 10 flagged devDeps
+  // (@typescript-eslint/*, @nuxt/eslint-config, eslint-config-prettier,
+  // @nuxt/module-builder, @vue/language-server, @vue/typescript-plugin,
+  // changelogen, immer, vite-plugin-dts) are NOT listed here: they have
+  // no code/config reference and are real "still needed?" candidates.
+  "ignoreDependencies": [
+    // Consumed by size-limit's preset auto-discovery; never imported by
+    // name, so fallow's module graph can't see the edge.
+    "@size-limit/preset-small-lib",
+    // Required peer of @fast-check/vitest. Property tests import `fc`
+    // from the wrapper, which re-exports fast-check.
+    "fast-check",
+    // Type-only import in .size-limit.js (`import('esbuild').BuildOptions`)
+    // plus transitive runtime use by size-limit and check-eager-size.mjs.
+    // Deliberately not a root direct dep (zero-runtime-deps posture).
+    "esbuild",
+    // apps/site demos + nuxt.config.ts import `zod` through the
+    // root-hoisted copy rather than declaring it in apps/site/package.json.
+    // Arguably real workspace hygiene; suppressed as a deliberate hoist.
+    "zod",
+    // apps/site/nuxt.config.ts; `npm:zod@^3.24` alias fallow doesn't
+    // decode, same root-hoist story as `zod`.
+    "zod-v3"
+  ],
+
+  // ── Unresolved imports ──────────────────────────────────────────
+  // The lone unresolved import is a Docker-absolute path string
+  // (`/app/src/<entry>.ts`) that fallow's tokenizer lifts out of a
+  // docstring in test/docs-site-source-alias-symmetry.test.ts (the
+  // jiti-shim staleness explanation). No real import; never resolvable
+  // on the host.
+  "ignoreUnresolvedImports": ["/app/**"],
+
+  // ── Duplication ─────────────────────────────────────────────────
+  // Duplication is a source-DRY signal, so scope it to the shipped
+  // library. The bulk of the raw 18.6% is DELIBERATE: the zod v3/v4
+  // parity test batteries (mirrored by design) and the parallel
+  // teaching demos. Excluding test/bench/scripts/apps leaves real src/
+  // duplication, which still surfaces the intentional v3<->v4 adapter
+  // twin for inspection.
+  "duplicates": {
+    "ignore": ["test/**", "bench/**", "scripts/**", "apps/site/**"],
+    // Strip import blocks from clone detection — sorted import lists
+    // look alike everywhere and aren't copy-paste worth refactoring.
+    "ignoreImports": true
+  },
+
+  // ── Complexity / hotspots ───────────────────────────────────────
+  // Measure product code (src/ library + apps/site docs site). Drop
+  // test trees (a 600-line `describe` arrow is not a "large function")
+  // and one-off build/release scripts.
+  "health": {
+    "ignore": ["test/**", "bench/**", "scripts/**"]
+  }
+}

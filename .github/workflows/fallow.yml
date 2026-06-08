@@ -1,0 +1,94 @@
+name: Fallow
+
+# Non-gating code-intelligence pass: unused code, dependency hygiene,
+# duplication, circular dependencies, and complexity hotspots. This job
+# NEVER blocks a merge — every step is best-effort and the job is marked
+# continue-on-error, so a finding (or a fallow crash) can't fail CI. The
+# report lands in the run's Step Summary for a reviewer to glance at.
+#
+# Calibrated by .fallowrc.jsonc (only proven false positives suppressed),
+# so the findings here mirror a local `make fallow` / `pnpm fallow` run.
+# CRAP/complexity is ESTIMATED here (no coverage in this lightweight job);
+# for coverage-accurate CRAP, run fallow locally against a coverage file.
+#
+# Dependency-free by design: fallow is fetched with a pinned
+# `npx fallow@<version>` rather than added to the lockfile, matching the
+# project's zero-runtime-deps posture. Bump FALLOW_VERSION to adopt a new
+# release (mirror the pin in package.json's `fallow` script).
+#
+# Telemetry is hard-disabled via env (DO_NOT_TRACK + FALLOW_TELEMETRY).
+# fallow's telemetry is opt-in / off-by-default anyway; this pins it off
+# regardless of any machine-local config.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref (mirrors the test-suite workflow).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Single source of truth for the pinned fallow release in CI. Keep in
+  # lockstep with the `fallow` script in package.json.
+  FALLOW_VERSION: '2.88.3'
+  DO_NOT_TRACK: '1'
+  FALLOW_TELEMETRY: '0'
+  NO_COLOR: '1'
+
+jobs:
+  analyze:
+    name: Code intelligence (non-gating)
+    runs-on: ubuntu-latest
+    # Belt-and-suspenders non-gating: even an infra/step failure is
+    # reported neutral and never blocks a PR.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # fallow reads git history for churn / hotspot trends; a shallow
+          # clone would empty them out.
+          fetch-depth: 0
+          # CI-only job; no git push needs the token on the working tree.
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+
+      # No pnpm install: fallow analyzes the source tree + package.json +
+      # git directly. Skipping the install keeps this job light and the
+      # cache surface zero. Import-resolution findings (unresolved /
+      # unlisted) are best read from a local run with node_modules present;
+      # .fallowrc.jsonc already settles the known ones.
+      - name: Run fallow (dead code, duplication, complexity)
+        run: |
+          npx --yes "fallow@${FALLOW_VERSION}" --score --format markdown \
+            > fallow-report.md 2> fallow-stderr.txt || true
+
+      - name: Publish report to job summary
+        if: always()
+        run: |
+          {
+            echo "## 🌱 Fallow — code intelligence (non-gating)"
+            echo
+            echo "Calibrated by \`.fallowrc.jsonc\`. CRAP/complexity is **estimated** (no coverage in this job). Informational only — never gates a merge."
+            echo
+            if [ -s fallow-report.md ]; then
+              cat fallow-report.md
+            else
+              echo '> fallow produced no report. stderr:'
+              echo
+              echo '```'
+              cat fallow-stderr.txt 2>/dev/null || echo '(no stderr captured)'
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

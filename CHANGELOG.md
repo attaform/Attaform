@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.21.2
 ### Changed
 
 - **Relaxed the supported-runtime declaration.** `engines.node` drops its upper

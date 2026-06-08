@@ -88,7 +88,7 @@ jobs:
         with:
           node-version: 22.x
 
-      - name: Inject pnpm.overrides for this matrix cell
+      - name: Inject pnpm-workspace.yaml overrides for this matrix cell
         env:
           # Bind matrix values into env vars so the `node -e` script
           # below reads them via `process.env` rather than YAML
@@ -101,18 +101,30 @@ jobs:
           MATRIX_VITE: ${{ matrix.vite }}
           MATRIX_NUXT: ${{ matrix.nuxt }}
         run: |
+          # pnpm 11 no longer reads the `pnpm` field in package.json, so
+          # the per-cell pins go into pnpm-workspace.yaml — the new home
+          # for `overrides` (https://pnpm.io/settings). Injecting into
+          # package.json instead would be silently ignored, leaving the
+          # matrix testing default-resolved versions rather than the
+          # pinned cell. The pins merge into the committed `overrides`
+          # block (whose `@nuxt/*: $nuxt` aliases then follow the `nuxt`
+          # pin injected here). No YAML library is installed at this
+          # step, so insert the three keys with a built-in text edit
+          # rather than a parse/serialize round-trip.
           node -e '
           const fs = require("fs");
-          const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"));
-          pkg.pnpm = pkg.pnpm ?? {};
-          pkg.pnpm.overrides = {
-            ...(pkg.pnpm.overrides ?? {}),
-            vue: process.env.MATRIX_VUE,
-            vite: process.env.MATRIX_VITE,
-            nuxt: process.env.MATRIX_NUXT,
-          };
-          fs.writeFileSync("./package.json", JSON.stringify(pkg, null, 2) + "\n");
-          console.log("applied overrides:", pkg.pnpm.overrides);
+          const file = "./pnpm-workspace.yaml";
+          const lines = fs.readFileSync(file, "utf8").split("\n");
+          const at = lines.findIndex((l) => /^overrides:[ \t]*$/.test(l));
+          if (at === -1) throw new Error("no overrides: block found in pnpm-workspace.yaml");
+          const pins = [
+            "  vue: " + process.env.MATRIX_VUE,
+            "  vite: " + process.env.MATRIX_VITE,
+            "  nuxt: " + process.env.MATRIX_NUXT,
+          ];
+          lines.splice(at + 1, 0, ...pins);
+          fs.writeFileSync(file, lines.join("\n"));
+          console.log("applied overrides:", pins.join(", "));
           '
 
       - name: Install with overrides

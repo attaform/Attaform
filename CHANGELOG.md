@@ -2,7 +2,18 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **No false `v-register` no-op warning during SSR hydration.** A custom field
+  wrapper that follows the recommended pattern (a non-input root that calls
+  `useRegister()` and re-binds `v-register` onto an inner native input) stayed
+  silent on a fresh client mount but warned on every server-rendered page,
+  because its suppression marker landed a tick after the directive's deferred
+  no-op check on the async-hydration path. The check now runs from the
+  directive's `mounted` hook, which always settles after the wrapper's own
+  mount, so the marker is in place before the check reads it. The warning still
+  fires for a genuinely unsupported root, on both fresh mount and hydration.
+  (#370)
 
 ## v0.21.1
 ### Added

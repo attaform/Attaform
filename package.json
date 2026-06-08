@@ -8,8 +8,7 @@
   ],
   "sideEffects": false,
   "engines": {
-    "node": ">=22.0.0 <27",
-    "pnpm": ">=11.0.0"
+    "node": ">=22.0.0"
   },
   "publishConfig": {
     "access": "public",

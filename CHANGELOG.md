@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **Relaxed the supported-runtime declaration.** `engines.node` drops its upper
+  bound (was `>=22.0.0 <27`), so Attaform installs without an engine warning on
+  current and future Node majors; the floor stays at Node 22, the lowest release
+  still receiving security support. `engines.pnpm` is removed entirely: the
+  published package is pre-built and installs under any package manager, so
+  pinning a pnpm version only warned pnpm users for no runtime reason (the pnpm
+  11 requirement is dev-only, kept in `packageManager`). (#372)
+
 ### Fixed
 
 - **No false `v-register` no-op warning during SSR hydration.** A custom field

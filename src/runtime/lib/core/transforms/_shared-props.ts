@@ -11,10 +11,11 @@ import { NodeTypes } from '@vue/compiler-core'
 
 /**
  * Shared prop-summarization toolkit for the compile-time node
- * transforms. `input-text-area-transform.ts` and `select-transform.ts`
- * both summarize their host element's props into a uniform
- * `{ key, value }` shape before deciding which directive to inject,
- * which props to strip, and how to construct the synthesized binding.
+ * transforms. `input-text-area-transform.ts` and
+ * `component-bridge-transform.ts` both summarize their host element's
+ * props into a uniform `{ key, value }` shape before deciding which
+ * directive to inject, which props to strip, and how to construct the
+ * synthesized binding.
  * The summarization rules are byte-identical across both transforms;
  * keeping two copies risked silent drift — particularly on key-shape
  * decisions (`isExactKey`) and quoting (`renderAsStatic`).
@@ -137,11 +138,11 @@ export function isExactKey(summarizedKey: string, name: string): boolean {
  * nodes carry a list of strings interleaved with nested expression
  * nodes — concatenate the textual content to reconstruct the source.
  *
- * Single source of truth for the select transform's per-`<option>`
- * processExpression input AND the v-register preamble transform's
- * pre-wrap binding capture. Both call sites built equivalent inline
- * helpers; the consolidation prevents drift in how a future Vue node-
- * type addition gets handled.
+ * Single source of truth for the component-bridge transform's
+ * per-`<option>` processExpression input AND the v-register preamble
+ * transform's pre-wrap binding capture. Both call sites built equivalent
+ * inline helpers; the consolidation prevents drift in how a future Vue
+ * node-type addition gets handled.
  *
  * Children that aren't string / SIMPLE / COMPOUND (symbols from the
  * codegen helper indices; node types added in a future Vue) are

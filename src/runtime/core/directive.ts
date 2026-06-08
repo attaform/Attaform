@@ -1201,7 +1201,23 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // lockout is therefore only available client-side and on the runtime
     // SSR path; under compiled SSR an authored aria attribute can't be
     // detected here, and the client directive reconciles it on hydration.
-    return getSSRAriaProps(rv, (vnode as VNode | null) ?? null)
+    const realVnode = (vnode as VNode | null) ?? null
+    const ariaProps = getSSRAriaProps(rv, realVnode)
+
+    // Form-state (`value` / `checked`) is the runtime path's analogue of
+    // the compile-time transform's injected binding. Compiled SSR passes a
+    // `null` vnode (the transform already emitted the binding there), so
+    // this only fires for `h()` / `withDirectives` renders — the two
+    // mechanisms own disjoint paths and never double-emit. Without it, a
+    // render-function field rendered server-side carries its aria attrs
+    // but no value, painting empty for one frame before the client
+    // directive fills it in on mount.
+    const formStateProps = realVnode !== null ? getSSRFormStateProps(rv, realVnode) : undefined
+
+    if (ariaProps === undefined && formStateProps === undefined) return undefined
+    // Disjoint key spaces (`aria-*` vs `value` / `checked`), so the merge
+    // order is immaterial; spreading `undefined` is a no-op.
+    return { ...ariaProps, ...formStateProps }
   },
 }
 
@@ -1216,6 +1232,77 @@ function resolveDynamicModel(tagName: string, type: unknown) {
   if (type === 'checkbox') return vRegisterCheckbox
   if (type === 'radio') return vRegisterRadio
   return vRegisterText
+}
+
+/**
+ * SSR `checked` verdict for a checkbox, mirroring `setChecked`'s
+ * Array→`looseIndexOf` / Set→`.has` / scalar→`looseEqual(trueValue)`
+ * ladder — but reading the option-value and true-value from `vnode.props`
+ * rather than the DOM element (there's no element server-side). Returns
+ * the props bag (`{ checked: '' }`) when the box should render checked,
+ * else `undefined` so no attribute is emitted.
+ */
+function ssrCheckboxProps(
+  rv: RegisterValue,
+  props: Record<string, unknown> | null
+): Record<string, string> | undefined {
+  const model = rv.innerRef.value
+  const optionValue = props?.['value']
+  let checked: boolean
+  if (isArray(model)) {
+    checked = looseIndexOf(model, applyElementCoerce(optionValue, rv)) > -1
+  } else if (isSet(model)) {
+    checked = model.has(applyElementCoerce(optionValue, rv))
+  } else {
+    // `getCheckboxValue(el, true)` returns `_trueValue` (the `:true-value`
+    // binding) when present, else `true`. On the server we read the
+    // `true-value` prop directly.
+    const trueValue = props !== null && 'true-value' in props ? props['true-value'] : true
+    checked = looseEqual(model, applyCoerce(trueValue, rv))
+  }
+  return checked ? { checked: '' } : undefined
+}
+
+/**
+ * Compute the form-state props (`value` / `checked`) the directive would
+ * apply on mount, for SSR emission on the RUNTIME render-function path.
+ * Mirrors each variant's mount logic — `vRegisterText`'s
+ * `el.value = displayValue.value`, `setChecked`, the radio `looseEqual` —
+ * but sources the element-side option-value from `vnode.props` since
+ * there's no DOM element server-side.
+ *
+ * Returns `undefined` for the variants whose initial state can't be
+ * expressed at the element level here:
+ *  - file: browsers reject `value` on file inputs; `vRegisterFile` owns
+ *    the DOM contract.
+ *  - select: option `selected` is option-level, not expressible from the
+ *    `<select>` element's props (compiled templates carry it via
+ *    `componentBridgeTransform`; documented limitation for runtime
+ *    render functions).
+ *
+ * Only reached on the runtime path — compiled SSR passes a `null` vnode,
+ * where the compile-time transform already injected the binding — so the
+ * two mechanisms never double-emit.
+ */
+function getSSRFormStateProps(rv: RegisterValue, vnode: VNode): Record<string, string> | undefined {
+  // Component vnodes (`h(MyComp, ...)` with a v-register binding) have no
+  // element-level form state — the inner native input the component
+  // re-binds owns it. Only real HTML tags dispatch here.
+  if (typeof vnode.type !== 'string') return undefined
+  const props = (vnode.props as Record<string, unknown> | null) ?? null
+  const variant = resolveDynamicModel(vnode.type.toUpperCase(), props?.['type'])
+
+  if (variant === vRegisterFile || variant === vRegisterSelect) return undefined
+  if (variant === vRegisterCheckbox) return ssrCheckboxProps(rv, props)
+  if (variant === vRegisterRadio) {
+    const matches = looseEqual(rv.innerRef.value, applyCoerce(props?.['value'], rv))
+    return matches ? { checked: '' } : undefined
+  }
+  // text / textarea / number / email — mirror `el.value = displayValue`.
+  // `displayValue` already folds blank/unset to `''`; omit the attribute
+  // for an empty field so SSR matches the no-value initial paint.
+  const value = rv.displayValue.value
+  return value === '' ? undefined : { value }
 }
 
 function callModelHook(

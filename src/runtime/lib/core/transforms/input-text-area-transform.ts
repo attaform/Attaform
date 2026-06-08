@@ -111,28 +111,24 @@ function isStaticTypeOneOf(value: SummarizedProp['value'], names: readonly strin
 }
 
 /**
- * Returns true if the type prop's value MIGHT resolve to "file" at runtime.
- * Conservative — anything not provably non-"file" returns true so the caller
- * skips the transform.
+ * True when the `type` prop is a DYNAMIC binding whose value can't be
+ * read as a static string literal at compile time. A static attribute
+ * (`type="text"`) or a literal bound expression (`:type="'text'"`) is
+ * NOT dynamic — its type is settled at compile time, so the transform
+ * classifies it directly (and can skip the runtime file guard).
  *
- * Concretely:
- *   - `type="text"`   → value is `'"text"'`         → false (static literal != "file")
- *   - `type="file"`   → value is `'"file"'`         → true  (static "file")
- *   - `:type="'text'"`→ value is `"'text'"`         → false
- *   - `:type="'file'"`→ value is `"'file'"`         → true
- *   - `:type="kind"`  → value is `'kind'`           → true  (dynamic identifier)
- *   - `:type="`a-${x}`"` → array or template lit    → true  (compound expression)
+ *   - `type="text"`      → value is `'"text"'`      → false (static attr literal)
+ *   - `:type="'text'"`   → value is `"'text'"`      → false (literal expression)
+ *   - `:type="kind"`     → value is `'kind'`        → true  (dynamic identifier)
+ *   - `:type="`a-${x}`"` → array (compound exp)     → true  (interpolated)
+ *
+ * Dynamic-typed inputs keep their static `value=` attribute (it may be a
+ * checkbox/radio option discriminator at runtime) AND get the runtime
+ * file-exclusion guard on the injected binding.
  */
-function couldResolveToFileType(value: SummarizedProp['value']): boolean {
-  if (Array.isArray(value)) return true
-  const parsed = parseStaticStringLiteral(value)
-  if (parsed === null) return true // dynamic expression — can't prove safe
-  // Template literals with interpolations resolve at runtime.
-  if (parsed.quote === '`' && parsed.inner.includes('${')) return true
-  // The HTML spec matches `type` ASCII case-insensitively, so
-  // `<input type="FILE">` behaves identically to `<input type="file">`.
-  // Compare lower-cased so we catch both.
-  return parsed.inner.toLowerCase() === 'file'
+function isDynamicTypeValue(value: SummarizedProp['value']): boolean {
+  if (Array.isArray(value)) return true // compound / interpolated expression
+  return parseStaticStringLiteral(value) === null // dynamic identifier / expression
 }
 
 /**
@@ -159,18 +155,19 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
     const registerSummarizedProp = elementProps[registerIndex]
     if (!registerSummarizedProp) return // no v-register directive; nothing to transform
 
-    // <input type="file" v-register="..."> bypasses the value-binding
-    // injection — the runtime `vRegisterFile` variant owns the DOM
-    // contract for file inputs (read `el.files` on change; clear via
-    // `el.value = ''` only). Skipping at compile-time avoids the
-    // `:value=""` binding browsers would otherwise reject on a file
-    // input. We must skip not just the static `type="file"` case but any
-    // dynamic binding (`:type="x"`, template-literal expressions, etc.)
-    // that COULD resolve to "file" at runtime — `couldResolveToFileType`
-    // errs on the conservative side.
+    // A provably-static `type="file"` (or `:type="'file'"`) bypasses the
+    // value-binding injection entirely — the runtime `vRegisterFile`
+    // variant owns the DOM contract for file inputs (read `el.files` on
+    // change; clear via `el.value = ''` only), and browsers reject a
+    // `value=` attribute on a file input. A DYNAMIC `:type` that could
+    // only SOMETIMES resolve to "file" does NOT bail here: it proceeds to
+    // inject, and the synthesized expression below excludes the file case
+    // at runtime (`type === 'file' ? undefined : …`) so a wrapper input
+    // that resolves to "text" still gets its SSR value. This is what fixes
+    // the first-paint flash on every dynamically-typed wrapper field.
     const typeIndex = elementProps.findIndex((p) => isExactKey(p.key, 'type'))
     const typeProp = elementProps[typeIndex]
-    if (typeProp !== undefined && couldResolveToFileType(typeProp.value)) return
+    if (typeProp !== undefined && isStaticTypeOneOf(typeProp.value, ['file'])) return
 
     const valueIndex = elementProps.findIndex((p) => isExactKey(p.key, 'value'))
     const elementValueSummarizedProp = elementProps?.[valueIndex] ?? {
@@ -243,7 +240,14 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       const isStaticCheckbox =
         typeProp !== undefined && isStaticTypeOneOf(typeProp.value, ['checkbox'])
       const isStaticRadio = typeProp !== undefined && isStaticTypeOneOf(typeProp.value, ['radio'])
-      const keepStaticValue = isStaticCheckbox || isStaticRadio
+      // A dynamic `:type` could resolve to checkbox/radio at runtime,
+      // where the static `value=` is the option discriminator the runtime
+      // directive matches against the model — so it must survive the
+      // strip. If the runtime type turns out to be text instead, the
+      // injected `:value` binding harmlessly overrides the static
+      // attribute (dynamic binds win over static attrs in mergeProps).
+      const isDynamicType = typeProp !== undefined && isDynamicTypeValue(typeProp.value)
+      const keepStaticValue = isStaticCheckbox || isStaticRadio || isDynamicType
       removePropsByName(props, keepStaticValue ? ['checked'] : ['checked', 'value'])
       const registerValueArr = Array.isArray(registerSummarizedProp.value)
         ? registerSummarizedProp.value
@@ -282,24 +286,48 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
           : 'true'
         : elementValueSummarizedProp.value
 
+      // The core binding: a boolean for the `checked` branch (checkbox /
+      // radio), the register's `displayValue` for the `value` branch
+      // (text / textarea). The arg (`elementSelectionLabelExpression`)
+      // picks which attribute key this binds to at runtime.
+      const coreExpression = [
+        '(',
+        ...elementSelectionLabelExpression.children,
+        ") === 'checked' ? (",
+        // resolves to a boolean
+        ...generateEqualityExpression(
+          registerSummarizedProp.value,
+          elementValueSummarizedProp.value,
+          scalarTarget
+        ),
+        ') : (',
+        // resolves to the provided register value
+        ...valueExpression.children,
+        ')',
+      ]
+
+      // Runtime file-exclusion guard, dynamic `:type` only: when the type
+      // resolves to "file" at runtime the binding yields `undefined`, so
+      // Vue omits the attribute (browsers reject `value` on a file input,
+      // and the runtime `vRegisterFile` variant owns that DOM contract).
+      // A provably-static non-file type skips the guard — its file-ness is
+      // already settled at compile time, so the runtime check would be
+      // dead weight on the SSR-correct common path (static `type="file"`
+      // bailed out far above and never reaches here).
+      const exp = isDynamicType
+        ? createCompoundExpression([
+            'String((',
+            ...inputTypeExpressionArray,
+            ")).toLowerCase() === 'file' ? undefined : (",
+            ...coreExpression,
+            ')',
+          ])
+        : createCompoundExpression(coreExpression)
+
       const valueOrCheckedProp: DirectiveNode = {
         // reconstruct the `value` attribute based on the provided v-registerer, now that the computation is complete
         arg: elementSelectionLabelExpression,
-        exp: createCompoundExpression([
-          '(',
-          ...elementSelectionLabelExpression.children,
-          ") === 'checked' ? (",
-          // resolves to a boolean
-          ...generateEqualityExpression(
-            registerSummarizedProp.value,
-            elementValueSummarizedProp.value,
-            scalarTarget
-          ),
-          ') : (',
-          // resolves to the provided register value
-          ...valueExpression.children,
-          ')',
-        ]),
+        exp,
         name: 'bind',
         modifiers: [],
         type: NodeTypes.DIRECTIVE,

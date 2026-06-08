@@ -291,10 +291,12 @@ describe('v-register directive — D2 unsupported-element warning', () => {
     const binding = makeBinding(value)
     const vnode = makeVNode({})
     hooks.created?.(div, binding, vnode, null)
-    // Same element re-fires created (KeepAlive case); warn must not
-    // double-fire — WeakSet dedupe.
-    hooks.created?.(div, binding, vnode, null)
-    // The warn is deferred via `nextTick` so `useRegister`'s
+    hooks.mounted?.(div, binding, vnode, null)
+    // Same element re-fires the lifecycle (KeepAlive case); the warn
+    // must not double-fire — WeakSet dedupe. The warn-check lives in
+    // `mounted` (not `created`), so re-fire that hook.
+    hooks.mounted?.(div, binding, vnode, null)
+    // The warn is deferred a tick past `mounted` so `useRegister`'s
     // `onMounted` marker has a chance to land first. Flush before
     // asserting on the spy.
     await nextTick()
@@ -313,6 +315,7 @@ describe('v-register directive — D2 unsupported-element warning', () => {
     const binding = makeBinding(value)
     const vnode = makeVNode({})
     hooks.created?.(div, binding, vnode, null)
+    hooks.mounted?.(div, binding, vnode, null)
     await nextTick()
     const matched = warnSpy.mock.calls.filter((c: unknown[]) => String(c[0]).includes('is a no-op'))
     expect(matched.length).toBe(0)
@@ -327,6 +330,7 @@ describe('v-register directive — D2 unsupported-element warning', () => {
       const binding = makeBinding(value)
       const vnode = makeVNode({})
       hooks.created?.(el, binding, vnode, null)
+      hooks.mounted?.(el, binding, vnode, null)
     }
     await nextTick()
     const matched = warnSpy.mock.calls.filter((c: unknown[]) => String(c[0]).includes('is a no-op'))

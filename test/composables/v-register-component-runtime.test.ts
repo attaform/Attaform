@@ -8,7 +8,7 @@ import { assignKey, vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { useRegister } from '../../src/runtime/composables/use-register'
 import type { RegisterValue } from '../../src/runtime/types/types-api'
-import { waitUntil } from '../utils/form-harness'
+import { awaitSettle, waitUntil } from '../utils/form-harness'
 
 /**
  * Runtime contract for `<MyComponent v-register="register(...)" />`.
@@ -100,13 +100,14 @@ async function mountWithChild(
   const root = document.createElement('div')
   document.body.appendChild(root)
   app.mount(root)
-  // The directive's "is a no-op" warn is deferred via `nextTick` so
-  // that `useRegister`'s `onMounted` marker (and any post-install
-  // assignKey) has a chance to land before the warn check runs.
-  // Wait until the api is captured AND the rendered root has been
-  // committed; that gives the deferred-warn microtask time to settle
-  // before the spy is restored.
+  // The directive's "is a no-op" warn is deferred a tick past its
+  // `mounted` hook so that `useRegister`'s `onMounted` marker (and any
+  // post-install assignKey) has a chance to land before the warn check
+  // runs. Wait until the api is captured AND the rendered root has been
+  // committed, then settle the microtask queue so the post-mount warn
+  // tick has fired before the spy is restored.
   await waitUntil(() => (handle.api !== undefined && root.firstElementChild !== null ? true : null))
+  await awaitSettle()
   warnSpy.mockRestore()
 
   const rootEl = root.firstElementChild as HTMLElement | null

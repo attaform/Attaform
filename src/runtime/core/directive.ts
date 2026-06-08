@@ -1019,9 +1019,18 @@ function getCheckboxValue(
 // `assignKey` / `@update:registerValue` shapes flow through.
 //
 // The dev-warn for the "no escape hatch" case is deferred to the
-// next tick after `created`, so `useRegister`'s `onMounted` marker
-// has a chance to set `REGISTER_OWNER_MARKER` on the rendered root
-// before the warn check runs. Without the deferral, deeply-nested
+// next tick after the directive's `mounted` hook, so `useRegister`'s
+// `onMounted` marker has a chance to set `REGISTER_OWNER_MARKER` on
+// the rendered root before the warn check runs. The anchor is
+// `mounted`, NOT `created`, on purpose: `mounted` always runs inside
+// a real scheduler post-flush (fresh mount AND the Suspense/async-
+// hydration path), so the `nextTick` chained from it reliably
+// resolves after the owning child's post-flush `onMounted`. Anchoring
+// from `created` races during async hydration — the directive hook
+// then runs inside a bare `Promise.then` (registerDep / Suspense)
+// with no active flush, so a `created`-scheduled `nextTick` is a bare
+// microtask that fires before the marker is set, warning falsely on
+// every SSR'd wrapper. Without any deferral, deeply-nested
 // `useRegister` children would always warn (the directive can't
 // reach the child instance via `binding.instance` — that's the
 // page/parent component, whose `subTree` is the outer element tree,
@@ -1053,13 +1062,22 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // the gated display state for async ticks. No-op when the binding
     // disabled aria or carries no display-state accessor.
     if (isRegisterValue(binding.value)) setupAria(el as AriaCarrier, binding.value, vnode)
+  },
+  mounted(el, binding, vnode) {
+    callModelHook(el, binding, vnode, null, 'mounted')
 
-    // Defer the unsupported-element warn to nextTick. By then:
+    // Defer the unsupported-element warn one tick past `mounted`. By the
+    // time this resolves:
     //  - useRegister's onMounted has run, setting REGISTER_OWNER_MARKER
     //    on the el if the child component called useRegister()
     //  - any post-install assignKey override (via onMounted /
     //    ref-callback) is in place, so the assigner isn't default
     // anymore. The warn fires only when neither escape hatch was used.
+    // Anchoring on `mounted` rather than `created` is what makes this
+    // hold on the async-hydration path (see the directive-level note
+    // above the dedupe set): `mounted` always runs inside a real
+    // post-flush, so this `nextTick` resolves after the owning child's
+    // `onMounted`, never before it.
     if (
       __DEV__ &&
       warnedUnsupportedElements !== null &&
@@ -1084,9 +1102,6 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
         )
       })
     }
-  },
-  mounted(el, binding, vnode) {
-    callModelHook(el, binding, vnode, null, 'mounted')
   },
   beforeUpdate(el, binding, vnode, prevVNode) {
     // Reactive opt-in toggling: `register('foo', { persist: rememberMe })`

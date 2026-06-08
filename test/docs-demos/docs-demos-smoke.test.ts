@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 // eslint-disable-next-line spaced-comment
 /// <reference types="vite/client" />
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitForPersistence, waitUntil } from '../utils/form-harness'
+
+// Every smoke case drives a real demo SFC with real timers (the
+// async-refinements demo alone simulates ~700ms of server latency).
+// Vitest's 5s default per-test budget is too tight for that under
+// full-suite load on a contended CI runner, where event-loop pressure
+// can push a real-timer resolution past a case's internal waitUntil
+// ceiling. Raise the file-wide budget so the waits settle on their own
+// terms; each gesture/assert still returns the moment state settles, so
+// this only lifts the ceiling, never the normal-case runtime.
+vi.setConfig({ testTimeout: 15_000 })
 
 /**
  * Smoke harness for the docs demos at `apps/site/docs-demos/**`. Each
@@ -1010,7 +1020,15 @@ const entries: SmokeEntry[] = [
   },
   {
     // Type "ada" (in the "taken" set), blur; the async refine
-    // resolves to a "taken" message after ~700ms.
+    // resolves to a "taken" message after ~700ms. The poll budget is
+    // deliberately generous (well above that 700ms): this case drives a
+    // real timer end-to-end, and on a contended CI runner under
+    // full-suite load the event loop can push the resolution past a
+    // tight ceiling. A 2000ms budget flaked on the Peer-Dep Matrix
+    // (the assertion ran against an empty <em> when the wait gave up at
+    // 2000ms) even though the pipeline resolved correctly. waitUntil
+    // returns the moment the message lands, so this only raises the
+    // ceiling, never the normal-case runtime (~720ms).
     slug: 'async-refinements',
     gesture: async (root) => {
       const username = root.querySelector<HTMLInputElement>('input')
@@ -1020,7 +1038,7 @@ const entries: SmokeEntry[] = [
       await dispatchBlur(username)
       await waitUntil(
         () => (root.querySelector('em')?.textContent?.includes('taken') === true ? true : null),
-        2000
+        5000
       )
     },
     assert: async (root) => {

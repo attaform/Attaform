@@ -1,5 +1,22 @@
 # Releases
 
+## v0.21.2 — 2026-06-08
+
+## What's Changed
+* chore: add fallow code-intelligence (non-gating) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/368
+* chore: fallow healthy-refactor roadmap (Stages A–D, last import cycle → 0) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/369
+* fix(directive): silence false v-register no-op warn during async SSR hydration by @ozzyfromspace in https://github.com/attaform/Attaform/pull/370
+* ci: stabilize the Peer-Dep Matrix (smoke timing flake + pnpm 11 overrides) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/371
+* chore(engines): relax the supported-runtime declaration by @ozzyfromspace in https://github.com/attaform/Attaform/pull/372
+* fix(ssr): emit v-register value/checked in server render (no first-paint flash) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/374
+* chore(deps): pin a single rollup version to prevent a dual-version typecheck break by @ozzyfromspace in https://github.com/attaform/Attaform/pull/375
+* chore(deps-dev): bump the dev-dependencies group across 1 directory with 13 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/376
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.21.1...v0.21.2
+
+---
+
 ## v0.21.1 — 2026-06-05
 
 ## What's Changed

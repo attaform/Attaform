@@ -14,6 +14,20 @@
 
 ### Fixed
 
+- **Server-rendered fields paint with their value, no first-frame flash.** A
+  `v-register` field with a seeded or restored value now carries that value (and
+  `checked` for checkbox / radio) in the server-rendered HTML, so it shows
+  filled on the very first paint instead of flashing empty and filling in once
+  the client mounts. This closes the two render paths that previously dropped
+  it: a wrapper component whose inner input binds a dynamic `:type` (the
+  compile-time transform no longer bails on a type it cannot prove is
+  non-`file`, and instead excludes the file case at runtime), and a render
+  function built with `h()` + `withDirectives` (the directive's `getSSRProps`
+  now emits value / checked alongside the aria attributes it already carried).
+  File inputs still emit no `value` (browsers reject it), and compiled
+  `<select>` keeps its template-driven `selected`. Tested against both the Zod
+  v3 and v4 adapters. (#374)
+
 - **No false `v-register` no-op warning during SSR hydration.** A custom field
   wrapper that follows the recommended pattern (a non-input root that calls
   `useRegister()` and re-binds `v-register` onto an inner native input) stayed

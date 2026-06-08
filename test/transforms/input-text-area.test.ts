@@ -64,17 +64,23 @@ describe('inputTextAreaNodeTransform', () => {
       expect(code).toContain('innerRef')
     })
 
-    // Conservative skip on dynamic / template-literal type bindings — they
-    // could resolve to "file" at runtime and trigger DOMException on
-    // el.value assignment.
-    it('skips <input :type="userKind" v-register> (dynamic identifier)', () => {
+    // Dynamic / template-literal type bindings can't be classified at
+    // compile time, so the transform no longer bails on them (that left
+    // every dynamically-typed wrapper input without an SSR value — a
+    // first-paint flash). Instead it injects the binding AND guards it
+    // with a runtime file-exclusion (`type === 'file' ? undefined`) so a
+    // type that resolves to "file" still emits no value (browsers reject
+    // it; the runtime `vRegisterFile` variant owns the DOM contract).
+    it('injects with a runtime file guard for <input :type="userKind" v-register> (dynamic identifier)', () => {
       const code = compileWithTransform(`<input :type="userKind" v-register="x" />`)
-      expect(code).not.toContain('innerRef')
+      expect(code).toContain('innerRef')
+      expect(code).toContain("=== 'file' ? undefined")
     })
 
-    it('skips <input :type="`prefix-${suffix}`" v-register> (template literal with interpolation)', () => {
+    it('injects with a runtime file guard for <input :type="`prefix-${suffix}`" v-register> (template literal)', () => {
       const code = compileWithTransform('<input :type="`prefix-${suffix}`" v-register="x" />')
-      expect(code).not.toContain('innerRef')
+      expect(code).toContain('innerRef')
+      expect(code).toContain("=== 'file' ? undefined")
     })
 
     it('skips <input :type="\'file\'" v-register> (literal expression form)', () => {

@@ -611,7 +611,7 @@ The `register().displayValue` path reads only `getValueAtPath(path)` + `blankPat
 (`register-api.ts:207`) — own-key granular, hence the 0-sibling control. (Likely related: the
 directive's `ariaDisplayState`, `register-api.ts:334`, reads the same field-state computed when
 `autoAria` is on (default), so even register-only forms recompute the display engine O(F) times
-per keystroke — a directive-update cost, not a component render; follow-up to probe.)
+per keystroke — a directive-update cost, not a component render; resolved post-bust — see the shipped note below.)
 
 Bust SHIPPED 2026-06-09 (ratified; behavior-adjacent, byte-identical output):
 
@@ -642,7 +642,18 @@ never move on a keystroke), so the keystroke prize is unaffected. Own-key blank 
 through a shared `makeBlankRequiredError` builder (`error-codes.ts`) so the per-leaf and aggregate
 channels emit byte-identical errors. Size: the 28 rollup getters tripped the ratchet (+126 B index,
 +92 B zod-v4); bumped 52→53 / 60→61, documented in-style (the CORE-P3 `form.meta` getter-collapse
-precedent). The `ariaDisplayState` directive-update O(F) follow-up noted above remains open.
+precedent). The `ariaDisplayState` directive-update O(F) follow-up noted above is RESOLVED:
+`ariaDisplayState` (register-api.ts:334) is `computed(() => getDisplayStateAt(segments))` =
+`getRootFieldStateAt(segments).value.displayState` (build-form-api.ts:304) — the SAME field-state
+accessor `form.fields` uses, built over the P3-lazy `getFormMetaBase`, so the directive path
+inherited the fix (it recomputes only when that now-granular computed is invalidated). Confirmed +
+standing-locked by `test/perf-lock/aria-directive-isolation.lock.test.ts`: a counting
+`getDisplayState` reducer (the engine runs it on every recompute, before any value comparison —
+value-equality-proof, unlike a render/effect counter that the string-returning `ariaDisplayState`
+computed would fool) shows a leaf edit recomputes only the edited field's engine (0 siblings, both
+adapters), with a positive control proving a form-level `submissionAttempts` change still recomputes
+all F (so the 0 is real isolation, and the eager-scalar refinement is itself locked). No separate
+bust — same root cause as P3, same fix.
 
 Impact scales with how much a consumer leans on the `form.fields` surface vs. the directive: a
 50-field form built on `form.fields` pays ~50× (or ~100× with change-validation) the necessary

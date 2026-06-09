@@ -116,7 +116,7 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
       const prev = state.get(KEY)
       if (prev === undefined) return
       if (prev.timer !== null) clearTimeout(prev.timer)
-      prev.controller.abort()
+      if (prev.controller !== undefined) prev.controller.abort()
       const controller = new AbortController()
       prev.controller = controller
       blackbox(controller)
@@ -137,7 +137,7 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
       const prev = state.get(KEY)
       if (prev !== undefined) {
         if (prev.timer !== null) clearTimeout(prev.timer)
-        prev.controller.abort()
+        if (prev.controller !== undefined) prev.controller.abort()
       }
       const controller = new AbortController()
       const fresh: Entry = { controller, timer: null, settled: false, released: false }
@@ -168,7 +168,7 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
       const entry = state.get(KEY)
       if (entry === undefined) return
       if (entry.timer !== null) clearTimeout(entry.timer)
-      entry.controller.abort()
+      if (entry.controller !== undefined) entry.controller.abort()
       const controller = new AbortController()
       entry.controller = controller
       entry.timer = null

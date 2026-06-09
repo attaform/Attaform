@@ -100,6 +100,11 @@ information-theoretic floor for that operation.
 | P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —        | open   |
 | P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —        | open   |
 
+> **Measured (first pass, 2026-06-08):** T2 **confirmed** (the keystroke
+> prize), T1 **refuted**, T6 **confirmed**, T3 probing. Raw hz and the slope
+> reads live in "First measurement pass" below; the theoretical Measured /
+> Status cells above settle there until a committed baseline lands.
+
 ### Already optimal (leave alone)
 
 - **Path resolution** — `canonicalizePath` is O(1) on cache hit (128-entry FIFO,
@@ -110,6 +115,69 @@ information-theoretic floor for that operation.
   store layer (P3 is about the _component_ layer, still to be probed).
 
 ---
+
+### First measurement pass (matrix bench, 2026-06-08)
+
+`bench/matrix.bench.ts` sweeps one axis at a time through the real public
+`useForm` (SSR mount, both adapters) and reports absolute ops/sec. The first
+run (vitest 4.1.8, in-container) already settles four ledger rows. Raw hz:
+
+| Bench           | size   | ops/sec | per-op   |
+| --------------- | ------ | ------- | -------- |
+| init flat [v4]  | F=5    | 6,370   | 0.157 ms |
+| init flat [v4]  | F=50   | 1,398   | 0.715 ms |
+| init flat [v4]  | F=500  | 130     | 7.72 ms  |
+| init flat [v3]  | F=5    | 11,865  | 0.084 ms |
+| init flat [v3]  | F=50   | 2,981   | 0.335 ms |
+| init flat [v3]  | F=500  | 282     | 3.55 ms  |
+| keystroke flat  | F=5    | 73,660  | 0.014 ms |
+| keystroke flat  | F=50   | 11,681  | 0.086 ms |
+| keystroke flat  | F=500  | 1,019   | 0.981 ms |
+| keystroke deep  | D=3    | 47,821  | 0.021 ms |
+| keystroke deep  | D=8    | 23,510  | 0.043 ms |
+| keystroke deep  | D=16   | 13,759  | 0.073 ms |
+| keystroke array | N=10   | 40,571  | 0.025 ms |
+| keystroke array | N=100  | 12,358  | 0.081 ms |
+| keystroke array | N=1000 | 1,574   | 0.635 ms |
+
+(keystroke sweeps run on v4; the structural write path is adapter-independent
+when no union is touched.) Reading the slopes:
+
+- **T2, CONFIRMED, the headline keystroke prize.** A single scalar write is
+  O(F) flat (F=5 to F=500 is 72x slower for 100x the fields) and O(N) in arrays
+  (N=10 to N=1000 is 26x). At F=500 / N=1000 one keystroke costs ~0.6 to 1.0 ms,
+  which is user-perceptible. The diff-apply rewrite made the _diff_ O(changed),
+  but a TARGETED `setValue` still pays O(siblings). Localized to two
+  behavior-preservable sites:
+  1. **Blank-descendant sweep** (`create-form-store.ts:2219`):
+     `for (const k of [...blankPaths])` clones and scans the whole blank set on
+     every write. A freshly-seeded form starts all-blank, so this is O(F) per
+     keystroke, and for a LEAF (non-container) write it deletes nothing. Gating
+     the sweep on a container value drops leaf writes to O(1) here.
+  2. **`applyFormReplacement`** (`:1968` / `:1981`): `diffAndApply` plus
+     `applyChangedKeys` re-derive the one changed key by walking all F root
+     siblings. `setValueAtPath` already knows the path; a targeted single-leaf
+     apply skips the re-derivation.
+- **T1, REFUTED as a wall-clock blocker.** Deep zero-union writes scale ~O(D),
+  in fact SUB-linearly (D=3 to D=16 is 3.5x for 5.3x the depth), not the
+  predicted O(D^2). The guard's unconditional cost sits at the path-walk floor,
+  and for flat writes it is skipped outright (`path.length >= 2`). It still
+  slices ancestor paths O(D^2) in allocation (a P2 micro-cost, negligible at
+  real depths). The guard's REAL-DU cost (S5 / S6) is a separate measurement.
+- **T6, CONFIRMED.** zod v4 cold init is ~2x slower than v3 at every size
+  (1.86x / 2.13x / 2.17x for F=5/50/500). Worth localizing: our v4
+  introspection (walker-introspector / fingerprint / slim-primitives) vs zod
+  v4's own parse.
+- **T3, probing.** Init is ~O(F) as expected, but the double-parse is a
+  constant ~2x factor a slope cannot see. Confirming it needs a direct A/B
+  (single vs double parse) or an init parse-count probe, deferred to the
+  alloc-probe slice.
+
+Method notes: keystroke benches use `validateOn: 'submit'` to isolate the
+STRUCTURAL write cost from validation scheduling; the render tree is a constant
+`h('div')` so the init slope is Attaform's schema work, not Vue's. Numbers are
+one machine / one run (rme <= ~9%); they anchor SLOPE and order-of-magnitude,
+not a committed regression baseline (that is the next dashboard slice).
 
 ## 3. Instrumentation plan (the dashboard)
 

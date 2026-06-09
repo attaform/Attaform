@@ -19,19 +19,30 @@ import { getAtPath } from './path-walker'
 import type { ElementRecord, FieldRecord, OriginalsRecord } from './store-records'
 
 /**
- * Per-(field-path) async validation entry. Owns the AbortController +
- * pending-timer for any in-flight or scheduled validation at the path,
- * plus a `settled` flag that prevents double-decrementing the parent
- * counters when a chain's `.finally` has run but its entry is still
- * in the state map awaiting replacement by the next schedule.
+ * Per-(field-path) async validation entry. Tracks the in-flight or
+ * scheduled validation at the path: a one-shot `aborted` latch, the
+ * pending debounce `timer`, a `settled` flag that prevents
+ * double-decrementing the parent counters when a chain's `.finally` has
+ * run but its entry is still in the state map awaiting replacement by the
+ * next schedule, and a `released` flag (below).
  *
- * Re-exported from this module so both the host form-store (which
- * owns the state map and writes new entries) and the array-bookkeeping
- * factory (which aborts entries at vacated indices) share the same
- * structural type.
+ * `aborted` is a plain boolean rather than an AbortController: the
+ * validation path never hands a signal to a consumer (`validateAtPath`
+ * takes none) and attaches no listeners, so cancellation needs only a
+ * monotonic flag the run reads through its own captured entry. Avoiding the
+ * per-keystroke `new AbortController()` removes the scheduler's dominant
+ * per-keystroke allocation.
+ *
+ * Re-exported from this module so both the host form-store (which owns the
+ * state map and writes new entries) and the array-bookkeeping factory
+ * (which aborts entries at vacated indices) share the same structural type.
  */
 export type FieldValidationEntry = {
-  controller: AbortController
+  // Latched true to cancel this run: a supersede on the next schedule, a
+  // cancel-all / path-scoped reset, a DU variant-reshape, or an array index
+  // vacated under it. The run reads it through its own captured entry
+  // (pre-parse and post-resolve), so it survives the entry's map deletion.
+  aborted: boolean
   timer: ReturnType<typeof setTimeout> | null
   settled: boolean
   // Set true when an external caller (a path-scoped reset) has already released
@@ -224,7 +235,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
         activeValidations.value = Math.max(0, activeValidations.value - 1)
         decFieldValidation(key)
       }
-      entry.controller.abort()
+      entry.aborted = true
       fieldValidationState.delete(key)
     }
   }

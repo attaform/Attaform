@@ -667,7 +667,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
 
   /**
    * Cancel every in-flight field-level validation run — clears timers
-   * for debounced 'change' runs that haven't fired, aborts controllers
+   * for debounced 'change' runs that haven't fired, latches `aborted`
    * for runs whose async parse is in flight. Called by `handleSubmit`
    * at entry (submit validation is authoritative) and by `reset()`.
    */
@@ -1531,7 +1531,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // pre-fix `null` initial state).
   const pathSnapshots = new Map<PathKey, unknown>()
   // Form-level monotonic counters that guard cross-path async races.
-  // Per-path AbortControllers cover same-path rapid typing (a fresh
+  // Per-path `aborted` latches cover same-path rapid typing (a fresh
   // schedule cancels its predecessor at the same key), but they don't
   // cross-invalidate runs scheduled at DIFFERENT paths — and every
   // run commits a WHOLE-form replacement via
@@ -2555,7 +2555,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         const prevValidation = fieldValidationState.get(parentKey)
         if (prevValidation !== undefined) {
           if (prevValidation.timer !== null) clearTimeout(prevValidation.timer)
-          prevValidation.controller.abort()
+          prevValidation.aborted = true
           fieldValidationState.delete(parentKey)
         }
         appliedSync = true
@@ -2576,7 +2576,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   /**
    * Schedule (or kick off immediately) a field-level validation run
-   * for `path`. Per-path AbortController semantics: a new schedule
+   * for `path`. Per-path one-shot `aborted` latch: a new schedule
    * cancels any prior in-flight run for the same path, so rapid
    * successive writes don't pile up concurrent validations.
    *
@@ -2598,10 +2598,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const prev = fieldValidationState.get(key)
     if (prev !== undefined) {
       if (prev.timer !== null) clearTimeout(prev.timer)
-      prev.controller.abort()
+      prev.aborted = true
     }
-    const controller = new AbortController()
-    const fresh: FieldValidationEntry = { controller, timer: null, settled: false, released: false }
+    const fresh: FieldValidationEntry = {
+      aborted: false,
+      timer: null,
+      settled: false,
+      released: false,
+    }
     fieldValidationState.set(key, fresh)
     // Capture a fresh epoch at schedule time. Closed over by `run`
     // below and re-checked at the commit site so a later-scheduled
@@ -2611,7 +2615,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
     const run = () => {
       fresh.timer = null
-      if (controller.signal.aborted) return
+      if (fresh.aborted) return
       // Defense-in-depth: the increments below trigger reactive
       // subscribers (sync watchers on `api.meta.validating` or
       // `api.fields.X.validating`). If one of those subscribers throws,
@@ -2655,7 +2659,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       void Promise.resolve()
         .then(() => schema.validateAtPath(dataAtScope, scopePath))
         .then((response) => {
-          if (controller.signal.aborted) return
+          if (fresh.aborted) return
           // Form-level epoch gate. If a later-scheduled run has
           // already committed its verdict, dropping this stale
           // commit prevents an asymmetric-latency race from
@@ -2765,7 +2769,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // Settled entries left in the map (waiting for the next
       // schedule to evict them) have already decremented in their
       // own `.finally` — skip the counter touch entirely.
-      entry.controller.abort()
+      entry.aborted = true
     }
     fieldValidationState.clear()
   }
@@ -2790,7 +2794,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         decFieldValidation(key)
         entry.released = true
       }
-      entry.controller.abort()
+      entry.aborted = true
       fieldValidationState.delete(key)
     }
   }
@@ -3590,7 +3594,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submitError.value = null
     departAttempts.value = 0
     // Drop any pending field-validation timers / in-flight runs. Writes
-    // that reached the controller-aborted branch resolve to a no-op, so
+    // that reached the aborted branch resolve to a no-op, so
     // the error store stays clean after the reset clears it above.
     cancelFieldValidation()
     // Abort + release any in-flight async transforms too, so a deferred

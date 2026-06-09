@@ -86,19 +86,19 @@ Predicted costs are from a **static read** (`create-form-store.ts`, `directive.t
 the practical pass. A row is a **blocker** when its predicted cost exceeds its
 information-theoretic floor for that operation.
 
-| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured                  | Status                       |
-| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------- | ---------------------------- |
-| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | —                         | open                         |
-| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | —                         | open                         |
-| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | —                         | open                         |
-| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2604`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | —                         | open                         |
-| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | —                         | open                         |
-| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | —                         | open                         |
-| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed | B SHIPPED (flag); A declined |
-| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2057-2079, 2642-2646` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | —                         | open                         |
-| P3  | Over-render (components re-render on unchanged slice)                                            | needs render-trigger probe                  | unknown                                           | O(changed)                                | free / internal                           | —                         | open                         |
-| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —                         | open                         |
-| P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —                         | open                         |
+| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured                             | Status                       |
+| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------------------ | ---------------------------- |
+| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | —                                    | open                         |
+| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | —                                    | open                         |
+| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | —                                    | open                         |
+| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2604`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | —                                    | open                         |
+| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | —                                    | open                         |
+| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | —                                    | open                         |
+| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed            | B SHIPPED (flag); A declined |
+| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2093-2116, 2693-2696` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | guard ~0.32µs; clone CORE-P1a-scoped | closed — non-prize           |
+| P3  | Over-render (components re-render on unchanged slice)                                            | needs render-trigger probe                  | unknown                                           | O(changed)                                | free / internal                           | —                                    | open                         |
+| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —                                    | open                         |
+| P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —                                    | open                         |
 
 > **Measured (first pass, 2026-06-08):** T2 **confirmed** (the keystroke
 > prize), T1 **refuted**, T6 **confirmed**, T3 probing. Raw hz and the slope
@@ -512,6 +512,60 @@ array-remove (`:238`) and DU-reshape (`:2558`) cases turned out to be **co-guard
 array-remove and DU stay green with BOTH the drop and the epoch gate neutered — the target leaf
 is structurally removed, so a stale verdict can't surface). They lock the integration through
 their site, not the abort in isolation; the abort there is counter-bookkeeping + defense-in-depth.
+
+### P2 measurement: guard walk + blur-dedup snapshot (2026-06-09)
+
+The ledger flagged two "redundant O(D)/O(scope)" costs: the cross-variant DU write guard
+(`create-form-store.ts:2093-2116`, the same guard as T1) and the blur-dedup snapshot clone
+(`:2693-2696`). Probed with `bench/walk-snapshot.bench.ts` — primitive cells with the REAL
+cached schema lookup for the guard and the REAL `structuralSnapshot` for the clone, same
+rationale as the P1 probe (both costs sit behind the blur-mode async scheduler, so an e2e loop
+accumulates microtasks and skews).
+
+**Cost 1 — guard walk. Confirmed cheap; declined.**
+
+| cell                               | hz         | per-op   | what it isolates                                        |
+| ---------------------------------- | ---------- | -------- | ------------------------------------------------------- |
+| guard current (real loop, D=4)     | 2,907,936  | ~0.34 µs | slice + cached `getUnionDiscriminatorAtPath` / ancestor |
+| guard gated (has-any-DU flag skip) | 48,949,633 | ~0.02 µs | the candidate bust                                      |
+
+`getUnionDiscriminatorAtPath` is cached (`:677`) and `canonicalizePath` is cache-hit O(1), so
+the steady-state hot path (repeated writes to one field) pays only D × (slice + two Map hits).
+The 16.83× ratio is a headline only — the absolute prize is **~0.32 µs per nested write**, and
+only on `path.length >= 2` writes (flat writes skip the guard outright). That is ~1/9th of P1's
+already-small 2.88 µs, far below the perceptibility bar that scoped out T4. Realizing it also
+costs: a global `hasAnyDiscriminatedUnion` flag is adapter-side introspection (a new method at
+v3/v4 parity — the T4 "not free / internal" situation), or a surface-free per-write-path
+"no-DU-ancestors" memo (byte-identical, since "does any ancestor hold a DU" is a static schema
+property, independent of runtime disc values). Either way the prize is too small to bank.
+**T1's refutation confirmed; declined.**
+
+**Cost 2 — blur-dedup snapshot. Already mitigated by CORE-P1a; residual required.**
+
+| cell                            | hz         | per-op        | what it isolates                                |
+| ------------------------------- | ---------- | ------------- | ----------------------------------------------- |
+| snapshot whole-form F=5         | 5,671,639  | ~0.18 µs      | container-refine scope, O(F)                    |
+| snapshot whole-form F=50        | 387,312    | ~2.58 µs      |                                                 |
+| snapshot whole-form F=500       | 37,735     | ~26.5 µs      |                                                 |
+| snapshot subtree (leaf)         | 44,062,912 | ~0.02 µs      | refine-free CORE-P1a scope, F-independent       |
+| dedup compare (reader) F=5..500 | ~12M       | ~0.07–0.08 µs | getAtPath ×2 + diffAndApply, O(subtree-at-path) |
+
+The whole-form clone is O(F) (~150× across 100× the fields), but CORE-P1a already narrows it to
+the edited subtree for any form WITHOUT a container/root refine — the measured **7.77× (F=5) to
+1167× (F=500)** reduction, down to ~0.02 µs and F-independent. The residual whole-form clone
+survives only for the container/root-refine shape (the cross-field eligibility form), where it
+is **required for the dedup to stay byte-identical** (the validated value must be stored to
+compare a later blur against) and is **justified**: it saves a whole-form parse (the same O(F)
+work, T4-scoped-out as unavoidable), so the dedup is a net win even there. The reader is cheap
+and scope-independent — it walks only the subtree-at-path, not the stored scope. **Not a free
+bust; the only available lever — narrow the clone scope — is exactly what CORE-P1a already
+pulled.**
+
+**P2 closed — non-prize / already-addressed.** Cost 1 is a ~0.32 µs micro-win below the bar
+(and adds surface); cost 2's nameable waste was already eliminated by CORE-P1a (subtree-scope)
+and the blur-mode-only guard (PR #287), leaving a residual that is byte-identical-required. Net:
+nothing to bust. The keystroke prizes already banked are T2 + T3 + P1 (Bust B); the remaining
+unprofiled keystroke candidate is P3 (component over-render).
 
 ## 3. Instrumentation plan (the dashboard)
 

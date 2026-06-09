@@ -2207,15 +2207,28 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // sit BEFORE the identity short-circuit so transitions that
     // don't change storage value (e.g. typing 0 over slim-default 0)
     // still update the visual / blank state correctly.
+    // Pre-write value at `path`, read once: `form.value` is not mutated
+    // until `applyFormReplacement` below, so the same read serves the
+    // descendant-sweep gate (just below) and the identity short-circuit.
+    const currentValue = getAtPath(form.value, path)
     const pathKey = canonicalizePath(path).key
     if (meta?.blank === true) {
       blankPaths.add(pathKey)
     } else {
       if (blankPaths.has(pathKey)) blankPaths.delete(pathKey)
-      if (meta?.arrayOp === undefined) {
-        // Container write at `path` (or root `[]`) — sweep descendants.
-        // `isPathKeyUnder` returns true at root for every non-empty key,
-        // so a root write correctly drops all marks.
+      // Descendant sweep: a write replaces the whole subtree at `path`, so
+      // any blank-mark UNDER `path` is now stale. Only a container can have
+      // had descendants, so gate on the PRE-WRITE value being one. A scalar
+      // leaf write (the keystroke hot path) has no descendants; running the
+      // sweep there scans the entire blank set for nothing, O(F) per write.
+      // Clearing a container with a non-container (null / undefined) still
+      // sweeps, since `currentValue` was the container. `isPathKeyUnder`
+      // returns true at root for every non-empty key, so a root write still
+      // drops all marks.
+      if (
+        meta?.arrayOp === undefined &&
+        (isPlainRecord(currentValue) || Array.isArray(currentValue))
+      ) {
         for (const existingKey of [...blankPaths]) {
           if (isPathKeyUnder(existingKey, path)) blankPaths.delete(existingKey)
         }
@@ -2258,7 +2271,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // DOM `el.value`, not the previous vnode prop). The patch
     // overwrites the user's transient whitespace and the spacebar
     // appears broken.
-    const currentValue = getAtPath(form.value, path)
     if (Object.is(currentValue, completedValue)) {
       // Storage unchanged, skip the replacement to avoid spurious
       // re-renders. Narrow exception: at a preprocess / coerce leaf,

@@ -31,7 +31,7 @@ import { createSSRApp, defineComponent, h, type App } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
-import { useForm as useFormV4 } from '../src/zod-v4'
+import { useForm as useFormV4, unset } from '../src/zod-v4'
 import { useForm as useFormV3 } from '../src/zod-v3'
 import { createAttaform } from '../src/runtime/core/plugin'
 import { deep, flat, wideArray, type MatrixForm } from './lib/matrix-forms'
@@ -99,6 +99,24 @@ describe('keystroke: single scalar write, flat (T2 diff vs F)', () => {
     let i = 1
     bench(`keystroke flat F=${F} [v4]`, () => {
       handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
+    })
+  }
+})
+
+describe('keystroke: scalar write into a mostly-BLANK flat form (blank-sweep vs F)', () => {
+  // Distinct from the defaulted flat sweep above. Provided defaults are NOT
+  // blank-marked (schema-default-no-autoblank), so that form has an empty
+  // blankPaths and never exercises the descendant sweep. Here every field is
+  // explicitly unset, so blankPaths holds ~F entries: the representative
+  // fresh-form keystroke, and the case the blank-sweep gate targets.
+  for (const F of FIELD_COUNTS) {
+    const form = flat(zV4, F)
+    const handle = mountSync(useFormV4, form)
+    for (let k = 0; k < F; k++) handle.setValue(`f${k}`, unset) // mark all blank
+    handle.setValue('f0', 'v0') // prime f0 (now non-blank; f1..f{F-1} stay blank)
+    let i = 1
+    bench(`keystroke blank-flat F=${F} [v4]`, () => {
+      handle.setValue('f0', `v${i++}`)
     })
   }
 })

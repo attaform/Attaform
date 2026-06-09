@@ -179,6 +179,37 @@ STRUCTURAL write cost from validation scheduling; the render tree is a constant
 one machine / one run (rme <= ~9%); they anchor SLOPE and order-of-magnitude,
 not a committed regression baseline (that is the next dashboard slice).
 
+### Bust 1: blank-descendant-sweep gate (2026-06-08)
+
+`setValueAtPath`'s descendant blank-sweep (`create-form-store.ts:2219`) now runs
+only when the PRE-WRITE value at `path` is a container, so a scalar leaf write
+(the keystroke) skips the `[...blankPaths]` clone and scan. The pre-write read
+is hoisted and reused by the identity short-circuit, so there is no extra walk.
+Behavior is unchanged: full suite green (4118), behavior-lock goldens
+byte-identical, and the `blank-mark-descendants` suite still pins
+container-write descendant clearing (the `null`/`undefined`-clears-a-container
+case still sweeps, because `currentValue` was the container).
+
+This forced a methodology correction. Provided defaults are NOT blank-marked
+(`schema-default-no-autoblank`), so the original matrix forms had an empty
+`blankPaths` and never hit the sweep at all (0% change). The new
+`keystroke blank-flat` scenario marks all F fields blank, the representative
+fresh-form keystroke. Before / after on it (v4):
+
+| F   | before (hz) | after (hz) | gain   |
+| --- | ----------- | ---------- | ------ |
+| 5   | 75,536      | 87,360     | +15.6% |
+| 50  | 10,894      | 11,991     | +10.1% |
+| 500 | 1,010       | 1,062      | +5.1%  |
+
+So the sweep is real O(F) work but a MINORITY of the keystroke (~0.05 ms saved
+at F=500). The dominant O(F) is `applyFormReplacement` (`:1968` diff plus
+`applyChangedKeys` plus the `setAtPathWithSchemaFill` root-clone), which
+re-derives the single changed key across all F siblings on a write whose path is
+already known. That is the real keystroke prize and the next bust (a targeted
+single-leaf apply); being the heavier, funnel-touching half, it gets a formal
+design pass first.
+
 ## 3. Instrumentation plan (the dashboard)
 
 Today's gap: `check:bench` only computes `hz(new)/hz(old)` against a 3× floor

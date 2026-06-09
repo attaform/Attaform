@@ -1,8 +1,12 @@
 /**
  * T4 GATE HARNESS — refines-only decomposition equivalence.
  *
- * NOT a shipped behavior-lock yet; this is the go/no-go gate that must go
- * GREEN before any runtime code lands. It answers ONE load-bearing question:
+ * STATUS: T4 was SCOPED OUT — a measured-and-scoped non-action (2026-06-09; see
+ * PERF-ANALYSIS.md "T4"). This harness stays as reproducible EVIDENCE that the
+ * decomposition is byte-identical, and as a standing GUARD on zod's abort/`fatal`
+ * spelling asymmetry (the `necessity` block goes red if a future zod renames a
+ * spelling) — not as a gate for unshipped runtime code. It answers ONE load-bearing
+ * question:
  *
  *   Can the whole-form parse a container/root refine forces on every keystroke
  *   be DECOMPOSED into (leaf validation) + (refines-only) byte-identically,

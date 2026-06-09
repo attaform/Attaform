@@ -403,28 +403,38 @@ built-in-check fraction); the base-type re-parse of all F siblings remains. A tr
 would need runtime abort-state sourcing (cached coerced values + per-leaf abort bits) — a
 much larger surface, a much harder byte-identical proof (cache coherence across array ops
 / resets / DU reshapes × both adapters), and parity-fragile runtime issue-flag
-introspection.
+introspection. (3) These are ONE-PASS figures (a single `getRefinesOnlySchema` parse). A
+byte-identical runtime cannot bank them as-is: the refines-only pass also re-emits leaf
+issues that must be separated from the container-refine issues, and the only proven
+separation costs a SECOND parse — see SCOPED OUT below.
 
-**Both gates green; sign-off is the remaining gate before runtime code.** Gate #1 proved
-the safeParse-level verdict decomposition; gate #2
-(`test/perf-lock/t4-errormap-bookkeeping-equivalence.test.ts`) proves the SCHEDULER
-error-map bookkeeping reconstructs byte-identically when the persistent `schemaErrors` map
-is maintained by the two decomposed passes instead of one whole-form parse, across edit
-SEQUENCES (134 tests total, both adapters). It surfaced the load-bearing API-shape finding:
-the real `applySchemaErrorsForSubtree` clears by PATH SCOPE, so a refine emitting to a path
-that already holds a leaf error (confirmPassword's `.min` + the match refine) gets clobbered
-by a single-channel decomposition. The fix it proves: `schemaErrors` needs a REFINE-ORIGIN
-sub-channel (leaf channel maintained by subtree scope-clear; refine channel
-wholesale-replaced each keystroke; merged leaf-then-refine on read), with a `necessity`
-block showing the naive single channel diverges. Cross-path insertion order
-(`form.meta.errors` iterates the map in insertion order) is a further impl constraint,
-flagged not yet solved. Oswald chose to PURSUE A″ (harness-gate first); both gates being
-green, the next step is **sign-off on the `getRefinesOnlySchema` shape + the origin-channel
-requirement** before any runtime code (reference-before-API-change). Notes: the `flatRefined` bench
-commit (97a6a05) landed with a red `pnpm typecheck` (TS4111 in the predicate) — the
-pre-commit hook runs only eslint/prettier, not `tsc`, so bench/test TS errors can slip in;
-fixed here. Table-cell reconciliation (T4 Evidence `:2604` has drifted to the alloc line;
-the real seam is `:2651`) stays a separate noted follow-up.
+**SCOPED OUT — measured-and-scoped non-action (2026-06-09).** Both feasibility gates went
+green: gate #1 (`test/perf-lock/t4-refines-only-equivalence.test.ts`) proved the verdict
+decomposition byte-identical, and gate #2
+(`test/perf-lock/t4-errormap-bookkeeping-equivalence.test.ts`) proved the scheduler
+`schemaErrors` bookkeeping reconstructs byte-identically via a REFINE-ORIGIN sub-channel
+(134 tests, both adapters; gate #2 also surfaced that `applySchemaErrorsForSubtree` clears
+by PATH SCOPE, so a refine landing on a path that already holds a leaf error — e.g.
+`confirmPassword`'s `.min` + the match refine — clobbers under a single channel). What
+CLINCHED the non-action is the runtime extraction of the refine channel. The single
+refines-only pass also re-emits leaf issues (it keeps base types + custom refines to
+preserve the abort short-circuit), and they must be separated from the container-refine
+issues. The byte-identical separation both gates model is a SUBTRACTION against a second
+`noRefines` parse — so a correct runtime pays TWO parses, ≈ halving the one-pass figures
+above: ~1.2× on v4 and a REGRESSION on v3 (the adapter Cubic Housing most likely rides;
+that breaks v3-first-class). The one-pass shortcut (subtract the maintained leaf channel)
+has a pathological byte-identical violation (a leaf `superRefine` emitting a built-in-style
+code collides with a dropped built-in). The only clean one-pass path is to MARK
+container-refine issues structurally (the walker knows container-vs-leaf) and keep only the
+marked — unproven, needing a third gate for marked-then-stripped byte-identity across v3/v4,
+all for a constant-factor, v4-skewed win on a problem whose ORDER stays O(F) regardless.
+Net: not worth the per-adapter surface + the third gate. T4 stands MEASURED-AND-SCOPED; the
+two gates remain as reproducible evidence AND as standing guards on zod's abort/`fatal`
+spelling asymmetry (their `necessity` blocks go red if a future zod renames a spelling).
+Notes: the `flatRefined` bench commit (97a6a05) landed with a red `pnpm typecheck` (TS4111
+in the predicate) — the pre-commit hook runs only eslint/prettier, not `tsc`, so bench/test
+TS errors can slip in; fixed in 755a9bd. Table-cell reconciliation (T4 Evidence `:2604` has
+drifted to the alloc line; the real seam is `:2651`) stays a separate noted follow-up.
 
 ## 3. Instrumentation plan (the dashboard)
 

@@ -1,9 +1,13 @@
 /**
  * T4 GATE HARNESS #2 — error-map BOOKKEEPING equivalence under the decomposition.
  *
+ * STATUS: T4 was SCOPED OUT — a measured-and-scoped non-action (2026-06-09; see
+ * PERF-ANALYSIS.md "T4"). This harness stays as reproducible EVIDENCE + a standing
+ * guard, not as a gate for unshipped runtime code.
+ *
  * Harness #1 (`t4-refines-only-equivalence.test.ts`) proved the VERDICT SET
- * decomposes byte-identically (Variant A″). This proves the SECOND obligation,
- * the one that gates runtime code: the scheduler maintains a persistent
+ * decomposes byte-identically (Variant A″). This proved the SECOND obligation: the
+ * scheduler maintains a persistent
  * `schemaErrors` map (PathKey -> issues[]) and mutates it INCREMENTALLY per
  * keystroke. Under the A″ decomposition each keystroke runs TWO passes that both
  * write into that one map:

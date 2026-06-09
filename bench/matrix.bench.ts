@@ -23,6 +23,12 @@
  * gets its own bench once the structural picture is clear. The write path is
  * adapter-independent when no union is touched, so the keystroke sweeps run
  * on v4 alone; init runs both adapters (parse cost is where T6 lives).
+ *
+ * Bust 2 (targeted in-place apply) BUSTED T2: the `keystroke flat` and
+ * `keystroke array` sweeps are now ~FLAT in F / N (a single write is O(depth),
+ * not O(field-count) / O(array-length)). A re-introduced slope on those groups
+ * is a regression. `keystroke deep` stays O(D) by design. See PERF-ANALYSIS.md
+ * "Bust 2" and test/core/reactivity-contract.test.ts (the behavioral lock).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

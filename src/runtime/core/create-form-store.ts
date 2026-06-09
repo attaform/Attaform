@@ -45,6 +45,7 @@ import {
   mergeStructural,
   setAtPath,
   setAtPathWithSchemaFill,
+  tryInPlaceLeafWrite,
 } from './path-walker'
 import { __DEV__ } from './dev'
 import { resolveCoercionIndex, type CoercionIndex } from './schema-coerce'
@@ -1958,19 +1959,45 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     decFieldValidation,
   })
 
+  // Shared commit tail for every value mutation: stamp per-leaf field
+  // metadata from the captured patches, then notify change listeners.
+  // Runtime-added paths (e.g. `append('posts', {...})` introducing a new
+  // array index) compare against `undefined` for `dirty` — appearing IS a
+  // mutation; only `reset()` rebaselines the originals map, so this records
+  // absence-as-original to keep the first appearance dirty. Listeners fire
+  // after field bookkeeping (they must see a fully-updated form), and their
+  // throws are isolated so one bad subscriber can't block the rest; `meta`
+  // propagates the call-site's intent (e.g. persist: true).
+  function commitWritePatches(patches: readonly Patch[], meta?: WriteMeta): void {
+    const now = new Date().toISOString()
+    for (const patch of patches) {
+      const { key } = canonicalizePath(patch.path)
+      if (patch.kind === 'added' && !originals.has(key)) {
+        originals.set(key, { segments: patch.path, value: undefined })
+      }
+      touchFieldRecord(key, patch.path, { updatedAt: now })
+    }
+    for (const listener of formChangeListeners) {
+      try {
+        listener(form.value, meta)
+      } catch (err) {
+        console.error('[attaform] onFormChange threw:', err)
+      }
+    }
+  }
+
   function applyFormReplacement(next: F, meta?: WriteMeta): void {
     const prev = form.value
     if (Object.is(prev, next)) return
-    // Capture the diff before any mutation lands — bookkeeping below
+    // Capture the diff before any mutation lands — `commitWritePatches`
     // needs the per-leaf patches against the OLD shape.
-    const now = new Date().toISOString()
     const patches: Patch[] = []
     diffAndApply(prev, next, [], (patch) => {
       patches.push(patch)
     })
     // Mutate `form.value` in place so Vue's deep-reactivity dependencies
-    // fire ONLY for paths that genuinely changed. A wholesale
-    // `form.value = next` would fire every deep watch (including
+    // fire ONLY for the first-level keys whose subtree changed. A
+    // wholesale `form.value = next` would fire every deep watch (including
     // watches on sub-trees that didn't change), which deadlocks the
     // browser when a watcher reacts by writing back to the form (the
     // canonical "same as pickup address" mirror pattern).
@@ -1981,31 +2008,34 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (!applyChangedKeys(prev, next)) {
       form.value = next
     }
-    // Bookkeeping: per-leaf metadata bumped from the captured patches.
-    // Runtime-added paths (e.g. `append('posts', {...})` introducing a
-    // new array index) must compare against `undefined` for `dirty` —
-    // appearing IS a mutation. Only `reset()` rebaselines the originals
-    // map; this branch records absence-as-original so the first
-    // appearance is correctly seen as dirty.
-    for (const patch of patches) {
-      const { key } = canonicalizePath(patch.path)
-      if (patch.kind === 'added' && !originals.has(key)) {
-        originals.set(key, { segments: patch.path, value: undefined })
-      }
-      touchFieldRecord(key, patch.path, { updatedAt: now })
+    commitWritePatches(patches, meta)
+  }
+
+  // Fast path for a single `setValue` whose target leaf already exists:
+  // mutate that leaf's slot in place (O(depth)), preserving every ancestor
+  // container's identity, then commit the exact per-leaf patches the
+  // full-tree diff would have emitted (the old root diff only ever
+  // descended this same subtree). Structural writes — a missing
+  // intermediate, array growth, a new key, a container target, or a
+  // prototype-shadowed segment — fall back to the copy-on-write
+  // `applyFormReplacement`, which correctly re-references the grown
+  // container. The contract: a container's reference changes IFF the write
+  // targets it or alters its structure; a descendant-leaf edit preserves
+  // every ancestor reference.
+  function applyTargetedWrite(path: Path, completedValue: unknown, meta?: WriteMeta): void {
+    const result = tryInPlaceLeafWrite(form.value, path, completedValue)
+    if (!result.applied) {
+      applyFormReplacement(
+        setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F,
+        meta
+      )
+      return
     }
-    // Notify any subscribed modules (persistence, undo/redo) — fire
-    // after field bookkeeping so listeners see a fully-updated form.
-    // Listener throws are isolated so one misbehaving subscriber
-    // can't block the others. `meta` propagates the call-site's
-    // intent (e.g. persist: true) to subscribers that filter on it.
-    for (const listener of formChangeListeners) {
-      try {
-        listener(form.value, meta)
-      } catch (err) {
-        console.error('[attaform] onFormChange threw:', err)
-      }
-    }
+    const patches: Patch[] = []
+    diffAndApply(result.old, completedValue, path, (patch) => {
+      patches.push(patch)
+    })
+    commitWritePatches(patches, meta)
   }
 
   /**
@@ -2294,13 +2324,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       }
       return true
     }
-    // Capture the array length BEFORE replacement: `applyFormReplacement`
+    // Capture the array length BEFORE replacement: `applyTargetedWrite`
     // mutates `form.value` in place, so the pre-op length has to be read off
     // `currentValue` here, while it still reflects the array the operation
     // acted on. Only the `arrayOp` branch reads it.
     const oldArrayLength = Array.isArray(currentValue) ? currentValue.length : 0
-    const nextForm = setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F
-    applyFormReplacement(nextForm, meta)
+    applyTargetedWrite(path, completedValue, meta)
     // Variant-memory bookkeeping for array structural mutations. The
     // field-array helpers tag each op with an `arrayOp` describing
     // which indices shifted; raw whole-array setValues (`setValue

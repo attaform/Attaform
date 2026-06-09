@@ -161,6 +161,69 @@ function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: numb
   return rec
 }
 
+export type InPlaceWriteResult = { applied: true; old: unknown } | { applied: false }
+
+const NO_IN_PLACE: InPlaceWriteResult = { applied: false }
+
+/**
+ * In-place leaf write that preserves ancestor container identity — the
+ * fast path behind a single `setValue` keystroke. When the exact leaf
+ * slot at `path` already exists and currently holds a non-container
+ * value, mutate that slot directly on the live (reactive) tree and
+ * return the prior value. Every ancestor container keeps its object
+ * identity, so a by-reference watch on a container stays quiet on a
+ * descendant edit while the leaf's own reactive dependency still fires.
+ *
+ * Returns `{ applied: false }` — caller must fall back to the
+ * copy-on-write `setAtPathWithSchemaFill` + first-segment reassign — in
+ * every case that is NOT a pure in-place leaf edit:
+ * - empty `path` (root replacement),
+ * - any prototype-shadowed segment (`__proto__`, `hasOwnProperty`, …):
+ *   those bypass reactive `get`/`set` tracking, so their reactivity
+ *   relies on the ancestor reassign the fallback performs,
+ * - a missing / non-descendable ancestor, or an out-of-range array index
+ *   (a structural change — the container SHOULD get a new reference),
+ * - an absent target slot (adding a key/index is structural), or
+ * - a container currently at the slot (a container-target write replaces
+ *   the slot wholesale, same as the fallback — and the contract gives the
+ *   write target a fresh reference either way).
+ *
+ * `root` MUST be the reactive `form.value` (not a raw clone) so the
+ * assignment fires Vue's dependency for the written key.
+ */
+export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): InPlaceWriteResult {
+  if (path.length === 0) return NO_IN_PLACE
+
+  // Single validated descent: at each level the segment must address an
+  // existing slot on a descendable container. A missing/non-descendable
+  // node, an out-of-range index, an absent key, or a prototype-shadowed
+  // segment (which bypasses reactive tracking) means a structural /
+  // non-fast-path write → fall back to copy-on-write.
+  let node: unknown = root
+  for (let i = 0; i < path.length; i++) {
+    const seg = path[i] as Segment
+    if (Array.isArray(node)) {
+      if (typeof seg !== 'number' || seg < 0 || seg >= node.length) return NO_IN_PLACE
+    } else if (isPlainRecord(node)) {
+      if (typeof seg !== 'string' || isShadowedKey(seg) || !(seg in node)) return NO_IN_PLACE
+    } else {
+      return NO_IN_PLACE
+    }
+    const container = node as Record<string | number, unknown>
+    if (i < path.length - 1) {
+      node = container[seg]
+      continue
+    }
+    // Leaf step: only an existing non-container slot is editable in place;
+    // a container target is replaced wholesale by the fallback.
+    const old = container[seg]
+    if (isPlainRecord(old) || Array.isArray(old)) return NO_IN_PLACE
+    container[seg] = value
+    return { applied: true, old }
+  }
+  return NO_IN_PLACE
+}
+
 /**
  * Copy-on-write deletion of `path` from `root`. Returns a fresh root
  * with the targeted leaf (or container) removed; siblings stay

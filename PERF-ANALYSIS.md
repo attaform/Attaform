@@ -210,6 +210,61 @@ already known. That is the real keystroke prize and the next bust (a targeted
 single-leaf apply); being the heavier, funnel-touching half, it gets a formal
 design pass first.
 
+### Bust 2: targeted in-place apply (2026-06-08)
+
+The dominant O(F)/O(N) keystroke cost was `applyFormReplacement` rediscovering an
+already-known path: `setAtPathWithSchemaFill` spreads `{...root}` (O(F)),
+`diffAndApply` walks for patches (O(F)), `applyChangedKeys` diffs AGAIN for
+changed segments (O(F)) and scans `Object.keys` for deletions (O(F)) — ~4 O(F)
+passes to land `form.value.f3 = x`. Worse, it reassigned the WHOLE first-segment
+container reference on every write (typing `rows.5.name` handed `form.values.rows`
+a brand-new array): a container's reference churned on a descendant-leaf edit.
+
+`applyTargetedWrite` (`create-form-store.ts`) takes a fast path when the target
+leaf slot already exists: `tryInPlaceLeafWrite` (`path-walker.ts`) walks to the
+leaf's parent (O(depth)) and mutates the slot in place, preserving every ancestor
+container's identity, then `commitWritePatches` emits the exact per-leaf patches
+the old root diff would have (it only ever descended this same subtree).
+Structural writes (missing intermediate, array growth, new key, container target,
+or a prototype-shadowed segment) fall back to the proven copy-on-write
+`applyFormReplacement`, which correctly re-references the grown container.
+
+**New contract (the one intended observable change):** a container's reference
+changes IFF the write targets it or alters its structure. A descendant-leaf edit
+preserves every ancestor reference. Deep watches and leaf watches are unchanged;
+only a by-reference (non-deep) watch on a container stops firing on leaf edits
+(it now fires only on structural change — strictly less over-firing). This was a
+philosophical bug: the old "orphaned but unmutated" copy-on-write rationalized a
+cost as a feature, but history / `prev` callbacks deep-clone (`structuralSnapshot`)
+and never relied on it (reference-safety audit), and a grabbed `form.values.address`
+silently went stale. In-place mutation fires the narrowest dep set, so it is also
+strictly safer for the "pickup address" mirror-deadlock.
+
+Behavior is otherwise byte-identical: behavior-lock goldens unchanged, full suite
+green (4124), and the new `test/core/reactivity-contract.test.ts` (both adapters)
+pins the contract — it doubles as the standing perf guard, since reverting to
+copy-on-write re-churns container refs and fails it. Cost: +0.10 kB gz eager
+(deliberate, the funnel is always-on); eager budget + zod-v3 size cap loosened
+with a recorded reason.
+
+Before / after, single scalar write, v4 (matrix bench):
+
+| shape        | before (hz) | after (hz) | gain  |
+| ------------ | ----------- | ---------- | ----- |
+| flat F=5     | 88,004      | 277,311    | 3.2×  |
+| flat F=50    | 11,965      | 258,541    | 21.6× |
+| flat F=500   | 1,067       | 245,084    | 230×  |
+| array N=10   | 46,631      | 176,708    | 3.8×  |
+| array N=100  | 12,967      | 162,291    | 12.5× |
+| array N=1000 | 1,622       | 170,668    | 105×  |
+| deep D=16    | 14,942      | 51,024     | 3.4×  |
+
+The keystroke is now O(depth): flat F=5→500 went from an 82× falloff to 1.13×
+(flat), array N=10→1000 from 29× to 1.04× (flat). Deep stays O(D) (correct) but
+~3× cheaper per level (no spread, no double-diff). Even small forms gain ~3× from
+killing the root-spread + double-diff. **T2 BUSTED** across flat, nested, and
+array; T1 (deep) confirmed already-O(D) and left alone.
+
 ## 3. Instrumentation plan (the dashboard)
 
 Today's gap: `check:bench` only computes `hz(new)/hz(old)` against a 3× floor

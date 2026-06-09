@@ -620,7 +620,15 @@ export default [
     //
     // Raised 60 → 61 KB tracking index.mjs's async-register-transforms bump
     // (#361): same shared core chunk. Measured at 60.44 KB.
-    limit: '61 KB',
+    //
+    // Raised 61 → 62 KB tracking the targeted in-place apply (T2 keystroke
+    // bust): the shared-core write funnel gains tryInPlaceLeafWrite
+    // (path-walker) + applyTargetedWrite / commitWritePatches
+    // (create-form-store), taking a single setValue from O(field-count) /
+    // O(array-length) to O(depth). The inlined total (no splitting) absorbs
+    // the full delta; zod-v3.mjs, the tightest adapter bundle, crossed 61.
+    // Measured at 61.13 KB.
+    limit: '62 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

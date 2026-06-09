@@ -9,6 +9,8 @@
  *   keystroke deep D={3,8,16}  -> T1 guard, O(D^2) with zero unions?
  *   keystroke flat F={5,50,500}
  *     & wideArray N={10,100,1000} -> T2 full-tree diff, O(F)?
+ *   validate refined F={5,50,500} -> T4 whole-form parse forced by a container
+ *     refine on every keystroke, O(F)? (component probe, both adapters)
  *
  * Mounting follows discriminated-union.bench.ts: a real public `useForm`
  * inside an SSR app, so we measure the genuine consumer pipeline (real zod,
@@ -45,8 +47,10 @@ import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4, unset } from '../src/zod-v4'
 import { useForm as useFormV3 } from '../src/zod-v3'
+import { zodAdapter as zodV4Adapter } from '../src/runtime/adapters/zod-v4'
+import { zodAdapter as zodV3Adapter } from '../src/runtime/adapters/zod-v3'
 import { createAttaform } from '../src/runtime/core/plugin'
-import { deep, flat, wideArray, type MatrixForm } from './lib/matrix-forms'
+import { deep, flat, flatRefined, wideArray, type MatrixForm } from './lib/matrix-forms'
 
 type Adapter = { tag: string; z: any; useForm: any }
 const ADAPTERS: Adapter[] = [
@@ -154,5 +158,79 @@ describe('keystroke: row-field write, wide array (T2 diff vs N)', () => {
     bench(`keystroke array N=${N} [v4]`, () => {
       handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
     })
+  }
+})
+
+/**
+ * T4 — the per-keystroke validation cost a CONTAINER/ROOT REFINE forces. When
+ * `hasContainerOrRootRefine()` is true the scheduler cannot subtree-scope
+ * (create-form-store.ts:2651): every keystroke runs a whole-form parse
+ * (`validateAtPath(form.value, undefined)`), re-validating every unchanged
+ * sibling leaf's own constraints. The refine itself genuinely MUST re-run
+ * (its verdict depends on any field) — the bustable waste is the sibling
+ * re-parse.
+ *
+ * This is a COMPONENT probe on the exact primitive the scheduler calls, NOT
+ * an end-to-end keystroke loop. The scheduler runs `validateAtPath` inside a
+ * microtask chain (`Promise.resolve().then(...)`); a tight synchronous bench
+ * loop would never flush those microtasks (the same skew the `validateOn:
+ * 'submit'` note above avoids), so we time `validateAtPath` directly — the
+ * Bust-3 component-probe discipline. The default async path is awaited, so a
+ * constant await/microtask cost rides each cell; read the SLOPE vs F (it
+ * compresses small F), not the small-F absolutes.
+ *
+ * Three cells decompose the cost (per adapter — validation parse is exactly
+ * where the v4/v3 asymmetry T6 lives, so unlike the write sweeps this is NOT
+ * adapter-independent):
+ *
+ *   whole-form refined -> T4 today: F leaf-parses + the refine
+ *   whole-form plain   -> F leaf-parses, no refine; refine's marginal cost
+ *                         = refined - plain
+ *   subtree-leaf       -> the floor a refine-free form's subtree pass pays
+ *                         (1 leaf-parse); redundant-sibling prize = plain - subtree
+ *
+ * A re-introduced subtree scope under a refine (or a flattened whole-form
+ * slope) would show here. See PERF-ANALYSIS.md "T4".
+ */
+type RefineAdapter = { tag: string; z: any; build: any }
+const REFINE_ADAPTERS: RefineAdapter[] = [
+  { tag: 'v4', z: zV4, build: zodV4Adapter },
+  { tag: 'v3', z: zV3 as any, build: zodV3Adapter },
+]
+
+describe('validate: whole-form parse forced by a container refine (T4 vs F)', () => {
+  for (const a of REFINE_ADAPTERS) {
+    for (const F of FIELD_COUNTS) {
+      const refined = flatRefined(a.z, F)
+      const plain = flat(a.z, F)
+      const builtRefined = a.build(refined.schema)('t4-refined-probe', { maxRecursionDepth: 64 })
+      const builtPlain = a.build(plain.schema)('t4-plain-probe', { maxRecursionDepth: 64 })
+
+      // Premise guards: the refined shape MUST trip the whole-form branch and
+      // the plain shape MUST NOT, on BOTH adapters — otherwise the cells below
+      // silently measure the wrong scheduler path.
+      if (builtRefined.hasContainerOrRootRefine() !== true)
+        throw new Error(`flatRefined must trip hasContainerOrRootRefine [${a.tag} F=${F}]`)
+      if (builtPlain.hasContainerOrRootRefine() !== false)
+        throw new Error(`flat must not trip hasContainerOrRootRefine [${a.tag} F=${F}]`)
+
+      const wholeRefined = refined.defaultValues
+      const wholePlain = plain.defaultValues
+      // The subtree floor is measured on the PLAIN schema: the scheduler's
+      // subtree branch only ever runs when no refine is present, and path
+      // resolution to the leaf is unambiguous there.
+      const leafPath = [plain.keystrokePath]
+      const leafValue = plain.defaultValues[plain.keystrokePath]
+
+      bench(`t4 whole-form refined F=${F} [${a.tag}]`, async () => {
+        await builtRefined.validateAtPath(wholeRefined, undefined)
+      })
+      bench(`t4 whole-form plain F=${F} [${a.tag}]`, async () => {
+        await builtPlain.validateAtPath(wholePlain, undefined)
+      })
+      bench(`t4 subtree-leaf F=${F} [${a.tag}]`, async () => {
+        await builtPlain.validateAtPath(leafValue, leafPath)
+      })
+    }
   }
 })

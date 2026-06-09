@@ -11,6 +11,9 @@
  *   - deep(D)      -> T1: cross-variant DU guard on every write, O(D^2) even
  *                    with ZERO unions present in the schema?
  *   - wideArray(N) -> T2 at array scale + list/key bookkeeping, O(N)?
+ *   - flatRefined(F) -> T4: a container/root refine forces a whole-form parse
+ *                    on every keystroke (the subtree scope is unavailable), so
+ *                    every unchanged sibling leaf is re-validated, O(F)?
  *
  * Every builder takes the adapter's `z`, so the identical shape runs against
  * zod v3 and v4 (parity, plus the T6 adapter-asymmetry probe on init).
@@ -42,6 +45,41 @@ export function flat(z: any, fieldCount: number): MatrixForm {
     defaultValues,
     // The last field. For a flat object the single-scalar diff is O(F)
     // wherever it lands, and a fixed key keeps path resolution constant.
+    keystrokePath: `f${Math.max(0, fieldCount - 1)}`,
+    keystrokeValue: (i) => `v${i}`,
+  }
+}
+
+/**
+ * F flat string scalars PLUS one root-level `.refine` (a cross-field check
+ * reading two fields). The refine makes `hasContainerOrRootRefine()` return
+ * true, which denies the validation scheduler its subtree scope
+ * (create-form-store.ts:2651): every keystroke runs a WHOLE-FORM parse
+ * (`validateAtPath(form.value, undefined)`) that re-validates every unchanged
+ * sibling leaf. Sweeps field count for T4 — the redundant sibling re-parse.
+ *
+ * The predicate is kept O(1) (reads f0/f1 only) so the measured cost is the
+ * sibling leaf-parses, NOT the refine's own work; an aggregate refine that
+ * genuinely reads all F fields keeps an irreducible O(F) floor (the verdict
+ * depends on every field), so T4's prize there is constant-factor, not
+ * asymptotic. f0/f1 are seeded equal so the refine PASSES on the baseline
+ * tree — a failing root refine aborts before the full successful parse we
+ * want to time.
+ */
+export function flatRefined(z: any, fieldCount: number): MatrixForm {
+  const shape: Record<string, unknown> = {}
+  const defaultValues: Record<string, unknown> = {}
+  for (let i = 0; i < fieldCount; i++) {
+    shape[`f${i}`] = z.string()
+    defaultValues[`f${i}`] = 's' // valid + non-empty so leaves pass and the refine runs
+  }
+  defaultValues.f0 = 'eq'
+  defaultValues.f1 = 'eq'
+  return {
+    schema: z
+      .object(shape)
+      .refine((o: Record<string, unknown>) => o.f0 === o.f1, { message: 'f0 must equal f1' }),
+    defaultValues,
     keystrokePath: `f${Math.max(0, fieldCount - 1)}`,
     keystrokeValue: (i) => `v${i}`,
   }

@@ -311,6 +311,67 @@ made the redundant pass a smaller slice of total init to begin with. **T3 BUSTED
 (the double-parse at init is gone); the residual single `deriveDefault(false)` walk
 is ~3% of the eliminated pass.
 
+### T4 measurement: whole-form revalidation under a container refine (scoped, 2026-06-09)
+
+NOT a bust — a measure-and-scope. Unlike the free/internal T1–T3 wins, T4's fix ADDS
+adapter surface, so it is gated on a design sign-off (see "the fork" below). The
+refine-heavy shape is exactly Cubic Housing's cross-field-eligibility forms, so this
+is load-bearing downstream.
+
+**The cost.** When `hasContainerOrRootRefine()` is true the keystroke scheduler
+cannot subtree-scope (`create-form-store.ts:2651`): every keystroke runs
+`validateAtPath(form.value, undefined)`, a whole-form `safeParse`. A refine-free form
+takes the subtree branch (`validateAtPath(getAtPath(form.value, path), path)`)
+instead. The matrix bench group `validate … (T4 vs F)` is a component probe on that
+exact primitive — the per-keystroke work is async-scheduled inside a microtask chain,
+so an end-to-end loop would skew on un-flushed microtasks (the Bust-3 component-probe
+discipline). Three cells per adapter, ops/sec:
+
+| cell (ops/sec)                  | F=5   | F=50  | F=500 | slope 50→500 |
+| ------------------------------- | ----- | ----- | ----- | ------------ |
+| v4 whole-form **refined**       | 2.60M | 250k  | 17.8k | 14.0× (O(F)) |
+| v4 whole-form plain (no refine) | 2.73M | 287k  | 18.1k | 15.8×        |
+| v4 **subtree-leaf** (the floor) | 3.36M | 3.06M | 2.92M | ~flat (O(1)) |
+| v3 whole-form **refined**       | 735k  | 115k  | 9.2k  | 12.4× (O(F)) |
+| v3 whole-form plain (no refine) | 1.03M | 118k  | 10.0k | 11.7×        |
+| v3 **subtree-leaf** (the floor) | 3.14M | 2.86M | 2.85M | ~flat (O(1)) |
+
+Three reads:
+
+1. **T4 is real — whole-form validation is O(F) per keystroke.** Throughput falls
+   ~12–14× for a 10× field increase on both adapters. The subtree branch a refine-free
+   form enjoys is **O(1)** (flat ~3M ops/sec across all F). Same-F, at F=500 the
+   refine-heavy form pays **164× (v4) / 309× (v3)** the per-keystroke validation cost
+   of a refine-free one; at F=50, **12× / 25×**.
+2. **The refine itself is nearly free; the waste is the sibling re-parse.** Whole-form
+   refined vs plain is within ~2% (v4) / ~8% (v3) at F=500 — the O(1) cross-field check
+   adds almost nothing. **~92–98% of the whole-form cost is re-validating the F−1
+   unchanged sibling leaves' own constraints**, pure redundancy on a single-field
+   keystroke.
+3. **T6 flips direction at runtime.** For _validation_ v4 is ~1.9× FASTER than v3 (the
+   reverse of init, where v4's `safeParse` is the slower one). v3 is the worse keystroke
+   case here (~0.108 ms/keystroke at F=500).
+
+**The fork (why this is gated, not free).** Narrowing WHICH refines run is off the
+table: refines are opaque functions with no dependency manifest, so skipping one risks
+dropping a verdict the consumer would have seen — an observable change, violating
+constraint #1. The only byte-identical lever is to DECOMPOSE the whole-form pass into
+(subtree leaf validation at the edited path) + (the container/root refines ONLY,
+evaluated against whole-form data), union the verdicts, and prove the error-map
+clear/reapply bookkeeping (`applySchemaErrorsForSubtree`) is byte-identical to the
+whole-form parse. zod can STRIP refines (`getSlimSchema`) but not the inverse, so this
+needs a NEW adapter primitive — a "refines-only" validation entry — at v3/v4 parity.
+Open risk the measurement sharpens: zod runs an object refine only AFTER the per-key
+parse and only if the base parse succeeded (short-circuit), so a faithful refines-only
+primitive must source leaf VALIDITY (for the short-circuit) and the PARSED object (the
+refine's input) WITHOUT re-parsing the F leaves — otherwise there is no win. Whether
+that can be sourced from live form state + the existing error map, byte-identically
+across coercions and both adapters, is the load-bearing question. **Next: bring Oswald
+the primitive's shape + the bookkeeping-equivalence proof obligation for sign-off
+before any code** (reference-before-API-change). Table-cell reconciliation (T4 Evidence
+`:2604` has drifted to the alloc line; the real seam is `:2651`) stays a separate noted
+follow-up.
+
 ## 3. Instrumentation plan (the dashboard)
 
 Today's gap: `check:bench` only computes `hz(new)/hz(old)` against a 3× floor

@@ -405,13 +405,22 @@ much larger surface, a much harder byte-identical proof (cache coherence across 
 / resets / DU reshapes × both adapters), and parity-fragile runtime issue-flag
 introspection.
 
-**Still open before runtime code.** The gate proves the safeParse-level verdict
-decomposition; the SCHEDULER error-map bookkeeping (`applySchemaErrorsForSubtree`
-clear/reapply over the new `subtree ∪ refine-paths` set, byte-identical to the whole-form
-parse) is a SECOND obligation, not yet harnessed. **Decision pending Oswald's sign-off**
-(reference-before-API-change): ship A″ for the constant-factor win (per-adapter
-`getRefinesOnlySchema` + scheduler decomposition + the bookkeeping proof), or record T4 as
-a measured-and-scoped non-action given the order stays O(F). Notes: the `flatRefined` bench
+**Both gates green; sign-off is the remaining gate before runtime code.** Gate #1 proved
+the safeParse-level verdict decomposition; gate #2
+(`test/perf-lock/t4-errormap-bookkeeping-equivalence.test.ts`) proves the SCHEDULER
+error-map bookkeeping reconstructs byte-identically when the persistent `schemaErrors` map
+is maintained by the two decomposed passes instead of one whole-form parse, across edit
+SEQUENCES (134 tests total, both adapters). It surfaced the load-bearing API-shape finding:
+the real `applySchemaErrorsForSubtree` clears by PATH SCOPE, so a refine emitting to a path
+that already holds a leaf error (confirmPassword's `.min` + the match refine) gets clobbered
+by a single-channel decomposition. The fix it proves: `schemaErrors` needs a REFINE-ORIGIN
+sub-channel (leaf channel maintained by subtree scope-clear; refine channel
+wholesale-replaced each keystroke; merged leaf-then-refine on read), with a `necessity`
+block showing the naive single channel diverges. Cross-path insertion order
+(`form.meta.errors` iterates the map in insertion order) is a further impl constraint,
+flagged not yet solved. Oswald chose to PURSUE A″ (harness-gate first); both gates being
+green, the next step is **sign-off on the `getRefinesOnlySchema` shape + the origin-channel
+requirement** before any runtime code (reference-before-API-change). Notes: the `flatRefined` bench
 commit (97a6a05) landed with a red `pnpm typecheck` (TS4111 in the predicate) — the
 pre-commit hook runs only eslint/prettier, not `tsc`, so bench/test TS errors can slip in;
 fixed here. Table-cell reconciliation (T4 Evidence `:2604` has drifted to the alloc line;

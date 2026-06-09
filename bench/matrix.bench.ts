@@ -50,7 +50,14 @@ import { useForm as useFormV3 } from '../src/zod-v3'
 import { zodAdapter as zodV4Adapter } from '../src/runtime/adapters/zod-v4'
 import { zodAdapter as zodV3Adapter } from '../src/runtime/adapters/zod-v3'
 import { createAttaform } from '../src/runtime/core/plugin'
-import { deep, flat, flatRefined, wideArray, type MatrixForm } from './lib/matrix-forms'
+import {
+  deep,
+  flat,
+  flatRefined,
+  flatRefinedFormatHeavy,
+  wideArray,
+  type MatrixForm,
+} from './lib/matrix-forms'
 
 type Adapter = { tag: string; z: any; useForm: any }
 const ADAPTERS: Adapter[] = [
@@ -230,6 +237,50 @@ describe('validate: whole-form parse forced by a container refine (T4 vs F)', ()
       })
       bench(`t4 subtree-leaf F=${F} [${a.tag}]`, async () => {
         await builtPlain.validateAtPath(leafValue, leafPath)
+      })
+    }
+  }
+})
+
+/**
+ * T4 A'' — what the byte-identical refines-only decomposition actually BUYS.
+ *
+ * The T4 group above measures the COST (whole-form parse, O(F)). This measures the
+ * achievable WIN of the proven-equivalent reduction (Variant A''): leaves keep their
+ * base type + coercion + custom refines but SHED built-in format/range checks. Both
+ * cells carry the same root refine, so both trip `hasContainerOrRootRefine` and take
+ * the whole-form branch — the only difference is the per-leaf built-in checks.
+ *
+ *   t4 fmt full         -> base type + `.min(2).regex(...)` per leaf + refine (today)
+ *   t4 fmt refines-only -> base type per leaf + refine (A'' sheds the built-ins)
+ *
+ * Read the SAME-F ratio (full / refines-only) = A''s constant-factor win. Note what it
+ * does NOT do: refines-only is still O(F) base-type work, so it never approaches the
+ * O(1) subtree-leaf floor above (~3M ops/sec). A'' shrinks the constant; it does not
+ * change the order. See PERF-ANALYSIS.md "T4".
+ */
+describe("validate: refines-only win vs whole-form, format-heavy leaves (T4 A'')", () => {
+  for (const a of REFINE_ADAPTERS) {
+    for (const F of FIELD_COUNTS) {
+      const pair = flatRefinedFormatHeavy(a.z, F)
+      const builtFull = a.build(pair.full)('t4-fmt-full', { maxRecursionDepth: 64 })
+      const builtRefinesOnly = a.build(pair.refinesOnly)('t4-fmt-refines', {
+        maxRecursionDepth: 64,
+      })
+
+      // Both shapes carry the root refine, so BOTH must take the whole-form branch:
+      // the win is the per-leaf built-in checks A'' sheds, not a branch change.
+      if (builtFull.hasContainerOrRootRefine() !== true)
+        throw new Error(`fmt full must trip hasContainerOrRootRefine [${a.tag} F=${F}]`)
+      if (builtRefinesOnly.hasContainerOrRootRefine() !== true)
+        throw new Error(`fmt refines-only must trip hasContainerOrRootRefine [${a.tag} F=${F}]`)
+
+      const whole = pair.defaultValues
+      bench(`t4 fmt full F=${F} [${a.tag}]`, async () => {
+        await builtFull.validateAtPath(whole, undefined)
+      })
+      bench(`t4 fmt refines-only F=${F} [${a.tag}]`, async () => {
+        await builtRefinesOnly.validateAtPath(whole, undefined)
       })
     }
   }

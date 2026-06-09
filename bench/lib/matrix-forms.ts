@@ -73,15 +73,63 @@ export function flatRefined(z: any, fieldCount: number): MatrixForm {
     shape[`f${i}`] = z.string()
     defaultValues[`f${i}`] = 's' // valid + non-empty so leaves pass and the refine runs
   }
-  defaultValues.f0 = 'eq'
-  defaultValues.f1 = 'eq'
+  defaultValues['f0'] = 'eq'
+  defaultValues['f1'] = 'eq'
   return {
     schema: z
       .object(shape)
-      .refine((o: Record<string, unknown>) => o.f0 === o.f1, { message: 'f0 must equal f1' }),
+      .refine((o: Record<string, unknown>) => o['f0'] === o['f1'], { message: 'f0 must equal f1' }),
     defaultValues,
     keystrokePath: `f${Math.max(0, fieldCount - 1)}`,
     keystrokeValue: (i) => `v${i}`,
+  }
+}
+
+/** A full schema paired with its Variant A'' refines-only reduction. */
+export type RefinedPair = {
+  /** Full: F leaves each carrying built-in format/range checks + a root refine. */
+  full: unknown
+  /** A'': each leaf reduced to base type (built-ins dropped), the refine KEPT. */
+  refinesOnly: unknown
+  /** Valid tree so the full parse succeeds and the root refine actually runs. */
+  defaultValues: Record<string, unknown>
+}
+
+/**
+ * F leaves, each with TWO built-in checks (`.min(2).regex(/^[a-z]+$/)`), plus one
+ * O(1) root refine — paired with its Variant A'' refines-only reduction (each leaf
+ * stripped to base `z.string()`, built-ins dropped, the refine kept).
+ *
+ * This measures what the byte-identical T4 decomposition actually BUYS. A'' keeps
+ * base types + coercion + custom refines (it reproduces zod's abort short-circuit
+ * structurally rather than detecting fatal/abort flags — which differ by adapter and
+ * hide in a closure on v3), so it can shed ONLY the per-leaf built-in checks. Its
+ * parse floor is therefore the base-type whole-form parse, NOT the O(1) subtree branch
+ * a refine-free form enjoys. Plain `z.string()` leaves (`flatRefined`) would show no
+ * A'' win at all; the built-in checks here are exactly the sheddable cost. The
+ * `refinesOnly` schema is hand-built to match what a `getRefinesOnlySchema` walker
+ * would emit (the reduction proven byte-identical in the T4 equivalence harness).
+ */
+export function flatRefinedFormatHeavy(z: any, fieldCount: number): RefinedPair {
+  const fullShape: Record<string, unknown> = {}
+  const baseShape: Record<string, unknown> = {}
+  const defaultValues: Record<string, unknown> = {}
+  for (let i = 0; i < fieldCount; i++) {
+    fullShape[`f${i}`] = z
+      .string()
+      .min(2)
+      .regex(/^[a-z]+$/)
+    baseShape[`f${i}`] = z.string()
+    defaultValues[`f${i}`] = 'ab' // len>=2, lowercase: passes both built-ins
+  }
+  defaultValues['f0'] = 'eq' // f0===f1 so the root refine passes on the baseline tree
+  defaultValues['f1'] = 'eq'
+  const predicate = (o: Record<string, unknown>) => o['f0'] === o['f1']
+  const params = { message: 'f0 must equal f1' }
+  return {
+    full: z.object(fullShape).refine(predicate, params),
+    refinesOnly: z.object(baseShape).refine(predicate, params),
+    defaultValues,
   }
 }
 

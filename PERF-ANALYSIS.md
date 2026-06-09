@@ -314,7 +314,7 @@ is ~3% of the eliminated pass.
 ### T4 measurement: whole-form revalidation under a container refine (scoped, 2026-06-09)
 
 NOT a bust — a measure-and-scope. Unlike the free/internal T1–T3 wins, T4's fix ADDS
-adapter surface, so it is gated on a design sign-off (see "the fork" below). The
+adapter surface, so it is gated on a design sign-off (see the decision below). The
 refine-heavy shape is exactly Cubic Housing's cross-field-eligibility forms, so this
 is load-bearing downstream.
 
@@ -352,25 +352,70 @@ Three reads:
    reverse of init, where v4's `safeParse` is the slower one). v3 is the worse keystroke
    case here (~0.108 ms/keystroke at F=500).
 
-**The fork (why this is gated, not free).** Narrowing WHICH refines run is off the
-table: refines are opaque functions with no dependency manifest, so skipping one risks
-dropping a verdict the consumer would have seen — an observable change, violating
-constraint #1. The only byte-identical lever is to DECOMPOSE the whole-form pass into
-(subtree leaf validation at the edited path) + (the container/root refines ONLY,
-evaluated against whole-form data), union the verdicts, and prove the error-map
-clear/reapply bookkeeping (`applySchemaErrorsForSubtree`) is byte-identical to the
-whole-form parse. zod can STRIP refines (`getSlimSchema`) but not the inverse, so this
-needs a NEW adapter primitive — a "refines-only" validation entry — at v3/v4 parity.
-Open risk the measurement sharpens: zod runs an object refine only AFTER the per-key
-parse and only if the base parse succeeded (short-circuit), so a faithful refines-only
-primitive must source leaf VALIDITY (for the short-circuit) and the PARSED object (the
-refine's input) WITHOUT re-parsing the F leaves — otherwise there is no win. Whether
-that can be sourced from live form state + the existing error map, byte-identically
-across coercions and both adapters, is the load-bearing question. **Next: bring Oswald
-the primitive's shape + the bookkeeping-equivalence proof obligation for sign-off
-before any code** (reference-before-API-change). Table-cell reconciliation (T4 Evidence
-`:2604` has drifted to the alloc line; the real seam is `:2651`) stays a separate noted
-follow-up.
+**The decomposition: proven byte-identical (Variant A″).** Narrowing WHICH refines run
+is off the table — refines are opaque functions with no dependency manifest, so skipping
+one risks dropping a verdict the consumer would have seen (an observable change,
+violating constraint #1). The only byte-identical lever is to DECOMPOSE the whole-form
+pass into (subtree leaf validation at the edited path, already O(1)) + (a refines-only
+pass over whole-form data). zod can STRIP refines (`getSlimSchema`) but not the inverse,
+so the refines-only pass needs a NEW adapter primitive — `getRefinesOnlySchema`, the
+dual of the slim walker — at v3/v4 parity.
+`test/perf-lock/t4-refines-only-equivalence.test.ts` is the go/no-go gate that proves the
+decomposition sound BEFORE any runtime code, and it is GREEN (122/122, both adapters).
+
+The load-bearing subtlety the gate resolved: zod runs an object refine only AFTER the
+per-key parse and only if no leaf ABORTED (short-circuit), and the aborting-refine
+keyword DIFFERS by adapter — `abort` in v4, `fatal` in v3 — with v3 burying the flag in
+a closure where it is not statically inspectable. So a naive "strip all leaf validation"
+reduction diverges on BOTH adapters (a suppressed root refine wrongly reappears). The fix
+(Variant A″): the refines-only schema drops ONLY built-in format/range checks
+(`.email`/`.min`/`.regex`, provably non-aborting) and KEEPS each leaf's base type,
+coercion, and every custom `.refine`/`.superRefine`. Keeping custom refines reproduces the
+abort short-circuit structurally — no fatal/abort detection, no gate, no whole-form
+fallback — so v3 is handled identically to v4. The harness pins equivalence (13
+adversarial scenarios incl. aborting leaf refines both spellings + password/confirm + 800
+fuzz samples), necessity (the naive strip diverges — a standing guard if a future zod
+renames a spelling), and non-vacuousness (the refines-only delta genuinely raises the
+cross-field verdict).
+
+**What A″ buys (and what it does not).** A″ keeps base types to reproduce the
+short-circuit, so the refines-only pass is still O(F) base-type work — it sheds the
+per-leaf built-in checks, nothing more. On a format-heavy flat form
+(`flatRefinedFormatHeavy`, each leaf `.string().min(2).regex(...)`, one O(1) root refine),
+measured ops/sec:
+
+| cell (ops/sec, format-heavy)    | F=5   | F=50  | F=500 |
+| ------------------------------- | ----- | ----- | ----- |
+| v4 whole-form **full** (today)  | 1.13M | 89.0k | 6.36k |
+| v4 **refines-only** (A″)        | 1.73M | 238k  | 15.6k |
+| v4 A″ win (full ÷ refines-only) | 1.54× | 2.68× | 2.45× |
+| v3 whole-form **full** (today)  | 665k  | 93.5k | 8.22k |
+| v3 **refines-only** (A″)        | 641k  | 106k  | 9.87k |
+| v3 A″ win (full ÷ refines-only) | 0.96× | 1.13× | 1.20× |
+
+Two reads: (1) the win is a CONSTANT FACTOR, adapter-asymmetric — ~2.5× on v4 at scale,
+~1.2× on v3 (T6 again: v4's built-in checks are a larger fraction of leaf-parse cost, so
+shedding them helps more; v3's base `ZodString` parse dominates, so less is sheddable; at
+F=5 the win is within noise). (2) A″ does NOT change the ORDER: refines-only at F=500
+(15.6k v4 / 9.87k v3) is still ~190× / ~290× slower than the O(1) subtree floor (~3M)
+above. The "92–98% redundant sibling re-parse" is only PARTIALLY recovered (the
+built-in-check fraction); the base-type re-parse of all F siblings remains. A true O(1)
+would need runtime abort-state sourcing (cached coerced values + per-leaf abort bits) — a
+much larger surface, a much harder byte-identical proof (cache coherence across array ops
+/ resets / DU reshapes × both adapters), and parity-fragile runtime issue-flag
+introspection.
+
+**Still open before runtime code.** The gate proves the safeParse-level verdict
+decomposition; the SCHEDULER error-map bookkeeping (`applySchemaErrorsForSubtree`
+clear/reapply over the new `subtree ∪ refine-paths` set, byte-identical to the whole-form
+parse) is a SECOND obligation, not yet harnessed. **Decision pending Oswald's sign-off**
+(reference-before-API-change): ship A″ for the constant-factor win (per-adapter
+`getRefinesOnlySchema` + scheduler decomposition + the bookkeeping proof), or record T4 as
+a measured-and-scoped non-action given the order stays O(F). Notes: the `flatRefined` bench
+commit (97a6a05) landed with a red `pnpm typecheck` (TS4111 in the predicate) — the
+pre-commit hook runs only eslint/prettier, not `tsc`, so bench/test TS errors can slip in;
+fixed here. Table-cell reconciliation (T4 Evidence `:2604` has drifted to the alloc line;
+the real seam is `:2651`) stays a separate noted follow-up.
 
 ## 3. Instrumentation plan (the dashboard)
 

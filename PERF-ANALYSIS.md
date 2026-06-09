@@ -97,7 +97,7 @@ information-theoretic floor for that operation.
 | P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed            | B SHIPPED (flag); A declined                      |
 | P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2093-2116, 2693-2696` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | guard ~0.32µs; clone CORE-P1a-scoped | closed — non-prize                                |
 | P3  | Over-render (components re-render on unchanged slice)                                            | `field-state-api.ts:581`; `:1478`           | O(F) renders/keystroke (×2 on validateOn:change)  | O(1) for default predicate                | behavior-adjacent (formMeta contract)     | F× → 0 siblings/keystroke (fields)   | BUSTED 2026-06-09 (lazy formMeta + own-key blank) |
-| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —                                    | open                                              |
+| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | ~1.5% init; relocates onto keystroke | closed — non-prize                                |
 | P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —                                    | open                                              |
 
 > **Measured (first pass, 2026-06-08):** T2 **confirmed** (the keystroke
@@ -650,6 +650,66 @@ renders per keystroke. Cross-field-eligibility forms (large, many fields) are th
 **Status: confirmed prize; bust is behavior-adjacent (touches the public `formMeta` contract that
 custom `getDisplayState` predicates receive + field-state reactivity timing), so reference-first
 before implementation.**
+
+### P4 measurement: deferrable init work (init decomposition, 2026-06-09)
+
+The ledger flagged "deferrable init work beyond eager-optional bytes" at an unknown cost.
+Probed with `bench/init-decomposition.bench.ts` — the eager O(F·D) primitives construction
+runs (`create-form-store.ts:1228-1819`), each isolated on the same flat schema, both adapters.
+Same primitive-bench discipline as P1/P2: the matrix `init flat` group measures init
+end-to-end; this decomposes that number so the one deferral candidate can be sized against the
+irreducible remainder. Mean ms/op at F=500 (the decisive scale; all four cells are ~O(F)
+across F={5,50,500}):
+
+| primitive (F=500, ms)                  | classification | v4    | v3    |
+| -------------------------------------- | -------------- | ----- | ----- |
+| `getDefaultValues` (parse)             | NON-deferrable | 1.796 | 0.333 |
+| `structuralSnapshot` (clone)           | NON-deferrable | 0.048 | 0.048 |
+| `diffAndApply` (originals + ordinals)  | load-bearing   | 0.014 | 0.014 |
+| `getEmptyValueAtPath` (blank baseline) | DEFERRABLE     | 0.078 | 0.054 |
+| eager-primitive total                  |                | 1.94  | 0.45  |
+
+Three reads:
+
+1. **The parse dominates and is non-deferrable.** `getDefaultValues` is 93% (v4) / 74% (v3) of
+   the eager-primitive cost — it produces `schemaInitialData`, i.e. `form.value`, which SSR
+   renders immediately, so it can't be deferred. It is also exactly T6's domain (v4's `safeParse`
+   is ~5.4× the v3 cost at F=500); T3 already removed the _redundant_ second pass, and this
+   residual single parse is irreducible. The clone is per-instance isolation before `form.value`
+   is exposed — also non-deferrable.
+2. **The originals walk is load-bearing, not deferrable.** `diffAndApply({}, schemaInitialData)`
+   seeds `originals` (the dirty baseline) AND `pathOrdinals` in schema-declaration order in ONE
+   pass (`:1814`). `pathOrdinals` drives `form.meta.errors` SORT order, so deferring the walk
+   would seed ordinals in error-_appearance_ order instead → `meta.errors` reorders → an
+   observable change (constraint #1). Splitting it (eager ordinal-only walk + lazy value capture)
+   still walks O(F) for the ordinals, so there is no net win.
+3. **The one clean deferral candidate is ~1.5% of init AND relocates rather than eliminates.**
+   `getEmptyValueAtPath([])` feeds `walkAuthoredFromSchemaDiff` to derive `authoredPaths`, which is
+   consumed ONLY by `filterAuthoredErrors` (`:2701`) — at field-VALIDATION time, never at mount
+   (construction-time validation is gated to async-strict, non-SSR schemas, `:1904`). So for the
+   common sync form it is dead init work until the first interaction. The deferral ceiling
+   (baseline + the authored two-tree diff, the latter bounded by the `walk` cell at ≤0.014 ms) is
+   ~0.08–0.09 ms (v4) / ~0.05–0.07 ms (v3): ~4–5% of the eager primitives on v4, ~12–15% on v3
+   (v3's cheaper parse makes the fixed baseline a larger slice), but only **~1.5% of end-to-end
+   init** (the matrix `init flat` F=500 is ~5.4 ms v4 / ~3.5 ms v3, incl. the SSR mount). And the
+   kicker: `authoredPaths` is consumed on the first validation = the first keystroke for a default
+   `validateOn:'change'` form, so for _any_ interacted form the work happens regardless. Deferral
+   doesn't remove it — it RELOCATES ~0.08 ms from the once-per-mount init path onto the
+   per-keystroke path the T2/T3/P1/P3 busts just optimized, for a net wash at best and a regression
+   on the more-perceptible keystroke latency, plus the standing complexity of a lazy memo + a
+   `reset()` invalidation.
+
+**P4 closed — non-prize.** Construction is already lazy where laziness helps: `pathAsyncCache`,
+the on-demand `fields` / `elements` / `schemaErrors` / `userErrors` / `fieldValidationCounts`
+Maps, and the optional modules (history / persistence / multi-tab — the eager-optional bundle
+work) are all populated on first use. The eager remainder is either irreducible (parse + clone +
+DU-stub produce `form.value`, observed at the first SSR render) or load-bearing (the originals
+walk seeds declaration-order ordinals), and the sole deferrable slice (authored-paths derivation)
+relocates onto the optimized keystroke path rather than eliminating work.
+`bench/init-decomposition.bench.ts` stands as the standing artifact and the documented map of
+where cold-construction time goes (the parse, on both adapters — context for the banked-wins
+synthesis). The keystroke prizes banked remain T2 + T3 + P1 + P3; the remaining open profiling row
+is P5 (SSR per-field cost at scale).
 
 ## 3. Instrumentation plan (the dashboard)
 

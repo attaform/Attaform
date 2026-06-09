@@ -554,11 +554,11 @@
         "value": {
           "agreed": false,
           "contact": {
-            "email": "",
+            "email": "x",
             "phone": ""
           },
           "profile": {
-            "first": "",
+            "first": "Grace",
             "last": ""
           }
         }
@@ -830,11 +830,11 @@
         "value": {
           "agreed": false,
           "contact": {
-            "email": "",
+            "email": "x",
             "phone": ""
           },
           "profile": {
-            "first": "",
+            "first": "Grace",
             "last": ""
           }
         }

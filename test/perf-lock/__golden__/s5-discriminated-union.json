@@ -1,0 +1,810 @@
+[
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "card"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": false,
+        "displayState": "idle",
+        "errorCount": 1,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "payment",
+              "cardNumber"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": true,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        }
+      }
+    },
+    "label": "initial"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "card"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": true,
+        "displayState": "idle",
+        "errorCount": 0,
+        "errors": [],
+        "firstError": null,
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": false,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": true,
+        "validating": false,
+        "value": {
+          "payment": {
+            "cardNumber": "4111",
+            "kind": "card"
+          }
+        }
+      }
+    },
+    "label": "after-card-edit"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "card"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": true,
+        "displayState": "idle",
+        "errorCount": 0,
+        "errors": [],
+        "firstError": null,
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": false,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": true,
+        "validating": false,
+        "value": {
+          "payment": {
+            "cardNumber": "4111",
+            "kind": "card"
+          }
+        }
+      }
+    },
+    "label": "after-crossvariant-write"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "bank"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": true,
+        "displayState": "idle",
+        "errorCount": 1,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "payment",
+              "account"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": false,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "payment": {
+            "account": "",
+            "kind": "bank"
+          }
+        }
+      }
+    },
+    "label": "after-switch-bank"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "bank"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": true,
+        "displayState": "idle",
+        "errorCount": 0,
+        "errors": [],
+        "firstError": null,
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": false,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": true,
+        "validating": false,
+        "value": {
+          "payment": {
+            "account": "12345678",
+            "kind": "bank"
+          }
+        }
+      }
+    },
+    "label": "after-bank-edit"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "card"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": false,
+        "displayState": "idle",
+        "errorCount": 1,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "payment",
+              "cardNumber"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": true,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        }
+      }
+    },
+    "label": "after-switch-back-card"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "card"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": false,
+        "displayState": "error",
+        "errorCount": 1,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "payment",
+              "cardNumber"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": true,
+        "showErrors": true,
+        "showIdle": false,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 1,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        }
+      }
+    },
+    "label": "after-submit"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "payment.kind": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Kind",
+          "meta": {},
+          "original": "card",
+          "path": [
+            "payment",
+            "kind"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "card"
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": false,
+        "displayState": "idle",
+        "errorCount": 1,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "payment",
+              "cardNumber"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": true,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        }
+      }
+    },
+    "label": "after-reset"
+  }
+]

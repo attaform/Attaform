@@ -19,7 +19,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { nextTick } from 'vue'
 import { wait } from '../utils/form-harness'
-import type { FormLike } from './capture'
+import type { ArraySpec, FormLike } from './capture'
 
 /** The form API surface the drive scripts touch. */
 export type DriveForm = FormLike & {
@@ -30,6 +30,10 @@ export type DriveForm = FormLike & {
   ) => (e: Event) => Promise<void>
   reset: (next?: unknown) => void
   touch: (path?: string) => void
+  insert: (path: string, index: number, value: unknown) => void
+  remove: (path: string, index: number) => void
+  move: (path: string, from: number, to: number) => void
+  append: (path: string, value: unknown) => void
 }
 
 export type Scenario = {
@@ -38,6 +42,7 @@ export type Scenario = {
   makeSchema: (z: any) => unknown
   defaultValues: Record<string, unknown>
   fieldPaths: string[]
+  arrays?: ArraySpec[]
   drive: (form: DriveForm, snap: (label: string) => void) => Promise<void>
 }
 
@@ -102,6 +107,83 @@ export const SCENARIOS: Scenario[] = [
       form.setValue('contact.email', 'x')
       await settle()
       snap('after-edit')
+      await form.handleSubmit(noop, noop)(new Event('submit'))
+      await settle()
+      snap('after-submit')
+      form.reset()
+      await settle()
+      snap('after-reset')
+    },
+  },
+  {
+    id: 's4-array',
+    title: 'wide-array — list/key identity across mutations (small N; dashboard runs N=1000)',
+    makeSchema: (z) =>
+      z.object({
+        rows: z.array(z.object({ name: z.string().min(2), qty: z.number() })),
+      }),
+    defaultValues: {
+      rows: [
+        { name: '', qty: 0 },
+        { name: '', qty: 0 },
+        { name: '', qty: 0 },
+      ],
+    },
+    fieldPaths: [],
+    arrays: [{ path: 'rows', leaves: ['name', 'qty'] }],
+    async drive(form, snap) {
+      snap('initial')
+      form.setValue('rows.0.name', 'Ann')
+      await settle()
+      snap('after-edit-row0')
+      form.insert('rows', 0, { name: 'New', qty: 9 })
+      await settle()
+      snap('after-insert-front')
+      form.remove('rows', 1)
+      await settle()
+      snap('after-remove-index1')
+      form.move('rows', 0, 2)
+      await settle()
+      snap('after-move-0-to-2')
+      form.append('rows', { name: 'End', qty: 1 })
+      await settle()
+      snap('after-append')
+      form.reset()
+      await settle()
+      snap('after-reset')
+    },
+  },
+  {
+    id: 's5-discriminated-union',
+    title: 'DU-heavy — variant switching (exercises the T1 cross-variant guard)',
+    makeSchema: (z) =>
+      z.object({
+        payment: z.discriminatedUnion('kind', [
+          z.object({ kind: z.literal('card'), cardNumber: z.string().min(4) }),
+          z.object({ kind: z.literal('bank'), account: z.string().min(6) }),
+        ]),
+      }),
+    defaultValues: { payment: { kind: 'card', cardNumber: '' } },
+    fieldPaths: ['payment.kind'],
+    async drive(form, snap) {
+      snap('initial')
+      form.setValue('payment.cardNumber', '4111')
+      await settle()
+      snap('after-card-edit')
+      // Cross-variant write: 'account' is not in the active 'card' variant;
+      // the guard must reject it (no 'account' surfaces in the value tree).
+      form.setValue('payment.account', 'SHOULD-REJECT')
+      await settle()
+      snap('after-crossvariant-write')
+      form.setValue('payment', { kind: 'bank', account: '' })
+      await settle()
+      snap('after-switch-bank')
+      form.setValue('payment.account', '12345678')
+      await settle()
+      snap('after-bank-edit')
+      form.setValue('payment', { kind: 'card', cardNumber: '' })
+      await settle()
+      snap('after-switch-back-card')
       await form.handleSubmit(noop, noop)(new Event('submit'))
       await settle()
       snap('after-submit')

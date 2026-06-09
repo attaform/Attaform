@@ -21,6 +21,16 @@ const REDACTED_ID = '<id>'
 const REDACTED_TS = '<ts>'
 const REDACTED_INSTANCE = '<instance>'
 
+/**
+ * Deep-snapshot an object/array value so a capture FREEZES it at this
+ * checkpoint, instead of aliasing the live reactive tree (which would make
+ * every checkpoint serialize the final state). Primitives pass through.
+ */
+function snapshot<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 /** Form-level meta is a FieldState of the whole form plus submit counters. */
 export type FormMetaLike = Readonly<FieldState> & {
   submitting: boolean
@@ -34,6 +44,7 @@ export type FormMetaLike = Readonly<FieldState> & {
 /** Minimal structural view of the form handle the capture reads. */
 export type FormLike = {
   fields: unknown
+  list: (path: string) => ReadonlyArray<Readonly<FieldState>>
   meta: FormMetaLike
   // `blankPaths` is a ComputedRef<BlankPathsView>; the view is on `.value`.
   blankPaths: { value: { values(): ReadonlyArray<ReadonlyArray<string | number>> } }
@@ -43,7 +54,9 @@ export type FormLike = {
 function readField(fieldsRoot: unknown, dotPath: string): Readonly<FieldState> {
   let node: unknown = fieldsRoot
   for (const segment of dotPath.split('.')) {
-    node = (node as Record<string, unknown>)[segment]
+    // Numeric segments index into array nodes; pass them as numbers.
+    const key = /^\d+$/.test(segment) ? Number(segment) : segment
+    node = (node as Record<string | number, unknown>)[key]
   }
   return node as Readonly<FieldState>
 }
@@ -55,11 +68,14 @@ function normalizeAria(ariaId: string, id: string, suffix: 'error' | 'descriptio
 }
 
 /** Normalize one FieldState into a stable, serializable record. */
-export function captureField(field: Readonly<FieldState>): Record<string, unknown> {
+export function captureField(
+  field: Readonly<FieldState>,
+  normalizeKey: (key: string) => string = (k) => k
+): Record<string, unknown> {
   const id = field.id
   return {
-    value: field.value,
-    original: field.original,
+    value: snapshot(field.value),
+    original: snapshot(field.original),
     pristine: field.pristine,
     dirty: field.dirty,
     focused: field.focused,
@@ -69,7 +85,7 @@ export function captureField(field: Readonly<FieldState>): Record<string, unknow
     blurredAfterInteraction: field.blurredAfterInteraction,
     connected: field.connected,
     updatedAt: field.updatedAt === null ? null : REDACTED_TS,
-    errors: field.errors.map((e) => ({ code: e.code, path: e.path })),
+    errors: field.errors.map((e) => ({ code: e.code, path: snapshot(e.path) })),
     validating: field.validating,
     valid: field.valid,
     transforming: field.transforming,
@@ -81,18 +97,18 @@ export function captureField(field: Readonly<FieldState>): Record<string, unknow
     showSuccess: field.showSuccess,
     showIdle: field.showIdle,
     firstError: field.firstError === undefined ? null : field.firstError.code,
-    path: field.path,
+    path: snapshot(field.path),
     id: REDACTED_ID,
     aria: {
       errorId: normalizeAria(field.aria.errorId, id, 'error'),
       descriptionId: normalizeAria(field.aria.descriptionId, id, 'description'),
     },
-    key: field.key,
+    key: field.key === '' ? '' : normalizeKey(field.key),
     blank: field.blank,
     label: field.label,
     description: field.description ?? null,
     placeholder: field.placeholder ?? null,
-    meta: field.meta,
+    meta: snapshot(field.meta),
   }
 }
 
@@ -110,14 +126,66 @@ export function captureFormMeta(meta: FormMetaLike): Record<string, unknown> {
   }
 }
 
+/** First-appearance ordinal normalizer for opaque array-element keys. */
+export function makeKeyNormalizer(): (key: string) => string {
+  const seen = new Map<string, string>()
+  return (key: string): string => {
+    let ordinal = seen.get(key)
+    if (ordinal === undefined) {
+      ordinal = `<k${seen.size}>`
+      seen.set(key, ordinal)
+    }
+    return ordinal
+  }
+}
+
+/** Capture spec for a field array: the array path + leaf sub-paths per element. */
+export type ArraySpec = { path: string; leaves: string[] }
+
 /**
- * Capture the full observable surface for a scenario: per-field state at
- * each declared path, the form-level meta, and the blank-path set.
+ * Capture a field array as an ordered list of per-element records. The element
+ * `key` (opaque, mount-specific) is normalized to a first-appearance ordinal,
+ * so the golden locks IDENTITY STABILITY across mutations (a row that keeps its
+ * key through an insert/move keeps its ordinal), not the raw token.
  */
-export function captureForm(form: FormLike, fieldPaths: string[]): Record<string, unknown> {
+function captureList(
+  form: FormLike,
+  spec: ArraySpec,
+  normalizeKey: (key: string) => string
+): Array<Record<string, unknown>> {
+  const elements = form.list(spec.path)
+  return elements.map((element, index) => {
+    const fields: Record<string, unknown> = {}
+    for (const leaf of spec.leaves) {
+      fields[leaf] = captureField(
+        readField(form.fields, `${spec.path}.${index}.${leaf}`),
+        normalizeKey
+      )
+    }
+    return {
+      key: element.key === '' ? '' : normalizeKey(element.key),
+      element: captureField(element, normalizeKey),
+      fields,
+    }
+  })
+}
+
+/**
+ * Capture the full observable surface for a scenario: per-field state at each
+ * declared path, the form-level meta, the blank-path set, and (when the
+ * scenario declares arrays) the per-array list capture.
+ */
+export function captureForm(
+  form: FormLike,
+  fieldPaths: string[],
+  arrays: ArraySpec[] = [],
+  normalizeKey: (key: string) => string = (k) => k
+): Record<string, unknown> {
   const fields: Record<string, unknown> = {}
-  for (const path of fieldPaths) fields[path] = captureField(readField(form.fields, path))
-  return {
+  for (const path of fieldPaths) {
+    fields[path] = captureField(readField(form.fields, path), normalizeKey)
+  }
+  const capture: Record<string, unknown> = {
     fields,
     meta: captureFormMeta(form.meta),
     blankPaths: form.blankPaths.value
@@ -125,4 +193,10 @@ export function captureForm(form: FormLike, fieldPaths: string[]): Record<string
       .map((segments) => segments.join('.'))
       .sort(),
   }
+  if (arrays.length > 0) {
+    const lists: Record<string, unknown> = {}
+    for (const spec of arrays) lists[spec.path] = captureList(form, spec, normalizeKey)
+    capture['lists'] = lists
+  }
+  return capture
 }

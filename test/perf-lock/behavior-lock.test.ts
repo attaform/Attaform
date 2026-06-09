@@ -21,7 +21,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { wait } from '../utils/form-harness'
-import { captureForm } from './capture'
+import { captureForm, makeKeyNormalizer } from './capture'
 import { assertGolden } from './golden'
 import { SCENARIOS, type DriveForm, type Scenario } from './scenarios'
 
@@ -63,8 +63,12 @@ async function runScenario(
   await nextTick()
 
   const checkpoints: Checkpoint[] = []
+  const normalizeKey = makeKeyNormalizer()
   const snap = (label: string): void => {
-    checkpoints.push({ label, capture: captureForm(form, scenario.fieldPaths) })
+    checkpoints.push({
+      label,
+      capture: captureForm(form, scenario.fieldPaths, scenario.arrays ?? [], normalizeKey),
+    })
   }
   await scenario.drive(form, snap)
   return { app, checkpoints }
@@ -98,9 +102,11 @@ describe('behavior-lock — observable surface frozen across the matrix', () => 
       expect(afterReset).toBeDefined()
       // reset restores the initial value surface.
       expect(afterReset.meta.value).toEqual(initial.meta.value)
-      // a submit attempt was recorded (the reveal gate actually fired).
+      // when the script submits, the reveal gate must have fired.
       const afterSubmit = byLabel.get('after-submit') as any
-      expect(afterSubmit.meta.submissionAttempts).toBeGreaterThan(0)
+      if (afterSubmit) {
+        expect(afterSubmit.meta.submissionAttempts).toBeGreaterThan(0)
+      }
 
       // (3) Golden master (v4 canonical; v3 proven equal in step 1).
       assertGolden(scenario.id, v4.checkpoints)

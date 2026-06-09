@@ -27,6 +27,7 @@ import {
   aggregateErrorsAt,
   buildContainerFieldStateBase,
   buildFieldStateAccessor,
+  type FieldStateBase,
   type FormMetaBase,
 } from './field-state-api'
 import { buildFieldStateProxy } from './field-state-proxy'
@@ -146,31 +147,142 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     }
   }
 
-  // Thunk producing a fresh `FormMetaBase` snapshot on each call —
-  // the omit'd-shape second argument to `state.getDisplayState`.
-  // Reads run inside the field-state computed, so every reactive
-  // primitive touched here (submissionAttempts, canUndo, ...) registers as
-  // a dependency of that computed. Bypasses the cached field-state
-  // accessor by calling `buildContainerFieldStateBase` directly —
-  // going through the accessor would recurse through the root path's
-  // own showErrors computation.
+  // Thunk producing a fresh `FormMetaBase` on each call — the omit'd-shape
+  // second argument to `state.getDisplayState`. Each call runs inside a
+  // field-state computed, so every reactive primitive a getter touches
+  // registers as a dependency of THAT computed; what a predicate does not
+  // read, the field does not track (see the per-field laziness below). The
+  // rollup getters bypass the cached field-state accessor by calling
+  // `buildContainerFieldStateBase` directly — going through the accessor would
+  // recurse through the root path's own showErrors computation.
   const getFormMetaBase = (): FormMetaBase => {
-    // `validatingSince` is for the field machine, not the predicate's
-    // meta arg — discard it here and let the root field-state computed
-    // thread the root's own anchor when it resolves `form.meta.displayState`.
-    const { base: rootBase } = buildContainerFieldStateBase(
-      state,
-      ROOT_PATH,
-      ROOT_PATH_KEY,
-      formInstanceId
-    )
+    // The whole-form ROLLUP is lazy: its fields are getters that build
+    // `rootBase` once, on first access. Building it eagerly here was P3 vector
+    // 1 — it made every field-state computed depend on every leaf (the edited
+    // leaf's `updatedAt` bumps on each write), re-rendering all fields per
+    // keystroke. The library-default predicate reads no rollup field (only the
+    // O(1) form-level scalars below), so it never tracks the rollup. A custom
+    // predicate that reads `valid` / `errorCount` / ... trips the shared memo
+    // and tracks the rollup, exactly as before. Output is byte-identical for
+    // every predicate; only the rollup dependency tightens. Getters are
+    // enumerable, so `Object.keys` / spread / `JSON.stringify` over the meta
+    // arg are unchanged. (Same getter-over-computed pattern the public
+    // `form.meta` uses below.)
+    //
+    // The rollup's `validatingSince` is for the field machine, not the
+    // predicate's meta arg — unused here; the root field-state computed threads
+    // the root's own anchor when it resolves `form.meta.displayState`.
+    let rollup: FieldStateBase | undefined
+    const rootBase = (): FieldStateBase =>
+      (rollup ??= buildContainerFieldStateBase(
+        state,
+        ROOT_PATH,
+        ROOT_PATH_KEY,
+        formInstanceId
+      ).base)
     return {
-      ...rootBase,
+      // Rollup-derived (FieldStateBase) — the whole rollup builds once, on the
+      // first access of any of these.
+      get value() {
+        return rootBase().value
+      },
+      get original() {
+        return rootBase().original
+      },
+      get pristine() {
+        return rootBase().pristine
+      },
+      get dirty() {
+        return rootBase().dirty
+      },
+      get focused() {
+        return rootBase().focused
+      },
+      get blurred() {
+        return rootBase().blurred
+      },
+      get touched() {
+        return rootBase().touched
+      },
+      get interacted() {
+        return rootBase().interacted
+      },
+      get blurredAfterInteraction() {
+        return rootBase().blurredAfterInteraction
+      },
+      get connected() {
+        return rootBase().connected
+      },
+      get element() {
+        return rootBase().element
+      },
+      get elements() {
+        return rootBase().elements
+      },
+      get updatedAt() {
+        return rootBase().updatedAt
+      },
+      get errors() {
+        return rootBase().errors
+      },
+      get validating() {
+        return rootBase().validating
+      },
+      get valid() {
+        return rootBase().valid
+      },
+      get transforming() {
+        return rootBase().transforming
+      },
+      get busy() {
+        return rootBase().busy
+      },
+      get transformError() {
+        return rootBase().transformError
+      },
+      get path() {
+        return rootBase().path
+      },
+      get id() {
+        return rootBase().id
+      },
+      get aria() {
+        return rootBase().aria
+      },
+      get key() {
+        return rootBase().key
+      },
+      get blank() {
+        return rootBase().blank
+      },
+      get label() {
+        return rootBase().label
+      },
+      get description() {
+        return rootBase().description
+      },
+      get placeholder() {
+        return rootBase().placeholder
+      },
+      get meta() {
+        return rootBase().meta
+      },
+      get errorCount() {
+        return rootBase().errors.length
+      },
+      // Form-level scalars — EAGER reads, tracked on every field-state eval.
+      // They are O(1) refs that never change on a keystroke, so tracking them
+      // per field costs nothing on the hot path. Kept eager (NOT lazy like the
+      // rollup) because behaviors beyond the predicate's own output depend on
+      // every field re-evaluating when they flip — most notably, the display
+      // engine is cleared on submit (revealing held spinners), and that
+      // imperative reset only becomes visible if `submitting` is a tracked dep
+      // of each field. Matches the pre-bust dependency set for these scalars
+      // exactly.
       submitting: state.submitting.value,
       submissionAttempts: state.submissionAttempts.value,
       departAttempts: state.departAttempts.value,
       submitError: state.submitError.value,
-      errorCount: rootBase.errors.length,
       submitted: state.submitted.value,
       instanceId: formInstanceId,
     }

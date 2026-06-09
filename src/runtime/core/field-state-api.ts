@@ -13,6 +13,7 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { defaultDisplayState, isDefaultDisplayState } from './display-state'
+import { makeBlankRequiredError } from './error-codes'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
@@ -176,7 +177,19 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   const original = state.originals.get(key)?.value
   const pristine = state.isPristineAtPath(segments)
   const schemaForKey = state.schemaErrors.get(key)
-  const blankForKey = state.derivedBlankErrors.value.get(key)
+  // Synthesize this leaf's blank-required error from its OWN blank membership
+  // rather than reading the whole-form `derivedBlankErrors` Map. That computed
+  // returns a fresh Map identity on ANY blank transition, which woke every
+  // field's computed (P3 vector 2). `blankPaths.has(key)` tracks only this
+  // key's membership (Vue 3.5 reactive Set), so a sibling's blank change no
+  // longer invalidates this field. Byte-identical to the aggregated entry: the
+  // shared builder, gated on the same `isRequiredAtPath`. The container /
+  // form-level rollup (`aggregateErrorsAt`) still reads `derivedBlankErrors` —
+  // a container legitimately depends on every descendant.
+  const blankForKey =
+    state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
+      ? [makeBlankRequiredError(segments, state.formKey)]
+      : undefined
   const userForKey = state.userErrors.get(key)
   const errors: ValidationError[] = []
   if (schemaForKey !== undefined) errors.push(...schemaForKey)

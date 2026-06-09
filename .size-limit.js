@@ -236,7 +236,19 @@ export default [
     // on the public surface, the field / container `transforming` rollup,
     // and the vRegisterFile unification onto the shared transform pipeline
     // (Stage 2). Measured at 51.28 KB.
-    limit: '52 KB',
+    //
+    // Raised 52 → 53 KB on the P3 render-isolation bust
+    // (perf/runtime-analysis): getFormMetaBase's eager `{ ...rootBase }`
+    // spread became per-field LAZY getters (the 28 FieldStateBase rollup
+    // fields + errorCount), so the library-default predicate tracks only the
+    // O(1) form-level scalars (submissionAttempts, ...) instead of the
+    // whole-form rollup. That kills the O(field-count) component over-render on
+    // the form.fields surface — a sibling field's edit no longer wakes every
+    // field's computed. The 28 getters are slightly less compressible than the
+    // prior spread, the same trade the CORE-P3 form.meta getter collapse
+    // already took (see zod-v4.mjs). Output is byte-identical (the behavior-lock
+    // golden held). Measured at 52.13 KB.
+    limit: '53 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -463,7 +475,13 @@ export default [
     //
     // Raised 58 → 60 KB tracking index.mjs's async-register-transforms bump
     // (#361): same shared core chunk. Measured at 59.27 KB.
-    limit: '60 KB',
+    //
+    // Raised 60 → 61 KB tracking index.mjs's P3 render-isolation bust
+    // (perf/runtime-analysis): same shared core chunk — getFormMetaBase's eager
+    // rootBase spread became per-field lazy getters, eliminating the
+    // O(field-count) form.fields component over-render. The 28 rollup getters
+    // are slightly less compressible than the spread. Measured at 60.09 KB.
+    limit: '61 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

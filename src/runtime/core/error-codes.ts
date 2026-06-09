@@ -1,3 +1,6 @@
+import type { Path } from './paths'
+import type { FormKey, ValidationError } from '../types/types-api'
+
 /**
  * Stable identifiers for library-emitted `ValidationError` codes.
  *
@@ -58,3 +61,20 @@ export const AttaformErrorCode = {
 } as const
 
 export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof AttaformErrorCode]
+
+/**
+ * The canonical "No value supplied" error for a required field currently in
+ * the blank set. Single source of truth so the reactively-aggregated form
+ * (`derivedBlankErrors`, create-form-store.ts) and the per-leaf field-state
+ * synthesis (field-state-api.ts) emit a byte-identical entry — they read
+ * different reactive channels (the whole-form blank Map vs. a leaf's own
+ * `blankPaths.has(key)`) but must produce the same `ValidationError`.
+ */
+export function makeBlankRequiredError(segments: Path, formKey: FormKey): ValidationError {
+  return {
+    message: 'No value supplied',
+    path: [...segments],
+    formKey,
+    code: AttaformErrorCode.NoValueSupplied,
+  }
+}

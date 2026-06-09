@@ -25,7 +25,7 @@ import type { ElementRecord, FieldRecord, OriginalsRecord } from './store-record
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
-import { AttaformErrorCode } from './error-codes'
+import { AttaformErrorCode, makeBlankRequiredError } from './error-codes'
 import {
   canonicalizePath,
   coerceToPathKey,
@@ -1482,14 +1482,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       const segments = segmentsForPathKey(pathKey)
       if (segments === null) continue
       if (!schema.isRequiredAtPath(segments)) continue
-      result.set(pathKey, [
-        {
-          message: 'No value supplied',
-          path: [...segments],
-          formKey,
-          code: AttaformErrorCode.NoValueSupplied,
-        },
-      ])
+      result.set(pathKey, [makeBlankRequiredError(segments, formKey)])
     }
     return result
   })

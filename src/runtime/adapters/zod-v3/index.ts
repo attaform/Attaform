@@ -1521,19 +1521,24 @@ function runStrictGetDefaultsV3<Form>(
 }
 
 /**
- * v3's slim-mode path walk for `getSlimPrimitiveTypesAtPath` and
- * `getSchemasAtPath`. Strips refinements / defaults / wrappers off the
- * root, then derives the slim shape, then walks. Yielded candidates
- * reflect the slim shape — which is what the slim-primitive gate
- * consults at write time and what consumers expect when introspecting
- * sub-schemas. v4's introspector aliases this to the unstripped walk
- * because its path walker already inlines wrapper peeling.
+ * The slim-mode root projection (strip refinements / defaults / wrappers,
+ * then derive the slim shape) is a pure function of the root schema — the
+ * strip and slim configs below are fixed. Memoise it on root identity so the
+ * projection runs once per schema instead of once per slim-mode walk.
+ *
+ * The walk is invoked once per `register()` (via `getSlimPrimitiveTypesAtPath`)
+ * and once per field on its first state read (via the factory's `isLeafAtPath`
+ * cache miss), always against the form root. Recomputing the whole-root
+ * projection on each call made both O(F), i.e. O(F²) to wire an F-field form.
+ * Cached, each lookup is the O(D) `getNestedZodSchemasAtPath` walk. WeakMap-keyed
+ * so a schema going out of scope releases its slim copy. The projection is
+ * read-only walked downstream, so sharing one copy across calls is sound.
  */
-function getNestedSchemasInSlimModeV3(
-  rootSchema: z.ZodSchema,
-  path: Path,
-  maxRecursionDepth: number
-): z.ZodTypeAny[] {
+const slimRootCacheV3 = new WeakMap<z.ZodSchema, z.ZodTypeAny>()
+
+function getSlimRootV3(rootSchema: z.ZodSchema): z.ZodTypeAny {
+  const cached = slimRootCacheV3.get(rootSchema)
+  if (cached !== undefined) return cached
   const [strippedSchema] = stripRootSchema(rootSchema, {
     stripDefaultValues: true,
     stripNullable: true,
@@ -1544,5 +1549,23 @@ function getNestedSchemasInSlimModeV3(
     schema: strippedSchema,
     stripConfig: { stripDefaultValues: true, stripZodEffects: true },
   })
-  return getNestedZodSchemasAtPath(slimSchema, path, maxRecursionDepth)
+  slimRootCacheV3.set(rootSchema, slimSchema)
+  return slimSchema
+}
+
+/**
+ * v3's slim-mode path walk for `getSlimPrimitiveTypesAtPath` and
+ * `getSchemasAtPath`. Resolves the path against the slim-projected root
+ * (memoised by `getSlimRootV3`), so yielded candidates reflect the slim
+ * shape the slim-primitive gate consults at write time and consumers expect
+ * when introspecting sub-schemas. v4's introspector aliases this to the
+ * unstripped walk because its path walker already inlines wrapper peeling,
+ * so v4 never pays the projection per call.
+ */
+function getNestedSchemasInSlimModeV3(
+  rootSchema: z.ZodSchema,
+  path: Path,
+  maxRecursionDepth: number
+): z.ZodTypeAny[] {
+  return getNestedZodSchemasAtPath(getSlimRootV3(rootSchema), path, maxRecursionDepth)
 }

@@ -265,6 +265,52 @@ The keystroke is now O(depth): flat F=5→500 went from an 82× falloff to 1.13�
 killing the root-spread + double-diff. **T2 BUSTED** across flat, nested, and
 array; T1 (deep) confirmed already-O(D) and left alone.
 
+### Bust 3: single-pass authored-path derivation (2026-06-09)
+
+Construction (and `reset()`) learned which paths the schema author put a
+`.default()` at by running the adapter's `getDefaultValues` TWICE — once with
+`useDefaultSchemaValues: true` (the real initial data) and once with `false` (a
+"slim baseline") — then diffing the two value trees (`rebuildAuthoredPaths` →
+`walkAuthoredFromSchemaDiff`). Each pass clones the whole schema (`getSlimSchema`)
+and runs zod `safeParse` (up to twice), and the slim call passed `strict: true`,
+so it ALSO ran a full-schema strict parse whose errors were then discarded. The
+second pass cost about as much as the first, all to produce a value tree to diff.
+
+The diff only ever reads that value tree — never a validated parse of it — and the
+raw blank tree is already exposed by the factory as `getEmptyValueAtPath([])`
+(literally `deriveDefault(rootSchema, false)`): no clone, no parse. The swap is a
+single line inside `rebuildAuthoredPaths`, which is the one source of the authored
+baseline for both construction and reset. A direct probe measured the raw walk
+**31.8× cheaper** than the full slim pass (F=500: 1.97ms → 0.062ms/op).
+
+The blank baseline round-trips through the old slim parse as a structural no-op, so
+the authored-path set — which feeds `filterAuthoredErrors`, i.e. which mount-time
+verdicts a consumer sees — is unchanged. `test/core/authored-baseline-equivalence.test.ts`
+proves `getEmptyValueAtPath([])` is `toStrictEqual` to the slim-parsed baseline AND
+yields an identical authored set across the parity-sensitive shapes (`.default(x)`,
+`.default('')`-equals-empty, `.default(undefined)`, `.catch()`, `optional(default)`,
+array-of-objects, typed empties, discriminated-union seeding) on BOTH adapters. A
+future drift between the two baselines fails that test (it would silently move
+authored-path filtering). Behavior-lock goldens byte-identical, full suite green
+(4164). No size impact: `getEmptyValueAtPath` was already eager, and a
+`getDefaultValues` call left the eager path (47.35 kB, unchanged).
+
+Before / after, end-to-end `init flat` (matrix bench):
+
+| shape | v4 before | v4 after | v4 gain | v3 before | v3 after |
+| ----- | --------- | -------- | ------- | --------- | -------- |
+| F=5   | 5,881     | 7,955    | +35%    | 12,672    | 11,381   |
+| F=50  | 1,699     | 2,217    | +30%    | 3,295     | 3,441    |
+| F=500 | 146       | 184      | +26%    | 278       | 287      |
+
+The win is **concentrated on v4** — exactly where T6 makes `safeParse` the
+expensive part, so eliminating the redundant pass's parse saves the most — and it
+NARROWS the v4/v3 init gap (F=500: 1.90× → 1.56×; F=50: 1.94× → 1.55×), partially
+addressing T6 as a side effect. v3 is flat-to-small within noise: its cheaper parse
+made the redundant pass a smaller slice of total init to begin with. **T3 BUSTED**
+(the double-parse at init is gone); the residual single `deriveDefault(false)` walk
+is ~3% of the eliminated pass.
+
 ## 3. Instrumentation plan (the dashboard)
 
 Today's gap: `check:bench` only computes `hz(new)/hz(old)` against a 3× floor

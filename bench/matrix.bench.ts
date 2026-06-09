@@ -5,7 +5,7 @@
  * ABSOLUTE ops/sec per cell, so the dashboard can track drift and the
  * profiling pass can read the SCALING SLOPE to confirm or refute predictions:
  *
- *   init flat F={5,50,500}     -> T3 double-parse, O(F.D)?  (+ T6 v3 vs v4)
+ *   init flat F={5,50,500}     -> T3 double-parse [BUSTED], O(F.D)? (+ T6 v3 vs v4)
  *   keystroke deep D={3,8,16}  -> T1 guard, O(D^2) with zero unions?
  *   keystroke flat F={5,50,500}
  *     & wideArray N={10,100,1000} -> T2 full-tree diff, O(F)?
@@ -29,6 +29,12 @@
  * not O(field-count) / O(array-length)). A re-introduced slope on those groups
  * is a regression. `keystroke deep` stays O(D) by design. See PERF-ANALYSIS.md
  * "Bust 2" and test/core/reactivity-contract.test.ts (the behavioral lock).
+ *
+ * Bust 3 (single-pass authored-path derivation) BUSTED T3: init no longer runs a
+ * second full `getDefaultValues` pass to diff for authored-default paths. `init
+ * flat` v4 gained ~26-35% and the v4/v3 init gap narrowed (T6-adjacent); v3 is flat
+ * within noise. A re-introduced second full pass on init is a regression. See
+ * PERF-ANALYSIS.md "Bust 3" and test/core/authored-baseline-equivalence.test.ts.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

@@ -1080,11 +1080,11 @@ function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<Path
 }
 
 /**
- * Diff two `getDefaultValues` outputs (with vs without
- * `useDefaultSchemaValues`) to find every path where the schema author
- * declared a `.default(...)` chain. Paths whose value differs between
- * the two passes are positions where a declared default takes effect,
- * including `.default(undefined)` — which still differs from the slim
+ * Diff the schema's with-defaults data against its blank baseline (the
+ * raw `deriveDefault(false)` walk) to find every path where the schema
+ * author declared a `.default(...)` chain. Paths whose value differs
+ * between the two are positions where a declared default takes effect,
+ * including `.default(undefined)` — which still differs from the blank
  * baseline because the latter falls through to the inner schema's
  * empty value (`''`, `0`, etc.) rather than the wrapper's chosen
  * undefined.
@@ -1246,10 +1246,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   //      so any validation verdict against that undefined IS
   //      verdict-worthy from their perspective.
   //   2. Schema-declared `.default(value)` chains, detected by diffing
-  //      two `getDefaultValues` passes (with vs without
-  //      `useDefaultSchemaValues`). Paths where the with-defaults
-  //      data differs from the slim baseline are positions the schema
-  //      author declared a default at, including `.default(undefined)`.
+  //      the with-defaults data against the schema's blank baseline
+  //      (`getEmptyValueAtPath([])`, the raw `deriveDefault(false)`
+  //      walk). Paths where the with-defaults data differs from that
+  //      baseline are positions the schema author declared a default
+  //      at, including `.default(undefined)`.
   const authoredPaths = new Set<PathKey>()
   /**
    * Rebuild `authoredPaths` from a fresh constraints baseline + schema
@@ -1257,18 +1258,23 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
    * replace the form's pristine reference, so the authoring set must
    * track the new baseline. Idempotent: clears the Set first, then
    * re-populates from (1) the constraints argument and (2) a diff of
-   * the schema's with-defaults vs slim baselines.
+   * the schema's with-defaults data against its blank baseline.
    */
   function rebuildAuthoredPaths(constraints: unknown, schemaWithDefaultsData: unknown): void {
     authoredPaths.clear()
     if (constraints !== undefined) {
       walkAuthoredFromConstraints(constraints, [], authoredPaths)
     }
-    const slimResponse = schema.getDefaultValues({
-      useDefaultSchemaValues: false,
-      strict,
-    })
-    walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimResponse.data, [], authoredPaths)
+    // The authored-default diff needs only the schema's BLANK baseline
+    // value tree (every `.default()` skipped), not a validated parse of
+    // it. `getEmptyValueAtPath([])` is the raw `deriveDefault(false)`
+    // walk — structurally identical to a full slim-mode
+    // `getDefaultValues({ useDefaultSchemaValues: false })` here (the
+    // blank tree round-trips through the slim parse unchanged), without
+    // the schema clone + double `safeParse` that pass pays. Locked by
+    // `test/core/authored-baseline-equivalence.test.ts`.
+    const slimBaseline = schema.getEmptyValueAtPath([])
+    walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimBaseline, [], authoredPaths)
   }
   rebuildAuthoredPaths(defaultValues, schemaInitialData)
 

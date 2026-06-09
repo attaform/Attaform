@@ -9,7 +9,7 @@ consumer observes. It evolves as we profile (fills the `Measured` columns) and
 bust (flips `Status`).
 
 Bundle size is intentionally out of scope here: that measurement problem is
-mature (`size-limit` over 10 bundles + the `check:eager` 48.384 KB first-paint
+mature (`size-limit` over 10 bundles + the `check:eager` first-paint
 gate) and its honest floor is already characterized. This program is about
 **wall-clock, allocations, render work, and SSR/hydration cost.**
 

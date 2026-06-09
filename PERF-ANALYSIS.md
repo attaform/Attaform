@@ -86,19 +86,19 @@ Predicted costs are from a **static read** (`create-form-store.ts`, `directive.t
 the practical pass. A row is a **blocker** when its predicted cost exceeds its
 information-theoretic floor for that operation.
 
-| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured                             | Status                       |
-| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------------------ | ---------------------------- |
-| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | —                                    | open                         |
-| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | —                                    | open                         |
-| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | —                                    | open                         |
-| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2604`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | —                                    | open                         |
-| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | —                                    | open                         |
-| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | —                                    | open                         |
-| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed            | B SHIPPED (flag); A declined |
-| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2093-2116, 2693-2696` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | guard ~0.32µs; clone CORE-P1a-scoped | closed — non-prize           |
-| P3  | Over-render (components re-render on unchanged slice)                                            | needs render-trigger probe                  | unknown                                           | O(changed)                                | free / internal                           | —                                    | open                         |
-| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —                                    | open                         |
-| P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —                                    | open                         |
+| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured                             | Status                           |
+| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------------------ | -------------------------------- |
+| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | —                                    | open                             |
+| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | —                                    | open                             |
+| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | —                                    | open                             |
+| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2604`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | —                                    | open                             |
+| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | —                                    | open                             |
+| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | —                                    | open                             |
+| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed            | B SHIPPED (flag); A declined     |
+| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2093-2116, 2693-2696` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | guard ~0.32µs; clone CORE-P1a-scoped | closed — non-prize               |
+| P3  | Over-render (components re-render on unchanged slice)                                            | `field-state-api.ts:581`; `:1478`           | O(F) renders/keystroke (×2 on validateOn:change)  | O(1) for default predicate                | behavior-adjacent (formMeta contract)     | F× → 1× per keystroke (fields)       | confirmed — bust reference-first |
+| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —                                    | open                             |
+| P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —                                    | open                             |
 
 > **Measured (first pass, 2026-06-08):** T2 **confirmed** (the keystroke
 > prize), T1 **refuted**, T6 **confirmed**, T3 probing. Raw hz and the slope
@@ -566,6 +566,73 @@ pulled.**
 and the blur-mode-only guard (PR #287), leaving a residual that is byte-identical-required. Net:
 nothing to bust. The keystroke prizes already banked are T2 + T3 + P1 (Bust B); the remaining
 unprofiled keystroke candidate is P3 (component over-render).
+
+### P3 measurement: component over-render on the `form.fields` surface (2026-06-09)
+
+Probed with `test/perf-lock/p3-render-trigger.probe.test.ts` (jsdom mount, render-fn invocation
+counter, the REAL public surface). Methodology choice (the open question below): a render-fn
+counter, not a store-effect counter — the render count is the actual observable (wasted
+_component_ work); a store-effect counter over-counts (a computed re-evaluating is not a render)
+and only sees the store layer we already cleared. The decisive contrast is the subscription
+style each field component uses. Each cell mounts one component per field, settles, zeroes the
+counter, drives ONE `setValue`, settles, and reports per-field render counts.
+
+| scenario / style                                | edit            | edited | siblings re-rendered          |
+| ----------------------------------------------- | --------------- | ------ | ----------------------------- |
+| flat / `register().displayValue` (control)      | `a`             | 1      | **0 / 4**                     |
+| flat / `fields(path).displayState`              | `a`             | 2      | **4 / 4**                     |
+| flat / `fields(path).value`                     | `a`             | 2      | **4 / 4**                     |
+| nested / `fields(path).displayState`            | `profile.first` | 2      | **5 / 5** (incl. `contact.*`) |
+| array / `fields(path).displayState`             | `rows.0.name`   | 2      | **5 / 5** (incl. rows 1 & 2)  |
+| flat / `fields`, validateOn:submit, pre-dirtied | `a`             | 1      | **4 / 4** (quiet re-edit)     |
+
+**Confirmed — O(F) component over-render, structural.** Every component reading the `form.fields`
+surface re-renders on every write to ANY field (×2 with `validateOn:change`, the second wave on
+the validation settle). The `register().displayValue` control stays perfectly granular (0
+siblings), so the over-render is NOT in the deep value tree (T5) or in Vue — it is isolated to
+the `form.fields(path)` field-state computed. The `validateOn:submit` + pre-dirtied "quiet
+re-edit" cell (no blank transition, no pristine flip, no validation) still over-renders 4/4,
+proving the cause is STRUCTURAL, not a validation/blank artifact.
+
+Root cause — every field-state computed embeds two whole-form dependencies:
+
+1. **`getFormMetaBase()` root rollup.** Called UNCONDITIONALLY for every field
+   (`field-state-api.ts:581`) to build the `formMeta` argument; it runs
+   `buildContainerFieldStateBase(ROOT)` (`build-form-api.ts:161`), which walks every leaf in
+   `originals` (reading each leaf's field record, pristine, blank, validation/transform counts)
+   and aggregates errors across the whole form. The edited leaf's record (`updatedAt`) is bumped
+   on every write, so the root rollup invalidates on every keystroke → every field's computed.
+2. **`derivedBlankErrors.value`** (`create-form-store.ts:1478`) — a computed returning a FRESH
+   Map, read by every field via `.value.get(key)` (`field-state-api.ts:179`). It recomputes (new
+   Map identity) on any blank-membership change, notifying all field computeds.
+
+The `register().displayValue` path reads only `getValueAtPath(path)` + `blankPaths.has(key)`
+(`register-api.ts:207`) — own-key granular, hence the 0-sibling control. (Likely related: the
+directive's `ariaDisplayState`, `register-api.ts:334`, reads the same field-state computed when
+`autoAria` is on (default), so even register-only forms recompute the display engine O(F) times
+per keystroke — a directive-update cost, not a component render; follow-up to probe.)
+
+Proposed bust (REFERENCE-FIRST — behavior-adjacent, not yet ratified):
+
+- **Lazy `formMeta`.** The default predicate reads only `formMeta.submissionAttempts` from the
+  meta arg (`display-state.ts:40`, `isGateOpen`); everything else it reads is on the own-`field`
+  arg. So replace the eager root-base build with rollup-derived `formMeta` fields as GETTERS that
+  compute-and-track on access. The default predicate (99%) then tracks only `submissionAttempts`
+  (a scalar, unchanged per keystroke) → **O(F) → O(1)** renders, byte-identical output. A custom
+  predicate that reads `formMeta.errorCount` / `.valid` / `.errors` still tracks the aggregate
+  (correct — it asked for it). The `formMeta` enumerable shape (keys / spread / JSON) and the
+  `displayState` VALUE stay byte-identical; only the render COUNT drops — the one signal P3
+  intentionally moves (per §4 the render-trigger trace is simultaneously the P3 metric AND a lock).
+- **Own-key blank error.** Each field synthesizes its own blank error from `blankPaths.has(key)` +
+  `isRequiredAtPath(segments)` instead of routing the per-field read through the whole-form
+  `derivedBlankErrors` Map (which keeps its aggregate consumers).
+
+Impact scales with how much a consumer leans on the `form.fields` surface vs. the directive: a
+50-field form built on `form.fields` pays ~50× (or ~100× with change-validation) the necessary
+renders per keystroke. Cross-field-eligibility forms (large, many fields) are the worst case.
+**Status: confirmed prize; bust is behavior-adjacent (touches the public `formMeta` contract that
+custom `getDisplayState` predicates receive + field-state reactivity timing), so reference-first
+before implementation.**
 
 ## 3. Instrumentation plan (the dashboard)
 

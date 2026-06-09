@@ -86,19 +86,19 @@ Predicted costs are from a **static read** (`create-form-store.ts`, `directive.t
 the practical pass. A row is a **blocker** when its predicted cost exceeds its
 information-theoretic floor for that operation.
 
-| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured | Status |
-| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | -------- | ------ |
-| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | —        | open   |
-| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | —        | open   |
-| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | —        | open   |
-| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2604`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | —        | open   |
-| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | —        | open   |
-| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | —        | open   |
-| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2551-2558`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | —        | open   |
-| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2057-2079, 2642-2646` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | —        | open   |
-| P3  | Over-render (components re-render on unchanged slice)                                            | needs render-trigger probe                  | unknown                                           | O(changed)                                | free / internal                           | —        | open   |
-| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —        | open   |
-| P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —        | open   |
+| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured                        | Status                  |
+| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------------- | ----------------------- |
+| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | —                               | open                    |
+| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | —                               | open                    |
+| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | —                               | open                    |
+| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2604`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | —                               | open                    |
+| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | —                               | open                    |
+| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | —                               | open                    |
+| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | pool 0%; ctrl ~2.85µs/keystroke | A declined; B candidate |
+| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2057-2079, 2642-2646` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | —                               | open                    |
+| P3  | Over-render (components re-render on unchanged slice)                                            | needs render-trigger probe                  | unknown                                           | O(changed)                                | free / internal                           | —                               | open                    |
+| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | —                               | open                    |
+| P5  | SSR per-field render cost at scale                                                               | transforms + getSSRProps                    | unknown                                           | O(F) unavoidable, constant bustable       | investigate                               | —                               | open                    |
 
 > **Measured (first pass, 2026-06-08):** T2 **confirmed** (the keystroke
 > prize), T1 **refuted**, T6 **confirmed**, T3 probing. Raw hz and the slope
@@ -435,6 +435,57 @@ Notes: the `flatRefined` bench commit (97a6a05) landed with a red `pnpm typechec
 in the predicate) — the pre-commit hook runs only eslint/prettier, not `tsc`, so bench/test
 TS errors can slip in; fixed in 755a9bd. Table-cell reconciliation (T4 Evidence `:2604` has
 drifted to the alloc line; the real seam is `:2651`) stays a separate noted follow-up.
+
+### P1 measurement: per-keystroke validation-schedule alloc (2026-06-09)
+
+The ledger flagged `scheduleFieldValidation` (`create-form-store.ts:2589`) for allocating
+fresh objects on every change/blur keystroke with no pool, prescribing "reuse per-field
+entry." Probed with `bench/alloc-churn.bench.ts`, a primitive microbench of the synchronous
+scheduling allocs (`:2597-2612`). Why a primitive, not an end-to-end loop: P1's allocs fire
+only in change/blur mode (submit early-returns at `:2595`, which is why the matrix keystroke
+sweeps — all `validateOn: 'submit'` — never touched P1), and a change-mode loop accumulates
+unflushed timers (the documented skew). Four cells decompose every candidate prize:
+
+| cell                    | hz         | per-op   | what it isolates                                  |
+| ----------------------- | ---------- | -------- | ------------------------------------------------- |
+| controller-only (floor) | 405,479    | ~2.47 µs | `new AbortController()` + `.abort()` of the prior |
+| current (today)         | 342,852    | ~2.92 µs | + fresh entry object + run closure + `map.set`    |
+| pooled (bust A)         | 348,399    | ~2.87 µs | reuse the entry, skip the `map.set`               |
+| epoch-only (bust B)     | 31,977,072 | ~0.03 µs | drop the controller; cancel via a generation #    |
+
+- **Bust A — P1-as-specified (pool the entry): DEAD.** `pooled/current ≈ 1.0×` (within the
+  ±6–8% rme, marginally negative: the in-place field writes cancel the saved object literal).
+  The entry + closure + `map.set` together cost ~3% over the floor; the `AbortController`
+  construct+abort is ~99% of the scheduling alloc and is one-shot, so a pool cannot touch it.
+  **Declined.**
+- **Bust B — drop the `AbortController`, cancel via a generation counter:** removes ~2.85 µs
+  of synchronous per-keystroke work (the 93× micro-ratio overstates the keystroke impact — the
+  deferred parse is unchanged; the robust read is the absolute ~2.85 µs). The win is
+  **F-independent** (fixed per keystroke regardless of field count, unlike the busted O(F)
+  costs) and sits on the **synchronous input-event critical path** — roughly 17% of a small-F
+  change-mode keystroke (~2.85 of ~16.5 µs: structural write ~13.6 µs + scheduling ~2.9 µs).
+  It is also adapter-independent (no parse involved), so unlike T4 there is no v3/v4 asymmetry.
+
+  **Byte-identity is tractable.** All four validation-controller `.abort()` sites are pure
+  supersede/cancel-detection, never a consumer-facing abort: `:2601` (drop a superseded run),
+  `:2558` (a late async result can't clobber a sync DU-reshape write), `:2768` (cancel-all on
+  submit / `validateAsync`), `:2793` (cancel-at-prefix on `resetField`). The sole consumer of
+  every abort is the internal `if (controller.signal.aborted) return` guard (`:2614` pre-parse,
+  `:2658` post-resolve); `validateAtPath` (`:2656`) takes no signal and no consumer validator
+  receives one. (The escaping `ctx.signal` at `:1724` is the SEPARATE transform-subsystem
+  controller and must stay.) A monotonic per-path generation token reproduces all four; the
+  global epoch gate (`scheduleEpoch` / `lastCommittedEpoch`) is adjacent machinery but is
+  form-level, so Bust B adds a per-path token distinct from it.
+
+  **Decision (open).** Absolute ~2.85 µs is sub-perceptible (a keystroke at 16 vs 13 µs both
+  feel instant), so by the same impact bar that scoped out T4 the consistent default is
+  RECORD-AND-DECLINE. What could flip it: Bust B is far cleaner than T4 (no asymmetry, no
+  two-pass, machinery partly exists) and is a defensible craft win — eliminating a heavyweight
+  per-keystroke native allocation, proven byte-identical. Per the "profile first, then bust the
+  winner" plan it should also be compared against the still-unprofiled keystroke P-rows (P2
+  blur-dedup clones, P3 over-render) before any commitment. Held as a candidate pending that
+  compare + a reference-before-change sign-off; if pursued, gated behind a T4-style equivalence
+  harness across the four controller sites.
 
 ## 3. Instrumentation plan (the dashboard)
 

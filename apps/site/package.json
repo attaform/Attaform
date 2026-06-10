@@ -25,6 +25,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@vue/repl": "^4.7.2",
     "attaform": "workspace:*",
+    "attaform-bench-arena": "workspace:*",
     "better-sqlite3": "^12.9.0",
     "lucide-vue-next": "^1.0.0",
     "satori": "^0.26.0",

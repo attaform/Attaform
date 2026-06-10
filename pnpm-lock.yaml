@@ -244,6 +244,9 @@ importers:
       attaform:
         specifier: workspace:*
         version: link:../..
+      attaform-bench-arena:
+        specifier: workspace:*
+        version: link:../bench-arena
       better-sqlite3:
         specifier: ^12.9.0
         version: 12.10.0

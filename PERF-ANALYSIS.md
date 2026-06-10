@@ -1,8 +1,9 @@
 # Attaform Runtime Performance Program
 
-Status: **matrix profiled; free/internal wins banked** (T2 · T3 · P1 · P3 · P5).
-v0.21.2 baseline, branch `perf/runtime-analysis`. T5 (architectural lever) parked,
-reference-first. See the Banked-wins synthesis.
+Status: **matrix profile complete; free/internal wins banked** (T2 · T3 · P1 · P3 · P5).
+v0.21.2 baseline, branch `perf/runtime-analysis`. Every other row measured-and-scoped or
+confirmed-and-folded; T5 (the architectural lever) measured-and-scoped 2026-06-10. See the
+Banked-wins synthesis.
 
 This is the living plan for the runtime-performance journey: the workload matrix
 we measure on, the complexity ledger of blockers, the instrumentation we build,
@@ -88,23 +89,23 @@ Predicted costs are from a **static read** (`create-form-store.ts`, `directive.t
 the practical pass. A row is a **blocker** when its predicted cost exceeds its
 information-theoretic floor for that operation.
 
-| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured                                     | Status                                                                                      |
-| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | deep ~O(D), sub-linear (D=16: 3.5×/5.3×)     | REFUTED 2026-06-08 (wall-clock; guard at path-walk floor)                                   |
-| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | F=500 1,067→245,084 hz; O(F)→O(depth)        | BUSTED 2026-06-08 (targeted in-place apply, Bust 1+2)                                       |
-| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | init v4 F=500 +26%; 2nd parse gone           | BUSTED 2026-06-09 (single-pass authored-path, Bust 3)                                       |
-| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2651`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | whole-form O(F)/keystroke; ~92–98% redundant | SCOPED OUT 2026-06-09 (byte-identical lever needs 2nd parse → v3 regression; 2 gates stand) |
-| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | — (architectural; not profiled)              | PARKED — reference-first, last                                                              |
-| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | v4 init ~2× v3; flips at runtime             | CONFIRMED 2026-06-08; narrowed by T3, no standalone bust                                    |
-| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed                    | B SHIPPED (flag); A declined                                                                |
-| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2093-2116, 2693-2696` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | guard ~0.32µs; clone CORE-P1a-scoped         | closed — non-prize                                                                          |
-| P3  | Over-render (components re-render on unchanged slice)                                            | `field-state-api.ts:581`; `:1478`           | O(F) renders/keystroke (×2 on validateOn:change)  | O(1) for default predicate                | behavior-adjacent (formMeta contract)     | F× → 0 siblings/keystroke (fields)           | BUSTED 2026-06-09 (lazy formMeta + own-key blank)                                           |
-| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | ~1.5% init; relocates onto keystroke         | closed — non-prize                                                                          |
-| P5  | SSR per-field render cost at scale (exposed v3 `register()` O(F)/call → O(F²) wiring)            | `zod-v3/index.ts:1532` slim walk            | whole-root slim re-projection per path call       | memoise slim-projected root by identity   | free / internal                           | v3 wiring O(F²)→O(F); ~80×/call @F=500       | BUSTED 2026-06-09 (v3 slim-root memo)                                                       |
+| ID  | Hot path                                                                                         | Evidence                                    | Predicted                                         | Floor                                     | Class                                     | Measured                                     | Status                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| T1  | Cross-variant DU guard on every write                                                            | `create-form-store.ts:2057-2079`            | O(D²) per write, even with zero unions            | O(D), or O(1) via init "has-any-DU?" flag | free / internal                           | deep ~O(D), sub-linear (D=16: 3.5×/5.3×)     | REFUTED 2026-06-08 (wall-clock; guard at path-walk floor)                                                                         |
+| T2  | Full-tree diff on a single scalar write                                                          | `create-form-store.ts:1968-1970`            | O(F) worst                                        | O(D)                                      | free / internal                           | F=500 1,067→245,084 hz; O(F)→O(depth)        | BUSTED 2026-06-08 (targeted in-place apply, Bust 1+2)                                                                             |
+| T3  | Double schema parse at init                                                                      | `create-form-store.ts:1231-1272`            | O(F·D) twice (with-defaults + without, then diff) | O(F·D) once                               | free / internal                           | init v4 F=500 +26%; 2nd parse gone           | BUSTED 2026-06-09 (single-pass authored-path, Bust 3)                                                                             |
+| T4  | Whole-form validation when container/root refine present                                         | `create-form-store.ts:2651`                 | O(F·D) per keystroke                              | O(deps-of-refine)                         | internal, possibly behavior-adjacent      | whole-form O(F)/keystroke; ~92–98% redundant | SCOPED OUT 2026-06-09 (byte-identical lever needs 2nd parse → v3 regression; 2 gates stand)                                       |
+| T5  | Deep reactive value tree (`ref(initialData)`)                                                    | `create-form-store.ts:1314`                 | O(F) proxy alloc + per-access traps               | shallow values + Map-driven reactivity    | **architectural lever** (reference-first) | proxy/raw read 1.69×/3.09×/4.71× @ L=1/4/16  | MEASURED-AND-SCOPED 2026-06-10 (bust needs deep-reactivity contract change + hand-rolled engine; byte-identical sub-lever sub-P2) |
+| T6  | Adapter parse-cost asymmetry                                                                     | adapters v3 vs v4                           | inherits adapter throughput                       | n/a (measure, don't assume)               | investigate                               | v4 init ~2× v3; flips at runtime             | CONFIRMED 2026-06-08; narrowed by T3, no standalone bust                                                                          |
+| P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed                    | B SHIPPED (flag); A declined                                                                                                      |
+| P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2093-2116, 2693-2696` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | guard ~0.32µs; clone CORE-P1a-scoped         | closed — non-prize                                                                                                                |
+| P3  | Over-render (components re-render on unchanged slice)                                            | `field-state-api.ts:581`; `:1478`           | O(F) renders/keystroke (×2 on validateOn:change)  | O(1) for default predicate                | behavior-adjacent (formMeta contract)     | F× → 0 siblings/keystroke (fields)           | BUSTED 2026-06-09 (lazy formMeta + own-key blank)                                                                                 |
+| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | ~1.5% init; relocates onto keystroke         | closed — non-prize                                                                                                                |
+| P5  | SSR per-field render cost at scale (exposed v3 `register()` O(F)/call → O(F²) wiring)            | `zod-v3/index.ts:1532` slim walk            | whole-root slim re-projection per path call       | memoise slim-projected root by identity   | free / internal                           | v3 wiring O(F²)→O(F); ~80×/call @F=500       | BUSTED 2026-06-09 (v3 slim-root memo)                                                                                             |
 
-> **Measured (matrix profile complete, 2026-06-09):** every row above is resolved
-> to a verdict — five banked busts (T2, T3, P1, P3, P5), four measured-and-scoped
-> non-actions (T1, T4, P2, P4), T6 confirmed-and-folded, T5 parked reference-first.
+> **Measured (matrix profile complete, 2026-06-09; T5 resolved 2026-06-10):** every
+> row above is resolved to a verdict — five banked busts (T2, T3, P1, P3, P5), five
+> measured-and-scoped non-actions (T1, T4, P2, P4, T5), and T6 confirmed-and-folded.
 > Raw hz, slopes, and per-bust before/after live in "First measurement pass" and
 > the bust sections below; the **Banked-wins synthesis** sums them up.
 
@@ -782,6 +783,71 @@ the standing artifact and the regression guard: v3 `register()`/call must stay f
 wins now: T2 + T3 + P1 + P3 (keystroke) + P5 (v3 wiring). The SSR-idle emission lever remains a
 parked, reference-first option.
 
+### T5 measurement: deep reactive value-tree read cost (2026-06-10)
+
+T5 is the architectural lever, deliberately last and reference-first (constraint #5). The value
+store is `form = ref(stubbedInitialData)` (`create-form-store.ts:1314`), a deep reactive Proxy
+doing double duty as both the value store AND the fine-grained reactivity engine. Every value
+read funnels through `getAtPath(form.value, segments)` inside a `computed(...)`
+(`build-form-api.ts:345` `form.toRef`, `register-api.ts:173` `innerRef`, `getValueAtPath` at
+`:2873`), so the proxy's get/has traps record per-PROPERTY dependencies — a write to one leaf
+wakes only the computeds that read it (the same granularity P3's `register` control proved at 0
+siblings). That granularity is published: `form.values` is a deeply-readonly reactive view and
+`form.toRef(path)` a per-path computed, so deep reactivity of `form.values` is part of the public
+surface, not an implementation detail. The ledger's floor ("shallow values + Map-driven
+reactivity") would SPLIT the two jobs — a raw value store plus a hand-rolled per-path
+version-token Map.
+
+`bench/value-tree-access.bench.ts` (committed d021753) sizes what the proxy costs on the READ
+path. `getAtPath` does `key in record` (a `has` trap) + `record[key]` (a `get` trap) per level,
+so a depth-L read pays ~2L trap dispatches on a proxy vs ~2L plain reads on a raw object. The
+bench sweeps depth L∈{1,4,16} across four cells: untracked proxy vs raw (the internal-read
+`toRaw` sub-lever, a read outside any effect where Vue's trap bails early) and a tracked
+computed-recompute proxy vs a token+raw floor (the full rearchitecture's per-reactive-read
+recovery, with `triggerRef` standing in for the write's invalidation so the cell isolates
+read-recompute from write cost).
+
+**Measured — the read cost is real and depth-scaling** (correcting a "probably negligible" prior;
+measure, don't reason). Proxy/raw untracked = **1.69× / 3.09× / 4.71×** at L=1/4/16; per-read Δ
+untracked 0.06 / 0.34 / 1.57 µs, tracked 0.10 / 0.50 / 2.21 µs. A keystroke issues a bounded
+handful of depth-D reads (post-P3 it re-evaluates O(1) fields), so at typical depth the
+per-keystroke read cost is single-digit µs — the SAME ORDER as the banked P1 (~2.88 µs). The cost
+is genuine, not noise.
+
+**Scoped — the economics are inverted.** The recoverable BULK is the tracked (reactive) slice,
+freed ONLY by replacing Vue's deep reactivity with the hand-rolled token-Map floor. That is three
+costs at once: (i) the program's hardest byte-identical proof — a hand-rolled reactivity engine
+must reproduce Vue's notification timing, watcher-writes-back convergence, and same-value
+short-circuit exactly, across both adapters; (ii) a CONTRACT CHANGE to `form.values` deep
+reactivity, a published observable (constraint #1), so reference-first, not free; and (iii)
+hand-rolling a reactivity engine, against the zero-deps / craft posture. The only byte-identical
+sub-lever — route internal NON-reactive reads through `toRaw(form.value)` — recovers just the
+smaller UNTRACKED slice (~0.1–1 µs/keystroke at typical depth = sub-P2, below the bar we declined
+at P2) and still owes a watcher-writes-back equivalence proof. The cheap part is below the
+perceptibility bar; the perceptible part needs the contract change. A disproportionate bust, the
+same shape as T4.
+
+**T5 measured-and-scoped.** Real cost, disproportionate bust; the architectural lever stays
+scoped, revisitable only through a reference-before-change loop if the value-tree contract is ever
+reopened. `bench/value-tree-access.bench.ts` stands as the standing artifact and the cost map.
+
+**The investigation's real dividend was a correctness fix, not a perf win.** Verifying the value
+tree's reactivity mechanism (does a reactive read primed before a write update after it?) surfaced
+a latent bug: a flat root-level prototype-shadowed-key field — a schema key literally named
+`hasOwnProperty`, `toString`, `valueOf` — lost reactivity on in-place writes, on both adapters.
+Such reads descend via `safeOwnRead` (`getOwnPropertyDescriptor`), which bypasses Vue's get-trap
+and registers no per-key dep, so they rode only on the form ref's own dep, which post-Bust-2's
+in-place leaf write no longer fired. Fixed by firing the ref explicitly when a changed top-level
+key is shadowed (commit 7b8b0db; `test/core/shadowed-key-reactivity.test.ts`, both adapters;
+behavior-lock golden byte-identical). Like P5's quadratic, which hid until the bench rendered a
+register-heavy form, the architectural probe paid off where the scoped perf question did not.
+
+**Lesson.** Measure-don't-reason corrected the prior — the proxy read cost is real and
+depth-scaling, not negligible — but the decisive fact was STRUCTURAL: the recoverable bulk is
+welded to a published reactivity contract and a hand-rolled engine, so the bust is
+disproportionate regardless of the raw µs. And the architectural probe earned its keep even with
+the bust declined, finding a standing correctness bug the value-flow tests never covered.
+
 ### Banked-wins synthesis (2026-06-09)
 
 The matrix profile is complete: every ledger row (T1–T6, P1–P5) is resolved to a
@@ -830,7 +896,7 @@ latent whole-root re-slim made wiring quadratic. Both point at the same downstre
 Cubic Housing's large, refine-heavy forms on (likely) the v3 adapter are exactly the shape
 these busts help most, and every speedup is provably output-identical — the audit story.
 
-**Measured and scoped out (exhaustive, not abandoned).** Four rows profiled to a deliberate
+**Measured and scoped out (exhaustive, not abandoned).** Five rows profiled to a deliberate
 non-action, each with its evidence retained as a standing artifact:
 
 - **T1 — REFUTED.** Deep zero-union writes are already ~O(D) (sub-linear: D=16 is 3.5× for
@@ -841,6 +907,14 @@ non-action, each with its evidence retained as a standing artifact:
   to separate the issue channels — ≈ halving the one-pass win to ~1.2× on v4 and a
   _regression_ on v3, off the table for a v3-first-class library. Two equivalence gates
   stand as guards on zod's `abort`/`fatal` spelling asymmetry.
+- **T5 — MEASURED-AND-SCOPED.** The deep reactive value tree has a real, depth-scaling read
+  cost (proxy/raw 1.69×/3.09×/4.71× at L=1/4/16; single-digit µs per keystroke at typical depth,
+  the order of P1), but the recoverable bulk is the reactive-read slice, freed only by replacing
+  Vue's deep reactivity with a hand-rolled token-Map — a `form.values` contract change plus a
+  hand-rolled reactivity engine, the program's hardest byte-identical proof. The one
+  byte-identical sub-lever (`toRaw` on internal reads) is sub-P2. The probe's real dividend was a
+  flat-shadowed-key reactivity fix (7b8b0db); `bench/value-tree-access.bench.ts` is the standing
+  cost map.
 - **P2 — non-prize.** The DU guard walk is ~0.32 µs (below the perceptibility bar, and a fix
   adds adapter surface); the blur-dedup clone was already narrowed by CORE-P1a, leaving a
   byte-identical-required residual.
@@ -849,11 +923,9 @@ non-action, each with its evidence retained as a standing artifact:
   ordinals that drive `meta.errors` sort); the sole deferrable slice (~1.5% of init) merely
   relocates onto the just-optimized keystroke path.
 
-**Parked, reference-first (deliberately not banked).** Two levers would change observable
-behavior or the architecture, so both are gated on a reference-before-change loop-in:
+**Parked, reference-first (deliberately not banked).** One lever would change observable
+behavior, so it is gated on a reference-before-change loop-in:
 
-- **T5** — the deep reactive value tree (`ref(initialData)` → shallow values + Map-driven
-  reactivity). The architectural lever, deliberately last; may stay deferred.
 - **SSR-idle emission** — skipping the display engine at SSR when `displayState` is `idle`
   (a fresh form). Byte-identity-coupled to hydration (server aria must match the client's
   post-hydration output), so a behavior change, not an output-identical bust.
@@ -867,12 +939,13 @@ register-heavy form. (3) Primitive-bench discipline for microtask-deferred costs
 isolated in a microbench. (4) A render-count probe (not a store-effect counter) for P3,
 because the observable is wasted _component_ work.
 
-**Status.** The free/internal matrix wins are banked and shipped on `perf/runtime-analysis`.
-What remains is (a) **T5**, reference-first and possibly deferred indefinitely, and (b) the
-one unbuilt scaffold slice — the dashboard's committed absolute-baseline JSON + regression
-band (instrumentation item 1). The per-bust benches and the behavior-lock golden already
-guard every shipped win against regression, so the dashboard is a convenience, not a gate.
-The ledger Status column above is reconciled to these verdicts.
+**Status.** The free/internal matrix wins are banked and shipped on `perf/runtime-analysis`,
+and every ledger row is now resolved to a verdict — T5, the last and most architectural,
+measured-and-scoped 2026-06-10. What remains is only the one unbuilt scaffold slice — the
+dashboard's committed absolute-baseline JSON + regression band (instrumentation item 1); the
+per-bust benches and the behavior-lock golden already guard every shipped win against
+regression, so the dashboard is a convenience, not a gate. The ledger Status column above is
+reconciled to these verdicts. The matrix profiling program is complete.
 
 ## 3. Instrumentation plan (the dashboard)
 
@@ -910,8 +983,9 @@ Per scenario, after a scripted interaction sequence, snapshot:
 - SSR HTML (`renderToString`) per scenario
 - hydration: zero mismatch warnings, value present pre-hydration (no flash)
 
-These stay byte-identical through every bust. A diff is a bug (or, for T5, the
-trigger for a reference-before-change conversation), not an accepted cost.
+These stay byte-identical through every bust. A diff is a bug (or, for a parked
+reference-first lever like SSR-idle emission, the trigger for a reference-before-change
+conversation), not an accepted cost.
 
 ---
 

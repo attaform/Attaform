@@ -1,5 +1,15 @@
 # Releases
 
+## v0.21.3 — 2026-06-10
+
+## What's Changed
+* perf: land the runtime-performance program (byte-identical wins + analysis) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/379
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.21.2...v0.21.3
+
+---
+
 ## v0.21.2 — 2026-06-08
 
 ## What's Changed

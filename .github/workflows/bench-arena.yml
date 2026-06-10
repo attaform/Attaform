@@ -1,0 +1,260 @@
+name: bench-arena refresh
+
+# Monthly refresh of the cross-library benchmark numbers the docs render.
+#
+# STRICTLY NON-GATING. This workflow runs only on a monthly schedule and on
+# manual dispatch, never on `pull_request`, and is never added to the branch
+# protection ruleset's required checks. It cannot block a merge. The
+# `check:bench` job in matrix.yml remains the real, gating performance check;
+# this one only republishes the public comparison numbers. `continue-on-error`
+# is belt-and-suspenders on top of that: a flaky arena run reports neutral
+# rather than red.
+#
+# What it does: builds the real Attaform dist, drives the whole cohort through
+# the arena in a real Chromium (the same orchestrator a developer runs locally),
+# and writes a provenance-stamped results.json with source=ci. It then opens a
+# reviewer PR with that single file changed. Merging it republishes the
+# authoritative numbers; the committed copy the docs render is therefore always
+# from a clean CI runner, never a developer machine. Closing it is a no-op, for
+# a month whose numbers are not worth landing.
+#
+# Bot-PR topology mirrors release-pr.yml exactly, for the same reason: a PR
+# opened with the default GITHUB_TOKEN does not cascade main's required status
+# checks, so it could never be merged. The results.json commit is created via
+# the createCommitOnBranch GraphQL mutation (signed by github-actions[bot]'s
+# server-side web-flow key, which main's required-signatures rule accepts), and
+# the PR is opened with a per-run, pull-requests:write-only installation token
+# from the shared `Production (Release PR)` GitHub App, minted and revoked
+# within the job. Reusing that App rather than standing up a second one keeps
+# the privileged surface to a single, already-audited credential.
+#
+# Network note: the arena makes one best-effort outbound call per library to the
+# OpenSSF Scorecard API. GitHub-hosted runners have egress, so it resolves live
+# scores; were the network blocked, those rows degrade to "unavailable" (never
+# "not published", which would misreport an opted-out project) and the run still
+# succeeds.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 07:00 UTC on the 1st of each month. Clear of the repo's other crons.
+    - cron: '0 7 1 * *'
+
+# Workflow-level default: read-only. The refresh job below upgrades to
+# contents: write + pull-requests: write for the signed commit + PR open.
+permissions:
+  contents: read
+
+# Never run two refreshes at once, and never cancel an in-flight one: the arena
+# sweep is long, and a cancelled run leaves no useful state behind.
+concurrency:
+  group: bench-arena
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh benchmark results (non-gating)
+    runs-on: ubuntu-latest
+    # Belt-and-suspenders non-gating: this job already cannot fail a PR (it has
+    # no pull_request trigger and is not a required check); continue-on-error
+    # additionally reports a flaky monthly run as neutral rather than red.
+    continue-on-error: true
+    # The full sweep across the cohort is long-running; the monthly cadence
+    # keeps the compute a non-issue.
+    timeout-minutes: 60
+    # Scope the shared release-PR App credentials to this workflow, exactly as
+    # release-pr.yml does (zizmor secrets-outside-env). The environment's
+    # selected-branches policy (main, hotfix/v*) is already satisfied: both the
+    # schedule and a manual dispatch run on main.
+    environment: Production (Release PR)
+    permissions:
+      contents: write # createCommitOnBranch: the refresh branch ref + signed results.json commit. Never writes to main directly.
+      pull-requests: write # gh pr create, via the App installation token.
+    steps:
+      - name: Validate release-PR app credentials
+        # The PR open below MUST use a GitHub App installation token, not
+        # GITHUB_TOKEN: a PR opened by GITHUB_TOKEN does not cascade main's
+        # required status checks, so it could never be merged. Fail here, before
+        # the long arena sweep, if the shared App secrets are absent, so a
+        # misconfiguration costs seconds rather than the better part of an hour.
+        env:
+          APP_CLIENT_ID: ${{ secrets.RELEASE_PR_APP_CLIENT_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_CLIENT_ID:-}" ] || [ -z "${APP_PRIVATE_KEY:-}" ]; then
+            echo "::error title=Release-PR app credentials missing::bench-arena.yml reuses the Production (Release PR) GitHub App to open its refresh PR. Configure RELEASE_PR_APP_CLIENT_ID and RELEASE_PR_APP_PRIVATE_KEY on that environment (see release-pr.yml for the one-time setup)."
+            exit 1
+          fi
+
+      - name: Checkout main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # The refresh branch + signed commit are written via gh api
+          # (createCommitOnBranch), not git push, so the working tree never
+          # needs an attached credential (zizmor artipacked).
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Attaform dist
+        # The arena consumes the real published build, the same artifact an
+        # installer gets, never the src alias or the unbuild --stub shim. The
+        # Playwright webServer's build step fails loudly if dist is absent.
+        run: pnpm prepack
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter attaform-bench-arena exec playwright install --with-deps chromium
+
+      - name: Run the arena
+        # Drives the cohort through every scenario and writes
+        # apps/bench-arena/results.json with provenance source=ci (the default
+        # GITHUB_* env vars supply the run id, commit, and run URL). One
+        # best-effort outbound call per library hits the OpenSSF Scorecard API;
+        # a blocked network degrades those rows to "unavailable" without failing
+        # the run. A red spec run writes nothing, so this step simply fails and
+        # no stale numbers are committed.
+        run: pnpm --filter attaform-bench-arena run arena
+
+      - name: Prepare commit metadata
+        id: meta
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          echo "branch=bench-arena/refresh-$(date -u +%Y-%m-%d)-${GH_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create signed results commit
+        # createCommitOnBranch produces a commit signed by github-actions[bot]'s
+        # server-side web-flow key (Verified in the UI), satisfying main's
+        # required-signatures rule on merge with no GPG key in this workflow. The
+        # branch ref is created first (the mutation requires it to exist), then
+        # results.json is overlaid onto the base tree as a single base64
+        # addition. Runs on the default GITHUB_TOKEN (job contents: write); only
+        # the PR open needs the App identity. execFileSync keeps every argument
+        # its own argv element, so the call is shell-free end to end.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ steps.meta.outputs.branch }}
+          BASE_SHA: ${{ steps.meta.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const { execFileSync } = require("node:child_process");
+            const repo = process.env.GH_REPOSITORY;
+            const branch = process.env.BRANCH;
+            const baseSha = process.env.BASE_SHA;
+            const file = "apps/bench-arena/results.json";
+
+            // Create the refresh branch ref on origin, pointing at the
+            // main tip captured by the Prepare step.
+            execFileSync(
+              "gh",
+              [
+                "api",
+                "-X", "POST",
+                `repos/${repo}/git/refs`,
+                "-f", `ref=refs/heads/${branch}`,
+                "-f", `sha=${baseSha}`,
+              ],
+              { stdio: "inherit" }
+            );
+
+            const requestBody = JSON.stringify({
+              query: `mutation($input: CreateCommitOnBranchInput!) {
+                createCommitOnBranch(input: $input) { commit { oid url } }
+              }`,
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: repo, branchName: branch },
+                  message: {
+                    headline: "chore(bench-arena): refresh benchmark results.json",
+                    body: "Monthly cross-library benchmark refresh from a clean CI run. Supersedes the committed results.json with a fresh source=ci snapshot.",
+                  },
+                  expectedHeadOid: baseSha,
+                  fileChanges: {
+                    additions: [
+                      { path: file, contents: fs.readFileSync(file).toString("base64") },
+                    ],
+                  },
+                },
+              },
+            });
+            const requestPath = `${process.env.RUNNER_TEMP}/createCommitOnBranch.json`;
+            fs.writeFileSync(requestPath, requestBody);
+            execFileSync("gh", ["api", "graphql", "--input", requestPath], { stdio: "inherit" });
+          '
+
+      - name: Build PR body
+        # Built to a file via Node (no shell interpolation of dispatch context)
+        # and read by gh pr create --body-file below. Reads the just-written
+        # results.json so the body summarizes the run it is about to publish.
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const r = JSON.parse(fs.readFileSync("apps/bench-arena/results.json", "utf8"));
+            const p = r.provenance;
+            const published = r.capabilities.filter((c) => c.scorecardStatus === "published").length;
+            const body = [
+              "## Monthly benchmark refresh",
+              "",
+              "Mechanical refresh opened by `bench-arena.yml`. It rebuilds the real Attaform dist, drives the whole cohort through the arena in a real Chromium, and rewrites `apps/bench-arena/results.json` with `source=ci`. The Benchmarks docs page renders this file directly, so merging republishes the authoritative numbers.",
+              "",
+              "This PR is non-gating: nothing depends on it. Squash-merge to publish, or close it if a given month is not worth landing.",
+              "",
+              "| Detail | Value |",
+              "|---|---|",
+              "| Source | CI run [" + p.ciRunId + "](" + process.env.RUN_URL + ") |",
+              "| Ran against | `" + (p.commit || "").slice(0, 12) + "` |",
+              "| Runner | " + p.runner.cpuModel + " |",
+              "| Node | " + p.node + " |",
+              "| Published Scorecards | " + published + " of " + r.capabilities.length + " |",
+              "",
+            ].join("\n");
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP, "pr-body.md"), body);
+          '
+          echo "PR_BODY_PATH=$RUNNER_TEMP/pr-body.md" >> "$GITHUB_ENV"
+
+      - name: Mint release-PR app token
+        id: app_token
+        # Minted per run, scoped to pull-requests: write only (the App on
+        # install may hold more; this slice does not inherit it), and revoked by
+        # the action's post-job step. The App identity, not github-actions[bot],
+        # is what lets the PR cascade main's required checks.
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_PR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+
+      - name: Open refresh PR
+        # GH_TOKEN is the App installation token, NOT secrets.GITHUB_TOKEN, so
+        # the pull_request: opened event cascades the required checks. Everything
+        # above (branch ref, signed commit) ran on the lower-privilege default
+        # token.
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          BRANCH: ${{ steps.meta.outputs.branch }}
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore(bench-arena): refresh benchmark results.json" \
+            --body-file "$PR_BODY_PATH"

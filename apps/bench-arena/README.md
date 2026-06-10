@@ -20,6 +20,11 @@ should never be committed as the published set. The provenance block in
 `results.json` records which run produced it (commit, CI run URL, runner, Node
 version, resolved library versions).
 
+The monthly `bench-arena.yml` workflow (also dispatchable by hand) runs that
+clean-runner sweep and opens a non-gating PR with the refreshed `results.json`.
+Merging it republishes the numbers; it never blocks anything, and a month not
+worth landing can simply be closed.
+
 ## Running it locally
 
 The arena consumes the real published Attaform build, so build it first from
@@ -30,6 +35,18 @@ pnpm prepack                                   # build dist/*.mjs
 pnpm --filter attaform-bench-arena exec playwright install chromium
 pnpm --filter attaform-bench-arena run arena   # build + drive + write results.json
 ```
+
+Supply-chain scores move on a different cadence than runtime performance, so
+they can be refreshed on their own, with no browser run:
+
+```sh
+pnpm --filter attaform-bench-arena exec node scripts/run-arena.mjs --scorecards-only
+```
+
+This re-polls each library's OpenSSF Scorecard and rewrites only those fields of
+`results.json`, leaving the runtime numbers untouched. If every lookup comes
+back unavailable (the network is down), it writes nothing rather than blanking
+good scores.
 
 To probe a single cell by hand, run the harness app and open a parameterized
 URL:

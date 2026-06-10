@@ -1,4 +1,14 @@
-import { computed, markRaw, reactive, ref, toRaw, watch, type ComputedRef, type Ref } from 'vue'
+import {
+  computed,
+  markRaw,
+  reactive,
+  ref,
+  toRaw,
+  triggerRef,
+  watch,
+  type ComputedRef,
+  type Ref,
+} from 'vue'
 import type {
   AbstractSchema,
   CoercionRegistry,
@@ -47,6 +57,7 @@ import {
   setAtPathWithSchemaFill,
   tryInPlaceLeafWrite,
 } from './path-walker'
+import { isShadowedKey } from './safe-assign'
 import { __DEV__ } from './dev'
 import { resolveCoercionIndex, type CoercionIndex } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
@@ -2006,6 +2017,24 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // merging can't preserve existing reactive proxies anyway.
     if (!applyChangedKeys(prev, next)) {
       form.value = next
+    } else if (
+      patches.some(
+        (p) => p.path.length > 0 && typeof p.path[0] === 'string' && isShadowedKey(p.path[0])
+      )
+    ) {
+      // A root-level prototype-shadowed key (`hasOwnProperty`, `toString`,
+      // `valueOf`, …) changed. Its reactive readers descend through
+      // `safeOwnRead` (`Object.getOwnPropertyDescriptor`), which bypasses
+      // Vue's reactive get-trap, so they registered NO per-key dependency —
+      // they ride only on this ref's own dep. `applyChangedKeys` mutated the
+      // slot in place (the set-trap fires the key's dep, but nothing
+      // subscribed to it) and kept root identity stable, so `form.value` was
+      // not reassigned. Fire the ref explicitly to wake those readers; this
+      // is the coarse whole-`form`-ref signal the shadowed-descent path
+      // documents as its reactivity mechanism. Only fires for the rare write
+      // that touches a root-level shadowed field — every ordinary field keeps
+      // its fine-grained per-key dependency untouched.
+      triggerRef(form)
     }
     commitWritePatches(patches, meta)
   }

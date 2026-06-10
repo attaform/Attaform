@@ -67,10 +67,14 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
   // `hasOwnProperty` shim) when no own data slot exists. The own-
   // descriptor read returns the stored value (NOT_FOUND when purely
   // inherited) and forwards to the raw descriptor on a reactive proxy.
-  // Reactivity is preserved by the coarse whole-`form`-ref dependency
-  // the field-state computeds establish: every write is copy-on-write,
-  // so the root identity changes and the computed re-evaluates
-  // regardless of per-key `get` tracking.
+  //
+  // That descriptor read bypasses Vue's reactive get-trap, so a reader
+  // descending a shadowed segment registers NO per-key dependency on it.
+  // Reactivity is carried at the write site instead: when a write changes a
+  // root-level shadowed key, `applyFormReplacement` fires the whole-`form`-
+  // ref explicitly (`triggerRef`); a shadowed key nested under a non-
+  // shadowed ancestor rides that ancestor's per-key dep, which the copy-on-
+  // write fallback reassigns. See create-form-store's `applyFormReplacement`.
   if (isShadowedKey(key)) {
     if (!safeOwnHas(record, key)) return NOT_FOUND
     return safeOwnRead(record, key)
@@ -179,8 +183,10 @@ const NO_IN_PLACE: InPlaceWriteResult = { applied: false }
  * every case that is NOT a pure in-place leaf edit:
  * - empty `path` (root replacement),
  * - any prototype-shadowed segment (`__proto__`, `hasOwnProperty`, …):
- *   those bypass reactive `get`/`set` tracking, so their reactivity
- *   relies on the ancestor reassign the fallback performs,
+ *   those bypass reactive `get`/`set` tracking, so their reactivity is
+ *   carried by the copy-on-write fallback — a non-shadowed ancestor's
+ *   reassign for a nested key, or the explicit `triggerRef` that
+ *   `applyFormReplacement` fires for a changed root-level shadowed key,
  * - a missing / non-descendable ancestor, or an out-of-range array index
  *   (a structural change — the container SHOULD get a new reference),
  * - an absent target slot (adding a key/index is structural), or

@@ -12,8 +12,9 @@
  * only orchestrates, aggregates, and writes.
  *
  * Steps: run the spec (abort if it is red) -> harvest the cell + meta
- * attachments -> measure bundles -> compute ratios and slopes -> stamp
- * provenance -> write results.json.
+ * attachments -> measure bundles -> look up each library's OpenSSF Scorecard
+ * (best-effort) -> compute ratios and slopes -> stamp provenance -> write
+ * results.json.
  *
  * Run `pnpm prepack` at the repo root first so the Attaform rows measure the
  * real published dist. The committed results.json must always come from CI; a
@@ -30,8 +31,9 @@ import os from 'node:os'
 import { dirname, join } from 'node:path'
 import { argv, env, exit, version as nodeVersion } from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { readInstalledVersions } from './installed-version.mjs'
+import { readInstalledRepoSlug, readInstalledVersions } from './installed-version.mjs'
 import { measureBundles } from './measure-bundles.mjs'
+import { fetchScorecards, scorecardViewerUrl } from './scorecards.mjs'
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const SCHEMA_VERSION = 1
@@ -73,6 +75,21 @@ const LIB_VERSION_PKGS = [
   'zod',
   'valibot',
 ]
+
+// Adapter id -> the npm package whose `repository` field locates its source, so
+// the Scorecard slug is derived from the lockfile-pinned package rather than
+// hardcoded (it self-corrects when a project moves orgs). Regle's two adapters
+// share one repository.
+const LIB_REPO_PKG = {
+  attaform: 'attaform',
+  'vee-validate': 'vee-validate',
+  tanstack: '@tanstack/vue-form',
+  formisch: '@formisch/vue',
+  'regle-schema': '@regle/core',
+  'regle-rules': '@regle/core',
+  formkit: '@formkit/vue',
+  vuelidate: '@vuelidate/core',
+}
 
 /** Round a ratio/slope to two decimals; medians keep their measured precision. */
 function round2(value) {
@@ -149,8 +166,13 @@ function harvest(reportPath) {
   return { cells, meta }
 }
 
-/** Capability matrix + display metadata, straight from the built adapters' meta. */
-function capabilitiesOf(meta) {
+/**
+ * Capability matrix + display metadata, straight from the built adapters' meta,
+ * plus each library's repository and (best-effort) OpenSSF Scorecard. A library
+ * with no published Scorecard carries scorecard: null; the docs render that as
+ * "not published" and link the repository instead.
+ */
+function capabilitiesOf(meta, scorecardInfo) {
   return (meta ?? []).map((m) => {
     const row = {
       lib: m.id,
@@ -161,8 +183,38 @@ function capabilitiesOf(meta) {
     }
     for (const scenario of SCENARIO_ORDER)
       row[scenario] = m.capabilities?.[scenario] ?? 'unsupported'
+    const info = scorecardInfo?.[m.id]
+    row.repo = info?.repo ?? null
+    row.repoUrl = info?.repoUrl ?? null
+    row.scorecardUrl = info?.viewerUrl ?? null
+    row.scorecard = info?.scorecard ?? null
     return row
   })
+}
+
+/**
+ * Per-adapter repository + OpenSSF Scorecard info. Derives each library's repo
+ * slug from its installed package, resolves the published scores in one
+ * best-effort batch, and returns adapter id -> { repo, repoUrl, viewerUrl,
+ * scorecard }. Never throws: a failed lookup leaves scorecard null.
+ */
+async function buildScorecardInfo(meta) {
+  const slugById = {}
+  for (const m of meta ?? []) {
+    const pkg = LIB_REPO_PKG[m.id]
+    slugById[m.id] = pkg ? readInstalledRepoSlug(pkg) : null
+  }
+  const scores = await fetchScorecards(Object.values(slugById))
+  const info = {}
+  for (const [id, slug] of Object.entries(slugById)) {
+    info[id] = {
+      repo: slug,
+      repoUrl: slug ? `https://${slug}` : null,
+      viewerUrl: slug ? scorecardViewerUrl(slug) : null,
+      scorecard: slug ? (scores[slug] ?? null) : null,
+    }
+  }
+  return info
 }
 
 /**
@@ -277,6 +329,7 @@ async function main() {
   }
 
   const libOrder = libOrderOf(meta, cells)
+  const scorecardInfo = await buildScorecardInfo(meta)
   const cpus = os.cpus()
   const runId = env.GITHUB_RUN_ID
   const ciRunUrl =
@@ -302,7 +355,7 @@ async function main() {
       libVersions: readInstalledVersions(LIB_VERSION_PKGS),
     },
     baseline: BASELINE,
-    capabilities: capabilitiesOf(meta),
+    capabilities: capabilitiesOf(meta, scorecardInfo),
     bundle: await measureBundles(),
     runtime: buildRuntime(cells, libOrder),
   }

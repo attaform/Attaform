@@ -31,3 +31,29 @@ export function readInstalledVersions(names) {
   for (const name of names) out[name] = readInstalledVersion(name)
   return out
 }
+
+/**
+ * The GitHub repository for an installed package, as a "github.com/owner/repo"
+ * slug (null if absent or non-GitHub). Read straight off the package's own
+ * `repository` field so the slug always tracks the version the lockfile pinned,
+ * which is what keeps the Scorecard lookup reproducible and self-correcting when
+ * a project moves orgs. Handles the common npm forms: a bare "owner/repo" or
+ * "github:owner/repo" shorthand, and `git+https`, `https`, `git://`, or `git@`
+ * URLs, with or without a `.git` suffix or a monorepo `#`/path tail.
+ */
+export function readInstalledRepoSlug(name) {
+  const pkgPath = join(PACKAGE_ROOT, 'node_modules', name, 'package.json')
+  let repository
+  try {
+    repository = JSON.parse(readFileSync(pkgPath, 'utf8')).repository
+  } catch {
+    return null
+  }
+  const raw = typeof repository === 'string' ? repository : repository?.url
+  if (!raw) return null
+  const fromUrl = raw.match(/github\.com[:/]+([^/]+)\/([^/]+?)(?:\.git)?(?:[/#].*)?$/i)
+  if (fromUrl) return `github.com/${fromUrl[1]}/${fromUrl[2]}`
+  const shorthand = raw.match(/^(?:github:)?([\w.-]+)\/([\w.-]+?)(?:\.git)?$/i)
+  if (shorthand) return `github.com/${shorthand[1]}/${shorthand[2]}`
+  return null
+}

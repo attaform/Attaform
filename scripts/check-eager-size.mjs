@@ -201,7 +201,18 @@ export async function measureEager(define = PROD_DEFINE) {
 // inside the assigner) behind a dynamic import, lagging the busy state by a
 // microtask. Keeping it eager is the deliberate trade. Measured at 46.67 kB gz;
 // budget raised to restore ~0.5 kB headroom for minifier-version drift.
-const BUDGET_GZ = 48_384
+//
+// RECORDED LOOSENING (targeted in-place apply, T2 keystroke bust): the
+// single-`setValue` fast path (tryInPlaceLeafWrite + applyTargetedWrite)
+// mutates the target leaf's slot in place when it already exists, preserving
+// ancestor container identity and taking the keystroke from O(field-count) /
+// O(array-length) to O(depth) — 100-230x at scale on the matrix bench. It
+// sits on the always-on write funnel (every setValue), so it cannot defer
+// behind an async seam. Measured at 47.35 kB gz; budget raised to restore
+// ~0.5 kB headroom for minifier-version drift. The ~9 kB of known
+// eager-optional features (bundle-size analysis) remain the place to reclaim
+// this; never loosen without a recorded reason.
+const BUDGET_GZ = 49_000
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

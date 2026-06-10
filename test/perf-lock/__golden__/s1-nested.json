@@ -1,0 +1,1136 @@
+[
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "agreed": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Agreed",
+          "meta": {},
+          "original": false,
+          "path": [
+            "agreed"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": false
+        },
+        "contact.email": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "contact",
+                "email"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Email",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "email"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": ""
+        },
+        "contact.phone": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Phone",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "phone"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        },
+        "profile.first": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "profile",
+                "first"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "First",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "first"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": ""
+        },
+        "profile.last": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Last",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "last"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": false,
+        "displayState": "idle",
+        "errorCount": 2,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "profile",
+              "first"
+            ]
+          },
+          {
+            "code": "zod:too_small",
+            "path": [
+              "contact",
+              "email"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": true,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "agreed": false,
+          "contact": {
+            "email": "",
+            "phone": ""
+          },
+          "profile": {
+            "first": "",
+            "last": ""
+          }
+        }
+      }
+    },
+    "label": "initial"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "agreed": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Agreed",
+          "meta": {},
+          "original": false,
+          "path": [
+            "agreed"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": false
+        },
+        "contact.email": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "contact",
+                "email"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Email",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "email"
+          ],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": "x"
+        },
+        "contact.phone": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Phone",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "phone"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        },
+        "profile.first": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "First",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "first"
+          ],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "Grace"
+        },
+        "profile.last": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Last",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "last"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": true,
+        "displayState": "idle",
+        "errorCount": 1,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "contact",
+              "email"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": false,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "agreed": false,
+          "contact": {
+            "email": "x",
+            "phone": ""
+          },
+          "profile": {
+            "first": "Grace",
+            "last": ""
+          }
+        }
+      }
+    },
+    "label": "after-edit"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "agreed": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Agreed",
+          "meta": {},
+          "original": false,
+          "path": [
+            "agreed"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": false
+        },
+        "contact.email": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": true,
+          "displayState": "error",
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "contact",
+                "email"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Email",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "email"
+          ],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": true,
+          "showIdle": false,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": "x"
+        },
+        "contact.phone": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Phone",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "phone"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        },
+        "profile.first": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": true,
+          "displayState": "success",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "First",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "first"
+          ],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": false,
+          "showPending": false,
+          "showSuccess": true,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": "Grace"
+        },
+        "profile.last": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Last",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "last"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": true,
+        "displayState": "error",
+        "errorCount": 1,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "contact",
+              "email"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": false,
+        "showErrors": true,
+        "showIdle": false,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 1,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "agreed": false,
+          "contact": {
+            "email": "x",
+            "phone": ""
+          },
+          "profile": {
+            "first": "Grace",
+            "last": ""
+          }
+        }
+      }
+    },
+    "label": "after-submit"
+  },
+  {
+    "capture": {
+      "blankPaths": [],
+      "fields": {
+        "agreed": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Agreed",
+          "meta": {},
+          "original": false,
+          "path": [
+            "agreed"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": false
+        },
+        "contact.email": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "contact",
+                "email"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Email",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "email"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": ""
+        },
+        "contact.phone": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Phone",
+          "meta": {},
+          "original": "",
+          "path": [
+            "contact",
+            "phone"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        },
+        "profile.first": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "profile",
+                "first"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "First",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "first"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": ""
+        },
+        "profile.last": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": null,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errors": [],
+          "firstError": null,
+          "focused": null,
+          "id": "<id>",
+          "interacted": false,
+          "key": "",
+          "label": "Last",
+          "meta": {},
+          "original": "",
+          "path": [
+            "profile",
+            "last"
+          ],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": true,
+          "validating": false,
+          "value": ""
+        }
+      },
+      "meta": {
+        "aria": {
+          "descriptionId": "<id>-description",
+          "errorId": "<id>-error"
+        },
+        "blank": false,
+        "blurred": false,
+        "blurredAfterInteraction": false,
+        "busy": false,
+        "connected": false,
+        "departAttempts": 0,
+        "description": null,
+        "dirty": false,
+        "displayState": "idle",
+        "errorCount": 2,
+        "errors": [
+          {
+            "code": "zod:too_small",
+            "path": [
+              "profile",
+              "first"
+            ]
+          },
+          {
+            "code": "zod:too_small",
+            "path": [
+              "contact",
+              "email"
+            ]
+          }
+        ],
+        "firstError": "zod:too_small",
+        "focused": false,
+        "id": "<id>",
+        "instanceId": "<instance>",
+        "interacted": false,
+        "key": "",
+        "label": "",
+        "meta": {},
+        "path": [],
+        "placeholder": null,
+        "pristine": true,
+        "showErrors": false,
+        "showIdle": true,
+        "showPending": false,
+        "showSuccess": false,
+        "submissionAttempts": 0,
+        "submitError": null,
+        "submitted": false,
+        "submitting": false,
+        "touched": false,
+        "transformError": null,
+        "transforming": false,
+        "updatedAt": "<ts>",
+        "valid": false,
+        "validating": false,
+        "value": {
+          "agreed": false,
+          "contact": {
+            "email": "",
+            "phone": ""
+          },
+          "profile": {
+            "first": "",
+            "last": ""
+          }
+        }
+      }
+    },
+    "label": "after-reset"
+  }
+]

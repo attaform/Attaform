@@ -67,10 +67,14 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
   // `hasOwnProperty` shim) when no own data slot exists. The own-
   // descriptor read returns the stored value (NOT_FOUND when purely
   // inherited) and forwards to the raw descriptor on a reactive proxy.
-  // Reactivity is preserved by the coarse whole-`form`-ref dependency
-  // the field-state computeds establish: every write is copy-on-write,
-  // so the root identity changes and the computed re-evaluates
-  // regardless of per-key `get` tracking.
+  //
+  // That descriptor read bypasses Vue's reactive get-trap, so a reader
+  // descending a shadowed segment registers NO per-key dependency on it.
+  // Reactivity is carried at the write site instead: when a write changes a
+  // root-level shadowed key, `applyFormReplacement` fires the whole-`form`-
+  // ref explicitly (`triggerRef`); a shadowed key nested under a non-
+  // shadowed ancestor rides that ancestor's per-key dep, which the copy-on-
+  // write fallback reassigns. See create-form-store's `applyFormReplacement`.
   if (isShadowedKey(key)) {
     if (!safeOwnHas(record, key)) return NOT_FOUND
     return safeOwnRead(record, key)
@@ -159,6 +163,71 @@ function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: numb
   const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
   safeAssign(rec, head, setAtPathOffset(safeOwnRead(rec, head), path, value, nextOffset))
   return rec
+}
+
+export type InPlaceWriteResult = { applied: true; old: unknown } | { applied: false }
+
+const NO_IN_PLACE: InPlaceWriteResult = { applied: false }
+
+/**
+ * In-place leaf write that preserves ancestor container identity — the
+ * fast path behind a single `setValue` keystroke. When the exact leaf
+ * slot at `path` already exists and currently holds a non-container
+ * value, mutate that slot directly on the live (reactive) tree and
+ * return the prior value. Every ancestor container keeps its object
+ * identity, so a by-reference watch on a container stays quiet on a
+ * descendant edit while the leaf's own reactive dependency still fires.
+ *
+ * Returns `{ applied: false }` — caller must fall back to the
+ * copy-on-write `setAtPathWithSchemaFill` + first-segment reassign — in
+ * every case that is NOT a pure in-place leaf edit:
+ * - empty `path` (root replacement),
+ * - any prototype-shadowed segment (`__proto__`, `hasOwnProperty`, …):
+ *   those bypass reactive `get`/`set` tracking, so their reactivity is
+ *   carried by the copy-on-write fallback — a non-shadowed ancestor's
+ *   reassign for a nested key, or the explicit `triggerRef` that
+ *   `applyFormReplacement` fires for a changed root-level shadowed key,
+ * - a missing / non-descendable ancestor, or an out-of-range array index
+ *   (a structural change — the container SHOULD get a new reference),
+ * - an absent target slot (adding a key/index is structural), or
+ * - a container currently at the slot (a container-target write replaces
+ *   the slot wholesale, same as the fallback — and the contract gives the
+ *   write target a fresh reference either way).
+ *
+ * `root` MUST be the reactive `form.value` (not a raw clone) so the
+ * assignment fires Vue's dependency for the written key.
+ */
+export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): InPlaceWriteResult {
+  if (path.length === 0) return NO_IN_PLACE
+
+  // Single validated descent: at each level the segment must address an
+  // existing slot on a descendable container. A missing/non-descendable
+  // node, an out-of-range index, an absent key, or a prototype-shadowed
+  // segment (which bypasses reactive tracking) means a structural /
+  // non-fast-path write → fall back to copy-on-write.
+  let node: unknown = root
+  for (let i = 0; i < path.length; i++) {
+    const seg = path[i] as Segment
+    if (Array.isArray(node)) {
+      if (typeof seg !== 'number' || seg < 0 || seg >= node.length) return NO_IN_PLACE
+    } else if (isPlainRecord(node)) {
+      if (typeof seg !== 'string' || isShadowedKey(seg) || !(seg in node)) return NO_IN_PLACE
+    } else {
+      return NO_IN_PLACE
+    }
+    const container = node as Record<string | number, unknown>
+    if (i < path.length - 1) {
+      node = container[seg]
+      continue
+    }
+    // Leaf step: only an existing non-container slot is editable in place;
+    // a container target is replaced wholesale by the fallback.
+    const old = container[seg]
+    if (isPlainRecord(old) || Array.isArray(old)) return NO_IN_PLACE
+    container[seg] = value
+    return { applied: true, old }
+  }
+  return NO_IN_PLACE
 }
 
 /**

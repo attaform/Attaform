@@ -244,9 +244,13 @@ function diffObjectsLockstep(
  * THAT path (computeds, directive bindings, etc.) re-evaluate
  * correctly.
  *
- * Old subtree references that get reassigned are orphaned but
- * unmutated — exactly what consumers (history snapshots, captured
- * `prev` callback args) need.
+ * Old subtree references that get reassigned here are left unmutated,
+ * but nothing depends on that: the consumers that need a frozen view
+ * (history snapshots, the `setValue((prev) => …)` callback arg) take
+ * their own `structuralSnapshot` deep-clone. The single-leaf `setValue`
+ * fast path (`applyTargetedWrite`) deliberately mutates the leaf slot in
+ * place, preserving ancestor container identity; this first-segment
+ * reassign is retained for container and whole-form replacements.
  */
 export function applyChangedKeys(target: unknown, source: unknown): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false

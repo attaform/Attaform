@@ -87,9 +87,14 @@ export const formischAdapter: BenchAdapter = {
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []
     const union = shape.union
+    const wizardDesc = shape.wizard
     let form: FormStoreLoose | undefined
     let rows: { readonly items: readonly string[] } | undefined
     let activeTag: Ref<string> | undefined
+    // The hand-composed wizard's active step. formisch has no wizard primitive
+    // and exposes only whole-form validation, so a gated advance re-parses the
+    // whole schema; every step renders through the default branch.
+    let wizardStep = 0
 
     const Host = defineComponent({
       name: 'FormischHost',
@@ -195,7 +200,19 @@ export const formischAdapter: BenchAdapter = {
         if (activeTag) activeTag.value = to
         await flush()
       },
-      stepTransition: () => Promise.resolve(unsupported('stepTransition')),
+      async stepTransition(dir: 1 | -1) {
+        if (!wizardDesc || !form) return unsupported('stepTransition')
+        if (dir === 1) {
+          if (wizardStep < wizardDesc.steps.length - 1) {
+            // formisch validates the whole form (no per-field entry), so a gated
+            // step re-runs the full schema parse; that whole-form cost is the
+            // honest price of hand-composing a wizard without a step primitive.
+            await validateForm(form)
+            wizardStep += 1
+          }
+        } else if (wizardStep > 0) wizardStep -= 1
+        await flush()
+      },
       getRenderCount: () => totalRenders(),
       resetRenderCount: () => resetRenderCounts(),
       teardown: () => app.unmount(),

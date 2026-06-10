@@ -63,6 +63,7 @@ interface SamplePlan {
   readonly rerenderRuns: number
   readonly arrayOpRuns: number
   readonly variantFlipRuns: number
+  readonly stepTransitionRuns: number
 }
 
 const DEFAULT_PLAN: SamplePlan = {
@@ -73,6 +74,7 @@ const DEFAULT_PLAN: SamplePlan = {
   rerenderRuns: 30,
   arrayOpRuns: 50,
   variantFlipRuns: 50,
+  stepTransitionRuns: 50,
 }
 
 const MASSIVE_PLAN: SamplePlan = {
@@ -87,6 +89,7 @@ const MASSIVE_PLAN: SamplePlan = {
   rerenderRuns: 30,
   arrayOpRuns: 50,
   variantFlipRuns: 50,
+  stepTransitionRuns: 50,
 }
 
 function planFor(scenario: ScenarioId): SamplePlan {
@@ -102,6 +105,7 @@ const CODE_TO_KEY: Record<string, string> = {
   N: 'rows',
   M: 'cols',
   L: 'leaves',
+  S: 'steps',
 }
 
 function parseParams(label: string): ScenarioParams {
@@ -315,6 +319,46 @@ async function measureVariantFlip(
   return summarize(samples)
 }
 
+/**
+ * Wizard step transition: the gated forward advance, where a step is validated
+ * before the next is revealed. Each measured sample advances one step from a
+ * non-final step (the leaving step is validated, then the wizard moves on); on
+ * reaching the final step the wizard retreats to the first through unmeasured
+ * free back-steps, so every measured sample is the identical intermediate gated
+ * advance. A library with a wizard primitive (Attaform's useWizard) validates
+ * only the active step on an advance; a hand-composed wizard validates the step
+ * the way its engine allows, so this is where a wizard primitive earns its keep.
+ */
+async function measureStepTransition(
+  handle: MountHandle,
+  shape: ScenarioShape,
+  plan: SamplePlan
+): Promise<Summary> {
+  const steps = shape.wizard?.steps.length ?? 0
+  if (steps < 2)
+    throw new Error('bench: stepTransition needs a wizard scenario with two or more steps')
+  // Retreat to the first step through free (ungated) back-steps; called only
+  // from the final step, so it walks exactly `steps - 1` positions to step 0.
+  const rewind = async (): Promise<void> => {
+    for (let s = 0; s < steps - 1; s++) await handle.stepTransition(-1)
+  }
+  // Warm up one full forward sweep, then rewind to the first step.
+  for (let i = 0; i < steps - 1; i++) await handle.stepTransition(1)
+  await rewind()
+  const samples: number[] = []
+  let pos = 0
+  for (let i = 0; i < plan.stepTransitionRuns; i++) {
+    samples.push(await timed(() => handle.stepTransition(1)))
+    pos += 1
+    await frame()
+    if (pos >= steps - 1) {
+      await rewind()
+      pos = 0
+    }
+  }
+  return summarize(samples)
+}
+
 /** Mount/init cost over fresh mounts; the only dim that re-mounts per sample. */
 async function measureMount(
   adapter: BenchAdapter,
@@ -421,6 +465,13 @@ async function run(): Promise<BenchPayload> {
           ...base,
           unit: 'ms',
           summary: await measureVariantFlip(handle, shape, plan),
+          supported: true,
+        }
+      case 'stepTransition':
+        return {
+          ...base,
+          unit: 'ms',
+          summary: await measureStepTransition(handle, shape, plan),
           supported: true,
         }
       default:

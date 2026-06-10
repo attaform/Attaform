@@ -13,6 +13,7 @@ import { gridNative, gridShape, gridValibot, gridZod3 } from './grid'
 import { massiveNative, massiveShape, massiveValibot, massiveZod3 } from './massive'
 import { nestedNative, nestedShape, nestedValibot, nestedZod3 } from './nested'
 import type { NativeRule, ScenarioShape } from './types'
+import { wizardNative, wizardShape, wizardValibot, wizardZod3 } from './wizard'
 
 export { leafSeed, nestRules } from './types'
 export type { NativeRule, ScenarioShape } from './types'
@@ -42,6 +43,8 @@ export function shapeFor(scenario: ScenarioId, params: ScenarioParams): Scenario
       return discriminatedUnionShape(params)
     case 'massive':
       return massiveShape(params)
+    case 'wizard':
+      return wizardShape(params)
     default:
       return notYet(scenario, 'shape')
   }
@@ -62,6 +65,8 @@ export function zodSchemaFor(scenario: ScenarioId, params: ScenarioParams): z.Zo
       return discriminatedUnionZod3(params)
     case 'massive':
       return massiveZod3(params)
+    case 'wizard':
+      return wizardZod3(params)
     default:
       return notYet(scenario, 'zod schema')
   }
@@ -82,6 +87,8 @@ export function valibotSchemaFor(scenario: ScenarioId, params: ScenarioParams): 
       return discriminatedUnionValibot(params)
     case 'massive':
       return massiveValibot(params)
+    case 'wizard':
+      return wizardValibot(params)
     default:
       return notYet(scenario, 'valibot schema')
   }
@@ -105,6 +112,8 @@ export function nativeRulesFor(
       return discriminatedUnionNative(params)
     case 'massive':
       return massiveNative(params)
+    case 'wizard':
+      return wizardNative(params)
     default:
       return notYet(scenario, 'native rules')
   }

@@ -83,6 +83,23 @@ export interface ScenarioShape {
       readonly value: Record<string, unknown>
     }>
   }
+  /**
+   * Multi-step wizard descriptor, present only for the wizard scenario. The
+   * steps partition `paths` in order (`steps[i]` holds step i's leaf paths), and
+   * only the active step's fields are rendered. The stepTransition dimension
+   * advances through them: a library with a wizard primitive (Attaform's
+   * useWizard) makes each step its own form, so a gated advance validates only
+   * that step; a library without one hand-composes the flow off a step signal.
+   * `stepKeys` names each step's object key (`step0`), so an adapter that builds
+   * a form per step slices the per-step schema and defaults out of the root by
+   * key.
+   */
+  readonly wizard?: {
+    /** Each step's object key (`step0`, `step1`, ...), in step order. */
+    readonly stepKeys: readonly string[]
+    /** Each step's leaf paths (`['step0.f0', ...]`), partitioning `paths`. */
+    readonly steps: readonly (readonly string[])[]
+  }
 }
 
 /**

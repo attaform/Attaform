@@ -72,6 +72,15 @@ const CASES: readonly ScenarioCase[] = [
     // the whole-form-versus-granular gap is the headline and both complete.
     skip: (params, dim) => params === 'L5000' && dim === 'mount',
   },
+  {
+    // A linear multi-step flow. The two genuinely comparable operations are the
+    // gated forward advance (stepTransition: validate the leaving step, move on)
+    // and the cross-step aggregate validate. Keystroke/mount/rerender add no
+    // wizard-specific signal over flat/nested, so they are not swept here.
+    scenario: 'wizard',
+    params: ['S4'],
+    dims: ['stepTransition', 'validate'],
+  },
 ]
 
 /**
@@ -81,12 +90,13 @@ const CASES: readonly ScenarioCase[] = [
  * number where a gap belongs, or a skipped cell that should have measured).
  */
 function expectUnsupported(_adapter: string, _scenario: string, _dim: string): boolean {
-  // Every adapter expresses every dimension of the object, array, grid, and
-  // massive scenarios (massive composes those same supported primitives at
-  // scale). FormKit owns its inputs, so its render scope falls back to the
-  // caveated DOM-mutation proxy (asserted below) rather than reporting
-  // unsupported. The wizard scenario (a later Phase 3 commit) introduces the
-  // first genuine capability gaps this gate will assert.
+  // Every adapter expresses every dimension of the object, array, grid,
+  // massive, and wizard scenarios. The wizard's expressiveness gap is
+  // native-versus-hand-rolled (the capability matrix column), not a measurement
+  // one: Attaform has a wizard primitive, the rest hand-compose the flow, but
+  // all of them advance steps and validate, so none reports a wizard dimension
+  // unsupported. FormKit owns its inputs, so its render scope falls back to the
+  // caveated DOM-mutation proxy (asserted below) rather than unsupported.
   return false
 }
 

@@ -171,9 +171,15 @@ export const formkitAdapter: BenchAdapter = {
     const discriminantSeg = union
       ? union.discriminantPath.slice(union.discriminantPath.lastIndexOf('.') + 1)
       : ''
+    const wizardDesc = shape.wizard
     let listNode: ListNode | undefined
     let rowCount: Ref<number> | undefined
     let activeTag: Ref<string> | undefined
+    // The hand-composed wizard's active step. FormKit has no wizard primitive
+    // without the multi-step add-on, and its submit validates the whole form,
+    // so a gated advance re-validates every field; every step's inputs render
+    // through the trie (the default branch).
+    let wizardStep = 0
 
     const Host = defineComponent({
       name: 'FormKitHost',
@@ -342,7 +348,20 @@ export const formkitAdapter: BenchAdapter = {
         activeTag.value = to
         await flush()
       },
-      stepTransition: () => Promise.resolve(unsupported('stepTransition')),
+      async stepTransition(dir: 1 | -1) {
+        if (!wizardDesc) return unsupported('stepTransition')
+        if (dir === 1) {
+          if (wizardStep < wizardDesc.steps.length - 1) {
+            // FormKit validates the whole form on submit (no per-step entry
+            // without the multi-step add-on), so a gated step re-validates every
+            // field; that whole-form cost is the honest price of a hand-composed
+            // FormKit wizard.
+            await validate()
+            wizardStep += 1
+          }
+        } else if (wizardStep > 0) wizardStep -= 1
+        await flush()
+      },
       // FormKit owns its components; component render count is not applicable.
       // The grid scenario adds a DOM-mutation proxy, explicitly caveated.
       getRenderCount: () => null,

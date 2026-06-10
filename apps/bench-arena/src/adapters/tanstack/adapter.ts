@@ -56,9 +56,15 @@ export const tanstackAdapter: BenchAdapter = {
     const itemFields = shape.arrayItemFields ?? []
     const seedRows = arrayPath ? ((shape.defaultValues[arrayPath] as unknown[]) ?? []) : []
     const union = shape.union
+    const wizardDesc = shape.wizard
     let form: TanstackForm | undefined
     let rowCount: Ref<number> | undefined
     let activeTag: Ref<string> | undefined
+    // The hand-composed wizard's active step. TanStack has no wizard primitive,
+    // so the harness tracks the position and the gated advance validates the
+    // leaving step's fields through the per-field API; every step renders
+    // through the default branch, so navigation never remounts a field.
+    let wizardStep = 0
 
     const Host = defineComponent({
       name: 'TanstackHost',
@@ -166,7 +172,20 @@ export const tanstackAdapter: BenchAdapter = {
         if (activeTag) activeTag.value = to
         await flush()
       },
-      stepTransition: () => Promise.resolve(unsupported('stepTransition')),
+      async stepTransition(dir: 1 | -1) {
+        if (!wizardDesc || !form) return unsupported('stepTransition')
+        if (dir === 1) {
+          if (wizardStep < wizardDesc.steps.length - 1) {
+            // Gate the advance on the leaving step's fields, validated through
+            // TanStack's per-field API; only this step's fields are checked.
+            await Promise.all(
+              (wizardDesc.steps[wizardStep] ?? []).map((p) => form?.validateField(p, 'change'))
+            )
+            wizardStep += 1
+          }
+        } else if (wizardStep > 0) wizardStep -= 1
+        await flush()
+      },
       getRenderCount: () => totalRenders(),
       resetRenderCount: () => resetRenderCounts(),
       teardown: () => app.unmount(),

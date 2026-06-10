@@ -39,6 +39,11 @@ const CASES: readonly ScenarioCase[] = [
     params: ['D4', 'D8', 'D16'],
     dims: ['keystroke', 'mount', 'validate', 'rerender'],
   },
+  {
+    scenario: 'arrays',
+    params: ['N10', 'N100'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender'],
+  },
 ]
 
 /**

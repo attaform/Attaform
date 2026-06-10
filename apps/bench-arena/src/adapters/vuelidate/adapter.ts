@@ -1,5 +1,5 @@
 import { useVuelidate } from '@vuelidate/core'
-import { minLength } from '@vuelidate/validators'
+import { helpers, minLength } from '@vuelidate/validators'
 import { type App, createApp, defineComponent, h, reactive } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
@@ -21,6 +21,45 @@ function resolveField(root: Record<string, unknown>, dotted: string): VuelidateF
     node = (node as Record<string, unknown>)[seg]
   }
   return node as VuelidateField | undefined
+}
+
+/**
+ * A per-row field façade for an array scenario. Vuelidate's `forEach` validates
+ * the collection as a whole and exposes no per-item `$model`, so the row binds
+ * its value to the raw reactive state cell (granular: only this row re-renders on
+ * its own edit) and routes validation through the collection status. That is the
+ * honest hand-rolled shape a Vuelidate array form takes; reading the collection
+ * `$error` on render forces the whole-collection revalidation per keystroke.
+ */
+function arrayFacade(
+  state: Record<string, unknown>,
+  coll: VuelidateField,
+  arrayPath: string,
+  index: number,
+  fieldSegs: readonly string[]
+): VuelidateField {
+  const row = (): Record<string, unknown> =>
+    (state[arrayPath] as Array<Record<string, unknown>>)[index] ?? {}
+  const last = fieldSegs[fieldSegs.length - 1] ?? ''
+  return {
+    get $model(): string {
+      let node: unknown = row()
+      for (const seg of fieldSegs) node = (node as Record<string, unknown> | undefined)?.[seg]
+      return node as string
+    },
+    set $model(val: string) {
+      let node = row()
+      for (let k = 0; k < fieldSegs.length - 1; k++) {
+        node = node[fieldSegs[k] ?? ''] as Record<string, unknown>
+      }
+      node[last] = val
+    },
+    get $error(): boolean {
+      return coll.$error
+    },
+    $touch: () => coll.$touch(),
+    $validate: () => coll.$validate(),
+  }
 }
 
 /**
@@ -69,25 +108,47 @@ export const vuelidateAdapter: BenchAdapter = {
     const rules = nestRules(nativeRulesFor(opts.scenario, opts.params), (rule) =>
       rule.minLength !== undefined ? { minLength: minLength(rule.minLength) } : {}
     )
+    if (shape.arrayPath && shape.arrayItemRules) {
+      const itemRules: Record<string, unknown> = {}
+      for (const [field, rule] of Object.entries(shape.arrayItemRules)) {
+        itemRules[field] =
+          rule.minLength !== undefined ? { minLength: minLength(rule.minLength) } : {}
+      }
+      rules[shape.arrayPath] = { $each: helpers.forEach(itemRules) }
+    }
     mountSeq += 1
 
     let root: VuelidateRoot | undefined
-    let tree: Record<string, unknown> | undefined
+    let resolve: ((index: number) => VuelidateField | undefined) | undefined
 
     const Host = defineComponent({
       name: 'VuelidateHost',
       setup() {
-        const state = reactive({ ...shape.defaultValues })
+        const state = reactive({ ...shape.defaultValues }) as Record<string, unknown>
         const v$ = useVuelidateLoose(rules, state)
         root = v$.value
-        tree = v$.value
+        const arrayPath = shape.arrayPath
+        // An array path resolves to a per-row façade; an object path walks the
+        // nested validation tree by key.
+        const fieldFor = (path: string): VuelidateField | undefined => {
+          if (arrayPath && path.startsWith(`${arrayPath}.`)) {
+            const rest = path.slice(arrayPath.length + 1).split('.')
+            const coll = (v$.value as Record<string, unknown>)[arrayPath] as VuelidateField
+            return arrayFacade(state, coll, arrayPath, Number(rest[0]), rest.slice(1))
+          }
+          return resolveField(v$.value, path)
+        }
+        resolve = (index) => {
+          const path = shape.paths[index]
+          return path === undefined ? undefined : fieldFor(path)
+        }
         return () =>
           h(
             'div',
             shape.paths.map((path, index) =>
               h(Field, {
                 key: index,
-                field: resolveField(v$.value, path) as VuelidateField,
+                field: fieldFor(path) as VuelidateField,
                 index,
                 trigger: opts.trigger,
               })
@@ -110,8 +171,7 @@ export const vuelidateAdapter: BenchAdapter = {
         await flush()
       },
       async validateField(index) {
-        const path = shape.paths[index]
-        if (path !== undefined && tree) await resolveField(tree, path)?.$validate()
+        await resolve?.(index)?.$validate()
         await flush()
       },
       arrayOp: () => Promise.resolve(unsupported('arrayOp')),

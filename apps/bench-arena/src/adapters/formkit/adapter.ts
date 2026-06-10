@@ -53,20 +53,44 @@ function buildTrie(paths: readonly string[]): TrieNode {
   return root
 }
 
+/** A trie node whose every child key is numeric is an array: FormKit models it
+ *  as a `list` whose items are positional, not a `group` keyed by name. */
+function isArrayNode(node: TrieNode): boolean {
+  if (node.children.size === 0) return false
+  for (const key of node.children.keys()) if (!/^\d+$/.test(key)) return false
+  return true
+}
+
+function leafInput(
+  leaf: { index: number; path: string },
+  defaultValues: Record<string, unknown>,
+  name?: string
+): VNode {
+  return h(FormKitC, {
+    key: name ?? leaf.index,
+    type: 'text',
+    name,
+    value: leafSeed(defaultValues, leaf.path),
+    delay: 0,
+    'data-bench-field': leaf.index,
+  })
+}
+
 function renderNodes(node: TrieNode, defaultValues: Record<string, unknown>): VNode[] {
   const out: VNode[] = []
   for (const [seg, child] of node.children) {
     if (child.leaf) {
-      out.push(
-        h(FormKitC, {
-          key: seg,
-          type: 'text',
-          name: seg,
-          value: leafSeed(defaultValues, child.leaf.path),
-          delay: 0,
-          'data-bench-field': child.leaf.index,
-        })
-      )
+      out.push(leafInput(child.leaf, defaultValues, seg))
+    } else if (isArrayNode(child)) {
+      // A `list`: render its items in index order, each positional (no name).
+      const items = [...child.children.entries()]
+        .sort((a, b) => Number(a[0]) - Number(b[0]))
+        .map(([idx, item]) =>
+          item.leaf
+            ? leafInput(item.leaf, defaultValues)
+            : h(FormKitC, { key: idx, type: 'group' }, () => renderNodes(item, defaultValues))
+        )
+      out.push(h(FormKitC, { key: seg, type: 'list', name: seg }, () => items))
     } else {
       out.push(
         h(FormKitC, { key: seg, type: 'group', name: seg }, () => renderNodes(child, defaultValues))

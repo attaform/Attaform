@@ -12,6 +12,9 @@ export interface RegleField {
   /** Present on nested-object field statuses; the children keyed by segment.
    *  The path walker descends through these to reach a deep leaf status. */
   readonly $fields?: Record<string, RegleField>
+  /** Present on array (collection) field statuses; one item status per row.
+   *  A numeric path segment descends through this. */
+  readonly $each?: readonly RegleField[]
 }
 
 /** The `r$` root the adapter reaches through: its per-field status map + the

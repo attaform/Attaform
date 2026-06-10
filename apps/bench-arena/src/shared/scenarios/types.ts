@@ -24,6 +24,19 @@ export interface ScenarioShape {
   readonly defaultValues: Record<string, unknown>
   /** Index into `paths` that the keystroke dimension types into. */
   readonly keystrokeIndex: number
+  /**
+   * Dotted path of the array under test, present only for array-shaped
+   * scenarios (arrays, grid). The arrayOp dimension reorders this array, and
+   * the native-validator adapters build their collection rule against it.
+   */
+  readonly arrayPath?: string
+  /**
+   * Per-item field rules for an array scenario, keyed by the item's own field
+   * name (`{ v: { minLength: 2 } }`). The schema-based libraries express arrays
+   * through their schema; the native-validator libraries (Regle rules, Vuelidate)
+   * build their `$each` collection rule from this.
+   */
+  readonly arrayItemRules?: Record<string, NativeRule>
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { ScenarioId, ScenarioParams } from '../../adapters/contract'
 import type * as v from 'valibot'
 import type { z } from 'zod'
+import { arraysNative, arraysShape, arraysValibot, arraysZod3 } from './arrays'
 import { flatNative, flatShape, flatValibot, flatZod3 } from './flat'
 import { nestedNative, nestedShape, nestedValibot, nestedZod3 } from './nested'
 import type { NativeRule, ScenarioShape } from './types'
@@ -25,6 +26,8 @@ export function shapeFor(scenario: ScenarioId, params: ScenarioParams): Scenario
       return flatShape(params)
     case 'nested':
       return nestedShape(params)
+    case 'arrays':
+      return arraysShape(params)
     default:
       return notYet(scenario, 'shape')
   }
@@ -37,6 +40,8 @@ export function zodSchemaFor(scenario: ScenarioId, params: ScenarioParams): z.Zo
       return flatZod3(params)
     case 'nested':
       return nestedZod3(params)
+    case 'arrays':
+      return arraysZod3(params)
     default:
       return notYet(scenario, 'zod schema')
   }
@@ -49,6 +54,8 @@ export function valibotSchemaFor(scenario: ScenarioId, params: ScenarioParams): 
       return flatValibot(params)
     case 'nested':
       return nestedValibot(params)
+    case 'arrays':
+      return arraysValibot(params)
     default:
       return notYet(scenario, 'valibot schema')
   }
@@ -64,6 +71,8 @@ export function nativeRulesFor(
       return flatNative(params)
     case 'nested':
       return nestedNative(params)
+    case 'arrays':
+      return arraysNative(params)
     default:
       return notYet(scenario, 'native rules')
   }

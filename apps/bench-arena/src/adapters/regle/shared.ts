@@ -13,18 +13,22 @@ const unsupported = (op: string): never => {
 
 /**
  * Resolve a dotted leaf path to its Regle field status. Regle nests object
- * fields under `$fields`, so a deep path walks `$fields[seg]` at each level
- * (`r$.$fields.l0.$fields.l1.$fields.leaf`); a flat path is the single-segment
+ * fields under `$fields` and array items under `$each`, so a deep path walks
+ * `$fields[seg]` for an object segment and `$each[i]` for a numeric one
+ * (`r$.$fields.rows.$each[0].$fields.v`); a flat path is the single-segment
  * case. Returns undefined if the path is absent, so a missing input surfaces as
  * the driver's "no input mounted" rather than a silent miss.
  */
 function resolveField(root: RegleRoot, dotted: string): RegleField | undefined {
-  let fields: Record<string, RegleField> | undefined = root.$fields
+  let node: {
+    readonly $fields?: Record<string, RegleField>
+    readonly $each?: readonly RegleField[]
+  } = root
   let field: RegleField | undefined
   for (const seg of dotted.split('.')) {
-    field = fields?.[seg]
+    field = /^\d+$/.test(seg) ? node.$each?.[Number(seg)] : node.$fields?.[seg]
     if (!field) return undefined
-    fields = field.$fields
+    node = field
   }
   return field
 }

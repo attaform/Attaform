@@ -133,7 +133,7 @@ The methodology is only as good as what it admits.
 - **FormKit owns its inputs.** It cannot drive the shared bare field, so its re-render figure is a DOM-mutation proxy, marked in the tables, and its mount and memory figures include its own component tree. It is labeled batteries-included throughout and never placed silently beside bare-input libraries.
 - **Heap is Chromium-quantized.** `usedJSHeapSize` reports rounded magnitudes, not byte-exact values, so memory figures show whole kilobytes and the slope across sizes carries more signal than any single number.
 - **Bundle is total, not first-paint.** Every figure is the full minified and gzipped cost with the validator weighed in. Vue is external, since every app ships it once. Code-splitting changes what a first paint actually pulls.
-- **A Scorecard is opt-in.** An absent score means a project has not published a Scorecard, not that it is deficient. Scores are point-in-time; the link on each row shows the current result.
+- **An absent score has two distinct meanings.** "Not published" means a project has not opted into a Scorecard, which is a choice and not a deficiency. "Unavailable" means the lookup did not complete on that run, a network gap on our side and never a statement about the project. The viewer linked on each row shows the live result either way, and scores are point-in-time.
 - **Local versus CI.** The committed numbers come from CI on a fixed runner. A figure stamped "local run" is illustrative shape data from a developer machine, superseded the next time CI refreshes the page.
 
 ## Reproduce it yourself

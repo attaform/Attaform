@@ -29,8 +29,6 @@ interface VeeFieldArray {
   swap(a: number, b: number): void
 }
 
-let mountSeq = 0
-
 const unsupported = (op: string): never => {
   throw new Error(`bench: vee-validate adapter does not drive "${op}" in this scenario`)
 }
@@ -56,7 +54,6 @@ export const veeValidateAdapter: BenchAdapter = {
   async mount(container, opts): Promise<MountHandle> {
     const shape = shapeFor(opts.scenario, opts.params)
     const schema = zodSchemaFor(opts.scenario, opts.params)
-    mountSeq += 1
 
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []

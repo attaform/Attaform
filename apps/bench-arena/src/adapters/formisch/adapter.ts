@@ -52,8 +52,6 @@ const setInputAt = setInput as unknown as (
   config: { path: ArrayPath; input: unknown }
 ) => void
 
-let mountSeq = 0
-
 const unsupported = (op: string): never => {
   throw new Error(`bench: formisch adapter does not drive "${op}" in this scenario`)
 }
@@ -82,7 +80,6 @@ export const formischAdapter: BenchAdapter = {
     // Validate on the trigger under test; revalidate on the same event so a
     // dirtied field keeps re-checking as the cohort does.
     const mode = opts.trigger === 'blur' ? 'blur' : 'input'
-    mountSeq += 1
 
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []

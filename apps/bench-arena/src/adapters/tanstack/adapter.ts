@@ -20,8 +20,6 @@ type UseFormLoose = (opts: {
 }) => TanstackForm
 const useFormLoose = useForm as unknown as UseFormLoose
 
-let mountSeq = 0
-
 const unsupported = (op: string): never => {
   throw new Error(`bench: tanstack adapter does not drive "${op}" in this scenario`)
 }
@@ -50,7 +48,6 @@ export const tanstackAdapter: BenchAdapter = {
     // Validate on the trigger under test: onChange for the input pass (a
     // keystroke does validation work), onBlur for the blur pass.
     const validators = opts.trigger === 'blur' ? { onBlur: schema } : { onChange: schema }
-    mountSeq += 1
 
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []

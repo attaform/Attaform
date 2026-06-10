@@ -71,8 +71,6 @@ type VuelidateTree = VuelidateRoot & Record<string, VuelidateField>
 type UseVuelidateLoose = (rules: Record<string, unknown>, state: object) => { value: VuelidateTree }
 const useVuelidateLoose = useVuelidate as unknown as UseVuelidateLoose
 
-let mountSeq = 0
-
 const unsupported = (op: string): never => {
   throw new Error(`bench: vuelidate adapter does not drive "${op}" in this scenario`)
 }
@@ -116,7 +114,6 @@ export const vuelidateAdapter: BenchAdapter = {
       }
       rules[shape.arrayPath] = { $each: helpers.forEach(itemRules) }
     }
-    mountSeq += 1
 
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []

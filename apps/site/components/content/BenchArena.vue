@@ -17,6 +17,7 @@
   import rawResults from 'attaform-bench-arena/results.json'
 
   type Support = 'native' | 'hand-rolled' | 'unsupported'
+  type ScorecardStatus = 'published' | 'not-published' | 'unavailable'
   interface Scorecard {
     score: number
     date: string | null
@@ -30,6 +31,7 @@
     repo: string | null
     repoUrl: string | null
     scorecardUrl: string | null
+    scorecardStatus: ScorecardStatus
     scorecard: Scorecard | null
     [scenario: string]: unknown
   }
@@ -175,9 +177,6 @@
   // the foot of the table rather than being buried.
   const bundleRows = computed(() => [...results.bundle].sort((a, b) => a.gzBytes - b.gzBytes))
   const bundleMax = computed(() => Math.max(...results.bundle.map((r) => r.gzBytes)))
-
-  // --- scorecard ----------------------------------------------------------
-  const hasAnyScorecard = computed(() => results.capabilities.some((c) => c.scorecard != null))
 
   // --- runtime tables -----------------------------------------------------
   // Resolve the selected scenario/dimension; throw with a helpful message if it
@@ -353,7 +352,7 @@
           >
             <td class="px-3 py-2 font-medium whitespace-nowrap text-fg">{{ cap.displayName }}</td>
             <td class="px-3 py-2 whitespace-nowrap">
-              <template v-if="cap.scorecard">
+              <template v-if="cap.scorecardStatus === 'published' && cap.scorecard">
                 <span class="font-mono font-semibold text-fg">{{
                   cap.scorecard.score.toFixed(1)
                 }}</span>
@@ -365,14 +364,28 @@
                   />
                 </span>
               </template>
-              <span v-else class="text-xs text-fg-subtle">Not published</span>
+              <span
+                v-else-if="cap.scorecardStatus === 'not-published'"
+                class="text-xs text-fg-subtle"
+                >Not published</span
+              >
+              <span
+                v-else
+                class="text-xs text-fg-subtle italic"
+                title="The Scorecard lookup did not complete on this run; the linked viewer shows the live result."
+                >Unavailable</span
+              >
             </td>
             <td class="px-3 py-2 text-xs whitespace-nowrap text-fg-muted">
-              {{ cap.scorecard ? shortDate(cap.scorecard.date) : '—' }}
+              {{
+                cap.scorecardStatus === 'published' && cap.scorecard
+                  ? shortDate(cap.scorecard.date)
+                  : '—'
+              }}
             </td>
             <td class="px-3 py-2 whitespace-nowrap">
               <a
-                v-if="cap.scorecard && cap.scorecardUrl"
+                v-if="cap.scorecardStatus !== 'not-published' && cap.scorecardUrl"
                 :href="cap.scorecardUrl"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -393,11 +406,14 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="hasAnyScorecard" class="px-3 py-2 text-xs text-fg-subtle">
-        The OpenSSF Scorecard rates a project's adoption of supply-chain practices out of 10.
-        Publishing one is opt-in, so an absent score means the project has not published a
-        Scorecard, not that it is deficient. Scores are point-in-time; the link shows the current
-        result.
+      <p class="px-3 py-2 text-xs text-fg-subtle">
+        The OpenSSF Scorecard rates a project's adoption of supply-chain practices out of 10. An
+        absent score has two meanings, kept distinct here.
+        <span class="font-medium text-fg-muted">Not published</span> means the project has not opted
+        into a Scorecard, which is a choice, not a deficiency.
+        <span class="font-medium text-fg-muted">Unavailable</span> means the lookup did not complete
+        on this run, a network gap on our side and never a statement about the project. Scores are
+        point-in-time; the linked viewer shows the live result.
       </p>
     </div>
 

@@ -55,8 +55,10 @@ export const tanstackAdapter: BenchAdapter = {
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []
     const seedRows = arrayPath ? ((shape.defaultValues[arrayPath] as unknown[]) ?? []) : []
+    const union = shape.union
     let form: TanstackForm | undefined
     let rowCount: Ref<number> | undefined
+    let activeTag: Ref<string> | undefined
 
     const Host = defineComponent({
       name: 'TanstackHost',
@@ -69,7 +71,22 @@ export const tanstackAdapter: BenchAdapter = {
         // into a row never reflows the list, only an add/remove/reorder does.
         const count = ref(seedRows.length)
         rowCount = count
+        // The active variant is tracked off a local signal the flip keeps in
+        // sync (the same shape as the row-count signal); a flip writes the union
+        // value through setFieldValue, then advances the signal so the host
+        // swaps to the new branch's fields.
+        const tag = ref(union?.variants[0]?.tag ?? '')
+        activeTag = tag
         return () => {
+          if (union !== undefined) {
+            const variant = union.variants.find((v) => v.tag === tag.value)
+            return h(
+              'div',
+              (variant?.fieldPaths ?? []).map((path, index) =>
+                h(Field, { key: path, form: f, name: path, index, trigger: opts.trigger })
+              )
+            )
+          }
           if (arrayPath !== undefined) {
             return h(
               'div',
@@ -130,7 +147,15 @@ export const tanstackAdapter: BenchAdapter = {
         } else unsupported(op)
         await flush()
       },
-      flipVariant: () => Promise.resolve(unsupported('flipVariant')),
+      async flipVariant(to: string) {
+        const variant = union?.variants.find((v) => v.tag === to)
+        if (!union || !variant) return unsupported('flipVariant')
+        // Write the whole union value, then advance the local signal so the host
+        // swaps to the new branch's fields after the value has landed.
+        form?.setFieldValue(union.unionPath, { ...variant.value })
+        if (activeTag) activeTag.value = to
+        await flush()
+      },
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),
       resetRenderCount: () => resetRenderCounts(),

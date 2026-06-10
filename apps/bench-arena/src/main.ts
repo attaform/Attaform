@@ -53,6 +53,7 @@ const MOUNT_RUNS = 15
 const VALIDATE_RUNS = 100
 const RERENDER_RUNS = 30
 const ARRAYOP_RUNS = 50
+const VARIANTFLIP_RUNS = 50
 
 const ZERO: Summary = { median: 0, p95: 0, iqr: 0, count: 0, trimmed: 0 }
 
@@ -237,6 +238,26 @@ async function measureArrayReorder(handle: MountHandle, shape: ScenarioShape): P
   return summarize(samples)
 }
 
+/**
+ * Cross-variant flip: cycle the discriminant through every variant, replacing
+ * the whole union value each time. The library re-resolves the now-active
+ * branch (its discriminated-union handling) and the rendered field set swaps to
+ * the new variant. Each sample is one flip to the next variant in the cycle, so
+ * the union rotates through all of its shapes, every one of them valid.
+ */
+async function measureVariantFlip(handle: MountHandle, shape: ScenarioShape): Promise<Summary> {
+  const tags = shape.union?.variants.map((variant) => variant.tag) ?? []
+  if (tags.length === 0) throw new Error('bench: variantFlip needs a discriminated-union scenario')
+  const at = (i: number): string => tags[i % tags.length] as string
+  for (let i = 0; i < 5; i++) await handle.flipVariant(at(i))
+  const samples: number[] = []
+  for (let i = 0; i < VARIANTFLIP_RUNS; i++) {
+    samples.push(await timed(() => handle.flipVariant(at(5 + i))))
+    await frame()
+  }
+  return summarize(samples)
+}
+
 /** Mount/init cost over fresh mounts; the only dim that re-mounts per sample. */
 async function measureMount(adapter: BenchAdapter, opts: MountOpts): Promise<Summary> {
   const samples: number[] = []
@@ -306,6 +327,13 @@ async function run(): Promise<BenchPayload> {
           ...base,
           unit: 'ms',
           summary: await measureArrayReorder(handle, shape),
+          supported: true,
+        }
+      case 'variantFlip':
+        return {
+          ...base,
+          unit: 'ms',
+          summary: await measureVariantFlip(handle, shape),
           supported: true,
         }
       default:

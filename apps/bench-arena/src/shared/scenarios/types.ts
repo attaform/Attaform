@@ -50,6 +50,29 @@ export interface ScenarioShape {
    * immediately and the add/remove rotation never churns error state.
    */
   readonly newRow?: () => Record<string, unknown>
+  /**
+   * Discriminated-union descriptor, present only for the discriminated-union
+   * scenario. Adapters render only the ACTIVE variant's fields (the one the
+   * current discriminant selects), and the variantFlip dimension cycles the
+   * discriminant, replacing the whole value at `unionPath` with the target
+   * variant's `value`. The default active variant is the first in `variants`,
+   * so its `fieldPaths` are what the keystroke and re-render dimensions drive.
+   */
+  readonly union?: {
+    /** Dotted path of the object the union occupies; a flip writes here. */
+    readonly unionPath: string
+    /** Dotted path of the discriminant leaf (`event.kind`). */
+    readonly discriminantPath: string
+    /** The variants, keyed by their discriminant value. */
+    readonly variants: ReadonlyArray<{
+      /** The discriminant value (`click`). */
+      readonly tag: string
+      /** This variant's non-discriminant leaf paths, rendered as inputs. */
+      readonly fieldPaths: readonly string[]
+      /** A full valid value for this variant, written verbatim on a flip. */
+      readonly value: Record<string, unknown>
+    }>
+  }
 }
 
 /**

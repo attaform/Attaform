@@ -164,12 +164,68 @@ export const formkitAdapter: BenchAdapter = {
     // The append row is the SAME row every adapter pushes (the shape's newRow),
     // so an appended FormKit row seeds to identical content as the cohort's.
     const appendSeed = shape.newRow?.() ?? {}
+    const union = shape.union
+    // FormKit addresses fields by name within a group, so the union renders as
+    // a `group` whose children are the discriminant input plus the active
+    // variant's inputs; the leaf segment is the FormKit `name`.
+    const discriminantSeg = union
+      ? union.discriminantPath.slice(union.discriminantPath.lastIndexOf('.') + 1)
+      : ''
     let listNode: ListNode | undefined
     let rowCount: Ref<number> | undefined
+    let activeTag: Ref<string> | undefined
 
     const Host = defineComponent({
       name: 'FormKitHost',
       setup() {
+        // A discriminated union renders as a `group` whose children are rebuilt
+        // when the discriminant flips. Keying the group by the active tag remounts
+        // it, so FormKit rebuilds the union value (the discriminant carried by its
+        // own input plus the new branch's fields) from the freshly mounted inputs:
+        // the idiomatic conditional-fields shape a FormKit union form takes.
+        if (union !== undefined) {
+          const tag = ref(union.variants[0]?.tag ?? '')
+          activeTag = tag
+          return () => {
+            const variant = union.variants.find((v) => v.tag === tag.value)
+            const fields = Object.entries(variant?.value ?? {}).filter(
+              ([key]) => key !== discriminantSeg
+            )
+            return h(
+              FormKitC,
+              {
+                type: 'form',
+                id: formId,
+                plugins: [zodPlugin],
+                actions: false,
+                onSubmit: submitHandler,
+                onNode: (node: unknown) => {
+                  rootNode = node as FormNode
+                },
+              },
+              () =>
+                h(FormKitC, { type: 'group', name: union.unionPath, key: tag.value }, () => [
+                  h(FormKitC, {
+                    key: '__discriminant',
+                    type: 'text',
+                    name: discriminantSeg,
+                    value: tag.value,
+                    delay: 0,
+                  }),
+                  ...fields.map(([seg, val], i) =>
+                    h(FormKitC, {
+                      key: seg,
+                      type: 'text',
+                      name: seg,
+                      value: val,
+                      delay: 0,
+                      'data-bench-field': i,
+                    })
+                  ),
+                ])
+            )
+          }
+        }
         // An array scenario renders the `list` node's rows off a reactive count:
         // appending or removing a row mounts/unmounts a group child, which FormKit
         // grows/shrinks the list from. A keystroke (count unchanged) never reflows
@@ -273,7 +329,15 @@ export const formkitAdapter: BenchAdapter = {
         } else unsupported(op)
         await flush()
       },
-      flipVariant: () => Promise.resolve(unsupported('flipVariant')),
+      async flipVariant(to: string) {
+        if (!union || !activeTag || !union.variants.some((v) => v.tag === to)) {
+          return unsupported('flipVariant')
+        }
+        // Advancing the tag remounts the keyed group, so FormKit rebuilds the
+        // union value from the new branch's inputs (no explicit value write).
+        activeTag.value = to
+        await flush()
+      },
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       // FormKit owns its components; component render count is not applicable.
       // The grid scenario adds a DOM-mutation proxy, explicitly caveated.

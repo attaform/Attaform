@@ -1,6 +1,6 @@
 import { useVuelidate } from '@vuelidate/core'
 import { helpers, minLength } from '@vuelidate/validators'
-import { type App, createApp, defineComponent, h, reactive } from 'vue'
+import { type App, type Ref, createApp, defineComponent, h, reactive, ref } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
@@ -120,9 +120,11 @@ export const vuelidateAdapter: BenchAdapter = {
 
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []
+    const union = shape.union
     let root: VuelidateRoot | undefined
     let resolve: ((index: number) => VuelidateField | undefined) | undefined
     let stateRef: Record<string, unknown> | undefined
+    let activeTag: Ref<string> | undefined
 
     const Host = defineComponent({
       name: 'VuelidateHost',
@@ -151,7 +153,26 @@ export const vuelidateAdapter: BenchAdapter = {
           const path = shape.paths[index]
           return path === undefined ? undefined : fieldFor(path)
         }
+        // The active variant is tracked off a local signal the flip keeps in
+        // sync; a flip reassigns the harness state's union value, and Vuelidate
+        // re-validates the active branch through its union-covering rules.
+        const tag = ref(union?.variants[0]?.tag ?? '')
+        activeTag = tag
         return () => {
+          if (union !== undefined) {
+            const variant = union.variants.find((v) => v.tag === tag.value)
+            return h(
+              'div',
+              (variant?.fieldPaths ?? []).map((path, index) =>
+                h(Field, {
+                  key: path,
+                  field: fieldFor(path) as VuelidateField,
+                  index,
+                  trigger: opts.trigger,
+                })
+              )
+            )
+          }
           if (arrayPath !== undefined) {
             const list = (state[arrayPath] as unknown[]) ?? []
             return h(
@@ -220,7 +241,16 @@ export const vuelidateAdapter: BenchAdapter = {
         } else unsupported(op)
         await flush()
       },
-      flipVariant: () => Promise.resolve(unsupported('flipVariant')),
+      // Vuelidate is validation-only, so the harness owns the union value;
+      // reassigning it revalidates the active branch through the union-covering
+      // rules. The clone keeps repeated flips from sharing one reactive object.
+      async flipVariant(to: string) {
+        const variant = union?.variants.find((v) => v.tag === to)
+        if (!union || !variant || !stateRef) return unsupported('flipVariant')
+        stateRef[union.unionPath] = { ...variant.value }
+        if (activeTag) activeTag.value = to
+        await flush()
+      },
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),
       resetRenderCount: () => resetRenderCounts(),

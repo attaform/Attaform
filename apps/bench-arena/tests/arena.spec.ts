@@ -49,6 +49,11 @@ const CASES: readonly ScenarioCase[] = [
     params: ['N20M8', 'N100M8'],
     dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder'],
   },
+  {
+    scenario: 'discriminated-union',
+    params: ['DU'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'variantFlip'],
+  },
 ]
 
 /**

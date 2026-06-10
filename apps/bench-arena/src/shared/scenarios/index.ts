@@ -2,6 +2,12 @@ import type { ScenarioId, ScenarioParams } from '../../adapters/contract'
 import type * as v from 'valibot'
 import type { z } from 'zod'
 import { arraysNative, arraysShape, arraysValibot, arraysZod3 } from './arrays'
+import {
+  discriminatedUnionNative,
+  discriminatedUnionShape,
+  discriminatedUnionValibot,
+  discriminatedUnionZod3,
+} from './discriminated-union'
 import { flatNative, flatShape, flatValibot, flatZod3 } from './flat'
 import { gridNative, gridShape, gridValibot, gridZod3 } from './grid'
 import { nestedNative, nestedShape, nestedValibot, nestedZod3 } from './nested'
@@ -31,6 +37,8 @@ export function shapeFor(scenario: ScenarioId, params: ScenarioParams): Scenario
       return arraysShape(params)
     case 'grid':
       return gridShape(params)
+    case 'discriminated-union':
+      return discriminatedUnionShape(params)
     default:
       return notYet(scenario, 'shape')
   }
@@ -47,6 +55,8 @@ export function zodSchemaFor(scenario: ScenarioId, params: ScenarioParams): z.Zo
       return arraysZod3(params)
     case 'grid':
       return gridZod3(params)
+    case 'discriminated-union':
+      return discriminatedUnionZod3(params)
     default:
       return notYet(scenario, 'zod schema')
   }
@@ -63,6 +73,8 @@ export function valibotSchemaFor(scenario: ScenarioId, params: ScenarioParams): 
       return arraysValibot(params)
     case 'grid':
       return gridValibot(params)
+    case 'discriminated-union':
+      return discriminatedUnionValibot(params)
     default:
       return notYet(scenario, 'valibot schema')
   }
@@ -82,6 +94,8 @@ export function nativeRulesFor(
       return arraysNative(params)
     case 'grid':
       return gridNative(params)
+    case 'discriminated-union':
+      return discriminatedUnionNative(params)
     default:
       return notYet(scenario, 'native rules')
   }

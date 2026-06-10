@@ -1,4 +1,4 @@
-import { type App, createApp, defineComponent, h, reactive } from 'vue'
+import { type App, type Ref, createApp, defineComponent, h, nextTick, reactive, ref } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
@@ -47,8 +47,10 @@ export async function mountRegle(
   const shape = shapeFor(opts.scenario, opts.params)
   const arrayPath = shape.arrayPath
   const itemFields = shape.arrayItemFields ?? []
+  const union = shape.union
   let root: RegleRoot | undefined
   let state: Record<string, unknown> | undefined
+  let activeTag: Ref<string> | undefined
 
   const Host = defineComponent({
     name: 'RegleHost',
@@ -64,11 +66,30 @@ export async function mountRegle(
       state = s
       const r$ = createRoot(s)
       root = r$
+      // The active variant is tracked off a local signal the flip keeps in sync;
+      // a flip reassigns the harness state's union value and advances the signal,
+      // and Regle re-derives the active branch's field statuses from the state.
+      const tag = ref(union?.variants[0]?.tag ?? '')
+      activeTag = tag
       // Each field status is stable, so the host renders once; each Field
       // re-renders only on its own `$value`. An array scenario iterates the
       // harness-owned reactive array for length (an add/remove/reorder reflows
       // the list; a leaf edit, which never touches the array structure, does not).
       return () => {
+        if (union !== undefined) {
+          const variant = union.variants.find((v) => v.tag === tag.value)
+          // Skip a field that has not resolved yet: in schema mode Regle derives
+          // a union branch's field statuses from the schema and state, so a field
+          // briefly absent right after a flip is dropped rather than crashing the
+          // render (the flip lets the derivation settle before swapping).
+          return h(
+            'div',
+            (variant?.fieldPaths ?? []).flatMap((path, index) => {
+              const field = resolveField(r$, path)
+              return field ? [h(Field, { key: path, field, index, trigger: opts.trigger })] : []
+            })
+          )
+        }
         if (arrayPath !== undefined) {
           const list = (s[arrayPath] as unknown[]) ?? []
           return h(
@@ -138,7 +159,21 @@ export async function mountRegle(
       } else unsupported(op)
       await flush()
     },
-    flipVariant: () => Promise.resolve(unsupported('flipVariant')),
+    // Regle is validation-only, so the harness owns the union value; reassigning
+    // it lets Regle re-derive the active branch from the reactive state. The
+    // clone keeps repeated flips from sharing one object across the reactive tree.
+    async flipVariant(to: string) {
+      const variant = union?.variants.find((v) => v.tag === to)
+      if (!union || !variant || !state) return unsupported('flipVariant')
+      state[union.unionPath] = { ...variant.value }
+      // Let Regle re-derive the new branch's field statuses from the changed
+      // state before the host swaps to them; in schema mode the branch fields do
+      // not exist on `r$` until this settles. This two-phase update is the real
+      // cost of a Regle discriminated-union flip.
+      await nextTick()
+      if (activeTag) activeTag.value = to
+      await flush()
+    },
     stepTransition: () => Promise.resolve(unsupported('stepTransition')),
     getRenderCount: () => totalRenders(),
     resetRenderCount: () => resetRenderCounts(),

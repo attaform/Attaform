@@ -1,6 +1,6 @@
 import { toTypedSchema } from '@vee-validate/zod'
 import { useFieldArray, useForm } from 'vee-validate'
-import { type App, createApp, defineComponent, h } from 'vue'
+import { type App, type Ref, createApp, defineComponent, h, ref } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
@@ -12,6 +12,8 @@ import Field from './Field.vue'
 interface VeeForm {
   validate: () => Promise<unknown>
   validateField: (path: string) => Promise<unknown>
+  /** Set a path's value, including a whole object at the union path (the flip). */
+  setFieldValue: (path: string, value: unknown) => void
 }
 
 /**
@@ -58,8 +60,10 @@ export const veeValidateAdapter: BenchAdapter = {
 
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []
+    const union = shape.union
     let form: VeeForm | undefined
     let rows: VeeFieldArray | undefined
+    let activeTag: Ref<string> | undefined
 
     const Host = defineComponent({
       name: 'VeeValidateHost',
@@ -76,7 +80,21 @@ export const veeValidateAdapter: BenchAdapter = {
           ? (useFieldArray(arrayPath) as unknown as VeeFieldArray)
           : undefined
         rows = fieldArray
+        // The active variant is tracked off a local signal the flip keeps in
+        // sync; a flip writes the union value through setFieldValue, then
+        // advances the signal so the host swaps to the new branch's fields.
+        const tag = ref(union?.variants[0]?.tag ?? '')
+        activeTag = tag
         return () => {
+          if (union !== undefined) {
+            const variant = union.variants.find((v) => v.tag === tag.value)
+            return h(
+              'div',
+              (variant?.fieldPaths ?? []).map((path, index) =>
+                h(Field, { key: path, name: path, index, trigger: opts.trigger })
+              )
+            )
+          }
           if (fieldArray) {
             return h(
               'div',
@@ -127,7 +145,15 @@ export const veeValidateAdapter: BenchAdapter = {
         else unsupported(op)
         await flush()
       },
-      flipVariant: () => Promise.resolve(unsupported('flipVariant')),
+      async flipVariant(to: string) {
+        const variant = union?.variants.find((v) => v.tag === to)
+        if (!union || !variant) return unsupported('flipVariant')
+        // Write the whole union value, then advance the local signal so the host
+        // swaps to the new branch's fields after the value has landed.
+        form?.setFieldValue(union.unionPath, { ...variant.value })
+        if (activeTag) activeTag.value = to
+        await flush()
+      },
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),
       resetRenderCount: () => resetRenderCounts(),

@@ -1,5 +1,5 @@
-import { insert, remove, swap, useFieldArray, useForm, validate } from '@formisch/vue'
-import { type App, createApp, defineComponent, h } from 'vue'
+import { insert, remove, setInput, swap, useFieldArray, useForm, validate } from '@formisch/vue'
+import { type App, type Ref, createApp, defineComponent, h, ref } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
@@ -45,6 +45,12 @@ const swapRows = swap as unknown as (
   form: FormStoreLoose,
   config: { path: ArrayPath; at: number; and: number }
 ) => void
+// setInput writes a value at a path; the flip writes the whole union object at
+// `['event']`. The dynamic schema collapses the path/input generics.
+const setInputAt = setInput as unknown as (
+  form: FormStoreLoose,
+  config: { path: ArrayPath; input: unknown }
+) => void
 
 let mountSeq = 0
 
@@ -80,8 +86,10 @@ export const formischAdapter: BenchAdapter = {
 
     const arrayPath = shape.arrayPath
     const itemFields = shape.arrayItemFields ?? []
+    const union = shape.union
     let form: FormStoreLoose | undefined
     let rows: { readonly items: readonly string[] } | undefined
+    let activeTag: Ref<string> | undefined
 
     const Host = defineComponent({
       name: 'FormischHost',
@@ -98,7 +106,21 @@ export const formischAdapter: BenchAdapter = {
         // add/remove and a leaf edit (keys unchanged) touches only its own row.
         const fieldArray = arrayPath ? useFieldArrayLoose(f, { path: [arrayPath] }) : undefined
         rows = fieldArray
+        // The active variant is tracked off a local signal the flip keeps in
+        // sync; a flip writes the union value through setInput, then advances the
+        // signal so the host swaps to the new branch's fields.
+        const tag = ref(union?.variants[0]?.tag ?? '')
+        activeTag = tag
         return () => {
+          if (union !== undefined) {
+            const variant = union.variants.find((v) => v.tag === tag.value)
+            return h(
+              'div',
+              (variant?.fieldPaths ?? []).map((path, index) =>
+                h(Field, { key: path, form: f, path, index, trigger: opts.trigger })
+              )
+            )
+          }
           if (fieldArray && arrayPath !== undefined) {
             return h(
               'div',
@@ -154,7 +176,15 @@ export const formischAdapter: BenchAdapter = {
         else unsupported(op)
         await flush()
       },
-      flipVariant: () => Promise.resolve(unsupported('flipVariant')),
+      async flipVariant(to: string) {
+        const variant = union?.variants.find((v) => v.tag === to)
+        if (!union || !variant || !form) return unsupported('flipVariant')
+        // Write the whole union value, then advance the local signal so the host
+        // swaps to the new branch's fields after the value has landed.
+        setInputAt(form, { path: [union.unionPath], input: { ...variant.value } })
+        if (activeTag) activeTag.value = to
+        await flush()
+      },
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),
       resetRenderCount: () => resetRenderCounts(),

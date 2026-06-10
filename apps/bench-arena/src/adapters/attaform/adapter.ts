@@ -1,6 +1,6 @@
 import { createAttaform } from 'attaform'
 import { useForm } from 'attaform/zod-v3'
-import { type App, createApp, defineComponent, h } from 'vue'
+import { type App, type Ref, createApp, defineComponent, h, ref } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
@@ -56,7 +56,9 @@ export const attaformAdapter: BenchAdapter = {
     mountSeq += 1
     const key = `bench-attaform-${opts.scenario}-${opts.seed}-${mountSeq}`
 
+    const union = shape.union
     let form: AttaformForm | undefined
+    let activeTag: Ref<string> | undefined
 
     // The host renders the static field list and reads nothing reactive, so it
     // never re-renders; each Field subscribes only to its own value, which is
@@ -74,7 +76,22 @@ export const attaformAdapter: BenchAdapter = {
         form = f
         const arrayPath = shape.arrayPath
         const itemFields = shape.arrayItemFields ?? []
+        // The active variant is tracked off a local signal the flip keeps in
+        // sync (the same shape as the array's length signal): a flip writes the
+        // union value through setValue, then advances the signal so the host
+        // swaps to the new branch's fields. A keystroke never touches it.
+        const tag = ref(union?.variants[0]?.tag ?? '')
+        activeTag = tag
         return () => {
+          if (union !== undefined) {
+            const variant = union.variants.find((v) => v.tag === tag.value)
+            return h(
+              'div',
+              (variant?.fieldPaths ?? []).map((path, index) =>
+                h(Field, { key: path, form: f, path, index, trigger: opts.trigger })
+              )
+            )
+          }
           // An array scenario renders reactively through `form.list`: reading it
           // tracks the array length, so a row added or removed reflows the list,
           // while a leaf edit (length unchanged) re-renders only its own row.
@@ -132,7 +149,16 @@ export const attaformAdapter: BenchAdapter = {
         else unsupported(op)
         await flush()
       },
-      flipVariant: () => Promise.resolve(unsupported('flipVariant')),
+      async flipVariant(to: string) {
+        const variant = union?.variants.find((v) => v.tag === to)
+        if (!union || !variant) return unsupported('flipVariant')
+        // Replace the whole union value, then advance the local signal so the
+        // host swaps to the new branch's fields after the value has landed. A
+        // fresh clone per flip keeps repeated flips from sharing one object.
+        form?.setValue(union.unionPath, { ...variant.value })
+        if (activeTag) activeTag.value = to
+        await flush()
+      },
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),
       resetRenderCount: () => resetRenderCounts(),

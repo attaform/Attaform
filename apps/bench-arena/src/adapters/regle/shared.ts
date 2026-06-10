@@ -3,7 +3,7 @@ import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
 import { shapeFor } from '../../shared/scenarios'
-import type { MountHandle, MountOpts } from '../contract'
+import type { ArrayOp, MountHandle, MountOpts } from '../contract'
 import Field from './Field.vue'
 import type { RegleField, RegleRoot } from './types'
 
@@ -45,18 +45,48 @@ export async function mountRegle(
   createRoot: (state: Record<string, unknown>) => RegleRoot
 ): Promise<MountHandle> {
   const shape = shapeFor(opts.scenario, opts.params)
+  const arrayPath = shape.arrayPath
+  const itemFields = shape.arrayItemFields ?? []
   let root: RegleRoot | undefined
+  let state: Record<string, unknown> | undefined
 
   const Host = defineComponent({
     name: 'RegleHost',
     setup() {
-      const state = reactive({ ...shape.defaultValues })
-      const r$ = createRoot(state)
+      // An array scenario owns a mutable array the ops splice and swap, so the
+      // seed tree is cloned per mount; sharing the shape's array across mounts
+      // would let one mount's op corrupt the next. Flat/nested never mutate, so
+      // a shallow spread is enough there.
+      const seed = arrayPath
+        ? (JSON.parse(JSON.stringify(shape.defaultValues)) as Record<string, unknown>)
+        : { ...shape.defaultValues }
+      const s = reactive(seed) as Record<string, unknown>
+      state = s
+      const r$ = createRoot(s)
       root = r$
       // Each field status is stable, so the host renders once; each Field
-      // re-renders only on its own `$value`.
-      return () =>
-        h(
+      // re-renders only on its own `$value`. An array scenario iterates the
+      // harness-owned reactive array for length (an add/remove/reorder reflows
+      // the list; a leaf edit, which never touches the array structure, does not).
+      return () => {
+        if (arrayPath !== undefined) {
+          const list = (s[arrayPath] as unknown[]) ?? []
+          return h(
+            'div',
+            list.flatMap((_row, i) =>
+              itemFields.map((field, fIdx) => {
+                const index = i * itemFields.length + fIdx
+                return h(Field, {
+                  key: index,
+                  field: resolveField(r$, `${arrayPath}.${i}.${field}`) as RegleField,
+                  index,
+                  trigger: opts.trigger,
+                })
+              })
+            )
+          )
+        }
+        return h(
           'div',
           shape.paths.map((path, index) =>
             h(Field, {
@@ -67,6 +97,7 @@ export async function mountRegle(
             })
           )
         )
+      }
     },
   })
 
@@ -88,7 +119,25 @@ export async function mountRegle(
       if (path !== undefined && root) await resolveField(root, path)?.$validate()
       await flush()
     },
-    arrayOp: () => Promise.resolve(unsupported('arrayOp')),
+    // Regle is validation-only, so the harness owns the array and mutates it;
+    // Regle re-derives its `$each` collection statuses from the reactive state.
+    // This is the shape a Regle array form actually takes (you own the array).
+    async arrayOp(op: ArrayOp, a?: number, b?: number) {
+      if (arrayPath === undefined || !state) return unsupported(op)
+      const list = state[arrayPath] as Array<Record<string, unknown>>
+      if (op === 'append') list.push(shape.newRow?.() ?? {})
+      else if (op === 'remove') {
+        const index = a ?? list.length - 1
+        if (index >= 0) list.splice(index, 1)
+      } else if (op === 'swap') {
+        const i = a ?? 0
+        const j = b ?? 0
+        const tmp = list[i] as Record<string, unknown>
+        list[i] = list[j] as Record<string, unknown>
+        list[j] = tmp
+      } else unsupported(op)
+      await flush()
+    },
     flipVariant: () => Promise.resolve(unsupported('flipVariant')),
     stepTransition: () => Promise.resolve(unsupported('stepTransition')),
     getRenderCount: () => totalRenders(),

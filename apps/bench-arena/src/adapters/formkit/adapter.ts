@@ -1,10 +1,19 @@
 import { FormKit, defaultConfig, plugin } from '@formkit/vue'
 import { createZodPlugin } from '@formkit/zod'
-import { type App, type Component, type VNode, createApp, defineComponent, h } from 'vue'
+import {
+  type App,
+  type Component,
+  type Ref,
+  type VNode,
+  createApp,
+  defineComponent,
+  h,
+  ref,
+} from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { leafSeed, shapeFor, zodSchemaFor } from '../../shared/scenarios'
-import type { BenchAdapter, MountHandle } from '../contract'
+import type { ArrayOp, BenchAdapter, MountHandle } from '../contract'
 
 // FormKit accepts arbitrary attributes (type, name, delay, data-*), which its
 // typed component surface does not enumerate; bind through a loose Component.
@@ -19,6 +28,13 @@ const unsupported = (op: string): never => {
 interface FormNode {
   submit(): void
   settled: Promise<unknown>
+}
+
+/** The FormKit `list` node the array scenario reorders through. Its value is the
+ *  array of row values; `input` commits a new array (used for the swap). */
+interface ListNode {
+  readonly value: readonly unknown[]
+  input(value: unknown): Promise<unknown>
 }
 
 /** A segment node in the FormKit field tree: a `group` if it has children, a
@@ -140,10 +156,68 @@ export const formkitAdapter: BenchAdapter = {
     let rootNode: FormNode | undefined
 
     const trie = buildTrie(shape.paths)
+    const arrayPath = shape.arrayPath
+    const itemFields = shape.arrayItemFields ?? []
+    const initialSeeds = arrayPath
+      ? ((shape.defaultValues[arrayPath] as Array<Record<string, unknown>>) ?? [])
+      : []
+    // The append row is the SAME row every adapter pushes (the shape's newRow),
+    // so an appended FormKit row seeds to identical content as the cohort's.
+    const appendSeed = shape.newRow?.() ?? {}
+    let listNode: ListNode | undefined
+    let rowCount: Ref<number> | undefined
 
     const Host = defineComponent({
       name: 'FormKitHost',
       setup() {
+        // An array scenario renders the `list` node's rows off a reactive count:
+        // appending or removing a row mounts/unmounts a group child, which FormKit
+        // grows/shrinks the list from. A keystroke (count unchanged) never reflows
+        // the list, so this is the performant idiomatic dynamic list (the repeater
+        // add-on, an extra package, is the only lighter authoring path).
+        if (arrayPath !== undefined) {
+          const count = ref(initialSeeds.length)
+          rowCount = count
+          return () =>
+            h(
+              FormKitC,
+              {
+                type: 'form',
+                id: formId,
+                plugins: [zodPlugin],
+                actions: false,
+                onSubmit: submitHandler,
+                onNode: (node: unknown) => {
+                  rootNode = node as FormNode
+                },
+              },
+              () =>
+                h(
+                  FormKitC,
+                  {
+                    type: 'list',
+                    name: arrayPath,
+                    onNode: (node: unknown) => {
+                      listNode = node as ListNode
+                    },
+                  },
+                  () =>
+                    Array.from({ length: count.value }, (_unused, i) =>
+                      h(FormKitC, { key: i, type: 'group' }, () =>
+                        itemFields.map((field, fIdx) =>
+                          h(FormKitC, {
+                            type: 'text',
+                            name: field,
+                            delay: 0,
+                            value: (initialSeeds[i] ?? appendSeed)[field],
+                            'data-bench-field': i * itemFields.length + fIdx,
+                          })
+                        )
+                      )
+                    )
+                )
+            )
+        }
         return () =>
           h(
             FormKitC,
@@ -179,7 +253,26 @@ export const formkitAdapter: BenchAdapter = {
       setFieldValue: driver.setFieldValue,
       validateAll: validate,
       validateField: validate,
-      arrayOp: () => Promise.resolve(unsupported('arrayOp')),
+      async arrayOp(op: ArrayOp, a?: number, b?: number) {
+        if (arrayPath === undefined || !rowCount) return unsupported(op)
+        // Add/remove a row by mounting/unmounting a group child (FormKit grows or
+        // shrinks the list to match). A reorder commits a reordered array to the
+        // list node, since the rendered groups carry no Vue-side array to swap.
+        if (op === 'append') rowCount.value += 1
+        else if (op === 'remove') {
+          if (rowCount.value > 0) rowCount.value -= 1
+        } else if (op === 'swap') {
+          if (!listNode) return unsupported(op)
+          const arr = [...listNode.value]
+          const i = a ?? 0
+          const j = b ?? 0
+          const tmp = arr[i]
+          arr[i] = arr[j]
+          arr[j] = tmp
+          await listNode.input(arr)
+        } else unsupported(op)
+        await flush()
+      },
       flipVariant: () => Promise.resolve(unsupported('flipVariant')),
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       // FormKit owns its components; component render count is not applicable.

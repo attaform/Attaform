@@ -42,7 +42,7 @@ const CASES: readonly ScenarioCase[] = [
   {
     scenario: 'arrays',
     params: ['N10', 'N100'],
-    dims: ['keystroke', 'mount', 'validate', 'rerender'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder'],
   },
 ]
 

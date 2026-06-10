@@ -5,7 +5,7 @@ import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
 import { nativeRulesFor, nestRules, shapeFor } from '../../shared/scenarios'
-import type { BenchAdapter, MountHandle } from '../contract'
+import type { ArrayOp, BenchAdapter, MountHandle } from '../contract'
 import Field from './Field.vue'
 import type { VuelidateField, VuelidateRoot } from './types'
 
@@ -118,16 +118,25 @@ export const vuelidateAdapter: BenchAdapter = {
     }
     mountSeq += 1
 
+    const arrayPath = shape.arrayPath
+    const itemFields = shape.arrayItemFields ?? []
     let root: VuelidateRoot | undefined
     let resolve: ((index: number) => VuelidateField | undefined) | undefined
+    let stateRef: Record<string, unknown> | undefined
 
     const Host = defineComponent({
       name: 'VuelidateHost',
       setup() {
-        const state = reactive({ ...shape.defaultValues }) as Record<string, unknown>
+        // An array scenario owns a mutable array the ops splice and swap, so the
+        // seed tree is cloned per mount; sharing the shape's array would let one
+        // mount's op corrupt the next. Flat/nested never mutate.
+        const seed = arrayPath
+          ? (JSON.parse(JSON.stringify(shape.defaultValues)) as Record<string, unknown>)
+          : { ...shape.defaultValues }
+        const state = reactive(seed) as Record<string, unknown>
+        stateRef = state
         const v$ = useVuelidateLoose(rules, state)
         root = v$.value
-        const arrayPath = shape.arrayPath
         // An array path resolves to a per-row façade; an object path walks the
         // nested validation tree by key.
         const fieldFor = (path: string): VuelidateField | undefined => {
@@ -142,8 +151,25 @@ export const vuelidateAdapter: BenchAdapter = {
           const path = shape.paths[index]
           return path === undefined ? undefined : fieldFor(path)
         }
-        return () =>
-          h(
+        return () => {
+          if (arrayPath !== undefined) {
+            const list = (state[arrayPath] as unknown[]) ?? []
+            return h(
+              'div',
+              list.flatMap((_row, i) =>
+                itemFields.map((field, fIdx) => {
+                  const index = i * itemFields.length + fIdx
+                  return h(Field, {
+                    key: index,
+                    field: fieldFor(`${arrayPath}.${i}.${field}`) as VuelidateField,
+                    index,
+                    trigger: opts.trigger,
+                  })
+                })
+              )
+            )
+          }
+          return h(
             'div',
             shape.paths.map((path, index) =>
               h(Field, {
@@ -154,6 +180,7 @@ export const vuelidateAdapter: BenchAdapter = {
               })
             )
           )
+        }
       },
     })
 
@@ -174,7 +201,25 @@ export const vuelidateAdapter: BenchAdapter = {
         await resolve?.(index)?.$validate()
         await flush()
       },
-      arrayOp: () => Promise.resolve(unsupported('arrayOp')),
+      // Vuelidate is validation-only, so the harness owns the array and mutates
+      // it; Vuelidate's `forEach` collection rule re-validates the rows from the
+      // reactive state. This is the shape a Vuelidate array form actually takes.
+      async arrayOp(op: ArrayOp, a?: number, b?: number) {
+        if (arrayPath === undefined || !stateRef) return unsupported(op)
+        const list = stateRef[arrayPath] as Array<Record<string, unknown>>
+        if (op === 'append') list.push(shape.newRow?.() ?? {})
+        else if (op === 'remove') {
+          const index = a ?? list.length - 1
+          if (index >= 0) list.splice(index, 1)
+        } else if (op === 'swap') {
+          const i = a ?? 0
+          const j = b ?? 0
+          const tmp = list[i] as Record<string, unknown>
+          list[i] = list[j] as Record<string, unknown>
+          list[j] = tmp
+        } else unsupported(op)
+        await flush()
+      },
       flipVariant: () => Promise.resolve(unsupported('flipVariant')),
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),

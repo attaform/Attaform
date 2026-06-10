@@ -5,7 +5,8 @@ import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
 import { shapeFor, zodSchemaFor } from '../../shared/scenarios'
-import type { BenchAdapter, MountHandle } from '../contract'
+import type { ArrayOp, BenchAdapter, MountHandle } from '../contract'
+import ArrayRow from './ArrayRow.vue'
 import Field from './Field.vue'
 import type { AttaformForm } from './types'
 
@@ -71,13 +72,35 @@ export const attaformAdapter: BenchAdapter = {
           debounceMs: 0,
         })
         form = f
-        return () =>
-          h(
+        const arrayPath = shape.arrayPath
+        const itemFields = shape.arrayItemFields ?? []
+        return () => {
+          // An array scenario renders reactively through `form.list`: reading it
+          // tracks the array length, so a row added or removed reflows the list,
+          // while a leaf edit (length unchanged) re-renders only its own row.
+          if (arrayPath !== undefined) {
+            return h(
+              'div',
+              f.list(arrayPath).flatMap((row, i) =>
+                itemFields.map((field, fIdx) =>
+                  h(ArrayRow, {
+                    key: `${row.key}.${field}`,
+                    form: f,
+                    path: `${arrayPath}.${i}.${field}`,
+                    index: i * itemFields.length + fIdx,
+                    trigger: opts.trigger,
+                  })
+                )
+              )
+            )
+          }
+          return h(
             'div',
             shape.paths.map((path, index) =>
               h(Field, { key: index, form: f, path, index, trigger: opts.trigger })
             )
           )
+        }
       },
     })
 
@@ -98,7 +121,17 @@ export const attaformAdapter: BenchAdapter = {
         await form?.validateAsync(shape.paths[index])
         await flush()
       },
-      arrayOp: () => Promise.resolve(unsupported('arrayOp')),
+      async arrayOp(op: ArrayOp, a?: number, b?: number) {
+        const path = shape.arrayPath ?? 'rows'
+        if (op === 'append') form?.append(path, shape.newRow?.() ?? {})
+        else if (op === 'remove') {
+          const len = form?.list(path).length ?? 0
+          const index = a ?? len - 1
+          if (index >= 0) form?.remove(path, index)
+        } else if (op === 'swap') form?.swap(path, a ?? 0, b ?? 0)
+        else unsupported(op)
+        await flush()
+      },
       flipVariant: () => Promise.resolve(unsupported('flipVariant')),
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),

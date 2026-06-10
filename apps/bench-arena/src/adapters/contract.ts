@@ -27,7 +27,8 @@ export type DimensionId =
   | 'mount'
   | 'validate'
   | 'rerender'
-  | 'arrayOp'
+  | 'arrayAdd'
+  | 'arrayReorder'
   | 'variantFlip'
   | 'stepTransition'
 
@@ -92,8 +93,13 @@ export interface MountHandle {
   validateAll(): Promise<void>
   /** Validate a single field. */
   validateField(index: number): Promise<void>
-  /** Mutate the active array (arrays/grid scenarios). */
-  arrayOp(op: ArrayOp, index?: number): Promise<void>
+  /**
+   * Mutate the active array through the library's own array primitive
+   * (arrays/grid scenarios). `append` adds a fresh valid row; `remove` with no
+   * index drops the last row, with an index drops that row; `swap` exchanges the
+   * rows at `a` and `b`. Awaits the shared settle so the DOM reflow is included.
+   */
+  arrayOp(op: ArrayOp, a?: number, b?: number): Promise<void>
   /** Flip a discriminated union to another variant (discriminated-union). */
   flipVariant(to: string): Promise<void>
   /** Advance or retreat a wizard step (wizard scenario). */

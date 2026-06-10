@@ -37,6 +37,19 @@ export interface ScenarioShape {
    * build their `$each` collection rule from this.
    */
   readonly arrayItemRules?: Record<string, NativeRule>
+  /**
+   * The field name(s) within each array row (`['v']`), present only for
+   * array-shaped scenarios. The adapters render a row reactively through their
+   * own array primitive and build each leaf path as `${arrayPath}.${i}.${field}`,
+   * so a reorder rebinds the moved row to its new positional path.
+   */
+  readonly arrayItemFields?: readonly string[]
+  /**
+   * Build a fresh valid row for the append op (arrays/grid scenarios). It
+   * returns the same shape as a seed row, so an appended row validates
+   * immediately and the add/remove rotation never churns error state.
+   */
+  readonly newRow?: () => Record<string, unknown>
 }
 
 /**

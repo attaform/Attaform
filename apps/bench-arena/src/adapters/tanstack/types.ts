@@ -9,6 +9,12 @@ export interface TanstackForm {
   validateAllFields(cause: string): Promise<unknown[]>
   /** Validate one field by path. */
   validateField(name: string, cause: string): unknown
+  /** Append a row to the array field (the array add/remove dimension). */
+  pushFieldValue(name: string, value: unknown): void
+  /** Remove the row at `index` from the array field. */
+  removeFieldValue(name: string, index: number): Promise<void>
+  /** Swap the rows at `a` and `b` in the array field (the reorder dimension). */
+  swapFieldValues(name: string, a: number, b: number): void
 }
 
 /**

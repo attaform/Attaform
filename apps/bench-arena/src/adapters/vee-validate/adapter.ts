@@ -1,17 +1,30 @@
 import { toTypedSchema } from '@vee-validate/zod'
-import { useForm } from 'vee-validate'
+import { useFieldArray, useForm } from 'vee-validate'
 import { type App, createApp, defineComponent, h } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
 import { shapeFor, zodSchemaFor } from '../../shared/scenarios'
-import type { BenchAdapter, MountHandle } from '../contract'
+import type { ArrayOp, BenchAdapter, MountHandle } from '../contract'
 import Field from './Field.vue'
 
 /** The slice of vee-validate's form context the adapter drives. */
 interface VeeForm {
   validate: () => Promise<unknown>
   validateField: (path: string) => Promise<unknown>
+}
+
+/**
+ * The slice of vee-validate's `useFieldArray` the adapter drives: the reactive
+ * `fields` (each entry carrying a stable `key` that follows its row across a
+ * reorder) plus the idiomatic mutators. This is vee-validate's first-class
+ * dynamic-array primitive.
+ */
+interface VeeFieldArray {
+  fields: { readonly value: ReadonlyArray<{ readonly key: string | number }> }
+  push(value: unknown): void
+  remove(index: number): void
+  swap(a: number, b: number): void
 }
 
 let mountSeq = 0
@@ -43,7 +56,10 @@ export const veeValidateAdapter: BenchAdapter = {
     const schema = zodSchemaFor(opts.scenario, opts.params)
     mountSeq += 1
 
+    const arrayPath = shape.arrayPath
+    const itemFields = shape.arrayItemFields ?? []
     let form: VeeForm | undefined
+    let rows: VeeFieldArray | undefined
 
     const Host = defineComponent({
       name: 'VeeValidateHost',
@@ -54,13 +70,35 @@ export const veeValidateAdapter: BenchAdapter = {
           initialValues: shape.defaultValues as Record<string, unknown>,
         })
         form = f as unknown as VeeForm
-        return () =>
-          h(
+        // useFieldArray is vee-validate's array primitive; its reactive `fields`
+        // drive the rendered rows so an add/remove/reorder reflows the list.
+        const fieldArray = arrayPath
+          ? (useFieldArray(arrayPath) as unknown as VeeFieldArray)
+          : undefined
+        rows = fieldArray
+        return () => {
+          if (fieldArray) {
+            return h(
+              'div',
+              fieldArray.fields.value.flatMap((entry, i) =>
+                itemFields.map((field, fIdx) =>
+                  h(Field, {
+                    key: `${entry.key}.${field}`,
+                    name: `${arrayPath}.${i}.${field}`,
+                    index: i * itemFields.length + fIdx,
+                    trigger: opts.trigger,
+                  })
+                )
+              )
+            )
+          }
+          return h(
             'div',
             shape.paths.map((path, index) =>
               h(Field, { key: index, name: path, index, trigger: opts.trigger })
             )
           )
+        }
       },
     })
 
@@ -81,7 +119,14 @@ export const veeValidateAdapter: BenchAdapter = {
         await form?.validateField(shape.paths[index] ?? '')
         await flush()
       },
-      arrayOp: () => Promise.resolve(unsupported('arrayOp')),
+      async arrayOp(op: ArrayOp, a?: number, b?: number) {
+        if (!rows) return unsupported(op)
+        if (op === 'append') rows.push(shape.newRow?.() ?? {})
+        else if (op === 'remove') rows.remove(a ?? rows.fields.value.length - 1)
+        else if (op === 'swap') rows.swap(a ?? 0, b ?? 0)
+        else unsupported(op)
+        await flush()
+      },
       flipVariant: () => Promise.resolve(unsupported('flipVariant')),
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),

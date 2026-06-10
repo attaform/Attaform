@@ -48,6 +48,7 @@ const MEASURE = 200
 const MOUNT_RUNS = 15
 const VALIDATE_RUNS = 100
 const RERENDER_RUNS = 30
+const ARRAYOP_RUNS = 50
 
 const ZERO: Summary = { median: 0, p95: 0, iqr: 0, count: 0, trimmed: 0 }
 
@@ -135,6 +136,48 @@ async function measureRerender(handle: MountHandle, shape: ScenarioShape): Promi
   return summarize(counts)
 }
 
+/**
+ * Add-a-row then remove-the-last (a size-stable rotation): the cost of the
+ * library's array insert + delete at the scenario's row count, including the
+ * reactive reflow of the rendered list. Size-stable so every sample starts from
+ * the same N, and the appended row is valid so no error state churns.
+ */
+async function measureArrayAdd(handle: MountHandle): Promise<Summary> {
+  for (let i = 0; i < 5; i++) {
+    await handle.arrayOp('append')
+    await handle.arrayOp('remove')
+  }
+  const samples: number[] = []
+  for (let i = 0; i < ARRAYOP_RUNS; i++) {
+    samples.push(
+      await timed(async () => {
+        await handle.arrayOp('append')
+        await handle.arrayOp('remove')
+      })
+    )
+    await frame()
+  }
+  return summarize(samples)
+}
+
+/**
+ * Reorder: swap the first and last rows. An identity-keyed list moves the two
+ * DOM nodes and rebinds them to their new positional paths; an index-keyed list
+ * re-renders the two changed positions. Either way the cost is the library's
+ * array swap plus the reactive settle. Each sample swaps back, so the array
+ * alternates between two orderings of equal cost.
+ */
+async function measureArrayReorder(handle: MountHandle, shape: ScenarioShape): Promise<Summary> {
+  const last = shape.paths.length - 1
+  for (let i = 0; i < 5; i++) await handle.arrayOp('swap', 0, last)
+  const samples: number[] = []
+  for (let i = 0; i < ARRAYOP_RUNS; i++) {
+    samples.push(await timed(() => handle.arrayOp('swap', 0, last)))
+    await frame()
+  }
+  return summarize(samples)
+}
+
 /** Mount/init cost over fresh mounts; the only dim that re-mounts per sample. */
 async function measureMount(adapter: BenchAdapter, opts: MountOpts): Promise<Summary> {
   const samples: number[] = []
@@ -199,6 +242,15 @@ async function run(): Promise<BenchPayload> {
           ? { ...base, unit: 'renders', summary: ZERO, supported: false }
           : { ...base, unit: 'renders', summary, supported: true }
       }
+      case 'arrayAdd':
+        return { ...base, unit: 'ms', summary: await measureArrayAdd(handle), supported: true }
+      case 'arrayReorder':
+        return {
+          ...base,
+          unit: 'ms',
+          summary: await measureArrayReorder(handle, shape),
+          supported: true,
+        }
       default:
         throw new Error(`bench: dimension "${q.dim}" is not implemented yet`)
     }

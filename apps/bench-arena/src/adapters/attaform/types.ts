@@ -18,4 +18,14 @@ export interface AttaformForm {
    *  completes - the parity with the cohort's awaited validate() for the
    *  validation-throughput dimension. */
   validateAsync(path?: string): Promise<unknown>
+  /** Append a fresh row to the array at `path` (the array add/remove dimension). */
+  append(path: string, value: unknown): unknown
+  /** Remove the row at `index` from the array at `path`. */
+  remove(path: string, index: number): unknown
+  /** Swap the rows at `a` and `b` in the array at `path` (the reorder dimension). */
+  swap(path: string, a: number, b: number): unknown
+  /** The array at `path` as one entry per element, each carrying a stable `key`
+   *  that follows its element across reorders. Reading it tracks the array
+   *  length, so the rendered list reflows when a row is added or removed. */
+  list(path: string): ReadonlyArray<{ readonly key: string | number }>
 }

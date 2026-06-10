@@ -1,10 +1,10 @@
 import { useForm } from '@tanstack/vue-form'
-import { type App, createApp, defineComponent, h } from 'vue'
+import { type App, type Ref, createApp, defineComponent, h, ref } from 'vue'
 import { flush } from '../../shared/clock'
 import { domDriver } from '../../shared/dom-driver'
 import { resetRenderCounts, totalRenders } from '../../shared/render-count'
 import { shapeFor, zodSchemaFor } from '../../shared/scenarios'
-import type { BenchAdapter, MountHandle } from '../contract'
+import type { ArrayOp, BenchAdapter, MountHandle } from '../contract'
 import Field from './Field.vue'
 import type { TanstackForm } from './types'
 
@@ -52,20 +52,48 @@ export const tanstackAdapter: BenchAdapter = {
     const validators = opts.trigger === 'blur' ? { onBlur: schema } : { onChange: schema }
     mountSeq += 1
 
+    const arrayPath = shape.arrayPath
+    const itemFields = shape.arrayItemFields ?? []
+    const seedRows = arrayPath ? ((shape.defaultValues[arrayPath] as unknown[]) ?? []) : []
     let form: TanstackForm | undefined
+    let rowCount: Ref<number> | undefined
 
     const Host = defineComponent({
       name: 'TanstackHost',
       setup() {
         const f = useFormLoose({ defaultValues: { ...shape.defaultValues }, validators })
         form = f
-        return () =>
-          h(
+        // TanStack exposes no per-row key, so rows are positional. Rendering off
+        // a length signal the array ops keep in sync (rather than deep-reading
+        // the array value) is the most performant idiomatic shape: a keystroke
+        // into a row never reflows the list, only an add/remove/reorder does.
+        const count = ref(seedRows.length)
+        rowCount = count
+        return () => {
+          if (arrayPath !== undefined) {
+            return h(
+              'div',
+              Array.from({ length: count.value }, (_unused, i) =>
+                itemFields.map((field, fIdx) => {
+                  const index = i * itemFields.length + fIdx
+                  return h(Field, {
+                    key: index,
+                    form: f,
+                    name: `${arrayPath}.${i}.${field}`,
+                    index,
+                    trigger: opts.trigger,
+                  })
+                })
+              ).flat()
+            )
+          }
+          return h(
             'div',
             shape.paths.map((path, index) =>
               h(Field, { key: index, form: f, name: path, index, trigger: opts.trigger })
             )
           )
+        }
       },
     })
 
@@ -86,7 +114,22 @@ export const tanstackAdapter: BenchAdapter = {
         await form?.validateField(shape.paths[index] ?? '', 'change')
         await flush()
       },
-      arrayOp: () => Promise.resolve(unsupported('arrayOp')),
+      async arrayOp(op: ArrayOp, a?: number, b?: number) {
+        if (arrayPath === undefined || !rowCount) return unsupported(op)
+        if (op === 'append') {
+          form?.pushFieldValue(arrayPath, shape.newRow?.() ?? {})
+          rowCount.value += 1
+        } else if (op === 'remove') {
+          const index = a ?? rowCount.value - 1
+          if (index >= 0) {
+            await form?.removeFieldValue(arrayPath, index)
+            rowCount.value -= 1
+          }
+        } else if (op === 'swap') {
+          form?.swapFieldValues(arrayPath, a ?? 0, b ?? 0)
+        } else unsupported(op)
+        await flush()
+      },
       flipVariant: () => Promise.resolve(unsupported('flipVariant')),
       stepTransition: () => Promise.resolve(unsupported('stepTransition')),
       getRenderCount: () => totalRenders(),

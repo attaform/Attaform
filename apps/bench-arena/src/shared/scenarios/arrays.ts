@@ -17,6 +17,18 @@ const MIN_LENGTH = 2
 /** A valid seed value (length >= MIN_LENGTH) so every row validates. */
 const SEED = 'seed'
 
+/**
+ * Each row seeds to a DISTINCT valid value (`seed-0`, `seed-1`, ...). Distinct
+ * row content is what makes the reorder dimension meaningful: swapping two rows
+ * changes the value displayed at each, which forces an index-keyed list to
+ * re-render the two positions and an identity-keyed list to move the two DOM
+ * nodes. Identical rows would mask that cost, so a swap would measure almost
+ * nothing for every library.
+ */
+function seedFor(index: number): string {
+  return `${SEED}-${index}`
+}
+
 /** Row count, defaulted defensively. */
 function rowsOf(params: ScenarioParams): number {
   return params.rows ?? 100
@@ -28,7 +40,7 @@ export function arraysShape(params: ScenarioParams): ScenarioShape {
   const rows: Array<{ v: string }> = []
   for (let i = 0; i < n; i++) {
     paths.push(`rows.${i}.v`)
-    rows.push({ v: SEED })
+    rows.push({ v: seedFor(i) })
   }
   return {
     paths,
@@ -38,6 +50,8 @@ export function arraysShape(params: ScenarioParams): ScenarioShape {
     keystrokeIndex: Math.max(0, n - 1),
     arrayPath: 'rows',
     arrayItemRules: { v: { minLength: MIN_LENGTH } },
+    arrayItemFields: ['v'],
+    newRow: () => ({ v: SEED }),
   }
 }
 

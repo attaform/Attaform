@@ -21,6 +21,8 @@ metaRows:
 
 This page is reference material; no demo. CI runs the benchmark suite under [`bench/`](https://github.com/attaform/Attaform/tree/main/bench) on every PR, so the numbers below come from a known-good environment and ride alongside the code.
 
+For how Attaform compares across the Vue form-library field on the same scenarios, in a real browser, see [Benchmarks](/docs/comparison/benchmarks).
+
 ## Measured numbers
 
 Real-browser numbers from `pnpm bench`, single-threaded on contemporary hardware. Your machine will land elsewhere on the number line; the orders of magnitude won't.
@@ -128,6 +130,7 @@ Per-PR CI covers Node 18 / 20 / 22 / LTS against the devDep-pinned peer versions
 
 ## Where to next
 
+- [Benchmarks](/docs/comparison/benchmarks): the same scenarios run across the Vue form-library field, with bundle size, supply-chain scores, and per-scenario runtime tables.
 - [Field-array mutations](/docs/writing-and-mutating/field-arrays): the O(N) characteristics in full, including amortized analysis.
 - [How values are stored](/docs/schemas/storage-shape): the slim write shape that keeps reads fast.
 - [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt): hydration costs depend on form size; pair this page with the SSR pages when sizing.

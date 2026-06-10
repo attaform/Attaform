@@ -177,6 +177,10 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Entry-point reference', to: '/docs/reference/entry-points' },
     ],
   },
+  {
+    heading: 'Comparison',
+    links: [{ title: 'Benchmarks', to: '/docs/comparison/benchmarks' }],
+  },
 ]
 
 // All links in canonical reading order. Used by the pager (prev/next)

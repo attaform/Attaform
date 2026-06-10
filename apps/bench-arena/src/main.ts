@@ -334,6 +334,16 @@ async function measureMount(
 }
 
 async function run(): Promise<BenchPayload> {
+  // Collect before this cell allocates anything, so the previous cell's heap
+  // cannot skew the measurement. The driver reuses one browser process across
+  // every cell of every scenario, so a heavy cell leaves residue that slows the
+  // next one: an isolated FormKit validate measured ~65s but ~240s when it
+  // followed heavy mount cells with no collection between them. This runs for
+  // every cell uniformly; the driver also collects after each cell, so the heap
+  // is clean at both ends. Requires --expose-gc (the driver passes it); a safe
+  // no-op without it.
+  ;(globalThis as { gc?: () => void }).gc?.()
+
   const q = readQuery()
   const adapter = adapters[q.adapter]
   if (!adapter) throw new Error(`bench: unknown adapter "${q.adapter}"`)

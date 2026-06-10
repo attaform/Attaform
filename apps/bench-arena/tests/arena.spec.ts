@@ -115,7 +115,9 @@ async function runCell(
   const payload = await page.evaluate(
     () => (window as unknown as { __BENCH_RESULTS__: Payload }).__BENCH_RESULTS__
   )
-  // Collect between cells so one library's garbage cannot skew the next.
+  // Collect after every cell of every scenario so one library's garbage cannot
+  // skew the next (the harness also collects before it measures, so the heap is
+  // clean at both ends of each cell).
   await page.evaluate(() => (globalThis as { gc?: () => void }).gc?.())
   return payload
 }

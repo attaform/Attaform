@@ -31,6 +31,7 @@ export type DimensionId =
   | 'arrayReorder'
   | 'variantFlip'
   | 'stepTransition'
+  | 'memory'
 
 /** The design-point a library occupies; the fairness axis. */
 export type LayerId = 'headless-form-state' | 'headless-validation-only' | 'batteries-included'

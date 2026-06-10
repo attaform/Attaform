@@ -8,7 +8,7 @@ import type {
   TriggerMode,
 } from './adapters/contract'
 import { adapters } from './adapters/registry'
-import { calibrate, frame, type Summary, summarize, timed } from './shared/clock'
+import { calibrate, frame, settle, type Summary, summarize, timed } from './shared/clock'
 import { shapeFor } from './shared/scenarios'
 import type { ScenarioShape } from './shared/scenarios/types'
 
@@ -19,6 +19,12 @@ import type { ScenarioShape } from './shared/scenarios/types'
  * the Playwright boundary), and signals completion via `body[data-bench-done]`.
  *
  *   /?adapter=attaform&scenario=flat&params=F50&trigger=input&dim=keystroke
+ *
+ * The memory dimension is the one exception: a precise heap reading is only
+ * available through the privileged CDP protocol (driver-side), so for `memory`
+ * the page installs `window.__BENCH_MEM__` mount/type/teardown hooks and the
+ * driver brackets them with CDP garbage collection and heap reads. See
+ * `setupMemoryHooks`.
  */
 
 interface BenchPayload {
@@ -29,10 +35,12 @@ interface BenchPayload {
   dimension: string
   /**
    * Summary unit: milliseconds for timed dims, component renders for the
-   * rerender dim, or DOM mutations for the rerender dim of a library that owns
-   * its inputs (FormKit), where the driver falls back to a mutation proxy.
+   * rerender dim, DOM mutations for the rerender dim of a library that owns its
+   * inputs (FormKit), where the driver falls back to a mutation proxy, or bytes
+   * for the memory dim (whose figures the driver fills in via CDP; the in-page
+   * payload is a readiness placeholder).
    */
-  unit: 'ms' | 'renders' | 'dom-mutations'
+  unit: 'ms' | 'renders' | 'dom-mutations' | 'bytes'
   summary: Summary
   /** Machine-speed proxy so absolute numbers normalize across runners. */
   calibrationMs: number
@@ -41,9 +49,26 @@ interface BenchPayload {
   error?: string
 }
 
+/**
+ * The hooks the memory driver calls between its CDP heap reads. One `mount`
+ * stands up a fresh form (held alive); `typeBurst` drives `burst` keystrokes
+ * into it without an intervening collection (so the driver can read allocation
+ * churn); `teardown` unmounts so the driver can read the post-teardown residual.
+ * `cycles` and `burst` come from the sample plan, so the page stays the single
+ * source for the counts.
+ */
+interface MemoryHooks {
+  readonly cycles: number
+  readonly burst: number
+  mount(): Promise<void>
+  typeBurst(): Promise<void>
+  teardown(): Promise<void>
+}
+
 declare global {
   interface Window {
     __BENCH_RESULTS__?: BenchPayload
+    __BENCH_MEM__?: MemoryHooks
   }
 }
 
@@ -64,6 +89,7 @@ interface SamplePlan {
   readonly arrayOpRuns: number
   readonly variantFlipRuns: number
   readonly stepTransitionRuns: number
+  readonly memoryRuns: number
 }
 
 const DEFAULT_PLAN: SamplePlan = {
@@ -75,6 +101,11 @@ const DEFAULT_PLAN: SamplePlan = {
   arrayOpRuns: 50,
   variantFlipRuns: 50,
   stepTransitionRuns: 50,
+  // Memory cycles: each is a full mount, keystroke burst, and teardown bracketed
+  // by CDP collections, so it costs more than a timed mount; the per-cycle heap
+  // deltas have low relative variance, so a smaller count still yields a stable
+  // median.
+  memoryRuns: 12,
 }
 
 const MASSIVE_PLAN: SamplePlan = {
@@ -90,6 +121,10 @@ const MASSIVE_PLAN: SamplePlan = {
   arrayOpRuns: 50,
   variantFlipRuns: 50,
   stepTransitionRuns: 50,
+  // Each memory cycle re-mounts thousands of inputs, so the count stays low to
+  // keep the cell in budget; a many-thousand-leaf heap is large, so a few
+  // cycles already give a stable median.
+  memoryRuns: 5,
 }
 
 function planFor(scenario: ScenarioId): SamplePlan {
@@ -97,6 +132,9 @@ function planFor(scenario: ScenarioId): SamplePlan {
 }
 
 const ZERO: Summary = { median: 0, p95: 0, iqr: 0, count: 0, trimmed: 0 }
+
+/** Keystrokes the memory dimension drives per cycle to expose allocation churn. */
+const MEMORY_BURST = 50
 
 // Compact param labels (F50, D8, N1000, ...) decode to the scenario knobs.
 const CODE_TO_KEY: Record<string, string> = {
@@ -381,6 +419,63 @@ async function measureMount(
   return summarize(samples)
 }
 
+/**
+ * Install the memory hooks the CDP driver brackets with heap reads, rather than
+ * measuring in-page. The in-page `performance.memory` is quantized so heavily
+ * (tens-of-MB buckets that ignore real allocations, even under cross-origin
+ * isolation) that a delta reads zero for every library at every size, and
+ * `measureUserAgentSpecificMemory` is unavailable under automation. The driver
+ * instead reads the byte-exact heap through CDP (HeapProfiler.collectGarbage +
+ * Runtime.getHeapUsage), collecting before and after each hook call.
+ *
+ * One mount/teardown cycle yields three drift-robust deltas: with `s0` the
+ * collected baseline, `s1` the collected heap of the live mount, `s2` the heap
+ * after a keystroke burst (no collection), and `s3` the collected heap after
+ * teardown, the driver records retained `s1 - s0` (live-form heap), churn
+ * `s2 - s1` (the burst's allocation pressure), and leak `s3 - s0` (residual a
+ * mount/unmount leaves behind). A leak that makes `s0` creep upward across
+ * cycles leaves every per-cycle delta correct, so retained and leak stay honest
+ * even as the page accumulates.
+ *
+ * The DOM is held constant for the bare-input cohort, so the figures isolate the
+ * library's own reactive and validation state; the compiled schema (zod/valibot)
+ * and, for a library that owns its inputs (FormKit), its component tree ride
+ * along, which is fair, since that is what the library needs to do its job.
+ */
+function setupMemoryHooks(
+  adapter: BenchAdapter,
+  opts: MountOpts,
+  shape: ScenarioShape,
+  plan: SamplePlan
+): void {
+  const fieldCount = shape.paths.length
+  let container: HTMLElement | undefined
+  let handle: MountHandle | undefined
+  window.__BENCH_MEM__ = {
+    cycles: plan.memoryRuns,
+    burst: MEMORY_BURST,
+    async mount() {
+      container = makeContainer()
+      handle = await adapter.mount(container, opts)
+      await settle()
+    },
+    async typeBurst() {
+      if (!handle) return
+      for (let i = 0; i < MEMORY_BURST; i++) await handle.typeChar(i % fieldCount, `m${i}`)
+    },
+    async teardown() {
+      handle?.teardown()
+      container?.remove()
+      handle = undefined
+      container = undefined
+      // Let the unmount's async cleanup run before the driver collects, so the
+      // detached tree is actually reclaimable; without this the post-teardown
+      // heap still looks live and the leak reads as the whole retained heap.
+      await settle()
+    },
+  }
+}
+
 async function run(): Promise<BenchPayload> {
   // Collect before this cell allocates anything, so the previous cell's heap
   // cannot skew the measurement. The driver reuses one browser process across
@@ -422,6 +517,14 @@ async function run(): Promise<BenchPayload> {
       summary: await measureMount(adapter, opts, plan),
       supported: true,
     }
+  }
+
+  // Memory is measured driver-side: install the hooks the CDP driver brackets
+  // with heap reads, then report readiness. The summary here is a placeholder;
+  // the driver fills in the real retained/churn/leak figures.
+  if (q.dim === 'memory') {
+    setupMemoryHooks(adapter, opts, shape, plan)
+    return { ...base, unit: 'bytes', summary: ZERO, supported: true }
   }
 
   const container = makeContainer()

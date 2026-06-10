@@ -39,47 +39,50 @@ const CASES: readonly ScenarioCase[] = [
   {
     scenario: 'flat',
     params: ['F10', 'F50'],
-    dims: ['keystroke', 'mount', 'validate', 'rerender'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'memory'],
   },
   {
     scenario: 'nested',
     params: ['D4', 'D8', 'D16'],
-    dims: ['keystroke', 'mount', 'validate', 'rerender'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'memory'],
   },
   {
     scenario: 'arrays',
     params: ['N10', 'N100'],
-    dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder', 'memory'],
   },
   {
     scenario: 'grid',
     params: ['N20M8', 'N100M8'],
-    dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder', 'memory'],
   },
   {
     scenario: 'discriminated-union',
     params: ['DU'],
-    dims: ['keystroke', 'mount', 'validate', 'rerender', 'variantFlip'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'variantFlip', 'memory'],
   },
   {
     scenario: 'massive',
     params: ['L2000', 'L5000'],
-    dims: ['keystroke', 'mount', 'validate'],
+    dims: ['keystroke', 'mount', 'validate', 'memory'],
     // Mounting thousands of inputs is seconds per single mount on the heavier
-    // libraries, so a stable mount median at L5000 exceeds any practical cell
-    // budget; the L2000 mount already exposes the mount-cost divergence (a one
+    // libraries, so a stable median over repeated fresh mounts at L5000 exceeds
+    // any practical cell budget. That hits both mount and memory (a retained
+    // heap sample is itself a fresh mount), so both are skipped at L5000; the
+    // L2000 mount and heap already expose the per-field cost and slope (a one
     // time cost), while L5000 carries keystroke and full-form validate, where
     // the whole-form-versus-granular gap is the headline and both complete.
-    skip: (params, dim) => params === 'L5000' && dim === 'mount',
+    skip: (params, dim) => params === 'L5000' && (dim === 'mount' || dim === 'memory'),
   },
   {
     // A linear multi-step flow. The two genuinely comparable operations are the
     // gated forward advance (stepTransition: validate the leaving step, move on)
-    // and the cross-step aggregate validate. Keystroke/mount/rerender add no
+    // and the cross-step aggregate validate, plus the cross-cutting memory dim
+    // (the per-step forms' retained heap). Keystroke/mount/rerender add no
     // wizard-specific signal over flat/nested, so they are not swept here.
     scenario: 'wizard',
     params: ['S4'],
-    dims: ['stepTransition', 'validate'],
+    dims: ['stepTransition', 'validate', 'memory'],
   },
 ]
 
@@ -132,6 +135,103 @@ async function runCell(
   return payload
 }
 
+/** Median of a sample set (the memory cell's summary; p95/iqr land in Phase 4). */
+function median(samples: readonly number[]): number {
+  if (samples.length === 0) return 0
+  const sorted = [...samples].sort((a, b) => a - b)
+  return sorted[Math.floor((sorted.length - 1) / 2)] ?? 0
+}
+
+/** The page window once the memory hooks are installed. */
+type MemoryWindow = Window & {
+  __BENCH_MEM__?: {
+    cycles: number
+    burst: number
+    mount(): Promise<void>
+    typeBurst(): Promise<void>
+    teardown(): Promise<void>
+  }
+  __BENCH_RESULTS__?: { error?: string }
+}
+
+/** The three retained/churn/leak medians (bytes) plus the cycle count driven. */
+interface MemoryResult {
+  error?: string
+  cycles: number
+  retained: number
+  churn: number
+  leak: number
+}
+
+/**
+ * Drive the memory dimension. The page only installs mount/type/teardown hooks;
+ * a precise heap is read driver-side through CDP, since the in-page
+ * performance.memory is quantized to uselessness (tens-of-MB buckets that ignore
+ * real allocations). Per cycle, with `s0` the collected baseline, `s1` the
+ * collected live mount, `s2` the heap after a keystroke burst (uncollected), and
+ * `s3` the collected heap after teardown: retained = s1 - s0 (live-form heap),
+ * churn = s2 - s1 (the burst's allocation), leak = s3 - s0 (post-teardown
+ * residual). A leak that makes the baseline creep leaves every per-cycle delta
+ * correct. Production preview only: a dev build's HMR registry retains every
+ * mount and swamps the signal (leak then reads as the whole retained heap).
+ */
+async function runMemoryCell(
+  page: Page,
+  adapter: string,
+  scenario: string,
+  params: string,
+  timeoutMs: number
+): Promise<MemoryResult> {
+  await page.goto(
+    `/?adapter=${adapter}&scenario=${scenario}&params=${params}&trigger=input&dim=memory`
+  )
+  await page.waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, {
+    timeout: timeoutMs,
+  })
+  const empty = { cycles: 0, retained: 0, churn: 0, leak: 0 }
+  const setupError = await page.evaluate(() => (window as MemoryWindow).__BENCH_RESULTS__?.error)
+  if (setupError) return { ...empty, error: setupError }
+  const cycles = await page.evaluate(() => (window as MemoryWindow).__BENCH_MEM__?.cycles ?? 0)
+  if (!cycles) return { ...empty, error: 'memory hooks were not installed' }
+
+  const client = await page.context().newCDPSession(page)
+  await client.send('HeapProfiler.enable')
+  // Two collection passes: a single full GC can leave a large heap (FormKit at
+  // thousands of fields holds hundreds of MB) partly uncollected, which would
+  // overstate the leak; the second pass reclaims what the first left pending, so
+  // a reported leak is real, not collection lag. Symmetric across s0/s1/s3.
+  const gc = async (): Promise<void> => {
+    await client.send('HeapProfiler.collectGarbage')
+    await client.send('HeapProfiler.collectGarbage')
+  }
+  const used = async (): Promise<number> => (await client.send('Runtime.getHeapUsage')).usedSize
+  const retained: number[] = []
+  const churn: number[] = []
+  const leak: number[] = []
+  for (let i = 0; i < cycles; i++) {
+    await gc()
+    const s0 = await used()
+    await page.evaluate(() => (window as MemoryWindow).__BENCH_MEM__?.mount())
+    await gc()
+    const s1 = await used()
+    retained.push(Math.max(0, s1 - s0))
+    await page.evaluate(() => (window as MemoryWindow).__BENCH_MEM__?.typeBurst())
+    const s2 = await used()
+    churn.push(Math.max(0, s2 - s1))
+    await page.evaluate(() => (window as MemoryWindow).__BENCH_MEM__?.teardown())
+    await gc()
+    const s3 = await used()
+    leak.push(Math.max(0, s3 - s0))
+  }
+  await client.detach()
+  return {
+    cycles,
+    retained: median(retained),
+    churn: median(churn),
+    leak: median(leak),
+  }
+}
+
 for (const { scenario, params: paramSet, dims, skip } of CASES) {
   test.describe(`${scenario} scenario · full cohort`, () => {
     for (const adapter of ADAPTERS) {
@@ -145,7 +245,45 @@ for (const { scenario, params: paramSet, dims, skip } of CASES) {
             // genuine hang still fails). Every other cell keeps the default.
             const wide = scenario === 'massive'
             if (wide) test.setTimeout(360_000)
-            const r = await runCell(page, adapter, scenario, params, dim, wide ? 320_000 : 60_000)
+            const waitMs = wide ? 320_000 : 60_000
+
+            // Memory is driver-measured via CDP, so it reports three byte
+            // figures (retained/churn/leak) rather than one timed summary; it
+            // takes its own path. Every adapter mounts, so none is unsupported.
+            if (dim === 'memory') {
+              const m = await runMemoryCell(page, adapter, scenario, params, waitMs)
+              expect(
+                m.error,
+                `error in ${adapter}/${scenario}/${params}/memory: ${m.error ?? ''}`
+              ).toBeUndefined()
+              expect(
+                m.cycles,
+                `${adapter}/${scenario}/${params}/memory ran no cycles`
+              ).toBeGreaterThan(0)
+              for (const [facet, value] of [
+                ['retained', m.retained],
+                ['churn', m.churn],
+                ['leak', m.leak],
+              ] as const) {
+                expect(
+                  Number.isFinite(value),
+                  `${adapter}/${scenario}/${params}/memory ${facet} not finite`
+                ).toBe(true)
+                expect(
+                  value,
+                  `${adapter}/${scenario}/${params}/memory ${facet} negative`
+                ).toBeGreaterThanOrEqual(0)
+              }
+              const kb = (n: number): string => `${(n / 1024).toFixed(1)}KB`
+              // eslint-disable-next-line no-console
+              console.log(
+                `${adapter.padEnd(14)} ${scenario.padEnd(8)} ${params.padEnd(4)} memory     ` +
+                  `retained=${kb(m.retained)} churn=${kb(m.churn)} leak=${kb(m.leak)} n=${m.cycles}`
+              )
+              return
+            }
+
+            const r = await runCell(page, adapter, scenario, params, dim, waitMs)
             expect(r, `no payload for ${adapter}/${scenario}/${params}/${dim}`).toBeTruthy()
             expect(
               r.error,

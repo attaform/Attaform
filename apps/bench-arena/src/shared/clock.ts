@@ -58,7 +58,7 @@ export async function timed(op: () => Promise<void>): Promise<number> {
 }
 
 export interface Summary {
-  /** Median over the kept samples, in milliseconds. */
+  /** Median over the kept samples, in the dimension's unit. */
   median: number
   /** 95th percentile over the kept samples. */
   p95: number

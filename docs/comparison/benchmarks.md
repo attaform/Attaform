@@ -65,14 +65,14 @@ The headline interaction. A keystroke runs the value write, validation, and the 
 ::bench-arena{scenario="flat" dimension="keystroke"}
 ::
 
-At five thousand fields the picture is more competitive, and Attaform sits mid-pack rather than ahead. The harness reports it plainly; it is a scenario worth a future look.
+At five thousand fields the picture tightens. The harness reports where Attaform lands plainly, and it is a scenario worth a future look.
 
 ::bench-arena{scenario="massive" dimension="keystroke"}
 ::
 
 ### Re-render scope
 
-Editing one cell of a large grid should re-render one field, not the form. Configured optimally, the modern headless cohort all reach that bound. Attaform matches the best of them at one render per keystroke; it does not need to beat them, because there is no lower number to reach.
+Editing one cell of a large grid should re-render one field, not the form. Configured optimally, the modern headless cohort all reaches that bound, and there is no lower number to beat.
 
 ::bench-arena{scenario="grid" dimension="rerender"}
 ::
@@ -81,7 +81,7 @@ Editing one cell of a large grid should re-render one field, not the form. Confi
 
 ### Mounting a large form
 
-Building a two-thousand-field form from scratch is where the form-state libraries separate. Attaform mounts the whole reactive tree, validation wiring included, and is the fastest full form-state library in the cohort by a wide margin.
+Building a two-thousand-field form from scratch is where the form-state libraries separate. Attaform mounts the whole reactive tree, validation wiring included, every value and validation path live before the first paint.
 
 ::bench-arena{scenario="massive" dimension="mount"}
 ::

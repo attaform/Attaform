@@ -94,13 +94,35 @@
   const props = defineProps<{ dimension: string; scenario?: string }>()
 
   const results = rawResults as Results
-  if (results.schemaVersion !== 1) {
+  const isDev = import.meta.dev
+  // The Actions page for the monthly refresh workflow. Doubles as the
+  // always-available provenance link (before any CI run has stamped a
+  // specific run URL) and the production fallback when data is missing.
+  const BENCH_WORKFLOW_URL =
+    'https://github.com/attaform/Attaform/actions/workflows/bench-arena.yml'
+  const BENCH_SOURCE_URL = 'https://github.com/attaform/Attaform/tree/main/apps/bench-arena'
+
+  // A present-but-incompatible schema is real drift and still fails the
+  // build loudly, so a shape change can never render a stale table. An
+  // absent or empty dataset is a different condition: a regen that never
+  // ran, or wrote nothing, should degrade to a friendly notice rather than
+  // crash every page that embeds a block. `datasetReady` separates the two.
+  const hasUsableShape =
+    !!results &&
+    typeof results === 'object' &&
+    typeof results.schemaVersion === 'number' &&
+    !!results.runtime &&
+    Object.keys(results.runtime).length > 0 &&
+    Array.isArray(results.capabilities) &&
+    results.capabilities.length > 0
+  if (hasUsableShape && results.schemaVersion !== 1) {
     throw new Error(
       `[BenchArena] results.json schemaVersion ${results.schemaVersion} is unsupported ` +
         `(this component renders schemaVersion 1). Update BenchArena.vue to the new shape ` +
         `or re-run the bench-arena orchestrator to emit a compatible results.json.`
     )
   }
+  const datasetReady = hasUsableShape && results.schemaVersion === 1
 
   const SCENARIO_LABEL: Record<string, string> = {
     flat: 'Flat',
@@ -273,6 +295,118 @@
     return `${s}: ${DIMENSION_LABEL[props.dimension] ?? props.dimension}`
   })
 
+  // --- Attaform standing (data-driven, never hard-coded) ------------------
+  // The page asserts no rank in prose; this derives Attaform's standing for
+  // the selected block straight from the numbers, so the sentence under a
+  // table can never drift from the table itself. The comparison set is
+  // Attaform's own layer, the form-state libraries: a validation-only engine
+  // that owns no input binding is not a faster form library, only a smaller
+  // one, exactly as the methodology note says. Ranking is by the largest
+  // size in the block (the most-stressed, fairest read) and combines rank
+  // with the gap to the leader, so "second of four but eight times behind"
+  // reads as trailing, not as front-of-pack.
+  const FORM_STATE_LAYER = 'headless-form-state'
+  const layerOf = (lib: string) => results.capabilities.find((c) => c.lib === lib)?.layer ?? ''
+
+  type StandingTone = 'lead' | 'plain'
+  interface Standing {
+    text: string
+    tone: StandingTone
+  }
+
+  // One pool per standing. Every line in a pool is interchangeably true for
+  // that standing, so any selection stays honest; the selection only varies
+  // the phrasing. Scoped to "form-state libraries", names Attaform, no
+  // competitor naming, no superlative the data does not earn.
+  const STANDING_POOLS: Record<string, string[]> = {
+    leads: [
+      'Fastest of the form-state libraries here, with daylight to the next.',
+      'Out in front of the form-state pack on this shape.',
+      'The quickest form-state library on this run, comfortably ahead.',
+    ],
+    edges: [
+      'Narrowly the fastest form-state library on this shape.',
+      'At the head of the form-state pack, by a step.',
+      'Just ahead of its form-state peers here.',
+    ],
+    matches: [
+      'Level with the fastest form-state libraries, at the floor this shape allows.',
+      'Matches the best of the form-state pack, with no lower number left to reach.',
+      'Even with the front of the form-state field on this run.',
+    ],
+    front: [
+      'Among the faster form-state libraries on this shape.',
+      'Near the front of the form-state pack here.',
+      'In the leading group of form-state libraries on this run.',
+    ],
+    mid: [
+      'Mid-pack among the form-state libraries here.',
+      'Holds the middle of the form-state field on this shape.',
+      'Squarely in the form-state pack, neither out front nor at the back.',
+    ],
+    trails: [
+      'Behind the form-state pack on this shape, and the run shows it plainly.',
+      'Off the lead here among the form-state libraries, a line we are actively sharpening.',
+      'Toward the back of the form-state field on this run, honest data we would rather show than hide.',
+    ],
+    renderScope: [
+      'One render per keystroke, whatever the form size. That is the design target, and the run holds it.',
+      'Editing one field re-renders one field, flat across every size measured.',
+      'Render scope stays at one, the floor, however large the form grows.',
+    ],
+  }
+
+  // Deterministic pick: stable across builds (no Math.random in SSG) but
+  // varied across sections, so neighbouring blocks do not repeat a sentence.
+  const pickFor = (key: string, pool: string[]): string => {
+    // Multiplier 33 (not 31): it keeps adjacent same-bucket blocks on the page
+    // (the two array ops, mount next to memory) from drawing the same sentence.
+    let h = 0
+    for (let i = 0; i < key.length; i += 1) h = (h * 33 + key.charCodeAt(i)) >>> 0
+    return pool[h % pool.length] ?? pool[0] ?? ''
+  }
+
+  const standing = computed<Standing | null>(() => {
+    const b = block.value
+    if (mode.value !== 'runtime' || !b) return null
+    const orderedParams = Object.keys(b.byParam)
+    const largest = orderedParams[orderedParams.length - 1]
+    if (!largest) return null
+    const valueOf = (r: RuntimeRow) => ('retained' in r ? r.retained.median : r.median)
+    const peers = (b.byParam[largest] ?? []).filter(
+      (r) => r.supported && layerOf(r.lib) === FORM_STATE_LAYER
+    )
+    const me = peers.find((r) => r.lib === results.baseline)
+    if (!me || peers.length < 2) return null
+    const sorted = [...peers].sort((a, c) => valueOf(a) - valueOf(c))
+    const leader = sorted[0]
+    if (!leader) return null
+    const rank = sorted.findIndex((r) => r.lib === results.baseline) + 1
+    const n = peers.length
+    const key = `${props.scenario}:${props.dimension}`
+
+    // Render scope has an architectural floor of one render per keystroke.
+    // When Attaform holds it (rank one), celebrate the constant scope rather
+    // than a rank; if it ever regresses, fall through to the honest buckets.
+    if (props.dimension === 'rerender' && rank === 1) {
+      return { text: pickFor(key, STANDING_POOLS.renderScope ?? []), tone: 'lead' }
+    }
+
+    const meValue = valueOf(me)
+    if (rank === 1) {
+      const secondRow = sorted[1]
+      const margin = secondRow && meValue > 0 ? valueOf(secondRow) / meValue : 1
+      const pool = margin >= 1.15 ? 'leads' : margin >= 1.04 ? 'edges' : 'matches'
+      return { text: pickFor(key, STANDING_POOLS[pool] ?? []), tone: 'lead' }
+    }
+    const leaderValue = valueOf(leader)
+    const gap = leaderValue > 0 ? meValue / leaderValue : 1
+    if (rank === n || gap > 4)
+      return { text: pickFor(key, STANDING_POOLS.trails ?? []), tone: 'plain' }
+    if (gap <= 1.5) return { text: pickFor(key, STANDING_POOLS.front ?? []), tone: 'lead' }
+    return { text: pickFor(key, STANDING_POOLS.mid ?? []), tone: 'plain' }
+  })
+
   // --- provenance ---------------------------------------------------------
   const prov = results.provenance
   const provDate = computed(() => shortDate(prov.timestamp))
@@ -280,8 +414,45 @@
 
 <template>
   <div class="not-prose my-6 overflow-hidden rounded-xl border border-border bg-bg shadow-sm">
+    <!-- ===================== Data unavailable (graceful) ===================== -->
+    <!-- Heads the v-if chain: if results.json is missing or empty, every block
+         renders this instead of crashing the build. Dev points at how to
+         regenerate; production names the gap and links the live resources. -->
+    <div v-if="!datasetReady" class="px-4 py-5 text-sm text-fg-muted">
+      <p class="font-medium text-fg">Benchmark data is not available in this build.</p>
+      <p v-if="isDev" class="mt-2">
+        Generate it from the repo root: build Attaform's real
+        <code class="rounded bg-surface px-1 py-0.5 font-mono text-xs text-fg">dist</code> with
+        <code class="rounded bg-surface px-1 py-0.5 font-mono text-xs text-fg">pnpm prepack</code>,
+        then run
+        <code class="rounded bg-surface px-1 py-0.5 font-mono text-xs text-fg"
+          >pnpm --filter attaform-bench-arena run arena</code
+        >, which writes
+        <code class="rounded bg-surface px-1 py-0.5 font-mono text-xs text-fg"
+          >apps/bench-arena/results.json</code
+        >.
+      </p>
+      <p v-else class="mt-2">
+        The benchmark results are being refreshed. See the latest runs on the
+        <a
+          :href="BENCH_WORKFLOW_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-accent hover:underline"
+          >bench-arena workflow</a
+        >, or browse the
+        <a
+          :href="BENCH_SOURCE_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-accent hover:underline"
+          >harness source</a
+        >.
+      </p>
+    </div>
+
     <!-- ===================== Capability matrix ===================== -->
-    <div v-if="mode === 'capabilities'" class="overflow-x-auto">
+    <div v-else-if="mode === 'capabilities'" class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-border bg-surface/40 text-left">
@@ -468,6 +639,20 @@
           caption
         }}</span>
       </div>
+      <!-- Where Attaform lands, derived from the numbers below, never asserted
+           by hand. See the `standing` classifier for the buckets. -->
+      <p
+        v-if="standing"
+        class="flex items-center gap-2 border-b border-border/60 px-3 py-2 text-sm"
+        :class="standing.tone === 'lead' ? 'text-fg' : 'text-fg-muted'"
+      >
+        <span
+          class="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+          :class="standing.tone === 'lead' ? 'bg-accent' : 'bg-fg-subtle/50'"
+          aria-hidden="true"
+        />
+        {{ standing.text }}
+      </p>
       <table v-if="isMemory" class="w-full text-sm">
         <thead>
           <tr class="border-b border-border text-left">
@@ -569,7 +754,11 @@
     </div>
 
     <!-- ===================== Provenance footer ===================== -->
+    <!-- Every block traces to where its numbers came from. A CI run links the
+         exact run; a local seed links the workflow that supersedes it, so a
+         reader is never left without a destination. -->
     <div
+      v-if="datasetReady"
       class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-surface/30 px-3 py-2 text-xs text-fg-subtle"
     >
       <span v-if="prov.source === 'ci' && prov.ciRunUrl">
@@ -582,7 +771,16 @@
           >CI run #{{ prov.ciRunId }}</a
         >
       </span>
-      <span v-else>Source: local run (illustrative shape data; superseded by CI)</span>
+      <span v-else>
+        Source: local run, superseded by the
+        <a
+          :href="BENCH_WORKFLOW_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-accent hover:underline"
+          >monthly CI refresh</a
+        >
+      </span>
       <span>{{ prov.runner.cpuModel }}</span>
       <span>Node {{ prov.node }}</span>
       <span>{{ provDate }}</span>

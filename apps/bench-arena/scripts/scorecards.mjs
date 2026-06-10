@@ -9,12 +9,19 @@
  * library's supply-chain posture is part of the honest "what does adopting
  * this cost me" picture, especially for an audited downstream consumer.
  *
- * The lookup is best-effort and never gates a run: a repository that has
- * not published a Scorecard returns 404 (the common case), and a network
- * error or timeout resolves to null. The docs render a null as "not
- * published" and link the repository instead, and the monthly CI run
- * refreshes whatever the API serves that day. The committed score is a
- * snapshot; the viewer link always reflects the live result.
+ * A lookup resolves to one of three states, because an absent score has two
+ * very different meanings the docs must never conflate:
+ *   - 'published'      the API served a score (a fact about the project)
+ *   - 'not-published'  the API returned 404: the project has not opted into a
+ *                      Scorecard (a choice by the project, not a deficiency)
+ *   - 'unavailable'    the lookup did not complete: a timeout, a network
+ *                      error, a non-404 response, or a malformed body (a gap
+ *                      on our side this run, never a statement about the
+ *                      project)
+ *
+ * The lookup is best-effort and never gates a run. The monthly CI run
+ * refreshes whatever the API serves that day; the committed score is a
+ * snapshot, and the viewer link always reflects the live result.
  */
 const API = 'https://api.securityscorecards.dev/projects'
 const TIMEOUT_MS = 12_000
@@ -24,7 +31,13 @@ export function scorecardViewerUrl(slug) {
   return `https://scorecard.dev/viewer/?uri=${slug}`
 }
 
-/** Fetch one repository's published score; null on 404, error, or timeout. */
+/**
+ * Look up one repository's Scorecard. Returns a discriminated result:
+ * { status: 'published', score, date } when the API serves a score,
+ * { status: 'not-published' } on a 404 (the project opted out), or
+ * { status: 'unavailable' } on any timeout, network error, non-404 response,
+ * or malformed body. Never throws.
+ */
 async function fetchOne(slug) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
@@ -33,21 +46,22 @@ async function fetchOne(slug) {
       signal: controller.signal,
       headers: { accept: 'application/json' },
     })
-    if (!res.ok) return null
+    if (res.status === 404) return { status: 'not-published' }
+    if (!res.ok) return { status: 'unavailable' }
     const body = await res.json()
-    if (typeof body?.score !== 'number') return null
-    return { score: body.score, date: body.date ?? null }
+    if (typeof body?.score !== 'number') return { status: 'unavailable' }
+    return { status: 'published', score: body.score, date: body.date ?? null }
   } catch {
-    return null
+    return { status: 'unavailable' }
   } finally {
     clearTimeout(timer)
   }
 }
 
 /**
- * Resolve published scores for a set of "github.com/owner/repo" slugs in
- * parallel. Returns a slug -> { score, date } | null map; falsy slugs are
- * dropped. Never throws.
+ * Resolve Scorecard results for a set of "github.com/owner/repo" slugs in
+ * parallel. Returns a slug -> { status, ... } map (see fetchOne for the per-slug
+ * shape); falsy slugs are dropped. Never throws.
  */
 export async function fetchScorecards(slugs) {
   const unique = [...new Set(slugs.filter(Boolean))]

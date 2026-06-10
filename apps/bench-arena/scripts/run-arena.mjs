@@ -22,8 +22,10 @@
  * development only and stamps its provenance source as "local".
  *
  * CLI:
- *   node scripts/run-arena.mjs                 full run -> results.json
- *   node scripts/run-arena.mjs --grep <pat>    partial smoke run -> results.smoke.json
+ *   node scripts/run-arena.mjs                   full run -> results.json
+ *   node scripts/run-arena.mjs --grep <pat>      partial smoke run -> results.smoke.json
+ *   node scripts/run-arena.mjs --scorecards-only refresh only the supply-chain scores in
+ *                                                results.json, in place, with no browser run
  */
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -121,7 +123,8 @@ function cellValue(cell) {
 function parseArgs() {
   const grepIndex = argv.indexOf('--grep')
   const grep = grepIndex >= 0 ? (argv[grepIndex + 1] ?? null) : null
-  return { grep }
+  const scorecardsOnly = argv.includes('--scorecards-only')
+  return { grep, scorecardsOnly }
 }
 
 /** Run the Playwright spec (live `list` output) and tee a JSON report to disk. */
@@ -166,11 +169,23 @@ function harvest(reportPath) {
   return { cells, meta }
 }
 
+/** The repository + Scorecard fields, stamped onto a capability row in one
+ *  canonical key order so the full-run and the --scorecards-only paths emit an
+ *  identical shape. scorecardStatus is the discriminant the docs render on:
+ *  'published' carries a score, 'not-published' is an opted-out project, and
+ *  'unavailable' is a lookup that did not complete (a gap on our side). */
+function stampScorecard(row, info) {
+  row.repo = info?.repo ?? null
+  row.repoUrl = info?.repoUrl ?? null
+  row.scorecardUrl = info?.viewerUrl ?? null
+  row.scorecardStatus = info?.status ?? 'unavailable'
+  row.scorecard = info?.scorecard ?? null
+  return row
+}
+
 /**
  * Capability matrix + display metadata, straight from the built adapters' meta,
- * plus each library's repository and (best-effort) OpenSSF Scorecard. A library
- * with no published Scorecard carries scorecard: null; the docs render that as
- * "not published" and link the repository instead.
+ * plus each library's repository and (best-effort) OpenSSF Scorecard.
  */
 function capabilitiesOf(meta, scorecardInfo) {
   return (meta ?? []).map((m) => {
@@ -183,38 +198,79 @@ function capabilitiesOf(meta, scorecardInfo) {
     }
     for (const scenario of SCENARIO_ORDER)
       row[scenario] = m.capabilities?.[scenario] ?? 'unsupported'
-    const info = scorecardInfo?.[m.id]
-    row.repo = info?.repo ?? null
-    row.repoUrl = info?.repoUrl ?? null
-    row.scorecardUrl = info?.viewerUrl ?? null
-    row.scorecard = info?.scorecard ?? null
-    return row
+    return stampScorecard(row, scorecardInfo?.[m.id])
   })
 }
 
 /**
- * Per-adapter repository + OpenSSF Scorecard info. Derives each library's repo
- * slug from its installed package, resolves the published scores in one
- * best-effort batch, and returns adapter id -> { repo, repoUrl, viewerUrl,
- * scorecard }. Never throws: a failed lookup leaves scorecard null.
+ * Per-adapter repository + OpenSSF Scorecard info for a list of adapter ids.
+ * Derives each library's repo slug from its installed package, resolves the
+ * Scorecards in one best-effort batch, and returns adapter id -> { repo,
+ * repoUrl, viewerUrl, status, scorecard }. status is 'published' |
+ * 'not-published' | 'unavailable'; scorecard carries { score, date } only when
+ * published. Never throws: a slug that cannot be derived, or a lookup that does
+ * not complete, both resolve to status 'unavailable'.
  */
-async function buildScorecardInfo(meta) {
+async function buildScorecardInfo(ids) {
   const slugById = {}
-  for (const m of meta ?? []) {
-    const pkg = LIB_REPO_PKG[m.id]
-    slugById[m.id] = pkg ? readInstalledRepoSlug(pkg) : null
+  for (const id of ids) {
+    const pkg = LIB_REPO_PKG[id]
+    slugById[id] = pkg ? readInstalledRepoSlug(pkg) : null
   }
-  const scores = await fetchScorecards(Object.values(slugById))
+  const results = await fetchScorecards(Object.values(slugById))
   const info = {}
   for (const [id, slug] of Object.entries(slugById)) {
+    const result = slug ? results[slug] : null
     info[id] = {
       repo: slug,
       repoUrl: slug ? `https://${slug}` : null,
       viewerUrl: slug ? scorecardViewerUrl(slug) : null,
-      scorecard: slug ? (scores[slug] ?? null) : null,
+      status: result?.status ?? 'unavailable',
+      scorecard: result?.status === 'published' ? { score: result.score, date: result.date } : null,
     }
   }
   return info
+}
+
+/**
+ * Refresh only the supply-chain (Scorecard) fields of the committed
+ * results.json, in place, without re-running the browser sweep. Supply-chain
+ * scores move on a different cadence than runtime performance, so this keeps the
+ * verified runtime numbers untouched and re-polls just the cohort's Scorecards:
+ * it picks up a newly published score, or refreshes an existing snapshot.
+ *
+ * Safety valve: if every lookup comes back 'unavailable' (the network is down,
+ * not the projects), it writes nothing and exits non-zero, so a flaky
+ * connection can never overwrite good committed scores with blanks.
+ */
+async function refreshScorecards() {
+  const outPath = join(PKG_ROOT, 'results.json')
+  const results = JSON.parse(readFileSync(outPath, 'utf8'))
+  const ids = results.capabilities.map((c) => c.lib)
+  const info = await buildScorecardInfo(ids)
+  const conclusive = Object.values(info).filter(
+    (i) => i.status === 'published' || i.status === 'not-published'
+  )
+  if (conclusive.length === 0) {
+    console.error(
+      '[run-arena] every Scorecard lookup was unavailable (the network looks down); ' +
+        'leaving the committed scores untouched.'
+    )
+    exit(1)
+  }
+  const scorecardKeys = ['repo', 'repoUrl', 'scorecardUrl', 'scorecardStatus', 'scorecard']
+  results.capabilities = results.capabilities.map((c) => {
+    const row = {}
+    for (const [k, v] of Object.entries(c)) if (!scorecardKeys.includes(k)) row[k] = v
+    return stampScorecard(row, info[c.lib])
+  })
+  writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`)
+  const published = conclusive.filter((i) => i.status === 'published').length
+  console.log(
+    `[run-arena] refreshed Scorecards in ${outPath} ` +
+      `(${published} published, ${conclusive.length - published} not published, ` +
+      `${ids.length - conclusive.length} unavailable)`
+  )
 }
 
 /**
@@ -309,7 +365,11 @@ function buildRuntime(cells, libOrder) {
 }
 
 async function main() {
-  const { grep } = parseArgs()
+  const { grep, scorecardsOnly } = parseArgs()
+  if (scorecardsOnly) {
+    await refreshScorecards()
+    return
+  }
   const smoke = grep !== null
 
   const { status, reportPath } = runSpec(grep)
@@ -329,7 +389,7 @@ async function main() {
   }
 
   const libOrder = libOrderOf(meta, cells)
-  const scorecardInfo = await buildScorecardInfo(meta)
+  const scorecardInfo = await buildScorecardInfo((meta ?? []).map((m) => m.id))
   const cpus = os.cpus()
   const runId = env.GITHUB_RUN_ID
   const ciRunUrl =

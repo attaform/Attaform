@@ -27,8 +27,12 @@ interface BenchPayload {
   params: ScenarioParams
   trigger: string
   dimension: string
-  /** Summary unit: milliseconds for timed dims, component renders for rerender. */
-  unit: 'ms' | 'renders'
+  /**
+   * Summary unit: milliseconds for timed dims, component renders for the
+   * rerender dim, or DOM mutations for the rerender dim of a library that owns
+   * its inputs (FormKit), where the driver falls back to a mutation proxy.
+   */
+  unit: 'ms' | 'renders' | 'dom-mutations'
   summary: Summary
   /** Machine-speed proxy so absolute numbers normalize across runners. */
   calibrationMs: number
@@ -121,19 +125,68 @@ async function measureValidate(handle: MountHandle): Promise<Summary> {
   return summarize(samples)
 }
 
-/** Components re-rendered per keystroke. Null render count => unsupported here. */
-async function measureRerender(handle: MountHandle, shape: ScenarioShape): Promise<Summary | null> {
+/** The rerender result plus which unit it is measured in. */
+interface RerenderResult {
+  summary: Summary
+  unit: 'renders' | 'dom-mutations'
+}
+
+/**
+ * Re-render scope per keystroke. For the bare-input cohort this is the count of
+ * field components whose render function ran (Attaform ~ 1, an O(F) library up
+ * to F). FormKit owns its inputs, so `getRenderCount` is null; the driver then
+ * falls back to a DOM-mutation proxy: a MutationObserver over the mounted
+ * subtree counts the attribute, child-list, and text mutations one keystroke
+ * produces. That is a DIFFERENT unit, not a component-render count, and is
+ * reported as such (the page caveats it, never placed numerically beside the
+ * render counts), but it answers the same real question the grid scenario asks:
+ * does editing one field churn DOM beyond that field?
+ *
+ * The proxy splits its count between the records the observer callback has
+ * already received during the settle (`delivered`) and the records still queued
+ * but undelivered (`takeRecords()`); the two sets are disjoint, so their sum is
+ * the keystroke's full mutation count with no double counting.
+ */
+async function measureRerender(
+  handle: MountHandle,
+  shape: ScenarioShape,
+  container: HTMLElement
+): Promise<RerenderResult> {
   const fieldCount = shape.paths.length
-  const counts: number[] = []
+  const renderCounts: number[] = []
+  const mutationCounts: number[] = []
+  let usesProxy = false
+
+  let delivered = 0
+  const observer = new MutationObserver((records) => {
+    delivered += records.length
+  })
+  observer.observe(container, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    characterData: true,
+  })
+
   for (let i = 0; i < RERENDER_RUNS; i++) {
     handle.resetRenderCount()
+    observer.takeRecords()
+    delivered = 0
     await handle.typeChar(i % fieldCount, `r${i}`)
     const count = handle.getRenderCount()
-    if (count === null) return null
-    counts.push(count)
+    if (count === null) {
+      usesProxy = true
+      mutationCounts.push(delivered + observer.takeRecords().length)
+    } else {
+      renderCounts.push(count)
+    }
     await frame()
   }
-  return summarize(counts)
+  observer.disconnect()
+
+  return usesProxy
+    ? { summary: summarize(mutationCounts), unit: 'dom-mutations' }
+    : { summary: summarize(renderCounts), unit: 'renders' }
 }
 
 /**
@@ -168,7 +221,13 @@ async function measureArrayAdd(handle: MountHandle): Promise<Summary> {
  * alternates between two orderings of equal cost.
  */
 async function measureArrayReorder(handle: MountHandle, shape: ScenarioShape): Promise<Summary> {
-  const last = shape.paths.length - 1
+  // The swap exchanges two ROWS (array elements), so the index lives in row
+  // space, not the flat input index. For a multi-column grid the input count
+  // (paths.length) is rows x columns, so divide by the column count to recover
+  // the row count; for a single-column array the two coincide.
+  const cols = shape.arrayItemFields?.length ?? 1
+  const rowCount = Math.floor(shape.paths.length / cols)
+  const last = Math.max(0, rowCount - 1)
   for (let i = 0; i < 5; i++) await handle.arrayOp('swap', 0, last)
   const samples: number[] = []
   for (let i = 0; i < ARRAYOP_RUNS; i++) {
@@ -237,10 +296,8 @@ async function run(): Promise<BenchPayload> {
       case 'validate':
         return { ...base, unit: 'ms', summary: await measureValidate(handle), supported: true }
       case 'rerender': {
-        const summary = await measureRerender(handle, shape)
-        return summary === null
-          ? { ...base, unit: 'renders', summary: ZERO, supported: false }
-          : { ...base, unit: 'renders', summary, supported: true }
+        const result = await measureRerender(handle, shape, container)
+        return { ...base, unit: result.unit, summary: result.summary, supported: true }
       }
       case 'arrayAdd':
         return { ...base, unit: 'ms', summary: await measureArrayAdd(handle), supported: true }

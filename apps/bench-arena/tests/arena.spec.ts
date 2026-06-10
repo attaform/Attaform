@@ -44,6 +44,11 @@ const CASES: readonly ScenarioCase[] = [
     params: ['N10', 'N100'],
     dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder'],
   },
+  {
+    scenario: 'grid',
+    params: ['N20M8', 'N100M8'],
+    dims: ['keystroke', 'mount', 'validate', 'rerender', 'arrayAdd', 'arrayReorder'],
+  },
 ]
 
 /**
@@ -52,15 +57,18 @@ const CASES: readonly ScenarioCase[] = [
  * SHOULD do, so a disagreement fails the test in either direction (a rigged
  * number where a gap belongs, or a skipped cell that should have measured).
  */
-function expectUnsupported(adapter: string, _scenario: string, dim: string): boolean {
-  // FormKit owns its inputs, so component render scope is not applicable on any
-  // scenario; it reports unsupported (the DOM-mutation proxy lands later).
-  return dim === 'rerender' && adapter === 'formkit'
+function expectUnsupported(_adapter: string, _scenario: string, _dim: string): boolean {
+  // Every adapter expresses every dimension of the object, array, and grid
+  // scenarios. FormKit owns its inputs, so its render scope falls back to the
+  // caveated DOM-mutation proxy (asserted below) rather than reporting
+  // unsupported. The discriminated-union and wizard scenarios (later Phase 3
+  // commits) introduce the first genuine capability gaps this gate will assert.
+  return false
 }
 
 interface Payload {
   summary: { median: number; p95: number; iqr: number; count: number; trimmed: number }
-  unit: 'ms' | 'renders'
+  unit: 'ms' | 'renders' | 'dom-mutations'
   supported: boolean
   calibrationMs: number
   error?: string
@@ -115,11 +123,22 @@ for (const { scenario, params: paramSet, dims } of CASES) {
               expect(r.summary.count).toBeGreaterThan(0)
             }
 
-            const unit = r.unit === 'renders' ? ' renders' : 'ms'
+            // Lock the render-scope unit: the bare-input cohort reports
+            // component renders; FormKit owns its inputs, so its rerender cell
+            // falls back to the caveated DOM-mutation proxy. Both are
+            // well-formed numbers; only the unit distinguishes them.
+            if (dim === 'rerender') {
+              expect(r.unit, `${adapter}/${scenario}/${params}/rerender unit`).toBe(
+                adapter === 'formkit' ? 'dom-mutations' : 'renders'
+              )
+            }
+
+            const unitLabel =
+              r.unit === 'renders' ? ' renders' : r.unit === 'dom-mutations' ? ' dom-mut' : 'ms'
             // eslint-disable-next-line no-console
             console.log(
               `${adapter.padEnd(14)} ${scenario.padEnd(8)} ${params.padEnd(4)} ${dim.padEnd(10)} ` +
-                `median=${r.summary.median.toFixed(3)}${unit} p95=${r.summary.p95.toFixed(3)} ` +
+                `median=${r.summary.median.toFixed(3)}${unitLabel} p95=${r.summary.p95.toFixed(3)} ` +
                 `n=${r.summary.count} trim=${r.summary.trimmed} calib=${r.calibrationMs.toFixed(1)}ms`
             )
           })

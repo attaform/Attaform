@@ -79,7 +79,11 @@ const MASSIVE_PLAN: SamplePlan = {
   warmup: 10,
   measure: 120,
   mountRuns: 7,
-  validateRuns: 40,
+  // A single full-form validate at 5,000 leaves is seconds on the heaviest
+  // library (TanStack, ~2.8s), so the run count stays low to keep the cell
+  // inside its budget under runner variance; the median is stable regardless,
+  // since a whole-form validate at this scale has low relative variance.
+  validateRuns: 25,
   rerenderRuns: 30,
   arrayOpRuns: 50,
   variantFlipRuns: 50,

@@ -1,0 +1,46 @@
+{
+  "name": "attaform-bench-arena",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fair, reproducible cross-library Vue form benchmark. Measures Attaform against the Vue form-library cohort in a real browser and emits a provenance-stamped results.json consumed by the docs.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "exports": {
+    "./results.json": "./results.json"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4174",
+    "typecheck": "vue-tsc --noEmit",
+    "arena": "node scripts/run-arena.mjs",
+    "bench:bundles": "node scripts/measure-bundles.mjs",
+    "test:arena": "playwright test"
+  },
+  "dependencies": {
+    "attaform": "workspace:*"
+  },
+  "devDependencies": {
+    "@formisch/vue": "^0.8.0",
+    "@formkit/vue": "^2.0.0",
+    "@formkit/zod": "^2.0.0",
+    "@playwright/test": "^1.60.0",
+    "@regle/core": "^1.26.1",
+    "@regle/rules": "^1.26.1",
+    "@regle/schemas": "^1.26.1",
+    "@tanstack/vue-form": "^1.33.0",
+    "@vee-validate/zod": "^4.15.1",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vuelidate/core": "^2.0.3",
+    "@vuelidate/validators": "^2.0.4",
+    "pinia": "^3.0.4",
+    "valibot": "^1.4.1",
+    "vee-validate": "^4.15.1",
+    "vite": "^8.0.10",
+    "vue": "^3.5.33",
+    "vue-tsc": "^3.2.7",
+    "zod": "^3.25.76"
+  }
+}

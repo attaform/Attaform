@@ -1,0 +1,5 @@
+# Build + tooling output (the real Attaform dist lives at the repo root).
+dist/
+test-results/
+playwright-report/
+.playwright/

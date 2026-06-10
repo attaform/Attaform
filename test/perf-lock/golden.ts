@@ -12,7 +12,7 @@
  * through. A regression there moves v3 and v4 identically, so parity stays
  * green while behavior drifts. The golden is the lock that catches it.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect } from 'vitest'
@@ -48,12 +48,23 @@ function serialize(value: unknown): string {
  * - Missing golden + CI: throw — never let an absent golden silently pass.
  * - `ATTA_UPDATE_GOLDEN=1`: rewrite the golden, pass.
  * - Otherwise: deep-equal the parsed structures (precise diff on failure).
+ *
+ * The golden is read directly and a missing file (ENOENT) is what marks it
+ * absent — rather than a prior `existsSync` check, which would be a
+ * time-of-check to time-of-use race on the golden path.
  */
 export function assertGolden(name: string, actual: unknown): void {
   const file = join(GOLDEN_DIR, `${name}.json`)
   const serialized = serialize(actual)
 
-  if (!existsSync(file)) {
+  let expected: string | undefined
+  try {
+    expected = readFileSync(file, 'utf8')
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'ENOENT') throw err
+  }
+
+  if (expected === undefined) {
     if (process.env['CI']) {
       throw new Error(
         `[behavior-lock] missing golden "${name}". Generate locally with ATTA_UPDATE_GOLDEN=1 and commit test/perf-lock/__golden__/${name}.json.`
@@ -69,6 +80,5 @@ export function assertGolden(name: string, actual: unknown): void {
     return
   }
 
-  const expected = readFileSync(file, 'utf8')
   expect(JSON.parse(serialized)).toEqual(JSON.parse(expected))
 }

@@ -439,6 +439,9 @@ export default [
       'apps/site/public/_pagefind/**',
       // Site-local build scripts — same rationale as repo-root scripts/**.
       'apps/site/scripts/**',
+      // Bench-arena build scripts (the orchestrator, bundle and version
+      // helpers) — Node tooling, same rationale as repo-root scripts/**.
+      'apps/bench-arena/scripts/**',
       '.prettierrc.cjs',
       'scripts/**',
       // Bundled-types regression fixture imports from `dist/*` to

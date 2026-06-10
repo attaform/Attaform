@@ -94,11 +94,14 @@ export const attaformAdapter: BenchAdapter = {
           }
           // An array scenario renders reactively through `form.list`: reading it
           // tracks the array length, so a row added or removed reflows the list,
-          // while a leaf edit (length unchanged) re-renders only its own row.
+          // while a leaf edit (length unchanged) re-renders only its own row. The
+          // composite massive scenario appends its flat and nested leaves after
+          // the rows (`objectPaths`), each registered at an index past the cells.
           if (arrayPath !== undefined) {
-            return h(
-              'div',
-              f.list(arrayPath).flatMap((row, i) =>
+            const objectPaths = shape.objectPaths ?? []
+            const objBase = shape.paths.length - objectPaths.length
+            return h('div', [
+              ...f.list(arrayPath).flatMap((row, i) =>
                 itemFields.map((field, fIdx) =>
                   h(ArrayRow, {
                     key: `${row.key}.${field}`,
@@ -108,8 +111,17 @@ export const attaformAdapter: BenchAdapter = {
                     trigger: opts.trigger,
                   })
                 )
-              )
-            )
+              ),
+              ...objectPaths.map((path, j) =>
+                h(Field, {
+                  key: `obj-${path}`,
+                  form: f,
+                  path,
+                  index: objBase + j,
+                  trigger: opts.trigger,
+                })
+              ),
+            ])
           }
           return h(
             'div',

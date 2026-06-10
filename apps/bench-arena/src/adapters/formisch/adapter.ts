@@ -122,9 +122,10 @@ export const formischAdapter: BenchAdapter = {
             )
           }
           if (fieldArray && arrayPath !== undefined) {
-            return h(
-              'div',
-              fieldArray.items.flatMap((key, i) =>
+            const objectPaths = shape.objectPaths ?? []
+            const objBase = shape.paths.length - objectPaths.length
+            return h('div', [
+              ...fieldArray.items.flatMap((key, i) =>
                 itemFields.map((field, fIdx) =>
                   h(ArrayRow, {
                     key: `${key}.${field}`,
@@ -134,8 +135,17 @@ export const formischAdapter: BenchAdapter = {
                     trigger: opts.trigger,
                   })
                 )
-              )
-            )
+              ),
+              ...objectPaths.map((path, j) =>
+                h(Field, {
+                  key: `obj-${path}`,
+                  form: f,
+                  path,
+                  index: objBase + j,
+                  trigger: opts.trigger,
+                })
+              ),
+            ])
           }
           return h(
             'div',

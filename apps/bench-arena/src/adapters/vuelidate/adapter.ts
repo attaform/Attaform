@@ -175,9 +175,10 @@ export const vuelidateAdapter: BenchAdapter = {
           }
           if (arrayPath !== undefined) {
             const list = (state[arrayPath] as unknown[]) ?? []
-            return h(
-              'div',
-              list.flatMap((_row, i) =>
+            const objectPaths = shape.objectPaths ?? []
+            const objBase = shape.paths.length - objectPaths.length
+            return h('div', [
+              ...list.flatMap((_row, i) =>
                 itemFields.map((field, fIdx) => {
                   const index = i * itemFields.length + fIdx
                   return h(Field, {
@@ -187,8 +188,16 @@ export const vuelidateAdapter: BenchAdapter = {
                     trigger: opts.trigger,
                   })
                 })
-              )
-            )
+              ),
+              ...objectPaths.map((path, j) =>
+                h(Field, {
+                  key: `obj-${path}`,
+                  field: fieldFor(path) as VuelidateField,
+                  index: objBase + j,
+                  trigger: opts.trigger,
+                })
+              ),
+            ])
           }
           return h(
             'div',

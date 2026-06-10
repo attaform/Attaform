@@ -96,9 +96,10 @@ export const veeValidateAdapter: BenchAdapter = {
             )
           }
           if (fieldArray) {
-            return h(
-              'div',
-              fieldArray.fields.value.flatMap((entry, i) =>
+            const objectPaths = shape.objectPaths ?? []
+            const objBase = shape.paths.length - objectPaths.length
+            return h('div', [
+              ...fieldArray.fields.value.flatMap((entry, i) =>
                 itemFields.map((field, fIdx) =>
                   h(Field, {
                     key: `${entry.key}.${field}`,
@@ -107,8 +108,16 @@ export const veeValidateAdapter: BenchAdapter = {
                     trigger: opts.trigger,
                   })
                 )
-              )
-            )
+              ),
+              ...objectPaths.map((path, j) =>
+                h(Field, {
+                  key: `obj-${path}`,
+                  name: path,
+                  index: objBase + j,
+                  trigger: opts.trigger,
+                })
+              ),
+            ])
           }
           return h(
             'div',

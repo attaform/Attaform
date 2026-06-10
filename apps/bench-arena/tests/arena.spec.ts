@@ -26,6 +26,13 @@ interface ScenarioCase {
   readonly scenario: string
   readonly params: readonly string[]
   readonly dims: readonly string[]
+  /**
+   * A (param, dim) cell to skip for a library-agnostic measurement-budget
+   * reason (never a per-library one). Applied uniformly across the whole
+   * cohort, so it never biases a comparison: it removes a cell no library
+   * reports, not a number a slow library would lose on.
+   */
+  readonly skip?: (params: string, dim: string) => boolean
 }
 
 const CASES: readonly ScenarioCase[] = [
@@ -54,6 +61,17 @@ const CASES: readonly ScenarioCase[] = [
     params: ['DU'],
     dims: ['keystroke', 'mount', 'validate', 'rerender', 'variantFlip'],
   },
+  {
+    scenario: 'massive',
+    params: ['L2000', 'L5000'],
+    dims: ['keystroke', 'mount', 'validate'],
+    // Mounting thousands of inputs is seconds per single mount on the heavier
+    // libraries, so a stable mount median at L5000 exceeds any practical cell
+    // budget; the L2000 mount already exposes the mount-cost divergence (a one
+    // time cost), while L5000 carries keystroke and full-form validate, where
+    // the whole-form-versus-granular gap is the headline and both complete.
+    skip: (params, dim) => params === 'L5000' && dim === 'mount',
+  },
 ]
 
 /**
@@ -63,11 +81,12 @@ const CASES: readonly ScenarioCase[] = [
  * number where a gap belongs, or a skipped cell that should have measured).
  */
 function expectUnsupported(_adapter: string, _scenario: string, _dim: string): boolean {
-  // Every adapter expresses every dimension of the object, array, and grid
-  // scenarios. FormKit owns its inputs, so its render scope falls back to the
+  // Every adapter expresses every dimension of the object, array, grid, and
+  // massive scenarios (massive composes those same supported primitives at
+  // scale). FormKit owns its inputs, so its render scope falls back to the
   // caveated DOM-mutation proxy (asserted below) rather than reporting
-  // unsupported. The discriminated-union and wizard scenarios (later Phase 3
-  // commits) introduce the first genuine capability gaps this gate will assert.
+  // unsupported. The wizard scenario (a later Phase 3 commit) introduces the
+  // first genuine capability gaps this gate will assert.
   return false
 }
 
@@ -84,13 +103,14 @@ async function runCell(
   adapter: string,
   scenario: string,
   params: string,
-  dim: string
+  dim: string,
+  timeoutMs: number
 ): Promise<Payload> {
   await page.goto(
     `/?adapter=${adapter}&scenario=${scenario}&params=${params}&trigger=input&dim=${dim}`
   )
   await page.waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, {
-    timeout: 60_000,
+    timeout: timeoutMs,
   })
   const payload = await page.evaluate(
     () => (window as unknown as { __BENCH_RESULTS__: Payload }).__BENCH_RESULTS__
@@ -100,13 +120,20 @@ async function runCell(
   return payload
 }
 
-for (const { scenario, params: paramSet, dims } of CASES) {
+for (const { scenario, params: paramSet, dims, skip } of CASES) {
   test.describe(`${scenario} scenario · full cohort`, () => {
     for (const adapter of ADAPTERS) {
       for (const params of paramSet) {
         for (const dim of dims) {
           test(`${adapter} · ${params} · ${dim}`, async ({ page }) => {
-            const r = await runCell(page, adapter, scenario, params, dim)
+            test.skip(skip?.(params, dim) ?? false, 'cell exceeds the per-cell measurement budget')
+            // The massive scenario mounts thousands of inputs, so a single mount
+            // or full-form validate runs for seconds on the heavier libraries;
+            // give those cells a wide test + wait budget (still bounded, so a
+            // genuine hang still fails). Every other cell keeps the default.
+            const wide = scenario === 'massive'
+            if (wide) test.setTimeout(360_000)
+            const r = await runCell(page, adapter, scenario, params, dim, wide ? 320_000 : 60_000)
             expect(r, `no payload for ${adapter}/${scenario}/${params}/${dim}`).toBeTruthy()
             expect(
               r.error,

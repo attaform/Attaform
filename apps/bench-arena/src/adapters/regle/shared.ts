@@ -92,9 +92,10 @@ export async function mountRegle(
         }
         if (arrayPath !== undefined) {
           const list = (s[arrayPath] as unknown[]) ?? []
-          return h(
-            'div',
-            list.flatMap((_row, i) =>
+          const objectPaths = shape.objectPaths ?? []
+          const objBase = shape.paths.length - objectPaths.length
+          return h('div', [
+            ...list.flatMap((_row, i) =>
               itemFields.map((field, fIdx) => {
                 const index = i * itemFields.length + fIdx
                 return h(Field, {
@@ -104,8 +105,16 @@ export async function mountRegle(
                   trigger: opts.trigger,
                 })
               })
-            )
-          )
+            ),
+            ...objectPaths.map((path, j) =>
+              h(Field, {
+                key: `obj-${path}`,
+                field: resolveField(r$, path) as RegleField,
+                index: objBase + j,
+                trigger: opts.trigger,
+              })
+            ),
+          ])
         }
         return h(
           'div',

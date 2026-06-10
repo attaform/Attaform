@@ -226,12 +226,16 @@ export const formkitAdapter: BenchAdapter = {
             )
           }
         }
-        // An array scenario renders the `list` node's rows off a reactive count:
-        // appending or removing a row mounts/unmounts a group child, which FormKit
-        // grows/shrinks the list from. A keystroke (count unchanged) never reflows
-        // the list, so this is the performant idiomatic dynamic list (the repeater
-        // add-on, an extra package, is the only lighter authoring path).
-        if (arrayPath !== undefined) {
+        // A dynamic-array scenario renders the `list` node's rows off a reactive
+        // count: appending or removing a row mounts/unmounts a group child, which
+        // FormKit grows/shrinks the list from. A keystroke (count unchanged) never
+        // reflows the list, so this is the performant idiomatic dynamic list (the
+        // repeater add-on, an extra package, is the only lighter authoring path).
+        // The composite massive scenario carries `objectPaths`, so it falls
+        // through to the trie render below, which folds its flat, nested, and row
+        // paths into FormKit's groups, lists, and leaves in one pass (massive runs
+        // no array mutation, so it needs no reactive row count).
+        if (arrayPath !== undefined && (shape.objectPaths?.length ?? 0) === 0) {
           const count = ref(initialSeeds.length)
           rowCount = count
           return () =>

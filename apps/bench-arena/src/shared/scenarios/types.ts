@@ -51,6 +51,16 @@ export interface ScenarioShape {
    */
   readonly newRow?: () => Record<string, unknown>
   /**
+   * Non-array leaf paths rendered alongside the rows, present only for the
+   * composite massive scenario (flat + nested leaves; the array cells travel on
+   * `paths` ahead of these). An array scenario renders the rows through its
+   * array primitive and then these object leaves through its plain field
+   * binding, each at an index continuing past the last array cell
+   * (`paths.length - objectPaths.length + position`). Absent for the
+   * single-shape scenarios, where the array branch renders only rows.
+   */
+  readonly objectPaths?: readonly string[]
+  /**
    * Discriminated-union descriptor, present only for the discriminated-union
    * scenario. Adapters render only the ACTIVE variant's fields (the one the
    * current discriminant selects), and the variantFlip dimension cycles the

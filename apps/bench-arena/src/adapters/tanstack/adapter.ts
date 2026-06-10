@@ -88,9 +88,10 @@ export const tanstackAdapter: BenchAdapter = {
             )
           }
           if (arrayPath !== undefined) {
-            return h(
-              'div',
-              Array.from({ length: count.value }, (_unused, i) =>
+            const objectPaths = shape.objectPaths ?? []
+            const objBase = shape.paths.length - objectPaths.length
+            return h('div', [
+              ...Array.from({ length: count.value }, (_unused, i) =>
                 itemFields.map((field, fIdx) => {
                   const index = i * itemFields.length + fIdx
                   return h(Field, {
@@ -101,8 +102,17 @@ export const tanstackAdapter: BenchAdapter = {
                     trigger: opts.trigger,
                   })
                 })
-              ).flat()
-            )
+              ).flat(),
+              ...objectPaths.map((path, j) =>
+                h(Field, {
+                  key: `obj-${path}`,
+                  form: f,
+                  name: path,
+                  index: objBase + j,
+                  trigger: opts.trigger,
+                })
+              ),
+            ])
           }
           return h(
             'div',

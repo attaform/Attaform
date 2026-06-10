@@ -47,18 +47,58 @@ declare global {
   }
 }
 
-const WARMUP = 30
-const MEASURE = 200
-const MOUNT_RUNS = 15
-const VALIDATE_RUNS = 100
-const RERENDER_RUNS = 30
-const ARRAYOP_RUNS = 50
-const VARIANTFLIP_RUNS = 50
+/**
+ * Per-cell sample counts. The massive scenario mounts thousands of inputs, so a
+ * single fresh mount runs on the order of seconds for the heavier libraries; its
+ * counts are trimmed (uniformly across the whole cohort, so the comparison stays
+ * fair) to keep each cell inside the driver's per-cell time budget. Mount and
+ * validation cost at that scale have low relative variance, so the smaller
+ * median is still stable. Every other scenario keeps the full counts.
+ */
+interface SamplePlan {
+  readonly warmup: number
+  readonly measure: number
+  readonly mountRuns: number
+  readonly validateRuns: number
+  readonly rerenderRuns: number
+  readonly arrayOpRuns: number
+  readonly variantFlipRuns: number
+}
+
+const DEFAULT_PLAN: SamplePlan = {
+  warmup: 30,
+  measure: 200,
+  mountRuns: 15,
+  validateRuns: 100,
+  rerenderRuns: 30,
+  arrayOpRuns: 50,
+  variantFlipRuns: 50,
+}
+
+const MASSIVE_PLAN: SamplePlan = {
+  warmup: 10,
+  measure: 120,
+  mountRuns: 7,
+  validateRuns: 40,
+  rerenderRuns: 30,
+  arrayOpRuns: 50,
+  variantFlipRuns: 50,
+}
+
+function planFor(scenario: ScenarioId): SamplePlan {
+  return scenario === 'massive' ? MASSIVE_PLAN : DEFAULT_PLAN
+}
 
 const ZERO: Summary = { median: 0, p95: 0, iqr: 0, count: 0, trimmed: 0 }
 
 // Compact param labels (F50, D8, N1000, ...) decode to the scenario knobs.
-const CODE_TO_KEY: Record<string, string> = { F: 'fields', D: 'depth', N: 'rows', M: 'cols' }
+const CODE_TO_KEY: Record<string, string> = {
+  F: 'fields',
+  D: 'depth',
+  N: 'rows',
+  M: 'cols',
+  L: 'leaves',
+}
 
 function parseParams(label: string): ScenarioParams {
   const out: Record<string, number> = {}
@@ -102,24 +142,28 @@ function makeContainer(): HTMLElement {
   return el
 }
 
-/** Keystroke latency: warm up, then time MEASURE round-robin keystrokes. */
-async function measureKeystroke(handle: MountHandle, shape: ScenarioShape): Promise<Summary> {
+/** Keystroke latency: warm up, then time `plan.measure` round-robin keystrokes. */
+async function measureKeystroke(
+  handle: MountHandle,
+  shape: ScenarioShape,
+  plan: SamplePlan
+): Promise<Summary> {
   const fieldCount = shape.paths.length
-  for (let i = 0; i < WARMUP; i++) await handle.setFieldValue(i % fieldCount, `s${i}`)
+  for (let i = 0; i < plan.warmup; i++) await handle.setFieldValue(i % fieldCount, `s${i}`)
   const samples: number[] = []
-  for (let i = 0; i < MEASURE; i++) {
+  for (let i = 0; i < plan.measure; i++) {
     const index = i % fieldCount
-    samples.push(await timed(() => handle.typeChar(index, `s${WARMUP + i}`)))
+    samples.push(await timed(() => handle.typeChar(index, `s${plan.warmup + i}`)))
     await frame()
   }
   return summarize(samples)
 }
 
 /** Full-form validation throughput. */
-async function measureValidate(handle: MountHandle): Promise<Summary> {
+async function measureValidate(handle: MountHandle, plan: SamplePlan): Promise<Summary> {
   for (let i = 0; i < 5; i++) await handle.validateAll()
   const samples: number[] = []
-  for (let i = 0; i < VALIDATE_RUNS; i++) {
+  for (let i = 0; i < plan.validateRuns; i++) {
     samples.push(await timed(() => handle.validateAll()))
     await frame()
   }
@@ -151,7 +195,8 @@ interface RerenderResult {
 async function measureRerender(
   handle: MountHandle,
   shape: ScenarioShape,
-  container: HTMLElement
+  container: HTMLElement,
+  plan: SamplePlan
 ): Promise<RerenderResult> {
   const fieldCount = shape.paths.length
   const renderCounts: number[] = []
@@ -169,7 +214,7 @@ async function measureRerender(
     characterData: true,
   })
 
-  for (let i = 0; i < RERENDER_RUNS; i++) {
+  for (let i = 0; i < plan.rerenderRuns; i++) {
     handle.resetRenderCount()
     observer.takeRecords()
     delivered = 0
@@ -196,13 +241,13 @@ async function measureRerender(
  * reactive reflow of the rendered list. Size-stable so every sample starts from
  * the same N, and the appended row is valid so no error state churns.
  */
-async function measureArrayAdd(handle: MountHandle): Promise<Summary> {
+async function measureArrayAdd(handle: MountHandle, plan: SamplePlan): Promise<Summary> {
   for (let i = 0; i < 5; i++) {
     await handle.arrayOp('append')
     await handle.arrayOp('remove')
   }
   const samples: number[] = []
-  for (let i = 0; i < ARRAYOP_RUNS; i++) {
+  for (let i = 0; i < plan.arrayOpRuns; i++) {
     samples.push(
       await timed(async () => {
         await handle.arrayOp('append')
@@ -221,7 +266,11 @@ async function measureArrayAdd(handle: MountHandle): Promise<Summary> {
  * array swap plus the reactive settle. Each sample swaps back, so the array
  * alternates between two orderings of equal cost.
  */
-async function measureArrayReorder(handle: MountHandle, shape: ScenarioShape): Promise<Summary> {
+async function measureArrayReorder(
+  handle: MountHandle,
+  shape: ScenarioShape,
+  plan: SamplePlan
+): Promise<Summary> {
   // The swap exchanges two ROWS (array elements), so the index lives in row
   // space, not the flat input index. For a multi-column grid the input count
   // (paths.length) is rows x columns, so divide by the column count to recover
@@ -231,7 +280,7 @@ async function measureArrayReorder(handle: MountHandle, shape: ScenarioShape): P
   const last = Math.max(0, rowCount - 1)
   for (let i = 0; i < 5; i++) await handle.arrayOp('swap', 0, last)
   const samples: number[] = []
-  for (let i = 0; i < ARRAYOP_RUNS; i++) {
+  for (let i = 0; i < plan.arrayOpRuns; i++) {
     samples.push(await timed(() => handle.arrayOp('swap', 0, last)))
     await frame()
   }
@@ -245,13 +294,17 @@ async function measureArrayReorder(handle: MountHandle, shape: ScenarioShape): P
  * the new variant. Each sample is one flip to the next variant in the cycle, so
  * the union rotates through all of its shapes, every one of them valid.
  */
-async function measureVariantFlip(handle: MountHandle, shape: ScenarioShape): Promise<Summary> {
+async function measureVariantFlip(
+  handle: MountHandle,
+  shape: ScenarioShape,
+  plan: SamplePlan
+): Promise<Summary> {
   const tags = shape.union?.variants.map((variant) => variant.tag) ?? []
   if (tags.length === 0) throw new Error('bench: variantFlip needs a discriminated-union scenario')
   const at = (i: number): string => tags[i % tags.length] as string
   for (let i = 0; i < 5; i++) await handle.flipVariant(at(i))
   const samples: number[] = []
-  for (let i = 0; i < VARIANTFLIP_RUNS; i++) {
+  for (let i = 0; i < plan.variantFlipRuns; i++) {
     samples.push(await timed(() => handle.flipVariant(at(5 + i))))
     await frame()
   }
@@ -259,9 +312,13 @@ async function measureVariantFlip(handle: MountHandle, shape: ScenarioShape): Pr
 }
 
 /** Mount/init cost over fresh mounts; the only dim that re-mounts per sample. */
-async function measureMount(adapter: BenchAdapter, opts: MountOpts): Promise<Summary> {
+async function measureMount(
+  adapter: BenchAdapter,
+  opts: MountOpts,
+  plan: SamplePlan
+): Promise<Summary> {
   const samples: number[] = []
-  for (let i = 0; i < MOUNT_RUNS; i++) {
+  for (let i = 0; i < plan.mountRuns; i++) {
     const container = makeContainer()
     let handle: MountHandle | undefined
     samples.push(
@@ -289,6 +346,7 @@ async function run(): Promise<BenchPayload> {
     seed: q.seed,
   }
   const calibrationMs = calibrate()
+  const plan = planFor(q.scenario)
 
   const base = {
     adapter: q.adapter,
@@ -300,7 +358,12 @@ async function run(): Promise<BenchPayload> {
   }
 
   if (q.dim === 'mount') {
-    return { ...base, unit: 'ms', summary: await measureMount(adapter, opts), supported: true }
+    return {
+      ...base,
+      unit: 'ms',
+      summary: await measureMount(adapter, opts, plan),
+      supported: true,
+    }
   }
 
   const container = makeContainer()
@@ -311,29 +374,39 @@ async function run(): Promise<BenchPayload> {
         return {
           ...base,
           unit: 'ms',
-          summary: await measureKeystroke(handle, shape),
+          summary: await measureKeystroke(handle, shape, plan),
           supported: true,
         }
       case 'validate':
-        return { ...base, unit: 'ms', summary: await measureValidate(handle), supported: true }
+        return {
+          ...base,
+          unit: 'ms',
+          summary: await measureValidate(handle, plan),
+          supported: true,
+        }
       case 'rerender': {
-        const result = await measureRerender(handle, shape, container)
+        const result = await measureRerender(handle, shape, container, plan)
         return { ...base, unit: result.unit, summary: result.summary, supported: true }
       }
       case 'arrayAdd':
-        return { ...base, unit: 'ms', summary: await measureArrayAdd(handle), supported: true }
+        return {
+          ...base,
+          unit: 'ms',
+          summary: await measureArrayAdd(handle, plan),
+          supported: true,
+        }
       case 'arrayReorder':
         return {
           ...base,
           unit: 'ms',
-          summary: await measureArrayReorder(handle, shape),
+          summary: await measureArrayReorder(handle, shape, plan),
           supported: true,
         }
       case 'variantFlip':
         return {
           ...base,
           unit: 'ms',
-          summary: await measureVariantFlip(handle, shape),
+          summary: await measureVariantFlip(handle, shape, plan),
           supported: true,
         }
       default:

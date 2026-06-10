@@ -1,4 +1,5 @@
 import type {
+  AdapterMeta,
   BenchAdapter,
   DimensionId,
   MountHandle,
@@ -69,6 +70,13 @@ declare global {
   interface Window {
     __BENCH_RESULTS__?: BenchPayload
     __BENCH_MEM__?: MemoryHooks
+    /**
+     * Every adapter's static meta, exposed on the `?meta=1` page so the
+     * orchestrator can build the capability matrix and display metadata from
+     * the real built adapters (a single source of truth, never a hand-kept
+     * copy). No adapter is mounted on this page; it only reads the registry.
+     */
+    __BENCH_META__?: readonly AdapterMeta[]
   }
 }
 
@@ -586,25 +594,35 @@ async function run(): Promise<BenchPayload> {
   }
 }
 
-run()
-  .then((payload) => {
-    window.__BENCH_RESULTS__ = payload
-  })
-  .catch((err: unknown) => {
-    const q = readQuery()
-    window.__BENCH_RESULTS__ = {
-      adapter: q.adapter,
-      scenario: q.scenario,
-      params: q.params,
-      trigger: q.trigger,
-      dimension: q.dim,
-      unit: 'ms',
-      summary: ZERO,
-      calibrationMs: 0,
-      supported: false,
-      error: err instanceof Error ? err.message : String(err),
-    }
-  })
-  .finally(() => {
-    document.body.dataset['benchDone'] = '1'
-  })
+/** Expose every adapter's meta for the orchestrator; mounts nothing. */
+function exposeMeta(): void {
+  window.__BENCH_META__ = Object.values(adapters).map((adapter) => adapter.meta)
+  document.body.dataset['benchDone'] = '1'
+}
+
+if (new URLSearchParams(window.location.search).get('meta') === '1') {
+  exposeMeta()
+} else {
+  run()
+    .then((payload) => {
+      window.__BENCH_RESULTS__ = payload
+    })
+    .catch((err: unknown) => {
+      const q = readQuery()
+      window.__BENCH_RESULTS__ = {
+        adapter: q.adapter,
+        scenario: q.scenario,
+        params: q.params,
+        trigger: q.trigger,
+        dimension: q.dim,
+        unit: 'ms',
+        summary: ZERO,
+        calibrationMs: 0,
+        supported: false,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    })
+    .finally(() => {
+      document.body.dataset['benchDone'] = '1'
+    })
+}

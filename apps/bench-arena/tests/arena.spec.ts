@@ -154,13 +154,17 @@ type MemoryWindow = Window & {
   __BENCH_RESULTS__?: { error?: string }
 }
 
-/** The three retained/churn/leak medians (bytes) plus the cycle count driven. */
+/**
+ * The three retained/churn/leak medians (bytes) and the cycle count driven, plus
+ * the raw per-cycle series the orchestrator keeps for the leak-creep sparkline.
+ */
 interface MemoryResult {
   error?: string
   cycles: number
   retained: number
   churn: number
   leak: number
+  series: { retained: number[]; churn: number[]; leak: number[] }
 }
 
 /**
@@ -188,7 +192,13 @@ async function runMemoryCell(
   await page.waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, {
     timeout: timeoutMs,
   })
-  const empty = { cycles: 0, retained: 0, churn: 0, leak: 0 }
+  const empty = {
+    cycles: 0,
+    retained: 0,
+    churn: 0,
+    leak: 0,
+    series: { retained: [], churn: [], leak: [] },
+  }
   const setupError = await page.evaluate(() => (window as MemoryWindow).__BENCH_RESULTS__?.error)
   if (setupError) return { ...empty, error: setupError }
   const cycles = await page.evaluate(() => (window as MemoryWindow).__BENCH_MEM__?.cycles ?? 0)
@@ -229,6 +239,7 @@ async function runMemoryCell(
     retained: median(retained),
     churn: median(churn),
     leak: median(leak),
+    series: { retained, churn, leak },
   }
 }
 
@@ -237,7 +248,7 @@ for (const { scenario, params: paramSet, dims, skip } of CASES) {
     for (const adapter of ADAPTERS) {
       for (const params of paramSet) {
         for (const dim of dims) {
-          test(`${adapter} · ${params} · ${dim}`, async ({ page }) => {
+          test(`${adapter} · ${params} · ${dim}`, async ({ page }, testInfo) => {
             test.skip(skip?.(params, dim) ?? false, 'cell exceeds the per-cell measurement budget')
             // The massive scenario mounts thousands of inputs, so a single mount
             // or full-form validate runs for seconds on the heavier libraries;
@@ -280,6 +291,23 @@ for (const { scenario, params: paramSet, dims, skip } of CASES) {
                 `${adapter.padEnd(14)} ${scenario.padEnd(8)} ${params.padEnd(4)} memory     ` +
                   `retained=${kb(m.retained)} churn=${kb(m.churn)} leak=${kb(m.leak)} n=${m.cycles}`
               )
+              // Hand the cell's measurement to the orchestrator: it harvests
+              // these attachments from the same green run that asserts them, so
+              // the published numbers and the gate can never diverge.
+              await testInfo.attach('cell', {
+                body: JSON.stringify({
+                  kind: 'memory',
+                  adapter,
+                  scenario,
+                  params,
+                  cycles: m.cycles,
+                  retained: m.retained,
+                  churn: m.churn,
+                  leak: m.leak,
+                  series: m.series,
+                }),
+                contentType: 'application/json',
+              })
               return
             }
 
@@ -323,9 +351,43 @@ for (const { scenario, params: paramSet, dims, skip } of CASES) {
                 `median=${r.summary.median.toFixed(3)}${unitLabel} p95=${r.summary.p95.toFixed(3)} ` +
                 `n=${r.summary.count} trim=${r.summary.trimmed} calib=${r.calibrationMs.toFixed(1)}ms`
             )
+            await testInfo.attach('cell', {
+              body: JSON.stringify({
+                kind: 'timed',
+                adapter,
+                scenario,
+                params,
+                dim,
+                summary: r.summary,
+                unit: r.unit,
+                supported: r.supported,
+                calibrationMs: r.calibrationMs,
+              }),
+              contentType: 'application/json',
+            })
           })
         }
       }
     }
   })
 }
+
+test.describe('cohort metadata', () => {
+  test('capability and display metadata', async ({ page }, testInfo) => {
+    await page.goto('/?meta=1')
+    await page.waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, {
+      timeout: 60_000,
+    })
+    const meta = await page.evaluate(
+      () => (window as unknown as { __BENCH_META__?: readonly unknown[] }).__BENCH_META__
+    )
+    expect(meta, 'adapter meta was not exposed on ?meta=1').toBeTruthy()
+    expect(Array.isArray(meta), 'adapter meta is not an array').toBe(true)
+    expect((meta as readonly unknown[]).length, 'meta count does not match the cohort').toBe(
+      ADAPTERS.length
+    )
+    // The orchestrator builds the capability matrix and display metadata from
+    // this attachment, so both come from the real built adapters, not a copy.
+    await testInfo.attach('meta', { body: JSON.stringify(meta), contentType: 'application/json' })
+  })
+})

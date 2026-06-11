@@ -167,25 +167,27 @@ describe('stripLeafChecks', () => {
 })
 
 describe('rebuildDiscriminatedUnion', () => {
-  it('reconstructs the optionsMap keyed by literal discriminators', () => {
-    const card = z.object({ kind: z.literal('card'), number: z.string() })
+  it('remaps the optionsMap to the NEW (slim) options in order', () => {
+    const card = z.object({ kind: z.literal('card'), number: z.string().min(4) })
     const cash = z.object({ kind: z.literal('cash'), amount: z.number() })
     const original = z.discriminatedUnion('kind', [card, cash])
-    const rebuilt = rebuildDiscriminatedUnion(original, 'kind', [card, cash])
+    // Distinct slim options in the original order (number's min dropped).
+    const slimCard = rebuildObject(card, { kind: z.literal('card'), number: z.string() })
+    const slimCash = rebuildObject(cash, { kind: z.literal('cash'), amount: z.number() })
+    const rebuilt = rebuildDiscriminatedUnion(original, [slimCard, slimCash])
 
     const map = optionsMapOf(rebuilt)
-    expect(map.get('card')).toBe(card)
-    expect(map.get('cash')).toBe(cash)
-    expect(rebuilt.parse({ kind: 'card', number: '4242' })).toEqual({
-      kind: 'card',
-      number: '4242',
-    })
+    // The map points at the SLIM options, not the originals.
+    expect(map.get('card')).toBe(slimCard)
+    expect(map.get('cash')).toBe(slimCash)
+    // Routing reaches the slim branch: min(4) is gone, so 'ab' parses.
+    expect(rebuilt.parse({ kind: 'card', number: 'ab' })).toEqual({ kind: 'card', number: 'ab' })
   })
 
   it('rejects an unmapped discriminator with invalid_union_discriminator', () => {
     const card = z.object({ kind: z.literal('card'), number: z.string() })
     const cash = z.object({ kind: z.literal('cash'), amount: z.number() })
-    const rebuilt = rebuildDiscriminatedUnion(z.discriminatedUnion('kind', [card, cash]), 'kind', [
+    const rebuilt = rebuildDiscriminatedUnion(z.discriminatedUnion('kind', [card, cash]), [
       card,
       cash,
     ])
@@ -196,18 +198,20 @@ describe('rebuildDiscriminatedUnion', () => {
     }
   })
 
-  it('maps every value of a multi-value (enum) discriminator to its option', () => {
+  it('carries every value of a multi-value (enum) discriminator to its slim option', () => {
     const ab = z.object({ kind: z.enum(['a', 'b']), v: z.string() })
     const c = z.object({ kind: z.literal('c'), w: z.number() })
-    const rebuilt = rebuildDiscriminatedUnion(z.discriminatedUnion('kind', [ab, c]), 'kind', [
-      ab,
-      c,
-    ])
+    const original = z.discriminatedUnion('kind', [ab, c])
+    const slimAb = rebuildObject(ab, { kind: z.enum(['a', 'b']), v: z.string() })
+    const slimC = rebuildObject(c, { kind: z.literal('c'), w: z.number() })
+    const rebuilt = rebuildDiscriminatedUnion(original, [slimAb, slimC])
 
+    // Reused from zod's own optionsMap, both enum values route to the
+    // same slim option.
     const map = optionsMapOf(rebuilt)
-    expect(map.get('a')).toBe(ab)
-    expect(map.get('b')).toBe(ab)
-    expect(map.get('c')).toBe(c)
+    expect(map.get('a')).toBe(slimAb)
+    expect(map.get('b')).toBe(slimAb)
+    expect(map.get('c')).toBe(slimC)
   })
 })
 

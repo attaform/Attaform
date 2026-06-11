@@ -181,7 +181,7 @@ export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
         (o) => recurse(o) as z.ZodObject<z.ZodRawShape>
       )
       if (discKey === undefined || options.length === 0) return s
-      return rebuildDiscriminatedUnion(s, discKey, options)
+      return rebuildDiscriminatedUnion(s, options)
     }
     if (isZodSchemaType(s, 'ZodIntersection')) {
       const left = getIntersectionLeft(s)

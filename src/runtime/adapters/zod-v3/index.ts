@@ -907,7 +907,7 @@ function stripRefinements<T extends z.ZodTypeAny>(schema: T) {
       const stripped = options.map(
         (o) => _stripRefinements(o, depth + 1) as z.ZodObject<z.ZodRawShape>
       )
-      return rebuildDiscriminatedUnion(_schema, discKey, stripped)
+      return rebuildDiscriminatedUnion(_schema, stripped)
     }
 
     if (isZodSchemaType(_schema, 'ZodIntersection')) {
@@ -1040,7 +1040,6 @@ function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
 
       return rebuildDiscriminatedUnion(
         _schema,
-        discKey,
         slimmedSchemas as unknown as readonly z.AnyZodObject[]
       )
     }

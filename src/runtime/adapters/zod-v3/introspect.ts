@@ -86,6 +86,7 @@ interface ZodV3InternalShape {
     keyType?: unknown // ZodRecord key
     items?: readonly unknown[] // ZodTuple
     options?: readonly unknown[] // ZodUnion / ZodDiscriminatedUnion / ZodEnum
+    optionsMap?: Map<unknown, unknown> // ZodDiscriminatedUnion parse routing
     discriminator?: string // ZodDiscriminatedUnion
     left?: unknown // ZodIntersection
     right?: unknown // ZodIntersection
@@ -291,6 +292,19 @@ export function getDiscriminatedOptions(schema: z.ZodTypeAny): readonly z.AnyZod
 export function getDiscriminator(schema: z.ZodTypeAny): string | undefined {
   const def = readDef(schema)
   return def?.discriminator
+}
+
+/**
+ * ZodDiscriminatedUnion: the `discriminatorValue -> option` map zod
+ * builds at construction and reads in `_parse` to route a value to its
+ * branch. Reused when rebuilding a slimmed DU so the new map keys off
+ * zod's own discriminator extraction rather than re-deriving it.
+ */
+export function getDiscriminatedOptionsMap(
+  schema: z.ZodTypeAny
+): Map<unknown, z.AnyZodObject> | undefined {
+  const map = readDef(schema)?.optionsMap
+  return map instanceof Map ? (map as Map<unknown, z.AnyZodObject>) : undefined
 }
 
 export function getIntersectionLeft(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
@@ -646,20 +660,6 @@ export function getLiteralValues(schema: z.ZodTypeAny): readonly unknown[] {
 export function getNativeEnumValues(schema: z.ZodTypeAny): Record<string, unknown> | undefined {
   const def = readDef(schema)
   return def?.values
-}
-
-/**
- * Members of a `z.enum([...])` as an array. v3 stores them on
- * `_def.values` (an array for `ZodEnum`, distinct from
- * `ZodNativeEnum`'s object), and the instance `.options` getter
- * resolves to the same array. Returns an empty array for non-enum
- * inputs. Used when extracting the discriminator values an enum-keyed
- * discriminated-union option admits.
- */
-export function getEnumOptions(schema: z.ZodTypeAny): readonly unknown[] {
-  const def = readDef(schema)
-  const values: unknown = def?.values
-  return Array.isArray(values) ? values : []
 }
 
 /**

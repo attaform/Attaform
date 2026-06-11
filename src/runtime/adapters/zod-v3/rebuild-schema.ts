@@ -27,17 +27,7 @@
  * field names written below are the same ones `introspect.ts` reads.
  */
 import type { z } from 'zod-v3'
-import {
-  getEnumOptions,
-  getLiteralValues,
-  getNativeEnumValues,
-  getObjectShape,
-  unwrapBranded,
-  unwrapEffectsSource,
-  unwrapInner,
-  unwrapLazy,
-} from './introspect'
-import { isZodSchemaType } from './helpers'
+import { getDiscriminatedOptions, getDiscriminatedOptionsMap } from './introspect'
 
 // The internal `_def` carrier. Reads go through `introspect.ts`; the
 // writes below are the one sanctioned place outside it that mirrors
@@ -195,78 +185,35 @@ export function stripLeafChecks<T extends z.ZodTypeAny>(original: T): T {
 }
 
 /**
- * Discriminator values a Zod v3 schema node admits at a discriminated
- * union's key. Mirrors Zod's own internal `getDiscriminator` (the
- * routine `z.discriminatedUnion` runs at construction time to key its
- * `optionsMap`), reconstructed from version-faithful introspection so
- * the rebuild never reaches for the ambient constructor.
- */
-function discriminatorValuesOf(schema: z.ZodTypeAny): unknown[] {
-  if (isZodSchemaType(schema, 'ZodLazy')) {
-    const inner = unwrapLazy(schema)
-    return inner === undefined ? [] : discriminatorValuesOf(inner)
-  }
-  if (isZodSchemaType(schema, 'ZodEffects')) {
-    const inner = unwrapEffectsSource(schema)
-    return inner === undefined ? [] : discriminatorValuesOf(inner)
-  }
-  if (isZodSchemaType(schema, 'ZodLiteral')) {
-    return [...getLiteralValues(schema)]
-  }
-  if (isZodSchemaType(schema, 'ZodEnum')) {
-    return [...getEnumOptions(schema)]
-  }
-  if (isZodSchemaType(schema, 'ZodNativeEnum')) {
-    const values = getNativeEnumValues(schema)
-    return values === undefined ? [] : Object.values(values)
-  }
-  if (isZodSchemaType(schema, 'ZodDefault') || isZodSchemaType(schema, 'ZodCatch')) {
-    const inner = unwrapInner(schema)
-    return inner === undefined ? [] : discriminatorValuesOf(inner)
-  }
-  if (isZodSchemaType(schema, 'ZodUndefined')) return [undefined]
-  if (isZodSchemaType(schema, 'ZodNull')) return [null]
-  if (isZodSchemaType(schema, 'ZodOptional')) {
-    const inner = unwrapInner(schema)
-    return [undefined, ...(inner === undefined ? [] : discriminatorValuesOf(inner))]
-  }
-  if (isZodSchemaType(schema, 'ZodNullable')) {
-    const inner = unwrapInner(schema)
-    return [null, ...(inner === undefined ? [] : discriminatorValuesOf(inner))]
-  }
-  if (isZodSchemaType(schema, 'ZodBranded')) {
-    const inner = unwrapBranded(schema)
-    return inner === undefined ? [] : discriminatorValuesOf(inner)
-  }
-  if (isZodSchemaType(schema, 'ZodReadonly')) {
-    const inner = unwrapInner(schema)
-    return inner === undefined ? [] : discriminatorValuesOf(inner)
-  }
-  return []
-}
-
-/**
  * Rebuild a `ZodDiscriminatedUnion` around new options. Both
- * `_def.options` (introspected, and what `getDiscriminator` reads) and
- * `_def.optionsMap` (what the DU's `_parse` reads to route a value to
- * its branch) are swapped. Rebuilding the map is load-bearing: a
- * swap-options-only rebuild would leave the original map pointing at
- * the unslimmed options, and every empty-default write would route to
- * a branch that still carries its refinements and be rejected. The
- * map is keyed by each new option's discriminator value(s), exactly
- * as Zod keys it at construction.
+ * `_def.options` and `_def.optionsMap` (what the DU's `_parse` reads to
+ * route a value to its branch) are swapped. Rebuilding the map is
+ * load-bearing: a swap-options-only rebuild would leave the original
+ * map pointing at the unslimmed options, and every empty-default write
+ * would route to a branch that still carries its refinements and be
+ * rejected.
+ *
+ * The new map reuses the original's: zod already built it at
+ * construction (with its full discriminator extraction over literal /
+ * enum / native-enum / optional / nullable / default / catch / ...),
+ * so we walk it and remap each value to the matching NEW option. The
+ * new options are produced in the original options' order at every call
+ * site, so an original option's index selects its replacement. This
+ * keeps zod's discriminator logic as the single source of truth rather
+ * than re-deriving it here.
  */
 export function rebuildDiscriminatedUnion(
   original: z.ZodTypeAny,
-  discriminator: string,
   options: readonly z.AnyZodObject[]
 ): z.ZodTypeAny {
+  const originalOptions = getDiscriminatedOptions(original)
+  const originalMap = getDiscriminatedOptionsMap(original)
   const optionsMap = new Map<unknown, z.AnyZodObject>()
-  for (const option of options) {
-    const discField = getObjectShape(option)[discriminator]
-    if (discField === undefined) continue
-    for (const value of discriminatorValuesOf(discField)) {
-      optionsMap.set(value, option)
+  if (originalMap !== undefined) {
+    for (const [value, originalOption] of originalMap) {
+      const index = originalOptions.indexOf(originalOption)
+      const replacement = index >= 0 ? options[index] : undefined
+      if (replacement !== undefined) optionsMap.set(value, replacement)
     }
   }
   return rebuildWithDef(original, { options, optionsMap })

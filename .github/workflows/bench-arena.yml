@@ -102,10 +102,12 @@ jobs:
     # that, continue-on-error lets the merge job fold whatever shards finished if
     # one slice flakes (a red slice simply uploads no artifact).
     continue-on-error: true
-    # The slowest single slice is massive-validate: its two L5000 did-not-finish
-    # cells (formkit and tanstack) each run out a full ~320s budget back to back,
-    # ~11 min. 20 min leaves ample headroom, and the did-not-finish budgets are
-    # capped, so a slower runner cannot push this slice over the cap.
+    # The slowest slice is massive-validate: its two L5000 did-not-finish cells
+    # (formkit and tanstack) run a full ~320s budget back to back (~11 min, capped;
+    # fairness keeps them on one shard), plus setup and the measured validate cells,
+    # so ~14 min on a fast runner and ~16 min on a slow one. 20 min leaves a few
+    # minutes of headroom; if a heavier cohort ever crowds it, the merge's
+    # completeness gate just skips that month's publish rather than shipping a gap.
     timeout-minutes: 20
     # A shard only measures; it never touches the privileged release-PR
     # credentials (only the merge job does), so it stays read-only.
@@ -121,9 +123,11 @@ jobs:
         # the page only ever compares within a scenario (library-versus-baseline
         # ratios, across-param slopes, the standing sentence), so scenario-whole
         # slices are fair by construction. massive is the one scenario split
-        # further, by dimension, because all of it on one shard runs ~17 min against
-        # the 20 min cap; splitting by dimension keeps each comparison's libraries
-        # together, so it stays just as fair. The merge enforces this rather than
+        # further, by dimension, into three slices (validate, keystroke, mount+memory):
+        # a real CI timing pass put too much of it on one shard near the 20 min cap
+        # (the L2000 mount and memory cells are heavy, and validate carries both
+        # capped did-not-finish cells). Splitting by dimension keeps each comparison's
+        # libraries together, so it stays just as fair. The merge enforces this rather than
         # trusting it: assemble refuses to publish if any (scenario, dim) was
         # measured across more than one machine, so the slices below are free to be
         # re-sliced as long as no dimension is split. GitHub's fleet is heterogeneous
@@ -141,12 +145,18 @@ jobs:
           # adapter's other dimensions (its name contains "validate").
           - shard: massive-validate
             grep: 'massive scenario.* validate$'
-          # The rest of massive (keystroke, mount, memory; one did-not-finish cell,
-          # formkit keystroke L5000), plus the cohort-metadata test (it emits the
-          # capability matrix the merge needs) and the dnf-conversion guards. Those
-          # two carry no cohort cells, so they ride a slice that does.
-          - shard: massive-rest
-            grep: 'massive scenario.*(keystroke|mount|memory)|cohort metadata|dnf conversion'
+          # massive keystroke (L2000 plus the L5000 formkit did-not-finish cell),
+          # plus the cohort-metadata test (it emits the capability matrix the merge
+          # needs) and the dnf-conversion guards. Those two carry no cohort cells, so
+          # they ride this slice, which does. Anchored on the dim at end-of-title.
+          - shard: massive-keystroke
+            grep: 'massive scenario.* keystroke$|cohort metadata|dnf conversion'
+          # massive mount and memory at L2000: the heaviest non-validate massive
+          # cells (a memory sample re-mounts thousands of fields per cycle), split off
+          # from keystroke so neither slice crowds the cap (a real timing pass put the
+          # old combined massive-rest slice at ~19 min).
+          - shard: massive-mount-memory
+            grep: 'massive scenario.* (mount|memory)$'
           - shard: flat
             grep: 'flat scenario'
           - shard: nested

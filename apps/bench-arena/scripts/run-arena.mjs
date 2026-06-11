@@ -35,35 +35,11 @@ import { argv, env, exit, version as nodeVersion } from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { readInstalledRepoSlug, readInstalledVersions } from './installed-version.mjs'
 import { measureBundles } from './measure-bundles.mjs'
+import { BASELINE, buildRuntime, isDnf, SCENARIO_ORDER } from './runtime-shape.mjs'
 import { fetchScorecards, scorecardViewerUrl } from './scorecards.mjs'
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const SCHEMA_VERSION = 1
-const BASELINE = 'attaform'
-
-// Stable output ordering, so the committed results.json diffs minimally run to
-// run. Scenarios and dimensions emit in these orders; params sort by size and
-// rows by the cohort order the registry defines (read from the meta payload).
-const SCENARIO_ORDER = [
-  'flat',
-  'nested',
-  'arrays',
-  'grid',
-  'discriminated-union',
-  'massive',
-  'wizard',
-]
-const DIM_ORDER = [
-  'keystroke',
-  'mount',
-  'validate',
-  'rerender',
-  'arrayAdd',
-  'arrayReorder',
-  'variantFlip',
-  'stepTransition',
-  'memory',
-]
 
 // Packages whose resolved (lockfile-pinned) versions stamp the provenance block.
 const LIB_VERSION_PKGS = [
@@ -91,33 +67,6 @@ const LIB_REPO_PKG = {
   'regle-rules': '@regle/core',
   formkit: '@formkit/vue',
   vuelidate: '@vuelidate/core',
-}
-
-/** Round a ratio/slope to two decimals; medians keep their measured precision. */
-function round2(value) {
-  return Number(value.toFixed(2))
-}
-
-/** A param label's relative size: the product of its numeric codes (F50 -> 50,
- *  N100M8 -> 800), so the smallest param (the slope baseline) sorts first. */
-function paramSize(label) {
-  const nums = label.match(/\d+/g)
-  if (!nums) return 0
-  return nums.reduce((acc, n) => acc * Number(n), 1)
-}
-
-/** 95th percentile of a small sample (the memory cycles); coarse but adequate. */
-function p95(samples) {
-  if (samples.length === 0) return 0
-  const sorted = [...samples].sort((a, b) => a - b)
-  const index = Math.min(sorted.length - 1, Math.floor(0.95 * (sorted.length - 1)))
-  return sorted[index] ?? 0
-}
-
-/** The value a cell's ratio and slope are computed on: keystroke/mount/etc. use
- *  the timed median; memory uses retained heap (its headline, churn is noisier). */
-function cellValue(cell) {
-  return cell.kind === 'memory' ? cell.retained : cell.summary.median
 }
 
 function parseArgs() {
@@ -285,85 +234,6 @@ function libOrderOf(meta, cells) {
   return order
 }
 
-/** Build one results-row from a harvested cell (timed dims and memory differ). */
-function rowOf(cell) {
-  if (cell.kind === 'memory') {
-    return {
-      lib: cell.adapter,
-      retained: { median: cell.retained, p95: p95(cell.series.retained), count: cell.cycles },
-      churn: { median: cell.churn, p95: p95(cell.series.churn), count: cell.cycles },
-      leak: { median: cell.leak, p95: p95(cell.series.leak), count: cell.cycles },
-      series: cell.series,
-      supported: true,
-    }
-  }
-  return {
-    lib: cell.adapter,
-    median: cell.summary.median,
-    p95: cell.summary.p95,
-    iqr: cell.summary.iqr,
-    count: cell.summary.count,
-    trimmed: cell.summary.trimmed,
-    unit: cell.unit,
-    supported: cell.supported,
-  }
-}
-
-/**
- * Assemble the runtime block: scenario -> dim -> { unit, byParam }, with ratio
- * (versus the baseline at the same param) and slope (versus the same library at
- * the scenario's smallest param) computed per row. Emitted in stable order.
- */
-function buildRuntime(cells, libOrder) {
-  // Index cells by scenario|dim|param|lib for the ratio/slope lookups.
-  const index = new Map()
-  const key = (s, d, p, lib) => `${s}|${d}|${p}|${lib}`
-  const grouped = {}
-  for (const cell of cells) {
-    const dim = cell.kind === 'memory' ? 'memory' : cell.dim
-    index.set(key(cell.scenario, dim, cell.params, cell.adapter), cell)
-    ;((grouped[cell.scenario] ??= {})[dim] ??= new Set()).add(cell.params)
-  }
-
-  const runtime = {}
-  for (const scenario of SCENARIO_ORDER) {
-    if (!grouped[scenario]) continue
-    runtime[scenario] = {}
-    for (const dim of DIM_ORDER) {
-      const paramSet = grouped[scenario][dim]
-      if (!paramSet) continue
-      const params = [...paramSet].sort((a, b) => paramSize(a) - paramSize(b))
-      const smallest = params[0]
-      const byParam = {}
-      let unit = dim === 'memory' ? 'bytes' : null
-      for (const param of params) {
-        const baseCell = index.get(key(scenario, dim, param, BASELINE))
-        const baseValue = baseCell ? cellValue(baseCell) : 0
-        const built = []
-        for (const m of libOrder.keys()) {
-          const cell = index.get(key(scenario, dim, param, m))
-          if (!cell) continue
-          const row = rowOf(cell)
-          const value = cellValue(cell)
-          row.ratio = baseValue > 0 ? round2(value / baseValue) : null
-          const smallestCell = index.get(key(scenario, dim, smallest, m))
-          const smallestValue = smallestCell ? cellValue(smallestCell) : 0
-          row.slope = smallestValue > 0 ? round2(value / smallestValue) : 1
-          built.push(row)
-          if (unit === null && cell.kind === 'timed') {
-            // rerender mixes units (FormKit reports the dom-mutation proxy); the
-            // canonical column unit is renders, and each row keeps its own unit.
-            unit = dim === 'rerender' ? 'renders' : cell.unit
-          }
-        }
-        byParam[param] = built
-      }
-      runtime[scenario][dim] = { unit: unit ?? 'ms', byParam }
-    }
-  }
-  return runtime
-}
-
 async function main() {
   const { grep, scorecardsOnly } = parseArgs()
   if (scorecardsOnly) {
@@ -422,9 +292,11 @@ async function main() {
 
   const outPath = join(PKG_ROOT, smoke ? 'results.smoke.json' : 'results.json')
   writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`)
+  const dnfCount = cells.filter(isDnf).length
   console.log(
     `\n[run-arena] wrote ${outPath} ` +
-      `(${cells.length} cells, ${results.bundle.length} bundle rows, source=${results.provenance.source})`
+      `(${cells.length} cells${dnfCount ? `, ${dnfCount} did-not-finish` : ''}, ` +
+      `${results.bundle.length} bundle rows, source=${results.provenance.source})`
   )
 }
 

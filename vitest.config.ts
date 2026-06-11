@@ -5,8 +5,12 @@ import { defineConfig } from 'vitest/config'
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
 /**
- * Vitest config — kept intentionally minimal. The default test picker
- * (test/**) is fine; we only need to override coverage settings.
+ * Vitest config — kept intentionally minimal. The unit suite lives
+ * entirely under `test/`, so `include` is anchored there: vitest's
+ * default glob otherwise also swept `apps/bench-arena/tests/arena.spec.ts`,
+ * a Playwright spec that throws when vitest imports it. The bench arena
+ * runs under its own Playwright config; the root suite stays in `test/`.
+ * Coverage settings are overridden below.
  *
  * Coverage scope is the "new-code" surface: core primitives, the abstract
  * composable, and the v4 adapter. The v3 adapter is the pre-rewrite
@@ -56,6 +60,10 @@ export default defineConfig({
     ],
   },
   test: {
+    // Anchor the picker to the unit suite. Without this, vitest's default
+    // glob collects `apps/bench-arena/tests/*.spec.ts` (Playwright specs)
+    // and fails to import them.
+    include: ['test/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
     // Global setup file: stubs `window.isSecureContext = true` so the
     // secure-context gate doesn't disable multi-tab sync and built-in
     // persistence in jsdom-backed tests, and resets the

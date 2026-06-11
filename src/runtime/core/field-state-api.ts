@@ -17,11 +17,12 @@ import { makeBlankRequiredError } from './error-codes'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
-import { getAtPath, hasAtPath } from './path-walker'
+import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
   canonicalizePath,
   FORM_ERRORS_PATH_KEY,
   isPathPrefix,
+  keyForSegments,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -289,6 +290,55 @@ function buildLeafFieldState<F extends GenericForm>(
 }
 
 /**
+ * Enumerate the active descendant-leaf paths under a container in
+ * O(subtree), emitting one path per present leaf. This is the linear-time
+ * replacement for scanning the whole `originals` map per container, which
+ * made `form.list` and every post-array-op re-render O(N^2) in the row
+ * count (one container build cost O(total form leaves); N element
+ * containers cost O(N^2)).
+ *
+ * Descends only present plain-object / array nodes — the same descendable
+ * boundary `diffAndApply` seeds `originals` with (`isPlainRecord` plus
+ * `Array.isArray`) — and emits every non-descendable slot, INCLUDING a
+ * present-but-`undefined` slot. That last case matters: the `hasAtPath`
+ * gate this walk replaces keys on key-existence, not value-definedness, so
+ * a leaf an optional field was written then cycled back to `undefined`
+ * stays present in `form.value` and must still roll up its field-record
+ * state. The caller re-gates each emitted path on `originals.has`, so the
+ * visited set is exactly the old scan's
+ * `{ leaf in originals : strict-descendant-of(base) ∧ present }`.
+ *
+ * Assumes a schema leaf never holds a descendable value: the slim-primitive
+ * write gate rejects object / array writes to a schema-leaf path, so the
+ * one shape this walk and an `originals` leaf could disagree on — a leaf
+ * whose live value became a container — is unreachable through the public
+ * API.
+ */
+function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path) => void): void {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const child = value[i]
+      if (Array.isArray(child) || isPlainRecord(child)) {
+        visitActiveLeafPaths(child, [...base, i], visit)
+      } else {
+        visit([...base, i])
+      }
+    }
+    return
+  }
+  if (isPlainRecord(value)) {
+    for (const k of Object.keys(value)) {
+      const child = value[k]
+      if (Array.isArray(child) || isPlainRecord(child)) {
+        visitActiveLeafPaths(child, [...base, k], visit)
+      } else {
+        visit([...base, k])
+      }
+    }
+  }
+}
+
+/**
  * Per-container aggregation for the predicate-safe base shape.
  * Rolls up descendant-leaf state per the rule sheet; does NOT
  * compute `showErrors` / `firstError`.
@@ -321,22 +371,28 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
 } {
   // Read live form value first so the access participates in dep
   // tracking; the discriminator key write that switches a DU variant
-  // shows up here and re-runs the computed.
+  // shows up here and re-runs the computed. `value` is the container's
+  // own subtree navigated from that same root (identical to
+  // `getValueAtPath(segments)`), so the single read anchors the dep and
+  // feeds the descendant walk below.
   const formValue = state.form.value
-  const value = state.getValueAtPath(segments)
+  const value = getAtPath(formValue, segments)
   // `key` is the canonical key of `segments` (every caller derives it
   // via `canonicalizePath` already); use it directly instead of
   // re-canonicalizing on every read.
   const original = state.originals.get(key)?.value
-  // Enumerate active descendant leaves under the container path.
-  // The `originals` Map tracks every leaf the form has ever seen;
-  // filter via `isPathPrefix` for descendant-membership and via
-  // `hasAtPath(formValue, leafSeg)` to keep only the active-variant
-  // leaves (DU switches reshape `formValue` wholesale, so this is
-  // the live ground truth). The Map's key IS the canonical key for
-  // its entry's segments (every `originals.set` writes via
-  // `canonicalizePath(...).key`), so destructure it off the
-  // iteration tuple rather than re-canonicalizing per leaf.
+  // Roll up active descendant leaves under the container path. The walk
+  // descends `value` (the live subtree read just above) in O(subtree),
+  // emitting one path per present leaf, then re-gates each on
+  // `originals.has`. That makes the visited set exactly the old
+  // whole-`originals`-scan's `{ leaf in originals : strict-descendant ∧
+  // present }` — walking the live value already filters to the active DU
+  // variant (a switch reshapes `value` wholesale), and the `originals`
+  // gate drops present leaves the form never seeded into its baseline.
+  // The previous scan cost O(total form leaves) per container, so
+  // `form.list` over N rows and every post-array-op re-render were
+  // O(N^2); this is O(N). `keyForSegments` mints each leaf's canonical
+  // key without the spy-counted `canonicalizePath`.
   let pristine = true
   let blank = true
   let dirty = false
@@ -357,16 +413,29 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // blurred-after-interaction. Collected here from the one walk we already do.
   const submissionAttempts = state.submissionAttempts.value
   const blurredLeafSegments: Path[] = []
-  for (const [leafKey, entry] of state.originals) {
-    if (!isPathPrefix(segments, entry.segments)) continue
-    if (segments.length === entry.segments.length) continue // self isn't a descendant
-    if (!hasAtPath(formValue, entry.segments)) continue
+  // Collect this container's active descendant leaves by walking its own
+  // subtree in O(subtree) (see `visitActiveLeafPaths`), re-gated on
+  // `originals.has`. Keeping collection separate from the reduction below
+  // lets the rollup stay a plain `for...of` whose `let` accumulators narrow
+  // normally — accumulators mutated from inside the walk callback would read
+  // as never-reassigned to the type-checker.
+  const descendantLeaves: { key: PathKey; segments: Path }[] = []
+  visitActiveLeafPaths(value, segments, (leafSegments) => {
+    const { key: leafKey } = keyForSegments(leafSegments)
+    const entry = state.originals.get(leafKey)
+    // The old scan iterated `originals` directly, so a present leaf the
+    // form never seeded into its baseline (e.g. an optional value absent
+    // from the schema-initial shape) contributes nothing here.
+    if (entry === undefined) return
+    descendantLeaves.push({ key: leafKey, segments: entry.segments })
+  })
+  for (const { key: leafKey, segments: leafSeg } of descendantLeaves) {
     const leafRecord = state.fields.get(leafKey)
     // The by-key variants of `isPristineAtPath` and
     // `pathHasAsyncValidation` skip the canonicalize round-trip
-    // (`leafKey` IS the canonical key for `entry.segments`), keeping
+    // (`leafKey` IS the canonical key for `leafSeg`), keeping
     // the per-leaf walk allocation-free on the meta hot path.
-    if (!state.isPristineAtPathByKey(leafKey, entry.segments)) {
+    if (!state.isPristineAtPathByKey(leafKey, leafSeg)) {
       pristine = false
       dirty = true
     }
@@ -377,7 +446,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (leafRecord?.interacted === true) interacted = true
     if (leafRecord?.blurredAfterInteraction === true) {
       blurredAfterInteraction = true
-      blurredLeafSegments.push(entry.segments)
+      blurredLeafSegments.push(leafSeg)
     }
     if (leafRecord?.connected === true) connected = true
     if ((state.fieldValidationCounts.get(leafKey) ?? 0) > 0) {
@@ -412,7 +481,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       )
         transformingSince = since
     }
-    if (state.pathHasAsyncValidationByKey(leafKey, entry.segments)) asyncPending = true
+    if (state.pathHasAsyncValidationByKey(leafKey, leafSeg)) asyncPending = true
     const ts = leafRecord?.updatedAt
     if (ts !== undefined && ts !== null) {
       // ISO 8601 timestamps sort lexicographically; max-string is

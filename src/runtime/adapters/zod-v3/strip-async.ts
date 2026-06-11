@@ -1,4 +1,8 @@
-import { z } from 'zod-v3'
+// Type-only: this pass constructs zero nodes through the ambient `z`.
+// Every container / wrapper rebuild goes through `rebuild-schema.ts`,
+// which reconstructs from the consumer's own (correct-version) node,
+// keeping the pass immune to a second, mismatched zod in the tree.
+import type { z } from 'zod-v3'
 
 import {
   getArrayElement,
@@ -21,6 +25,18 @@ import {
   unwrapPipeIn,
 } from './introspect'
 import { isZodSchemaType } from './helpers'
+import {
+  rebuildArray,
+  rebuildDiscriminatedUnion,
+  rebuildIntersection,
+  rebuildLazy,
+  rebuildObject,
+  rebuildRecord,
+  rebuildSet,
+  rebuildTuple,
+  rebuildUnion,
+  rebuildWrapperInner,
+} from './rebuild-schema'
 
 /**
  * v3 analogue of v4's `strip.ts stripAsyncChecks` (`zod-v4/strip.ts:212`).
@@ -81,11 +97,11 @@ export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
     // Transparent wrappers: recurse the inner and rewrap.
     if (isZodSchemaType(s, 'ZodOptional')) {
       const inner = unwrapInner(s)
-      return inner === undefined ? s : z.optional(recurse(inner))
+      return inner === undefined ? s : rebuildWrapperInner(s, recurse(inner))
     }
     if (isZodSchemaType(s, 'ZodNullable')) {
       const inner = unwrapInner(s)
-      return inner === undefined ? s : z.nullable(recurse(inner))
+      return inner === undefined ? s : rebuildWrapperInner(s, recurse(inner))
     }
     if (isZodSchemaType(s, 'ZodDefault')) {
       const inner = unwrapInner(s)
@@ -111,7 +127,7 @@ export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
       const inner = unwrapLazy(s)
       if (inner === undefined) return s
       const stripped = recurse(inner)
-      return z.lazy(() => stripped)
+      return rebuildLazy(s, stripped)
     }
     if (isZodSchemaType(s, 'ZodPipeline')) {
       // Pipelines carry transforms whose output shape is load-bearing
@@ -132,36 +148,32 @@ export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
       for (const [k, v] of Object.entries(shape)) {
         next[k] = recurse(v)
       }
-      return carryObjectChecks(z.object(next), s)
+      return carryObjectChecks(rebuildObject(s, next), s)
     }
     if (isZodSchemaType(s, 'ZodArray')) {
       const element = getArrayElement(s)
       if (element === undefined) return s
-      return carryArrayChecks(z.array(recurse(element)), s)
+      return carryArrayChecks(rebuildArray(s, recurse(element)), s)
     }
     if (isZodSchemaType(s, 'ZodSet')) {
       const valueType = getSetValueType(s)
       if (valueType === undefined) return s
-      return carrySetChecks(z.set(recurse(valueType)), s)
+      return carrySetChecks(rebuildSet(s, recurse(valueType)), s)
     }
     if (isZodSchemaType(s, 'ZodTuple')) {
       const items = getTupleItems(s).map(recurse)
-      // z.tuple requires [T, ...T[]] but the runtime accepts an array.
-      const rebuilt = z.tuple(items as [z.ZodTypeAny, ...z.ZodTypeAny[]])
-      return rebuilt
+      return rebuildTuple(s, items)
     }
     if (isZodSchemaType(s, 'ZodRecord')) {
       const keyType = getRecordKeyType(s)
       const valueType = getRecordValueType(s)
       if (valueType === undefined) return s
       const next = recurse(valueType)
-      return keyType === undefined
-        ? z.record(next as z.ZodTypeAny)
-        : z.record(keyType as z.ZodString, next as z.ZodTypeAny)
+      return keyType === undefined ? rebuildRecord(s, next) : rebuildRecord(s, next, keyType)
     }
     if (isZodSchemaType(s, 'ZodUnion')) {
       const options = getUnionOptions(s).map(recurse)
-      return z.union(options as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]])
+      return rebuildUnion(s, options)
     }
     if (isZodSchemaType(s, 'ZodDiscriminatedUnion')) {
       const discKey = getDiscriminator(s)
@@ -169,16 +181,13 @@ export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
         (o) => recurse(o) as z.ZodObject<z.ZodRawShape>
       )
       if (discKey === undefined || options.length === 0) return s
-      return z.discriminatedUnion(
-        discKey,
-        options as [z.ZodObject<z.ZodRawShape>, ...z.ZodObject<z.ZodRawShape>[]]
-      )
+      return rebuildDiscriminatedUnion(s, discKey, options)
     }
     if (isZodSchemaType(s, 'ZodIntersection')) {
       const left = getIntersectionLeft(s)
       const right = getIntersectionRight(s)
       if (left === undefined || right === undefined) return s
-      return z.intersection(recurse(left), recurse(right))
+      return rebuildIntersection(s, recurse(left), recurse(right))
     }
 
     // Leaves: pass through unchanged. ZodEffects is the only carrier

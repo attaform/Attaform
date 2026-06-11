@@ -649,6 +649,20 @@ export function getNativeEnumValues(schema: z.ZodTypeAny): Record<string, unknow
 }
 
 /**
+ * Members of a `z.enum([...])` as an array. v3 stores them on
+ * `_def.values` (an array for `ZodEnum`, distinct from
+ * `ZodNativeEnum`'s object), and the instance `.options` getter
+ * resolves to the same array. Returns an empty array for non-enum
+ * inputs. Used when extracting the discriminator values an enum-keyed
+ * discriminated-union option admits.
+ */
+export function getEnumOptions(schema: z.ZodTypeAny): readonly unknown[] {
+  const def = readDef(schema)
+  const values: unknown = def?.values
+  return Array.isArray(values) ? values : []
+}
+
+/**
  * Resolve a `z.default(...)` wrapper's value by invoking the v3
  * `_def.defaultValue` thunk. v3 stores the default as a function
  * (lazy evaluation, useful for `new Date()` defaults); v4 stores the

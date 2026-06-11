@@ -262,6 +262,14 @@ jobs:
           set -euo pipefail
           pnpm --filter attaform-bench-arena exec node scripts/run-arena.mjs --assemble test-results/merged
 
+      - name: Format generated results.json
+        # The orchestrator writes results.json with JSON.stringify, which does not
+        # match Prettier's JSON formatting, so the refresh PR's own `pnpm lint`
+        # (which ends in `prettier --check`) would fail on it. A human refreshing
+        # locally runs `pnpm format`; the automated refresh has no human, so format
+        # the one generated file here, before the signed commit captures it.
+        run: pnpm exec prettier --write apps/bench-arena/results.json
+
       - name: Prepare commit metadata
         id: meta
         env:

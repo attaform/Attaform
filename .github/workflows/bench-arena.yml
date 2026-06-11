@@ -179,11 +179,16 @@ jobs:
         env:
           GREP: ${{ matrix.grep }}
           SHARD: ${{ matrix.shard }}
+          # The matrix size, so each partial declares the cohort it ran under and
+          # the merge can detect a shard that uploaded nothing. Tracks the matrix
+          # automatically, so changing the shard count needs no edit here.
+          SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
           set -euo pipefail
           pnpm --filter attaform-bench-arena exec node scripts/run-arena.mjs \
             --grep "$GREP" \
-            --emit-cells "test-results/cells-${SHARD}.json"
+            --emit-cells "test-results/cells-${SHARD}.json" \
+            --shard-total "$SHARD_TOTAL"
 
       - name: Upload shard cells
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

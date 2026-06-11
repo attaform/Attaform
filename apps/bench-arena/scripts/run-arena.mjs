@@ -29,10 +29,12 @@
  *
  * Sharded across runners (the monthly workflow), the same orchestrator runs in
  * two extra modes so the long sweep splits over separate CPU-isolated machines:
- *   node scripts/run-arena.mjs --grep <pat> --emit-cells <path>
+ *   node scripts/run-arena.mjs --grep <pat> --emit-cells <path> --shard-total <n>
  *                                                shard mode: run one grep slice and write its
- *                                                harvested cells (no scorecards/bundles/runtime)
- *   node scripts/run-arena.mjs --assemble <dir>  merge mode: fold every shard partial in <dir>,
+ *                                                harvested cells, stamped with the cohort size n
+ *                                                (no scorecards/bundles/runtime)
+ *   node scripts/run-arena.mjs --assemble <dir>  merge mode: fold every shard partial in <dir>
+ *                                                (refusing unless all n shards reported),
  *                                                run the global tail once -> results.json
  */
 import { spawnSync } from 'node:child_process'
@@ -87,6 +89,7 @@ function parseArgs() {
     scorecardsOnly: argv.includes('--scorecards-only'),
     emitCells: flagValue('--emit-cells'),
     assemble: flagValue('--assemble'),
+    shardTotal: flagValue('--shard-total'),
   }
 }
 
@@ -330,9 +333,11 @@ async function assembleResults(cells, meta, runner, outPath) {
  * the cohort meta, when the slice included the metadata test) to a partial. The
  * merge step concatenates the partials and runs the global tail once. Aborts
  * without writing if the slice is red, the same contract as a full run, so a red
- * shard contributes nothing rather than a half-measured partial.
+ * shard contributes nothing rather than a half-measured partial. Stamps the
+ * cohort size (shardTotal) so the merge can tell a shard that uploaded nothing
+ * from one that legitimately had no cells.
  */
-function emitCells(grep, outPath) {
+function emitCells(grep, outPath, shardTotal) {
   const { status, reportPath } = runSpec(grep)
   if (status !== 0) {
     console.error(`\n[run-arena] the shard slice failed (exit ${status}); not writing cells.`)
@@ -345,6 +350,7 @@ function emitCells(grep, outPath) {
   }
   const partial = {
     schemaVersion: SCHEMA_VERSION,
+    shardTotal,
     cells,
     meta: meta ?? null,
     runner: runnerIdentity(),
@@ -360,17 +366,37 @@ function emitCells(grep, outPath) {
  * Merge mode: read every cells-*.json partial the shards uploaded, concatenate
  * their cells, take the cohort meta from the first partial that carried it (the
  * shard whose slice ran the metadata test), fold the runner identities, and run
- * the global tail once. Mirrors the full-run guards: no partials, no cells, or no
- * meta each abort without writing, so an incomplete sweep publishes nothing
- * rather than a thin results.json.
+ * the global tail once. Mirrors the full-run guards: no partials, a shard missing
+ * from the cohort, no cells, or no meta each abort without writing, so an
+ * incomplete sweep publishes nothing rather than a thin results.json.
  */
 async function assemble(dir) {
-  const partials = readdirSync(dir)
+  const files = readdirSync(dir)
     .filter((f) => /^cells-.*\.json$/.test(f))
     .sort()
-    .map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')))
-  if (partials.length === 0) {
+  if (files.length === 0) {
     console.error(`[run-arena] no cells-*.json shard partials found in ${dir}.`)
+    exit(1)
+  }
+  const partials = files.map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')))
+  // Completeness gate. Every shard stamps the matrix size it ran under
+  // (strategy.job-total) into its partial, so a shard that hard-failed and
+  // uploaded nothing leaves a detectable gap here: the shards report success
+  // even when their slice fails (continue-on-error keeps the rest of the matrix
+  // running), so a missing partial is the only signal the merge gets. Publishing
+  // a cohort short a shard would silently drop whole libraries or scenarios from
+  // the page, so refuse rather than fold a partial sweep into a thin refresh PR.
+  const totals = [...new Set(partials.map((p) => p.shardTotal).filter((n) => Number.isInteger(n)))]
+  if (totals.length !== 1) {
+    console.error(
+      `[run-arena] shard partials carry no single cohort size (shardTotal: ${totals.join(', ') || 'none'}); refusing to assemble.`
+    )
+    exit(1)
+  }
+  if (files.length !== totals[0]) {
+    console.error(
+      `[run-arena] expected ${totals[0]} shard partials but found ${files.length} (${files.join(', ')}); a shard failed to upload, refusing to publish an incomplete cohort.`
+    )
     exit(1)
   }
   const cells = partials.flatMap((p) => p.cells ?? [])
@@ -388,7 +414,13 @@ async function assemble(dir) {
 }
 
 async function main() {
-  const { grep, scorecardsOnly, emitCells: emitCellsPath, assemble: assembleDir } = parseArgs()
+  const {
+    grep,
+    scorecardsOnly,
+    emitCells: emitCellsPath,
+    assemble: assembleDir,
+    shardTotal: shardTotalArg,
+  } = parseArgs()
   if (scorecardsOnly) {
     await refreshScorecards()
     return
@@ -398,7 +430,12 @@ async function main() {
     return
   }
   if (emitCellsPath !== null) {
-    emitCells(grep, resolve(PKG_ROOT, emitCellsPath))
+    const shardTotal = Number(shardTotalArg)
+    if (!Number.isInteger(shardTotal) || shardTotal < 1) {
+      console.error('[run-arena] --emit-cells requires --shard-total <n> (a positive integer).')
+      exit(1)
+    }
+    emitCells(grep, resolve(PKG_ROOT, emitCellsPath), shardTotal)
     return
   }
   const smoke = grep !== null

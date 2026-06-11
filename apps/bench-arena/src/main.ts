@@ -160,7 +160,13 @@ function parseParams(label: string): ScenarioParams {
   let match: RegExpExecArray | null
   while ((match = re.exec(label)) !== null) {
     const code = match[1] ?? ''
-    out[CODE_TO_KEY[code] ?? code.toLowerCase()] = Number(match[2])
+    // Only the fixed scenario knobs (F/D/N/M/L/S) are valid keys. A code
+    // outside the allowlist is skipped rather than used as a property
+    // name, so the URL `params` query can never write an arbitrary
+    // property (CodeQL js/remote-property-injection).
+    const key = CODE_TO_KEY[code]
+    if (key === undefined) continue
+    out[key] = Number(match[2])
   }
   return out
 }

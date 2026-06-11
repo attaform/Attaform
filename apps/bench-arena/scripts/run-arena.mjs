@@ -26,11 +26,19 @@
  *   node scripts/run-arena.mjs --grep <pat>      partial smoke run -> results.smoke.json
  *   node scripts/run-arena.mjs --scorecards-only refresh only the supply-chain scores in
  *                                                results.json, in place, with no browser run
+ *
+ * Sharded across runners (the monthly workflow), the same orchestrator runs in
+ * two extra modes so the long sweep splits over separate CPU-isolated machines:
+ *   node scripts/run-arena.mjs --grep <pat> --emit-cells <path>
+ *                                                shard mode: run one grep slice and write its
+ *                                                harvested cells (no scorecards/bundles/runtime)
+ *   node scripts/run-arena.mjs --assemble <dir>  merge mode: fold every shard partial in <dir>,
+ *                                                run the global tail once -> results.json
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { argv, env, exit, version as nodeVersion } from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { readInstalledRepoSlug, readInstalledVersions } from './installed-version.mjs'
@@ -70,10 +78,16 @@ const LIB_REPO_PKG = {
 }
 
 function parseArgs() {
-  const grepIndex = argv.indexOf('--grep')
-  const grep = grepIndex >= 0 ? (argv[grepIndex + 1] ?? null) : null
-  const scorecardsOnly = argv.includes('--scorecards-only')
-  return { grep, scorecardsOnly }
+  const flagValue = (flag) => {
+    const i = argv.indexOf(flag)
+    return i >= 0 ? (argv[i + 1] ?? null) : null
+  }
+  return {
+    grep: flagValue('--grep'),
+    scorecardsOnly: argv.includes('--scorecards-only'),
+    emitCells: flagValue('--emit-cells'),
+    assemble: flagValue('--assemble'),
+  }
 }
 
 /** Run the Playwright spec (live `list` output) and tee a JSON report to disk. */
@@ -234,10 +248,157 @@ function libOrderOf(meta, cells) {
   return order
 }
 
+/**
+ * This machine's hardware identity for the provenance block. A shard partial
+ * stamps its own, so the merge can fold the cohort of runners that measured.
+ */
+function runnerIdentity() {
+  const cpus = os.cpus()
+  return {
+    os: os.platform(),
+    arch: os.arch(),
+    cpuModel: cpus[0]?.model ?? 'unknown',
+    cpuCount: cpus.length,
+  }
+}
+
+/**
+ * Fold the shard runners into one provenance runner block. A homogeneous matrix
+ * (every shard is ubuntu-latest) reports a single representative identity; were
+ * GitHub's fleet to hand out different CPUs, cpuModel summarizes them as
+ * "mixed: ..." rather than silently picking one. shardCount records how many
+ * runners the sweep was split across (1 for a single-process run), additive so
+ * the renderer and PR body keep reading runner.cpuModel unchanged.
+ */
+function aggregateRunners(runners) {
+  const first = runners[0] ?? runnerIdentity()
+  const models = [...new Set(runners.map((r) => r.cpuModel))]
+  return {
+    os: first.os,
+    arch: first.arch,
+    cpuModel: models.length <= 1 ? (models[0] ?? first.cpuModel) : `mixed: ${models.join(' + ')}`,
+    cpuCount: first.cpuCount,
+    shardCount: runners.length,
+  }
+}
+
+/**
+ * The global tail shared by the single-process run and the sharded merge: order
+ * the cohort, resolve Scorecards, measure bundles, stamp provenance (with the
+ * given runner block, this machine for a local run or the folded shard cohort
+ * for a merge), build the runtime block, and write results to outPath.
+ */
+async function assembleResults(cells, meta, runner, outPath) {
+  const libOrder = libOrderOf(meta, cells)
+  const scorecardInfo = await buildScorecardInfo((meta ?? []).map((m) => m.id))
+  const runId = env.GITHUB_RUN_ID
+  const ciRunUrl =
+    runId && env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY
+      ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${runId}`
+      : null
+
+  const results = {
+    schemaVersion: SCHEMA_VERSION,
+    provenance: {
+      source: runId ? 'ci' : 'local',
+      commit: env.GITHUB_SHA ?? null,
+      ciRunId: runId ?? null,
+      ciRunUrl,
+      runner,
+      node: nodeVersion,
+      timestamp: new Date().toISOString(),
+      libVersions: readInstalledVersions(LIB_VERSION_PKGS),
+    },
+    baseline: BASELINE,
+    capabilities: capabilitiesOf(meta, scorecardInfo),
+    bundle: await measureBundles(),
+    runtime: buildRuntime(cells, libOrder),
+  }
+
+  writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`)
+  const dnfCount = cells.filter(isDnf).length
+  const shardNote = runner.shardCount > 1 ? `, ${runner.shardCount} shards` : ''
+  console.log(
+    `\n[run-arena] wrote ${outPath} ` +
+      `(${cells.length} cells${dnfCount ? `, ${dnfCount} did-not-finish` : ''}, ` +
+      `${results.bundle.length} bundle rows, source=${results.provenance.source}${shardNote})`
+  )
+}
+
+/**
+ * Shard mode: run one grep slice of the spec and write its harvested cells (plus
+ * the cohort meta, when the slice included the metadata test) to a partial. The
+ * merge step concatenates the partials and runs the global tail once. Aborts
+ * without writing if the slice is red, the same contract as a full run, so a red
+ * shard contributes nothing rather than a half-measured partial.
+ */
+function emitCells(grep, outPath) {
+  const { status, reportPath } = runSpec(grep)
+  if (status !== 0) {
+    console.error(`\n[run-arena] the shard slice failed (exit ${status}); not writing cells.`)
+    exit(status)
+  }
+  const { cells, meta } = harvest(reportPath)
+  if (cells.length === 0) {
+    console.error('[run-arena] no cell measurements were harvested from the shard slice.')
+    exit(1)
+  }
+  const partial = {
+    schemaVersion: SCHEMA_VERSION,
+    cells,
+    meta: meta ?? null,
+    runner: runnerIdentity(),
+  }
+  mkdirSync(dirname(outPath), { recursive: true })
+  writeFileSync(outPath, `${JSON.stringify(partial, null, 2)}\n`)
+  console.log(
+    `[run-arena] wrote ${outPath} (${cells.length} cells, meta ${meta ? 'present' : 'absent'})`
+  )
+}
+
+/**
+ * Merge mode: read every cells-*.json partial the shards uploaded, concatenate
+ * their cells, take the cohort meta from the first partial that carried it (the
+ * shard whose slice ran the metadata test), fold the runner identities, and run
+ * the global tail once. Mirrors the full-run guards: no partials, no cells, or no
+ * meta each abort without writing, so an incomplete sweep publishes nothing
+ * rather than a thin results.json.
+ */
+async function assemble(dir) {
+  const partials = readdirSync(dir)
+    .filter((f) => /^cells-.*\.json$/.test(f))
+    .sort()
+    .map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')))
+  if (partials.length === 0) {
+    console.error(`[run-arena] no cells-*.json shard partials found in ${dir}.`)
+    exit(1)
+  }
+  const cells = partials.flatMap((p) => p.cells ?? [])
+  if (cells.length === 0) {
+    console.error('[run-arena] the shard partials carried no cell measurements.')
+    exit(1)
+  }
+  const meta = partials.find((p) => p.meta)?.meta ?? null
+  if (!meta) {
+    console.error('[run-arena] no shard partial carried the cohort meta attachment.')
+    exit(1)
+  }
+  const runner = aggregateRunners(partials.map((p) => p.runner).filter(Boolean))
+  await assembleResults(cells, meta, runner, join(PKG_ROOT, 'results.json'))
+}
+
 async function main() {
-  const { grep, scorecardsOnly } = parseArgs()
+  const { grep, scorecardsOnly, emitCells: emitCellsPath, assemble: assembleDir } = parseArgs()
   if (scorecardsOnly) {
     await refreshScorecards()
+    return
+  }
+  if (assembleDir !== null) {
+    await assemble(resolve(PKG_ROOT, assembleDir))
+    return
+  }
+  if (emitCellsPath !== null) {
+    emitCells(grep, resolve(PKG_ROOT, emitCellsPath))
     return
   }
   const smoke = grep !== null
@@ -258,46 +419,8 @@ async function main() {
     exit(1)
   }
 
-  const libOrder = libOrderOf(meta, cells)
-  const scorecardInfo = await buildScorecardInfo((meta ?? []).map((m) => m.id))
-  const cpus = os.cpus()
-  const runId = env.GITHUB_RUN_ID
-  const ciRunUrl =
-    runId && env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY
-      ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${runId}`
-      : null
-
-  const results = {
-    schemaVersion: SCHEMA_VERSION,
-    provenance: {
-      source: runId ? 'ci' : 'local',
-      commit: env.GITHUB_SHA ?? null,
-      ciRunId: runId ?? null,
-      ciRunUrl,
-      runner: {
-        os: os.platform(),
-        arch: os.arch(),
-        cpuModel: cpus[0]?.model ?? 'unknown',
-        cpuCount: cpus.length,
-      },
-      node: nodeVersion,
-      timestamp: new Date().toISOString(),
-      libVersions: readInstalledVersions(LIB_VERSION_PKGS),
-    },
-    baseline: BASELINE,
-    capabilities: capabilitiesOf(meta, scorecardInfo),
-    bundle: await measureBundles(),
-    runtime: buildRuntime(cells, libOrder),
-  }
-
   const outPath = join(PKG_ROOT, smoke ? 'results.smoke.json' : 'results.json')
-  writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`)
-  const dnfCount = cells.filter(isDnf).length
-  console.log(
-    `\n[run-arena] wrote ${outPath} ` +
-      `(${cells.length} cells${dnfCount ? `, ${dnfCount} did-not-finish` : ''}, ` +
-      `${results.bundle.length} bundle rows, source=${results.provenance.source})`
-  )
+  await assembleResults(cells, meta, { ...runnerIdentity(), shardCount: 1 }, outPath)
 }
 
 await main()

@@ -5634,11 +5634,12 @@ describe('chaos — multi-tab persistence via the storage event', () => {
       })
     )
     await nextTick()
-    await new Promise((r) => setTimeout(r, 30))
 
-    // If attaform supports cross-tab sync, this updates. If not, the
-    // form holds 'tab-A' and the assertion fails — documenting that
-    // multi-tab is not currently a feature.
+    // The cross-tab storage sync is async (handler + debounced persist
+    // re-read), so poll for it to settle rather than racing a fixed
+    // timeout: a single 30ms sleep flaked ~50% of the time under load.
+    // Mirrors the waitUntil settle pattern used elsewhere in this file.
+    await waitUntil(() => (api.values.name === 'tab-B' ? true : null))
     expect(api.values.name).toBe('tab-B')
   })
 

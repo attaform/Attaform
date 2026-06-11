@@ -1,4 +1,4 @@
-import { type Page, errors, expect, test } from '@playwright/test'
+import { type Page, expect, test } from '@playwright/test'
 
 /**
  * The cohort driver: loop every adapter across the scenario suite and every
@@ -128,7 +128,32 @@ interface RecordOptions {
   readonly allowDnf: boolean
 }
 
-const isTimeout = (e: unknown): boolean => e instanceof errors.TimeoutError
+/** Wait for the page to signal benchDone, bounded by a driver-side timer rather
+ *  than waitForFunction's own timeout. A cell that pegs the renderer's main
+ *  thread synchronously (a 5000-field FormKit keystroke or full-form validate)
+ *  never yields, so Playwright cannot service the abort behind waitForFunction's
+ *  timeout: the test-level deadline fires instead and hard-fails the cell,
+ *  defeating the did-not-finish path. A setTimeout on the driver fires whatever
+ *  the renderer is doing, so the wait always settles within budget.
+ *  waitForFunction carries no timeout of its own; the driver timer is the sole
+ *  gate. Resolves true if benchDone was observed within budget, false if the
+ *  budget elapsed first. A genuine page error (a crash, a destroyed context)
+ *  still rejects, so it stays a hard failure rather than a silent did-not-finish. */
+async function waitForBenchDone(page: Page, waitMs: number): Promise<boolean> {
+  const settled = page
+    .waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, { timeout: 0 })
+    .then(() => true as const)
+  // Once the budget wins, this wait outlives the cell; its eventual teardown
+  // rejection ('target closed') must not surface as an unhandled rejection.
+  settled.catch(() => {})
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const budget = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), waitMs)
+  })
+  const finished = await Promise.race([settled, budget])
+  clearTimeout(timer)
+  return finished
+}
 
 async function recordCell(
   page: Page,
@@ -142,13 +167,9 @@ async function recordCell(
     `/?adapter=${adapter}&scenario=${scenario}&params=${params}&trigger=input&dim=${dim}`,
     { waitUntil }
   )
-  try {
-    await page.waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, {
-      timeout: waitMs,
-    })
-  } catch (err) {
-    if (allowDnf && isTimeout(err)) return { kind: 'dnf', budgetMs: waitMs }
-    throw err
+  if (!(await waitForBenchDone(page, waitMs))) {
+    if (allowDnf) return { kind: 'dnf', budgetMs: waitMs }
+    throw new Error(`${adapter}/${scenario}/${params}/${dim} exceeded its ${waitMs}ms budget`)
   }
   const payload = await page.evaluate(
     () => (window as unknown as { __BENCH_RESULTS__: Payload }).__BENCH_RESULTS__
@@ -481,5 +502,29 @@ test.describe('dnf conversion', () => {
         allowDnf: false,
       })
     ).rejects.toThrow()
+  })
+
+  test('the driver budget preempts a synchronously pegged renderer', async ({ page }) => {
+    test.setTimeout(20_000)
+    await page.goto('about:blank')
+    // Peg the main thread for 2s with no yield and never set benchDone: the exact
+    // shape of the FormKit L5000 cell that hard-failed on CI. Kicked off without
+    // awaiting, so the wait runs against a live peg. waitForFunction cannot even
+    // install its poll on a pegged renderer, let alone fire a timeout; only the
+    // driver-side timer can settle the wait, which is the property under test.
+    const peg = page.evaluate(() => {
+      const end = Date.now() + 2000
+      while (Date.now() < end) {
+        /* spin, never yielding to the event loop */
+      }
+    })
+    peg.catch(() => {})
+    const started = Date.now()
+    const finished = await waitForBenchDone(page, 100)
+    expect(finished).toBe(false)
+    // Settled at ~100ms despite the 2s peg. A regression to waitForFunction's own
+    // timeout would hang here until the test deadline, the CI failure in minature.
+    expect(Date.now() - started).toBeLessThan(1500)
+    await peg.catch(() => {})
   })
 })

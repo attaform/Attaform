@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test'
+import { type Page, errors, expect, test } from '@playwright/test'
 
 /**
  * The cohort driver: loop every adapter across the scenario suite and every
@@ -111,28 +111,54 @@ interface Payload {
   error?: string
 }
 
-async function runCell(
+/** A measured cell carries its payload; a did-not-finish cell carries the budget
+ *  it ran out, so the orchestrator can render "did not finish (> N min)". */
+type CellOutcome = { kind: 'measured'; payload: Payload } | { kind: 'dnf'; budgetMs: number }
+
+interface RecordOptions {
+  /** The driver-side ceiling on the benchDone wait, in ms. */
+  readonly waitMs: number
+  /** Navigation gate. The massive scenario uses 'commit' so a mount that blocks
+   *  the page `load` event still funnels its timeout through the catchable
+   *  waitForFunction rather than throwing out of page.goto. */
+  readonly waitUntil: 'load' | 'commit'
+  /** Whether an over-budget cell converts to a did-not-finish result instead of
+   *  failing the test. Reserved for the massive scenario; everywhere else a
+   *  timeout is still a hard failure, so a real regression is never masked. */
+  readonly allowDnf: boolean
+}
+
+const isTimeout = (e: unknown): boolean => e instanceof errors.TimeoutError
+
+async function recordCell(
   page: Page,
   adapter: string,
   scenario: string,
   params: string,
   dim: string,
-  timeoutMs: number
-): Promise<Payload> {
+  { waitMs, waitUntil, allowDnf }: RecordOptions
+): Promise<CellOutcome> {
   await page.goto(
-    `/?adapter=${adapter}&scenario=${scenario}&params=${params}&trigger=input&dim=${dim}`
+    `/?adapter=${adapter}&scenario=${scenario}&params=${params}&trigger=input&dim=${dim}`,
+    { waitUntil }
   )
-  await page.waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, {
-    timeout: timeoutMs,
-  })
+  try {
+    await page.waitForFunction(() => document.body.dataset['benchDone'] === '1', undefined, {
+      timeout: waitMs,
+    })
+  } catch (err) {
+    if (allowDnf && isTimeout(err)) return { kind: 'dnf', budgetMs: waitMs }
+    throw err
+  }
   const payload = await page.evaluate(
     () => (window as unknown as { __BENCH_RESULTS__: Payload }).__BENCH_RESULTS__
   )
   // Collect after every cell of every scenario so one library's garbage cannot
   // skew the next (the harness also collects before it measures, so the heap is
-  // clean at both ends of each cell).
+  // clean at both ends of each cell). Inside the success branch only: a cell that
+  // pegged the thread until its budget ran out must not be re-evaluated.
   await page.evaluate(() => (globalThis as { gc?: () => void }).gc?.())
-  return payload
+  return { kind: 'measured', payload }
 }
 
 /** Median of a sample set (the memory cell's summary; p95/iqr land in Phase 4). */
@@ -252,11 +278,16 @@ for (const { scenario, params: paramSet, dims, skip } of CASES) {
             test.skip(skip?.(params, dim) ?? false, 'cell exceeds the per-cell measurement budget')
             // The massive scenario mounts thousands of inputs, so a single mount
             // or full-form validate runs for seconds on the heavier libraries;
-            // give those cells a wide test + wait budget (still bounded, so a
-            // genuine hang still fails). Every other cell keeps the default.
+            // give those cells a wide benchDone wait (still bounded, so a genuine
+            // hang resolves to a recorded did-not-finish rather than running
+            // forever). The test timeout sits well above the wait: tearing down a
+            // thousands-of-field DOM after a did-not-finish takes real time on the
+            // heaviest libraries, and that teardown must never eat into the wait
+            // budget and turn a clean did-not-finish into a hard timeout. Every
+            // other cell keeps the default.
             const wide = scenario === 'massive'
-            if (wide) test.setTimeout(360_000)
             const waitMs = wide ? 320_000 : 60_000
+            if (wide) test.setTimeout(waitMs + 120_000)
 
             // Memory is driver-measured via CDP, so it reports three byte
             // figures (retained/churn/leak) rather than one timed summary; it
@@ -311,7 +342,36 @@ for (const { scenario, params: paramSet, dims, skip } of CASES) {
               return
             }
 
-            const r = await runCell(page, adapter, scenario, params, dim, waitMs)
+            const outcome = await recordCell(page, adapter, scenario, params, dim, {
+              waitMs,
+              waitUntil: wide ? 'commit' : 'load',
+              allowDnf: wide,
+            })
+            if (outcome.kind === 'dnf') {
+              // eslint-disable-next-line no-console
+              console.log(
+                `${adapter.padEnd(14)} ${scenario.padEnd(8)} ${params.padEnd(4)} ${dim.padEnd(10)} ` +
+                  `did-not-finish (budget ${(outcome.budgetMs / 1000).toFixed(0)}s)`
+              )
+              // A first-class outcome, not a failure: the cell could not produce a
+              // stable median inside its budget, so record it as did-not-finish
+              // and let the run stay green. The orchestrator nulls its ratio and
+              // slope; the page renders "did not finish".
+              await testInfo.attach('cell', {
+                body: JSON.stringify({
+                  kind: 'timed',
+                  adapter,
+                  scenario,
+                  params,
+                  dim,
+                  status: 'did-not-finish',
+                  budgetMs: outcome.budgetMs,
+                }),
+                contentType: 'application/json',
+              })
+              return
+            }
+            const r = outcome.payload
             expect(r, `no payload for ${adapter}/${scenario}/${params}/${dim}`).toBeTruthy()
             expect(
               r.error,
@@ -358,6 +418,7 @@ for (const { scenario, params: paramSet, dims, skip } of CASES) {
                 scenario,
                 params,
                 dim,
+                status: 'measured',
                 summary: r.summary,
                 unit: r.unit,
                 supported: r.supported,
@@ -389,5 +450,36 @@ test.describe('cohort metadata', () => {
     // The orchestrator builds the capability matrix and display metadata from
     // this attachment, so both come from the real built adapters, not a copy.
     await testInfo.attach('meta', { body: JSON.stringify(meta), contentType: 'application/json' })
+  })
+})
+
+/**
+ * The did-not-finish conversion itself, pinned deterministically. The cheap
+ * flat/F10/keystroke cell needs hundreds of ms to mount and measure, so a 25ms
+ * budget is always exceeded: a real browser timeout, not a contrived one, with no
+ * dependence on a slow runner. allowDnf decides whether that timeout becomes a
+ * recorded outcome or a hard failure, the exact fork the massive cells rely on.
+ */
+test.describe('dnf conversion', () => {
+  test('an over-budget cell with allowDnf records as did-not-finish', async ({ page }) => {
+    test.setTimeout(60_000)
+    const outcome = await recordCell(page, 'attaform', 'flat', 'F10', 'keystroke', {
+      waitMs: 25,
+      waitUntil: 'commit',
+      allowDnf: true,
+    })
+    expect(outcome.kind).toBe('dnf')
+    if (outcome.kind === 'dnf') expect(outcome.budgetMs).toBe(25)
+  })
+
+  test('an over-budget cell without allowDnf is a hard failure', async ({ page }) => {
+    test.setTimeout(60_000)
+    await expect(
+      recordCell(page, 'attaform', 'flat', 'F10', 'keystroke', {
+        waitMs: 25,
+        waitUntil: 'commit',
+        allowDnf: false,
+      })
+    ).rejects.toThrow()
   })
 })

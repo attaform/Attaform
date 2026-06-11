@@ -45,12 +45,19 @@
   }
   interface TimedRow {
     lib: string
-    median: number
-    p95: number
-    unit: string
     supported: boolean
     ratio: number | null
-    slope: number
+    slope: number | null
+    // A did-not-finish cell carries a budget and no median/p95/unit: it could not
+    // produce a stable median inside its per-cell budget, so it renders as "did
+    // not finish" rather than a fabricated number. An absent status reads as a
+    // normal measurement, so a results.json written before the field existed
+    // still renders unchanged.
+    status?: 'measured' | 'did-not-finish'
+    budgetMs?: number
+    median?: number
+    p95?: number
+    unit?: string
   }
   interface MemoryStat {
     median: number
@@ -184,6 +191,13 @@
   const fmtTimed = (value: number, unit: string) =>
     unit === 'ms' ? `${fmtMs(value)} ms` : `${fmtCount(value)} ${UNIT_LABEL[unit] ?? unit}`
   const barPct = (value: number, max: number) => (max > 0 ? Math.max(2, (value / max) * 100) : 0)
+  // A did-not-finish caption from the true budget, floored to whole minutes so
+  // the page can never claim a tighter ceiling than the run actually enforced.
+  const fmtBudget = (ms: number | undefined) => {
+    const total = ms ?? 0
+    const mins = Math.floor(total / 60_000)
+    return mins >= 1 ? `> ${mins} min` : `> ${Math.floor(total / 1000)} s`
+  }
 
   // --- capability matrix --------------------------------------------------
   const SCENARIOS = Object.keys(SCENARIO_LABEL)
@@ -230,12 +244,20 @@
   })
   const isMemory = computed(() => props.dimension === 'memory')
 
-  // Per-column bar scale, over supported rows only.
+  // A did-not-finish timed row carries no median, so it is excluded from every
+  // derived statistic (the per-column bar scale, Attaform's standing) the same
+  // way an unsupported row is. Memory rows never carry a status, so they are
+  // always measured.
+  const isDnfRow = (r: RuntimeRow): boolean =>
+    'retained' in r ? false : r.status === 'did-not-finish'
+  const isMeasured = (r: RuntimeRow): boolean => r.supported && !isDnfRow(r)
+
+  // Per-column bar scale, over measured rows only.
   const colMax = (param: string) => {
     const rows = block.value?.byParam[param] ?? []
     const vals = rows
-      .filter((r) => r.supported)
-      .map((r) => ('retained' in r ? r.retained.median : r.median))
+      .filter((r) => isMeasured(r))
+      .map((r) => ('retained' in r ? r.retained.median : (r.median ?? 0)))
     return vals.length ? Math.max(...vals) : 0
   }
   const findRow = (param: string, lib: string) =>
@@ -252,11 +274,16 @@
       baseline: isBaseline(lib),
       cells: params.value.map((param) => {
         const row = findRow(param, lib) as TimedRow | undefined
+        if (!row || !row.supported) return { param, state: 'absent' as const }
+        if (row.status === 'did-not-finish')
+          return { param, state: 'dnf' as const, budgetText: fmtBudget(row.budgetMs) }
         return {
           param,
-          row,
-          max: colMax(param),
-          proxy: !!row && row.unit !== b.unit,
+          state: 'measured' as const,
+          widthPct: barPct(row.median ?? 0, colMax(param)),
+          valueText: fmtTimed(row.median ?? 0, row.unit ?? b.unit),
+          ratioText: fmtRatio(row.ratio),
+          proxy: row.unit !== b.unit,
         }
       }),
     }))
@@ -274,7 +301,9 @@
       })),
     }))
   })
-  const mixedUnits = computed(() => timedGrid.value.some((r) => r.cells.some((c) => c.proxy)))
+  const mixedUnits = computed(() =>
+    timedGrid.value.some((r) => r.cells.some((c) => c.state === 'measured' && c.proxy))
+  )
 
   // Inline sparkline of the per-cycle retained-heap series (leak creep across
   // the measured mounts), normalized into a small viewBox.
@@ -372,9 +401,9 @@
     const orderedParams = Object.keys(b.byParam)
     const largest = orderedParams[orderedParams.length - 1]
     if (!largest) return null
-    const valueOf = (r: RuntimeRow) => ('retained' in r ? r.retained.median : r.median)
+    const valueOf = (r: RuntimeRow) => ('retained' in r ? r.retained.median : (r.median ?? 0))
     const peers = (b.byParam[largest] ?? []).filter(
-      (r) => r.supported && layerOf(r.lib) === FORM_STATE_LAYER
+      (r) => isMeasured(r) && layerOf(r.lib) === FORM_STATE_LAYER
     )
     const me = peers.find((r) => r.lib === results.baseline)
     if (!me || peers.length < 2) return null
@@ -728,19 +757,23 @@
           >
             <td class="px-3 py-2 font-medium whitespace-nowrap text-fg">{{ r.displayName }}</td>
             <td v-for="c in r.cells" :key="c.param" class="px-3 py-2">
-              <div v-if="c.row && c.row.supported" class="flex items-center gap-2">
+              <div v-if="c.state === 'measured'" class="flex items-center gap-2">
                 <span class="inline-block h-1.5 w-20 rounded-full bg-surface">
                   <span
                     class="block h-full rounded-full"
                     :class="r.baseline ? 'bg-accent/80' : 'bg-fg-subtle/40'"
-                    :style="{ width: `${barPct(c.row.median, c.max)}%` }"
+                    :style="{ width: `${c.widthPct}%` }"
                   />
                 </span>
                 <span class="font-mono whitespace-nowrap text-fg">
-                  {{ fmtTimed(c.row.median, c.row.unit) }}
+                  {{ c.valueText }}
                   <sup v-if="c.proxy" class="text-accent">&dagger;</sup>
                 </span>
-                <span class="font-mono text-xs text-fg-subtle">{{ fmtRatio(c.row.ratio) }}</span>
+                <span class="font-mono text-xs text-fg-subtle">{{ c.ratioText }}</span>
+              </div>
+              <div v-else-if="c.state === 'dnf'" class="flex flex-col text-fg-subtle">
+                <span class="italic">did not finish</span>
+                <span class="text-xs">{{ c.budgetText }}</span>
               </div>
               <span v-else class="text-fg-subtle">&mdash;</span>
             </td>

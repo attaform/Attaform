@@ -26,44 +26,28 @@
  *   node scripts/run-arena.mjs --grep <pat>      partial smoke run -> results.smoke.json
  *   node scripts/run-arena.mjs --scorecards-only refresh only the supply-chain scores in
  *                                                results.json, in place, with no browser run
+ *
+ * Sharded across runners (the monthly workflow), the same orchestrator runs in
+ * two extra modes so the long sweep splits over separate CPU-isolated machines:
+ *   node scripts/run-arena.mjs --grep <pat> --emit-cells <path>
+ *                                                shard mode: run one grep slice and write its
+ *                                                harvested cells (no scorecards/bundles/runtime)
+ *   node scripts/run-arena.mjs --assemble <dir>  merge mode: fold every shard partial in <dir>,
+ *                                                run the global tail once -> results.json
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { argv, env, exit, version as nodeVersion } from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { readInstalledRepoSlug, readInstalledVersions } from './installed-version.mjs'
 import { measureBundles } from './measure-bundles.mjs'
+import { BASELINE, buildRuntime, isDnf, SCENARIO_ORDER } from './runtime-shape.mjs'
 import { fetchScorecards, scorecardViewerUrl } from './scorecards.mjs'
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const SCHEMA_VERSION = 1
-const BASELINE = 'attaform'
-
-// Stable output ordering, so the committed results.json diffs minimally run to
-// run. Scenarios and dimensions emit in these orders; params sort by size and
-// rows by the cohort order the registry defines (read from the meta payload).
-const SCENARIO_ORDER = [
-  'flat',
-  'nested',
-  'arrays',
-  'grid',
-  'discriminated-union',
-  'massive',
-  'wizard',
-]
-const DIM_ORDER = [
-  'keystroke',
-  'mount',
-  'validate',
-  'rerender',
-  'arrayAdd',
-  'arrayReorder',
-  'variantFlip',
-  'stepTransition',
-  'memory',
-]
 
 // Packages whose resolved (lockfile-pinned) versions stamp the provenance block.
 const LIB_VERSION_PKGS = [
@@ -93,38 +77,17 @@ const LIB_REPO_PKG = {
   vuelidate: '@vuelidate/core',
 }
 
-/** Round a ratio/slope to two decimals; medians keep their measured precision. */
-function round2(value) {
-  return Number(value.toFixed(2))
-}
-
-/** A param label's relative size: the product of its numeric codes (F50 -> 50,
- *  N100M8 -> 800), so the smallest param (the slope baseline) sorts first. */
-function paramSize(label) {
-  const nums = label.match(/\d+/g)
-  if (!nums) return 0
-  return nums.reduce((acc, n) => acc * Number(n), 1)
-}
-
-/** 95th percentile of a small sample (the memory cycles); coarse but adequate. */
-function p95(samples) {
-  if (samples.length === 0) return 0
-  const sorted = [...samples].sort((a, b) => a - b)
-  const index = Math.min(sorted.length - 1, Math.floor(0.95 * (sorted.length - 1)))
-  return sorted[index] ?? 0
-}
-
-/** The value a cell's ratio and slope are computed on: keystroke/mount/etc. use
- *  the timed median; memory uses retained heap (its headline, churn is noisier). */
-function cellValue(cell) {
-  return cell.kind === 'memory' ? cell.retained : cell.summary.median
-}
-
 function parseArgs() {
-  const grepIndex = argv.indexOf('--grep')
-  const grep = grepIndex >= 0 ? (argv[grepIndex + 1] ?? null) : null
-  const scorecardsOnly = argv.includes('--scorecards-only')
-  return { grep, scorecardsOnly }
+  const flagValue = (flag) => {
+    const i = argv.indexOf(flag)
+    return i >= 0 ? (argv[i + 1] ?? null) : null
+  }
+  return {
+    grep: flagValue('--grep'),
+    scorecardsOnly: argv.includes('--scorecards-only'),
+    emitCells: flagValue('--emit-cells'),
+    assemble: flagValue('--assemble'),
+  }
 }
 
 /** Run the Playwright spec (live `list` output) and tee a JSON report to disk. */
@@ -285,89 +248,157 @@ function libOrderOf(meta, cells) {
   return order
 }
 
-/** Build one results-row from a harvested cell (timed dims and memory differ). */
-function rowOf(cell) {
-  if (cell.kind === 'memory') {
-    return {
-      lib: cell.adapter,
-      retained: { median: cell.retained, p95: p95(cell.series.retained), count: cell.cycles },
-      churn: { median: cell.churn, p95: p95(cell.series.churn), count: cell.cycles },
-      leak: { median: cell.leak, p95: p95(cell.series.leak), count: cell.cycles },
-      series: cell.series,
-      supported: true,
-    }
-  }
+/**
+ * This machine's hardware identity for the provenance block. A shard partial
+ * stamps its own, so the merge can fold the cohort of runners that measured.
+ */
+function runnerIdentity() {
+  const cpus = os.cpus()
   return {
-    lib: cell.adapter,
-    median: cell.summary.median,
-    p95: cell.summary.p95,
-    iqr: cell.summary.iqr,
-    count: cell.summary.count,
-    trimmed: cell.summary.trimmed,
-    unit: cell.unit,
-    supported: cell.supported,
+    os: os.platform(),
+    arch: os.arch(),
+    cpuModel: cpus[0]?.model ?? 'unknown',
+    cpuCount: cpus.length,
   }
 }
 
 /**
- * Assemble the runtime block: scenario -> dim -> { unit, byParam }, with ratio
- * (versus the baseline at the same param) and slope (versus the same library at
- * the scenario's smallest param) computed per row. Emitted in stable order.
+ * Fold the shard runners into one provenance runner block. A homogeneous matrix
+ * (every shard is ubuntu-latest) reports a single representative identity; were
+ * GitHub's fleet to hand out different CPUs, cpuModel summarizes them as
+ * "mixed: ..." rather than silently picking one. shardCount records how many
+ * runners the sweep was split across (1 for a single-process run), additive so
+ * the renderer and PR body keep reading runner.cpuModel unchanged.
  */
-function buildRuntime(cells, libOrder) {
-  // Index cells by scenario|dim|param|lib for the ratio/slope lookups.
-  const index = new Map()
-  const key = (s, d, p, lib) => `${s}|${d}|${p}|${lib}`
-  const grouped = {}
-  for (const cell of cells) {
-    const dim = cell.kind === 'memory' ? 'memory' : cell.dim
-    index.set(key(cell.scenario, dim, cell.params, cell.adapter), cell)
-    ;((grouped[cell.scenario] ??= {})[dim] ??= new Set()).add(cell.params)
+function aggregateRunners(runners) {
+  const first = runners[0] ?? runnerIdentity()
+  const models = [...new Set(runners.map((r) => r.cpuModel))]
+  return {
+    os: first.os,
+    arch: first.arch,
+    cpuModel: models.length <= 1 ? (models[0] ?? first.cpuModel) : `mixed: ${models.join(' + ')}`,
+    cpuCount: first.cpuCount,
+    shardCount: runners.length,
+  }
+}
+
+/**
+ * The global tail shared by the single-process run and the sharded merge: order
+ * the cohort, resolve Scorecards, measure bundles, stamp provenance (with the
+ * given runner block, this machine for a local run or the folded shard cohort
+ * for a merge), build the runtime block, and write results to outPath.
+ */
+async function assembleResults(cells, meta, runner, outPath) {
+  const libOrder = libOrderOf(meta, cells)
+  const scorecardInfo = await buildScorecardInfo((meta ?? []).map((m) => m.id))
+  const runId = env.GITHUB_RUN_ID
+  const ciRunUrl =
+    runId && env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY
+      ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${runId}`
+      : null
+
+  const results = {
+    schemaVersion: SCHEMA_VERSION,
+    provenance: {
+      source: runId ? 'ci' : 'local',
+      commit: env.GITHUB_SHA ?? null,
+      ciRunId: runId ?? null,
+      ciRunUrl,
+      runner,
+      node: nodeVersion,
+      timestamp: new Date().toISOString(),
+      libVersions: readInstalledVersions(LIB_VERSION_PKGS),
+    },
+    baseline: BASELINE,
+    capabilities: capabilitiesOf(meta, scorecardInfo),
+    bundle: await measureBundles(),
+    runtime: buildRuntime(cells, libOrder),
   }
 
-  const runtime = {}
-  for (const scenario of SCENARIO_ORDER) {
-    if (!grouped[scenario]) continue
-    runtime[scenario] = {}
-    for (const dim of DIM_ORDER) {
-      const paramSet = grouped[scenario][dim]
-      if (!paramSet) continue
-      const params = [...paramSet].sort((a, b) => paramSize(a) - paramSize(b))
-      const smallest = params[0]
-      const byParam = {}
-      let unit = dim === 'memory' ? 'bytes' : null
-      for (const param of params) {
-        const baseCell = index.get(key(scenario, dim, param, BASELINE))
-        const baseValue = baseCell ? cellValue(baseCell) : 0
-        const built = []
-        for (const m of libOrder.keys()) {
-          const cell = index.get(key(scenario, dim, param, m))
-          if (!cell) continue
-          const row = rowOf(cell)
-          const value = cellValue(cell)
-          row.ratio = baseValue > 0 ? round2(value / baseValue) : null
-          const smallestCell = index.get(key(scenario, dim, smallest, m))
-          const smallestValue = smallestCell ? cellValue(smallestCell) : 0
-          row.slope = smallestValue > 0 ? round2(value / smallestValue) : 1
-          built.push(row)
-          if (unit === null && cell.kind === 'timed') {
-            // rerender mixes units (FormKit reports the dom-mutation proxy); the
-            // canonical column unit is renders, and each row keeps its own unit.
-            unit = dim === 'rerender' ? 'renders' : cell.unit
-          }
-        }
-        byParam[param] = built
-      }
-      runtime[scenario][dim] = { unit: unit ?? 'ms', byParam }
-    }
+  writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`)
+  const dnfCount = cells.filter(isDnf).length
+  const shardNote = runner.shardCount > 1 ? `, ${runner.shardCount} shards` : ''
+  console.log(
+    `\n[run-arena] wrote ${outPath} ` +
+      `(${cells.length} cells${dnfCount ? `, ${dnfCount} did-not-finish` : ''}, ` +
+      `${results.bundle.length} bundle rows, source=${results.provenance.source}${shardNote})`
+  )
+}
+
+/**
+ * Shard mode: run one grep slice of the spec and write its harvested cells (plus
+ * the cohort meta, when the slice included the metadata test) to a partial. The
+ * merge step concatenates the partials and runs the global tail once. Aborts
+ * without writing if the slice is red, the same contract as a full run, so a red
+ * shard contributes nothing rather than a half-measured partial.
+ */
+function emitCells(grep, outPath) {
+  const { status, reportPath } = runSpec(grep)
+  if (status !== 0) {
+    console.error(`\n[run-arena] the shard slice failed (exit ${status}); not writing cells.`)
+    exit(status)
   }
-  return runtime
+  const { cells, meta } = harvest(reportPath)
+  if (cells.length === 0) {
+    console.error('[run-arena] no cell measurements were harvested from the shard slice.')
+    exit(1)
+  }
+  const partial = {
+    schemaVersion: SCHEMA_VERSION,
+    cells,
+    meta: meta ?? null,
+    runner: runnerIdentity(),
+  }
+  mkdirSync(dirname(outPath), { recursive: true })
+  writeFileSync(outPath, `${JSON.stringify(partial, null, 2)}\n`)
+  console.log(
+    `[run-arena] wrote ${outPath} (${cells.length} cells, meta ${meta ? 'present' : 'absent'})`
+  )
+}
+
+/**
+ * Merge mode: read every cells-*.json partial the shards uploaded, concatenate
+ * their cells, take the cohort meta from the first partial that carried it (the
+ * shard whose slice ran the metadata test), fold the runner identities, and run
+ * the global tail once. Mirrors the full-run guards: no partials, no cells, or no
+ * meta each abort without writing, so an incomplete sweep publishes nothing
+ * rather than a thin results.json.
+ */
+async function assemble(dir) {
+  const partials = readdirSync(dir)
+    .filter((f) => /^cells-.*\.json$/.test(f))
+    .sort()
+    .map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')))
+  if (partials.length === 0) {
+    console.error(`[run-arena] no cells-*.json shard partials found in ${dir}.`)
+    exit(1)
+  }
+  const cells = partials.flatMap((p) => p.cells ?? [])
+  if (cells.length === 0) {
+    console.error('[run-arena] the shard partials carried no cell measurements.')
+    exit(1)
+  }
+  const meta = partials.find((p) => p.meta)?.meta ?? null
+  if (!meta) {
+    console.error('[run-arena] no shard partial carried the cohort meta attachment.')
+    exit(1)
+  }
+  const runner = aggregateRunners(partials.map((p) => p.runner).filter(Boolean))
+  await assembleResults(cells, meta, runner, join(PKG_ROOT, 'results.json'))
 }
 
 async function main() {
-  const { grep, scorecardsOnly } = parseArgs()
+  const { grep, scorecardsOnly, emitCells: emitCellsPath, assemble: assembleDir } = parseArgs()
   if (scorecardsOnly) {
     await refreshScorecards()
+    return
+  }
+  if (assembleDir !== null) {
+    await assemble(resolve(PKG_ROOT, assembleDir))
+    return
+  }
+  if (emitCellsPath !== null) {
+    emitCells(grep, resolve(PKG_ROOT, emitCellsPath))
     return
   }
   const smoke = grep !== null
@@ -388,44 +419,8 @@ async function main() {
     exit(1)
   }
 
-  const libOrder = libOrderOf(meta, cells)
-  const scorecardInfo = await buildScorecardInfo((meta ?? []).map((m) => m.id))
-  const cpus = os.cpus()
-  const runId = env.GITHUB_RUN_ID
-  const ciRunUrl =
-    runId && env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY
-      ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${runId}`
-      : null
-
-  const results = {
-    schemaVersion: SCHEMA_VERSION,
-    provenance: {
-      source: runId ? 'ci' : 'local',
-      commit: env.GITHUB_SHA ?? null,
-      ciRunId: runId ?? null,
-      ciRunUrl,
-      runner: {
-        os: os.platform(),
-        arch: os.arch(),
-        cpuModel: cpus[0]?.model ?? 'unknown',
-        cpuCount: cpus.length,
-      },
-      node: nodeVersion,
-      timestamp: new Date().toISOString(),
-      libVersions: readInstalledVersions(LIB_VERSION_PKGS),
-    },
-    baseline: BASELINE,
-    capabilities: capabilitiesOf(meta, scorecardInfo),
-    bundle: await measureBundles(),
-    runtime: buildRuntime(cells, libOrder),
-  }
-
   const outPath = join(PKG_ROOT, smoke ? 'results.smoke.json' : 'results.json')
-  writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`)
-  console.log(
-    `\n[run-arena] wrote ${outPath} ` +
-      `(${cells.length} cells, ${results.bundle.length} bundle rows, source=${results.provenance.source})`
-  )
+  await assembleResults(cells, meta, { ...runnerIdentity(), shardCount: 1 }, outPath)
 }
 
 await main()

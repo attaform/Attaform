@@ -18,6 +18,20 @@ name: bench-arena refresh
 # from a clean CI runner, never a developer machine. Closing it is a no-op, for
 # a month whose numbers are not worth landing.
 #
+# Topology: three jobs, so the long sweep splits across separate CPU-isolated
+# runners. The cohort is measured at workers:1 for clean numbers (concurrent
+# cells on a shared CPU corrupt the published ms), so the only fair speedup is
+# more machines, never more workers per machine.
+#   preflight -> validate the release-PR App credentials before the long sweep,
+#                so a missing secret costs seconds, not the better part of an hour.
+#   shard     -> a matrix of runners, each driving one grep slice of the spec and
+#                uploading its harvested cells as an artifact. contents:read only;
+#                a shard never touches the privileged release-PR credentials.
+#   merge     -> download every shard's cells, fold them, run the global tail
+#                (scorecards + bundles + provenance + runtime), and open the
+#                refresh PR. Runs once, and holds the contents:write +
+#                pull-requests:write that the signed commit and PR need.
+#
 # Bot-PR topology mirrors release-pr.yml exactly, for the same reason: a PR
 # opened with the default GITHUB_TOKEN does not cascade main's required status
 # checks, so it could never be merged. The results.json commit is created via
@@ -40,7 +54,7 @@ on:
     # 07:00 UTC on the 1st of each month. Clear of the repo's other crons.
     - cron: '0 7 1 * *'
 
-# Workflow-level default: read-only. The refresh job below upgrades to
+# Workflow-level default: read-only. Only the merge job below upgrades to
 # contents: write + pull-requests: write for the signed commit + PR open.
 permissions:
   contents: read
@@ -52,28 +66,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  refresh:
-    name: Refresh benchmark results (non-gating)
+  preflight:
+    name: Validate credentials
     runs-on: ubuntu-latest
-    # Belt-and-suspenders non-gating: this job already cannot fail a PR (it has
-    # no pull_request trigger and is not a required check); continue-on-error
-    # additionally reports a flaky monthly run as neutral rather than red.
-    continue-on-error: true
-    # The full sweep across the cohort is long-running; the monthly cadence
-    # keeps the compute a non-issue.
-    timeout-minutes: 60
     # Scope the shared release-PR App credentials to this workflow, exactly as
     # release-pr.yml does (zizmor secrets-outside-env). The environment's
     # selected-branches policy (main, hotfix/v*) is already satisfied: both the
     # schedule and a manual dispatch run on main.
     environment: Production (Release PR)
     permissions:
-      contents: write # createCommitOnBranch: the refresh branch ref + signed results.json commit. Never writes to main directly.
-      pull-requests: write # gh pr create, via the App installation token.
+      contents: read
     steps:
       - name: Validate release-PR app credentials
-        # The PR open below MUST use a GitHub App installation token, not
-        # GITHUB_TOKEN: a PR opened by GITHUB_TOKEN does not cascade main's
+        # The PR open in the merge job MUST use a GitHub App installation token,
+        # not GITHUB_TOKEN: a PR opened by GITHUB_TOKEN does not cascade main's
         # required status checks, so it could never be merged. Fail here, before
         # the long arena sweep, if the shared App secrets are absent, so a
         # misconfiguration costs seconds rather than the better part of an hour.
@@ -87,12 +93,60 @@ jobs:
             exit 1
           fi
 
+  shard:
+    name: Arena shard ${{ matrix.shard }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    # Belt-and-suspenders non-gating: this workflow has no pull_request trigger
+    # and is not a required check, so it already cannot fail a PR. On top of
+    # that, continue-on-error lets the merge job fold whatever shards finished if
+    # one slice flakes (a red slice simply uploads no artifact).
+    continue-on-error: true
+    # The slowest single slice is shard 1: its two formkit massive cells each run
+    # out a full ~320s did-not-finish budget back to back. 20 min leaves headroom
+    # over that; retune alongside the grep map after a real CI timing pass.
+    timeout-minutes: 20
+    # A shard only measures; it never touches the privileged release-PR
+    # credentials (only the merge job does), so it stays read-only.
+    permissions:
+      contents: read
+    strategy:
+      # One slice's flake must never cancel the others: the merge job folds
+      # whatever finished.
+      fail-fast: false
+      matrix:
+        # shard -> the spec grep slice it drives. The slices are disjoint and
+        # their union is every cell plus the cohort-metadata and dnf-conversion
+        # tests exactly once. Re-verify with `playwright test --grep <p> --list`
+        # after any change to the scenario matrix. Balanced by wall-clock, not
+        # cell count: the three ~320s did-not-finish cells (all massive at L5000)
+        # dominate, so the two heaviest libraries' massive cells take their own
+        # shards and the many small scenarios share the remaining two.
+        include:
+          # The two formkit massive did-not-finish cells (keystroke + validate at
+          # L5000), the slowest single slice.
+          - shard: 1
+            grep: 'massive scenario.*formkit'
+          # Every other library's massive cells, including the tanstack L5000
+          # validate did-not-finish cell.
+          - shard: 2
+            grep: 'massive scenario.*(attaform|vee-validate|tanstack|formisch|regle-schema|regle-rules|vuelidate)'
+          # The small headless scenarios, plus the cohort-metadata test (it emits
+          # the capability matrix the merge needs) and the dnf-conversion guard
+          # tests. This slice has no did-not-finish cells, so it is the least
+          # likely to go red, which is where the load-bearing meta belongs.
+          - shard: 3
+            grep: '(flat|nested|discriminated-union|wizard) scenario|cohort metadata|dnf conversion'
+          # The array and grid scenarios (their own slice for the per-row
+          # mutation dimensions).
+          - shard: 4
+            grep: '(arrays|grid) scenario'
+    steps:
       - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          # The refresh branch + signed commit are written via gh api
-          # (createCommitOnBranch), not git push, so the working tree never
-          # needs an attached credential (zizmor artipacked).
+          # This job runs no git push and mints no token, so the working tree
+          # never needs an attached credential (zizmor artipacked).
           persist-credentials: false
 
       - name: Setup pnpm
@@ -115,15 +169,98 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm --filter attaform-bench-arena exec playwright install --with-deps chromium
 
-      - name: Run the arena
-        # Drives the cohort through every scenario and writes
-        # apps/bench-arena/results.json with provenance source=ci (the default
-        # GITHUB_* env vars supply the run id, commit, and run URL). One
-        # best-effort outbound call per library hits the OpenSSF Scorecard API;
-        # a blocked network degrades those rows to "unavailable" without failing
-        # the run. A red spec run writes nothing, so this step simply fails and
-        # no stale numbers are committed.
-        run: pnpm --filter attaform-bench-arena run arena
+      - name: Run the arena shard
+        # Drives just this shard's grep slice and writes its harvested cells to a
+        # partial. No Scorecard or bundle work here; that is the merge job's
+        # global tail. A red slice writes nothing and fails this step;
+        # continue-on-error keeps the rest of the matrix going and the merge job
+        # folds what finished. Passed via env, never inlined into the shell, so a
+        # grep pattern is data, not script (zizmor template-injection).
+        env:
+          GREP: ${{ matrix.grep }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          pnpm --filter attaform-bench-arena exec node scripts/run-arena.mjs \
+            --grep "$GREP" \
+            --emit-cells "test-results/cells-${SHARD}.json"
+
+      - name: Upload shard cells
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-cells-${{ matrix.shard }}
+          path: apps/bench-arena/test-results/cells-${{ matrix.shard }}.json
+          # Pure intra-run plumbing the merge job consumes minutes later; a short
+          # retention keeps the storage footprint negligible.
+          retention-days: 1
+          # The slice wrote no partial only if the run step succeeded yet emitted
+          # nothing, which is a bug worth a loud failure rather than a silent gap.
+          if-no-files-found: error
+
+  merge:
+    name: Merge results and open PR (non-gating)
+    needs: shard
+    # The shards are continue-on-error, so fold whatever they produced once the
+    # whole matrix is done, even if some slices flaked. Skip only on an operator
+    # cancel: do not open a refresh PR from a half-cancelled sweep. assemble's
+    # guards (no cells / no meta abort without writing) handle a sweep where too
+    # many shards dropped out.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # Belt-and-suspenders non-gating, as above: a flaky assemble or PR-open
+    # reports neutral rather than red.
+    continue-on-error: true
+    timeout-minutes: 15
+    # Same environment scoping as preflight: the signed commit + PR open need the
+    # shared release-PR App credentials, available only on this environment.
+    environment: Production (Release PR)
+    permissions:
+      contents: write # createCommitOnBranch: the refresh branch ref + signed results.json commit. Never writes to main directly.
+      pull-requests: write # gh pr create, via the App installation token.
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # The refresh branch + signed commit are written via gh api
+          # (createCommitOnBranch), not git push, so the working tree never
+          # needs an attached credential (zizmor artipacked).
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Attaform dist
+        # The global tail weighs each library's gzipped bundle, and the Attaform
+        # row weighs the real published dist, so the merge job needs prepack too
+        # even though it drives no browser.
+        run: pnpm prepack
+
+      - name: Download shard cells
+        # merge-multiple flattens every bench-cells-* artifact into one directory,
+        # so assemble reads cells-1.json, cells-2.json, ... side by side.
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: bench-cells-*
+          path: apps/bench-arena/test-results/merged
+          merge-multiple: true
+
+      - name: Assemble results
+        # Folds every shard's cells, runs the global tail (scorecards + bundles +
+        # provenance + runtime), and writes apps/bench-arena/results.json with
+        # provenance source=ci. If too many shards dropped out (no cells, or no
+        # shard carried the cohort meta), it writes nothing and fails, so no stale
+        # or thin numbers reach the PR.
+        run: |
+          set -euo pipefail
+          pnpm --filter attaform-bench-arena exec node scripts/run-arena.mjs --assemble test-results/merged
 
       - name: Prepare commit metadata
         id: meta

@@ -197,6 +197,23 @@ export function canonicalizePath(input: string | Path): {
     rememberSegmentsForPathKey(key, segments)
     return entry
   }
+  return keyForSegments(input)
+}
+
+/**
+ * Canonical `{ segments, key }` for an already-array path: normalise each
+ * segment (integer-looking → number) and mint the stable `JSON.stringify`
+ * key, exactly as [[canonicalizePath]]'s array branch does (it delegates
+ * here). Factored out so a hot caller that already holds a segment array
+ * — the container field-state leaf walk — can produce a `PathKey` that
+ * matches the one `originals` was seeded with WITHOUT routing through
+ * `canonicalizePath`, whose per-read call count a meta-budget test gate
+ * watches.
+ */
+export function keyForSegments(input: Path): {
+  segments: readonly Segment[]
+  key: PathKey
+} {
   const segments = Array.from(input).map(normalizeSegment)
   const key = JSON.stringify(segments) as PathKey
   rememberSegmentsForPathKey(key, segments)

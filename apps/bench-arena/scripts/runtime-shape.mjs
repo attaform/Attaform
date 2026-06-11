@@ -72,6 +72,12 @@ export function isDnf(cell) {
   return statusOf(cell) === 'did-not-finish'
 }
 
+/** A cell's comparison dimension. Timed cells name their own; a memory cell carries
+ *  no `dim` field, so its dimension is implicitly 'memory'. */
+export function dimOf(cell) {
+  return cell.kind === 'memory' ? 'memory' : cell.dim
+}
+
 /** The value a cell's ratio and slope are computed on: keystroke/mount/etc. use
  *  the timed median; memory uses retained heap (its headline, churn is noisier).
  *  Never called on a DNF cell (which has no summary); callers gate on isDnf. */
@@ -131,7 +137,7 @@ export function buildRuntime(cells, libOrder) {
   const key = (s, d, p, lib) => `${s}|${d}|${p}|${lib}`
   const grouped = {}
   for (const cell of cells) {
-    const dim = cell.kind === 'memory' ? 'memory' : cell.dim
+    const dim = dimOf(cell)
     index.set(key(cell.scenario, dim, cell.params, cell.adapter), cell)
     ;((grouped[cell.scenario] ??= {})[dim] ??= new Set()).add(cell.params)
   }
@@ -189,4 +195,39 @@ export function buildRuntime(cells, libOrder) {
     }
   }
   return runtime
+}
+
+/**
+ * The single-machine-per-dimension fairness invariant for a sharded sweep. Each
+ * shard runs on one machine, so a (scenario, dim) column whose cells came from more
+ * than one shard was measured across more than one CPU: its library ratios (a lib
+ * versus the baseline at a param) and its slopes (a lib across params) would then
+ * compare timings taken on different hardware. Given the shard partials, each
+ * carrying the runner it measured on and the cells it produced, return every column
+ * measured across more than one CPU model, so the merge can refuse to publish a
+ * cohort whose comparisons cross machines. An empty array is a clean cohort.
+ *
+ * GitHub-hosted runners are a heterogeneous fleet: one monthly sweep can draw two
+ * CPU generations at once. So the rule is enforced here rather than assumed from
+ * the shard map, which is free to be re-sliced as long as no (scenario, dim) is
+ * split across shards.
+ */
+export function crossMachineColumns(partials) {
+  const modelsByColumn = new Map()
+  for (const partial of partials) {
+    const model = partial.runner?.cpuModel ?? 'unknown'
+    for (const cell of partial.cells ?? []) {
+      const column = `${cell.scenario} / ${dimOf(cell)}`
+      let models = modelsByColumn.get(column)
+      if (!models) {
+        models = new Set()
+        modelsByColumn.set(column, models)
+      }
+      models.add(model)
+    }
+  }
+  return [...modelsByColumn.entries()]
+    .filter(([, models]) => models.size > 1)
+    .map(([column, models]) => ({ column, models: [...models].sort() }))
+    .sort((a, b) => a.column.localeCompare(b.column))
 }

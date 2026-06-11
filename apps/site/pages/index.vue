@@ -475,9 +475,13 @@
           </div>
         </div>
 
-        <div class="mt-12">
+        <div class="mt-12 flex flex-wrap gap-x-8 gap-y-3">
           <UiButton to="/docs/getting-started/why-attaform" variant="link">
             <span>Read the full case for Attaform</span>
+            <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
+          </UiButton>
+          <UiButton to="/docs/comparison/benchmarks" variant="link">
+            <span>See how it compares</span>
             <ArrowRight class="h-4 w-4" :stroke-width="2.25" />
           </UiButton>
         </div>

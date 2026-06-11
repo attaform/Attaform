@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Attaform bench-arena</title>
+  </head>
+  <body>
+    <!--
+      The arena mounts exactly one adapter per page load, selected by query
+      param (?adapter&scenario&params&trigger&dim). The driver navigates to a
+      fresh URL for every cell so no library shares a heap with another.
+    -->
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

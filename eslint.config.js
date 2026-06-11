@@ -223,6 +223,19 @@ export default [
     },
   },
 
+  // Bench-arena harness components are path-namespaced inside each adapter
+  // directory (`tanstack/Field.vue`, `vee-validate/Field.vue`, ...) and
+  // deliberately mirror the name of each library's own field-rendering
+  // surface. They are internal to the benchmark, never public tags, so the
+  // multi-word rule's clarity heuristic does not apply here either — the same
+  // exemption the site components above carry.
+  {
+    files: ['apps/bench-arena/src/**/*.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
+  },
+
   // Playground-only `toast` global. Injected at runtime by
   // `DemoReplEditor.client.vue`'s `previewOptions.customCode.useCode`
   // and exposed in demos under `apps/site/docs-demos/` and
@@ -439,6 +452,9 @@ export default [
       'apps/site/public/_pagefind/**',
       // Site-local build scripts — same rationale as repo-root scripts/**.
       'apps/site/scripts/**',
+      // Bench-arena build scripts (the orchestrator, bundle and version
+      // helpers) — Node tooling, same rationale as repo-root scripts/**.
+      'apps/bench-arena/scripts/**',
       '.prettierrc.cjs',
       'scripts/**',
       // Bundled-types regression fixture imports from `dist/*` to

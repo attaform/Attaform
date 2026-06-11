@@ -141,8 +141,16 @@ describe('errors call-form: empty-string vs no-arg divergence', () => {
 
 describe('remount-with-same-key: async-factory lifecycle on consumer churn', () => {
   const apps: App[] = []
-  afterEach(() => {
+  afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
+    // A remount triggers the adapter's async fingerprint mismatch check,
+    // which dynamically imports the adapter module. If that import is
+    // still in flight when vitest tears the environment down it rejects
+    // with EnvironmentTeardownError noise (the library catches it and
+    // skips the check, but it clutters CI logs). Drain it here while the
+    // environment is alive; the module is already cached from the
+    // initial mount, so one macrotask is enough.
+    await new Promise((resolve) => setTimeout(resolve, 0))
   })
 
   /**

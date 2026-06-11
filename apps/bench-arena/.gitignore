@@ -1,0 +1,7 @@
+# Build + tooling output (the real Attaform dist lives at the repo root).
+dist/
+test-results/
+playwright-report/
+.playwright/
+# Smoke output from `run-arena.mjs --grep`; only a full run's results.json ships.
+results.smoke.json

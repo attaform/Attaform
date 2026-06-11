@@ -90,3 +90,4 @@ These ship with the core, typed and orchestrated as first-class features:
 - [Type safety](/docs/reading-the-form/type-safety): wide while typing, tight inside `handleSubmit`, by design.
 - [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.
 - [The `v-register` directive](/docs/binding-inputs/v-register): how Attaform binds inputs.
+- [Benchmarks](/docs/comparison/benchmarks): how Attaform measures up across the Vue form-library field, in a real browser.

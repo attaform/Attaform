@@ -39,6 +39,14 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Demos', to: '/demos' },
     ],
   },
+  // Comparison sits second, right after the introduction: how Attaform
+  // stacks up against the field is a first-visit question, not a footnote,
+  // so the scoreboard rides near the top rather than at the bottom of the
+  // sidebar where it read as buried.
+  {
+    heading: 'Comparison',
+    links: [{ title: 'Benchmarks', to: '/docs/comparison/benchmarks' }],
+  },
   // Phase 1 fills in the remaining categories below as each page
   // lands. Empty `links` arrays render the heading as a disabled
   // sidebar group — visually placeholding the IA without surfacing

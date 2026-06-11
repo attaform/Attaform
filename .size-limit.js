@@ -381,7 +381,17 @@ export default [
     // (#361): same shared core chunk (transform primitive + handleSubmit
     // drain + settleTransforms surface + transforming rollup + vRegisterFile
     // unification). Measured at 65.09 KB.
-    limit: '66 KB',
+    //
+    // Raised 66 → 67 KB on the zod-version-skew hardening branch (#383):
+    // the v3 adapter's new rebuild-schema.ts reconstructs slim / stripped
+    // nodes from the consumer's own node (prototype-preserving, zero
+    // ambient `z.*` construction) so a hoisted second zod major cannot
+    // poison the rebuild. The unified entry bundles the v3 adapter, so it
+    // absorbs the module (rebuildWithDef + the per-kind wrappers + the DU
+    // optionsMap remap, which reuses zod's own discriminator extraction
+    // rather than re-deriving it). zod-v3.mjs holds at 62 KB (61.53).
+    // Measured at 66.23 KB.
+    limit: '67 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

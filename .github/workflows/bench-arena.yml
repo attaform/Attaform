@@ -102,9 +102,10 @@ jobs:
     # that, continue-on-error lets the merge job fold whatever shards finished if
     # one slice flakes (a red slice simply uploads no artifact).
     continue-on-error: true
-    # The slowest single slice is shard 1: its two formkit massive cells each run
-    # out a full ~320s did-not-finish budget back to back. 20 min leaves headroom
-    # over that; retune alongside the grep map after a real CI timing pass.
+    # The slowest single slice is massive-validate: its two L5000 did-not-finish
+    # cells (formkit and tanstack) each run out a full ~320s budget back to back,
+    # ~11 min. 20 min leaves ample headroom, and the did-not-finish budgets are
+    # capped, so a slower runner cannot push this slice over the cap.
     timeout-minutes: 20
     # A shard only measures; it never touches the privileged release-PR
     # credentials (only the merge job does), so it stays read-only.
@@ -115,32 +116,49 @@ jobs:
       # whatever finished.
       fail-fast: false
       matrix:
-        # shard -> the spec grep slice it drives. The slices are disjoint and
-        # their union is every cell plus the cohort-metadata and dnf-conversion
-        # tests exactly once. Re-verify with `playwright test --grep <p> --list`
-        # after any change to the scenario matrix. Balanced by wall-clock, not
-        # cell count: the three ~320s did-not-finish cells (all massive at L5000)
-        # dominate, so the two heaviest libraries' massive cells take their own
-        # shards and the many small scenarios share the remaining two.
+        # shard -> the spec grep slice it drives. One shard per scenario, so every
+        # library in a (scenario, dim) comparison is measured on the same machine:
+        # the page only ever compares within a scenario (library-versus-baseline
+        # ratios, across-param slopes, the standing sentence), so scenario-whole
+        # slices are fair by construction. massive is the one scenario split
+        # further, by dimension, because all of it on one shard runs ~17 min against
+        # the 20 min cap; splitting by dimension keeps each comparison's libraries
+        # together, so it stays just as fair. The merge enforces this rather than
+        # trusting it: assemble refuses to publish if any (scenario, dim) was
+        # measured across more than one machine, so the slices below are free to be
+        # re-sliced as long as no dimension is split. GitHub's fleet is heterogeneous
+        # (a sweep can draw two CPU generations), which is why same-machine-per-
+        # dimension is enforced; pinning identical machines (self-hosted or large
+        # runners) would let the two validate did-not-finish cells split apart and
+        # drop the long pole to ~6 min, but that infra is not worth ~5 min on a
+        # monthly job. The slices are disjoint and their union is every cell plus the
+        # cohort-metadata and dnf-conversion tests exactly once; re-verify with
+        # `playwright test --grep <p> --list` after any change to the scenario matrix.
         include:
-          # The two formkit massive did-not-finish cells (keystroke + validate at
-          # L5000), the slowest single slice.
-          - shard: 1
-            grep: 'massive scenario.*formkit'
-          # Every other library's massive cells, including the tanstack L5000
-          # validate did-not-finish cell.
-          - shard: 2
-            grep: 'massive scenario.*(attaform|vee-validate|tanstack|formisch|regle-schema|regle-rules|vuelidate)'
-          # The small headless scenarios, plus the cohort-metadata test (it emits
-          # the capability matrix the merge needs) and the dnf-conversion guard
-          # tests. This slice has no did-not-finish cells, so it is the least
-          # likely to go red, which is where the load-bearing meta belongs.
-          - shard: 3
-            grep: '(flat|nested|discriminated-union|wizard) scenario|cohort metadata|dnf conversion'
-          # The array and grid scenarios (their own slice for the per-row
-          # mutation dimensions).
-          - shard: 4
-            grep: '(arrays|grid) scenario'
+          # massive validate carries both L5000 did-not-finish cells (formkit and
+          # tanstack), back to back at ~320s each: the ~11 min long pole. Anchored on
+          # the dim at end-of-title so it does not also catch the vee-validate
+          # adapter's other dimensions (its name contains "validate").
+          - shard: massive-validate
+            grep: 'massive scenario.* validate$'
+          # The rest of massive (keystroke, mount, memory; one did-not-finish cell,
+          # formkit keystroke L5000), plus the cohort-metadata test (it emits the
+          # capability matrix the merge needs) and the dnf-conversion guards. Those
+          # two carry no cohort cells, so they ride a slice that does.
+          - shard: massive-rest
+            grep: 'massive scenario.*(keystroke|mount|memory)|cohort metadata|dnf conversion'
+          - shard: flat
+            grep: 'flat scenario'
+          - shard: nested
+            grep: 'nested scenario'
+          - shard: discriminated-union
+            grep: 'discriminated-union scenario'
+          - shard: wizard
+            grep: 'wizard scenario'
+          - shard: arrays
+            grep: 'arrays scenario'
+          - shard: grid
+            grep: 'grid scenario'
     steps:
       - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -250,7 +268,8 @@ jobs:
 
       - name: Download shard cells
         # merge-multiple flattens every bench-cells-* artifact into one directory,
-        # so assemble reads cells-1.json, cells-2.json, ... side by side.
+        # so assemble reads cells-flat.json, cells-massive-validate.json, ... side
+        # by side.
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: bench-cells-*

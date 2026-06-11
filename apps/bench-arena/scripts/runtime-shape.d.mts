@@ -80,12 +80,34 @@ export interface DimBlock {
 
 export type Runtime = Record<string, Record<string, DimBlock>>
 
+export interface ShardRunner {
+  os?: string
+  arch?: string
+  cpuModel: string
+  cpuCount?: number
+  shardCount?: number
+}
+
+/** A shard partial as the merge reads it: the runner it measured on and the cells
+ *  it produced. Other fields exist on disk; the fairness gate reads only these. */
+export interface ShardPartial {
+  runner?: ShardRunner
+  cells?: Cell[]
+}
+
+export interface CrossMachineColumn {
+  column: string
+  models: string[]
+}
+
 export const SCENARIO_ORDER: string[]
 export const DIM_ORDER: string[]
 export const BASELINE: string
 
 export function statusOf(cell: Cell): CellStatus
 export function isDnf(cell: Cell): boolean
+export function dimOf(cell: Cell): string
 export function cellValue(cell: Cell): number
 export function rowOf(cell: Cell): RuntimeRow
 export function buildRuntime(cells: Cell[], libOrder: Map<string, number>): Runtime
+export function crossMachineColumns(partials: ShardPartial[]): CrossMachineColumn[]

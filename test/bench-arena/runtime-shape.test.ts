@@ -13,6 +13,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildRuntime,
   cellValue,
+  crossMachineColumns,
+  dimOf,
   isDnf,
   rowOf,
   statusOf,
@@ -22,6 +24,7 @@ import type {
   DimBlock,
   Runtime,
   RuntimeRow,
+  ShardPartial,
 } from '../../apps/bench-arena/scripts/runtime-shape.mjs'
 
 function timed(
@@ -196,5 +199,82 @@ describe('buildRuntime ratio and slope with DNF cells', () => {
     const formkitLarge = rowFor(rowsAt(rt, 'nested', 'validate', 'D8'), 'formkit')
     expect(formkitLarge.ratio).toBe(2.5) // 50 over the baseline 20, still computable
     expect(formkitLarge.slope).toBeNull() // but the D4 base did not finish
+  })
+})
+
+describe('dimOf', () => {
+  it('reads a timed cell dimension and treats a memory cell as the memory dimension', () => {
+    expect(dimOf(timed('attaform', 'massive', 'L2000', 'validate', 1))).toBe('validate')
+    expect(dimOf(memory('attaform', 'massive', 'L2000', 4096))).toBe('memory')
+  })
+})
+
+// The single-machine-per-dimension fairness gate the sharded merge enforces: a
+// (scenario, dim) column whose libraries were measured on more than one CPU model
+// would compare timings across hardware, so the merge refuses to publish it.
+describe('crossMachineColumns', () => {
+  const partial = (cpuModel: string, cells: Cell[]): ShardPartial => ({
+    runner: { cpuModel },
+    cells,
+  })
+
+  it('passes a heterogeneous fleet where each dimension was measured on one machine', () => {
+    // Two shards on different CPUs, but each owns a whole scenario, so no single
+    // (scenario, dim) column is split. Heterogeneous fleet, still fair.
+    const crossed = crossMachineColumns([
+      partial('CPU-A', [
+        timed('attaform', 'flat', 'F10', 'keystroke', 1),
+        timed('formkit', 'flat', 'F10', 'keystroke', 9),
+      ]),
+      partial('CPU-B', [
+        timed('attaform', 'grid', 'N10', 'mount', 2),
+        timed('formkit', 'grid', 'N10', 'mount', 8),
+      ]),
+    ])
+    expect(crossed).toEqual([])
+  })
+
+  it('passes the same dimension split across two shards that drew the same CPU model', () => {
+    // Identical hardware is fair to compare, so one distinct model is never a split.
+    const crossed = crossMachineColumns([
+      partial('CPU-A', [timed('attaform', 'massive', 'L2000', 'validate', 1)]),
+      partial('CPU-A', [timed('formkit', 'massive', 'L2000', 'validate', 9)]),
+    ])
+    expect(crossed).toEqual([])
+  })
+
+  it('flags every dimension whose libraries were split across two machines', () => {
+    // The PR #388 shape: formkit massive on one CPU, the baseline on another, so
+    // every massive dimension compared formkit against hardware it never ran on.
+    const crossed = crossMachineColumns([
+      partial('AMD EPYC 7763', [
+        timed('formkit', 'massive', 'L2000', 'validate', 374),
+        timed('formkit', 'massive', 'L2000', 'keystroke', 4),
+      ]),
+      partial('AMD EPYC 9V74', [
+        timed('attaform', 'massive', 'L2000', 'validate', 2),
+        timed('attaform', 'massive', 'L2000', 'keystroke', 16),
+      ]),
+    ])
+    expect(crossed).toEqual([
+      { column: 'massive / keystroke', models: ['AMD EPYC 7763', 'AMD EPYC 9V74'] },
+      { column: 'massive / validate', models: ['AMD EPYC 7763', 'AMD EPYC 9V74'] },
+    ])
+  })
+
+  it('detects a split memory dimension (a cell that carries no dim field)', () => {
+    const crossed = crossMachineColumns([
+      partial('CPU-A', [memory('attaform', 'flat', 'F10', 4096)]),
+      partial('CPU-B', [memory('formkit', 'flat', 'F10', 8192)]),
+    ])
+    expect(crossed).toEqual([{ column: 'flat / memory', models: ['CPU-A', 'CPU-B'] }])
+  })
+
+  it('treats a partial with no runner as an unknown machine', () => {
+    const crossed = crossMachineColumns([
+      partial('CPU-A', [timed('attaform', 'flat', 'F10', 'mount', 1)]),
+      { cells: [timed('formkit', 'flat', 'F10', 'mount', 9)] },
+    ])
+    expect(crossed).toEqual([{ column: 'flat / mount', models: ['CPU-A', 'unknown'] }])
   })
 })

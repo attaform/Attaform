@@ -34,7 +34,8 @@
  *                                                harvested cells, stamped with the cohort size n
  *                                                (no scorecards/bundles/runtime)
  *   node scripts/run-arena.mjs --assemble <dir>  merge mode: fold every shard partial in <dir>
- *                                                (refusing unless all n shards reported),
+ *                                                (refusing unless all n shards reported and no
+ *                                                dimension was measured across machines),
  *                                                run the global tail once -> results.json
  */
 import { spawnSync } from 'node:child_process'
@@ -45,7 +46,7 @@ import { argv, env, exit, version as nodeVersion } from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { readInstalledRepoSlug, readInstalledVersions } from './installed-version.mjs'
 import { measureBundles } from './measure-bundles.mjs'
-import { BASELINE, buildRuntime, isDnf, SCENARIO_ORDER } from './runtime-shape.mjs'
+import { BASELINE, buildRuntime, crossMachineColumns, isDnf, SCENARIO_ORDER } from './runtime-shape.mjs'
 import { fetchScorecards, scorecardViewerUrl } from './scorecards.mjs'
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -367,8 +368,9 @@ function emitCells(grep, outPath, shardTotal) {
  * their cells, take the cohort meta from the first partial that carried it (the
  * shard whose slice ran the metadata test), fold the runner identities, and run
  * the global tail once. Mirrors the full-run guards: no partials, a shard missing
- * from the cohort, no cells, or no meta each abort without writing, so an
- * incomplete sweep publishes nothing rather than a thin results.json.
+ * from the cohort, no cells, no meta, or a dimension measured across more than one
+ * machine each abort without writing, so an incomplete or cross-hardware sweep
+ * publishes nothing rather than a thin or unfair results.json.
  */
 async function assemble(dir) {
   const files = readdirSync(dir)
@@ -407,6 +409,21 @@ async function assemble(dir) {
   const meta = partials.find((p) => p.meta)?.meta ?? null
   if (!meta) {
     console.error('[run-arena] no shard partial carried the cohort meta attachment.')
+    exit(1)
+  }
+  // Single-machine-per-dimension gate. Each shard measured on one machine, so a
+  // (scenario, dim) column split across shards was timed on more than one CPU, and
+  // its ratios and slopes would then compare across hardware. GitHub's fleet is
+  // heterogeneous (a sweep can draw two CPU generations), so this is enforced, not
+  // assumed: refuse to publish a cohort whose comparisons cross machines.
+  const crossed = crossMachineColumns(partials)
+  if (crossed.length > 0) {
+    const detail = crossed.map((c) => `${c.column} (${c.models.join(' + ')})`).join('; ')
+    console.error(
+      `[run-arena] these dimensions were measured across more than one machine: ${detail}; ` +
+        'refusing to publish a cohort whose comparisons would cross hardware. ' +
+        'Keep each (scenario, dim) on a single shard.'
+    )
     exit(1)
   }
   const runner = aggregateRunners(partials.map((p) => p.runner).filter(Boolean))

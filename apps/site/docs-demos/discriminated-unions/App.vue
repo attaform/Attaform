@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const schema = z.object({
     notify: z.discriminatedUnion('channel', [
@@ -31,18 +32,18 @@
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form class="demo" @submit.prevent="onSubmit">
     <fieldset>
       <legend>Notify me by</legend>
-      <label class="radio">
+      <label class="row">
         <input v-register="form.register('notify.channel')" type="radio" value="email" />
         Email
       </label>
-      <label class="radio">
+      <label class="row">
         <input v-register="form.register('notify.channel')" type="radio" value="sms" />
         SMS
       </label>
-      <label class="radio">
+      <label class="row">
         <input v-register="form.register('notify.channel')" type="radio" value="push" />
         Push
       </label>
@@ -79,7 +80,7 @@
     <button type="submit">Submit</button>
 
     <p class="hint">
-      Switching the channel reshapes storage to the new variant's slim default — the inactive
+      Switching the channel reshapes storage to the new variant's slim default: the inactive
       variant's keys are purged, the new variant's keys are seeded. Pop back to email after filling
       in another variant; values come back (that's
       <a href="/docs/writing-and-mutating/variant-memory">variant memory</a>).
@@ -88,81 +89,14 @@
 </template>
 
 <style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 30rem;
-  }
   fieldset {
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-    padding: 0.5rem 0.875rem;
-    margin: 0;
-    display: flex;
     flex-direction: row;
-    gap: 1rem;
-    align-items: center;
     flex-wrap: wrap;
-  }
-  legend {
-    padding: 0 0.375rem;
-    font-size: 0.8125rem;
-    color: #6b7280;
-  }
-  .radio {
-    display: flex;
     align-items: center;
-    gap: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  input {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  em {
-    color: #dc2626;
-    font-size: 0.8125rem;
-    font-style: normal;
-    font-weight: 400;
-  }
-  button {
-    align-self: flex-start;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    border: 1px solid #2563eb;
-    background: #2563eb;
-    color: white;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  button:hover {
-    background: #1d4ed8;
+    gap: 1rem;
   }
   a {
-    color: #2563eb;
+    color: var(--color-accent);
     text-decoration: underline;
-  }
-  .hint {
-    margin: 0;
-    color: #6b7280;
-    font-size: 0.75rem;
   }
 </style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const form = useForm({
     schema: z.object({
@@ -14,7 +15,7 @@
 </script>
 
 <template>
-  <form @submit.prevent>
+  <form class="demo" @submit.prevent>
     <ol class="rows">
       <li v-for="(row, i) in form.list('roster')" :key="row.key" class="row">
         <code class="token" title="row.key stays with this athlete across reorders">{{
@@ -37,7 +38,7 @@
       </li>
     </ol>
 
-    <div class="actions">
+    <div class="actions mono">
       <button type="button" @click="form.append('roster', 'New athlete')">form.append(…)</button>
     </div>
 
@@ -49,45 +50,18 @@
 </template>
 
 <style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 32rem;
-  }
-  .rows {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
   .token {
     font-size: 0.7rem;
     font-family: ui-monospace, monospace;
-    color: #6b7280;
-    background: #f3f4f6;
+    color: var(--color-fg-muted);
+    background: var(--color-surface-2);
     border-radius: 0.25rem;
     padding: 0.15rem 0.4rem;
     min-width: 2.25rem;
     text-align: center;
   }
-  input {
+  .row input {
     flex: 1;
-    padding: 0.4rem 0.6rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
   }
   .row-actions {
     display: flex;
@@ -97,40 +71,13 @@
     width: 1.75rem;
     height: 1.75rem;
     border-radius: 0.25rem;
-    border: 1px solid #d1d5db;
-    background: #fff;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-bg);
+    color: var(--color-fg);
     font-size: 0.875rem;
     cursor: pointer;
   }
   .row-actions button:hover {
-    background: #f3f4f6;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .actions button {
-    padding: 0.35rem 0.7rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    background: #fff;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    cursor: pointer;
-  }
-  .actions button:hover {
-    background: #f3f4f6;
-  }
-  .hint {
-    font-size: 0.8rem;
-    color: #6b7280;
-    margin: 0;
-    line-height: 1.5;
-  }
-  .hint code {
-    font-family: ui-monospace, monospace;
-    font-size: 0.75rem;
-    color: #374151;
+    background: var(--color-surface-2);
   }
 </style>

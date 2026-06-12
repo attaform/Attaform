@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const schema = z.object({
     website: z.url('That URL is malformed.').optional(),
@@ -20,7 +21,7 @@
 </script>
 
 <template>
-  <form @submit.prevent>
+  <form class="demo" @submit.prevent>
     <label>
       Website (optional)
       <input
@@ -71,7 +72,7 @@
       >
     </ol>
 
-    <p class="note"
+    <p class="hint"
       >Without the optional-clear contract, step 3 would leave storage at <code>''</code>, which is
       neither <code>undefined</code> (the optional escape) nor a valid URL (the inner check). The
       error would stick around forever, and the only way out would be to refresh or type a valid URL
@@ -81,37 +82,6 @@
 </template>
 
 <style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 32rem;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: #374151;
-  }
-  input {
-    padding: 0.5rem 0.625rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  em {
-    color: #b91c1c;
-    font-style: normal;
-    font-size: 0.8125rem;
-    font-weight: 500;
-  }
   table {
     border-collapse: collapse;
     font-size: 0.8125rem;
@@ -121,7 +91,7 @@
     text-align: left;
     padding: 0.375rem 0.625rem 0.375rem 0;
     width: 6rem;
-    color: #6b7280;
+    color: var(--color-fg-muted);
     font-weight: 500;
   }
   td {
@@ -129,47 +99,31 @@
   }
   tr + tr th,
   tr + tr td {
-    border-top: 1px solid #f3f4f6;
-  }
-  code {
-    font-family: ui-monospace, monospace;
-    background: #f3f4f6;
-    padding: 0.1rem 0.4rem;
-    border-radius: 0.25rem;
-    font-size: 0.8125rem;
+    border-top: 1px solid var(--color-surface-2);
   }
   code.absent {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
   }
   code.present {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-hover);
   }
   .valid {
-    color: #047857;
+    color: var(--color-success);
     font-weight: 500;
   }
   .invalid {
-    color: #b91c1c;
+    color: var(--color-danger);
     font-weight: 500;
   }
   ol {
     margin: 0;
     padding-left: 1.25rem;
     font-size: 0.8125rem;
-    color: #374151;
+    color: var(--color-fg);
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-  }
-  .note {
-    margin: 0;
-    padding: 0.625rem 0.75rem;
-    background: #f9fafb;
-    border-left: 3px solid #2563eb;
-    font-size: 0.75rem;
-    color: #4b5563;
-    border-radius: 0.25rem;
   }
 </style>

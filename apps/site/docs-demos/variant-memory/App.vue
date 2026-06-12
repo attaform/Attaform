@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const schema = z.object({
     payment: z.discriminatedUnion('kind', [
@@ -32,21 +33,21 @@
 </script>
 
 <template>
-  <div class="grid">
-    <div class="col">
+  <div class="demo grid">
+    <div class="stack">
       <h4>
         <code>rememberVariants: true</code>
         <small>(default)</small>
       </h4>
 
-      <form @submit.prevent>
+      <form class="stack" @submit.prevent>
         <fieldset>
           <legend>Payment method</legend>
-          <label class="radio">
+          <label class="row">
             <input v-register="memoryOn.register('payment.kind')" type="radio" value="card" />
             Card
           </label>
-          <label class="radio">
+          <label class="row">
             <input v-register="memoryOn.register('payment.kind')" type="radio" value="bank" />
             Bank
           </label>
@@ -76,25 +77,25 @@
       </form>
 
       <p class="hint ok">
-        Switch back and the previous variant's typing comes home — memory snapshots ride alongside
+        Switch back and the previous variant's typing comes home. Memory snapshots ride alongside
         the active state.
       </p>
     </div>
 
-    <div class="col">
+    <div class="stack">
       <h4>
         <code>rememberVariants: false</code>
         <small>(every switch starts fresh)</small>
       </h4>
 
-      <form @submit.prevent>
+      <form class="stack" @submit.prevent>
         <fieldset>
           <legend>Payment method</legend>
-          <label class="radio">
+          <label class="row">
             <input v-register="memoryOff.register('payment.kind')" type="radio" value="card" />
             Card
           </label>
-          <label class="radio">
+          <label class="row">
             <input v-register="memoryOff.register('payment.kind')" type="radio" value="bank" />
             Bank
           </label>
@@ -124,7 +125,7 @@
       </form>
 
       <p class="hint warn">
-        No memory — every variant switch initialises from the schema's slim default. Type into card,
+        No memory: every variant switch initialises from the schema's slim default. Type into card,
         switch to bank, switch back: card's typing is gone.
       </p>
     </div>
@@ -132,99 +133,38 @@
 </template>
 
 <style scoped>
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-  }
-  @media (max-width: 760px) {
-    .grid {
-      grid-template-columns: 1fr;
+  @media (min-width: 760px) {
+    .demo.grid {
+      grid-template-columns: 1fr 1fr;
     }
   }
-  .col {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
+  fieldset {
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
   }
   h4 {
     margin: 0;
-    font-size: 0.8125rem;
-    font-weight: 500;
     display: flex;
     align-items: baseline;
     gap: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
   }
   h4 small {
-    color: #6b7280;
+    color: var(--color-fg-muted);
     font-weight: 400;
   }
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-  }
-  fieldset {
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-    padding: 0.5rem 0.875rem;
-    margin: 0;
-    display: flex;
-    flex-direction: row;
-    gap: 1rem;
-    align-items: center;
-  }
-  legend {
-    padding: 0 0.375rem;
-    font-size: 0.8125rem;
-    color: #6b7280;
-  }
-  .radio {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  input {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  code {
-    font-family: ui-monospace, monospace;
-    background: #f3f4f6;
-    padding: 0.05rem 0.3rem;
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-  }
-  .hint {
-    margin: 0;
+  .hint.ok {
     padding: 0.5rem 0.625rem;
     border-radius: 0.375rem;
-    font-size: 0.75rem;
-  }
-  .hint.ok {
-    background: #ecfdf5;
-    color: #047857;
-    border: 1px solid #6ee7b7;
+    background: var(--color-success-soft);
+    color: var(--color-success);
   }
   .hint.warn {
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fcd34d;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.375rem;
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
   }
 </style>

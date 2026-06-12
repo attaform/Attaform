@@ -1,0 +1,3 @@
+{
+  "with": ["label", "input", "textarea", "hint", "code", "actions", "log"]
+}

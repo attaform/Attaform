@@ -1,0 +1,14 @@
+{
+  "with": [
+    "layout",
+    "stack",
+    "label",
+    "input",
+    "button",
+    "section",
+    "hint",
+    "pre",
+    "placeholder",
+    "code"
+  ]
+}

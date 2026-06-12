@@ -1,0 +1,15 @@
+{
+  "with": [
+    "layout",
+    "lede",
+    "card",
+    "section",
+    "code",
+    "hint",
+    "stack",
+    "label",
+    "input",
+    "button",
+    "banner"
+  ]
+}

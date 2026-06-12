@@ -28,7 +28,7 @@
 </script>
 
 <template>
-  <div class="demo grid">
+  <div class="demo layout split3">
     <section>
       <h4>Schema defaults only</h4>
       <form class="stack" @submit.prevent>
@@ -98,11 +98,6 @@
 </template>
 
 <style scoped>
-  @media (min-width: 760px) {
-    .demo.grid {
-      grid-template-columns: repeat(3, 1fr);
-    }
-  }
   .demo .blank {
     color: var(--color-warning);
     font-size: 0.75rem;

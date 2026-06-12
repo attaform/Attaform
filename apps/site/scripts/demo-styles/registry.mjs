@@ -739,9 +739,12 @@ export const fragments = {
 `,
 
   // Card/section header row: a title on the left, an action or status pill on
-  // the right. Lives at the top of a `card` (or any titled block).
+  // the right. Lives at the top of a `card` (or any titled block). `.spread`
+  // is the same space-between row as a standalone utility, e.g. a field
+  // caption carrying a trailing status pill.
   header: `
-.demo header {
+.demo header,
+.demo .spread {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -782,9 +785,9 @@ export const fragments = {
   // Multi-section grid. Works both as the `.demo` root itself (`class="demo
   // layout"`, which drops the form max-width and overrides the column stack)
   // and as a nested wrapper. Single column by default; add `split` for the
-  // common responsive two-column layout (stacked on narrow, side by side from
-  // 760px up). A demo wanting a different ratio overrides
-  // `grid-template-columns` in its own block.
+  // common responsive two-column layout, or `split3` for three columns (both
+  // stack on narrow and fan out from 760px up). A demo wanting a different
+  // ratio overrides `grid-template-columns` in its own block.
   layout: `
 .demo.layout,
 .demo.grid,
@@ -802,6 +805,10 @@ export const fragments = {
   .demo.layout.split,
   .demo .layout.split {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .demo.layout.split3,
+  .demo .layout.split3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 `,

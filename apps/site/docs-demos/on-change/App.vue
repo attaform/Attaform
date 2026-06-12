@@ -2,6 +2,7 @@
   import { reactive, ref } from 'vue'
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const schema = z.object({
     email: z.string(),
@@ -95,7 +96,7 @@
     </p>
 
     <label v-for="field in fields" :key="field.path">
-      <span class="row">
+      <span class="spread">
         {{ field.label }}
         <span class="status" :class="statusOf(field.path)">{{ labels[statusOf(field.path)] }}</span>
       </span>
@@ -107,115 +108,14 @@
       />
     </label>
 
-    <label class="toggle">
+    <label class="row compact">
       <input type="checkbox" v-model="failNext" />
       Make the next save fail once (auto-retries)
     </label>
 
     <div class="actions">
-      <button type="button" @click="hydrate">Load saved profile (silent)</button>
+      <button type="button" class="primary" @click="hydrate">Load saved profile (silent)</button>
       <button type="button" class="ghost" @click="resetForm">Reset</button>
     </div>
   </form>
 </template>
-
-<style scoped>
-  .demo {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    color: var(--color-fg);
-  }
-  .lede {
-    margin: 0;
-    font-size: 0.8125rem;
-    color: var(--color-fg-muted);
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.8125rem;
-    color: var(--color-fg);
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-  input {
-    padding: 0.5rem 0.625rem;
-    border-radius: 0.375rem;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg);
-    color: var(--color-fg);
-    font-size: 0.875rem;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: 2px solid var(--color-accent);
-    outline-offset: -1px;
-  }
-  .toggle {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.75rem;
-    color: var(--color-fg-subtle);
-  }
-  .toggle input {
-    width: auto;
-  }
-  .actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  button {
-    align-self: flex-start;
-    padding: 0.5rem 0.875rem;
-    border-radius: 0.375rem;
-    border: 1px solid var(--color-accent);
-    background: var(--color-accent);
-    color: var(--color-accent-fg);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  button:hover {
-    background: var(--color-accent-hover);
-    border-color: var(--color-accent-hover);
-  }
-  button.ghost {
-    background: var(--color-bg);
-    color: var(--color-fg);
-    border-color: var(--color-border);
-  }
-  button.ghost:hover {
-    background: var(--color-surface);
-  }
-  .status {
-    font-weight: 500;
-    padding: 0.05rem 0.45rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-  }
-  .status.idle {
-    background: var(--color-surface-2);
-    color: var(--color-fg-muted);
-  }
-  .status.saving {
-    background: var(--color-warning-soft);
-    color: var(--color-warning);
-  }
-  .status.saved {
-    background: var(--color-success-soft);
-    color: var(--color-success);
-  }
-  .status.error {
-    background: var(--color-danger-soft);
-    color: var(--color-danger);
-  }
-</style>

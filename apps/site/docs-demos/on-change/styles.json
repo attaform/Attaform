@@ -1,0 +1,14 @@
+{
+  "with": [
+    "lede",
+    "label",
+    "header",
+    "input",
+    "status",
+    "row",
+    "actions",
+    "button",
+    "primary",
+    "ghost"
+  ]
+}

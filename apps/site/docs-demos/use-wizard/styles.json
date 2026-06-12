@@ -1,0 +1,17 @@
+{
+  "with": [
+    "rail",
+    "progress",
+    "stack",
+    "label",
+    "input",
+    "error",
+    "required",
+    "row",
+    "ghost",
+    "primary",
+    "banner",
+    "hint",
+    "code"
+  ]
+}

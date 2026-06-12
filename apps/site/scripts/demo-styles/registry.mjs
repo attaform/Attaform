@@ -863,4 +863,86 @@ export const fragments = {
   transition: width 200ms ease;
 }
 `,
+
+  // Wizard stepper chrome shared by the multi-step demos: the clickable step
+  // rail with its idle / current / done states, the numbered bead, the back /
+  // next nav row, and the "Step X of Y" counter. Pairs with `progress` (the
+  // fill track) and `card` / `banner` for step bodies and the done state. Emit
+  // last so `.demo .wizard-nav button` re-centres the ghost / primary buttons
+  // that otherwise pin themselves to flex-start.
+  rail: `
+.demo .rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.demo .rail li {
+  display: flex;
+  flex: 1 1 6rem;
+}
+.demo .step-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: var(--color-surface-2);
+  color: var(--color-fg-muted);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.demo .step-button:hover {
+  filter: brightness(0.97);
+}
+.demo .step-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.demo .rail li.current .step-button {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-soft-fg);
+  font-weight: 500;
+}
+.demo .rail li.done .step-button {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+.demo .step-num {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-bg);
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+.demo .wizard-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.demo .wizard-nav button {
+  align-self: auto;
+  margin-top: 0;
+}
+.demo .step-of {
+  flex: 1;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--color-fg-muted);
+}
+`,
 }

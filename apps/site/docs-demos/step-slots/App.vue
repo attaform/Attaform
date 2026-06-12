@@ -2,6 +2,7 @@
   import { ref } from 'vue'
   import { useForm, useWizard, lazy } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const attendee = useForm({
     schema: z.object({
@@ -142,14 +143,14 @@
   }
 
   function formatTime(ms: number | null): string {
-    if (ms === null) return '—'
+    if (ms === null) return '(none)'
     const d = new Date(ms)
     return d.toLocaleTimeString(undefined, { hour12: false })
   }
 </script>
 
 <template>
-  <div class="wizard">
+  <div class="demo">
     <ol class="rail">
       <li
         v-for="(step, i) in wizard.steps"
@@ -170,7 +171,7 @@
       <div class="progress-fill" :style="{ width: `${wizard.progress * 100}%` }"></div>
     </div>
 
-    <div v-if="wizard.currentStep === 'welcome'" class="card affordance">
+    <div v-if="wizard.currentStep === 'welcome'" class="card">
       <h3>Welcome aboard</h3>
       <p>
         This wizard exercises all four slot kinds: an affordance string here, a form coming up next,
@@ -180,7 +181,11 @@
       <p class="muted">No data is collected on this step.</p>
     </div>
 
-    <form v-else-if="wizard.currentStep === 'docs-demo-slots-attendee'" @submit.prevent>
+    <form
+      class="stack"
+      v-else-if="wizard.currentStep === 'docs-demo-slots-attendee'"
+      @submit.prevent
+    >
       <label>
         <span>Name <span class="required" aria-hidden="true">*</span></span>
         <input v-register="attendee.register('name')" autocomplete="name" />
@@ -223,7 +228,11 @@
       </label>
     </form>
 
-    <form v-else-if="wizard.currentStep === 'docs-demo-slots-speaker'" @submit.prevent>
+    <form
+      class="stack"
+      v-else-if="wizard.currentStep === 'docs-demo-slots-speaker'"
+      @submit.prevent
+    >
       <label>
         <span>Talk title <span class="required" aria-hidden="true">*</span></span>
         <input v-register="speaker.register('talkTitle')" />
@@ -238,7 +247,11 @@
       </label>
     </form>
 
-    <form v-else-if="wizard.currentStep === 'docs-demo-slots-sponsor'" @submit.prevent>
+    <form
+      class="stack"
+      v-else-if="wizard.currentStep === 'docs-demo-slots-sponsor'"
+      @submit.prevent
+    >
       <label>
         <span>Company name <span class="required" aria-hidden="true">*</span></span>
         <input v-register="sponsor.register('companyName')" />
@@ -256,7 +269,7 @@
       </label>
     </form>
 
-    <div v-else-if="wizard.currentStep === 'no-extras'" class="card affordance">
+    <div v-else-if="wizard.currentStep === 'no-extras'" class="card">
       <h3>No extras to collect</h3>
       <p>
         Attendees don't need to fill out role-specific details. This screen exists because the
@@ -266,7 +279,11 @@
       <p class="muted">Switch role to <em>Speaker</em> or <em>Sponsor</em> to see the slot swap.</p>
     </div>
 
-    <form v-else-if="wizard.currentStep === 'docs-demo-slots-companions'" @submit.prevent>
+    <form
+      class="stack"
+      v-else-if="wizard.currentStep === 'docs-demo-slots-companions'"
+      @submit.prevent
+    >
       <label>
         <span>Companion names <span class="required" aria-hidden="true">*</span></span>
         <textarea
@@ -284,7 +301,11 @@
       </p>
     </form>
 
-    <form v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-us'" @submit.prevent>
+    <form
+      class="stack"
+      v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-us'"
+      @submit.prevent
+    >
       <p class="muted">
         Sales tax determined by ZIP. The schema below is specific to the US pricing form.
       </p>
@@ -324,7 +345,7 @@
           <dt>Resolutions</dt>
           <dd>{{ lazyResolutions }}</dd>
           <dt>Resolved region</dt>
-          <dd>{{ lazyResolvedRegion ?? '—' }}</dd>
+          <dd>{{ lazyResolvedRegion ?? '(none)' }}</dd>
           <dt>Resolved at</dt>
           <dd>{{ formatTime(lazyResolvedAt) }}</dd>
         </dl>
@@ -336,7 +357,11 @@
       </div>
     </form>
 
-    <form v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-eu'" @submit.prevent>
+    <form
+      class="stack"
+      v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-eu'"
+      @submit.prevent
+    >
       <p class="muted">
         EU customers fill out a VAT registration number. The schema is structurally different from
         the US form.
@@ -372,7 +397,7 @@
           <dt>Resolutions</dt>
           <dd>{{ lazyResolutions }}</dd>
           <dt>Resolved region</dt>
-          <dd>{{ lazyResolvedRegion ?? '—' }}</dd>
+          <dd>{{ lazyResolvedRegion ?? '(none)' }}</dd>
           <dt>Resolved at</dt>
           <dd>{{ formatTime(lazyResolvedAt) }}</dd>
         </dl>
@@ -383,7 +408,11 @@
       </div>
     </form>
 
-    <form v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-apac'" @submit.prevent>
+    <form
+      class="stack"
+      v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-apac'"
+      @submit.prevent
+    >
       <p class="muted">
         APAC customers register with a GST number. Tiers price in USD; the schema is again distinct.
       </p>
@@ -417,7 +446,7 @@
           <dt>Resolutions</dt>
           <dd>{{ lazyResolutions }}</dd>
           <dt>Resolved region</dt>
-          <dd>{{ lazyResolvedRegion ?? '—' }}</dd>
+          <dd>{{ lazyResolvedRegion ?? '(none)' }}</dd>
           <dt>Resolved at</dt>
           <dd>{{ formatTime(lazyResolvedAt) }}</dd>
         </dl>
@@ -428,16 +457,16 @@
       </div>
     </form>
 
-    <div v-else-if="wizard.currentStep === 'review'" class="card affordance">
+    <div v-else-if="wizard.currentStep === 'review'" class="card">
       <h3>Review</h3>
       <p class="muted">Values aggregated across every step that landed in the compiled list.</p>
-      <pre class="values">{{ JSON.stringify(wizard.allValues, null, 2) }}</pre>
-      <div v-if="wizard.done" class="success-card" role="status">
+      <pre>{{ JSON.stringify(wizard.allValues, null, 2) }}</pre>
+      <div v-if="wizard.done" class="banner success" role="status">
         ✓ Registration sent. Edit any field to revise.
       </div>
     </div>
 
-    <div class="actions">
+    <div class="wizard-nav">
       <button type="button" class="ghost" :disabled="!wizard.canGoBack" @click="wizard.back()">
         ← Back
       </button>
@@ -463,252 +492,80 @@
 </template>
 
 <style scoped>
-  .wizard {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 34rem;
-  }
-  .rail {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    padding: 0;
-    margin: 0;
-    list-style: none;
-  }
-  .rail li {
-    flex: 1 1 6rem;
-    display: flex;
-  }
-  .step-button {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.5rem;
-    background: #f3f4f6;
-    border: 0;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 400;
-    color: #6b7280;
-    cursor: pointer;
-    font-family: inherit;
-    text-align: left;
-    transition: filter 120ms ease;
-  }
-  .step-button:hover {
-    filter: brightness(0.95);
-  }
-  .step-button:focus-visible {
-    outline: 2px solid #2563eb;
-    outline-offset: 2px;
-  }
-  .rail li.current .step-button {
-    background: #dbeafe;
-    color: #1e40af;
-    font-weight: 500;
-  }
-  .rail li.done .step-button {
-    background: #ecfdf5;
-    color: #047857;
-  }
-  .step-num {
-    width: 1.25rem;
-    height: 1.25rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    background: white;
-    font-family: ui-monospace, monospace;
-    font-size: 0.75rem;
-  }
-  .progress {
-    height: 0.375rem;
-    border-radius: 999px;
-    background: #f3f4f6;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    background: #2563eb;
-    transition: width 200ms ease;
-  }
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
+  /* Keep step bodies a stable height so the rail and nav do not jump. */
+  .demo form,
+  .demo .card {
     min-height: 12rem;
   }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  input,
-  select,
-  textarea {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-    font-family: inherit;
-    background: white;
-  }
-  input:focus,
-  select:focus,
-  textarea:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  textarea {
-    resize: vertical;
-  }
-  em {
-    color: #dc2626;
-    font-size: 0.8125rem;
-    font-style: normal;
-    font-weight: 400;
-  }
-  .required {
-    color: #dc2626;
-    font-weight: 600;
-    margin-left: 0.125rem;
-  }
-  .card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    min-height: 12rem;
-    padding: 1rem;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-  }
-  .card h3 {
+  .demo .card h3 {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #111827;
   }
-  .card p {
+  .demo .card p {
     margin: 0;
     font-size: 0.875rem;
     line-height: 1.45;
-    color: #374151;
   }
-  .muted {
-    color: #6b7280;
+  .demo .muted {
     font-size: 0.8125rem;
   }
-  .lazy-probe {
+  .demo pre {
+    max-height: 14rem;
+  }
+  .demo .reset-row {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .demo button.ghost.subtle {
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    color: var(--color-fg-muted);
+  }
+
+  /* Pedagogical "lazy probe": off-palette amber so it reads as an aside, with
+     its own light/dark tokens (the shared palette carries no amber surface). */
+  .demo .lazy-probe {
+    --probe-bg: #fffbeb;
+    --probe-border: #fde68a;
+    --probe-ink: #78350f;
+    --probe-label: #92400e;
     padding: 0.625rem 0.75rem;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    border: 1px solid var(--probe-border);
     border-radius: 0.375rem;
+    background: var(--probe-bg);
+    color: var(--probe-ink);
     font-size: 0.8125rem;
-    color: #78350f;
   }
-  .lazy-probe strong {
+  .demo .lazy-probe strong {
     display: block;
-    font-weight: 600;
     margin-bottom: 0.25rem;
+    font-weight: 600;
   }
-  .lazy-probe dl {
+  .demo .lazy-probe dl {
     display: grid;
     grid-template-columns: max-content 1fr;
     column-gap: 0.5rem;
     row-gap: 0.125rem;
     margin: 0.25rem 0 0.375rem;
   }
-  .lazy-probe dt {
-    color: #92400e;
+  .demo .lazy-probe dt {
+    color: var(--probe-label);
     font-weight: 500;
   }
-  .lazy-probe dd {
+  .demo .lazy-probe dd {
     margin: 0;
     font-family: ui-monospace, monospace;
-    color: #78350f;
+    color: var(--probe-ink);
   }
-  .lazy-probe .muted {
-    color: #92400e;
+  .demo .lazy-probe .muted {
     margin: 0;
+    color: var(--probe-label);
   }
-  .values {
-    margin: 0;
-    padding: 0.625rem 0.75rem;
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    font-family: ui-monospace, monospace;
-    font-size: 0.75rem;
-    line-height: 1.4;
-    max-height: 14rem;
-    overflow: auto;
-  }
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .step-of {
-    flex: 1;
-    text-align: center;
-    font-size: 0.75rem;
-    color: #6b7280;
-    font-family: ui-monospace, monospace;
-  }
-  button {
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  button.primary {
-    background: #2563eb;
-    color: white;
-    border: 1px solid #2563eb;
-  }
-  button.primary:hover {
-    background: #1d4ed8;
-  }
-  button.ghost {
-    background: white;
-    color: #374151;
-    border: 1px solid #d1d5db;
-  }
-  button.ghost:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  button.ghost.subtle {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.625rem;
-    color: #6b7280;
-  }
-  code {
-    font-family: ui-monospace, monospace;
-    background: #f3f4f6;
-    padding: 0.05rem 0.3rem;
-    border-radius: 0.25rem;
-  }
-  .reset-row {
-    display: flex;
-    justify-content: flex-end;
-  }
-  .success-card {
-    padding: 0.625rem 0.875rem;
-    border-radius: 0.375rem;
-    background: #ecfdf5;
-    color: #047857;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    border: 1px solid #a7f3d0;
+  :global(.dark) .demo .lazy-probe {
+    --probe-bg: #2e1c05;
+    --probe-border: #78491a;
+    --probe-ink: #fcd34d;
+    --probe-label: #fbbf24;
   }
 </style>

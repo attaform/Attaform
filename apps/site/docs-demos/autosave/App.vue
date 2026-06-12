@@ -37,6 +37,7 @@
 
   const labels: Record<SaveStatus, string> = {
     idle: 'Idle',
+    pending: 'Pending',
     saving: 'Saving…',
     saved: 'Saved',
     error: 'Failed',
@@ -45,6 +46,7 @@
   const bannerState = computed(() => {
     if (isSaving.value) return 'busy'
     if (failed.value.length > 0) return 'failed'
+    if (Object.values(status).some((s) => s === 'pending')) return 'pending'
     if (Object.values(status).some((s) => s === 'saved')) return 'saved'
     return 'idle'
   })
@@ -55,6 +57,7 @@
     <div class="banner" :class="bannerState">
       <span v-if="bannerState === 'busy'">Saving…</span>
       <span v-else-if="bannerState === 'failed'">{{ failed.length }} change(s) failed to save</span>
+      <span v-else-if="bannerState === 'pending'">Saving soon…</span>
       <span v-else-if="bannerState === 'saved'">All changes saved</span>
       <span v-else>No changes yet</span>
     </div>
@@ -116,6 +119,10 @@
     background: var(--color-surface-2);
     color: var(--color-fg-muted);
   }
+  .banner.pending {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-soft-fg);
+  }
   .lede {
     margin: 0;
     font-size: 0.8125rem;
@@ -170,6 +177,10 @@
   .status.idle {
     background: var(--color-surface-2);
     color: var(--color-fg-muted);
+  }
+  .status.pending {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-soft-fg);
   }
   .status.saving {
     background: var(--color-warning-soft);

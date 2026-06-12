@@ -35,7 +35,7 @@ Email saves as a draft: even an invalid address persists as you type, while Atta
 import { computed, reactive } from 'vue'
 import type { FlatPath, GenericForm, UseFormReturnType } from 'attaform'
 
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
 function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number) {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -80,7 +80,10 @@ export function useAutosave<Form extends GenericForm>(
       (value: unknown, signal: AbortSignal) => run(path, value, signal),
       debounceMs
     )
-    form.onChange(path, (value, ctx) => schedule(value, ctx.signal))
+    form.onChange(path, (value, ctx) => {
+      status[path] = 'pending'
+      schedule(value, ctx.signal)
+    })
   }
 
   return {
@@ -95,11 +98,11 @@ The path and form type helpers (`FlatPath`, `GenericForm`, `UseFormReturnType`) 
 
 ## What it gives you back
 
-| Return     | Type                       | Use                                                             |
-| ---------- | -------------------------- | --------------------------------------------------------------- |
-| `status`   | `Record<path, SaveStatus>` | Per-field badge: `idle` / `saving` / `saved` / `error`.         |
-| `isSaving` | `ComputedRef<boolean>`     | Aggregate "a save is in flight" for a header spinner or banner. |
-| `failed`   | `ComputedRef<path[]>`      | The paths whose last save errored, for a retry affordance.      |
+| Return     | Type                       | Use                                                                 |
+| ---------- | -------------------------- | ------------------------------------------------------------------- |
+| `status`   | `Record<path, SaveStatus>` | Per-field badge: `idle` / `pending` / `saving` / `saved` / `error`. |
+| `isSaving` | `ComputedRef<boolean>`     | Aggregate "a save is in flight" for a header spinner or banner.     |
+| `failed`   | `ComputedRef<path[]>`      | The paths whose last save errored, for a retry affordance.          |
 
 None of it lives in form state. `status` is a plain reactive map the composable owns, exactly the side-channel discipline `onChange` is built for: the form's `dirty` / `validating` surface stays about the form, autosave status stays about autosave.
 

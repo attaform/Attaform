@@ -1,7 +1,7 @@
 import { computed, reactive } from 'vue'
 import type { FlatPath, GenericForm, UseFormReturnType } from 'attaform'
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
 function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number) {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -46,7 +46,10 @@ export function useAutosave<Form extends GenericForm>(
       (value: unknown, signal: AbortSignal) => run(path, value, signal),
       debounceMs
     )
-    form.onChange(path, (value, ctx) => schedule(value, ctx.signal))
+    form.onChange(path, (value, ctx) => {
+      status[path] = 'pending'
+      schedule(value, ctx.signal)
+    })
   }
 
   return {

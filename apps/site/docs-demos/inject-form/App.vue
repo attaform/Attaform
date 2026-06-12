@@ -3,6 +3,7 @@
   import { schema } from './schema'
   import ProfileFieldset from './ProfileFieldset.vue'
   import StatusPill from './StatusPill.vue'
+  import './styles.css'
 
   const form = useForm({
     schema,
@@ -15,7 +16,7 @@
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form class="demo" @submit.prevent="onSubmit">
     <label>
       Email (in the parent component)
       <input v-register="form.register('email')" autocomplete="email" />
@@ -40,74 +41,13 @@
 </template>
 
 <style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 32rem;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  input {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  em {
-    color: #dc2626;
-    font-size: 0.8125rem;
-    font-style: normal;
-    font-weight: 400;
-  }
   .footer {
     display: flex;
     align-items: center;
     gap: 0.75rem;
   }
-  button {
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    border: 1px solid #2563eb;
-    background: #2563eb;
-    color: white;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  button:hover {
-    background: #1d4ed8;
-  }
-  code {
-    font-family: ui-monospace, monospace;
-    background: #f3f4f6;
-    padding: 0.05rem 0.3rem;
-    border-radius: 0.25rem;
-  }
-  .hint {
-    margin: 0;
-    color: #6b7280;
-    font-size: 0.75rem;
-  }
-  pre {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    color: #111827;
-    margin: 0;
+  .footer button {
+    margin-top: 0;
+    align-self: auto;
   }
 </style>

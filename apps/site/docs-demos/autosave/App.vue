@@ -3,6 +3,7 @@
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
   import { useAutosave, type SaveStatus } from './useAutosave'
+  import './styles.css'
 
   const schema = z.object({
     email: z.string().email('Enter a valid email'),
@@ -68,7 +69,7 @@
     </p>
 
     <label v-for="field in fields" :key="field.path">
-      <span class="row">
+      <span class="spread">
         {{ field.label }}
         <span class="status" :class="statusOf(field.path)">{{ labels[statusOf(field.path)] }}</span>
       </span>
@@ -83,115 +84,9 @@
       </small>
     </label>
 
-    <label class="toggle">
+    <label class="row compact">
       <input type="checkbox" v-model="failSaves" />
       Make saves fail
     </label>
   </form>
 </template>
-
-<style scoped>
-  .demo {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    color: var(--color-fg);
-  }
-  .banner {
-    padding: 0.45rem 0.7rem;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-  }
-  .banner.saved {
-    background: var(--color-success-soft);
-    color: var(--color-success);
-  }
-  .banner.busy {
-    background: var(--color-warning-soft);
-    color: var(--color-warning);
-  }
-  .banner.failed {
-    background: var(--color-danger-soft);
-    color: var(--color-danger);
-  }
-  .banner.idle {
-    background: var(--color-surface-2);
-    color: var(--color-fg-muted);
-  }
-  .banner.pending {
-    background: var(--color-accent-soft);
-    color: var(--color-accent-soft-fg);
-  }
-  .lede {
-    margin: 0;
-    font-size: 0.8125rem;
-    color: var(--color-fg-muted);
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.8125rem;
-    color: var(--color-fg);
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-  input {
-    padding: 0.5rem 0.625rem;
-    border-radius: 0.375rem;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg);
-    color: var(--color-fg);
-    font-size: 0.875rem;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: 2px solid var(--color-accent);
-    outline-offset: -1px;
-  }
-  .toggle {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.75rem;
-    color: var(--color-fg-subtle);
-  }
-  .toggle input {
-    width: auto;
-  }
-  .error {
-    color: var(--color-danger);
-    font-size: 0.75rem;
-  }
-  .status {
-    font-weight: 500;
-    padding: 0.05rem 0.45rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-  }
-  .status.idle {
-    background: var(--color-surface-2);
-    color: var(--color-fg-muted);
-  }
-  .status.pending {
-    background: var(--color-accent-soft);
-    color: var(--color-accent-soft-fg);
-  }
-  .status.saving {
-    background: var(--color-warning-soft);
-    color: var(--color-warning);
-  }
-  .status.saved {
-    background: var(--color-success-soft);
-    color: var(--color-success);
-  }
-  .status.error {
-    background: var(--color-danger-soft);
-    color: var(--color-danger);
-  }
-</style>

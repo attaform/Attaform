@@ -1,1 +1,3 @@
-{ "with": ["layout", "stack", "label", "input", "button", "error", "hint", "code", "pre"] }
+{
+  "with": ["layout", "stack", "label", "input", "button", "error", "hint", "code", "pre", "section"]
+}

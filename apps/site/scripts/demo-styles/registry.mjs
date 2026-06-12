@@ -385,6 +385,33 @@ export const fragments = {
 }
 `,
 
+  // Definition list of leaf reads: each `dt` names a path (often a `code`
+  // token) above its `dd` value box. The `dd` is the same light readout as
+  // `pre`, so a labelled path and a JSON dump share one look.
+  deflist: `
+.demo dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.demo dt {
+  font-size: 0.75rem;
+  color: var(--color-fg-muted);
+}
+.demo dd {
+  margin: 0;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  overflow: auto;
+}
+`,
+
   // Inline mono readout of a value (the "Stored as: X (type)" lines), with an
   // accented highlight for the value emphasised inside it.
   small: `
@@ -627,6 +654,21 @@ export const fragments = {
 }
 `,
 
+  // Plain titled readout block: a small heading over its content. Sits inside
+  // a `.panels` grid (see `panel`) or directly as an item of a `layout` grid.
+  section: `
+.demo section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.demo section h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+`,
+
   // Vertical flex group for an inner form or section inside a grid demo (the
   // `.demo` root only stacks when it is not itself a grid).
   stack: `
@@ -639,8 +681,10 @@ export const fragments = {
 
   // Multi-section grid. Works both as the `.demo` root itself (`class="demo
   // layout"`, which drops the form max-width and overrides the column stack)
-  // and as a nested wrapper. Multi-column demos override
-  // `grid-template-columns` in their own block.
+  // and as a nested wrapper. Single column by default; add `split` for the
+  // common responsive two-column layout (stacked on narrow, side by side from
+  // 760px up). A demo wanting a different ratio overrides
+  // `grid-template-columns` in its own block.
   layout: `
 .demo.layout,
 .demo.grid,
@@ -653,6 +697,12 @@ export const fragments = {
 .demo.layout,
 .demo.grid {
   max-width: none;
+}
+@media (min-width: 760px) {
+  .demo.layout.split,
+  .demo .layout.split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
 }
 `,
 

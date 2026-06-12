@@ -24,7 +24,7 @@
 </script>
 
 <template>
-  <div class="demo layout">
+  <div class="demo layout split">
     <form class="stack" @submit.prevent="onSubmit">
       <label>
         Email
@@ -48,7 +48,7 @@
 
     <section>
       <h4>READ: <code>form.values.email</code></h4>
-      <p>Storage holds your raw input verbatim. Preprocess has not run yet.</p>
+      <p class="hint">Storage holds your raw input verbatim. Preprocess has not run yet.</p>
       <pre>{{
         form.values.email === '' || form.values.email === undefined
           ? '(empty)'
@@ -58,7 +58,7 @@
 
     <section>
       <h4>PREVIEW: what preprocess returns</h4>
-      <p>
+      <p class="hint">
         Recomputed live for the demo. The real call happens inside validation and submit; this is
         the value they see.
       </p>
@@ -67,31 +67,10 @@
 
     <section v-if="submittedShape">
       <h4>SUBMIT: <code>handleSubmit</code> argument</h4>
-      <p>Post-parse output. The trimmed, lowercased email is what your handler receives.</p>
+      <p class="hint">
+        Post-parse output. The trimmed, lowercased email is what your handler receives.
+      </p>
       <pre>{{ JSON.stringify(submittedShape, null, 2) }}</pre>
     </section>
   </div>
 </template>
-
-<style scoped>
-  @media (min-width: 760px) {
-    .demo.layout {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-  }
-  section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  h4 {
-    margin: 0;
-    font-size: 0.8125rem;
-    font-weight: 600;
-  }
-  section p {
-    margin: 0;
-    font-size: 0.75rem;
-    color: var(--color-fg-muted);
-  }
-</style>

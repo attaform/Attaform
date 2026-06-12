@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const schema = z.object({
     profile: z.object({
@@ -22,8 +23,8 @@
 </script>
 
 <template>
-  <div class="layout">
-    <form @submit.prevent>
+  <div class="demo layout split">
+    <form class="stack" @submit.prevent>
       <label>
         First name
         <input v-register="form.register('profile.firstName')" />
@@ -69,96 +70,3 @@
     </div>
   </div>
 </template>
-
-<style scoped>
-  .layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1.25rem;
-  }
-  @media (min-width: 760px) {
-    .layout {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-  }
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.8125rem;
-    color: #374151;
-  }
-  input {
-    padding: 0.5rem 0.625rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  .panels {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.875rem;
-  }
-  section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-  h4 {
-    margin: 0;
-    font-size: 0.8125rem;
-    font-weight: 600;
-  }
-  .hint {
-    margin: 0;
-    font-size: 0.75rem;
-    color: #6b7280;
-  }
-  dl {
-    margin: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.25rem;
-  }
-  dt {
-    font-size: 0.75rem;
-    color: #6b7280;
-  }
-  dd {
-    margin: 0;
-    padding: 0.375rem 0.5rem;
-    background: #0f172a;
-    color: #a5f3fc;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    overflow: auto;
-  }
-  code {
-    font-family: ui-monospace, monospace;
-    background: #f3f4f6;
-    padding: 0.05rem 0.3rem;
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-  }
-  pre {
-    margin: 0;
-    padding: 0.5rem 0.625rem;
-    background: #0f172a;
-    color: #a5f3fc;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    overflow: auto;
-  }
-</style>

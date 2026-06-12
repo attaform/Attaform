@@ -182,8 +182,8 @@
     </div>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-slots-attendee'"
+      class="stack"
       @submit.prevent
     >
       <label>
@@ -229,8 +229,8 @@
     </form>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-slots-speaker'"
+      class="stack"
       @submit.prevent
     >
       <label>
@@ -248,8 +248,8 @@
     </form>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-slots-sponsor'"
+      class="stack"
       @submit.prevent
     >
       <label>
@@ -280,8 +280,8 @@
     </div>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-slots-companions'"
+      class="stack"
       @submit.prevent
     >
       <label>
@@ -302,8 +302,8 @@
     </form>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-us'"
+      class="stack"
       @submit.prevent
     >
       <p class="muted">
@@ -358,8 +358,8 @@
     </form>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-eu'"
+      class="stack"
       @submit.prevent
     >
       <p class="muted">
@@ -409,8 +409,8 @@
     </form>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-slots-pricing-apac'"
+      class="stack"
       @submit.prevent
     >
       <p class="muted">

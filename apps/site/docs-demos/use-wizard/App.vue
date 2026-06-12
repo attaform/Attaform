@@ -64,7 +64,7 @@
       <div class="progress-fill" :style="{ width: `${wizard.progress * 100}%` }"></div>
     </div>
 
-    <form class="stack" v-if="wizard.currentStep === 'docs-demo-wizard-account'" @submit.prevent>
+    <form v-if="wizard.currentStep === 'docs-demo-wizard-account'" class="stack" @submit.prevent>
       <label>
         <span>Email <span class="required" aria-hidden="true">*</span></span>
         <input v-register="account.register('email')" autocomplete="email" />
@@ -82,8 +82,8 @@
     </form>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-wizard-profile'"
+      class="stack"
       @submit.prevent
     >
       <label>
@@ -98,8 +98,8 @@
     </form>
 
     <form
-      class="stack"
       v-else-if="wizard.currentStep === 'docs-demo-wizard-review'"
+      class="stack"
       @submit.prevent
     >
       <label class="row">

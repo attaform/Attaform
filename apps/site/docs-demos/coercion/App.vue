@@ -27,7 +27,7 @@
 
     <label>
       <span><code>enabled</code>: schema is <code>z.boolean()</code></span>
-      <input v-register="form.register('enabled')" placeholder="Type 'true' or 'false'" />
+      <input v-register.lazy="form.register('enabled')" placeholder="Type 'true' or 'false'" />
       <small
         >Stored as: <em>{{ JSON.stringify(form.values.enabled) }}</em> ({{
           typeof form.values.enabled

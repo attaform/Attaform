@@ -38,10 +38,18 @@ function composeCss(withList) {
 
 function readManifest(folder) {
   const manifestPath = join(folder, 'styles.json')
-  if (!existsSync(manifestPath)) return []
+  // Read directly and treat ENOENT as "no manifest" rather than
+  // existsSync-then-read, whose gap is a check-then-use file-system race.
+  let raw
+  try {
+    raw = readFileSync(manifestPath, 'utf8')
+  } catch (error) {
+    if (error.code === 'ENOENT') return []
+    throw new Error(`[demo-styles] ${manifestPath} could not be read: ${error.message}`)
+  }
   let parsed
   try {
-    parsed = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    parsed = JSON.parse(raw)
   } catch (error) {
     throw new Error(`[demo-styles] ${manifestPath} is not valid JSON: ${error.message}`)
   }
@@ -53,7 +61,17 @@ function readManifest(folder) {
 }
 
 function writeIfChanged(file, content) {
-  if (existsSync(file) && readFileSync(file, 'utf8') === content) return false
+  // Read-and-compare instead of existsSync-then-read-then-write: folding the
+  // existence check into the read closes the check-then-use file-system race
+  // CodeQL flags (js/file-system-race) while preserving the skip-identical
+  // write that keeps codegen idempotent for the dev watcher.
+  let existing
+  try {
+    existing = readFileSync(file, 'utf8')
+  } catch {
+    existing = undefined
+  }
+  if (existing === content) return false
   writeFileSync(file, content)
   return true
 }

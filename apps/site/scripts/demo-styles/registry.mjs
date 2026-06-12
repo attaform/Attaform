@@ -148,6 +148,42 @@ export const fragments = {
 }
 `,
 
+  // Native file picker. The `input` fragment's `:where` guard skips file
+  // inputs, so this is their styling: a bordered control whose
+  // `::file-selector-button` reads as a soft-accent pill that fills in on
+  // hover.
+  file: `
+.demo input[type='file'] {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  background: var(--color-bg);
+  color: var(--color-fg-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.demo input[type='file']:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+.demo input[type='file']::file-selector-button {
+  margin-right: 0.65rem;
+  padding: 0.3rem 0.65rem;
+  border: 0;
+  border-radius: 0.3rem;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-soft-fg);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.demo input[type='file']::file-selector-button:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+`,
+
   label: `
 .demo label {
   display: flex;

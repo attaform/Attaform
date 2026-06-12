@@ -2,6 +2,7 @@
   import { useForm } from 'attaform/zod'
   import type { RegisterTransform } from 'attaform'
   import { z } from 'zod'
+  import './styles.css'
 
   const sample = [
     '# links.txt: one web address per line. Blank lines and # comments are skipped.',
@@ -64,17 +65,15 @@
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
-    <div class="lead">
-      <p>
-        Pick one or more plain <code>.txt</code> files with one entry per line. Attaform reads them,
-        turns each line into a tidy URL, drops anything that is not a web address, then lowercases
-        the survivors, all before the value reaches your form.
-      </p>
-      <p class="get-file">
-        <button type="button" @click="downloadSample">Download a sample links.txt</button>
-        <span>or write your own and pick it below.</span>
-      </p>
+  <form class="demo" @submit.prevent="onSubmit">
+    <p class="hint">
+      Pick one or more plain <code>.txt</code> files with one entry per line. Attaform reads them,
+      turns each line into a tidy URL, drops anything that is not a web address, then lowercases the
+      survivors, all before the value reaches your form.
+    </p>
+    <div class="actions">
+      <button type="button" @click="downloadSample">Download a sample links.txt</button>
+      <span class="muted">or write your own and pick it below.</span>
     </div>
 
     <label>
@@ -100,9 +99,7 @@
 
     <div v-if="form.values.links.length > 0" class="panel">
       <p class="panel-title">form.values.links</p>
-      <ul>
-        <li v-for="url in form.values.links" :key="url">{{ url }}</li>
-      </ul>
+      <pre>{{ form.values.links.join('\n') }}</pre>
     </div>
 
     <button :disabled="form.meta.submitting" type="submit">
@@ -112,84 +109,6 @@
 </template>
 
 <style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 30rem;
-  }
-  .lead {
-    font-size: 0.875rem;
-    color: #374151;
-  }
-  .lead p {
-    margin: 0 0 0.5rem 0;
-    line-height: 1.5;
-  }
-  .lead code {
-    font-family: ui-monospace, monospace;
-    font-size: 0.8125rem;
-    background: #f3f4f6;
-    border-radius: 0.25rem;
-    padding: 0.05rem 0.3rem;
-  }
-  .get-file {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .get-file button {
-    appearance: none;
-    border: 1px solid #2563eb;
-    background: #fff;
-    color: #2563eb;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    padding: 0.35rem 0.7rem;
-    border-radius: 0.375rem;
-    cursor: pointer;
-  }
-  .get-file button:hover {
-    background: #eff6ff;
-  }
-  .get-file span {
-    color: #6b7280;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  input[type='file'] {
-    font-size: 0.8125rem;
-    color: #6b7280;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    background: #fff;
-    padding: 0.35rem 0.5rem;
-    cursor: pointer;
-  }
-  input[type='file']:focus-within {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  input[type='file']::file-selector-button {
-    margin-right: 0.65rem;
-    border: 0;
-    border-radius: 0.3rem;
-    background: #eef2ff;
-    color: #1d4ed8;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    padding: 0.3rem 0.65rem;
-    cursor: pointer;
-  }
-  input[type='file']::file-selector-button:hover {
-    background: #e0e7ff;
-  }
   .status {
     display: flex;
     align-items: center;
@@ -199,70 +118,25 @@
     font-weight: 500;
   }
   .status.busy {
-    color: #2563eb;
+    color: var(--color-accent);
   }
   .status.error {
-    color: #b91c1c;
+    color: var(--color-danger);
   }
   .status.done {
-    color: #047857;
+    color: var(--color-success);
   }
   .spinner {
     width: 0.85rem;
     height: 0.85rem;
     border-radius: 50%;
-    border: 2px solid #bfdbfe;
-    border-top-color: #2563eb;
+    border: 2px solid var(--color-surface-3);
+    border-top-color: var(--color-accent);
     animation: spin 0.6s linear infinite;
   }
   @keyframes spin {
     to {
       transform: rotate(360deg);
     }
-  }
-  .panel {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    padding: 0.6rem 0.75rem;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    color: #111827;
-  }
-  .panel-title {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin: 0 0 0.3rem 0;
-  }
-  .panel ul {
-    margin: 0;
-    padding-left: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  .panel li {
-    word-break: break-all;
-  }
-  button[type='submit'] {
-    margin-top: 0.25rem;
-    padding: 0.55rem 1rem;
-    background: #2563eb;
-    color: #fff;
-    border: none;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button[type='submit']:hover {
-    background: #1d4ed8;
-  }
-  button[type='submit']:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
   }
 </style>

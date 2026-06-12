@@ -1,0 +1,3 @@
+{
+  "with": ["hint", "label", "file", "code", "actions", "muted", "panel", "pre", "button"]
+}

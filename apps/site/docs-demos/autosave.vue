@@ -92,17 +92,21 @@
     error: 'Failed',
   }
   const statusOf = (path: string): SaveStatus => status[path] ?? 'idle'
-  const bannerState = computed(() =>
-    isSaving.value ? 'busy' : failed.value.length > 0 ? 'failed' : 'saved'
-  )
+  const bannerState = computed(() => {
+    if (isSaving.value) return 'busy'
+    if (failed.value.length > 0) return 'failed'
+    if (Object.values(status).some((s) => s === 'saved')) return 'saved'
+    return 'idle'
+  })
 </script>
 
 <template>
   <form class="demo" @submit.prevent>
     <div class="banner" :class="bannerState">
-      <span v-if="isSaving">Saving…</span>
-      <span v-else-if="failed.length > 0">{{ failed.length }} change(s) failed to save</span>
-      <span v-else>All changes saved</span>
+      <span v-if="bannerState === 'busy'">Saving…</span>
+      <span v-else-if="bannerState === 'failed'">{{ failed.length }} change(s) failed to save</span>
+      <span v-else-if="bannerState === 'saved'">All changes saved</span>
+      <span v-else>No changes yet</span>
     </div>
 
     <p class="lede">
@@ -157,6 +161,10 @@
   .banner.failed {
     background: var(--color-danger-soft);
     color: var(--color-danger);
+  }
+  .banner.idle {
+    background: var(--color-surface-2);
+    color: var(--color-fg-muted);
   }
   .lede {
     margin: 0;

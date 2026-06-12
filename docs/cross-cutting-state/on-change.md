@@ -211,6 +211,7 @@ Reach for `onChange` to **write** (autosave, analytics, mirroring). Reach for [`
 
 ## Where to next
 
+- [Autosave](/docs/cross-cutting-state/autosave): the production recipe built on `onChange`, debounced and validity-gated, with per-field and aggregate status.
 - [Async refinements](/docs/validation/async-refinements): the reads half, server-side validity through `.refine`.
 - [`setValue` patterns](/docs/writing-and-mutating/set-value): the write surface that carries the `{ silent }` opt-out.
 - [Multi-tab sync](/docs/cross-cutting-state/multi-tab-sync): another reaction riding the same change tap, across tabs instead of to a server.

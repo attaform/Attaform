@@ -615,6 +615,17 @@ interface ToastApi {
  */
 declare const toast: ToastApi
 `
+
+  // Teach Volar about the `./styles.css` each migrated demo imports. The
+  // demo-style codegen emits a real CSS file that App.vue side-effect
+  // imports; a Vite/Nuxt project gets the ambient `*.css` module from
+  // `vite/client`, but the REPL's in-worker TS service ships no such lib, so
+  // the import would otherwise raise TS2882 ("Cannot find module or type
+  // declarations for side-effect import of './styles.css'"). Seeded into the
+  // same hidden declaration file as the toast global above.
+  const ASSET_AMBIENT_DTS = `
+declare module '*.css';
+`
   // In-place diff of `store.files` against an incoming seed map. Used
   // by the dev-only HMR re-seed below; not called on first mount (the
   // initial seed still goes through @vue/repl's `setFiles` so mainFile,
@@ -665,13 +676,13 @@ declare const toast: ToastApi
 
   // Seed the store. `initialFiles` (a multi-file map) wins over
   // `initialSource` (the single-file shorthand). Both routes always
-  // augment with `src/playground-globals.d.ts` (the toast ambient
-  // declaration, hidden from the tab strip) and `tsconfig.json`
+  // augment with `src/playground-globals.d.ts` (the toast + `*.css`
+  // ambient declarations, hidden from the tab strip) and `tsconfig.json`
   // (compiler options for Volar). The entry stays `src/App.vue` in
   // both shapes, matching @vue/repl's default mainFile.
   const seedFiles: Record<string, string> = {
     ...(props.initialFiles ?? { 'src/App.vue': props.initialSource }),
-    'src/playground-globals.d.ts': TOAST_AMBIENT_DTS,
+    'src/playground-globals.d.ts': TOAST_AMBIENT_DTS + ASSET_AMBIENT_DTS,
     'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
   }
   // Flips true once the initial async setFiles has landed. Guards the

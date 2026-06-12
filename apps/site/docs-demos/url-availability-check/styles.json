@@ -1,0 +1,15 @@
+{
+  "with": [
+    "layout",
+    "stack",
+    "label",
+    "input",
+    "error",
+    "hint",
+    "code",
+    "actions",
+    "primary",
+    "section",
+    "pre"
+  ]
+}

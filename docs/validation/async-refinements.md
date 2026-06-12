@@ -92,8 +92,15 @@ See [When validation runs](/docs/validation/when-validation-runs) for the full t
 
 Two rapid edits before the first probe returns: the directive cancels the stale in-flight request (where the underlying client supports `AbortSignal`) or ignores its result (where it doesn't). The newest probe's result is the one that lands in `errors.<path>`. No "earlier request resolves last, overwrites the correct error" race.
 
+## Validation, not persistence
+
+An async refinement's job is to return a verdict: it reads a value and answers "is this allowed?". Writing to your server inside that same loop (saving the value while you check it) is tempting, but it tangles two concerns, validity and persistence, into one predicate. Keep the refinement a pure read, and persist on change through [`form.onChange`](/docs/cross-cutting-state/on-change) instead.
+
+The two compose cleanly. An [autosave](/docs/cross-cutting-state/autosave) handler can gate its write on `await form.validateAsync(path)`, so the refinement you wrote here decides whether the save fires. One value check, reused for both the error message and the save gate.
+
 ## Where to next
 
+- [`onChange`](/docs/cross-cutting-state/on-change): the write side-channel for persisting values as they change.
 - [The validation lifecycle](/docs/validation/lifecycle): the imperative `validateAsync()` for non-submit code paths.
 - [When validation runs](/docs/validation/when-validation-runs): the `validateOn` cadence knob.
 - [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface that awaits async refinements.

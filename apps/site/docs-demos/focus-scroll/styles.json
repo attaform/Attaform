@@ -1,0 +1,3 @@
+{
+  "with": ["hint", "label", "input", "textarea", "error", "row", "actions", "primary"]
+}

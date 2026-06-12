@@ -3,6 +3,7 @@
   import { assignKey, type CustomDirectiveRegisterAssignerFn } from 'attaform'
   import { z } from 'zod'
   import { onMounted, useTemplateRef } from 'vue'
+  import './styles.css'
 
   const form = useForm({
     schema: z.object({
@@ -39,7 +40,7 @@
 </script>
 
 <template>
-  <form @submit.prevent>
+  <form class="demo" @submit.prevent>
     <span class="label">Pick a color (no &lt;input&gt;, just a custom widget)</span>
     <div
       ref="widget"
@@ -62,12 +63,6 @@
 </template>
 
 <style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    max-width: 26rem;
-  }
   .label {
     font-size: 0.8125rem;
     font-weight: 500;
@@ -76,9 +71,9 @@
     display: flex;
     gap: 0.5rem;
     padding: 0.6rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--color-border);
     border-radius: 0.5rem;
-    background: #fff;
+    background: var(--color-bg);
   }
   .widget button {
     width: 2rem;
@@ -89,16 +84,6 @@
     transition: border-color 0.15s ease;
   }
   .widget button[aria-pressed='true'] {
-    border-color: #111827;
-  }
-  pre {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    color: #111827;
-    margin: 0;
+    border-color: var(--color-fg);
   }
 </style>

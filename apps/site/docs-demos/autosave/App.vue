@@ -85,7 +85,7 @@
     </label>
 
     <label class="row compact">
-      <input type="checkbox" v-model="failSaves" />
+      <input v-model="failSaves" type="checkbox" />
       Make saves fail
     </label>
   </form>

@@ -109,7 +109,7 @@
     </label>
 
     <label class="row compact">
-      <input type="checkbox" v-model="failNext" />
+      <input v-model="failNext" type="checkbox" />
       Make the next save fail once (auto-retries)
     </label>
 

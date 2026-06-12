@@ -564,6 +564,56 @@ export const fragments = {
 }
 `,
 
+  // Two table idioms share one skeleton. A plain <table> is a column-header
+  // grid: <thead> titles each column and <tbody> rows carry the data (often an
+  // input beside its `code` readouts). A <table class="state"> is a key-value
+  // inspector: each row's <th> names a field or path and its <td> shows the
+  // value, mono throughout. `code.on` / `code.err` tint a token to flag an
+  // active bit or a failing check.
+  table: `
+.demo table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.demo th,
+.demo td {
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--color-border);
+}
+.demo thead th {
+  background: var(--color-surface);
+  color: var(--color-fg-muted);
+  font-weight: 600;
+}
+.demo td {
+  color: var(--color-fg);
+  word-break: break-word;
+}
+.demo td input {
+  width: 100%;
+}
+.demo table.state {
+  font-family: ui-monospace, monospace;
+}
+.demo table.state th {
+  width: 1%;
+  white-space: nowrap;
+  color: var(--color-fg-muted);
+  font-weight: 500;
+}
+.demo code.on {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+.demo code.err {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+`,
+
   // Bordered card surface.
   card: `
 .demo .card {

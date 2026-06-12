@@ -1,4 +1,4 @@
-import type { ComputedRef, ObjectDirective, Ref } from 'vue'
+import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
 import type { PersistOptInRegistry } from '../core/persistence/opt-in-registry'
@@ -942,7 +942,129 @@ export type WriteMeta = {
    * consumer code.
    */
   readonly crossTab?: boolean
+  /**
+   * When `true`, this write lands normally (storage, validation,
+   * persistence, history) but does NOT notify `form.onChange` handlers.
+   * The side-channel reacts to user edits, not programmatic rebaselines:
+   * `reset()` tags its replacement with this flag, and the public
+   * `setValue(path, value, { silent: true })` option forwards it so a
+   * consumer hydrating the form (loading a saved record into the fields)
+   * can land values without echoing each one back through an autosave
+   * loop. The store's internal taggers and that single consumer-facing
+   * option are the only writers.
+   */
+  readonly silent?: boolean
 }
+
+/**
+ * A source address for `form.onChange` — the subtree(s) a handler reacts to.
+ *
+ * - a dotted path string (`'user.email'`) — one leaf or subtree;
+ * - a list of path strings (`['shipping', 'billing']`) — react to any of
+ *   several paths; the handler fires once per matched path, `ctx.path`
+ *   distinguishing which;
+ * - a getter or ref / computed resolving to either — re-read on each write,
+ *   so the aim can follow a moving target (the active list row). Re-aiming
+ *   is never itself a trigger; only a real write dispatches.
+ *
+ * Omit the source entirely (`form.onChange(handler)`) to react to the whole
+ * form. An empty list (`form.onChange([], handler)`) lists zero paths, so it
+ * never fires — that is a deliberate no-op, NOT a shorthand for the root.
+ */
+export type OnChangeSource = MaybeRefOrGetter<string | readonly string[]>
+
+/**
+ * Context handed to an `onChange` handler alongside the changed value.
+ *
+ * `onChange` is a pure side-channel: it reacts to value changes and runs
+ * side effects, but never touches the form's own lifecycle. Nothing a
+ * handler does here marks the form dirty, pending, or validating — autosave
+ * status lives in the consumer's own state, validation in `.refine` and
+ * `field.show*`.
+ */
+export type OnChangeContext = {
+  /**
+   * The source path this fire is for, in dotted form (`'user.email'`).
+   * The empty string `''` is the whole form (a root handler). For a
+   * multi-path source, the handler fires once per matched path and `path`
+   * names which one.
+   */
+  readonly path: string
+  /**
+   * The value at the source path BEFORE this change, seeded at registration.
+   * Accurate for leaf sources. For a container or the whole form, an
+   * in-place leaf edit preserves the container's reference, so `previous`
+   * can be reference-equal to the current value (Vue's deep-watch gotcha) —
+   * snapshot inside the handler if a true container diff is needed.
+   */
+  readonly previous: unknown
+  /**
+   * Aborted when a newer write to the same source supersedes this run. A
+   * debounced or awaiting handler should bail on `signal.aborted` (or pass
+   * `signal` straight to `fetch`) so superseded work cancels itself.
+   */
+  readonly signal: AbortSignal
+  /** Retry counter — `0` on the first run, incremented by `onError`'s `retry()`. */
+  readonly attempt: number
+  /**
+   * The form handle, so a portable `useForm({ onChange })` handler can reach
+   * back into the form (e.g. `ctx.form.validateAsync(ctx.path)` to gate an
+   * autosave on validity). Typed precisely by the `form.onChange` overload.
+   */
+  readonly form: unknown
+  /**
+   * The leaf path(s), in dotted form, that actually changed in this
+   * dispatch. For a leaf source this is just `[path]`; for a container or
+   * the whole form it is every changed descendant.
+   */
+  readonly changed: readonly string[]
+}
+
+/**
+ * Context handed to an `onChange` handler's `onError` callback when the
+ * handler throws or rejects.
+ */
+export type OnChangeErrorContext = {
+  /** The source path this run was for, in dotted form (`''` for the whole form). */
+  readonly path: string
+  /** The value passed to the handler that failed. */
+  readonly value: unknown
+  /** The attempt number that failed (`0` on the first run). */
+  readonly attempt: number
+  /**
+   * Re-run the handler with the same value and `attempt + 1`. A no-op once a
+   * newer write has superseded this run — stale work is never resurrected.
+   * Backoff and a retry cap are the consumer's to impose.
+   */
+  readonly retry: () => void
+  /** The form handle. Typed precisely by the `form.onChange` overload. */
+  readonly form: unknown
+}
+
+/** A reaction to form value changes. Its return is ignored; throws route to `onError`. */
+export type OnChangeHandler = (value: unknown, ctx: OnChangeContext) => void | Promise<void>
+
+/** Handles a throw / rejection from an `onChange` handler. Must not throw. */
+export type OnChangeErrorHandler = (error: unknown, ctx: OnChangeErrorContext) => void
+
+/** Options for `form.onChange`. */
+export type OnChangeOptions = {
+  /**
+   * Called when the handler throws or its promise rejects. Without it, a
+   * failure is swallowed (logged in dev). `onChange` never throws into the
+   * write that triggered it.
+   */
+  readonly onError?: OnChangeErrorHandler
+}
+
+/**
+ * The `useForm({ onChange })` option — a whole-form handler registered at
+ * construction, bound to the form's lifetime. Either a bare handler or a
+ * `{ handler, onError }` pair.
+ */
+export type OnChangeConfig =
+  | OnChangeHandler
+  | { readonly handler: OnChangeHandler; readonly onError?: OnChangeErrorHandler }
 
 /**
  * Undo/redo configuration passed via `useForm({ history })`.

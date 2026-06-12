@@ -15,6 +15,9 @@ import type {
   FormKey,
   DefaultValuesResponse,
   GetDisplayState,
+  OnChangeHandler,
+  OnChangeOptions,
+  OnChangeSource,
   TransformAbortHolder,
   ValidateOn,
   ValidationError,
@@ -68,6 +71,7 @@ import {
   type PersistOptInRegistry,
 } from './persistence/opt-in-registry'
 import { isSensitivePath as defaultIsSensitivePath } from './persistence/sensitive-names'
+import { createOnChangeRegistry, type OnChangeRegistry } from './on-change'
 
 /**
  * Per-form closure state — the single store owned by each `useForm` call.
@@ -757,6 +761,20 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   onFormChange(listener: (next: F, meta?: WriteMeta) => void): () => void
 
   /**
+   * Register a `form.onChange` side-channel handler. `source === undefined`
+   * is the whole form (root); `getForm` lazily resolves the public form
+   * handle for `ctx.form`. Returns an idempotent `stop()`. A no-op on SSR.
+   * The public `form.onChange` overloads and `useForm({ onChange })` wire
+   * through here; dispatch happens in `commitWritePatches`.
+   */
+  registerOnChange(
+    source: OnChangeSource | undefined,
+    handler: OnChangeHandler,
+    options: OnChangeOptions | undefined,
+    getForm: () => unknown
+  ): () => void
+
+  /**
    * Subscribe to successful submissions. Fires after the consumer's
    * `onSubmit` callback has resolved — not on validation failure,
    * not on callback throw. Used by persistence's `clearOnSubmitSuccess`
@@ -1155,6 +1173,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const formChangeListeners = new Set<(next: F, meta?: WriteMeta) => void>()
   const submitSuccessListeners = new Set<() => void>()
   const resetListeners = new Set<() => void>()
+
+  // `form.onChange` side-channel. The store drives it from `commitWritePatches`
+  // (the one seam that holds the per-leaf patches), so it lives here rather
+  // than riding `formChangeListeners` (those only receive `(next, meta)`).
+  // `getValueAtPath` is a hoisted declaration — captured here, invoked only at
+  // dispatch time. Dormant until a handler registers; a no-op on SSR.
+  const onChangeRegistry: OnChangeRegistry = createOnChangeRegistry({ getValueAtPath, ssr })
 
   // Per-element persistence opt-ins. Constructed up-front so the
   // directive can populate entries before the persistence module wires
@@ -1994,6 +2019,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         console.error('[attaform] onFormChange threw:', err)
       }
     }
+    // Drive the `form.onChange` side-channel last, after field bookkeeping
+    // and the internal listeners — handlers must see a fully-updated form.
+    // Skipped wholesale (one boolean read) when no handler is registered, so
+    // the common write path pays nothing for an unused feature.
+    if (onChangeRegistry.active) onChangeRegistry.dispatch(patches, meta)
   }
 
   function applyFormReplacement(next: F, meta?: WriteMeta): void {
@@ -2891,6 +2921,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     formChangeListeners.clear()
     submitSuccessListeners.clear()
     resetListeners.clear()
+    onChangeRegistry.dispose()
     // Drop opt-ins so a directive that survives FormStore eviction
     // (it shouldn't, but defensive) doesn't keep the registry alive
     // through stale path entries on a disposed store.
@@ -3494,8 +3525,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // declared `.default(...)` paths, including `.default(undefined)`).
     rebuildAuthoredPaths(resetSource, next)
     // Replace form in one shot. `applyFormReplacement` emits diffAndApply
-    // patches and touches field records for every changed leaf.
-    applyFormReplacement(next)
+    // patches and touches field records for every changed leaf. Tagged
+    // `silent` so it does NOT fire `form.onChange`: reset rebaselines the
+    // form (a fresh start / record load), it is not a user edit, and an
+    // autosave handler reacting to it would echo the whole form straight
+    // back to the server. Persistence and history still see it (they ride
+    // `formChangeListeners`, which `silent` does not gate).
+    applyFormReplacement(next, { silent: true })
     // Re-anchor array identity baselines to the post-reset shape, so a
     // reorder or removal made before this reset no longer reads as a
     // structural change once the form is back at its baseline.
@@ -3946,6 +3982,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     settleTransforms,
     scheduleFieldValidation,
     onFormChange,
+    registerOnChange: onChangeRegistry.register,
     onSubmitSuccess,
     onReset,
     emitSubmitSuccess,

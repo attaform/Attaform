@@ -1,62 +1,11 @@
 <script setup lang="ts">
-  import { computed, reactive, ref } from 'vue'
+  import { computed, ref } from 'vue'
   import { useForm } from 'attaform/zod'
-  import type { FlatPath, GenericForm, UseFormReturnType } from 'attaform'
   import { z } from 'zod'
-
-  type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
-
-  function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number) {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    return (...args: A) => {
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => fn(...args), ms)
-    }
-  }
-
-  function useAutosave<Form extends GenericForm>(
-    form: UseFormReturnType<Form>,
-    paths: readonly FlatPath<Form>[],
-    save: (path: FlatPath<Form>, value: unknown, signal: AbortSignal) => Promise<void>,
-    options: { debounceMs?: number; gateOnValidity?: boolean } = {}
-  ) {
-    const { debounceMs = 600, gateOnValidity = true } = options
-    const status = reactive<Record<string, SaveStatus>>({})
-    for (const path of paths) status[path] = 'idle'
-
-    async function run(path: FlatPath<Form>, value: unknown, signal: AbortSignal) {
-      try {
-        if (gateOnValidity && !(await form.validateAsync(path)).success) {
-          status[path] = 'idle'
-          return
-        }
-        if (signal.aborted) return
-        status[path] = 'saving'
-        await save(path, value, signal)
-        if (signal.aborted) return
-        status[path] = 'saved'
-      } catch {
-        if (!signal.aborted) status[path] = 'error'
-      }
-    }
-
-    for (const path of paths) {
-      const schedule = debounce(
-        (value: unknown, signal: AbortSignal) => run(path, value, signal),
-        debounceMs
-      )
-      form.onChange(path, (value, ctx) => schedule(value, ctx.signal))
-    }
-
-    return {
-      status,
-      isSaving: computed(() => Object.values(status).some((s) => s === 'saving')),
-      failed: computed(() => paths.filter((path) => status[path] === 'error')),
-    }
-  }
+  import { useAutosave, type SaveStatus } from './useAutosave'
 
   const schema = z.object({
-    email: z.string(),
+    email: z.string().email('Enter a valid email'),
     displayName: z.string().min(2, 'At least 2 characters'),
     bio: z.string().max(160, '160 characters max'),
   })
@@ -77,6 +26,7 @@
 
   const { status, isSaving, failed } = useAutosave(form, ['email', 'displayName', 'bio'], save, {
     debounceMs: 600,
+    gateOnValidity: (path) => path !== 'email',
   })
 
   const fields = [
@@ -110,8 +60,8 @@
     </div>
 
     <p class="lede">
-      Each field debounces 600ms, gates on its own validity, then saves. Type a burst and one save
-      lands per pause. Display name needs two characters before it will autosave.
+      Email saves as a draft: even an invalid address persists as you type, while Attaform still
+      flags it below. Display name and bio gate on validity, holding back until they pass.
     </p>
 
     <label v-for="field in fields" :key="field.path">

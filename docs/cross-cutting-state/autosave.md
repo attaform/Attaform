@@ -21,7 +21,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-Each field in the demo debounces for 600ms, gates on its own validity, then saves. Type a burst and exactly one save lands per pause (the toast confirms it). The display name holds back until it has two characters, the validity gate at work. Tick the box to fail saves and watch the aggregate banner flip.
+Email saves as a draft: even an invalid address persists as you type, while Attaform still flags it inline below the field. Display name and bio gate on validity instead, holding back until they pass (display name needs two characters). Type a burst and one save lands per pause, the toast confirming it. Tick the box to fail saves and watch the aggregate banner flip.
 
 ::docs-demo{slug="autosave" label="Autosave Recipe Demo"}
 ::
@@ -49,7 +49,10 @@ export function useAutosave<Form extends GenericForm>(
   form: UseFormReturnType<Form>,
   paths: readonly FlatPath<Form>[],
   save: (path: FlatPath<Form>, value: unknown, signal: AbortSignal) => Promise<void>,
-  options: { debounceMs?: number; gateOnValidity?: boolean } = {}
+  options: {
+    debounceMs?: number
+    gateOnValidity?: boolean | ((path: FlatPath<Form>) => boolean)
+  } = {}
 ) {
   const { debounceMs = 600, gateOnValidity = true } = options
   const status = reactive<Record<string, SaveStatus>>({})
@@ -57,7 +60,8 @@ export function useAutosave<Form extends GenericForm>(
 
   async function run(path: FlatPath<Form>, value: unknown, signal: AbortSignal) {
     try {
-      if (gateOnValidity && !(await form.validateAsync(path)).success) {
+      const gate = typeof gateOnValidity === 'function' ? gateOnValidity(path) : gateOnValidity
+      if (gate && !(await form.validateAsync(path)).success) {
         status[path] = 'idle'
         return
       }
@@ -126,9 +130,11 @@ const { status, isSaving, failed } = useAutosave(
 
 ## Gating on validity
 
-This is where the two halves meet. `gateOnValidity` (on by default) runs `form.validateAsync(path)` before each save and skips the write when the field is invalid. So a half-typed email never reaches the server, and the field's [async refinements](/docs/validation/async-refinements) run as part of that same check.
+This is where the two halves meet. `gateOnValidity` (on by default) runs `form.validateAsync(path)` before each save and skips the write when the field is invalid, so a value that fails validation never reaches the server, and the field's [async refinements](/docs/validation/async-refinements) run as part of that same check.
 
 `.refine` decides whether a value is allowed; `onChange` decides whether to persist it. Composing them gives you "save only what passes" without either concern leaking into the other. Turn the gate off (`{ gateOnValidity: false }`) when you want a true draft autosave that captures even invalid in-progress state.
+
+For per-field control, pass a predicate instead of a boolean: `gateOnValidity: (path) => path !== 'email'` keeps `email` a draft while gating the rest. The demo above does exactly that, so an invalid email still autosaves while `fields.email.showErrors` surfaces the validation message. The write persists the draft, the read flags it, and neither blocks the other.
 
 ## Debouncing
 

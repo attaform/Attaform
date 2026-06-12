@@ -43,6 +43,9 @@ import type {
   AbstractSchema,
   AttaformDefaults,
   FormKey,
+  OnChangeErrorHandler,
+  OnChangeHandler,
+  OnChangeOptions,
   UseFormReturnType,
   UseFormConfiguration,
 } from '../types/types-api'
@@ -594,11 +597,25 @@ export function useAbstractForm<
   // adapter callers compute the richer `ReadForm` (zod-v4's
   // `StorageShape<Schema>`) and assert it through the public return
   // type — at runtime the same proxies serve both views.
-  return buildFormApi<Form, GetValueFormType>(
-    state,
-    formInstanceId,
-    apiOptions
-  ) as unknown as UseFormReturnType<Form, GetValueFormType, ReadForm, K>
+  const api = buildFormApi<Form, GetValueFormType>(state, formInstanceId, apiOptions)
+
+  // `useForm({ onChange })`: a whole-form side-channel handler bound to this
+  // form. Route it through the same store registry `form.onChange(...)` uses,
+  // scoped to the calling component so it stops on unmount (a no-op on SSR).
+  // `getForm` resolves the public handle for `ctx.form`.
+  const onChangeConfig = configuration.onChange
+  if (onChangeConfig !== undefined) {
+    const handler = (
+      typeof onChangeConfig === 'function' ? onChangeConfig : onChangeConfig.handler
+    ) as OnChangeHandler
+    const onError = typeof onChangeConfig === 'function' ? undefined : onChangeConfig.onError
+    const options: OnChangeOptions | undefined =
+      onError === undefined ? undefined : { onError: onError as OnChangeErrorHandler }
+    const stop = state.registerOnChange(undefined, handler, options, () => api)
+    if (getCurrentScope() !== undefined) onScopeDispose(stop)
+  }
+
+  return api as unknown as UseFormReturnType<Form, GetValueFormType, ReadForm, K>
 }
 
 /**

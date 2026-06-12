@@ -248,7 +248,16 @@ export default [
     // prior spread, the same trade the CORE-P3 form.meta getter collapse
     // already took (see zod-v4.mjs). Output is byte-identical (the behavior-lock
     // golden held). Measured at 52.13 KB.
-    limit: '53 KB',
+    //
+    // Raised 53 → 54 KB on the form.onChange branch (#395): the change
+    // seam ships in the shared core chunk. on-change.ts holds the per-path
+    // + whole-form handler registry and the change context (attempt /
+    // signal / retry) with abort + retry plumbing; create-form-store.ts
+    // dispatches at the write funnel and threads the { silent } write
+    // opt-out through setValue / reset so hydration and reset never fire
+    // saves; build-form-api.ts + use-abstract-form.ts surface form.onChange
+    // + useForm({ onChange }). Measured at 53.39 KB.
+    limit: '54 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -391,7 +400,13 @@ export default [
     // optionsMap remap, which reuses zod's own discriminator extraction
     // rather than re-deriving it). zod-v3.mjs holds at 62 KB (61.53).
     // Measured at 66.23 KB.
-    limit: '67 KB',
+    //
+    // Raised 67 → 68 KB tracking index.mjs's form.onChange bump (#395):
+    // the unified entry bundles the shared core chunk, so it absorbs the
+    // onChange seam (on-change.ts registry + change context, create-form-
+    // store dispatch + { silent } opt-out, form.onChange / useForm({
+    // onChange }) surface). Measured at 67.44 KB.
+    limit: '68 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -491,7 +506,12 @@ export default [
     // rootBase spread became per-field lazy getters, eliminating the
     // O(field-count) form.fields component over-render. The 28 rollup getters
     // are slightly less compressible than the spread. Measured at 60.09 KB.
-    limit: '61 KB',
+    //
+    // Raised 61 → 62 KB tracking index.mjs's form.onChange bump (#395):
+    // same shared core chunk (on-change.ts registry + change context,
+    // create-form-store dispatch + { silent } opt-out, form.onChange /
+    // useForm({ onChange }) surface). Measured at 61.33 KB.
+    limit: '62 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -656,7 +676,14 @@ export default [
     // O(array-length) to O(depth). The inlined total (no splitting) absorbs
     // the full delta; zod-v3.mjs, the tightest adapter bundle, crossed 61.
     // Measured at 61.13 KB.
-    limit: '62 KB',
+    //
+    // Raised 62 → 63 KB tracking index.mjs's form.onChange bump (#395):
+    // same shared core chunk (on-change.ts registry + change context,
+    // create-form-store dispatch + { silent } opt-out, form.onChange /
+    // useForm({ onChange }) surface). zod-v3.mjs, the tightest adapter
+    // bundle, lands at 62.80 KB — keep an eye on it; a further core
+    // addition will bind here first.
+    limit: '63 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

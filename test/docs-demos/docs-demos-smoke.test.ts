@@ -1248,6 +1248,41 @@ const entries: SmokeEntry[] = [
       expect(error).not.toBeNull()
     },
   },
+
+  // ─── CROSS-CUTTING: onChange + autosave ───────────────────────
+  {
+    // Type into the email field; the `onChange` side-channel fires a
+    // simulated save (~700ms) and the per-field status badge flips to
+    // "Saved". Proves the dispatch seam reaches a consumer handler on
+    // a real write.
+    slug: 'on-change',
+    gesture: async (root) => {
+      const email = root.querySelector<HTMLInputElement>('input')
+      if (!email) throw new Error('on-change: email input not found')
+      await dispatchInput(email, 'ada@example.com')
+      // persist() sets 'saving' synchronously, 'saved' after ~700ms.
+      await waitUntil(() => root.querySelector('.status.saved') ?? null, 3000)
+    },
+    assert: async (root) => {
+      expect(root.querySelector('.status.saved')).not.toBeNull()
+    },
+  },
+  {
+    // Type an invalid email into the ungated (draft) field; the
+    // autosave recipe persists it anyway (~600ms debounce + ~500ms
+    // save) and the badge flips to "Saved", proving a failing
+    // validation does not block an ungated write.
+    slug: 'autosave',
+    gesture: async (root) => {
+      const email = root.querySelector<HTMLInputElement>('input')
+      if (!email) throw new Error('autosave: email input not found')
+      await dispatchInput(email, 'not-an-email')
+      await waitUntil(() => root.querySelector('.status.saved') ?? null, 4000)
+    },
+    assert: async (root) => {
+      expect(root.querySelector('.status.saved')).not.toBeNull()
+    },
+  },
 ]
 
 /**

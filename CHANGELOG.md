@@ -1,8 +1,29 @@
 # Changelog
 
 ## Unreleased
+### Added
 
-_No unreleased changes yet._
+- **`form.onChange`, a side-channel for reacting to value changes.** Autosave a
+  field or a subform, mirror one field into another, fire analytics on edit.
+  `form.onChange(handler)` reacts to the whole form; `form.onChange(source,
+  handler)` scopes to a dotted path, a list of paths, or a getter / ref /
+  computed that re-aims on every write; `useForm({ onChange })` registers a
+  whole-form handler at construction. It is a pure event subscription: a handler
+  running never marks the form dirty, touched, or validating, so autosave status
+  lives in your own state and the form's lifecycle stays about the form. Handlers
+  may be async, and a newer write to the same source aborts the prior run's
+  `ctx.signal` and supersedes it (latest write wins); a throw routes to an
+  optional `onError(error, ctx)` with `ctx.retry()` instead of into the keystroke
+  that triggered it. Registration returns an idempotent `stop()` that also fires
+  on scope teardown, and is a no-op under SSR. Edits fire it; rebaselines
+  (persistence hydration, cross-tab echo, `reset()`) stay silent, and a new
+  `setValue(path, value, { silent: true })` opts an individual write out. This is
+  the write half of reacting to change; the read half is an async Zod `.refine`,
+  whose verdict still flows into `form.errors` and which `handleSubmit` awaits,
+  so an autosave can gate its write on `await form.validateAsync(path)` and
+  persist only what passes. New `onChange` and autosave guides, plus an async
+  server-validation guide, document the split. Verified against both the Zod v3
+  and v4 adapters; zero new runtime dependencies. (#XXX)
 
 ## v0.21.2
 ### Changed

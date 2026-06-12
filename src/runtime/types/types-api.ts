@@ -982,7 +982,7 @@ export type OnChangeSource = MaybeRefOrGetter<string | readonly string[]>
  * status lives in the consumer's own state, validation in `.refine` and
  * `field.show*`.
  */
-export type OnChangeContext = {
+export type OnChangeContext<FormApi = unknown> = {
   /**
    * The source path this fire is for, in dotted form (`'user.email'`).
    * The empty string `''` is the whole form (a root handler). For a
@@ -1011,7 +1011,7 @@ export type OnChangeContext = {
    * back into the form (e.g. `ctx.form.validateAsync(ctx.path)` to gate an
    * autosave on validity). Typed precisely by the `form.onChange` overload.
    */
-  readonly form: unknown
+  readonly form: FormApi
   /**
    * The leaf path(s), in dotted form, that actually changed in this
    * dispatch. For a leaf source this is just `[path]`; for a container or
@@ -1024,7 +1024,7 @@ export type OnChangeContext = {
  * Context handed to an `onChange` handler's `onError` callback when the
  * handler throws or rejects.
  */
-export type OnChangeErrorContext = {
+export type OnChangeErrorContext<FormApi = unknown> = {
   /** The source path this run was for, in dotted form (`''` for the whole form). */
   readonly path: string
   /** The value passed to the handler that failed. */
@@ -1038,23 +1038,29 @@ export type OnChangeErrorContext = {
    */
   readonly retry: () => void
   /** The form handle. Typed precisely by the `form.onChange` overload. */
-  readonly form: unknown
+  readonly form: FormApi
 }
 
 /** A reaction to form value changes. Its return is ignored; throws route to `onError`. */
-export type OnChangeHandler = (value: unknown, ctx: OnChangeContext) => void | Promise<void>
+export type OnChangeHandler<Value = unknown, FormApi = unknown> = (
+  value: Value,
+  ctx: OnChangeContext<FormApi>
+) => void | Promise<void>
 
 /** Handles a throw / rejection from an `onChange` handler. Must not throw. */
-export type OnChangeErrorHandler = (error: unknown, ctx: OnChangeErrorContext) => void
+export type OnChangeErrorHandler<FormApi = unknown> = (
+  error: unknown,
+  ctx: OnChangeErrorContext<FormApi>
+) => void
 
 /** Options for `form.onChange`. */
-export type OnChangeOptions = {
+export type OnChangeOptions<FormApi = unknown> = {
   /**
    * Called when the handler throws or its promise rejects. Without it, a
    * failure is swallowed (logged in dev). `onChange` never throws into the
    * write that triggered it.
    */
-  readonly onError?: OnChangeErrorHandler
+  readonly onError?: OnChangeErrorHandler<FormApi>
 }
 
 /**
@@ -1062,9 +1068,12 @@ export type OnChangeOptions = {
  * construction, bound to the form's lifetime. Either a bare handler or a
  * `{ handler, onError }` pair.
  */
-export type OnChangeConfig =
-  | OnChangeHandler
-  | { readonly handler: OnChangeHandler; readonly onError?: OnChangeErrorHandler }
+export type OnChangeConfig<Value = unknown, FormApi = unknown> =
+  | OnChangeHandler<Value, FormApi>
+  | {
+      readonly handler: OnChangeHandler<Value, FormApi>
+      readonly onError?: OnChangeErrorHandler<FormApi>
+    }
 
 /**
  * Undo/redo configuration passed via `useForm({ history })`.
@@ -1363,6 +1372,18 @@ export type UseFormConfiguration<
    * per blur for `<input v-register.lazy>`).
    */
   debounceMs?: number
+
+  /**
+   * A whole-form `onChange` handler, registered at construction and bound to
+   * the form's lifetime. The same side-channel as `form.onChange(handler)`,
+   * but declared in the options bag so it travels with the form (handy for a
+   * `useAutosave`-style composable). Pass a handler, or `{ handler, onError }`.
+   *
+   * For path-scoped reactions, call `form.onChange('path', handler)` on the
+   * returned form instead. `onChange` never touches the form's own
+   * lifecycle — keep validation in `.refine` and `field.show*`.
+   */
+  onChange?: OnChangeConfig<Form, UseFormReturnType<Form>>
 
   /**
    * Opt-in persistence of the form's draft state. Off by default —
@@ -4101,6 +4122,56 @@ export type UseFormReturnType<
       segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never),
       value: Value
     ): boolean
+  }
+
+  /**
+   * Subscribe to form value changes — the side-channel autosave is built on.
+   * Three call forms:
+   *
+   * - `form.onChange(handler, options?)` — react to the whole form.
+   * - `form.onChange('user.email', handler, options?)` — react to one path;
+   *   `value` is that path's value.
+   * - `form.onChange(source, handler, options?)` — react to a list of paths,
+   *   or a getter / ref resolving to a path or list (re-read on each write,
+   *   so the aim can follow a moving target like the active list row).
+   *
+   * The handler runs AFTER the value lands. Its return is ignored, and a
+   * throw or rejection routes to `options.onError`, never into the write that
+   * triggered it. Returns an idempotent `stop()`; called inside a component's
+   * setup it also stops automatically on unmount.
+   *
+   * `onChange` is a pure side-channel: nothing it does marks the form dirty,
+   * pending, or validating. Keep validation feedback in `.refine` and
+   * `field.show*`, and track autosave status in your own state.
+   *
+   * ```ts
+   * form.onChange('user.email', async (email, ctx) => {
+   *   const verdict = await ctx.form.validateAsync(ctx.path)
+   *   if (verdict.success) await api.save({ email }, { signal: ctx.signal })
+   * }, { onError: (error, ctx) => ctx.retry() })
+   * ```
+   */
+  onChange: {
+    /** React to the whole form. `value` is the current form. */
+    (
+      handler: OnChangeHandler<ReadForm, UseFormReturnType<Form, GetValueFormType, ReadForm, K>>,
+      options?: OnChangeOptions<UseFormReturnType<Form, GetValueFormType, ReadForm, K>>
+    ): () => void
+    /** React to one path. `value` is that path's value. */
+    <P extends FlatPath<Form>>(
+      source: P,
+      handler: OnChangeHandler<
+        NestedType<Form, P>,
+        UseFormReturnType<Form, GetValueFormType, ReadForm, K>
+      >,
+      options?: OnChangeOptions<UseFormReturnType<Form, GetValueFormType, ReadForm, K>>
+    ): () => void
+    /** React to a list of paths, or a getter / ref / computed. `value` is unknown. */
+    (
+      source: OnChangeSource,
+      handler: OnChangeHandler<unknown, UseFormReturnType<Form, GetValueFormType, ReadForm, K>>,
+      options?: OnChangeOptions<UseFormReturnType<Form, GetValueFormType, ReadForm, K>>
+    ): () => void
   }
 
   /**

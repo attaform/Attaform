@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const form = useForm({
     schema: z.object({
@@ -16,7 +17,7 @@
 </script>
 
 <template>
-  <form @submit.prevent>
+  <form class="demo" @submit.prevent>
     <label>
       <span>Name</span>
       <input v-register="form.register('name')" />
@@ -32,7 +33,7 @@
       <input v-register="form.register('profile.age')" type="number" />
     </label>
 
-    <div class="actions">
+    <div class="actions mono">
       <button type="button" @click="form.setValue('name', 'Athlete of the Year')">
         form.setValue('name', '…')
       </button>
@@ -58,56 +59,3 @@
     <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
-
-<style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 30rem;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  input {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .actions button {
-    padding: 0.35rem 0.7rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    background: #fff;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    cursor: pointer;
-  }
-  .actions button:hover {
-    background: #f3f4f6;
-  }
-  pre {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    color: #111827;
-    margin: 0;
-  }
-</style>

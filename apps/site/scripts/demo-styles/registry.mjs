@@ -193,6 +193,9 @@ export const fragments = {
 .demo .actions button:hover:not(:disabled) {
   background: var(--color-surface-2);
 }
+.demo .actions.mono button {
+  font-family: ui-monospace, monospace;
+}
 `,
 
   // Neutral standalone button (a "ghost"), styled like an action-row button
@@ -550,7 +553,6 @@ export const fragments = {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 0.5rem;
 }
 .demo .panel-title {
   margin: 0;
@@ -575,14 +577,32 @@ export const fragments = {
 }
 `,
 
-  // Single-column grid wrapper for stacking sections with generous gaps.
-  // Multi-column demos override `grid-template-columns` in their own block.
+  // Vertical flex group for an inner form or section inside a grid demo (the
+  // `.demo` root only stacks when it is not itself a grid).
+  stack: `
+.demo .stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+`,
+
+  // Multi-section grid. Works both as the `.demo` root itself (`class="demo
+  // layout"`, which drops the form max-width and overrides the column stack)
+  // and as a nested wrapper. Multi-column demos override
+  // `grid-template-columns` in their own block.
   layout: `
+.demo.layout,
+.demo.grid,
 .demo .layout,
 .demo .grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.25rem;
+}
+.demo.layout,
+.demo.grid {
+  max-width: none;
 }
 `,
 

@@ -69,6 +69,12 @@ export default defineConfig({
     // persistence in jsdom-backed tests, and resets the
     // one-shot dev-warning dedup between tests.
     setupFiles: ['./test/setup.ts'],
+    // Materialize the docs-demos' generated `styles.css` once before the
+    // suite runs. The files are gitignored and produced at dev/build time by
+    // `apps/site/scripts/demo-styles/codegen.mjs`; the docs-demos smoke suite
+    // imports each demo's App.vue, which `import './styles.css'`, so the
+    // import must resolve on a fresh checkout where the CSS does not exist yet.
+    globalSetup: ['./test/global-setup.ts'],
     // Shuffle test-file AND intra-file test order on every run. Surfaces
     // any implicit ordering dependency (a test leaking state, a module-
     // level side effect triggered by load order, etc.) that would

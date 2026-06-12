@@ -215,7 +215,30 @@
       window.toast = t;
     } catch {}
   `
+  // Mirror the viewer's OS colour scheme onto the preview iframe's
+  // `<html>` as the `.dark` class. Demos theme themselves through a
+  // self-contained `.demo` token block whose dark variant is selected by a
+  // `.dark` ancestor (the same signal @nuxtjs/color-mode toggles on the docs
+  // page). The srcdoc iframe has no such class, so without this the playground
+  // would render every demo in light mode on a dark OS. The closing script
+  // tag is split with an empty `${''}` interpolation so neither the SFC
+  // compiler nor the linter reads it as the end of this block.
+  const DARK_SYNC_SOURCE = `
+    <script>
+      (function () {
+        try {
+          var query = window.matchMedia('(prefers-color-scheme: dark)');
+          var apply = function () {
+            document.documentElement.classList.toggle('dark', query.matches);
+          };
+          apply();
+          query.addEventListener('change', apply);
+        } catch (e) {}
+      })();
+    </${''}script>
+  `
   const previewOptions = {
+    headHTML: DARK_SYNC_SOURCE,
     customCode: {
       importCode: `import { createAttaform } from 'attaform'`,
       useCode: `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())`,

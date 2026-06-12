@@ -28,6 +28,10 @@ dist
 apps/site/.repl-cache
 apps/site/public/_pagefind
 
+# Generated per-demo stylesheets (composed from scripts/demo-styles/ at
+# dev/build time; source of truth is registry.mjs + each demo's styles.json)
+apps/site/docs-demos/*/styles.css
+
 # esbuild metafile dumps from the bundle-size analysis tooling
 analysis/meta
 

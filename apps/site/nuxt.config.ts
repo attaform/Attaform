@@ -13,6 +13,12 @@ import zodPkg from 'zod/package.json'
 // `"zod-v3": "npm:zod@^3.24"`). The aliased path resolves to its
 // own package.json, whose version field is the v3.x release.
 import zodV3Pkg from 'zod-v3/package.json'
+// Build-time demo-style construction: composes each folder demo's gitignored
+// `styles.css` from the shared fragment registry + its `styles.json`. Imported
+// here for the dev-server plugin below; build/generate run it via the
+// `codegen:demo-styles` package script before typecheck. See
+// `scripts/demo-styles/`.
+import { generateAll, generateOne } from './scripts/demo-styles/codegen.mjs'
 
 // Compute the on-disk path to the monorepo root (two levels up from
 // `apps/site`). Used to broaden Vite's `server.fs.allow` so the
@@ -115,6 +121,40 @@ const invalidateDemoGlobConsumersOnDemoChange: VitePlugin = {
       invalidate()
     }
     server.watcher.on('add', onFsEvent)
+    server.watcher.on('unlink', onFsEvent)
+  },
+}
+
+// Demo styles are generated, not authored: each demo's `styles.css` is
+// composed from `scripts/demo-styles/registry.mjs` plus the demo's
+// `styles.json` manifest. The files are gitignored, so the dev server must
+// materialize them. `configureServer` runs once at startup (before any module
+// is transformed, so App.vue's `import './styles.css'` and the playground's
+// `?raw` glob both resolve) and again on every Nuxt config restart. The
+// watcher regenerates on the fly: edit a `styles.json` and only that demo
+// re-emits; edit the registry and every demo re-emits. The resulting CSS
+// change rides Vite's normal HMR for the inline `<DocsDemo>`; the standalone
+// playground picks it up on reload.
+const generateDemoStylesOnServe: VitePlugin = {
+  name: 'attaform:generate-demo-styles-on-serve',
+  apply: 'serve',
+  configureServer(server) {
+    const siteRoot = dirname(fileURLToPath(import.meta.url))
+    const demosDir = resolve(siteRoot, 'docs-demos')
+    const registryFile = resolve(siteRoot, 'scripts/demo-styles/registry.mjs')
+    generateAll()
+    function onFsEvent(path: string): void {
+      if (path === registryFile) {
+        generateAll()
+        return
+      }
+      if (path.startsWith(demosDir) && path.endsWith('styles.json')) {
+        generateOne(dirname(path))
+      }
+    }
+    server.watcher.add(registryFile)
+    server.watcher.on('add', onFsEvent)
+    server.watcher.on('change', onFsEvent)
     server.watcher.on('unlink', onFsEvent)
   },
 }
@@ -773,6 +813,7 @@ export default defineNuxtConfig({
       tailwindcss(),
       fixViteAssetImportMetaUrlFilter,
       invalidateDemoGlobConsumersOnDemoChange,
+      generateDemoStylesOnServe,
     ],
     // Source-resolve the workspace `attaform` package for the docs
     // site's Vite environments. Without these aliases, every

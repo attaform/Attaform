@@ -956,6 +956,17 @@ export type WriteMeta = {
   readonly silent?: boolean
 }
 
+/** Options for a `setValue` write. */
+export type SetValueOptions = {
+  /**
+   * When `true`, the write lands normally (storage, validation, persistence,
+   * history) but does NOT notify `form.onChange` handlers. Use it to hydrate
+   * the form (load a saved record into the fields) without echoing every
+   * field back through an autosave loop.
+   */
+  readonly silent?: boolean
+}
+
 /**
  * A source address for `form.onChange` — the subtree(s) a handler reacts to.
  *
@@ -4084,9 +4095,13 @@ export type UseFormReturnType<
      * type at a leaf). Refinement-level mismatches (out-of-enum
      * values, failing format checks, etc.) succeed and surface as
      * field errors instead.
+     *
+     * Pass `{ silent: true }` to land the write without notifying
+     * `form.onChange` handlers (e.g. hydrating a saved record).
      */
     <Value extends SetValuePayload<DefaultValuesShape<Form>, WriteShape<Form>>>(
-      value: Value
+      value: Value,
+      options?: SetValueOptions
     ): boolean
     /**
      * Write at a specific path. Pass a value or a callback receiving
@@ -4107,7 +4122,8 @@ export type UseFormReturnType<
      */
     <Path extends FlatPath<Form>, Value extends PathSetValuePayload<NestedType<Form, Path>>>(
       path: Path,
-      value: Value
+      value: Value,
+      options?: SetValueOptions
     ): boolean
     /**
      * Tuple-segment form. Equivalent to the dotted-string overload —
@@ -4120,7 +4136,8 @@ export type UseFormReturnType<
       Value extends PathSetValuePayload<NestedType<Form, JoinSegments<S>>>,
     >(
       segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never),
-      value: Value
+      value: Value,
+      options?: SetValueOptions
     ): boolean
   }
 

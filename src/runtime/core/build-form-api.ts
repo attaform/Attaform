@@ -13,6 +13,7 @@ import type {
   OnInvalidSubmitPolicy,
   ReactiveValidationStatus,
   RegisterValue,
+  SetValueOptions,
   UseFormReturnType,
   ValidateOn,
   ValidationError,
@@ -348,8 +349,27 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return computed(() => getAtPath(state.form.value, segments)) as Readonly<Ref<unknown>>
   }
 
-  function setValueImpl(pathOrValue: unknown, maybeValue?: unknown): boolean {
-    if (arguments.length === 1) {
+  function setValueImpl(
+    pathOrValue: unknown,
+    maybeValue?: unknown,
+    maybeOptions?: unknown
+  ): boolean {
+    // A path is a dotted string or a segment array; with a single argument
+    // this is always the whole form. So `(value)` / `(value, options)` are
+    // whole-form writes, `(path, value)` / `(path, value, options)` are path
+    // writes — disambiguated by the first argument's type, not arity.
+    const argc = arguments.length
+    const isPathForm = argc >= 2 && (typeof pathOrValue === 'string' || Array.isArray(pathOrValue))
+    const options = (isPathForm ? maybeOptions : argc >= 2 ? maybeValue : undefined) as
+      | SetValueOptions
+      | undefined
+    const silent = options?.silent === true
+    // Fold the consumer's `{ silent }` opt-out into every write this call
+    // makes, alongside the per-instance bag. Silent writes still validate and
+    // persist; they only skip the `form.onChange` side-channel.
+    const writeMeta = (extra?: WriteMeta): WriteMeta | undefined =>
+      withInstanceMeta(silent ? { ...extra, silent: true } : extra)
+    if (!isPathForm) {
       // Whole-form: hand the consumer's callback a STABLE structural
       // snapshot of the form, not the live reactive value. The form
       // store mutates `form.value` in place on commit (so deep-watch
@@ -376,7 +396,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
         next,
         state.schema as unknown as Parameters<typeof walkUnsetSentinels>[1]
       )
-      const ok = state.setValueAtPath([], walked.cleanedValues, withInstanceMeta())
+      const ok = state.setValueAtPath([], walked.cleanedValues, writeMeta())
       if (!ok) return false
       reMarkBlanksAfterSubstitution(walked.paths)
       return true
@@ -402,7 +422,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
         if (parentDU?.discriminatorKey === last) {
           const slimDefault = state.schema.getEmptyValueAtPath(segments)
           const blank = blankForKind(slimDefault)
-          return state.setValueAtPath(segments, blank, withInstanceMeta({ blank: true }))
+          return state.setValueAtPath(segments, blank, writeMeta({ blank: true }))
         }
       }
       // General case: `expandUnsetAt` writes the slim primitive at
@@ -426,7 +446,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // value-write-without-flag + mark-via-flag identity short-
       // circuits the second call and the blank change escapes history.
       if (blankPaths.length === 1 && blankPaths[0] === segmentsKey) {
-        return state.setValueAtPath(segments, expanded, withInstanceMeta({ blank: true }))
+        return state.setValueAtPath(segments, expanded, writeMeta({ blank: true }))
       }
       // Container unset: marks live at descendants. Write the value
       // first (this fires `applyFormReplacement` and goes through any
@@ -437,7 +457,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // at a disc path the schema's empty is the FIRST variant literal
       // (e.g. `'boat'`), which would silently overwrite the kind-blank
       // `''` the parent write just landed.
-      const ok = state.setValueAtPath(segments, expanded, withInstanceMeta())
+      const ok = state.setValueAtPath(segments, expanded, writeMeta())
       if (!ok) return false
       for (const pathKey of blankPaths) {
         const blankSegments = segmentsForPathKey(pathKey)
@@ -445,7 +465,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
         state.setValueAtPath(
           blankSegments,
           state.getValueAtPath(blankSegments),
-          withInstanceMeta({ blank: true })
+          writeMeta({ blank: true })
         )
       }
       return true
@@ -487,7 +507,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       segments,
       state.schema as unknown as Parameters<typeof substituteUnsetSentinels>[2]
     )
-    const ok = state.setValueAtPath(segments, walked.cleanedValues, withInstanceMeta())
+    const ok = state.setValueAtPath(segments, walked.cleanedValues, writeMeta())
     if (!ok) return false
     reMarkBlanksAfterSubstitution(walked.paths)
     return true

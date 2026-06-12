@@ -185,3 +185,47 @@ describe('useForm({ onChange })', () => {
     expect(ctxForm).toBe(form)
   })
 })
+
+describe('setValue({ silent })', () => {
+  it('a silent path write lands the value but does not fire onChange', () => {
+    const calls: unknown[] = []
+    const { form } = mount((f) => {
+      f.onChange('email', (value) => {
+        calls.push(value)
+      })
+    })
+
+    expect(form.setValue('email', 'hydrated', { silent: true })).toBe(true)
+    expect(form.values.email).toBe('hydrated')
+    expect(calls).toHaveLength(0)
+
+    // A subsequent ordinary write fires normally — the flag is per-call.
+    form.setValue('email', 'typed')
+    expect(calls).toEqual(['typed'])
+  })
+
+  it('a silent whole-form write lands but does not fire onChange', () => {
+    const calls: unknown[] = []
+    const { form } = mount((f) => {
+      f.onChange((value) => {
+        calls.push(value)
+      })
+    })
+
+    form.setValue({ email: 'a', password: 'b', profile: { name: '', age: 0 } }, { silent: true })
+    expect(form.values.email).toBe('a')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('a non-silent write is unaffected by the new options arg', () => {
+    const calls: unknown[] = []
+    const { form } = mount((f) => {
+      f.onChange('email', (value) => {
+        calls.push(value)
+      })
+    })
+
+    form.setValue('email', 'x')
+    expect(calls).toEqual(['x'])
+  })
+})

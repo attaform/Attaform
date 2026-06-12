@@ -101,6 +101,7 @@ export type {
   RegisterTransform,
   RegisterValue,
   SetValueCallback,
+  SetValueOptions,
   SetValuePayload,
   SettledValidationStatus,
   SlimPrimitiveKind,

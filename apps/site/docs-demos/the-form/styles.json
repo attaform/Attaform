@@ -1,0 +1,16 @@
+{
+  "with": [
+    "layout",
+    "stack",
+    "label",
+    "input",
+    "error",
+    "actions",
+    "primary",
+    "button",
+    "panel",
+    "section",
+    "code",
+    "pre"
+  ]
+}

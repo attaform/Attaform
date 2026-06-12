@@ -186,20 +186,29 @@ const replAssetsDir = resolve(
   repoRoot,
   `node_modules/.pnpm/@vue+repl@4.7.2/node_modules/@vue/repl/dist/assets`
 )
-// Volar's web build emits two `console.warn` notices on startup:
-//   [service-emmet] this module is not yet supported for web.
-//   [volar-service-pug] this module is not yet supported for web.
-// They're advisory-only — neither service is meaningful in our REPL
-// (no Emmet expansion, no Pug compile path) — and they pollute every
-// page load with two yellow rows. Worker console output isn't
-// reachable from the main thread, so we patch each worker at copy
-// time: prepend a tiny `console.warn` shim that swallows messages
-// containing the shared "not yet supported for web" phrase.
+// Volar's web build emits advisory `console.warn` notices that are
+// noise in our REPL. Two fire on startup:
+//   [service-emmet] / [volar-service-pug] "not yet supported for web."
+// (no Emmet expansion or Pug compile path runs here). One more fires
+// per migrated demo:
+//   "languageId not found for file:///src/styles.css"
+// Each demo seeds a generated `styles.css` and imports it; Volar's
+// worker has no CSS language plugin, so it warns once and skips the
+// file. That is harmless: the CSS still compiles into the preview and
+// the import resolves through the ambient `*.css` declaration seeded in
+// DemoReplEditor. Worker console output isn't reachable from the main
+// thread, so we patch each worker at copy time with a `console.warn`
+// shim that swallows just those messages. The CSS filter is scoped to
+// `.css` so a genuine languageId failure on a `.ts`/`.vue` file still
+// surfaces.
 const SUPPRESS_PRELUDE =
   ';(function(){var w=console.warn;' +
   'console.warn=function(){' +
   'var a=arguments[0];' +
-  'if(typeof a==="string"&&a.indexOf("not yet supported for web")!==-1)return;' +
+  'if(typeof a==="string"){' +
+  'if(a.indexOf("not yet supported for web")!==-1)return;' +
+  'if(a.indexOf("languageId not found")!==-1&&a.indexOf(".css")!==-1)return;' +
+  '}' +
   'return w.apply(console,arguments)' +
   '};})();\n'
 async function copyWorkerWithSuppressedWarnings(srcPath, destPath) {

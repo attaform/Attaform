@@ -1,0 +1,18 @@
+{
+  "with": [
+    "layout",
+    "stack",
+    "label",
+    "input",
+    "error",
+    "fieldset",
+    "row",
+    "button",
+    "panel",
+    "card",
+    "pre",
+    "placeholder",
+    "hint",
+    "code"
+  ]
+}

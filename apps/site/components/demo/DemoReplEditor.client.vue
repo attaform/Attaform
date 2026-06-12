@@ -215,7 +215,30 @@
       window.toast = t;
     } catch {}
   `
+  // Mirror the viewer's OS colour scheme onto the preview iframe's
+  // `<html>` as the `.dark` class. Demos theme themselves through a
+  // self-contained `.demo` token block whose dark variant is selected by a
+  // `.dark` ancestor (the same signal @nuxtjs/color-mode toggles on the docs
+  // page). The srcdoc iframe has no such class, so without this the playground
+  // would render every demo in light mode on a dark OS. The closing script
+  // tag is split with an empty `${''}` interpolation so neither the SFC
+  // compiler nor the linter reads it as the end of this block.
+  const DARK_SYNC_SOURCE = `
+    <script>
+      (function () {
+        try {
+          var query = window.matchMedia('(prefers-color-scheme: dark)');
+          var apply = function () {
+            document.documentElement.classList.toggle('dark', query.matches);
+          };
+          apply();
+          query.addEventListener('change', apply);
+        } catch (e) {}
+      })();
+    </${''}script>
+  `
   const previewOptions = {
+    headHTML: DARK_SYNC_SOURCE,
     customCode: {
       importCode: `import { createAttaform } from 'attaform'`,
       useCode: `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())`,
@@ -592,6 +615,17 @@ interface ToastApi {
  */
 declare const toast: ToastApi
 `
+
+  // Teach Volar about the `./styles.css` each migrated demo imports. The
+  // demo-style codegen emits a real CSS file that App.vue side-effect
+  // imports; a Vite/Nuxt project gets the ambient `*.css` module from
+  // `vite/client`, but the REPL's in-worker TS service ships no such lib, so
+  // the import would otherwise raise TS2882 ("Cannot find module or type
+  // declarations for side-effect import of './styles.css'"). Seeded into the
+  // same hidden declaration file as the toast global above.
+  const ASSET_AMBIENT_DTS = `
+declare module '*.css';
+`
   // In-place diff of `store.files` against an incoming seed map. Used
   // by the dev-only HMR re-seed below; not called on first mount (the
   // initial seed still goes through @vue/repl's `setFiles` so mainFile,
@@ -642,13 +676,13 @@ declare const toast: ToastApi
 
   // Seed the store. `initialFiles` (a multi-file map) wins over
   // `initialSource` (the single-file shorthand). Both routes always
-  // augment with `src/playground-globals.d.ts` (the toast ambient
-  // declaration, hidden from the tab strip) and `tsconfig.json`
+  // augment with `src/playground-globals.d.ts` (the toast + `*.css`
+  // ambient declarations, hidden from the tab strip) and `tsconfig.json`
   // (compiler options for Volar). The entry stays `src/App.vue` in
   // both shapes, matching @vue/repl's default mainFile.
   const seedFiles: Record<string, string> = {
     ...(props.initialFiles ?? { 'src/App.vue': props.initialSource }),
-    'src/playground-globals.d.ts': TOAST_AMBIENT_DTS,
+    'src/playground-globals.d.ts': TOAST_AMBIENT_DTS + ASSET_AMBIENT_DTS,
     'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
   }
   // Flips true once the initial async setFiles has landed. Guards the

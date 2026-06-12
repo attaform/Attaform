@@ -1,0 +1,20 @@
+{
+  "with": [
+    "rail",
+    "progress",
+    "card",
+    "stack",
+    "label",
+    "input",
+    "select",
+    "textarea",
+    "error",
+    "required",
+    "muted",
+    "ghost",
+    "primary",
+    "banner",
+    "pre",
+    "code"
+  ]
+}

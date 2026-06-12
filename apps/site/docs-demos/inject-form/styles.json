@@ -1,0 +1,3 @@
+{
+  "with": ["label", "input", "button", "error", "fieldset", "badge", "hint", "code", "pre"]
+}

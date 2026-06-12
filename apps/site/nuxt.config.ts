@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { logger as nuxtKitLogger } from '@nuxt/kit'
@@ -13,6 +14,12 @@ import zodPkg from 'zod/package.json'
 // `"zod-v3": "npm:zod@^3.24"`). The aliased path resolves to its
 // own package.json, whose version field is the v3.x release.
 import zodV3Pkg from 'zod-v3/package.json'
+// Build-time demo-style construction: composes each folder demo's gitignored
+// `styles.css` from the shared fragment registry + its `styles.json`. Imported
+// here for the dev-server plugin below; build/generate run it via the
+// `codegen:demo-styles` package script before typecheck. See
+// `scripts/demo-styles/`.
+import { generateAll, generateOne } from './scripts/demo-styles/codegen.mjs'
 
 // Compute the on-disk path to the monorepo root (two levels up from
 // `apps/site`). Used to broaden Vite's `server.fs.allow` so the
@@ -116,6 +123,76 @@ const invalidateDemoGlobConsumersOnDemoChange: VitePlugin = {
     }
     server.watcher.on('add', onFsEvent)
     server.watcher.on('unlink', onFsEvent)
+  },
+}
+
+// Demo styles are generated, not authored: each demo's `styles.css` is
+// composed from `scripts/demo-styles/registry.mjs` plus the demo's
+// `styles.json` manifest. The files are gitignored, so the dev server must
+// materialize them. `configureServer` runs once at startup (before any module
+// is transformed, so App.vue's `import './styles.css'` and the playground's
+// `?raw` glob both resolve) and again on every Nuxt config restart. The
+// watcher regenerates on the fly: edit a `styles.json` and only that demo
+// re-emits; edit the registry and every demo re-emits. The resulting CSS
+// change rides Vite's normal HMR for the inline `<DocsDemo>`; the standalone
+// playground picks it up on reload.
+const generateDemoStylesOnServe: VitePlugin = {
+  name: 'attaform:generate-demo-styles-on-serve',
+  apply: 'serve',
+  configureServer(server) {
+    const siteRoot = dirname(fileURLToPath(import.meta.url))
+    const demosDir = resolve(siteRoot, 'docs-demos')
+    const registryFile = resolve(siteRoot, 'scripts/demo-styles/registry.mjs')
+    generateAll()
+    function onFsEvent(path: string): void {
+      if (path === registryFile) {
+        generateAll()
+        return
+      }
+      if (path.startsWith(demosDir) && path.endsWith('styles.json')) {
+        generateOne(dirname(path))
+      }
+    }
+    server.watcher.add(registryFile)
+    server.watcher.on('add', onFsEvent)
+    server.watcher.on('change', onFsEvent)
+    server.watcher.on('unlink', onFsEvent)
+  },
+}
+
+// The playground page (`pages/demos/[slug].vue`) seeds the REPL by importing
+// every folder-demo file as raw text, each demo's generated `styles.css`
+// included, via `import.meta.glob(..., { query: '?raw' })`. That glob is
+// evaluated during SSR (the page renders server-side), and Vite's `css-post`
+// plugin treats any id whose path ends in `.css` as a style request even with
+// `?raw` — appending `?inline&used`. The result is the malformed id
+// `styles.css?raw?inline&used`, which Rollup then parses as JavaScript and
+// rejects at the first `.demo {` ("Expression expected"). The client build
+// tolerates raw CSS; the SSR build does not.
+//
+// This `pre` plugin claims those raw-CSS imports first: it maps each demo
+// `styles.css?raw` to an opaque virtual id that carries no `.css` in its path,
+// so `css-post` ignores it, and loads it as a default-exported string. The REPL
+// still receives the exact bytes `App.vue` imports — readable and unminified —
+// on both the inline and playground render paths.
+const DEMO_RAW_CSS_RE = /docs-demos[\\/][^\\/]+[\\/]styles\.css\?raw$/
+const DEMO_RAW_CSS_PREFIX = '\0demo-raw-css:'
+const demoRawCssFiles = new Map<string, string>()
+const serveDemoRawCss: VitePlugin = {
+  name: 'attaform:serve-demo-raw-css',
+  enforce: 'pre',
+  resolveId(source, importer) {
+    if (importer === undefined || !DEMO_RAW_CSS_RE.test(source)) return null
+    const file = resolve(dirname(importer), source.replace(/\?raw$/, ''))
+    for (const [existing, mapped] of demoRawCssFiles) if (mapped === file) return existing
+    const id = `${DEMO_RAW_CSS_PREFIX}${demoRawCssFiles.size}`
+    demoRawCssFiles.set(id, file)
+    return id
+  },
+  load(id) {
+    const file = demoRawCssFiles.get(id)
+    if (file === undefined) return null
+    return `export default ${JSON.stringify(readFileSync(file, 'utf8'))}`
   },
 }
 
@@ -773,6 +850,8 @@ export default defineNuxtConfig({
       tailwindcss(),
       fixViteAssetImportMetaUrlFilter,
       invalidateDemoGlobConsumersOnDemoChange,
+      generateDemoStylesOnServe,
+      serveDemoRawCss,
     ],
     // Source-resolve the workspace `attaform` package for the docs
     // site's Vite environments. Without these aliases, every

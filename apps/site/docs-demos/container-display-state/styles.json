@@ -1,0 +1,15 @@
+{
+  "with": [
+    "banner",
+    "readout",
+    "badge",
+    "chip",
+    "fieldset",
+    "label",
+    "input",
+    "message",
+    "button",
+    "hint",
+    "code"
+  ]
+}

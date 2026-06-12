@@ -1,0 +1,17 @@
+{
+  "with": [
+    "layout",
+    "card",
+    "header",
+    "label",
+    "input",
+    "button",
+    "ghost",
+    "error",
+    "section",
+    "defgrid",
+    "code",
+    "pre",
+    "hint"
+  ]
+}

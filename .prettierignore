@@ -8,6 +8,7 @@ pnpm-lock.yaml
 CHANGELOG.md
 RELEASES.md
 test/perf-lock/__golden__/
+apps/site/docs-demos/*/styles.css
 
 # Bench-arena tooling output (mirrors apps/bench-arena/.gitignore; prettier
 # does not read .gitignore). The committed results.json is hand-checked; these

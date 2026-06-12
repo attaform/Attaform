@@ -1,0 +1,14 @@
+{
+  "with": [
+    "label",
+    "input",
+    "textarea",
+    "fieldset",
+    "row",
+    "button",
+    "ghost",
+    "primary",
+    "hint",
+    "code"
+  ]
+}

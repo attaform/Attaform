@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { useForm } from 'attaform/zod'
   import { z } from 'zod'
+  import './styles.css'
 
   const form = useForm({
     schema: z.object({
@@ -14,7 +15,7 @@
 </script>
 
 <template>
-  <form @submit.prevent>
+  <form class="demo" @submit.prevent>
     <label>
       Email
       <input v-register="form.register('email')" autocomplete="email" />
@@ -37,56 +38,6 @@
       <input v-register="form.register('age')" type="number" />
       <em v-if="form.fields.age.showErrors">{{ form.fields.age.firstError?.message }}</em>
     </label>
-    <pre class="form.values">{{
-      JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2)
-    }}</pre>
+    <pre>{{ JSON.stringify(form.values, (_, v) => (v === undefined ? '(undefined)' : v), 2) }}</pre>
   </form>
 </template>
-
-<style scoped>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    max-width: 24rem;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  .hint {
-    font-weight: 400;
-    color: #6b7280;
-    font-size: 0.75rem;
-  }
-  input {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    border: 1px solid #d1d5db;
-    font-size: 0.875rem;
-  }
-  input:focus {
-    outline: 2px solid #2563eb;
-    outline-offset: -1px;
-  }
-  em {
-    color: #dc2626;
-    font-size: 0.8125rem;
-    font-style: normal;
-    font-weight: 400;
-  }
-  .form.values {
-    margin-top: 0.5rem;
-    padding: 0.75rem;
-    background: #f3f4f6;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    font-family: ui-monospace, monospace;
-    color: #374151;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-</style>

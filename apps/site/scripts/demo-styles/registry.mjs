@@ -74,7 +74,11 @@ export const core = `
 `
 
 // Insertion order here is the emit order in the generated stylesheet, so it
-// stays stable regardless of the order a demo lists fragments in.
+// stays stable regardless of the order a demo lists fragments in. Button
+// variants (ghost / primary / clear) sit after `actions` on purpose: a
+// `.demo button.primary` and `.demo .actions button` carry equal specificity,
+// so the later rule wins, letting a primary button keep its accent inside an
+// action row.
 export const fragments = {
   // Text-like inputs only. The `:where(:not(...))` guard keeps padding and
   // borders off native checkboxes, radios, file, range and colour controls,
@@ -191,6 +195,48 @@ export const fragments = {
 }
 `,
 
+  // Neutral standalone button (a "ghost"), styled like an action-row button
+  // but usable on its own. Outranks the base `button` rule.
+  ghost: `
+.demo button.ghost {
+  align-self: flex-start;
+  margin-top: 0;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.375rem;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.demo button.ghost:hover:not(:disabled) {
+  background: var(--color-surface-2);
+}
+.demo button.ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+`,
+
+  // Re-asserts the accent fill on a `.primary` button even inside an
+  // `.actions` row (equal specificity, emitted later, so it wins).
+  primary: `
+.demo button.primary {
+  align-self: flex-start;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  font-weight: 600;
+}
+.demo button.primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+.demo .actions button.primary {
+  padding: 0.35rem 0.8rem;
+}
+`,
+
   fieldset: `
 .demo fieldset {
   display: flex;
@@ -211,8 +257,9 @@ export const fragments = {
 }
 `,
 
-  // Inline checkbox/radio row. Overrides `label`'s column direction (higher
-  // class count) so a `<label class="row">` lays its control beside the text.
+  // Inline control row: a checkbox or radio beside its caption. Overrides
+  // `label`'s column direction (higher class count). `.row.compact` is the
+  // smaller, muted variant for fine-print toggles and check indicators.
   row: `
 .demo .row {
   display: flex;
@@ -225,21 +272,25 @@ export const fragments = {
 .demo .row input {
   margin: 0;
 }
-`,
-
-  // Inline checkbox label used for a single toggle (e.g. "make saves fail").
-  toggle: `
-.demo .toggle {
-  flex-direction: row;
-  align-items: center;
+.demo .row.compact {
   gap: 0.4rem;
   font-size: 0.75rem;
-  font-weight: 400;
   color: var(--color-fg-subtle);
 }
-.demo .toggle input {
+.demo .row.compact input {
   width: auto;
+}
+`,
+
+  // List reset for a stack of rows (field arrays, rosters, records).
+  rows: `
+.demo .rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
 `,
 
@@ -260,12 +311,23 @@ export const fragments = {
   line-height: 1.5;
   color: var(--color-fg-muted);
 }
-.demo .hint code {
+`,
+
+  // Inline code token, shared by labels, hints and notes.
+  code: `
+.demo code {
   padding: 0.05rem 0.3rem;
   border-radius: 0.25rem;
   background: var(--color-surface-2);
   font-family: ui-monospace, monospace;
-  font-size: 0.75rem;
+  font-size: 0.9em;
+}
+`,
+
+  // Muted inline text.
+  muted: `
+.demo .muted {
+  color: var(--color-fg-subtle);
 }
 `,
 
@@ -274,6 +336,35 @@ export const fragments = {
   margin: 0;
   font-size: 0.8125rem;
   color: var(--color-fg-muted);
+}
+`,
+
+  // Required-field marker (the red asterisk beside a label).
+  required: `
+.demo .required {
+  margin-left: 0.125rem;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+`,
+
+  // Small uppercase-ish caption that titles a group of readouts.
+  'group-title': `
+.demo .group-title {
+  margin: 0.25rem 0 0;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--color-fg-subtle);
+}
+`,
+
+  // Horizontal row of state pills/badges (a label beside its chips).
+  readout: `
+.demo .readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 `,
 
@@ -288,6 +379,53 @@ export const fragments = {
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
   overflow: auto;
+}
+`,
+
+  // Inline mono readout of a value (the "Stored as: X (type)" lines), with an
+  // accented highlight for the value emphasised inside it.
+  small: `
+.demo small {
+  color: var(--color-fg-muted);
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+}
+.demo small em {
+  color: var(--color-accent);
+  font-style: normal;
+  font-weight: 500;
+}
+`,
+
+  // Empty-state `pre` (dashed, italic) for a readout awaiting its first value.
+  placeholder: `
+.demo pre.placeholder,
+.demo .placeholder {
+  border-style: dashed;
+  background: var(--color-surface-2);
+  color: var(--color-fg-subtle);
+  font-style: italic;
+}
+`,
+
+  // Terminal-style append-only log. The dark slate + cyan is intentionally
+  // theme-independent (a console reads the same in light and dark).
+  log: `
+.demo .log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  background: #0f172a;
+  color: #a5f3fc;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  list-style: none;
+}
+.demo .log li {
+  margin: 0;
 }
 `,
 
@@ -321,6 +459,56 @@ export const fragments = {
 }
 `,
 
+  // Monospace state badge. Base is neutral; the state modifiers tint it to
+  // match a display-state verdict (idle/pending/valid/error).
+  badge: `
+.demo .badge {
+  min-width: 4.25rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  color: var(--color-fg-muted);
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.demo .badge.idle {
+  background: var(--color-surface-2);
+  color: var(--color-fg-muted);
+}
+.demo .badge.pending {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-soft-fg);
+}
+.demo .badge.valid,
+.demo .badge.success {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+.demo .badge.error {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+`,
+
+  // Small inline token chips, often laid out in a `.chips` wrap.
+  chip: `
+.demo .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.demo .chip {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  color: var(--color-fg-subtle);
+  font-family: ui-monospace, monospace;
+  font-size: 0.6875rem;
+}
+`,
+
   // Aggregate status banner with a state modifier.
   banner: `
 .demo .banner {
@@ -348,6 +536,68 @@ export const fragments = {
 .demo .banner.failed {
   background: var(--color-danger-soft);
   color: var(--color-danger);
+}
+`,
+
+  // Titled panel of readouts, optionally arranged in a `.panels` grid.
+  panel: `
+.demo .panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.875rem;
+}
+.demo .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.demo .panel-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+`,
+
+  // Bordered card surface.
+  card: `
+.demo .card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+}
+`,
+
+  // Single-column grid wrapper for stacking sections with generous gaps.
+  // Multi-column demos override `grid-template-columns` in their own block.
+  layout: `
+.demo .layout,
+.demo .grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+`,
+
+  // Slim progress track plus its accent fill (wizard / stepper headers).
+  progress: `
+.demo .progress {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  overflow: hidden;
+}
+.demo .progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 200ms ease;
 }
 `,
 }

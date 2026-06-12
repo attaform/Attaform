@@ -1,0 +1,20 @@
+{
+  "with": [
+    "layout",
+    "card",
+    "header",
+    "badge",
+    "label",
+    "input",
+    "select",
+    "button",
+    "primary",
+    "actions",
+    "row",
+    "banner",
+    "section",
+    "defgrid",
+    "code",
+    "pre"
+  ]
+}

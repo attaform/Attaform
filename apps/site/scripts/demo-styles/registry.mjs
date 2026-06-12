@@ -99,6 +99,15 @@ export const fragments = {
   outline: 2px solid var(--color-accent);
   outline-offset: -1px;
 }
+.demo input:where(:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color'])):read-only {
+  background: var(--color-surface);
+  color: var(--color-fg-muted);
+}
+.demo input:where(:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color'])):disabled {
+  background: var(--color-surface);
+  color: var(--color-fg-subtle);
+  cursor: not-allowed;
+}
 `,
 
   textarea: `
@@ -131,6 +140,11 @@ export const fragments = {
 .demo select:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: -1px;
+}
+.demo select:disabled {
+  background: var(--color-surface);
+  color: var(--color-fg-subtle);
+  cursor: not-allowed;
 }
 `,
 
@@ -412,6 +426,31 @@ export const fragments = {
 }
 `,
 
+  // Compact key-value inspector: a two-column `<dl>` (label | value) for a
+  // tight "reactive state" readout. Pairs with `deflist`'s stacked value
+  // boxes; reach for `defgrid` when the values are short scalars and vertical
+  // compactness matters.
+  defgrid: `
+.demo dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+  margin: 0;
+  font-size: 0.75rem;
+}
+.demo dt {
+  color: var(--color-fg-muted);
+  font-weight: 500;
+}
+.demo dd {
+  margin: 0;
+  color: var(--color-fg);
+  font-family: ui-monospace, monospace;
+  word-break: break-word;
+}
+`,
+
   // Inline mono readout of a value (the "Stored as: X (type)" lines), with an
   // accented highlight for the value emphasised inside it.
   small: `
@@ -510,6 +549,10 @@ export const fragments = {
 .demo .badge.pending {
   background: var(--color-accent-soft);
   color: var(--color-accent-soft-fg);
+}
+.demo .badge.busy {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
 }
 .demo .badge.valid,
 .demo .badge.success {
@@ -651,6 +694,25 @@ export const fragments = {
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   background: var(--color-surface);
+}
+.demo .card[aria-busy='true'] {
+  opacity: 0.85;
+}
+`,
+
+  // Card/section header row: a title on the left, an action or status pill on
+  // the right. Lives at the top of a `card` (or any titled block).
+  header: `
+.demo header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.demo header h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 `,
 

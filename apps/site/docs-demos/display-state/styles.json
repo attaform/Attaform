@@ -1,0 +1,14 @@
+{
+  "with": [
+    "stack",
+    "label",
+    "input",
+    "readout",
+    "badge",
+    "chip",
+    "message",
+    "button",
+    "hint",
+    "code"
+  ]
+}

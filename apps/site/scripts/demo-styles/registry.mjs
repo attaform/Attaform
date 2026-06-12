@@ -258,13 +258,16 @@ export const fragments = {
 .demo fieldset {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
   margin: 0;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: 0.375rem;
 }
 .demo legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0 0.4rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -318,6 +321,24 @@ export const fragments = {
   font-size: 0.8125rem;
   font-style: normal;
   font-weight: 400;
+}
+`,
+
+  // Inline validation message that recolours by display-state: danger when an
+  // error is showing, accent while an async check is pending, neutral
+  // otherwise. Keeps a steady line-height so the field below does not jump as
+  // the message appears and clears.
+  message: `
+.demo .message {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+.demo .message.error {
+  color: var(--color-danger);
+}
+.demo .message.pending {
+  color: var(--color-accent-soft-fg);
 }
 `,
 
@@ -580,15 +601,30 @@ export const fragments = {
   font-family: ui-monospace, monospace;
   font-size: 0.6875rem;
 }
+.demo .chip.on {
+  border-color: var(--color-accent);
+  color: var(--color-accent-soft-fg);
+  font-weight: 600;
+}
 `,
 
-  // Aggregate status banner with a state modifier.
+  // Status banner: a tinted, bordered box used two ways. On its own it is a
+  // block alert (a sentence, e.g. a hydrate error). Combined with `readout`
+  // (`class="readout banner"`) it becomes a flex status bar holding a badge, a
+  // caption and a `chips` group (pushed to the trailing edge). The state
+  // modifier tints it; `error`/`failed` and `success`/`saved` are synonyms so a
+  // display-state verdict and a save-status read share one rule.
   banner: `
 .demo .banner {
-  padding: 0.45rem 0.7rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
   border-radius: 0.375rem;
-  font-size: 0.75rem;
+  background: var(--color-surface);
+  font-size: 0.8125rem;
   font-weight: 500;
+}
+.demo .banner .chips {
+  margin-left: auto;
 }
 .demo .banner.idle {
   background: var(--color-surface-2);
@@ -602,13 +638,15 @@ export const fragments = {
   background: var(--color-warning-soft);
   color: var(--color-warning);
 }
-.demo .banner.saved {
-  background: var(--color-success-soft);
-  color: var(--color-success);
-}
+.demo .banner.error,
 .demo .banner.failed {
   background: var(--color-danger-soft);
   color: var(--color-danger);
+}
+.demo .banner.success,
+.demo .banner.saved {
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 `,
 

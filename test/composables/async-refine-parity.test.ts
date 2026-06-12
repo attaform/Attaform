@@ -88,7 +88,9 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
       api.setValue('password', 'very-secret')
       const result = await api.validateAsync()
       expect(result.success).toBe(false)
-      const message = result.errors?.find((e) => e.path[0] === 'username')?.message
+      const message = result.errors?.find(
+        (e: { path: PropertyKey[]; message: string }) => e.path[0] === 'username'
+      )?.message
       expect(message).toBe('That username is taken')
     })
   })

@@ -649,8 +649,9 @@ describe('applyChangedKeys — reconcile gate (unit)', () => {
     const target: Record<string, unknown> = { a: { n: 1 } }
     const source: Record<string, unknown> = { a: [1, 2, 3] }
     // The in-place recurse bails on the shape mismatch (object vs array) and the
-    // key is reassigned; the value still lands correctly.
+    // key is reassigned; the value still lands correctly. Bracket access because
+    // `target` is an index-signature bag (noPropertyAccessFromIndexSignature).
     expect(applyChangedKeys(target, source, ['a', 'rows'], [])).toBe(true)
-    expect(target.a).toEqual([1, 2, 3])
+    expect(target['a']).toEqual([1, 2, 3])
   })
 })

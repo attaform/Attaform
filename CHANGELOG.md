@@ -39,6 +39,20 @@
   guard and the full array suite across the Zod v3 and v4 adapters; zero new
   dependencies. (#XXX)
 
+- **Reordering a row is now a two-row update, not a whole-list re-render.** The
+  typed array helpers (`append` / `insert` / `remove` / `swap` / `move` /
+  `replace`) reconcile the array in place rather than swapping in a fresh array,
+  so a swap or move fires only the two indices that actually moved. A hundred-row
+  grid that used to re-render every row now touches just the pair, and reorder
+  cost stays flat as the list grows. Keeping the array's reference stable is the
+  one behaviour to know about: a by-reference watch on the whole array stays
+  quiet across a helper op, while length, element, and deep watches fire as
+  before and every row's value stays correct. An explicit
+  `setValue('rows', wholeNewArray)` is a container-target write and still
+  replaces the reference, just like writing any other container. Pinned by a
+  reactivity-contract suite and a re-render-count guard across the Zod v3 and v4
+  adapters; zero new dependencies. (#XXX)
+
 ## v0.21.2
 ### Changed
 

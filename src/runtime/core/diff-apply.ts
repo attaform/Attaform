@@ -251,8 +251,26 @@ function diffObjectsLockstep(
  * fast path (`applyTargetedWrite`) deliberately mutates the leaf slot in
  * place, preserving ancestor container identity; this first-segment
  * reassign is retained for container and whole-form replacements.
+ *
+ * `reconcileArraysInPlace` scopes one extra optimization to the typed array
+ * helpers (the writes that carry an `arrayOp` meta hint). When set, a changed
+ * key whose old and new values are BOTH arrays is reconciled IN PLACE — the
+ * array branch truncates to the new length and reassigns only the indices
+ * whose content moved, keeping the array's own reference stable. A reorder
+ * (swap / move, no length change) then fires only the two moved indices' deps
+ * instead of the array-key dep that re-renders every `form.list` row. The flag
+ * is OFF for a direct `setValue(arrayPath, wholeNewArray)`, which replaces the
+ * array reference like any other container-target write — so the "reference
+ * changes IFF targeted or restructured" contract holds for explicit writes;
+ * only the helpers opt into the stable-reference reconcile. Consumers reading
+ * an array then subscribe to its length or its elements (or take a deep watch),
+ * not its bare reference.
  */
-export function applyChangedKeys(target: unknown, source: unknown): boolean {
+export function applyChangedKeys(
+  target: unknown,
+  source: unknown,
+  reconcileArraysInPlace: boolean
+): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false
   const targetIsArray = Array.isArray(target)
   const sourceIsArray = Array.isArray(source)
@@ -283,6 +301,11 @@ export function applyChangedKeys(target: unknown, source: unknown): boolean {
     for (const idx of changedFirstSegments) {
       if (typeof idx === 'symbol') continue
       const i = typeof idx === 'number' ? idx : Number(idx)
+      // Skip slots the length cut already dropped. On a shrink, diffAndApply
+      // emits a 'removed' patch at every truncated index, so those land in
+      // `changedFirstSegments`; reassigning `s[i]` (undefined) would re-grow
+      // the array with a trailing hole. Survivors and grown slots are in range.
+      if (i >= s.length) continue
       t[i] = s[i]
     }
   } else {
@@ -295,7 +318,25 @@ export function applyChangedKeys(target: unknown, source: unknown): boolean {
     for (const k of changedFirstSegments) {
       if (typeof k === 'symbol') continue
       const key = String(k)
-      safeAssign(t, key, safeOwnRead(s, key))
+      const nextVal = safeOwnRead(s, key)
+      // On an array structural op (arrayOp present), reconcile a changed
+      // array-valued key IN PLACE: recurse so the array branch truncates and
+      // reassigns only the moved indices, keeping the array's reference stable.
+      // `safeOwnRead` returns the reactive proxy for `t[key]` (tracking intact),
+      // so the in-place index/length sets fire the right deps. Falls through to
+      // a plain reassign for non-array values, a shape mismatch, or a direct
+      // container-target write (flag off), which replaces the reference.
+      if (reconcileArraysInPlace) {
+        const curVal = safeOwnRead(t, key)
+        if (
+          Array.isArray(curVal) &&
+          Array.isArray(nextVal) &&
+          applyChangedKeys(curVal, nextVal, reconcileArraysInPlace)
+        ) {
+          continue
+        }
+      }
+      safeAssign(t, key, nextVal)
     }
   }
   return true

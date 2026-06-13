@@ -8,18 +8,28 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Reactivity contract for the targeted in-place write (Bust 2 / T2).
+ * Reactivity contract for the targeted in-place write (Bust 2 / T2) and the
+ * in-place array reconcile (Tier 2).
  *
- * The standing lock for the ONE intended observable change: a container's
- * object reference changes IFF the write targets that container or alters
- * its structure. A write to a descendant LEAF mutates the leaf's slot in
- * place, preserving the identity of every ancestor container.
+ * The standing lock for the intended observable changes: a container's object
+ * reference changes IFF the write targets that container or alters its
+ * structure — with ONE carve-out for the typed array helpers (below). A write
+ * to a descendant LEAF mutates the leaf's slot in place, preserving the
+ * identity of every ancestor container.
  *
  * Consequence (the thing this suite pins): a by-reference (non-deep) watch
  * on a container STOPS firing when only a descendant leaf changes. Deep
  * watches and leaf watches are unchanged. Everything else (values, errors,
  * dirty, list/key identity) is locked byte-identical by the behavior-lock
  * golden — this suite owns the reactivity surface the golden can't see.
+ *
+ * Array carve-out: the typed array helpers (append / insert / remove / swap /
+ * move / replace) reconcile the array IN PLACE, so the array's reference stays
+ * stable across the op — a reorder fires only the moved indices, not a
+ * whole-array re-render. A by-reference watch on the array therefore stays
+ * quiet on a helper op; length / element / deep watches fire as before. An
+ * EXPLICIT setValue(arrayPath, wholeNewArray) is a container-target write and
+ * still replaces the reference, preserving the object/array symmetry.
  *
  * Captured against both adapters per zod-v3/v4 parity: the write path is
  * shared core, so a regression would move both identically and slip past
@@ -171,6 +181,133 @@ describe.each(ADAPTERS)(
 
       expect(form.values.a).toBe('mirror-me')
       expect(form.values.address.city).toBe('mirror-me')
+
+      stop()
+    })
+
+    it('an in-place array op (swap) preserves the array reference; by-ref quiet, deep + moved index fire', async () => {
+      const form = mount(a)
+
+      let rowsByRef = 0
+      let rowsDeep = 0
+      let row0Leaf = 0
+      let row1Leaf = 0
+      const stops = [
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsByRef++
+          }
+        ),
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsDeep++
+          },
+          { deep: true }
+        ),
+        watch(
+          () => form.values.rows[0]?.name,
+          () => {
+            row0Leaf++
+          }
+        ),
+        watch(
+          () => form.values.rows[1]?.name,
+          () => {
+            row1Leaf++
+          }
+        ),
+      ]
+
+      const rowsBefore = form.values.rows
+
+      form.swap('rows', 0, 2)
+      await nextTick()
+
+      // The array reference is preserved across the in-place reconcile, so the
+      // by-ref watch stays quiet — a reorder is NOT a whole-array re-render.
+      expect(rowsByRef).toBe(0)
+      expect(form.values.rows).toBe(rowsBefore)
+
+      // Deep reactivity + the two MOVED indices update; the untouched middle
+      // row's leaf watch stays quiet (the swap is surgical).
+      expect(rowsDeep).toBeGreaterThan(0)
+      expect(row0Leaf).toBeGreaterThan(0)
+      expect(row1Leaf).toBe(0)
+      expect(form.values.rows[0]?.name).toBe('r2')
+      expect(form.values.rows[2]?.name).toBe('r0')
+
+      stops.forEach((s) => s())
+    })
+
+    it('append keeps the array reference; by-ref quiet, length + deep fire', async () => {
+      const form = mount(a)
+
+      let rowsByRef = 0
+      let rowsLen = 0
+      let rowsDeep = 0
+      const stops = [
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsByRef++
+          }
+        ),
+        watch(
+          () => form.values.rows.length,
+          () => {
+            rowsLen++
+          }
+        ),
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsDeep++
+          },
+          { deep: true }
+        ),
+      ]
+
+      const rowsBefore = form.values.rows
+
+      form.append('rows', { name: 'r3', qty: 3 })
+      await nextTick()
+
+      // Append grows the array in place: the reference is preserved (by-ref
+      // quiet), but the length and deep watches see the new element.
+      expect(rowsByRef).toBe(0)
+      expect(form.values.rows).toBe(rowsBefore)
+      expect(rowsLen).toBeGreaterThan(0)
+      expect(rowsDeep).toBeGreaterThan(0)
+      expect(form.values.rows.length).toBe(4)
+      expect(form.values.rows[3]?.name).toBe('r3')
+
+      stops.forEach((s) => s())
+    })
+
+    it('an explicit setValue to the array path replaces the reference; by-ref fires', async () => {
+      const form = mount(a)
+
+      let rowsByRef = 0
+      const stop = watch(
+        () => form.values.rows,
+        () => {
+          rowsByRef++
+        }
+      )
+
+      const rowsBefore = form.values.rows
+
+      // A direct container-target write (no arrayOp hint) replaces the array
+      // reference like any other targeted write — the by-ref watch fires.
+      form.setValue('rows', [{ name: 'only', qty: 9 }])
+      await nextTick()
+
+      expect(rowsByRef).toBeGreaterThan(0)
+      expect(form.values.rows).not.toBe(rowsBefore)
+      expect(form.values.rows.length).toBe(1)
+      expect(form.values.rows[0]?.name).toBe('only')
 
       stop()
     })

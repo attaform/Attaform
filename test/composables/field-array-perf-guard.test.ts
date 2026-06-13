@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp, defineComponent, h, type App } from 'vue'
+import { computed, createApp, defineComponent, h, type App } from 'vue'
 import { useForm } from '../../src'
 import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/registry'
 import type { Path } from '../../src/runtime/core/paths'
@@ -21,6 +21,13 @@ import { fakeSchema } from '../utils/fake-schema'
  * The scoping lives in the schema-agnostic funnel (create-form-store), not in
  * either adapter, so a neutral `fakeSchema` is the right instrument here — it
  * isolates the funnel's behaviour from any adapter's parsing specifics.
+ *
+ * The same N-independence is guarded on the RENDER side: an in-place reorder
+ * reconciles the array without swapping its reference, so only the moved
+ * indices' deps fire. The final case counts re-evaluations of one index-bound
+ * computed per row across a swap and asserts exactly two recompute, flat in N —
+ * a regression to whole-array reassignment fires the array-key dep every row
+ * reads, so all N would recompute.
  */
 
 type Row = { a: string; b: string; c: string }
@@ -152,5 +159,41 @@ describe('field arrays — per-element work does not scale with N (perf guard)',
     expect(rowSymbolStripsFor(200, (f) => f.swap('rows', 0, 199))).toBeLessThanOrEqual(
       FRESH_ELEMENT_CAP
     )
+  })
+
+  /**
+   * Re-evaluations of per-row, index-bound bindings across an in-place swap.
+   * One computed per row reads its own `rows[i]` — the shape of a
+   * `register(...).displayValue` cell binding. The in-place reconcile fires
+   * only the two moved indices' deps (not the array-key dep), so only those two
+   * computeds recompute; the rest stay cached. A regression to whole-array
+   * reassignment fires the array-key dep that EVERY row reads, so all N
+   * recompute — the count would scale with N instead of staying at 2.
+   */
+  function reevalsOnSwap(n: number): number {
+    const harness = countingHarness(n)
+    apps.push(harness.app)
+    const { form } = harness
+    const evals = new Array<number>(n).fill(0)
+    const cells = Array.from({ length: n }, (_, i) =>
+      computed(() => {
+        evals[i] = (evals[i] ?? 0) + 1
+        return form.values.rows[i]?.a
+      })
+    )
+    // Prime: evaluate each cell once so its index dep is tracked.
+    cells.forEach((c) => void c.value)
+    evals.fill(0)
+
+    form.swap('rows', 0, n - 1)
+    // Pull every cell; only those whose tracked index changed recompute.
+    cells.forEach((c) => void c.value)
+
+    return evals.reduce((sum, x) => sum + x, 0)
+  }
+
+  it('a swap recomputes only the two moved rows index-bound bindings, flat in N', () => {
+    expect(reevalsOnSwap(20)).toBe(2)
+    expect(reevalsOnSwap(200)).toBe(2) // flat in N — the two swapped rows only
   })
 })

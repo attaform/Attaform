@@ -683,7 +683,14 @@ export default [
     // useForm({ onChange }) surface). zod-v3.mjs, the tightest adapter
     // bundle, lands at 62.80 KB — keep an eye on it; a further core
     // addition will bind here first.
-    limit: '63 KB',
+    //
+    // Raised 63 → 64 KB on the array-write-path perf branch (#399): the
+    // array-op fast path adds freshElementIndices plus the scoped slim-gate /
+    // mergeStructural / authored-walk branches and an authoredPaths migration to
+    // the shared core. zod-v3.mjs lands at 62.96; this restores ~1 KB of headroom
+    // (the 63 cap was the predicted bind point and left ~40 bytes, within gzip
+    // measurement jitter and apt to flake the gate). Measured at 62.96 KB.
+    limit: '64 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

@@ -23,6 +23,7 @@
  */
 import * as v from 'valibot'
 import { z } from 'zod'
+import { z as z4 } from 'zod-v4'
 import type { ScenarioParams } from '../../adapters/contract'
 import { type NativeRule, type ScenarioShape } from './types'
 
@@ -153,6 +154,22 @@ export function massiveZod3(params: ScenarioParams): z.ZodTypeAny {
   for (let c = 0; c < cols; c++) row[`c${c}`] = z.string().min(MIN_LENGTH)
   shape['rows'] = z.array(z.object(row))
   return z.object(shape)
+}
+
+/** zod v4 mirror of {@link massiveZod3}, fed to the Attaform (Zod 4) adapter. */
+export function massiveZod4(params: ScenarioParams): z4.ZodType {
+  const { flatCount, cols, nestedCount } = layout(params)
+  const shape: Record<string, z4.ZodType> = {}
+  for (let i = 0; i < flatCount; i++) shape[`s${i}`] = z4.string().min(MIN_LENGTH)
+  const bottom: Record<string, z4.ZodType> = {}
+  for (let i = 0; i < nestedCount; i++) bottom[`n${i}`] = z4.string().min(MIN_LENGTH)
+  let nested: z4.ZodType = z4.object(bottom)
+  for (const seg of [...wrappers()].reverse()) nested = z4.object({ [seg]: nested })
+  shape['deep'] = nested
+  const row: Record<string, z4.ZodType> = {}
+  for (let c = 0; c < cols; c++) row[`c${c}`] = z4.string().min(MIN_LENGTH)
+  shape['rows'] = z4.array(z4.object(row))
+  return z4.object(shape)
 }
 
 /** valibot mirror for formisch. */

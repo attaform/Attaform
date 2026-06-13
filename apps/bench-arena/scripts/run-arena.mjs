@@ -67,10 +67,11 @@ const LIB_VERSION_PKGS = [
 
 // Adapter id -> the npm package whose `repository` field locates its source, so
 // the Scorecard slug is derived from the lockfile-pinned package rather than
-// hardcoded (it self-corrects when a project moves orgs). Regle's two adapters
-// share one repository.
+// hardcoded (it self-corrects when a project moves orgs). Attaform's two adapter
+// rows (zod-v3 + zod-v4) share one repository, as do Regle's two adapters.
 const LIB_REPO_PKG = {
   attaform: 'attaform',
+  'attaform-zod4': 'attaform',
   'vee-validate': 'vee-validate',
   tanstack: '@tanstack/vue-form',
   formisch: '@formisch/vue',

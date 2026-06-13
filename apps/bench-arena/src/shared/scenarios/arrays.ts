@@ -8,6 +8,7 @@
  */
 import * as v from 'valibot'
 import { z } from 'zod'
+import { z as z4 } from 'zod-v4'
 import type { ScenarioParams } from '../../adapters/contract'
 import { type NativeRule, type ScenarioShape } from './types'
 
@@ -58,6 +59,11 @@ export function arraysShape(params: ScenarioParams): ScenarioShape {
 /** zod v3 schema shared by every zod-capable adapter. */
 export function arraysZod3(_params: ScenarioParams): z.ZodTypeAny {
   return z.object({ rows: z.array(z.object({ v: z.string().min(MIN_LENGTH) })) })
+}
+
+/** zod v4 mirror of {@link arraysZod3}, fed to the Attaform (Zod 4) adapter. */
+export function arraysZod4(_params: ScenarioParams): z4.ZodType {
+  return z4.object({ rows: z4.array(z4.object({ v: z4.string().min(MIN_LENGTH) })) })
 }
 
 /** valibot mirror for formisch. */

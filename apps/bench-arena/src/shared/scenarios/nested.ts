@@ -8,6 +8,7 @@
  */
 import * as v from 'valibot'
 import { z } from 'zod'
+import { z as z4 } from 'zod-v4'
 import type { ScenarioParams } from '../../adapters/contract'
 import { type NativeRule, type ScenarioShape } from './types'
 
@@ -45,6 +46,15 @@ export function nestedZod3(params: ScenarioParams): z.ZodTypeAny {
   let schema: z.ZodTypeAny = z.object({ leaf: z.string().min(MIN_LENGTH) })
   for (const seg of [...wrappers(depthOf(params))].reverse()) {
     schema = z.object({ [seg]: schema })
+  }
+  return schema
+}
+
+/** zod v4 mirror of {@link nestedZod3}, fed to the Attaform (Zod 4) adapter. */
+export function nestedZod4(params: ScenarioParams): z4.ZodType {
+  let schema: z4.ZodType = z4.object({ leaf: z4.string().min(MIN_LENGTH) })
+  for (const seg of [...wrappers(depthOf(params))].reverse()) {
+    schema = z4.object({ [seg]: schema })
   }
   return schema
 }

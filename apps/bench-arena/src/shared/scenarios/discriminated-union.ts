@@ -12,6 +12,7 @@
  */
 import * as v from 'valibot'
 import { z } from 'zod'
+import { z as z4 } from 'zod-v4'
 import type { ScenarioParams } from '../../adapters/contract'
 import { type NativeRule, type ScenarioShape } from './types'
 
@@ -84,6 +85,25 @@ export function discriminatedUnionZod3(_params: ScenarioParams): z.ZodTypeAny {
         kind: z.literal('keypress'),
         code: z.string().min(MIN_LENGTH),
         meta: z.string().min(MIN_LENGTH),
+      }),
+    ]),
+  })
+}
+
+/** zod v4 mirror of {@link discriminatedUnionZod3}, fed to the Attaform (Zod 4) adapter. */
+export function discriminatedUnionZod4(_params: ScenarioParams): z4.ZodType {
+  return z4.object({
+    [UNION_PATH]: z4.discriminatedUnion(DISCRIMINANT, [
+      z4.object({
+        kind: z4.literal('click'),
+        x: z4.string().min(MIN_LENGTH),
+        y: z4.string().min(MIN_LENGTH),
+      }),
+      z4.object({ kind: z4.literal('scroll'), delta: z4.string().min(MIN_LENGTH) }),
+      z4.object({
+        kind: z4.literal('keypress'),
+        code: z4.string().min(MIN_LENGTH),
+        meta: z4.string().min(MIN_LENGTH),
       }),
     ]),
   })

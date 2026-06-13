@@ -217,6 +217,9 @@ importers:
       zod:
         specifier: ^3.25.76
         version: 3.25.76
+      zod-v4:
+        specifier: npm:zod@^4.4.3
+        version: zod@4.4.3
 
   apps/site:
     dependencies:

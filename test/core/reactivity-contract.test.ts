@@ -6,20 +6,34 @@ import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { applyChangedKeys } from '../../src/runtime/core/diff-apply'
 
 /**
- * Reactivity contract for the targeted in-place write (Bust 2 / T2).
+ * Reactivity contract for the targeted in-place write (Bust 2 / T2) and the
+ * in-place array reconcile (Tier 2).
  *
- * The standing lock for the ONE intended observable change: a container's
- * object reference changes IFF the write targets that container or alters
- * its structure. A write to a descendant LEAF mutates the leaf's slot in
- * place, preserving the identity of every ancestor container.
+ * The standing lock for the intended observable changes: a container's object
+ * reference changes IFF the write targets that container or alters its
+ * structure — with ONE carve-out for the typed array helpers (below). A write
+ * to a descendant LEAF mutates the leaf's slot in place, preserving the
+ * identity of every ancestor container.
  *
  * Consequence (the thing this suite pins): a by-reference (non-deep) watch
  * on a container STOPS firing when only a descendant leaf changes. Deep
  * watches and leaf watches are unchanged. Everything else (values, errors,
  * dirty, list/key identity) is locked byte-identical by the behavior-lock
  * golden — this suite owns the reactivity surface the golden can't see.
+ *
+ * Array carve-out: the typed array helpers (append / insert / remove / swap /
+ * move / replace) reconcile the array IN PLACE, so the array's reference stays
+ * stable across the op — a reorder fires only the moved indices, not a
+ * whole-array re-render. The reconcile also keeps every plain-object container
+ * on the path to the array stable, so appending to an object-nested array
+ * (`address.contacts`) re-renders only that list, not its parent object's
+ * bindings. A by-reference watch on the array (or any object on its path)
+ * therefore stays quiet on a helper op; length / element / deep watches fire as
+ * before. An EXPLICIT setValue(arrayPath, wholeNewArray) is a container-target
+ * write and still replaces the reference, preserving the object/array symmetry.
  *
  * Captured against both adapters per zod-v3/v4 parity: the write path is
  * shared core, so a regression would move both identically and slip past
@@ -42,16 +56,30 @@ afterEach(() => {
 function mount(a: Adapter): any {
   const schema = a.z.object({
     a: a.z.string(),
-    address: a.z.object({ zip: a.z.string(), city: a.z.string() }),
+    address: a.z.object({
+      zip: a.z.string(),
+      city: a.z.string(),
+      contacts: a.z.array(a.z.object({ name: a.z.string() })),
+    }),
     rows: a.z.array(a.z.object({ name: a.z.string(), qty: a.z.number() })),
+    sections: a.z.array(
+      a.z.object({
+        title: a.z.string(),
+        questions: a.z.array(a.z.object({ text: a.z.string() })),
+      })
+    ),
   })
   const defaultValues = {
     a: '',
-    address: { zip: '', city: '' },
+    address: { zip: '', city: '', contacts: [{ name: 'c0' }, { name: 'c1' }] },
     rows: [
       { name: 'r0', qty: 0 },
       { name: 'r1', qty: 1 },
       { name: 'r2', qty: 2 },
+    ],
+    sections: [
+      { title: 's0', questions: [{ text: 'q0' }, { text: 'q1' }] },
+      { title: 's1', questions: [{ text: 'q2' }] },
     ],
   }
   let captured: any
@@ -147,7 +175,7 @@ describe.each(ADAPTERS)(
 
       // Container-TARGET write: address is the write target, so it (correctly)
       // gets a new reference and the by-ref watch fires.
-      form.setValue('address', { zip: '10001', city: 'NYC' })
+      form.setValue('address', { zip: '10001', city: 'NYC', contacts: [] })
       await nextTick()
       expect(addressByRef).toBeGreaterThan(0)
       expect(form.values.address).not.toBe(addressBefore)
@@ -174,5 +202,456 @@ describe.each(ADAPTERS)(
 
       stop()
     })
+
+    it('an in-place array op (swap) preserves the array reference; by-ref quiet, deep + moved index fire', async () => {
+      const form = mount(a)
+
+      let rowsByRef = 0
+      let rowsDeep = 0
+      let row0Leaf = 0
+      let row1Leaf = 0
+      const stops = [
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsByRef++
+          }
+        ),
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsDeep++
+          },
+          { deep: true }
+        ),
+        watch(
+          () => form.values.rows[0]?.name,
+          () => {
+            row0Leaf++
+          }
+        ),
+        watch(
+          () => form.values.rows[1]?.name,
+          () => {
+            row1Leaf++
+          }
+        ),
+      ]
+
+      const rowsBefore = form.values.rows
+
+      form.swap('rows', 0, 2)
+      await nextTick()
+
+      // The array reference is preserved across the in-place reconcile, so the
+      // by-ref watch stays quiet — a reorder is NOT a whole-array re-render.
+      expect(rowsByRef).toBe(0)
+      expect(form.values.rows).toBe(rowsBefore)
+
+      // Deep reactivity + the two MOVED indices update; the untouched middle
+      // row's leaf watch stays quiet (the swap is surgical).
+      expect(rowsDeep).toBeGreaterThan(0)
+      expect(row0Leaf).toBeGreaterThan(0)
+      expect(row1Leaf).toBe(0)
+      expect(form.values.rows[0]?.name).toBe('r2')
+      expect(form.values.rows[2]?.name).toBe('r0')
+
+      stops.forEach((s) => s())
+    })
+
+    it('append keeps the array reference; by-ref quiet, length + deep fire', async () => {
+      const form = mount(a)
+
+      let rowsByRef = 0
+      let rowsLen = 0
+      let rowsDeep = 0
+      const stops = [
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsByRef++
+          }
+        ),
+        watch(
+          () => form.values.rows.length,
+          () => {
+            rowsLen++
+          }
+        ),
+        watch(
+          () => form.values.rows,
+          () => {
+            rowsDeep++
+          },
+          { deep: true }
+        ),
+      ]
+
+      const rowsBefore = form.values.rows
+
+      form.append('rows', { name: 'r3', qty: 3 })
+      await nextTick()
+
+      // Append grows the array in place: the reference is preserved (by-ref
+      // quiet), but the length and deep watches see the new element.
+      expect(rowsByRef).toBe(0)
+      expect(form.values.rows).toBe(rowsBefore)
+      expect(rowsLen).toBeGreaterThan(0)
+      expect(rowsDeep).toBeGreaterThan(0)
+      expect(form.values.rows.length).toBe(4)
+      expect(form.values.rows[3]?.name).toBe('r3')
+
+      stops.forEach((s) => s())
+    })
+
+    it('an explicit setValue to the array path replaces the reference; by-ref fires', async () => {
+      const form = mount(a)
+
+      let rowsByRef = 0
+      const stop = watch(
+        () => form.values.rows,
+        () => {
+          rowsByRef++
+        }
+      )
+
+      const rowsBefore = form.values.rows
+
+      // A direct container-target write (no arrayOp hint) replaces the array
+      // reference like any other targeted write — the by-ref watch fires.
+      form.setValue('rows', [{ name: 'only', qty: 9 }])
+      await nextTick()
+
+      expect(rowsByRef).toBeGreaterThan(0)
+      expect(form.values.rows).not.toBe(rowsBefore)
+      expect(form.values.rows.length).toBe(1)
+      expect(form.values.rows[0]?.name).toBe('only')
+
+      stop()
+    })
+
+    it('append to an object-nested array keeps the parent object AND array refs stable; length + deep fire', async () => {
+      const form = mount(a)
+
+      let addressByRef = 0
+      let contactsByRef = 0
+      let contactsLen = 0
+      let contactsDeep = 0
+      const stops = [
+        watch(
+          () => form.values.address,
+          () => {
+            addressByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts.length,
+          () => {
+            contactsLen++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsDeep++
+          },
+          { deep: true }
+        ),
+      ]
+
+      const addressBefore = form.values.address
+      const contactsBefore = form.values.address.contacts
+
+      form.append('address.contacts', { name: 'c2' })
+      await nextTick()
+
+      // The object spine on the path to the mutated array keeps its reference:
+      // appending to a nested array re-renders only that list, not its parent.
+      expect(addressByRef).toBe(0)
+      expect(contactsByRef).toBe(0)
+      expect(form.values.address).toBe(addressBefore)
+      expect(form.values.address.contacts).toBe(contactsBefore)
+
+      // Length + deep see the new element; the value is correct.
+      expect(contactsLen).toBeGreaterThan(0)
+      expect(contactsDeep).toBeGreaterThan(0)
+      expect(form.values.address.contacts.length).toBe(3)
+      expect(form.values.address.contacts[2]?.name).toBe('c2')
+
+      stops.forEach((s) => s())
+    })
+
+    it('swap within an object-nested array keeps the parent object AND array refs stable; moved indices fire', async () => {
+      const form = mount(a)
+
+      let addressByRef = 0
+      let contactsByRef = 0
+      let contactsDeep = 0
+      let c0Leaf = 0
+      let c1Leaf = 0
+      const stops = [
+        watch(
+          () => form.values.address,
+          () => {
+            addressByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsDeep++
+          },
+          { deep: true }
+        ),
+        watch(
+          () => form.values.address.contacts[0]?.name,
+          () => {
+            c0Leaf++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts[1]?.name,
+          () => {
+            c1Leaf++
+          }
+        ),
+      ]
+
+      const addressBefore = form.values.address
+      const contactsBefore = form.values.address.contacts
+
+      form.swap('address.contacts', 0, 1)
+      await nextTick()
+
+      // Both the parent object and the array keep their references across the
+      // in-place reorder; only the two swapped elements' deps fire.
+      expect(addressByRef).toBe(0)
+      expect(contactsByRef).toBe(0)
+      expect(form.values.address).toBe(addressBefore)
+      expect(form.values.address.contacts).toBe(contactsBefore)
+
+      expect(contactsDeep).toBeGreaterThan(0)
+      expect(c0Leaf).toBeGreaterThan(0)
+      expect(c1Leaf).toBeGreaterThan(0)
+      expect(form.values.address.contacts[0]?.name).toBe('c1')
+      expect(form.values.address.contacts[1]?.name).toBe('c0')
+
+      stops.forEach((s) => s())
+    })
+
+    it('append to a nested-repeater inner list keeps the outer array, the element, AND the inner array stable', async () => {
+      const form = mount(a)
+
+      let sectionsByRef = 0
+      let section0ByRef = 0
+      let section1ByRef = 0
+      let inner0ByRef = 0
+      let inner0Len = 0
+      let inner0Deep = 0
+      const stops = [
+        watch(
+          () => form.values.sections,
+          () => {
+            sectionsByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0],
+          () => {
+            section0ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[1],
+          () => {
+            section1ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions,
+          () => {
+            inner0ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions.length,
+          () => {
+            inner0Len++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions,
+          () => {
+            inner0Deep++
+          },
+          { deep: true }
+        ),
+      ]
+
+      const sectionsBefore = form.values.sections
+      const section0Before = form.values.sections[0]
+      const section1Before = form.values.sections[1]
+      const inner0Before = form.values.sections[0]?.questions
+
+      form.append('sections.0.questions', { text: 'q-new' })
+      await nextTick()
+
+      // Every container on the path to the mutated inner list keeps its
+      // reference: the outer array, the touched element, AND the inner array.
+      // The untouched sibling element keeps its reference too.
+      expect(sectionsByRef).toBe(0)
+      expect(section0ByRef).toBe(0)
+      expect(section1ByRef).toBe(0)
+      expect(inner0ByRef).toBe(0)
+      expect(form.values.sections).toBe(sectionsBefore)
+      expect(form.values.sections[0]).toBe(section0Before)
+      expect(form.values.sections[1]).toBe(section1Before)
+      expect(form.values.sections[0]?.questions).toBe(inner0Before)
+
+      // Only the inner list's length + deep see the new question.
+      expect(inner0Len).toBeGreaterThan(0)
+      expect(inner0Deep).toBeGreaterThan(0)
+      expect(form.values.sections[0]?.questions.length).toBe(3)
+      expect(form.values.sections[0]?.questions[2]?.text).toBe('q-new')
+
+      stops.forEach((s) => s())
+    })
+
+    it('swap on the outer repeater relocates whole element references; inner lists ride along', async () => {
+      const form = mount(a)
+
+      let sectionsByRef = 0
+      const stop = watch(
+        () => form.values.sections,
+        () => {
+          sectionsByRef++
+        }
+      )
+
+      const sectionsBefore = form.values.sections
+      const section0Before = form.values.sections[0]
+      const section1Before = form.values.sections[1]
+      const inner0Before = form.values.sections[0]?.questions
+      const inner1Before = form.values.sections[1]?.questions
+
+      form.swap('sections', 0, 1)
+      await nextTick()
+
+      // The outer array keeps its reference (in-place reconcile), and the
+      // swapped ELEMENT references relocate intact: sections[0] now IS the old
+      // sections[1] object, and its inner questions array rode along by
+      // reference rather than being content-copied. This is the load-bearing
+      // mutated-vs-ancestor distinction — treating the swapped array as an
+      // ancestor would clone the elements and break identity.
+      expect(sectionsByRef).toBe(0)
+      expect(form.values.sections).toBe(sectionsBefore)
+      expect(form.values.sections[0]).toBe(section1Before)
+      expect(form.values.sections[1]).toBe(section0Before)
+      expect(form.values.sections[0]?.questions).toBe(inner1Before)
+      expect(form.values.sections[1]?.questions).toBe(inner0Before)
+      expect(form.values.sections[0]?.title).toBe('s1')
+      expect(form.values.sections[1]?.title).toBe('s0')
+
+      stop()
+    })
+
+    it('remove on a nested-repeater inner list shrinks in place; outer + element + inner refs stable', async () => {
+      const form = mount(a)
+
+      let sectionsByRef = 0
+      let section0ByRef = 0
+      let inner0ByRef = 0
+      const stops = [
+        watch(
+          () => form.values.sections,
+          () => {
+            sectionsByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0],
+          () => {
+            section0ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions,
+          () => {
+            inner0ByRef++
+          }
+        ),
+      ]
+
+      const sectionsBefore = form.values.sections
+      const section0Before = form.values.sections[0]
+      const inner0Before = form.values.sections[0]?.questions
+
+      // sections[0].questions starts as [q0, q1]; remove index 0 leaves [q1].
+      form.remove('sections.0.questions', 0)
+      await nextTick()
+
+      expect(sectionsByRef).toBe(0)
+      expect(section0ByRef).toBe(0)
+      expect(inner0ByRef).toBe(0)
+      expect(form.values.sections).toBe(sectionsBefore)
+      expect(form.values.sections[0]).toBe(section0Before)
+      expect(form.values.sections[0]?.questions).toBe(inner0Before)
+      expect(form.values.sections[0]?.questions.length).toBe(1)
+      expect(form.values.sections[0]?.questions[0]?.text).toBe('q1')
+
+      stops.forEach((s) => s())
+    })
   }
 )
+
+/**
+ * White-box coverage of the reconcile gate's three branches as a pure function.
+ * The integration suites above prove the Vue-observable contract; these pin the
+ * decision table directly, including the shape-flip fallback the typed schema
+ * API can't reach (a real schema never flips an object to an array at a key
+ * mid-write, but the in-place recurse must still degrade safely if it ever did).
+ */
+describe('applyChangedKeys — reconcile gate (unit)', () => {
+  it('null arrayOpPath reassigns a changed nested container wholesale (no in-place recurse)', () => {
+    const target = { a: { n: 1 } }
+    const source = { a: { n: 2 } }
+    const aBefore = target.a
+    expect(applyChangedKeys(target, source, null, [])).toBe(true)
+    // No array op: the changed key is reassigned, so the container gets a fresh
+    // reference. This is the contract a DU reshape / explicit setValue rides on.
+    expect(target.a).not.toBe(aBefore)
+    expect(target.a.n).toBe(2)
+  })
+
+  it('non-null arrayOpPath reconciles an on-path container in place (reference kept)', () => {
+    const target = { a: { n: 1 } }
+    const source = { a: { n: 2 } }
+    const aBefore = target.a
+    // arrayOpPath runs through `a`, so `a` is an ancestor container on the path.
+    expect(applyChangedKeys(target, source, ['a', 'rows'], [])).toBe(true)
+    expect(target.a).toBe(aBefore) // recursed in place
+    expect(target.a.n).toBe(2)
+  })
+
+  it('falls back to a wholesale reassign when a changed key flips object <-> array under an op', () => {
+    const target: Record<string, unknown> = { a: { n: 1 } }
+    const source: Record<string, unknown> = { a: [1, 2, 3] }
+    // The in-place recurse bails on the shape mismatch (object vs array) and the
+    // key is reassigned; the value still lands correctly. Bracket access because
+    // `target` is an index-signature bag (noPropertyAccessFromIndexSignature).
+    expect(applyChangedKeys(target, source, ['a', 'rows'], [])).toBe(true)
+    expect(target['a']).toEqual([1, 2, 3])
+  })
+})

@@ -334,3 +334,23 @@ export function isPathPrefix(prefix: readonly Segment[], path: readonly Segment[
   }
   return true
 }
+
+/**
+ * `true` when two paths are structurally equal: same length and identical
+ * segments in order. Numeric and string segments compare with `!==`, so `0`
+ * and `'0'` are NOT equal — pass canonicalised paths (integer-looking segments
+ * normalised to numbers, as [[canonicalizePath]] and the diff walker both do).
+ *
+ * ```ts
+ * pathsEqual(['rows', 0], ['rows', 0])   // true
+ * pathsEqual(['rows'], ['rows', 0])      // false (different length)
+ * pathsEqual(['rows', 0], ['rows', '0']) // false (segment types differ)
+ * ```
+ */
+export function pathsEqual(a: readonly Segment[], b: readonly Segment[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}

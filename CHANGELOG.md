@@ -67,9 +67,14 @@
   hundred-row grid recomputes one row's state instead of all hundred, and the
   cost stays flat as the array grows. This compounds with the in-place reconcile
   above, so a row add or reorder updates only the rows that changed, from the
-  write through to every reader. Behaviour is unchanged, pinned by a
-  recompute-count regression guard and the full array and reactivity suites
-  across the Zod v3 and v4 adapters; zero new dependencies, no size change. (#XXX)
+  write through to every reader. The same holds for state addressed at a row
+  itself rather than at a field inside it: an error or field state pinned
+  directly to `rows.3` is kept or dropped by a presence check on that one index,
+  no longer by a read of the array's length, so it too is left alone when a
+  sibling row is added or removed. Behaviour is unchanged, pinned by a
+  recompute-count regression guard, a reactive-coupling test on the path walker,
+  and the full array and reactivity suites across the Zod v3 and v4 adapters;
+  zero new dependencies, no size change. (#XXX)
 
 ## v0.21.2
 ### Changed

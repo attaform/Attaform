@@ -121,7 +121,16 @@ export function hasAtPath(root: unknown, path: Path): boolean {
   if (current === null || current === undefined) return false
   if (typeof current !== 'object') return false
   if (Array.isArray(current)) {
-    return typeof last === 'number' && last >= 0 && last < current.length
+    // Presence-test the index rather than comparing it against `current.length`,
+    // for the same reason `descendStep` does: `in` hits Vue's `has` trap and
+    // tracks only this index, whereas a `.length` read would subscribe the caller
+    // to the array length. `hasAtPath` is the active-path gate for errors and
+    // field-state (errors-proxy, the field-state orphan check); an entry pinned
+    // directly at an array-index path (`rows.3`) must not re-run that gate on
+    // every append / remove just because a sibling changed the length. `in` is
+    // also truer to this function's own contract: a never-assigned hole is
+    // "missing", which the `< length` comparison wrongly reported as present.
+    return typeof last === 'number' && last in current
   }
   const key = typeof last === 'number' ? String(last) : last
   // Own-property existence for prototype-shadowed names — `key in

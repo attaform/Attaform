@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { computed, reactive } from 'vue'
 import { getAtPath, hasAtPath, setAtPath } from '../../src/runtime/core/path-walker'
 
 describe('getAtPath', () => {
@@ -87,6 +88,40 @@ describe('hasAtPath', () => {
   it('returns true for a valid array index, false for out-of-bounds', () => {
     expect(hasAtPath([10, 20], [1])).toBe(true)
     expect(hasAtPath([10, 20], [5])).toBe(false)
+  })
+
+  it('treats a never-assigned hole as missing, an explicit slot as present', () => {
+    // A sparse hole (within length but never assigned) is "missing" per this
+    // function's contract, which distinguishes a present-but-undefined slot
+    // from an absent one. An explicitly-set slot exists even when its value is
+    // undefined; only the genuine hole is absent.
+    const sparse = [10]
+    sparse[2] = 30 // index 1 is a hole; length is now 3
+    expect(hasAtPath(sparse, [1])).toBe(false)
+    expect(hasAtPath(sparse, [2])).toBe(true)
+    expect(hasAtPath([undefined], [0])).toBe(true)
+  })
+})
+
+describe('hasAtPath — reactive coupling', () => {
+  it('an array-index lookup tracks the index, never the array length', () => {
+    // The active-path gate (errors-proxy, field-state-api's orphan check) runs
+    // `hasAtPath` against the live reactive form value. An existence check at an
+    // array-index path must subscribe only to that index (Vue's `has` trap), not
+    // to `.length`: a length read would re-run the gate for every pinned entry on
+    // any append / remove, turning an array op into O(N) gate re-evaluations.
+    const root = reactive({ rows: [{ a: 1 }, { a: 2 }, { a: 3 }] })
+    let runs = 0
+    const present = computed(() => {
+      runs += 1
+      return hasAtPath(root, ['rows', 1])
+    })
+    expect(present.value).toBe(true) // prime: index 1 is present, dep tracked
+    expect(runs).toBe(1)
+
+    root.rows.push({ a: 4 }) // length 3 -> 4; index 1 is untouched
+    expect(present.value).toBe(true) // served from cache
+    expect(runs).toBe(1) // never subscribed to `.length`, so no recompute
   })
 })
 

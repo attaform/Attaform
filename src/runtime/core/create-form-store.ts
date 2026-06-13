@@ -2068,9 +2068,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // to wholesale replacement — that's the only case where in-place
     // merging can't preserve existing reactive proxies anyway.
     // The typed array helpers carry an `arrayOp` hint; on those writes a
-    // changed array-valued key reconciles in place (stable array reference)
-    // so a reorder fires only the moved indices, not the whole-array re-render.
-    // A direct container-target `setValue` (no hint) replaces the reference.
+    // changed container-valued key reconciles in place, keeping stable references
+    // for the mutated array and every object on the path to it. So a reorder
+    // fires only the moved indices and a nested-array append re-renders only that
+    // list, never the whole-array / whole-parent re-render. A direct
+    // container-target `setValue` (no hint) replaces the reference.
     if (!applyChangedKeys(prev, next, meta?.arrayOp !== undefined)) {
       form.value = next
     } else if (

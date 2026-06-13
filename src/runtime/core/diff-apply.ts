@@ -252,24 +252,28 @@ function diffObjectsLockstep(
  * place, preserving ancestor container identity; this first-segment
  * reassign is retained for container and whole-form replacements.
  *
- * `reconcileArraysInPlace` scopes one extra optimization to the typed array
+ * `reconcileContainersInPlace` scopes one extra optimization to the typed array
  * helpers (the writes that carry an `arrayOp` meta hint). When set, a changed
- * key whose old and new values are BOTH arrays is reconciled IN PLACE — the
- * array branch truncates to the new length and reassigns only the indices
- * whose content moved, keeping the array's own reference stable. A reorder
- * (swap / move, no length change) then fires only the two moved indices' deps
- * instead of the array-key dep that re-renders every `form.list` row. The flag
- * is OFF for a direct `setValue(arrayPath, wholeNewArray)`, which replaces the
- * array reference like any other container-target write — so the "reference
- * changes IFF targeted or restructured" contract holds for explicit writes;
- * only the helpers opt into the stable-reference reconcile. Consumers reading
- * an array then subscribe to its length or its elements (or take a deep watch),
- * not its bare reference.
+ * key whose old and new values are BOTH descendable containers (a plain object
+ * or an array) is reconciled IN PLACE — the recursion keeps that container's own
+ * reference stable and descends to repeat the decision on its changed children.
+ * So an array nested under an object chain (`append('address.contacts', x)`)
+ * keeps every object on the path stable too, and the array branch then truncates
+ * to the new length and reassigns only the indices whose content moved. A reorder
+ * (swap / move, no length change) fires only the two moved indices' deps instead
+ * of the array-key dep that re-renders every `form.list` row; a nested-array
+ * append re-renders only that list, not its parent object's bindings. The flag
+ * is OFF for a direct `setValue(path, wholeNewValue)`, which replaces the
+ * reference like any other container-target write — so the "reference changes IFF
+ * targeted or restructured" contract holds for explicit writes; only the helpers
+ * opt into the stable-reference reconcile. Consumers reading a container then
+ * subscribe to its length / keys / elements (or take a deep watch), not its bare
+ * reference.
  */
 export function applyChangedKeys(
   target: unknown,
   source: unknown,
-  reconcileArraysInPlace: boolean
+  reconcileContainersInPlace: boolean
 ): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false
   const targetIsArray = Array.isArray(target)
@@ -320,18 +324,22 @@ export function applyChangedKeys(
       const key = String(k)
       const nextVal = safeOwnRead(s, key)
       // On an array structural op (arrayOp present), reconcile a changed
-      // array-valued key IN PLACE: recurse so the array branch truncates and
-      // reassigns only the moved indices, keeping the array's reference stable.
-      // `safeOwnRead` returns the reactive proxy for `t[key]` (tracking intact),
-      // so the in-place index/length sets fire the right deps. Falls through to
-      // a plain reassign for non-array values, a shape mismatch, or a direct
-      // container-target write (flag off), which replaces the reference.
-      if (reconcileArraysInPlace) {
+      // container-valued key IN PLACE: recurse so the array branch truncates and
+      // reassigns only the moved indices, and any nested object on the path keeps
+      // its own reference, instead of reassigning the whole subtree. This makes an
+      // array nested under an object chain (`append('address.contacts', x)`) keep
+      // `address`'s reference too, so `form.list('address.contacts')` is the only
+      // list that re-renders. `safeOwnRead` returns the reactive proxy for
+      // `t[key]` (tracking intact), so the in-place sets fire the right deps.
+      // Falls through to a plain reassign for a leaf value, a shape mismatch (the
+      // recurse returns false), or a direct container-target write (flag off),
+      // which replaces the reference.
+      if (reconcileContainersInPlace) {
         const curVal = safeOwnRead(t, key)
         if (
-          Array.isArray(curVal) &&
-          Array.isArray(nextVal) &&
-          applyChangedKeys(curVal, nextVal, reconcileArraysInPlace)
+          isDescendable(curVal) &&
+          isDescendable(nextVal) &&
+          applyChangedKeys(curVal, nextVal, reconcileContainersInPlace)
         ) {
           continue
         }

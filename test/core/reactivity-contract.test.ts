@@ -26,10 +26,13 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Array carve-out: the typed array helpers (append / insert / remove / swap /
  * move / replace) reconcile the array IN PLACE, so the array's reference stays
  * stable across the op — a reorder fires only the moved indices, not a
- * whole-array re-render. A by-reference watch on the array therefore stays
- * quiet on a helper op; length / element / deep watches fire as before. An
- * EXPLICIT setValue(arrayPath, wholeNewArray) is a container-target write and
- * still replaces the reference, preserving the object/array symmetry.
+ * whole-array re-render. The reconcile also keeps every plain-object container
+ * on the path to the array stable, so appending to an object-nested array
+ * (`address.contacts`) re-renders only that list, not its parent object's
+ * bindings. A by-reference watch on the array (or any object on its path)
+ * therefore stays quiet on a helper op; length / element / deep watches fire as
+ * before. An EXPLICIT setValue(arrayPath, wholeNewArray) is a container-target
+ * write and still replaces the reference, preserving the object/array symmetry.
  *
  * Captured against both adapters per zod-v3/v4 parity: the write path is
  * shared core, so a regression would move both identically and slip past
@@ -52,12 +55,16 @@ afterEach(() => {
 function mount(a: Adapter): any {
   const schema = a.z.object({
     a: a.z.string(),
-    address: a.z.object({ zip: a.z.string(), city: a.z.string() }),
+    address: a.z.object({
+      zip: a.z.string(),
+      city: a.z.string(),
+      contacts: a.z.array(a.z.object({ name: a.z.string() })),
+    }),
     rows: a.z.array(a.z.object({ name: a.z.string(), qty: a.z.number() })),
   })
   const defaultValues = {
     a: '',
-    address: { zip: '', city: '' },
+    address: { zip: '', city: '', contacts: [{ name: 'c0' }, { name: 'c1' }] },
     rows: [
       { name: 'r0', qty: 0 },
       { name: 'r1', qty: 1 },
@@ -157,7 +164,7 @@ describe.each(ADAPTERS)(
 
       // Container-TARGET write: address is the write target, so it (correctly)
       // gets a new reference and the by-ref watch fires.
-      form.setValue('address', { zip: '10001', city: 'NYC' })
+      form.setValue('address', { zip: '10001', city: 'NYC', contacts: [] })
       await nextTick()
       expect(addressByRef).toBeGreaterThan(0)
       expect(form.values.address).not.toBe(addressBefore)
@@ -310,6 +317,127 @@ describe.each(ADAPTERS)(
       expect(form.values.rows[0]?.name).toBe('only')
 
       stop()
+    })
+
+    it('append to an object-nested array keeps the parent object AND array refs stable; length + deep fire', async () => {
+      const form = mount(a)
+
+      let addressByRef = 0
+      let contactsByRef = 0
+      let contactsLen = 0
+      let contactsDeep = 0
+      const stops = [
+        watch(
+          () => form.values.address,
+          () => {
+            addressByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts.length,
+          () => {
+            contactsLen++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsDeep++
+          },
+          { deep: true }
+        ),
+      ]
+
+      const addressBefore = form.values.address
+      const contactsBefore = form.values.address.contacts
+
+      form.append('address.contacts', { name: 'c2' })
+      await nextTick()
+
+      // The object spine on the path to the mutated array keeps its reference:
+      // appending to a nested array re-renders only that list, not its parent.
+      expect(addressByRef).toBe(0)
+      expect(contactsByRef).toBe(0)
+      expect(form.values.address).toBe(addressBefore)
+      expect(form.values.address.contacts).toBe(contactsBefore)
+
+      // Length + deep see the new element; the value is correct.
+      expect(contactsLen).toBeGreaterThan(0)
+      expect(contactsDeep).toBeGreaterThan(0)
+      expect(form.values.address.contacts.length).toBe(3)
+      expect(form.values.address.contacts[2]?.name).toBe('c2')
+
+      stops.forEach((s) => s())
+    })
+
+    it('swap within an object-nested array keeps the parent object AND array refs stable; moved indices fire', async () => {
+      const form = mount(a)
+
+      let addressByRef = 0
+      let contactsByRef = 0
+      let contactsDeep = 0
+      let c0Leaf = 0
+      let c1Leaf = 0
+      const stops = [
+        watch(
+          () => form.values.address,
+          () => {
+            addressByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsByRef++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts,
+          () => {
+            contactsDeep++
+          },
+          { deep: true }
+        ),
+        watch(
+          () => form.values.address.contacts[0]?.name,
+          () => {
+            c0Leaf++
+          }
+        ),
+        watch(
+          () => form.values.address.contacts[1]?.name,
+          () => {
+            c1Leaf++
+          }
+        ),
+      ]
+
+      const addressBefore = form.values.address
+      const contactsBefore = form.values.address.contacts
+
+      form.swap('address.contacts', 0, 1)
+      await nextTick()
+
+      // Both the parent object and the array keep their references across the
+      // in-place reorder; only the two swapped elements' deps fire.
+      expect(addressByRef).toBe(0)
+      expect(contactsByRef).toBe(0)
+      expect(form.values.address).toBe(addressBefore)
+      expect(form.values.address.contacts).toBe(contactsBefore)
+
+      expect(contactsDeep).toBeGreaterThan(0)
+      expect(c0Leaf).toBeGreaterThan(0)
+      expect(c1Leaf).toBeGreaterThan(0)
+      expect(form.values.address.contacts[0]?.name).toBe('c1')
+      expect(form.values.address.contacts[1]?.name).toBe('c0')
+
+      stops.forEach((s) => s())
     })
   }
 )

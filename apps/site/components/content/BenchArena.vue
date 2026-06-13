@@ -12,7 +12,7 @@
   // the data, throws at render. That fails Nuxt's prerender for the page and
   // surfaces in CI before reaching production, so a typo in a content block can
   // never ship a blank or stale table.
-  import { computed } from 'vue'
+  import { computed, ref } from 'vue'
   import { ArrowUpRight, Github } from 'lucide-vue-next'
   import rawResults from 'attaform-bench-arena/results.json'
 
@@ -158,6 +158,7 @@
   }
   const SCHEMA_LABEL: Record<string, string> = {
     zod3: 'Zod 3',
+    zod4: 'Zod 4',
     valibot: 'Valibot',
     native: 'native rules',
   }
@@ -263,12 +264,35 @@
   const findRow = (param: string, lib: string) =>
     block.value?.byParam[param]?.find((r) => r.lib === lib)
 
+  // --- performance sort + at-scale selector --------------------------------
+  // Runtime rows render fastest-first, ranked by the value at a chosen field
+  // count. The default is the largest (at-scale) param, where the cost gaps are
+  // widest and the ranking reads truest; the selector re-ranks at any other
+  // size, so a reader can watch the order shift as a form grows. A
+  // did-not-finish or unsupported cell sorts last (never ahead of a real
+  // number). Single-param dimensions (discriminated-union, wizard) still sort,
+  // just with no selector to show.
+  const sortParam = ref(params.value[params.value.length - 1] ?? '')
+  const sortValueAt = (param: string, lib: string): number => {
+    const row = findRow(param, lib)
+    if (!row || !isMeasured(row)) return Number.POSITIVE_INFINITY
+    return 'retained' in row ? row.retained.median : (row.median ?? Number.POSITIVE_INFINITY)
+  }
+  const sortedLibs = computed(() => {
+    const param = sortParam.value
+    const libs = runtimeLibs.value
+    if (!param) return libs
+    // V8's Array.prototype.sort is stable, so equal values (and the trailing
+    // Infinity group) keep their original registry order.
+    return [...libs].sort((a, b) => sortValueAt(param, a) - sortValueAt(param, b))
+  })
+
   // Pivot the byParam arrays into lib rows x param cells, typed for the view so
   // the template narrows with a plain v-if and needs no casts.
   const timedGrid = computed(() => {
     const b = block.value
     if (!b || isMemory.value) return []
-    return runtimeLibs.value.map((lib) => ({
+    return sortedLibs.value.map((lib) => ({
       lib,
       displayName: displayName(lib),
       baseline: isBaseline(lib),
@@ -290,7 +314,7 @@
   })
   const memoryGrid = computed(() => {
     if (!block.value || !isMemory.value) return []
-    return runtimeLibs.value.map((lib) => ({
+    return sortedLibs.value.map((lib) => ({
       lib,
       displayName: displayName(lib),
       baseline: isBaseline(lib),
@@ -663,10 +687,25 @@
 
     <!-- ===================== Runtime: memory triad ===================== -->
     <div v-else-if="block" class="overflow-x-auto">
-      <div class="border-b border-border bg-surface/40 px-3 py-2">
+      <div
+        class="flex items-center justify-between gap-2 border-b border-border bg-surface/40 px-3 py-2"
+      >
         <span class="text-xs font-semibold tracking-wide text-fg-subtle uppercase">{{
           caption
         }}</span>
+        <label
+          v-if="params.length > 1"
+          class="flex items-center gap-1.5 text-xs whitespace-nowrap text-fg-subtle"
+        >
+          <span>Sort by</span>
+          <select
+            v-model="sortParam"
+            class="rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-xs text-fg"
+            aria-label="Sort libraries by performance at this field count"
+          >
+            <option v-for="p in params" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </label>
       </div>
       <!-- Where Attaform lands, derived from the numbers below, never asserted
            by hand. See the `standing` classifier for the buckets. -->

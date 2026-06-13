@@ -64,12 +64,14 @@ export function buildFieldArrayApi<F extends GenericForm>(
 
   return {
     append(path, value) {
-      // Pure length-grow at the tail — existing indices keep their
-      // identities, so no variant-memory key is invalidated. Skip the
-      // arrayOp hint; nothing to clear.
+      // Pure length-grow at the tail. Recorded as an insert at the tail slot
+      // so the write funnel scopes its per-element work (slim gate, structural
+      // completion, authoring, bookkeeping) to the one fresh element instead
+      // of re-walking all N. Existing indices keep their identities; an
+      // insert-at-tail remap shifts nothing.
       const next = readArray(path)
       next.push(value)
-      return writeArray(path, next)
+      return writeArray(path, next, { kind: 'insert', index: next.length - 1 })
     },
     prepend(path, value) {
       const next = readArray(path)

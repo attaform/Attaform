@@ -1382,7 +1382,18 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // it can't follow; structural mutations replay their permutation onto
   // the tokens through `applyOp`.
   const arrayIdentity = createArrayIdentity((arraySegs) => {
-    const v = getAtPath(form.value, arraySegs)
+    // Read the length off the RAW form value so this lookup never registers a
+    // reactive dependency. The identity-token read (`arrayElementKey` ->
+    // `tokenAt`) runs inside every array-element's FieldState computed; tracking
+    // the array length here would couple every element's rollup to the array
+    // length, so a single append / remove (a length change) would invalidate
+    // all N element rollups and re-walk O(N x M). An element's state depends
+    // only on its own subtree: a structural op that changes which element sits
+    // at a slot also changes that slot's value reference (the field-array
+    // helpers relocate element references in place), firing the element's own
+    // value dep and re-running exactly its rollup. The length is needed only to
+    // seed / bounds-check the token list, never as a reactive input.
+    const v = getAtPath(toRaw(form.value), arraySegs)
     return Array.isArray(v) ? v.length : 0
   })
 

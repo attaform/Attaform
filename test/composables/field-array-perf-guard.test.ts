@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { computed, createApp, defineComponent, h, type App } from 'vue'
 import { useForm } from '../../src'
+import { EMPTY_RESOLVED_FIELD_META } from '../../src/runtime/core/field-meta'
 import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/registry'
 import type { Path } from '../../src/runtime/core/paths'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
@@ -91,6 +92,44 @@ function nestedHarness(sections: Section[]) {
   attachRegistryToApp(app, createRegistry())
   app.mount(document.createElement('div'))
   return { app, form }
+}
+
+/**
+ * A grid form whose schema counts every `getFieldMetaAtPath` call, bucketed by
+ * path. `buildContainerFieldStateBase` calls it exactly once per rollup
+ * evaluation (field-state-api.ts), so the per-path count is a deterministic,
+ * non-flaky proxy for "how many times did this path's FieldState recompute."
+ */
+function meteredHarness(n: number) {
+  const base = fakeSchema<Grid>({ rows: makeRows(n) })
+  const metaCalls = new Map<string, number>()
+  const schema = {
+    ...base,
+    getFieldMetaAtPath(path: Path) {
+      metaCalls.set(path.join('.'), (metaCalls.get(path.join('.')) ?? 0) + 1)
+      return EMPTY_RESOLVED_FIELD_META
+    },
+  }
+  let form!: UseFormReturnType<Grid>
+  const Probe = defineComponent({
+    setup() {
+      form = useForm<Grid>({ schema, key: `metered-${n}-${Math.random()}` })
+      return () => h('div')
+    },
+  })
+  const app = createApp(Probe)
+  attachRegistryToApp(app, createRegistry())
+  app.mount(document.createElement('div'))
+  return {
+    app,
+    form,
+    resetMeta: () => metaCalls.clear(),
+    elementRollupRecomputes: () => {
+      let total = 0
+      for (const [k, c] of metaCalls) if (/^rows\.\d+$/.test(k)) total += c
+      return total
+    },
+  }
 }
 
 describe('field arrays — per-element work does not scale with N (perf guard)', () => {
@@ -277,5 +316,37 @@ describe('field arrays — per-element work does not scale with N (perf guard)',
     // this is not a dead-form false zero.
     expect(small.touchedLen).toBeGreaterThan(0)
     expect(large.touchedLen).toBeGreaterThan(0)
+  })
+
+  /**
+   * Recomputes of per-element FieldState rollups across a tail append. Reading
+   * `form.fields('rows.i').key` subscribes element i's container rollup, which
+   * derives its identity token through the parent array (`arrayElementKey` →
+   * `tokenAt`). An element's FieldState depends only on its own subtree, so a
+   * tail append (which changes neither an existing element's value nor its
+   * token) must leave every existing row's rollup memoized: only the appended
+   * row computes, flat in N. A rollup coupled to the array length instead
+   * invalidates all N on the length change, scaling the recompute count with N.
+   */
+  function elementRollupRecomputesOnAppend(n: number): number {
+    const harness = meteredHarness(n)
+    apps.push(harness.app)
+    const { form } = harness
+    const fields = form.fields as unknown as (p: string) => Record<string, unknown>
+    // Prime: evaluate each element rollup once so its deps are tracked.
+    for (let i = 0; i < n; i++) void fields(`rows.${i}`)['key']
+    form.append('rows', newRow())
+    // Count only the recomputes the post-append re-read drives (the host's read
+    // of every row's `key` when the length-changed v-for re-renders).
+    harness.resetMeta()
+    for (let i = 0; i <= n; i++) void fields(`rows.${i}`)['key']
+    return harness.elementRollupRecomputes()
+  }
+
+  it('appending a row recomputes only the appended element rollup, flat in N', () => {
+    const small = elementRollupRecomputesOnAppend(20)
+    const large = elementRollupRecomputesOnAppend(200)
+    expect(small).toBeLessThanOrEqual(2)
+    expect(large).toBe(small) // flat in N — only the appended row recomputes
   })
 })

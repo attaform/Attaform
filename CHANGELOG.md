@@ -58,6 +58,19 @@
   reactivity-contract suite and re-render-count guards across the Zod v3 and v4
   adapters; zero new dependencies. (#XXX)
 
+- **A row's field state stays put when the list grows or shrinks.** Reading
+  `form.fields` or `form.list` over an array builds one `FieldState` per row, and
+  each row's rolled-up state had been tied to the array's length, so adding or
+  removing a single row recomputed every row's field state (an O(N x fields)
+  re-walk on each structural op). A row's field state now depends only on its own
+  subtree, so a row that did not change is left untouched: appending to a
+  hundred-row grid recomputes one row's state instead of all hundred, and the
+  cost stays flat as the array grows. This compounds with the in-place reconcile
+  above, so a row add or reorder updates only the rows that changed, from the
+  write through to every reader. Behaviour is unchanged, pinned by a
+  recompute-count regression guard and the full array and reactivity suites
+  across the Zod v3 and v4 adapters; zero new dependencies, no size change. (#XXX)
+
 ## v0.21.2
 ### Changed
 

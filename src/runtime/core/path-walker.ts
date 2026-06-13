@@ -55,7 +55,16 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
   if (typeof value !== 'object') return NOT_FOUND
   if (Array.isArray(value)) {
     if (typeof segment !== 'number') return NOT_FOUND
-    if (segment < 0 || segment >= value.length) return NOT_FOUND
+    // Presence-test the index rather than comparing it against `value.length`.
+    // On a reactive array the `in` check tracks only this index's dependency
+    // (Vue's `has` trap), whereas reading `.length` would subscribe the caller
+    // to the array length. Descending into an element must NOT couple the
+    // reader to the sibling count: a length read here makes every element's
+    // value access (and the FieldState rollup built on it) re-run on any
+    // append / remove, turning an array op into O(N x element-leaves). An
+    // out-of-range, negative, or hole index is absent, so `in` is false and we
+    // return NOT_FOUND exactly as the bounds comparison did.
+    if (!(segment in value)) return NOT_FOUND
     return value[segment]
   }
   const record = value as Record<string, unknown>

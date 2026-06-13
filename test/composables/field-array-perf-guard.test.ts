@@ -74,6 +74,25 @@ function countingHarness(n: number) {
   }
 }
 
+type Section = { title: string; questions: { text: string }[] }
+type Sectioned = { sections: Section[] }
+
+/** A nested-repeater form: outer `sections`, each with an inner `questions` list. */
+function nestedHarness(sections: Section[]) {
+  const schema = fakeSchema<Sectioned>({ sections })
+  let form!: UseFormReturnType<Sectioned>
+  const Probe = defineComponent({
+    setup() {
+      form = useForm<Sectioned>({ schema, key: `nested-guard-${sections.length}-${Math.random()}` })
+      return () => h('div')
+    },
+  })
+  const app = createApp(Probe)
+  attachRegistryToApp(app, createRegistry())
+  app.mount(document.createElement('div'))
+  return { app, form }
+}
+
 describe('field arrays — per-element work does not scale with N (perf guard)', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -195,5 +214,68 @@ describe('field arrays — per-element work does not scale with N (perf guard)',
   it('a swap recomputes only the two moved rows index-bound bindings, flat in N', () => {
     expect(reevalsOnSwap(20)).toBe(2)
     expect(reevalsOnSwap(200)).toBe(2) // flat in N — the two swapped rows only
+  })
+
+  /**
+   * Re-evaluations of per-section inner-list IDENTITY bindings across an append
+   * to ONE inner list of a nested repeater. One computed per section reads
+   * `sections[i].questions` by reference — the array handle a
+   * `form.list('sections.i.questions')` subscription holds. The deep in-place
+   * reconcile keeps the touched inner array's reference (it mutates only the
+   * appended slot) AND every untouched section's reference, so NO identity
+   * binding recomputes — flat at zero in the number of outer sections. A
+   * reconcile that reassigned the outer array would fire every section's index
+   * dep (count climbs to the section count); one that reassigned just the
+   * touched element would fire that single binding. The length binding on the
+   * touched list is the positive control that reactivity is live.
+   */
+  function nestedAppendReevals(outerSections: number): { identity: number; touchedLen: number } {
+    const sections = Array.from({ length: outerSections }, (_, i) => ({
+      title: `s${i}`,
+      questions: [{ text: `${i}-q0` }],
+    }))
+    const harness = nestedHarness(sections)
+    apps.push(harness.app)
+    const { form } = harness
+
+    const identityEvals = new Array<number>(outerSections).fill(0)
+    const identityCells = Array.from({ length: outerSections }, (_, i) =>
+      computed(() => {
+        identityEvals[i] = (identityEvals[i] ?? 0) + 1
+        return form.values.sections[i]?.questions
+      })
+    )
+    let touchedLen = 0
+    const touchedLenCell = computed(() => {
+      touchedLen += 1
+      return form.values.sections[0]?.questions.length
+    })
+
+    // Prime so every dep is tracked, then zero the counters.
+    identityCells.forEach((c) => void c.value)
+    void touchedLenCell.value
+    identityEvals.fill(0)
+    touchedLen = 0
+
+    form.append('sections.0.questions', { text: 'appended' })
+
+    identityCells.forEach((c) => void c.value)
+    void touchedLenCell.value
+
+    return { identity: identityEvals.reduce((sum, x) => sum + x, 0), touchedLen }
+  }
+
+  it('appending to one inner list recomputes no section identity binding, flat in outer count', () => {
+    const small = nestedAppendReevals(4)
+    const large = nestedAppendReevals(40)
+    // The touched inner array keeps its reference (append mutates the new slot in
+    // place) and every untouched section keeps its reference, so no per-section
+    // identity binding recomputes — regardless of how many sections exist.
+    expect(small.identity).toBe(0)
+    expect(large.identity).toBe(0)
+    // Positive control: the touched list's length binding DID see the append, so
+    // this is not a dead-form false zero.
+    expect(small.touchedLen).toBeGreaterThan(0)
+    expect(large.touchedLen).toBeGreaterThan(0)
   })
 })

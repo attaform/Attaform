@@ -10,7 +10,7 @@ import {
   structuralSnapshot,
   type Patch,
 } from './diff-apply'
-import type { PathKey } from './paths'
+import { pathsEqual, type PathKey } from './paths'
 
 /**
  * Bounded undo/redo history for a FormStore, stored as one base
@@ -99,18 +99,6 @@ function captureErrorEntries(map: Map<PathKey, ValidationError[]>): ErrorEntries
   const out: Array<readonly [PathKey, ValidationError[]]> = []
   for (const [k, v] of map) out.push([k, [...v]] as const)
   return out
-}
-
-/**
- * Structural equality for two error paths: same length and identical
- * elements in order (numeric and string segments compared with `!==`).
- */
-function pathsEqual(a: readonly (string | number)[], b: readonly (string | number)[]): boolean {
-  if (a.length !== b.length) return false
-  for (let j = 0; j < a.length; j++) {
-    if (a[j] !== b[j]) return false
-  }
-  return true
 }
 
 /**

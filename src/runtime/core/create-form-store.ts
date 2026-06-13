@@ -2048,7 +2048,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     if (onChangeRegistry.active) onChangeRegistry.dispatch(patches, meta)
   }
 
-  function applyFormReplacement(next: F, meta?: WriteMeta): void {
+  function applyFormReplacementWithPath(
+    next: F,
+    meta: WriteMeta | undefined,
+    arrayOpPath: Path | null
+  ): void {
     const prev = form.value
     if (Object.is(prev, next)) return
     // Capture the diff before any mutation lands — `commitWritePatches`
@@ -2067,13 +2071,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // On a top-level shape mismatch (object → array, etc.) fall back
     // to wholesale replacement — that's the only case where in-place
     // merging can't preserve existing reactive proxies anyway.
-    // The typed array helpers carry an `arrayOp` hint; on those writes a
-    // changed container-valued key reconciles in place, keeping stable references
-    // for the mutated array and every object on the path to it. So a reorder
-    // fires only the moved indices and a nested-array append re-renders only that
-    // list, never the whole-array / whole-parent re-render. A direct
-    // container-target `setValue` (no hint) replaces the reference.
-    if (!applyChangedKeys(prev, next, meta?.arrayOp !== undefined)) {
+    // The typed array helpers thread the mutated array's path (`arrayOpPath`);
+    // on those writes a changed container-valued key reconciles in place, keeping
+    // stable references for the mutated array AND every ancestor container on the
+    // path to it, at any depth. So a reorder fires only the moved indices and a
+    // nested-array append re-renders only that list, never the whole-array /
+    // whole-parent re-render. A non-helper replacement (`arrayOpPath` null:
+    // explicit setValue, reset, undo / redo, cross-tab, hydration, DU reshape)
+    // reassigns changed keys wholesale, so a container target gets a fresh ref.
+    if (!applyChangedKeys(prev, next, arrayOpPath, [])) {
       form.value = next
     } else if (
       patches.some(
@@ -2097,6 +2103,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     commitWritePatches(patches, meta)
   }
 
+  // Public whole-value replacement (history restore, cross-tab merge, reset,
+  // hydration, DU reshape, devtools, tests). Threads a null array path, so the
+  // reconcile reassigns changed keys wholesale and a container target gets a
+  // fresh reference. Only the targeted array-helper write path opts into the
+  // stable-reference container reconcile, via `applyFormReplacementWithPath`.
+  function applyFormReplacement(next: F, meta?: WriteMeta): void {
+    applyFormReplacementWithPath(next, meta, null)
+  }
+
   // Fast path for a single `setValue` whose target leaf already exists:
   // mutate that leaf's slot in place (O(depth)), preserving every ancestor
   // container's identity, then commit the exact per-leaf patches the
@@ -2111,9 +2126,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   function applyTargetedWrite(path: Path, completedValue: unknown, meta?: WriteMeta): void {
     const result = tryInPlaceLeafWrite(form.value, path, completedValue)
     if (!result.applied) {
-      applyFormReplacement(
+      // A structural write (array growth / reorder, a new key, a container
+      // target). For a typed array-helper op (`meta.arrayOp` set), `path` IS the
+      // mutated array's canonical path — thread it so the reconcile keeps every
+      // ancestor container on the way to it stable. Any other structural write
+      // passes null and reassigns changed keys wholesale.
+      applyFormReplacementWithPath(
         setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F,
-        meta
+        meta,
+        meta?.arrayOp !== undefined ? path : null
       )
       return
     }

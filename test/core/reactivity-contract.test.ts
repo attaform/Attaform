@@ -6,6 +6,7 @@ import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { applyChangedKeys } from '../../src/runtime/core/diff-apply'
 
 /**
  * Reactivity contract for the targeted in-place write (Bust 2 / T2) and the
@@ -61,6 +62,12 @@ function mount(a: Adapter): any {
       contacts: a.z.array(a.z.object({ name: a.z.string() })),
     }),
     rows: a.z.array(a.z.object({ name: a.z.string(), qty: a.z.number() })),
+    sections: a.z.array(
+      a.z.object({
+        title: a.z.string(),
+        questions: a.z.array(a.z.object({ text: a.z.string() })),
+      })
+    ),
   })
   const defaultValues = {
     a: '',
@@ -69,6 +76,10 @@ function mount(a: Adapter): any {
       { name: 'r0', qty: 0 },
       { name: 'r1', qty: 1 },
       { name: 'r2', qty: 2 },
+    ],
+    sections: [
+      { title: 's0', questions: [{ text: 'q0' }, { text: 'q1' }] },
+      { title: 's1', questions: [{ text: 'q2' }] },
     ],
   }
   let captured: any
@@ -439,5 +450,207 @@ describe.each(ADAPTERS)(
 
       stops.forEach((s) => s())
     })
+
+    it('append to a nested-repeater inner list keeps the outer array, the element, AND the inner array stable', async () => {
+      const form = mount(a)
+
+      let sectionsByRef = 0
+      let section0ByRef = 0
+      let section1ByRef = 0
+      let inner0ByRef = 0
+      let inner0Len = 0
+      let inner0Deep = 0
+      const stops = [
+        watch(
+          () => form.values.sections,
+          () => {
+            sectionsByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0],
+          () => {
+            section0ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[1],
+          () => {
+            section1ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions,
+          () => {
+            inner0ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions.length,
+          () => {
+            inner0Len++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions,
+          () => {
+            inner0Deep++
+          },
+          { deep: true }
+        ),
+      ]
+
+      const sectionsBefore = form.values.sections
+      const section0Before = form.values.sections[0]
+      const section1Before = form.values.sections[1]
+      const inner0Before = form.values.sections[0]?.questions
+
+      form.append('sections.0.questions', { text: 'q-new' })
+      await nextTick()
+
+      // Every container on the path to the mutated inner list keeps its
+      // reference: the outer array, the touched element, AND the inner array.
+      // The untouched sibling element keeps its reference too.
+      expect(sectionsByRef).toBe(0)
+      expect(section0ByRef).toBe(0)
+      expect(section1ByRef).toBe(0)
+      expect(inner0ByRef).toBe(0)
+      expect(form.values.sections).toBe(sectionsBefore)
+      expect(form.values.sections[0]).toBe(section0Before)
+      expect(form.values.sections[1]).toBe(section1Before)
+      expect(form.values.sections[0]?.questions).toBe(inner0Before)
+
+      // Only the inner list's length + deep see the new question.
+      expect(inner0Len).toBeGreaterThan(0)
+      expect(inner0Deep).toBeGreaterThan(0)
+      expect(form.values.sections[0]?.questions.length).toBe(3)
+      expect(form.values.sections[0]?.questions[2]?.text).toBe('q-new')
+
+      stops.forEach((s) => s())
+    })
+
+    it('swap on the outer repeater relocates whole element references; inner lists ride along', async () => {
+      const form = mount(a)
+
+      let sectionsByRef = 0
+      const stop = watch(
+        () => form.values.sections,
+        () => {
+          sectionsByRef++
+        }
+      )
+
+      const sectionsBefore = form.values.sections
+      const section0Before = form.values.sections[0]
+      const section1Before = form.values.sections[1]
+      const inner0Before = form.values.sections[0]?.questions
+      const inner1Before = form.values.sections[1]?.questions
+
+      form.swap('sections', 0, 1)
+      await nextTick()
+
+      // The outer array keeps its reference (in-place reconcile), and the
+      // swapped ELEMENT references relocate intact: sections[0] now IS the old
+      // sections[1] object, and its inner questions array rode along by
+      // reference rather than being content-copied. This is the load-bearing
+      // mutated-vs-ancestor distinction — treating the swapped array as an
+      // ancestor would clone the elements and break identity.
+      expect(sectionsByRef).toBe(0)
+      expect(form.values.sections).toBe(sectionsBefore)
+      expect(form.values.sections[0]).toBe(section1Before)
+      expect(form.values.sections[1]).toBe(section0Before)
+      expect(form.values.sections[0]?.questions).toBe(inner1Before)
+      expect(form.values.sections[1]?.questions).toBe(inner0Before)
+      expect(form.values.sections[0]?.title).toBe('s1')
+      expect(form.values.sections[1]?.title).toBe('s0')
+
+      stop()
+    })
+
+    it('remove on a nested-repeater inner list shrinks in place; outer + element + inner refs stable', async () => {
+      const form = mount(a)
+
+      let sectionsByRef = 0
+      let section0ByRef = 0
+      let inner0ByRef = 0
+      const stops = [
+        watch(
+          () => form.values.sections,
+          () => {
+            sectionsByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0],
+          () => {
+            section0ByRef++
+          }
+        ),
+        watch(
+          () => form.values.sections[0]?.questions,
+          () => {
+            inner0ByRef++
+          }
+        ),
+      ]
+
+      const sectionsBefore = form.values.sections
+      const section0Before = form.values.sections[0]
+      const inner0Before = form.values.sections[0]?.questions
+
+      // sections[0].questions starts as [q0, q1]; remove index 0 leaves [q1].
+      form.remove('sections.0.questions', 0)
+      await nextTick()
+
+      expect(sectionsByRef).toBe(0)
+      expect(section0ByRef).toBe(0)
+      expect(inner0ByRef).toBe(0)
+      expect(form.values.sections).toBe(sectionsBefore)
+      expect(form.values.sections[0]).toBe(section0Before)
+      expect(form.values.sections[0]?.questions).toBe(inner0Before)
+      expect(form.values.sections[0]?.questions.length).toBe(1)
+      expect(form.values.sections[0]?.questions[0]?.text).toBe('q1')
+
+      stops.forEach((s) => s())
+    })
   }
 )
+
+/**
+ * White-box coverage of the reconcile gate's three branches as a pure function.
+ * The integration suites above prove the Vue-observable contract; these pin the
+ * decision table directly, including the shape-flip fallback the typed schema
+ * API can't reach (a real schema never flips an object to an array at a key
+ * mid-write, but the in-place recurse must still degrade safely if it ever did).
+ */
+describe('applyChangedKeys — reconcile gate (unit)', () => {
+  it('null arrayOpPath reassigns a changed nested container wholesale (no in-place recurse)', () => {
+    const target = { a: { n: 1 } }
+    const source = { a: { n: 2 } }
+    const aBefore = target.a
+    expect(applyChangedKeys(target, source, null, [])).toBe(true)
+    // No array op: the changed key is reassigned, so the container gets a fresh
+    // reference. This is the contract a DU reshape / explicit setValue rides on.
+    expect(target.a).not.toBe(aBefore)
+    expect(target.a.n).toBe(2)
+  })
+
+  it('non-null arrayOpPath reconciles an on-path container in place (reference kept)', () => {
+    const target = { a: { n: 1 } }
+    const source = { a: { n: 2 } }
+    const aBefore = target.a
+    // arrayOpPath runs through `a`, so `a` is an ancestor container on the path.
+    expect(applyChangedKeys(target, source, ['a', 'rows'], [])).toBe(true)
+    expect(target.a).toBe(aBefore) // recursed in place
+    expect(target.a.n).toBe(2)
+  })
+
+  it('falls back to a wholesale reassign when a changed key flips object <-> array under an op', () => {
+    const target: Record<string, unknown> = { a: { n: 1 } }
+    const source: Record<string, unknown> = { a: [1, 2, 3] }
+    // The in-place recurse bails on the shape mismatch (object vs array) and the
+    // key is reassigned; the value still lands correctly.
+    expect(applyChangedKeys(target, source, ['a', 'rows'], [])).toBe(true)
+    expect(target.a).toEqual([1, 2, 3])
+  })
+})

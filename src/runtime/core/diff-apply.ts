@@ -1,4 +1,5 @@
 import { deleteAtPath, setAtPath } from './path-walker'
+import { isPathPrefix, pathsEqual } from './paths'
 import type { Path, Segment } from './paths'
 import { safeAssign, safeOwnRead } from './safe-assign'
 
@@ -252,19 +253,34 @@ function diffObjectsLockstep(
  * place, preserving ancestor container identity; this first-segment
  * reassign is retained for container and whole-form replacements.
  *
- * `reconcileContainersInPlace` scopes one extra optimization to the typed array
- * helpers (the writes that carry an `arrayOp` meta hint). When set, a changed
- * key whose old and new values are BOTH descendable containers (a plain object
- * or an array) is reconciled IN PLACE — the recursion keeps that container's own
- * reference stable and descends to repeat the decision on its changed children.
- * So an array nested under an object chain (`append('address.contacts', x)`)
- * keeps every object on the path stable too, and the array branch then truncates
- * to the new length and reassigns only the indices whose content moved. A reorder
- * (swap / move, no length change) fires only the two moved indices' deps instead
- * of the array-key dep that re-renders every `form.list` row; a nested-array
- * append re-renders only that list, not its parent object's bindings. The flag
- * is OFF for a direct `setValue(path, wholeNewValue)`, which replaces the
- * reference like any other container-target write — so the "reference changes IFF
+ * `arrayOpPath` opts the typed array helpers into one extra optimization: the
+ * writes that carry an `arrayOp` meta hint pass the mutated array's (canonical)
+ * path, every other caller passes `null`. When non-null, a changed key whose old
+ * and new values are BOTH descendable containers (a plain object or an array) is
+ * reconciled IN PLACE — the recursion keeps that container's own reference stable
+ * and descends, threading `currentPath` so each level knows where it sits. This
+ * keeps EVERY ancestor container on the path to the mutated array stable at any
+ * depth: the objects of an `address.contacts` chain AND the ancestor array
+ * elements of a nested repeater (`append('sections.0.questions', q)`) alike. So a
+ * helper op touches only the genuinely-changed leaves / length, and a `form.list`
+ * over any untouched container does not re-render.
+ *
+ * The array branch (reached only via this recursion, so `arrayOpPath` is non-null
+ * there) splits on whether `currentPath` IS the mutated array:
+ *   - the MUTATED array (`pathsEqual(currentPath, arrayOpPath)`): truncate to the
+ *     new length and reference-assign only the changed indices. Reference-assign
+ *     is what relocates a swapped / moved element to its new slot while keeping
+ *     its object identity (its subtree, focus, per-element state all ride along),
+ *     so this branch must NOT recurse into elements.
+ *   - an ANCESTOR array (not equal): a descendant write never changes this
+ *     array's length, only the one element leading to the mutated array. Recurse
+ *     that element in place (guarded by `isPathPrefix`, so untouched siblings
+ *     keep their references); reference-assign anything else defensively.
+ *
+ * When `arrayOpPath` is `null` (every non-helper write: an explicit setValue,
+ * reset, undo / redo, cross-tab merge, hydration, DU reshape) the object branch
+ * reassigns each changed key wholesale and never recurses, so a container-target
+ * write replaces the reference like any other — the "reference changes IFF
  * targeted or restructured" contract holds for explicit writes; only the helpers
  * opt into the stable-reference reconcile. Consumers reading a container then
  * subscribe to its length / keys / elements (or take a deep watch), not its bare
@@ -273,7 +289,8 @@ function diffObjectsLockstep(
 export function applyChangedKeys(
   target: unknown,
   source: unknown,
-  reconcileContainersInPlace: boolean
+  arrayOpPath: Path | null,
+  currentPath: Path
 ): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false
   const targetIsArray = Array.isArray(target)
@@ -301,16 +318,51 @@ export function applyChangedKeys(
   if (targetIsArray) {
     const t = target as unknown[]
     const s = source as readonly unknown[]
-    if (t.length > s.length) t.length = s.length
-    for (const idx of changedFirstSegments) {
-      if (typeof idx === 'symbol') continue
-      const i = typeof idx === 'number' ? idx : Number(idx)
-      // Skip slots the length cut already dropped. On a shrink, diffAndApply
-      // emits a 'removed' patch at every truncated index, so those land in
-      // `changedFirstSegments`; reassigning `s[i]` (undefined) would re-grow
-      // the array with a trailing hole. Survivors and grown slots are in range.
-      if (i >= s.length) continue
-      t[i] = s[i]
+    // `arrayOpPath === null` can't actually reach here — the array branch is
+    // only entered by recursion from the object branch, which recurses only
+    // when arrayOpPath is non-null. Folding it into the mutated-array case both
+    // documents that and narrows arrayOpPath to non-null inside the `else`.
+    if (arrayOpPath === null || pathsEqual(currentPath, arrayOpPath)) {
+      // This IS the array the op mutated. Truncate to the new length and
+      // reference-assign the changed indices: that relocates a swapped / moved
+      // element to its new slot while preserving its object identity, so its
+      // subtree / focus / per-element state ride along. Recursing here instead
+      // would content-copy and break that identity.
+      if (t.length > s.length) t.length = s.length
+      for (const idx of changedFirstSegments) {
+        if (typeof idx === 'symbol') continue
+        const i = typeof idx === 'number' ? idx : Number(idx)
+        // Skip slots the length cut already dropped. On a shrink, diffAndApply
+        // emits a 'removed' patch at every truncated index, so those land in
+        // `changedFirstSegments`; reassigning `s[i]` (undefined) would re-grow
+        // the array with a trailing hole. Survivors and grown slots are in range.
+        if (i >= s.length) continue
+        t[i] = s[i]
+      }
+    } else {
+      // An ANCESTOR array on the path to the mutated array. A descendant write
+      // never changes this array's length, only the single element leading to
+      // the mutated array — recurse THAT element in place (keeping its
+      // reference) so its siblings and their subtrees stay stable. `isPathPrefix`
+      // selects the one on-path element; anything else reference-assigns
+      // defensively (no length change, so no truncation here).
+      for (const idx of changedFirstSegments) {
+        if (typeof idx === 'symbol') continue
+        const i = typeof idx === 'number' ? idx : Number(idx)
+        if (i >= s.length) continue
+        const childPath = appendSegment(currentPath, i)
+        const curEl = t[i]
+        const nextEl = s[i]
+        if (
+          isPathPrefix(childPath, arrayOpPath) &&
+          isDescendable(curEl) &&
+          isDescendable(nextEl) &&
+          applyChangedKeys(curEl, nextEl, arrayOpPath, childPath)
+        ) {
+          continue
+        }
+        t[i] = nextEl
+      }
     }
   } else {
     const t = target as Record<string, unknown>
@@ -323,23 +375,22 @@ export function applyChangedKeys(
       if (typeof k === 'symbol') continue
       const key = String(k)
       const nextVal = safeOwnRead(s, key)
-      // On an array structural op (arrayOp present), reconcile a changed
-      // container-valued key IN PLACE: recurse so the array branch truncates and
-      // reassigns only the moved indices, and any nested object on the path keeps
-      // its own reference, instead of reassigning the whole subtree. This makes an
-      // array nested under an object chain (`append('address.contacts', x)`) keep
-      // `address`'s reference too, so `form.list('address.contacts')` is the only
-      // list that re-renders. `safeOwnRead` returns the reactive proxy for
-      // `t[key]` (tracking intact), so the in-place sets fire the right deps.
-      // Falls through to a plain reassign for a leaf value, a shape mismatch (the
-      // recurse returns false), or a direct container-target write (flag off),
-      // which replaces the reference.
-      if (reconcileContainersInPlace) {
+      // On an array helper op (arrayOpPath non-null), reconcile a changed
+      // container-valued key IN PLACE: recurse so the array branch handles the
+      // array and any nested object on the path keeps its own reference, instead
+      // of reassigning the whole subtree. This makes an array nested under an
+      // object chain (`append('address.contacts', x)`) keep `address`'s reference
+      // too, so `form.list('address.contacts')` is the only list that re-renders.
+      // `safeOwnRead` returns the reactive proxy for `t[key]` (tracking intact),
+      // so the in-place sets fire the right deps. Falls through to a plain
+      // reassign for a leaf value, a shape mismatch (the recurse returns false),
+      // or a non-helper write (arrayOpPath null), which replaces the reference.
+      if (arrayOpPath !== null) {
         const curVal = safeOwnRead(t, key)
         if (
           isDescendable(curVal) &&
           isDescendable(nextVal) &&
-          applyChangedKeys(curVal, nextVal, reconcileContainersInPlace)
+          applyChangedKeys(curVal, nextVal, arrayOpPath, appendSegment(currentPath, key))
         ) {
           continue
         }

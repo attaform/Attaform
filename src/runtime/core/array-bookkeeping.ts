@@ -67,6 +67,7 @@ export type ArrayBookkeepingDeps = {
   readonly originals: Map<PathKey, OriginalsRecord>
   readonly blankPaths: Set<PathKey>
   readonly originalBlankPaths: Set<PathKey>
+  readonly authoredPaths: Set<PathKey>
   readonly fieldValidationCounts: Map<PathKey, number>
   readonly fieldValidatingSince: Map<PathKey, number>
   readonly fieldValidationState: Map<PathKey, FieldValidationEntry>
@@ -147,6 +148,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     originals,
     blankPaths,
     originalBlankPaths,
+    authoredPaths,
     fieldValidationCounts,
     fieldValidatingSince,
     fieldValidationState,
@@ -172,6 +174,12 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
     migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    // Authored marks are per-element facts too: a moved element keeps "the
+    // consumer wrote here" so the schema-error filter's verdict at preprocess /
+    // coerce leaves follows the element rather than the slot. The write funnel
+    // now authors only fresh elements on an array op, so this relocation is what
+    // keeps survivors' authored marks correct across a reorder / shift.
+    migrateSetSubtree(authoredPaths, arrayPath, remap)
     // The validation-streak anchor leads its count, mirroring
     // `incFieldValidation`: relocating `fieldValidatingSince` before
     // `fieldValidationCounts` keeps `validatingSince !== null` an outer bracket

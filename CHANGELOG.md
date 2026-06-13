@@ -25,6 +25,20 @@
   server-validation guide, document the split. Verified against both the Zod v3
   and v4 adapters; zero new runtime dependencies. (#XXX)
 
+### Performance
+
+- **Array mutation scales with the change, not the form.** Adding, inserting,
+  reordering, or removing a row now costs work proportional to the one element
+  that changed, not to the whole array. The write funnel had been re-validating,
+  re-completing, and re-authoring every element on every structural array op; it
+  now scopes that per-element work to the element the operation actually
+  introduces, guided by the hint each `form.append` / `insert` / `swap` / `move`
+  / `remove` already records. Large arrays and grids gain the most: a row added
+  to a hundred-row grid is several times cheaper, and the per-op cost stays flat
+  as the array grows. Behaviour is unchanged, pinned by a call-count regression
+  guard and the full array suite across the Zod v3 and v4 adapters; zero new
+  dependencies. (#XXX)
+
 ## v0.21.2
 ### Changed
 

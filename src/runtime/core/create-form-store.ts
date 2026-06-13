@@ -1109,6 +1109,27 @@ function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<Path
 }
 
 /**
+ * The indices a structural array op introduces a brand-new element at:
+ * `insert` / `replace-at` carry one fresh slot, while `swap` / `move` /
+ * `remove` only permute or drop existing elements and carry none. The write
+ * funnel uses this to scope its per-element work (slim gate, structural
+ * completion, authoring) to just the new element(s) on an array op, since
+ * existing elements were already gated / completed / authored when first
+ * written and only change position here.
+ */
+function freshElementIndices(op: NonNullable<WriteMeta['arrayOp']>): readonly number[] {
+  switch (op.kind) {
+    case 'insert':
+    case 'replace-at':
+      return [op.index]
+    case 'remove':
+    case 'swap':
+    case 'move':
+      return []
+  }
+}
+
+/**
  * Diff the schema's with-defaults data against its blank baseline (the
  * raw `deriveDefault(false)` walk) to find every path where the schema
  * author declared a `.default(...)` chain. Paths whose value differs
@@ -1984,6 +2005,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     originals,
     blankPaths,
     originalBlankPaths,
+    authoredPaths,
     fieldValidationCounts,
     fieldValidatingSince,
     fieldValidationState,
@@ -2128,7 +2150,21 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // The gate short-circuits at `z.preprocess` / `z.coerce` wrappers
     // so storage retains the consumer's raw input; the schema-side
     // normalizers fire during `safeParse`, not at the write boundary.
-    if (!isSlimPrimitiveValid(schema, form, path, value)) {
+    let slimOk = true
+    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
+      // Array structural op: only the freshly-introduced element(s) carry new
+      // leaf values. Existing elements were gated when first written and only
+      // shift position here, so validate just the fresh slots, not all N.
+      for (const idx of freshElementIndices(meta.arrayOp)) {
+        if (!isSlimPrimitiveValid(schema, form, [...path, idx], value[idx])) {
+          slimOk = false
+          break
+        }
+      }
+    } else {
+      slimOk = isSlimPrimitiveValid(schema, form, path, value)
+    }
+    if (!slimOk) {
       return false
     }
     // Cross-variant write guard: walking the path, if any ancestor is
@@ -2333,7 +2369,18 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // setValue('url', undefined) over an already-undefined leaf case;
     // the mark is cheap and consistent either way.
     const wasAuthoredBefore = authoredPaths.has(pathKey)
-    walkAuthoredFromConstraints(value, path, authoredPaths)
+    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
+      // The array container itself is authored (the consumer wrote it via a
+      // field-array op), matching the whole-array walk this replaces. Existing
+      // elements keep their authored marks (relocated with the op by
+      // migrateElementState), so only the fresh element(s) need a fresh walk.
+      if (path.length > 0) authoredPaths.add(pathKey)
+      for (const idx of freshElementIndices(meta.arrayOp)) {
+        walkAuthoredFromConstraints(value[idx], [...path, idx], authoredPaths)
+      }
+    } else {
+      walkAuthoredFromConstraints(value, path, authoredPaths)
+    }
     const newlyAuthored = !wasAuthoredBefore && authoredPaths.has(pathKey)
 
     // Structural-completeness invariant: every write must leave the
@@ -2348,7 +2395,19 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // hits no schema lookups: mergeStructural short-circuits on
     // ref-equal sub-trees, and the fill walker only queries the
     // schema at gap sites.
-    const completedValue = mergeStructural(schema, path, value)
+    let completedValue: unknown
+    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
+      // Complete only the fresh element(s) against the schema element default;
+      // existing elements are already structurally complete from prior writes.
+      // Mutating the caller's fresh array copy in place is safe (the field-array
+      // helper builds and hands it off exactly once).
+      for (const idx of freshElementIndices(meta.arrayOp)) {
+        value[idx] = mergeStructural(schema, [...path, idx], value[idx])
+      }
+      completedValue = value
+    } else {
+      completedValue = mergeStructural(schema, path, value)
+    }
     // Identity short-circuit: if the path's current value already
     // matches what we'd write, skip the replacement. Without this,
     // every keystroke that produces an unchanged trimmed/cast value

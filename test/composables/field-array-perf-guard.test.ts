@@ -87,6 +87,36 @@ describe('field arrays — per-element work does not scale with N (perf guard)',
     return h.calls()
   }
 
+  /** A row-shaped data object — what the funnel's symbol strip would descend. */
+  function isRow(o: unknown): boolean {
+    return typeof o === 'object' && o !== null && 'a' in o && 'b' in o && 'c' in o
+  }
+
+  /**
+   * Row-object visits the funnel's `stripSymbolsDeep` pre-pass makes across one
+   * op. It calls `Object.getOwnPropertySymbols` once per plain-object node, so
+   * counting those calls (filtered to row shapes, to exclude Vue's own internal
+   * calls) is a deterministic proxy for "how much of the array did the strip
+   * re-walk." Scoped: only the fresh element. A regression to the whole-array
+   * strip re-walks every existing element, so the count scales with N.
+   */
+  function rowSymbolStripsFor(n: number, op: (form: UseFormReturnType<Grid>) => void): number {
+    const h = countingHarness(n)
+    apps.push(h.app)
+    const real = Object.getOwnPropertySymbols
+    let visits = 0
+    Reflect.set(Object, 'getOwnPropertySymbols', (o: object) => {
+      if (isRow(o)) visits += 1
+      return real(o)
+    })
+    try {
+      op(h.form)
+    } finally {
+      Reflect.set(Object, 'getOwnPropertySymbols', real)
+    }
+    return visits
+  }
+
   it('append validates only the fresh element, identically at N=20 and N=200', () => {
     const small = callsFor(20, (f) => f.append('rows', newRow()))
     const large = callsFor(200, (f) => f.append('rows', newRow()))
@@ -107,5 +137,20 @@ describe('field arrays — per-element work does not scale with N (perf guard)',
 
   it('remove validates no elements (it drops, never introduces)', () => {
     expect(callsFor(200, (f) => f.remove('rows', 0))).toBe(0)
+  })
+
+  it('append symbol-strips only the fresh element, flat in N', () => {
+    const small = rowSymbolStripsFor(20, (f) => f.append('rows', newRow()))
+    const large = rowSymbolStripsFor(200, (f) => f.append('rows', newRow()))
+    // A whole-array strip visits every existing row, so the count would climb
+    // by ~N between the two sizes. Scoped, it touches only the one fresh slot,
+    // so the two sizes agree within a fresh element's fixed visit count.
+    expect(large - small).toBeLessThanOrEqual(FRESH_ELEMENT_CAP)
+  })
+
+  it('swap symbol-strips nothing (a reorder introduces no new value)', () => {
+    expect(rowSymbolStripsFor(200, (f) => f.swap('rows', 0, 199))).toBeLessThanOrEqual(
+      FRESH_ELEMENT_CAP
+    )
   })
 })

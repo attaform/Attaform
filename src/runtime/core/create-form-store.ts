@@ -2141,8 +2141,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // the gate, DU reshape, or storage. Form values are string-keyed
     // by schema design and the consumer-side leak would otherwise
     // surface in `Object.getOwnPropertySymbols(values.x)` and break
-    // downstream JSON serialization (persistence) + variant memory.
-    value = stripSymbolsDeep(value)
+    // downstream JSON serialization (persistence) + variant memory. On an
+    // array structural op only the fresh element(s) carry consumer input;
+    // existing elements were stripped when first written and only shift
+    // position here, so strip just the new slot(s) instead of deep-walking
+    // all N. The field-array helper owns this fresh array copy, so the
+    // in-place element strip is safe — the same scoping the slim gate,
+    // mergeStructural, and the authored walk apply below.
+    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
+      for (const idx of freshElementIndices(meta.arrayOp)) {
+        value[idx] = stripSymbolsDeep(value[idx])
+      }
+    } else {
+      value = stripSymbolsDeep(value)
+    }
     // Slim-primitive write gate: every leaf in the value must match
     // the schema's slim primitive set at its sub-path. Refinement-level
     // constraints (.email/.min/enum membership/etc.) are NOT enforced

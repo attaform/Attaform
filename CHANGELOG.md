@@ -39,18 +39,23 @@
   guard and the full array suite across the Zod v3 and v4 adapters; zero new
   dependencies. (#XXX)
 
-- **Reordering a row is now a two-row update, not a whole-list re-render.** The
-  typed array helpers (`append` / `insert` / `remove` / `swap` / `move` /
-  `replace`) reconcile the array in place rather than swapping in a fresh array,
-  so a swap or move fires only the two indices that actually moved. A hundred-row
-  grid that used to re-render every row now touches just the pair, and reorder
-  cost stays flat as the list grows. Keeping the array's reference stable is the
-  one behaviour to know about: a by-reference watch on the whole array stays
-  quiet across a helper op, while length, element, and deep watches fire as
-  before and every row's value stays correct. An explicit
-  `setValue('rows', wholeNewArray)` is a container-target write and still
-  replaces the reference, just like writing any other container. Pinned by a
-  reactivity-contract suite and a re-render-count guard across the Zod v3 and v4
+- **Reordering or editing a row is a touched-rows update at any nesting depth,
+  not a whole-list re-render.** The typed array helpers (`append` / `insert` /
+  `remove` / `swap` / `move` / `replace`) reconcile the array in place rather than
+  swapping in a fresh array, so a swap or move fires only the two indices that
+  actually moved, and the reconcile holds every container on the path to the
+  mutated array stable at any depth. A list nested under an object
+  (`address.contacts`) or under another row (a nested repeater,
+  `sections.0.questions`) updates only that inner list: the outer array, the
+  touched row, and the untouched sibling rows all keep their references, so a
+  hundred-row grid that used to re-render every row now touches just the pair and
+  the cost stays flat as the list grows. Keeping those references stable is the
+  one behaviour to know about: a by-reference watch on the array (or on any
+  container along its path) stays quiet across a helper op, while length, element,
+  and deep watches fire as before and every row's value stays correct. An explicit
+  `setValue('rows', wholeNewArray)` is a container-target write and still replaces
+  the reference, just like writing any other container. Pinned by a
+  reactivity-contract suite and re-render-count guards across the Zod v3 and v4
   adapters; zero new dependencies. (#XXX)
 
 ## v0.21.2

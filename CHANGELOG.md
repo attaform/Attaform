@@ -14,7 +14,7 @@
   where realtime state with auth and encryption actually lives. Pre-1.0, so this
   lands without a deprecation shim; the `RegisterValue.markNoSync` /
   `unmarkNoSync` hooks and the internal cross-tab write plumbing go with it.
-  (#XXX)
+  (#415)
 
 ## v0.22.0
 ### Added

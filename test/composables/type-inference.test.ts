@@ -414,8 +414,10 @@ describe('useForm type inference — register tuple-segment overload', () => {
   })
 
   it('passes options through on both forms', () => {
-    expectTypeOf(form.register('email', { persist: true }).innerRef.value).toEqualTypeOf<string>()
-    expectTypeOf(form.register(['email'], { persist: true }).innerRef.value).toEqualTypeOf<string>()
+    expectTypeOf(form.register('email', { transforms: [] }).innerRef.value).toEqualTypeOf<string>()
+    expectTypeOf(
+      form.register(['email'], { transforms: [] }).innerRef.value
+    ).toEqualTypeOf<string>()
   })
 })
 

@@ -2,10 +2,10 @@
  * Dev-only shared-key collision diagnostics for `useForm`. When two
  * `useForm({ key })` calls land on the same key, they resolve to one
  * `FormStore` by design (the shared-store semantic), and the second
- * call's schema and `persist:` config are silently dropped in favour of
- * the first's wiring. The warnings here surface that divergence so a
- * genuine collision (two unrelated call sites that happen to agree on a
- * key) is diagnosable rather than silent.
+ * call's schema is silently dropped in favour of the first's wiring.
+ * The warnings here surface that divergence so a genuine collision (two
+ * unrelated call sites that happen to agree on a key) is diagnosable
+ * rather than silent.
  *
  * This whole module is loaded behind a `__DEV__`-gated dynamic import in
  * `use-abstract-form.ts`. A production build folds that gate to `false`,
@@ -18,15 +18,7 @@
  * module sidesteps that and keeps the cluster out of every consumer's
  * production bundle.
  */
-import { normalizePersistConfig, PERSISTENCE_MODULE_KEY } from './persistence'
-import type { PersistenceHandle } from './persistence'
-import type { FormStore } from './create-form-store'
-import type {
-  AbstractSchema,
-  FormKey,
-  PersistConfig,
-  PersistConfigOptions,
-} from '../types/types-api'
+import type { AbstractSchema, FormKey } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 
 /**
@@ -59,51 +51,4 @@ export async function warnOnSchemaFingerprintMismatch(
   console.warn(
     `[attaform] useForm() calls with key "${key}" use different schemas; first wins, second is ignored. Use identical schemas or unique keys.\n  existing: ${existingFp}\n  incoming: ${incomingFp}`
   )
-}
-
-/**
- * Dev-only: warn when a second `useForm` lands on the same key with a
- * `persist:` config that diverges from what the first call wired. The
- * persist channel is single-IO (one storage key, one debounce timer);
- * silent drop is a high-stakes footgun ("I configured persist but
- * sessionStorage is empty"). Skipped when the second call passes no
- * persist config (intentional inheritance), and when the comparison
- * is deemed equivalent (same `storage` reference / kind, same `key`,
- * same `debounceMs`). Custom adapter functions compare by reference
- * — distinct closures look distinct, which is conservative but
- * correct: distinct closures may persist to different backends.
- */
-export function warnOnPersistDivergence<F extends GenericForm>(
-  key: FormKey,
-  existing: FormStore<F, GenericForm>,
-  incomingPersist: PersistConfig | undefined
-): void {
-  if (incomingPersist === undefined) return
-  const wired = existing.modules.get(PERSISTENCE_MODULE_KEY) as PersistenceHandle | undefined
-  const incomingNormalized = normalizePersistConfig(incomingPersist)
-  if (wired === undefined) {
-    console.warn(
-      `[attaform] useForm({ key: "${key}" }) passed a persist config but the first useForm({ key }) call didn't wire persistence; the new config is silently dropped. Pass persist on the first call, or remove persist here to make the inheritance explicit.`
-    )
-    return
-  }
-  if (persistConfigsEquivalent(wired.config, incomingNormalized)) return
-  console.warn(
-    `[attaform] useForm({ key: "${key}" }) passed a persist config that differs from the first useForm({ key }) call's; first wins, this one is ignored.\n  wired:    ${describePersist(wired.config)}\n  incoming: ${describePersist(incomingNormalized)}`
-  )
-}
-
-function persistConfigsEquivalent(a: PersistConfigOptions, b: PersistConfigOptions): boolean {
-  if (a.storage !== b.storage) return false
-  if ((a.key ?? undefined) !== (b.key ?? undefined)) return false
-  if ((a.debounceMs ?? undefined) !== (b.debounceMs ?? undefined)) return false
-  return true
-}
-
-function describePersist(config: PersistConfigOptions): string {
-  const storage = typeof config.storage === 'string' ? config.storage : 'custom-adapter'
-  const parts = [`storage=${storage}`]
-  if (config.key !== undefined) parts.push(`key=${config.key}`)
-  if (config.debounceMs !== undefined) parts.push(`debounceMs=${config.debounceMs}`)
-  return `{ ${parts.join(', ')} }`
 }

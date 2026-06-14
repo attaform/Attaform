@@ -16,6 +16,23 @@
   `unmarkNoSync` hooks and the internal cross-tab write plumbing go with it.
   (#415)
 
+- **Form-value persistence has been removed, and the audit story is sharper
+  still.** `useForm({ persist })` and `useForm({ sensitiveNames })`,
+  `form.persist()` and `form.clearPersistedDraft()`, the per-field
+  `register(path, { persist: true })` opt-in, the built-in localStorage /
+  sessionStorage / IndexedDB / custom-adapter backends, and the sensitive-name
+  redaction guard are all gone. Attaform now keeps every value in memory and
+  hands persistence to the layer that can actually secure it: a client form
+  library can only ship the dangerous browser-storage flavour, while the safe
+  version (auth, encryption, an audit log) lives server-side. In-memory-only is
+  a strictly stronger posture for downstream PII consumers and one fewer
+  client-side surface to audit. Gone with it: the `FormStorage`,
+  `FormStorageKind`, `PersistConfig`, `PersistConfigOptions`, and
+  `PersistIncludeMode` types, the `DEFAULT_SENSITIVE_NAMES` export, the
+  `AnonPersistError` class, and the `WriteMeta.persist` write tag. `useWizard`'s
+  `persist` / `restore` URL step-position sync is a different feature and is
+  untouched. Pre-1.0, so this lands without a deprecation shim. (#416)
+
 ## v0.22.0
 ### Added
 

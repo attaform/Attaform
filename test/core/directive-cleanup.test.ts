@@ -5,10 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DirectiveBinding } from 'vue'
 import { nextTick, ref, type Ref } from 'vue'
 import { assignKey, vRegister } from '../../src/runtime/core/directive'
-import {
-  createPersistOptInRegistry,
-  type PersistOptInRegistry,
-} from '../../src/runtime/core/persistence/opt-in-registry'
 import type { PathKey } from '../../src/runtime/core/paths'
 import type { InternalRegisterValue, RegisterValue } from '../../src/runtime/types/types-api'
 
@@ -25,7 +21,7 @@ type Spy = ReturnType<typeof vi.fn>
 
 function makeRegisterValue<T>(
   initial: T,
-  overrides: { path?: PathKey; persistOptIns?: PersistOptInRegistry } = {}
+  overrides: { path?: PathKey; formKey?: string } = {}
 ): {
   value: InternalRegisterValue<T>
   register: Spy
@@ -36,11 +32,11 @@ function makeRegisterValue<T>(
   const deregister = vi.fn()
   const setValue = vi.fn(() => true)
   // Typed as InternalRegisterValue so the mock can carry `lastTypedForm`
-  // (directive-private; off the public RegisterValue type). Path /
-  // persistOptIns accept overrides because the production RV is
-  // `shallowReadonly` — tests that need to simulate "fresh RV at the
-  // same path" or "path migration" build a new mock with the desired
-  // values rather than mutating after construction.
+  // (directive-private; off the public RegisterValue type). `path`
+  // accepts an override because the production RV is `shallowReadonly` —
+  // tests that need to simulate "fresh RV at the same path" or "path
+  // migration" build a new mock with the desired value rather than
+  // mutating after construction.
   const path = overrides.path ?? ('mock' as PathKey)
   const value: InternalRegisterValue<T> = {
     innerRef: ref(initial) as InternalRegisterValue<T>['innerRef'],
@@ -59,12 +55,8 @@ function makeRegisterValue<T>(
     transforming: false,
     path,
     segments: Object.freeze([path]),
-    formKey: 'mock-form',
+    formKey: overrides.formKey ?? 'mock-form',
     formInstanceId: 'mock-inst',
-    persist: false,
-    acknowledgeSensitive: false,
-    persistOptIns: overrides.persistOptIns ?? createPersistOptInRegistry(),
-    isSensitivePath: () => false,
     acceptsUndefined: false,
     acceptsString: true,
   }
@@ -528,7 +520,7 @@ describe('v-register directive — runtime value swap', () => {
     hooks.created?.(input, created, vnode, null)
     expect(first.register).toHaveBeenCalledTimes(1)
 
-    const second = makeRegisterValue('b')
+    const second = makeRegisterValue('b', { formKey: 'other-form' })
     const swap = makeBindingWithOld(second.value, first.value)
     hooks.beforeUpdate?.(input, swap, vnode, null)
 
@@ -548,10 +540,8 @@ describe('v-register directive — runtime value swap', () => {
     // value at the same conceptual path. The diff skips the
     // deregister-then-register sequence (so the `connected` flag
     // doesn't thrash false → true on every tick) but STILL calls
-    // `registerElement` on the new RV so its private
-    // bound-element reference is current — `setValueWithInternalPath`
-    // reads it to auto-attach per-element persistence meta on writes
-    // that don't supply their own.
+    // `registerElement` on the new RV so the form's element map tracks
+    // the freshly closed-over binding.
     const input = document.createElement('input')
     document.body.appendChild(input)
     const vnode = makeVNode({})
@@ -560,12 +550,11 @@ describe('v-register directive — runtime value swap', () => {
     hooks.created?.(input, makeBinding(first.value), vnode, null)
     expect(first.register).toHaveBeenCalledTimes(1)
 
-    // Build a second RV that mirrors the first's path + opt-in registry —
-    // simulates `form.register('email')` returning a fresh object on
-    // the next render but resolving the same field.
+    // Build a second RV that mirrors the first's path — simulates
+    // `form.register('email')` returning a fresh object on the next
+    // render but resolving the same field.
     const fresh = makeRegisterValue('a', {
       path: first.value.path,
-      persistOptIns: first.value.persistOptIns,
     })
 
     const swap = makeBindingWithOld(fresh.value, first.value)
@@ -589,10 +578,9 @@ describe('v-register directive — runtime value swap', () => {
     hooks.created?.(input, makeBinding(oldPath.value), vnode, null)
     expect(oldPath.register).toHaveBeenCalledTimes(1)
 
-    // Same form's registry — only the path changes.
+    // Same form (shared formKey) — only the path changes.
     const newPath = makeRegisterValue('a', {
       path: 'item.1' as PathKey,
-      persistOptIns: oldPath.value.persistOptIns,
     })
 
     const swap = makeBindingWithOld(newPath.value, oldPath.value)

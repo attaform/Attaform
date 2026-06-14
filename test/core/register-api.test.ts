@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { computed, isRef, ref } from 'vue'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { vRegister } from '../../src/runtime/core/directive'
-import { AnonPersistError } from '../../src/runtime/core/errors'
 import { computeFieldIdentity } from '../../src/runtime/core/field-ids'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { buildRegister, type InstanceRegisterConfig } from '../../src/runtime/core/register-api'
@@ -269,32 +268,6 @@ describe('buildRegister', () => {
       rvA.deregisterElement(input)
       document.body.removeChild(input)
       void rvB
-    })
-  })
-
-  describe('persist contradiction throw', () => {
-    it('does NOT throw during SSR even when persistence module is absent', () => {
-      // SSR deliberately skips wirePersistence (persistence is a
-      // client-only concern), so during the server pass `state.modules`
-      // never carries a persistence entry — even when the consumer DID
-      // configure `persist:` on useForm(). Without an SSR gate, every
-      // server render of `register({ persist: true })` would falsely
-      // throw. The client-side hydration pass re-checks against a
-      // freshly-wired module and throws correctly if the misuse is real.
-      const { register } = makeRegister({ ssr: true })
-      expect(() => register('email', { persist: true })).not.toThrow()
-    })
-
-    it('throws AnonPersistError(register-without-config) off-SSR when persistence module is absent and the binding opts in', () => {
-      const { register } = makeRegister()
-      let thrown: unknown
-      try {
-        register('note', { persist: true })
-      } catch (e) {
-        thrown = e
-      }
-      expect(thrown).toBeInstanceOf(AnonPersistError)
-      expect((thrown as AnonPersistError).cause).toBe('register-without-config')
     })
   })
 

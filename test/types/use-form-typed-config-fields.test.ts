@@ -9,16 +9,15 @@ import type { GetDisplayState } from '../../src/runtime/types/types-api'
 /**
  * SF2 parity gate. v3-direct (`attaform/zod-v3`) historically carried
  * a hand-rolled `UseFormConfigurationWithZod` that listed every option
- * by hand and silently dropped four fields v4 + the abstract
+ * by hand and silently dropped fields v4 + the abstract
  * `UseFormConfiguration` accept: `getDisplayState`, `maxRecursionDepth`,
- * `sensitiveNames`, `autoAria`. Runtime already spread the
- * full config through to `useAbstractForm`, so the gap was purely
- * type-level — v3-direct callers got an excess-property error on four
- * options that worked at runtime.
+ * `autoAria`. Runtime already spread the full config through to
+ * `useAbstractForm`, so the gap was purely type-level — v3-direct
+ * callers got an excess-property error on options that worked at runtime.
  *
  * The dual-green proof: every typed entry point (`attaform/zod`,
- * `attaform/zod-v3`, `attaform/zod-v4`) accepts the same four fields
- * with no excess-property errors. Runs at typecheck time only — the
+ * `attaform/zod-v3`, `attaform/zod-v4`) accepts the same fields with no
+ * excess-property errors. Runs at typecheck time only — the
  * `_neverInvoked` wrappers declare real calls so TypeScript exercises
  * call-site inference, but the functions are never invoked.
  */
@@ -46,14 +45,6 @@ describe('useForm — typed-config field surface (SF2)', () => {
       void _neverInvoked
     })
 
-    it('accepts sensitiveNames', () => {
-      function _neverInvoked() {
-        const form = useFormV3({ schema: schemaV3, sensitiveNames: ['ssn'] })
-        expectTypeOf(form.key).toMatchTypeOf<string>()
-      }
-      void _neverInvoked
-    })
-
     it('accepts autoAria', () => {
       function _neverInvoked() {
         const form = useFormV3({ schema: schemaV3, autoAria: false })
@@ -62,14 +53,13 @@ describe('useForm — typed-config field surface (SF2)', () => {
       void _neverInvoked
     })
 
-    it('accepts all four together', () => {
+    it('accepts all three together', () => {
       function _neverInvoked() {
         const form = useFormV3({
           schema: schemaV3,
           key: 'composed',
           getDisplayState,
           maxRecursionDepth: 96,
-          sensitiveNames: ['ssn', 'taxId'],
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed'>()
@@ -79,14 +69,13 @@ describe('useForm — typed-config field surface (SF2)', () => {
   })
 
   describe('attaform/zod-v4', () => {
-    it('accepts all four together (reference)', () => {
+    it('accepts all three together (reference)', () => {
       function _neverInvoked() {
         const form = useFormV4({
           schema: schemaV4,
           key: 'composed',
           getDisplayState,
           maxRecursionDepth: 96,
-          sensitiveNames: ['ssn', 'taxId'],
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed'>()
@@ -96,14 +85,13 @@ describe('useForm — typed-config field surface (SF2)', () => {
   })
 
   describe('attaform/zod (unified)', () => {
-    it('accepts all four together on a v3 schema', () => {
+    it('accepts all three together on a v3 schema', () => {
       function _neverInvoked() {
         const form = useFormZ({
           schema: schemaV3,
           key: 'composed-v3',
           getDisplayState,
           maxRecursionDepth: 96,
-          sensitiveNames: ['ssn', 'taxId'],
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed-v3'>()
@@ -111,14 +99,13 @@ describe('useForm — typed-config field surface (SF2)', () => {
       void _neverInvoked
     })
 
-    it('accepts all four together on a v4 schema', () => {
+    it('accepts all three together on a v4 schema', () => {
       function _neverInvoked() {
         const form = useFormZ({
           schema: schemaV4,
           key: 'composed-v4',
           getDisplayState,
           maxRecursionDepth: 96,
-          sensitiveNames: ['ssn', 'taxId'],
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed-v4'>()

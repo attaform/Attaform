@@ -121,7 +121,7 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 - **`form.history`**: consolidated undo/redo namespace (`undo()`, `redo()`, `clear()`, `canUndo`, `canRedo`, `size`).
 - **`form.register(path)`**: typed two-way binding. Pair with `v-register` on `<input>` / `<textarea>` / `<select>`.
 - **`form.handleSubmit(onValid, onInvalid?)`**: runs validation, dispatches. The valid callback receives the strict Zod-inferred type.
-- **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers, persistence: see [Entry points](https://www.attaform.com/docs/reference/entry-points).
+- **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers: see [Entry points](https://www.attaform.com/docs/reference/entry-points).
 
 > **Try it live.** Tweak this schema, edit the template, and watch the form rebind in the browser at [attaform.com/demos](https://www.attaform.com/demos). No install needed.
 
@@ -136,16 +136,16 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 Typed two-way binding to `form.values.email`, with schema-driven coercion at the directive layer.
 
 ```vue
-<input v-register="form.register('email', { persist: true })" />
+<input v-register="form.register('slug', { transforms: [lowercase] })" />
 ```
 
-Same line. The field now writes through to the form's persistence backend on every keystroke, with the sensitive-name guard catching accidental `password`-style opt-ins.
+Same line. The field now runs a sync write-time transform, normalizing the value before it reaches form state.
 
 ```vue
-<input v-register="form.register('email', { persist: true, transforms: [lowercase] })" />
+<input v-register="form.register('slug', { transforms: [lowercase, dashify], autoAria: false })" />
 ```
 
-Same line. Add a sync DOM-input transform, all without touching the markup elsewhere.
+Same line. Compose a transform pipeline and opt this field out of automatic aria wiring, all without touching the markup elsewhere.
 
 ## Features
 
@@ -153,11 +153,11 @@ Same line. Add a sync DOM-input transform, all without touching the markup elsew
 - **Live validation.** `validateOn: 'change'` by default with synchronous `debounceMs: 0`. `'blur'` and `'submit'` (opt-out) modes available. Async refinements await before submit dispatches.
 - **Schema-driven coercion.** String DOM input flows into the schema's typed slot (`string→number`, `string→boolean`) at the directive layer. Default-on; pass `useForm({ coerce: false })` to disable or a custom `CoercionRegistry` to extend.
 - **Register transforms.** `form.register('slug', { transforms: [lowercase, dashify] })` runs sync write-time normalization before storage commit.
-- **First-class multistep.** `useWizard` composes `useForm` instances into a flow with shared navigation, per-step validation, persistence across steps, and deep-link restore.
+- **First-class multistep.** `useWizard` composes `useForm` instances into a flow with shared navigation, per-step validation, state retained across steps, and deep-link restore.
 - **DevTools panel.** Auto-wired in Nuxt. Walk history, edit values live, inspect every form on the page. No probes to install.
 - **Discriminated-union variant memory.** Switching a discriminator (`notify.channel: 'email' → 'sms' → 'email'`) restores the previous variant's typed subtree by default. Pass `useForm({ rememberVariants: false })` to drop on switch.
 - **Field arrays.** `append` / `prepend` / `insert` / `remove` / `swap` / `move` / `replace`, fully typed at the call site.
-- **Drafts and undo / redo.** Per-field opt-in persistence (`localStorage` / `sessionStorage` / IndexedDB / custom backend) and a bounded undo stack.
+- **Undo / redo.** A bounded undo stack via `form.history` (`undo()` / `redo()` / `canUndo` / `canRedo`).
 - **Server errors.** `parseApiErrors(payload, { formKey: form.key })` normalizes any API envelope into the same `ValidationError` shape your template already reads. Pair with `form.setFieldErrors(...)`; user errors survive schema revalidation.
 - **Stable error codes.** Every `ValidationError` carries `code: string`. Attaform codes (`atta:`) live on the exported `AttaformErrorCode` enum; adapter codes use a `zod:` prefix; consumers pick their own (`api:`, `auth:`, …).
 - **Clearable required fields.** The `unset` sentinel marks a field displayed-empty while storage holds the schema's slim default. Submit fails with `'No value supplied'` for required schemas; `.optional()` / `.nullable()` / `.default(N)` opt out.

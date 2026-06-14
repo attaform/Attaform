@@ -96,13 +96,13 @@ describe('register — tuple-segment runtime equivalence', () => {
     expect(tuple.innerRef.value).toBe('updated')
   })
 
-  it('passes options through identically', () => {
+  it('resolves dotted and tuple paths to the same field', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    const dotted = api.register('email', { persist: false })
-    const tuple = api.register(['email'], { persist: false })
-    expect(tuple.persist).toBe(dotted.persist)
+    const dotted = api.register('email')
+    const tuple = api.register(['email'])
+    expect(tuple.path).toBe(dotted.path)
   })
 })
 

@@ -11,14 +11,9 @@ import type {
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
-import { captureUserCallSite } from './dev-stack-trace'
-import { AnonPersistError } from './errors'
-import { extractSchemaFields } from './extract-schema-fields'
 import { computeFieldIdentity } from './field-ids'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import { canonicalizePath, type Path, type PathKey } from './paths'
-import { PERSISTENCE_MODULE_KEY } from './persistence'
-import { getOrAssignElementId } from './persistence/opt-in-registry'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
 
 /**
@@ -148,7 +143,7 @@ export function buildRegister<F extends GenericForm>(
   // `meta.instance` is forwarded into every store write below so the
   // store's reads of `validateOn` / `debounceMs` / `rememberVariants`
   // honor THIS instance's config. Composed with caller-supplied
-  // `meta` so the persist / blank flags ride through unchanged.
+  // `meta` so the blank / array-op flags ride through unchanged.
   const withInstanceMeta = (meta?: WriteMeta): WriteMeta | undefined => {
     if (instanceMeta === undefined) return meta
     return meta === undefined ? { instance: instanceMeta } : { ...meta, instance: instanceMeta }
@@ -259,8 +254,6 @@ export function buildRegister<F extends GenericForm>(
     // empty and stages the blank meta for submit-time validation.
     const acceptsString = slimTypes.has('string')
 
-    const persist = options?.persist === true
-    const acknowledgeSensitive = options?.acknowledgeSensitive === true
     const transforms = options?.transforms ?? EMPTY_TRANSFORMS
 
     // Schema-driven coerce closure. Captures the path's slim accept set
@@ -280,31 +273,6 @@ export function buildRegister<F extends GenericForm>(
       coerceIndex
     )
 
-    // Eager throw: opt-in declared but the form has no persistence wired.
-    // Without the throw the directive silently records the opt-in, no
-    // writes ever land, and the dev concludes "persistence is broken"
-    // when the actual issue is a missing `persist:` option on useForm().
-    // Throws in dev and prod — contradictions are bugs, not rate-limited
-    // drift. The error body carries the schema's top-level fields and a
-    // captured call-site frame so the offending form is identifiable
-    // from the message alone (script-setup stacks collapse misleadingly).
-    //
-    // Skipped during SSR: `wirePersistence` is intentionally not run on
-    // the server (persistence is a client-only concern), so
-    // `state.modules.has(PERSISTENCE_MODULE_KEY)` is always false during
-    // SSR — even for forms that DID configure `persist:`. Without this
-    // gate the throw would falsely fire on every server-rendered
-    // `register({ persist: true })`. The client-side hydration pass
-    // re-checks against a freshly-wired module and throws correctly if
-    // the misuse is real.
-    if (persist && !state.ssr && !state.modules.has(PERSISTENCE_MODULE_KEY)) {
-      throw new AnonPersistError({
-        cause: 'register-without-config',
-        schemaFields: extractSchemaFields(state.schema),
-        callSite: captureUserCallSite(),
-      })
-    }
-
     // Aria wiring baked onto the RegisterValue so the (store-less)
     // directive can drive `aria-*` without a field-state lookup. The
     // ids match `FieldState.aria` exactly (same pure derivation).
@@ -321,18 +289,6 @@ export function buildRegister<F extends GenericForm>(
         ? (computed(() => getDisplayStateAt(segments)) as Readonly<Ref<DisplayState>>)
         : undefined
 
-    // Per-RV bound-element reference. Set by `registerElement` (called
-    // by the directive's `created` hook and by `syncElementRegistration`
-    // on every parent re-render to keep the freshly closed-over RV in
-    // step with the underlying DOM node). Cleared by
-    // `deregisterElement`. Consulted by `setValueWithInternalPath` to
-    // auto-derive persistence meta from the per-element opt-in
-    // registry, so a consumer-installed assigner that simply calls
-    // `rv.setValueWithInternalPath(value)` participates in the same
-    // per-element persistence contract the directive's default assigner
-    // honors.
-    let boundElement: HTMLElement | null = null
-
     // `shallowReadonly` is what makes `rv.path`, `rv.formKey`, and the
     // other top-level string fields feel like reactive state in
     // wrapper components: property reads track in computeds /
@@ -346,18 +302,15 @@ export function buildRegister<F extends GenericForm>(
       lastTypedForm,
 
       markBlank: (): boolean => {
-        // Mirror the binding's persist meta so the blank
-        // mark rides the same persistence channel as user-typed
-        // writes — without this, refresh after a clear silently loses
-        // the empty state. The slim default keeps storage well-typed
-        // (the schema's getDefaultAtPath returns 0 for z.number(), ''
-        // for z.string(), false for z.boolean(), etc.).
+        // Write the schema's slim default and stage the blank meta so
+        // submit-time validation surfaces "No value supplied". The slim
+        // default keeps storage well-typed (getDefaultAtPath returns 0
+        // for z.number(), '' for z.string(), false for z.boolean()).
         return state.setValueAtPath(
           segments,
           slimDefault,
           withInstanceMeta({
             blank: true,
-            persist,
           })
         )
       },
@@ -367,18 +320,6 @@ export function buildRegister<F extends GenericForm>(
       },
 
       registerElement: (element: HTMLElement): void => {
-        // Track the bound element on the RV regardless of tag name.
-        // The custom-assigner shape (`<div v-register>` + an
-        // `el[assignKey]` install) targets a non-form element on
-        // purpose; the rv still needs to know which element it was
-        // bound to so `setValueWithInternalPath` can auto-derive the
-        // per-element persistence meta. Single element per RV: each
-        // `form.register('path')` call returns a fresh handle, so the
-        // directive's lifecycle never asks one RV to track two
-        // elements; last-wins covers the corner case of a consumer who
-        // manually re-binds. Closure-private so a consumer can't read
-        // it off the public `RegisterValue` surface.
-        boundElement = element
         // Form-element semantics (state-side registration + focus
         // listeners) are gated behind the interactive tag set —
         // prevents accidental registration of component wrapper divs
@@ -392,31 +333,15 @@ export function buildRegister<F extends GenericForm>(
       deregisterElement: (element: HTMLElement): void => {
         detachFocusListeners(element)
         state.deregisterElement(segments, element)
-        // Drop the bound-element reference if it matches the element
-        // being torn down. A post-teardown write (e.g. a captured RV
-        // ref held by a parent's `onBeforeUnmount` cleanup callback)
-        // therefore falls back to the "no auto-meta" path — safe,
-        // since the element id has gone out of scope on the WeakMap
-        // and the persist gate would drop the write either way.
-        if (boundElement === element) boundElement = null
       },
 
       setValueWithInternalPath: (value: unknown, meta?: WriteMeta): boolean => {
-        // Auto-attach persistence meta when the consumer didn't supply
-        // their own AND this RV has a bound element. Lets a custom
-        // assigner call `rv.setValueWithInternalPath(value)` and have
-        // the per-element opt-in registry consulted automatically —
-        // the directive's default assigner takes this same path. An
-        // explicit `meta` (including `{}` or `{ persist: false }`)
-        // opts out of the derivation and passes through unchanged, so
-        // the documented "imperative writes via `form.setValue` don't
-        // auto-persist" contract is preserved (`form.setValue` calls
-        // `state.setValueAtPath` directly, not through RV).
-        const resolvedMeta =
-          meta === undefined && boundElement !== null
-            ? { persist: state.persistOptIns.hasOptIn(getOrAssignElementId(boundElement), pathKey) }
-            : meta
-        return state.setValueAtPath(segments, value, withInstanceMeta(resolvedMeta))
+        // The write path for custom assigners: a consumer-installed
+        // assigner calls `rv.setValueWithInternalPath(value)` and the
+        // write routes through the same funnel (and instance meta) as
+        // the directive's default assigner. Caller-supplied `meta`
+        // passes through unchanged.
+        return state.setValueAtPath(segments, value, withInstanceMeta(meta))
       },
 
       // Called by the `vRegisterHint` compile-time transform's wrapping
@@ -459,12 +384,6 @@ export function buildRegister<F extends GenericForm>(
       formKey: state.formKey,
       formInstanceId,
 
-      // --- Persistence opt-in (internal; the directive is the only
-      // legitimate consumer) ---
-      persist,
-      acknowledgeSensitive,
-      persistOptIns: state.persistOptIns,
-      isSensitivePath: state.isSensitivePath,
       transforms,
       coerce,
       ...(coerceElement !== undefined ? { coerceElement } : {}),

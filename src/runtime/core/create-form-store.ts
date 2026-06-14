@@ -65,12 +65,7 @@ import { __DEV__ } from './dev'
 import { resolveCoercionIndex, type CoercionIndex } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
 import { walkUnspecified } from './unset-walker'
-import { mergeSparseHydration } from './persistence'
-import {
-  createPersistOptInRegistry,
-  type PersistOptInRegistry,
-} from './persistence/opt-in-registry'
-import { isSensitivePath as defaultIsSensitivePath } from './persistence/sensitive-names'
+import { mergeSparseHydration } from './merge-hydration'
 import { createOnChangeRegistry, type OnChangeRegistry } from './on-change'
 
 /**
@@ -510,17 +505,13 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * Replace the form value wholesale. Optional `meta` is forwarded to
    * every `onFormChange` listener so they can decide whether THIS write
-   * is one they care about — most importantly, the persistence layer
-   * only writes when `meta?.persist === true`. Internal callers that
-   * don't pass meta default to no-persist.
+   * is one they care about (e.g. history tagging a hydration replay).
    */
   applyFormReplacement(next: F, meta?: WriteMeta): void
   /**
    * Set a single path's value. `meta` is forwarded to listeners via
-   * `applyFormReplacement` (see above). The directive's input handler
-   * computes `meta.persist` from the per-element opt-in registry; other
-   * internal call sites pass `meta.persist = hasAnyOptInForPath(path)`.
-   * Public `form.setValue` passes no meta.
+   * `applyFormReplacement` (see above). Public `form.setValue` passes no
+   * meta.
    *
    * Returns `false` when the slim-primitive gate rejects the write
    * (the value's primitive shape doesn't match the schema's slim
@@ -751,12 +742,10 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * Subscribe to every `applyFormReplacement`. Fires synchronously
    * after `form.value` has been swapped to `next` and all field /
-   * originals bookkeeping has run. Used by persistence + undo/redo
-   * to hook the single mutation funnel. The optional `meta` carries
-   * the originating call site's intent — the persistence subscription
-   * filters on `meta?.persist === true`; subscribers that don't care
-   * about meta can ignore the parameter. Returns an unsubscribe
-   * function.
+   * originals bookkeeping has run. Used by undo/redo to hook the single
+   * mutation funnel. The optional `meta` carries the originating call
+   * site's intent; subscribers that don't care about meta can ignore the
+   * parameter. Returns an unsubscribe function.
    */
   onFormChange(listener: (next: F, meta?: WriteMeta) => void): () => void
 
@@ -831,31 +820,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * owned by the caller (e.g. `'history'`).
    */
   readonly modules: Map<string, unknown>
-
-  /**
-   * Per-element persistence opt-in tracker. Empty by default; the
-   * `v-register` directive populates entries on `mount` for each binding
-   * that passed `register('foo', { persist: true })` and clears them on
-   * `beforeUnmount`. Two SFCs sharing a key share this registry — opt-ins
-   * are per-DOM-element, not per-component. Internal to the persistence
-   * subsystem; not part of the consumer API surface.
-   */
-  readonly persistOptIns: PersistOptInRegistry
-
-  /**
-   * Resolved sensitive-path predicate for THIS form. Honors the
-   * cascade (`useForm({ sensitiveNames })` > global default >
-   * library `DEFAULT_SENSITIVE_NAMES`). Used by:
-   *  - the persistence opt-in gate (`allowSensitivePersist`);
-   *  - DevTools edit rejection;
-   *  - any future surface that needs to flag "this path holds
-   *    sensitive data."
-   *
-   * Frozen at FormStore construction. Two callsites sharing a key
-   * share the predicate — consistent with the rest of the per-form
-   * resolved-config surface.
-   */
-  readonly isSensitivePath: (path: Path | PathKey | string) => boolean
 
   /**
    * Resolved schema-coercion index — the merged config from
@@ -958,15 +922,6 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * three-tier resolution rules.
    */
   readonly getDisplayState?: GetDisplayState | undefined
-  /**
-   * Pre-resolved sensitive-path predicate. Built by the caller from
-   * the `sensitiveNames` cascade (`useForm({ sensitiveNames })` >
-   * global default > library `DEFAULT_SENSITIVE_NAMES`). Stored on
-   * the FormStore for use by persistence enforcement, DevTools, and
-   * the per-form variant of the heuristic. Optional;
-   * when omitted, the library-default closure is used.
-   */
-  readonly isSensitivePath?: ((path: Path | PathKey | string) => boolean) | undefined
   /**
    * SSR prefetch coordination, bound at `buildFreshState` time. Omitted
    * on the client where the queue is never read.
@@ -1170,12 +1125,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // dispatch time. Dormant until a handler registers; a no-op on SSR.
   const onChangeRegistry: OnChangeRegistry = createOnChangeRegistry({ getValueAtPath, ssr })
 
-  // Per-element persistence opt-ins. Constructed up-front so the
-  // directive can populate entries before the persistence module wires
-  // its subscription (mount order between the directive and
-  // wirePersistence isn't guaranteed).
-  const persistOptIns = createPersistOptInRegistry()
-
   // Resolve the coercion config to a concrete index ONCE per form.
   // The index is keyed by `${input}->${output}` for O(1) per-keystroke
   // dispatch. `register()` reads it via `state.coerceIndex` to bake
@@ -1187,13 +1136,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // function directly on every read.
   const resolvedGetDisplayState: GetDisplayState = resolveGetDisplayState(options.getDisplayState)
 
-  // Sensitive-path predicates: caller-provided (built from the
-  // `sensitiveNames` cascade in `use-abstract-form.ts`) or the
-  // library-default closure. Same predicate gates persistence
-  // and DevTools.
-  const resolvedIsSensitivePath = options.isSensitivePath ?? defaultIsSensitivePath
-
-  // State-scoped teardown hooks. Persistence / history / any other
+  // State-scoped teardown hooks. History / any other
   // per-state module registers its disposer here so the cleanup is
   // bound to the FormStore's own lifetime (`dispose()` call at
   // registry-eviction) and not the first consumer's effect scope.
@@ -1979,7 +1922,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // absence-as-original to keep the first appearance dirty. Listeners fire
   // after field bookkeeping (they must see a fully-updated form), and their
   // throws are isolated so one bad subscriber can't block the rest; `meta`
-  // propagates the call-site's intent (e.g. persist: true).
+  // propagates the call-site's intent (e.g. an array op or hydration tag).
   function commitWritePatches(patches: readonly Patch[], meta?: WriteMeta): void {
     const now = new Date().toISOString()
     for (const patch of patches) {
@@ -2975,10 +2918,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submitSuccessListeners.clear()
     resetListeners.clear()
     onChangeRegistry.dispose()
-    // Drop opt-ins so a directive that survives FormStore eviction
-    // (it shouldn't, but defensive) doesn't keep the registry alive
-    // through stale path entries on a disposed store.
-    persistOptIns.clear()
   }
 
   function getValueAtPath(path: Path): unknown {
@@ -4041,8 +3980,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     registerDrain,
     awaitPendingWrites,
     modules,
-    persistOptIns,
-    isSensitivePath: resolvedIsSensitivePath,
     coerceIndex,
     blankPaths,
     originalBlankPaths,

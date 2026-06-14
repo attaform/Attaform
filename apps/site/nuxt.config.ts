@@ -560,7 +560,7 @@ export default defineNuxtConfig({
   // 301 redirects for the pre-rebuild URL tree. The old docs lived
   // under `/docs/api/*` and `/docs/recipes/*`; the new IA splits them
   // by concept (`getting-started`, `reading-the-form`, `validation`,
-  // `persistence`, `devtools-and-debugging`, etc.). Specific routes
+  // `devtools-and-debugging`, etc.). Specific routes
   // win over wildcards in Nuxt's route specificity, so each known
   // pre-rebuild URL maps directly to its natural successor; the
   // catch-alls at the bottom catch anything missed and land it on
@@ -650,18 +650,6 @@ export default defineNuxtConfig({
     },
     '/docs/recipes/form-context': {
       redirect: { to: '/docs/cross-cutting-state/inject-form', statusCode: 301 },
-    },
-    '/docs/recipes/persistence': {
-      redirect: { to: '/docs/persistence/overview', statusCode: 301 },
-    },
-    '/docs/recipes/persistence-backends': {
-      redirect: { to: '/docs/persistence/storage-backends', statusCode: 301 },
-    },
-    '/docs/recipes/persistence-edge-cases': {
-      redirect: { to: '/docs/persistence/edge-cases', statusCode: 301 },
-    },
-    '/docs/recipes/persistence-policy': {
-      redirect: { to: '/docs/persistence/per-field-opt-in', statusCode: 301 },
     },
     '/docs/recipes/server-errors': {
       redirect: { to: '/docs/submitting/server-side-errors', statusCode: 301 },

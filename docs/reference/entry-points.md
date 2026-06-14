@@ -87,7 +87,6 @@ import {
   isUnset,
   // Error classes (every Attaform throw extends AttaformError)
   AttaformError,
-  AnonPersistError,
   InvalidPathError,
   InvalidUseFormConfigError,
   OutsideSetupError,
@@ -99,8 +98,6 @@ import {
   // API-error parser
   parseApiErrors,
   PARSE_API_ERRORS_DEFAULTS,
-  // Sensitive-name protection
-  DEFAULT_SENSITIVE_NAMES,
   // Display-state heuristic default
   defaultDisplayState,
   // Path primitives (custom adapters only)

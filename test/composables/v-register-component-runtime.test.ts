@@ -49,8 +49,6 @@ type MountReturn = {
 async function mountWithChild(
   Child: ReturnType<typeof defineComponent>,
   options?: {
-    persist?: boolean
-    acknowledgeSensitive?: boolean
     transforms?: ReadonlyArray<(value: unknown) => unknown>
     onUpdateRegisterValue?: (...args: unknown[]) => void
     installAssigner?: (el: HTMLElement) => void
@@ -64,18 +62,12 @@ async function mountWithChild(
 
   const Parent = defineComponent({
     setup() {
-      // When the test opts into per-element `persist: true`, the form
-      // must also configure `persist:` — opting a field into a feature
-      // the form doesn't have is now a contradiction throw.
       const api = useForm({
         schema,
         key: `comp-${Math.random().toString(36).slice(2)}`,
-        ...(options?.persist ? { persist: { storage: 'local' as const, debounceMs: 1000 } } : {}),
       })
       handle.api = api
       const rv = api.register('email', {
-        ...(options?.persist ? { persist: true } : {}),
-        ...(options?.acknowledgeSensitive ? { acknowledgeSensitive: true } : {}),
         ...(options?.transforms ? { transforms: options.transforms } : {}),
       })
       return () =>
@@ -966,53 +958,6 @@ describe('listener teardown on component unmount (works ✓)', () => {
     mounted = undefined
 
     expect(counts.removed).toBeGreaterThanOrEqual(1)
-  })
-})
-
-describe('persist opt-in lifecycle on a component (works ✓)', () => {
-  let mounted: MountReturn | undefined
-
-  afterEach(() => {
-    mounted?.app.unmount()
-    mounted = undefined
-    document.body.innerHTML = ''
-  })
-
-  it('opt-in entry exists while the component is mounted, gone after unmount', async () => {
-    const ChildInput = defineComponent({
-      name: 'ChildInput',
-      inheritAttrs: false,
-      setup(_, { attrs }) {
-        return () => h('input', { type: 'text', ...attrs })
-      },
-    })
-    mounted = await mountWithChild(ChildInput, {
-      persist: true,
-      acknowledgeSensitive: false,
-    })
-
-    const internal = mounted.api as unknown as {
-      register: (path: string) => {
-        path: string
-        persistOptIns: { hasAnyOptInForPath: (p: string) => boolean }
-      }
-    }
-    const probe = internal.register('email')
-    expect(probe.persistOptIns.hasAnyOptInForPath(probe.path)).toBe(true)
-
-    mounted.app.unmount()
-    mounted = undefined
-    const fresh = await mountWithChild(ChildInput, { persist: false })
-    const freshProbe = (
-      fresh.api as unknown as {
-        register: (path: string) => {
-          path: string
-          persistOptIns: { hasAnyOptInForPath: (p: string) => boolean }
-        }
-      }
-    ).register('email')
-    expect(freshProbe.persistOptIns.hasAnyOptInForPath(freshProbe.path)).toBe(false)
-    fresh.app.unmount()
   })
 })
 

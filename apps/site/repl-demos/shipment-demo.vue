@@ -8,8 +8,8 @@
   // Stresses: discriminated unions, enums, field arrays, async field +
   // aggregate validation, transforms, the unset sentinel, the
   // `field.showErrors` / `field.firstError` error-display primitives.
-  // Per-form `history` and `persist` configs round out the wiring —
-  // each step has its own undo stack and namespaced storage key.
+  // Per-form `history` config rounds out the wiring: each step has its
+  // own undo stack.
   // ─────────────────────────────────────────────────────────────────
 
   import { computed, nextTick, ref, watch } from 'vue'
@@ -328,7 +328,6 @@
   const refForm = useForm({
     schema: referenceSchema,
     key: 'reference',
-    persist: { storage: 'local', key: 'attaform:shipment.reference' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
@@ -343,7 +342,6 @@
   const cargoForm = useForm({
     schema: cargoSchema,
     key: 'cargo',
-    persist: { storage: 'local', key: 'attaform:shipment.cargo' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
@@ -356,7 +354,6 @@
   const serviceForm = useForm({
     schema: serviceSchema,
     key: 'service',
-    persist: { storage: 'local', key: 'attaform:shipment.service' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,
@@ -375,7 +372,6 @@
   const reviewForm = useForm({
     schema: reviewSchema,
     key: 'review',
-    persist: { storage: 'local', key: 'attaform:shipment.review' },
     history: { max: 50 },
     validateOn: 'change',
     debounceMs: 200,

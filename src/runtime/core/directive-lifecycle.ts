@@ -1,77 +1,10 @@
-import type { RegisterValue } from '../types/types-api'
 import { isRegisterValue } from './register-protocol'
-import { getOrAssignElementId } from './persistence/opt-in-registry'
-import { allowSensitivePersist } from './persistence/sensitive-names'
-
-/**
- * Idempotent reconciliation of a single element's opt-in across the
- * directive lifecycle. Called from `created` (oldValue undefined),
- * `beforeUpdate` (oldValue the previous RegisterValue), and as a
- * convenience from `beforeUnmount` (value undefined).
- *
- * Handles every transition: persist flag flipping in either direction,
- * `register()` path changing (e.g. dynamic v-for index), and the
- * cross-form / cross-SFC case where `register()` returns a value bound
- * to a different FormStore (different `persistOptIns` instance).
- */
-export function syncPersistOptIn(
-  el: HTMLElement,
-  value: unknown,
-  oldValue: unknown,
-  vnodeType: unknown
-): void {
-  const wasOptedIn = isRegisterValue(oldValue) && oldValue.persist === true
-  // File inputs can't survive a reload — `input.files` is read-only at
-  // the browser layer, so even a perfect base64 round-trip couldn't
-  // restore the picked file. The registry carve-out lives here so the
-  // path never enters `optedInPaths`, never reaches the serializer, and
-  // a separate `vRegisterFile` hook can surface the one-time dev warn
-  // pointing consumers at the upload-on-select pattern.
-  //
-  // Detection consults `vnode.props.type` (passed in) first, then
-  // `el.type` as a fallback. During `created`, Vue may not have
-  // patched the `type` property onto the element yet — the vnode's
-  // prop is the authoritative pre-patch source. On `beforeUpdate` the
-  // element is fully patched and `el.type` agrees.
-  const isFileInput =
-    el.tagName === 'INPUT' && (vnodeType === 'file' || (el as HTMLInputElement).type === 'file')
-  const wantsOptIn = !isFileInput && isRegisterValue(value) && value.persist === true
-  if (!wasOptedIn && !wantsOptIn) return
-  const elementId = getOrAssignElementId(el)
-  // Detach the old opt-in unless every dimension matches (persist still
-  // requested, same canonical path, same registry instance).
-  if (wasOptedIn) {
-    const old = oldValue as RegisterValue
-    const samePathAndRegistry =
-      wantsOptIn &&
-      (value as RegisterValue).path === old.path &&
-      (value as RegisterValue).persistOptIns === old.persistOptIns
-    if (!samePathAndRegistry) {
-      old.persistOptIns.remove(elementId, old.path)
-    }
-  }
-  // Attach the new opt-in. `add` is idempotent, so if oldValue already
-  // had the same (path, registry) we just re-touch the same entry.
-  // The sensitive-name check fires here (not on every keystroke) — it's
-  // the act of OPTING IN that crosses the compliance threshold.
-  if (wantsOptIn) {
-    const v = value as RegisterValue
-    // A sensitive-named path opted in without `acknowledgeSensitive` is
-    // warned + skipped (never thrown — this runs in the directive update
-    // path). The unpersisted secret is the safe default.
-    if (allowSensitivePersist(v.path, v.acknowledgeSensitive, v.isSensitivePath)) {
-      v.persistOptIns.add(elementId, v.path)
-    }
-  }
-}
 
 /**
  * Migrate the element's registration entry across binding-value
- * transitions. Symmetric with `syncPersistOptIn` for the
- * persistence opt-in dimension; this one tracks element-to-path
- * registration the form's element map relies on for
- * `getFieldState(path).meta.connected`, `focusFirstError`, and
- * `scrollToFirstError`.
+ * transitions. Tracks the element-to-path registration the form's
+ * element map relies on for `getFieldState(path).meta.connected`,
+ * `focusFirstError`, and `scrollToFirstError`.
  *
  * Cases:
  *   - undefined → undefined: nothing to do.
@@ -82,12 +15,9 @@ export function syncPersistOptIn(
  *   - RV → RV (same path + same form): skip the deregister side so
  *     the `connected` flag doesn't thrash false → true on every
  *     parent re-render. STILL call `registerElement` on the new RV:
- *     `register('foo')` returns a fresh handle per render, and the
- *     new RV owns its own bound-element reference (consumed by
- *     `setValueWithInternalPath` to auto-attach per-element
- *     persistence meta). `state.registerElement(path, el)` is
- *     idempotent — a single Set membership check on the path's
- *     element record.
+ *     `register('foo')` returns a fresh handle per render, and
+ *     `state.registerElement(path, el)` is idempotent — a single Set
+ *     membership check on the path's element record.
  *   - RV → RV (different path or different form): deregister old,
  *     register new. Covers dynamic-path templates
  *     (`v-register="form.register(\`item.${i}\`)"`) and the
@@ -102,16 +32,14 @@ export function syncElementRegistration(el: HTMLElement, value: unknown, oldValu
   // Same path + same store: skip the deregister-then-register sequence
   // so the `connected` flag doesn't thrash false-true on every parent
   // re-render. But STILL call `registerElement` on the freshly closed-
-  // over RV — `register()` returns a new RV per render, and the new RV
-  // owns its own bound-element reference (consumed by
-  // `setValueWithInternalPath` to auto-attach persistence meta).
+  // over RV — `register()` returns a new RV per render, and
   // `state.registerElement` is idempotent on (path, element) so the
   // re-call is a single Set membership check.
   const samePathAndStore =
     wasRegistered &&
     isRegistered &&
     oldValue.path === value.path &&
-    oldValue.persistOptIns === value.persistOptIns
+    oldValue.formKey === value.formKey
 
   if (wasRegistered && !samePathAndStore) {
     oldValue.deregisterElement(el)

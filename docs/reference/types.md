@@ -22,18 +22,16 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Form configuration
 
-| Type                                     | Source                  | Purpose                                                                                   |
-| ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
-| `UseFormConfiguration<Form>`             | runtime/types/types-api | The options bag passed to `useForm`.                                                      |
-| `UseFormReturnType<Form, GetValue>`      | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.                         |
-| `AttaformPluginOptions`                  | runtime/core/plugin     | Options for `createAttaform({ defaults, devtools })`.                                     |
-| `AttaformDefaults`                       | runtime/types/types-api | The fields settable via `createAttaform({ defaults })`.                                   |
-| `HistoryConfig`                          | runtime/types/types-api | `useForm({ history })` shape.                                                             |
-| `PersistConfig` / `PersistConfigOptions` | runtime/types/types-api | `useForm({ persist })` shape (shorthand vs. full options).                                |
-| `PersistIncludeMode`                     | runtime/types/types-api | `'form'` \| `'form+errors'`.                                                              |
-| `OnInvalidSubmitPolicy`                  | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.               |
-| `ValidateOn` / `ValidateOnConfig`        | runtime/types/types-api | `validateOn` field and its discriminated config.                                          |
-| `DisplayState` / `GetDisplayState`       | runtime/types/types-api | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver. |
+| Type                                | Source                  | Purpose                                                                                   |
+| ----------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `UseFormConfiguration<Form>`        | runtime/types/types-api | The options bag passed to `useForm`.                                                      |
+| `UseFormReturnType<Form, GetValue>` | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.                         |
+| `AttaformPluginOptions`             | runtime/core/plugin     | Options for `createAttaform({ defaults, devtools })`.                                     |
+| `AttaformDefaults`                  | runtime/types/types-api | The fields settable via `createAttaform({ defaults })`.                                   |
+| `HistoryConfig`                     | runtime/types/types-api | `useForm({ history })` shape.                                                             |
+| `OnInvalidSubmitPolicy`             | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.               |
+| `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api | `validateOn` field and its discriminated config.                                          |
+| `DisplayState` / `GetDisplayState`  | runtime/types/types-api | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver. |
 
 ## Reactive surfaces
 
@@ -114,14 +112,12 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 | `MetaTrackerValue`       | runtime/types/types-api | Internal "I'm mutating" flag exposed for advanced consumers. |
 | `Unset`                  | runtime/core/unset      | The `unset` sentinel's brand type.                           |
 
-## Storage
+## SSR payload
 
-| Type                      | Source                  | Purpose                                                          |
-| ------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `FormStorage`             | runtime/types/types-api | The four-method storage interface (read / write / clear / list). |
-| `FormStorageKind`         | runtime/types/types-api | `'local'` \| `'session'` \| `'indexeddb'`.                       |
-| `SerializedAttaformState` | runtime/core/serialize  | The SSR payload shape.                                           |
-| `SerializedFormData`      | runtime/core/registry   | Single form's serialized state.                                  |
+| Type                      | Source                 | Purpose                         |
+| ------------------------- | ---------------------- | ------------------------------- |
+| `SerializedAttaformState` | runtime/core/serialize | The SSR payload shape.          |
+| `SerializedFormData`      | runtime/core/registry  | Single form's serialized state. |
 
 ## Wizard
 

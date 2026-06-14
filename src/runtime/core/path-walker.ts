@@ -258,9 +258,9 @@ export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): 
  * shrinks by one). Object semantics: deleting a string key removes the
  * own-property and shrinks the key set by one.
  *
- * Used by the persistence layer's `clearPersistedDraft(path)` to wipe
- * a single subpath from the persisted entry without disturbing other
- * paths the user might have opted in.
+ * Used by `diff-apply`'s copy-on-write delta application to remove a
+ * single path (e.g. inverting an `added` patch on undo) without
+ * disturbing siblings.
  */
 export function deleteAtPath(root: unknown, path: Path): unknown {
   return deleteAtPathOffset(root, path, 0)

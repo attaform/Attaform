@@ -49,14 +49,8 @@ export function buildFieldArrayApi<F extends GenericForm>(
   }
 
   function writeArray(path: string, next: unknown[], arrayOp?: WriteMeta['arrayOp']): boolean {
-    const { segments, key } = canonicalizePath(path)
-    // Persist iff some element has opted into this exact array path. If
-    // the consumer opted into specific leaves (e.g. 'contacts.0.name')
-    // an `append('contacts', row)` falls through — the array root has
-    // no opt-in, so it doesn't persist. Coherent: "you opted to persist
-    // a leaf, not the array structure."
+    const { segments } = canonicalizePath(path)
     const meta: WriteMeta = {
-      persist: state.persistOptIns.hasAnyOptInForPath(key),
       ...(arrayOp !== undefined ? { arrayOp } : {}),
     }
     return state.setValueAtPath(segments, next, meta)

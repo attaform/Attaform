@@ -60,12 +60,9 @@ Twelve required methods. Two optional hooks. The runtime fills in sensible fallb
 
 ### `fingerprint()`
 
-Structural signature of the schema. Two schemas with the same shape return the same string; different shapes return different strings. Used to:
+Structural signature of the schema. Two schemas with the same shape return the same string; different shapes return different strings. Used to catch shared-key mismatches in dev: two `useForm({ key: 'x' })` calls with different schemas warn.
 
-- Catch shared-key mismatches in dev (two `useForm({ key: 'x' })` calls with different schemas warn).
-- Key persisted drafts so schema changes auto-invalidate stale drafts.
-
-Must NOT throw. If it does, Attaform catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback; opaque fingerprints disable schema-change auto-invalidation for persisted drafts (the key never changes), so prefer a real structural hash if your library exposes the metadata.
+Must NOT throw. If it does, Attaform catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback; opaque fingerprints make every schema look identical to the mismatch check (the key never changes), so prefer a real structural hash if your library exposes the metadata.
 
 ## Defaults
 

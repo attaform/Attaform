@@ -270,14 +270,8 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
     const section = payload.path[0]
     if (section !== 'Form value') return
     const segments = payload.path.slice(2)
-    const { segments: canonicalPath, key: canonicalKey } = canonicalizePath(segments)
-    // A devtools edit on a path that any element has opted in to should
-    // persist (matches the user's expectation: editing via the inspector
-    // should be indistinguishable from typing into the bound input).
-    // No opt-in for this path → no write.
-    state.setValueAtPath(canonicalPath, payload.state.value, {
-      persist: state.persistOptIns.hasAnyOptInForPath(canonicalKey),
-    })
+    const { segments: canonicalPath } = canonicalizePath(segments)
+    state.setValueAtPath(canonicalPath, payload.state.value)
     refreshState()
   })
 

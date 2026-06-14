@@ -220,7 +220,15 @@ export async function measureEager(define = PROD_DEFINE) {
 // within the budget with no change. The real reclaim is the ~2 kB the inlined
 // async chunk freed from the full bundle, locked in via the .size-limit.js
 // cap ratchets (54→52 / 68→66 / 62→60 / 64→62 KB).
-const BUDGET_GZ = 49_000
+//
+// NOTE (persist removal, chore/rip-persist): persist was lazy since D2, but its
+// core-anchored remnants were heavier than multi-tab's — the persistOptIns
+// registry, the isSensitivePath resolution, the sensitive-names static import,
+// the insecure-context-warn helper, and the WriteMeta.persist thread all come
+// off the eager path, landing eager at 43.48 kB gz (down ~4.1 kB). Budget
+// ratcheted 49_000 → 46_000 to lock it in; the full-bundle reclaim (~6 kB per
+// entry) is locked via the .size-limit.js caps (52→46 / 66→60 / 60→54 / 62→56).
+const BUDGET_GZ = 46_000
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

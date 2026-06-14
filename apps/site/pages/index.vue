@@ -17,7 +17,7 @@
   // discipline as the docs landing: every chip on this page uses
   // the brand-soft pair so the page reads as one product surface.
   // Eight cards: types + validation + accessibility + arrays +
-  // persistence (the "first scroll" group), then multistep +
+  // SSR (the "first scroll" group), then multistep +
   // devtools + server errors (the "stays nice as the form grows"
   // group).
   const { attaformVersion } = useRuntimeConfig().public
@@ -58,8 +58,8 @@
   // grammar.
   const registerLines = [
     `${LT}input v-register="form.register('email')" />`,
-    `${LT}input v-register="form.register('email', { persist: true })" />`,
-    `${LT}input v-register="form.register('email', { persist: true, transforms: [lowercase] })" />`,
+    `${LT}input v-register="form.register('email', { transforms: [trim] })" />`,
+    `${LT}input v-register="form.register('email', { transforms: [trim, lowercase], autoAria: false })" />`,
   ]
 
   // The wizard callout snippet. Pure TS expressions, so we tell
@@ -153,13 +153,13 @@
     },
     {
       icon: Server,
-      title: 'SSR + persistence',
-      body: 'Nuxt round-trips payload automatically. Per-field opt-in drafts to localStorage / sessionStorage / IndexedDB.',
+      title: 'SSR out of the box',
+      body: 'Nuxt round-trips the payload automatically; bare Vue uses renderAttaformState / hydrateAttaformState. Server markup matches the hydrated client.',
     },
     {
       icon: Workflow,
       title: 'First-class multistep',
-      body: '`useWizard` composes `useForm` instances into a flow. Shared navigation, per-step validation, persistence across steps, deep-link restore.',
+      body: '`useWizard` composes `useForm` instances into a flow. Shared navigation, per-step validation, state retained across steps, deep-link restore.',
     },
     {
       icon: TerminalSquare,
@@ -263,8 +263,8 @@
             style="--reveal-step-delay: 140ms"
           >
             <strong class="font-semibold text-fg">Your schema is enough.</strong> Hand it to
-            Attaform and get back types, state, validation, errors, persistence, SSR, and more, all
-            from one definition. Because Vue devs deserve nice things.
+            Attaform and get back types, state, validation, errors, SSR, and more, all from one
+            definition. Because Vue devs deserve nice things.
           </p>
 
           <div class="reveal-step flex flex-wrap gap-3" style="--reveal-step-delay: 180ms">
@@ -325,7 +325,7 @@
             <p class="mt-3 text-base text-fg-muted">
               <UiInlineCode>v-register</UiInlineCode> is a Vue directive, not a wrapper component.
               One line on a native <UiInlineCode>&lt;input&gt;</UiInlineCode> opts that field into
-              typed binding, coercion, persistence, and the sensitive-name guard.
+              typed binding, coercion, and write-time transforms.
             </p>
           </div>
           <div>
@@ -335,7 +335,7 @@
             <p class="mt-3 text-base text-fg-muted">
               <UiInlineCode>useForm</UiInlineCode> handles a single-field signup.
               <UiInlineCode>useWizard</UiInlineCode> composes those forms into a flow with shared
-              state, validation, and persistence. Same composables, all the way up.
+              state and validation. Same composables, all the way up.
             </p>
           </div>
         </div>
@@ -380,9 +380,8 @@
               :tree="registerLineTwoTree"
             />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
-              Same line. The field now writes through to the form's persistence backend on every
-              keystroke, with the sensitive-name guard catching accidental
-              <UiInlineCode>password</UiInlineCode>-style opt-ins before they reach storage.
+              Same line. The field now runs a sync write-time transform, normalizing the value
+              before it reaches form state.
             </p>
           </li>
           <li>
@@ -391,8 +390,8 @@
               :tree="registerLineThreeTree"
             />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
-              Same line. Add a sync DOM-input transform, all without touching the markup elsewhere
-              on the page.
+              Same line. Compose a transform pipeline and opt this field out of automatic aria
+              wiring, all without touching the markup elsewhere on the page.
             </p>
           </li>
         </ol>
@@ -449,7 +448,7 @@
           </h2>
           <p class="mt-4 text-lg text-fg-muted">
             Inferred types. Live validation. Multistep flows. Devtools. Server-side errors,
-            persistence, undo/redo. Everything you need, nothing you have to wire.
+            undo/redo. Everything you need, nothing you have to wire.
           </p>
         </div>
 
@@ -561,7 +560,7 @@
               <UiInlineCode>useWizard</UiInlineCode> takes an ordered list of step slots and
               produces a reactive wizard. Form steps gather data; bare string keys mark affordance
               steps (welcome screens, review surfaces, congrats cards). Universal
-              <UiInlineCode>handleSubmit</UiInlineCode>, shared persistence, URL sync, all in one
+              <UiInlineCode>handleSubmit</UiInlineCode>, shared state, URL sync, all in one
               composable.
             </p>
             <div class="mt-6">

@@ -1,6 +1,6 @@
 ---
 title: App-wide defaults
-description: createAttaform sets app-level defaults (validateOn, debounceMs, history, coercion, sensitiveNames) that every useForm in the app inherits. Per-form options always win the merge.
+description: createAttaform sets app-level defaults (validateOn, debounceMs, history, coercion) that every useForm in the app inherits. Per-form options always win the merge.
 metaRows:
   - label: Category
     value: Plugin
@@ -111,20 +111,16 @@ type AttaformDefaults = {
   coerce?: boolean | CoercionRegistry
   getDisplayState?: GetDisplayState
   maxRecursionDepth?: number
-  sensitiveNames?: readonly string[]
 }
 ```
 
 `getDisplayState` resolves `field.displayState` and its `show*` projections: the centralized "what should this field surface right now?" reducer, returning one of idle, pending, error, or success. Set it once at the app level so every form follows the same convention. To keep the default behavior but retune the anti-flash spinner timing, pass `makeDefaultDisplayState({ showDelay, minVisible })`. See [Display state and showing errors](/docs/validation/showing-errors) for the full contract.
-
-`sensitiveNames` extends the heuristic that gates persistence opt-ins. See [Sensitive-name protection](/docs/persistence/sensitive-names).
 
 ## What's NOT supported (and why)
 
 - `schema`: per-form by definition; a cross-form schema doesn't make sense.
 - `key`: per-form identity.
 - `defaultValues`: per-form initial values.
-- `persist`: opt-in per form already; cross-form storage defaults are ambiguous (key-prefix collisions, adapter selection).
 
 ## Per-form `defaultValues`
 
@@ -179,6 +175,5 @@ Fully equivalent for the consumer; every `useAppForm` call gets your defaults; p
 
 ## Where to next
 
-- [Sensitive-name protection](/docs/persistence/sensitive-names): extend the resolved list once at the app level, tighten persistence across every form in one move.
 - [Display state and showing errors](/docs/validation/showing-errors): set the `getDisplayState` predicate app-wide for a consistent feel across forms.
 - [When validation runs](/docs/validation/when-validation-runs): `validateOn` and `debounceMs` defaults shape every form in the app.

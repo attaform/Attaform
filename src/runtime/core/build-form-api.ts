@@ -47,8 +47,6 @@ import {
   type Path,
   type PathKey,
 } from './paths'
-import { PERSISTENCE_MODULE_KEY, type PersistenceHandle } from './persistence'
-import { allowSensitivePersist } from './persistence/sensitive-names'
 import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
 import { safeAssign } from './safe-assign'
@@ -365,8 +363,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       | undefined
     const silent = options?.silent === true
     // Fold the consumer's `{ silent }` opt-out into every write this call
-    // makes, alongside the per-instance bag. Silent writes still validate and
-    // persist; they only skip the `form.onChange` side-channel.
+    // makes, alongside the per-instance bag. Silent writes still validate;
+    // they only skip the `form.onChange` side-channel.
     const writeMeta = (extra?: WriteMeta): WriteMeta | undefined =>
       withInstanceMeta(silent ? { ...extra, silent: true } : extra)
     if (!isPathForm) {
@@ -901,24 +899,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     })
   ) as FormMeta<Form>
 
-  // --- Persistence handle (cached on FormStore by useAbstractForm when
-  // persist: is configured). The handle is set synchronously at mount,
-  // but its `ready` promise resolves to the live module only once the
-  // dynamically-imported persistence chunk lands. The persist +
-  // clearPersistedDraft APIs below await `ready`; reset / resetField
-  // poke it fire-and-forget. A handle absent here means persist: wasn't
-  // configured — every consumer below no-ops, exactly as before. ---
-  const persistenceHandle = state.modules.get(PERSISTENCE_MODULE_KEY) as
-    | PersistenceHandle
-    | undefined
-
   // --- Reset ---
-  // Reset semantics are "fresh start across every layer" — drafts are
-  // transient, so a reset that left stale storage behind would surprise
-  // on next mount (form would re-hydrate the discarded draft). The
-  // opt-in registry is NOT touched: directives are still mounted and
-  // the next user keystroke on an opted-in input re-populates the
-  // entry naturally.
+  // Reset semantics are "fresh start across every layer": the form
+  // value, blank-path set, and error stores all rebaseline to the new
+  // defaults.
   const reset = (nextDefaultValues?: DefaultValuesInput<Form>): void => {
     if (nextDefaultValues === undefined) {
       state.reset()
@@ -950,24 +934,11 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
         state.originalBlankPaths.add(pathKey as PathKey)
       }
     }
-    if (persistenceHandle !== undefined) {
-      // Fire-and-forget — reset is sync from the consumer's POV; the
-      // wipe lands a moment later. The wall-clock is unchanged: `ready`
-      // resolves once the chunk lands, which the mount kicked off in
-      // parallel with the adapter this wipe awaits anyway. Errors are
-      // absorbed by the adapter contract (best-effort).
-      void persistenceHandle.ready.then((m) => m?.clearPersistedDraft()).catch(() => undefined)
-    }
   }
 
   const resetField = (pathInput: string): void => {
     const segments = canonicalizePath(pathInput).segments
     state.resetField(segments)
-    if (persistenceHandle !== undefined) {
-      void persistenceHandle.ready
-        .then((m) => m?.clearPersistedDraft(segments))
-        .catch(() => undefined)
-    }
   }
 
   // --- Clear ---
@@ -988,45 +959,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       return setValueImpl(unset)
     }
     return setValueImpl(pathInput as string | Path, unset)
-  }
-
-  // --- Persistence (imperative APIs) ---
-
-  const persist = async (
-    pathInput: string | Path,
-    options?: { acknowledgeSensitive?: boolean }
-  ): Promise<void> => {
-    const segments = canonicalizePath(pathInput).segments
-    // Sensitive path without acknowledgement: warn + skip (never throw —
-    // form.persist() shouldn't reject over a recoverable misconfig).
-    if (
-      !allowSensitivePersist(
-        segments,
-        options?.acknowledgeSensitive === true,
-        state.isSensitivePath
-      )
-    ) {
-      return
-    }
-    if (persistenceHandle === undefined) return // persist: not configured → silent no-op
-    // form.persist() is already async, so awaiting the lazily-imported
-    // module adds no new async for a synchronous caller. Resolves to
-    // undefined only if the chunk failed to load / the form disposed.
-    const persistence = await persistenceHandle.ready
-    if (persistence === undefined) return
-    await persistence.writePathImmediately(segments)
-  }
-
-  const clearPersistedDraft = async (pathInput?: string | Path): Promise<void> => {
-    if (persistenceHandle === undefined) return
-    const persistence = await persistenceHandle.ready
-    if (persistence === undefined) return
-    if (pathInput === undefined) {
-      await persistence.clearPersistedDraft()
-      return
-    }
-    const segments = canonicalizePath(pathInput).segments
-    await persistence.clearPersistedDraft(segments)
   }
 
   // --- Programmatic touch ---
@@ -1298,11 +1230,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     reset: gated(reset) as UseFormReturnType<Form, GetValueFormType>['reset'],
     resetField: gated(resetField) as UseFormReturnType<Form, GetValueFormType>['resetField'],
     clear: gated(clear) as UseFormReturnType<Form, GetValueFormType>['clear'],
-    persist: gated(persist) as UseFormReturnType<Form, GetValueFormType>['persist'],
-    clearPersistedDraft: gated(clearPersistedDraft) as UseFormReturnType<
-      Form,
-      GetValueFormType
-    >['clearPersistedDraft'],
     focusFirstError: gated(focusFirstError),
     scrollToFirstError: gated(scrollToFirstError),
     applyInvalidSubmitPolicy: gated(applyInvalidSubmitPolicyPublic),

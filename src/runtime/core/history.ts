@@ -287,22 +287,14 @@ export function createHistoryModule<F extends GenericForm>(
   function restoreCurrent(snap: HistorySnapshot<F>): void {
     suppressNext = true
     // Re-seed `blankPaths` BEFORE the form replacement fires. Listeners
-    // on `onFormChange` (persistence's onFormChange tap, devtools, the
-    // user's own subscriptions) read the form alongside `blankPaths`
-    // when deciding what to persist or surface; updating both before
-    // the listener loop runs keeps the pair consistent. If blankPaths
-    // landed AFTER applyFormReplacement, the listeners would see new
-    // form + stale blank set for one tick.
+    // on `onFormChange` (devtools, the user's own subscriptions) read
+    // the form alongside `blankPaths` when deciding what to surface;
+    // updating both before the listener loop runs keeps the pair
+    // consistent. If blankPaths landed AFTER applyFormReplacement, the
+    // listeners would see new form + stale blank set for one tick.
     state.blankPaths.clear()
     for (const key of snap.blankPaths) state.blankPaths.add(key)
-    // Undo / redo replays a whole-form snapshot, so the persist decision
-    // can't be made per-path. Rule: if the form has any opted-in path
-    // at all, the rewind reaches the persistence layer (so the durable
-    // record matches what the user just rolled back to). If nothing is
-    // opted in, no write — matches the per-element default.
-    state.applyFormReplacement(snap.form, {
-      persist: !state.persistOptIns.isEmpty(),
-    })
+    state.applyFormReplacement(snap.form)
     // Rebuild both error stores from the snapshot. Each writer clears +
     // repopulates its own Map; the two sources stay isolated.
     const schemaFlat = snap.schemaErrors.flatMap(([, errs]) => errs)

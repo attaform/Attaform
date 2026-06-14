@@ -1,4 +1,4 @@
-import { computed, getCurrentScope, onScopeDispose, reactive, readonly, type Ref } from 'vue'
+import { computed, reactive, readonly, type Ref } from 'vue'
 import type {
   BlankPathsView,
   CoercionRegistry,
@@ -7,13 +7,9 @@ import type {
   FormHistoryNamespace,
   FormMeta,
   GetDisplayState,
-  OnChangeHandler,
-  OnChangeOptions,
-  OnChangeSource,
   OnInvalidSubmitPolicy,
   ReactiveValidationStatus,
   RegisterValue,
-  SetValueOptions,
   UseFormReturnType,
   ValidateOn,
   ValidationError,
@@ -347,26 +343,14 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return computed(() => getAtPath(state.form.value, segments)) as Readonly<Ref<unknown>>
   }
 
-  function setValueImpl(
-    pathOrValue: unknown,
-    maybeValue?: unknown,
-    maybeOptions?: unknown
-  ): boolean {
+  function setValueImpl(pathOrValue: unknown, maybeValue?: unknown): boolean {
     // A path is a dotted string or a segment array; with a single argument
-    // this is always the whole form. So `(value)` / `(value, options)` are
-    // whole-form writes, `(path, value)` / `(path, value, options)` are path
-    // writes — disambiguated by the first argument's type, not arity.
+    // this is always the whole form. So `(value)` is a whole-form write and
+    // `(path, value)` is a path write, disambiguated by the first argument's
+    // type, not arity.
     const argc = arguments.length
     const isPathForm = argc >= 2 && (typeof pathOrValue === 'string' || Array.isArray(pathOrValue))
-    const options = (isPathForm ? maybeOptions : argc >= 2 ? maybeValue : undefined) as
-      | SetValueOptions
-      | undefined
-    const silent = options?.silent === true
-    // Fold the consumer's `{ silent }` opt-out into every write this call
-    // makes, alongside the per-instance bag. Silent writes still validate;
-    // they only skip the `form.onChange` side-channel.
-    const writeMeta = (extra?: WriteMeta): WriteMeta | undefined =>
-      withInstanceMeta(silent ? { ...extra, silent: true } : extra)
+    const writeMeta = (extra?: WriteMeta): WriteMeta | undefined => withInstanceMeta(extra)
     if (!isPathForm) {
       // Whole-form: hand the consumer's callback a STABLE structural
       // snapshot of the form, not the live reactive value. The form
@@ -1129,36 +1113,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return Object.freeze(out)
   }
 
-  // `form.onChange(...)` — subscribe to form value changes (the autosave
-  // primitive). Disambiguates the two call forms by whether the second
-  // argument is a function: `(source, handler, options?)` when it is,
-  // `(handler, options?)` (whole form) when it is not. The store owns
-  // dispatch; here we hand the registry a lazy resolver for `ctx.form` (the
-  // public handle, assigned just below) and, when called inside a component
-  // scope, auto-stop on unmount. The returned stop() is idempotent, so a
-  // consumer can also tear it down early. Not gated: a subscription is
-  // passive and must not kick an async-defaults factory; the form activates
-  // on the first real write, which is also the first time dispatch can fire.
-  // Holds the public handle for `ctx.form`. A holder (not a reassigned
-  // `let`) because the resolver closure below captures it before the handle
-  // exists — it is read only at fire time, long after the assignment below.
-  const formHandle: { current: UseFormReturnType<Form, GetValueFormType> | undefined } = {
-    current: undefined,
-  }
-  function onChangeImpl(
-    a: OnChangeSource | OnChangeHandler,
-    b?: OnChangeHandler | OnChangeOptions,
-    c?: OnChangeOptions
-  ): () => void {
-    const sourced = typeof b === 'function'
-    const source = sourced ? (a as OnChangeSource) : undefined
-    const handler = (sourced ? b : a) as OnChangeHandler
-    const options = (sourced ? c : b) as OnChangeOptions | undefined
-    const stop = state.registerOnChange(source, handler, options, () => formHandle.current)
-    if (getCurrentScope() !== undefined) onScopeDispose(stop)
-    return stop
-  }
-
   const api: UseFormReturnType<Form, GetValueFormType> = {
     handleSubmit: gated(handleSubmit),
     // Callable readonly Proxies (`values`, `fields`, `errors`) and the
@@ -1251,10 +1205,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       void state.activate()
       return blankPathsView
     },
-    onChange: onChangeImpl as UseFormReturnType<Form, GetValueFormType>['onChange'],
   }
-  // Publish the handle so `ctx.form` (resolved lazily, only at fire time)
-  // reaches the same object the consumer holds.
-  formHandle.current = api
   return api
 }

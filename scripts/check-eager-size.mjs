@@ -228,7 +228,14 @@ export async function measureEager(define = PROD_DEFINE) {
 // off the eager path, landing eager at 43.48 kB gz (down ~4.1 kB). Budget
 // ratcheted 49_000 → 46_000 to lock it in; the full-bundle reclaim (~6 kB per
 // entry) is locked via the .size-limit.js caps (52→46 / 66→60 / 60→54 / 62→56).
-const BUDGET_GZ = 46_000
+//
+// NOTE (form.onChange removal, chore/rip-onchange): the onChange seam shipped
+// eager (its dispatch ran on the write funnel, with no async seam to defer it
+// behind), so removing on-change.ts + the registry + the WriteMeta.silent
+// thread drops the eager set ~1.0 kB, landing it at 42.47 kB gz. Budget
+// ratcheted 46_000 → 44_000 to lock it in; the full-bundle reclaim (~2 kB per
+// entry) is locked via the .size-limit.js caps (46→44 / 60→58 / 54→52 / 56→54).
+const BUDGET_GZ = 44_000
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

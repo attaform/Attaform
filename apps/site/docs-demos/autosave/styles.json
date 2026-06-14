@@ -1,3 +1,15 @@
 {
-  "with": ["banner", "lede", "label", "input", "row", "header", "status", "error"]
+  "with": [
+    "banner",
+    "lede",
+    "label",
+    "input",
+    "row",
+    "header",
+    "status",
+    "error",
+    "actions",
+    "ghost",
+    "primary"
+  ]
 }

@@ -1,15 +1,7 @@
-import { computed, reactive } from 'vue'
+import { computed, nextTick, reactive, watch } from 'vue'
 import type { FlatPath, GenericForm, UseFormReturnType } from 'attaform'
 
 export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
-
-function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number) {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  return (...args: A) => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), ms)
-  }
-}
 
 export function useAutosave<Form extends GenericForm>(
   form: UseFormReturnType<Form>,
@@ -24,6 +16,8 @@ export function useAutosave<Form extends GenericForm>(
   const status = reactive<Record<string, SaveStatus>>({})
   for (const path of paths) status[path] = 'idle'
 
+  let paused = false
+
   async function run(path: FlatPath<Form>, value: unknown, signal: AbortSignal) {
     try {
       const gate = typeof gateOnValidity === 'function' ? gateOnValidity(path) : gateOnValidity
@@ -34,27 +28,41 @@ export function useAutosave<Form extends GenericForm>(
       if (signal.aborted) return
       status[path] = 'saving'
       await save(path, value, signal)
-      if (signal.aborted) return
-      status[path] = 'saved'
+      if (!signal.aborted) status[path] = 'saved'
     } catch {
       if (!signal.aborted) status[path] = 'error'
     }
   }
 
   for (const path of paths) {
-    const schedule = debounce(
-      (value: unknown, signal: AbortSignal) => run(path, value, signal),
-      debounceMs
-    )
-    form.onChange(path, (value, ctx) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let controller: AbortController | undefined
+    watch(form.toRef(path), (value) => {
+      if (paused) return
       status[path] = 'pending'
-      schedule(value, ctx.signal)
+      controller?.abort()
+      controller = new AbortController()
+      const { signal } = controller
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => void run(path, value, signal), debounceMs)
     })
+  }
+
+  function runWithoutAutosave(write: () => void) {
+    paused = true
+    try {
+      write()
+    } finally {
+      void nextTick(() => {
+        paused = false
+      })
+    }
   }
 
   return {
     status,
     isSaving: computed(() => Object.values(status).some((s) => s === 'saving')),
     failed: computed(() => paths.filter((path) => status[path] === 'error')),
+    runWithoutAutosave,
   }
 }

@@ -33,6 +33,22 @@
   `persist` / `restore` URL step-position sync is a different feature and is
   untouched. Pre-1.0, so this lands without a deprecation shim. (#416)
 
+- **`form.onChange` has been removed; reacting to a change is a `watch` you
+  already have.** The `form.onChange(handler)` and `form.onChange(source,
+  handler)` subscription, the `useForm({ onChange })` construction option, and the
+  `setValue(path, value, { silent: true })` opt-out that paired with it are gone,
+  along with the `OnChangeConfig`, `OnChangeContext`, `OnChangeErrorContext`,
+  `OnChangeHandler`, `OnChangeErrorHandler`, `OnChangeOptions`, and `OnChangeSource`
+  types and the `WriteMeta.silent` write tag. Reacting to a value is something Vue
+  already does well: `watch(form.toRef('email'), save)` covers the common case, and
+  an autosave still gates its write on `await form.validateAsync(path)`, so the
+  read half (an async Zod `.refine`) and the write half stay cleanly split. The
+  rewritten autosave guide ships a copy-paste `useAutosave` recipe built on `watch`
+  and `form.toRef`: debounced, validity-gated, with per-field and aggregate status
+  plus a `runWithoutAutosave` pause for hydrating and resetting without echoing
+  saves. Dropping the seam also trims the eager bundle and lightens the always-on
+  write path. Pre-1.0, so this lands without a deprecation shim. (#XXX)
+
 ## v0.22.0
 ### Added
 

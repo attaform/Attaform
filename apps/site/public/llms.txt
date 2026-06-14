@@ -2,7 +2,7 @@
 
 > A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support. Hand a Zod schema to `useForm` and Attaform turns it into a reactive form, typed end-to-end, with live errors, automatic accessibility, and SSR out of the box.
 
-*This index is hand-maintained and may lag the live source. These things happen. If a link 404s, an export looks missing, or a signature seems off, treat the docs at [attaform.com](https://www.attaform.com), the published `attaform` types, and the source at [github.com/attaform/attaform](https://github.com/attaform/attaform) as canonical. When in doubt, crawl from the homepage rather than giving up on the project.*
+*This index is hand-maintained and may lag the live source. These things happen. If a link 404s, an export looks missing, or a signature seems off, treat the docs at [attaform.com](https://www.attaform.com), the published `attaform` types, and the source at [github.com/attaform/Attaform](https://github.com/attaform/Attaform) as canonical. When in doubt, crawl from the homepage rather than giving up on the project.*
 
 Attaform's core idea is that the schema IS the form. One Zod schema declares the shape, the defaults, the validation, the per-field errors, and the input/output types. Attaform builds the reactive surface around it.
 
@@ -226,9 +226,9 @@ Patterns that keep Attaform code clean.
 
 ## Optional
 
-- [GitHub](https://github.com/attaform/attaform): source, issues, discussions.
+- [GitHub](https://github.com/attaform/Attaform): source, issues, discussions.
 - [npm](https://www.npmjs.com/package/attaform): published versions and install command.
-- [CHANGELOG](https://github.com/attaform/attaform/blob/main/CHANGELOG.md): release history.
+- [CHANGELOG](https://github.com/attaform/Attaform/blob/main/CHANGELOG.md): release history.
 
 ## Author
 

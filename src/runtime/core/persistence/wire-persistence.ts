@@ -166,13 +166,6 @@ export function wirePersistence<F extends GenericForm>(
 
   const unsubscribeChange = state.onFormChange((_next, meta) => {
     if (isDisposed() || inFlightFinalFlush !== null) return
-    // Cross-tab apply: a sibling tab already wrote this value to its
-    // own persistence layer; double-persisting from the receiving
-    // tab would be wasted I/O. The multi-tab sync module sets
-    // `persist: false` for this reason, which the next check already
-    // catches — but adding the explicit `crossTab` early return makes
-    // the intent legible at the listener boundary.
-    if (meta?.crossTab === true) return
     // Per-element opt-in: only writes whose source declared `persist: true`
     // reach the storage adapter. Programmatic `form.setValue`, history
     // undo without opt-ins, devtools edits to non-opted paths, and

@@ -159,8 +159,8 @@ export async function measureEager(define = PROD_DEFINE) {
 // onFormChange writer, envelope read/build, debounce, pluck / strip /
 // filter) onto the async path (44.60 kB gz), and D3 lazy-loads the
 // schema fingerprint walker + its canonicalStringify helper (only the
-// opt-in multi-tab / persistence key paths plus a dev-only mismatch
-// warning consume them), landing the eager set at 44.38 kB gz; the
+// opt-in persistence key path plus a dev-only mismatch warning consume
+// them), landing the eager set at 44.38 kB gz; the
 // budget is tightened here to lock that in. The single-adapter delta is
 // modest because the async deferral machinery offsets most of the
 // fingerprint bytes, but the unified `attaform/zod` entry (both adapters'
@@ -212,6 +212,14 @@ export async function measureEager(define = PROD_DEFINE) {
 // ~0.5 kB headroom for minifier-version drift. The ~9 kB of known
 // eager-optional features (bundle-size analysis) remain the place to reclaim
 // this; never loosen without a recorded reason.
+//
+// NOTE (multi-tab-sync removal, chore/rip-multitab): multi-tab sync has been
+// async since D1, so deleting it barely moves the eager set — only the
+// core-anchored remnants (WriteMeta.crossTab thread, state.noSyncPaths
+// ref-counted opt-out) come off here, landing eager at 47.61 kB gz, held
+// within the budget with no change. The real reclaim is the ~2 kB the inlined
+// async chunk freed from the full bundle, locked in via the .size-limit.js
+// cap ratchets (54→52 / 68→66 / 62→60 / 64→62 KB).
 const BUDGET_GZ = 49_000
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href

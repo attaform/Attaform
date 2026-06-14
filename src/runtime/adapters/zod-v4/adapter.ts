@@ -272,7 +272,7 @@ export function zodV4Adapter<
  * shape correctly.
  */
 // Lazy fingerprint: the only consumers are opt-in async features
-// (multi-tab channel name, persistence storage key) plus a dev-only
+// (the persistence storage key) plus a dev-only
 // mismatch warning, so the structural walk + its `canonicalStringify`
 // helper load on demand off the eager `useForm` path instead of being
 // anchored eager by a static import.

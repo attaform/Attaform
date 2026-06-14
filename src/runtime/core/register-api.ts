@@ -261,22 +261,7 @@ export function buildRegister<F extends GenericForm>(
 
     const persist = options?.persist === true
     const acknowledgeSensitive = options?.acknowledgeSensitive === true
-    const multiTab = options?.multiTab !== false
     const transforms = options?.transforms ?? EMPTY_TRANSFORMS
-    // Pre-bound mount/unmount hooks for the directive — only present
-    // when this binding explicitly opted OUT of multi-tab sync.
-    // `undefined` for the common case (multiTab !== false) so the
-    // directive does no extra work on the hot path.
-    const markNoSync = !multiTab
-      ? () => {
-          state.incrementNoSyncOptOut(pathKey)
-        }
-      : undefined
-    const unmarkNoSync = !multiTab
-      ? () => {
-          state.decrementNoSyncOptOut(pathKey)
-        }
-      : undefined
 
     // Schema-driven coerce closure. Captures the path's slim accept set
     // and the form's resolved coercion index so the per-event hot path
@@ -480,9 +465,6 @@ export function buildRegister<F extends GenericForm>(
       acknowledgeSensitive,
       persistOptIns: state.persistOptIns,
       isSensitivePath: state.isSensitivePath,
-      multiTab,
-      ...(markNoSync !== undefined ? { markNoSync } : {}),
-      ...(unmarkNoSync !== undefined ? { unmarkNoSync } : {}),
       transforms,
       coerce,
       ...(coerceElement !== undefined ? { coerceElement } : {}),

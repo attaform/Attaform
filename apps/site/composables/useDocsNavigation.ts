@@ -142,7 +142,6 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Cross-cutting state',
     links: [
       { title: 'Undo & redo', to: '/docs/cross-cutting-state/undo-redo' },
-      { title: 'Multi-tab sync', to: '/docs/cross-cutting-state/multi-tab-sync' },
       { title: 'onChange', to: '/docs/cross-cutting-state/on-change' },
       { title: 'Autosave', to: '/docs/cross-cutting-state/autosave' },
       { title: 'injectForm', to: '/docs/cross-cutting-state/inject-form' },

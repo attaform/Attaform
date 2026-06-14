@@ -5,11 +5,11 @@ import { resetInsecureContextWarnDedup } from '../src/runtime/core/insecure-cont
  * Global vitest setup. Loaded by `setupFiles` in vitest.config.ts.
  *
  * Tasks:
- *  1. Stub `window.isSecureContext = true` so multi-tab sync AND
- *     built-in persistence storage adapters (`'local'` / `'session'`)
- *     activate during tests. jsdom defaults this to `false`; without
- *     the stub, every persistence-dependent suite would noop and
- *     hydration tests would fail.
+ *  1. Stub `window.isSecureContext = true` so the built-in persistence
+ *     storage adapters (`'local'` / `'session'`) activate during tests.
+ *     jsdom defaults this to `false`; without the stub, every
+ *     persistence-dependent suite would noop and hydration tests would
+ *     fail.
  *  2. Reset the one-shot dev-warning dedup after each test so probes
  *     that assert "warning fires exactly once" don't share state with
  *     prior tests. The `warnOnceInsecureContext` registry is

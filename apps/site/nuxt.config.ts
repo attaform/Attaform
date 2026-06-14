@@ -651,9 +651,6 @@ export default defineNuxtConfig({
     '/docs/recipes/form-context': {
       redirect: { to: '/docs/cross-cutting-state/inject-form', statusCode: 301 },
     },
-    '/docs/recipes/multi-tab-sync': {
-      redirect: { to: '/docs/cross-cutting-state/multi-tab-sync', statusCode: 301 },
-    },
     '/docs/recipes/persistence': {
       redirect: { to: '/docs/persistence/overview', statusCode: 301 },
     },

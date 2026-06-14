@@ -330,9 +330,9 @@ export function useAbstractForm<
       const resolvedPersist = normalizePersistConfig(merged.persist)
       // Secure-context gate for BUILT-IN storage adapters. Plain HTTP
       // on a real hostname leaves localStorage / sessionStorage open
-      // to MITM injection — same threat profile as multi-tab sync. The
-      // gate noops the persistence wiring entirely with a one-shot
-      // dev warning. Custom storage adapters (consumer-supplied
+      // to MITM injection. The gate noops the persistence wiring
+      // entirely with a one-shot dev warning. Custom storage adapters
+      // (consumer-supplied
       // objects) bypass the gate — the consumer owns that storage
       // layer's security posture (could be encrypted, server-side,
       // behind a tunnel, etc.).
@@ -417,92 +417,6 @@ export function useAbstractForm<
       // backends so dropping (or refusing to wire) persistence
       // actually leaves storage clean.
       void sweepAllOrphansAcrossStandardStores(`${PERSISTENCE_KEY_PREFIX}${state.formKey}`)
-    }
-  }
-
-  // Wire multi-tab sync (opt-in, lazy). The sync module and its diff /
-  // patch machinery live in their own chunk, dynamically imported only
-  // when a keyed form opts in, so the always-on `useForm` path never
-  // ships them. Fresh-state-only: the module subscribes to FormStore
-  // events, so subscribing twice would double-broadcast.
-  //
-  // Ordering vs persistence and history: persistence wires synchronously
-  // above (its hydration is the floor a BroadcastChannel snapshot
-  // overrides), and history wires synchronously below. Because this
-  // import resolves on a later microtask, history is already subscribed
-  // before the sync module can deliver its first cross-tab message, so
-  // history's `crossTab`-meta guard is in place when that message lands.
-  //
-  // Activation requires ALL of:
-  //   1. `multiTab` cascade resolves to `true` (per-form > global > library
-  //      default `false`). Strict opt-in: a form that doesn't set
-  //      `multiTab: true` somewhere never instantiates the channel.
-  //   2. Consumer-supplied `key` (anonymous forms skip; channel would be solo)
-  //   3. Runtime has `BroadcastChannel`
-  //   4. `window.isSecureContext === true` (HTTPS or localhost)
-  //
-  // The else branch fires a one-shot dev warning when a keyed form
-  // requested sync but the secure-context gate blocked it, saving
-  // consumers from debugging "why isn't sync working in prod" in
-  // silence.
-  if (
-    existing === undefined &&
-    merged.multiTab === true &&
-    configuration.key !== undefined &&
-    !registry.ssr
-  ) {
-    const hasBroadcastChannel = typeof BroadcastChannel !== 'undefined'
-    const secureContext = isSecureContext()
-    if (hasBroadcastChannel && secureContext) {
-      // The form can dispose while the sync chunk is in flight (a fast
-      // mount then unmount). `registerCleanup` runs disposers once and
-      // then drops the list, so a disposer registered after dispose
-      // never fires. Guard with a flag an eagerly-registered cleanup
-      // sets, so a late-resolving import doesn't subscribe a
-      // BroadcastChannel onto a torn-down store (which would leak it).
-      let formDisposed = false
-      state.registerCleanup(() => {
-        formDisposed = true
-      })
-      void (async () => {
-        try {
-          // Channel name = `attaform:sync:${formKey}:${fingerprint hash}`.
-          // Resolve the fingerprint (the adapter dynamic-imports its
-          // walker) in parallel with the sync-module chunk. A rejection
-          // here (an adapter bug) or a failed chunk load both leave sync
-          // silently unavailable rather than poisoning the form lifecycle;
-          // the schema-fingerprint mismatch warning surfaces an adapter
-          // issue separately.
-          const [{ createMultiTabSyncModule, MULTI_TAB_SYNC_MODULE_KEY }, fingerprint] =
-            await Promise.all([import('../core/multi-tab-sync'), state.schema.fingerprint()])
-          if (formDisposed) return
-          const channelName = `attaform:sync:${state.formKey}:${hashStableString(fingerprint)}`
-          const syncModule = createMultiTabSyncModule(state, channelName, {
-            isSensitivePath: state.isSensitivePath,
-            noSyncPaths: state.noSyncPaths,
-            validateForm: (form) => {
-              // Sync-preferred schema validation. Async-only schemas
-              // return a Promise; for those we skip the gate and trust
-              // the patch (last-writer-wins; the local validate cycle
-              // catches issues on the next user interaction).
-              const result = state.schema.validateAtPath(form, undefined, { sync: true })
-              if (result instanceof Promise) return
-              if (!result.success) {
-                throw new Error('attaform multi-tab sync: post-apply schema validation failed')
-              }
-            },
-          })
-          state.modules.set(MULTI_TAB_SYNC_MODULE_KEY, syncModule)
-          state.registerCleanup(() => syncModule.dispose())
-        } catch {
-          // The fingerprint rejected or the multi-tab-sync chunk failed to
-          // load (offline, chunk eviction). Sync stays silently
-          // unavailable rather than throwing into the consumer's form
-          // lifecycle.
-        }
-      })()
-    } else if (hasBroadcastChannel && !secureContext) {
-      warnOnceInsecureContext('multiTab')
     }
   }
 
@@ -657,11 +571,6 @@ function mergeWithDefaults<
   // Per-form value wins; falls back to global default. Empty array
   // `[]` is the explicit opt-out and is preserved through the merge.
   const sensitiveNames = configuration.sensitiveNames ?? defaults.sensitiveNames
-  // multiTab cascade: per-form > global > library default (`false`).
-  // The library-default `false` is applied later at the wiring site
-  // (so the merged config still distinguishes "consumer didn't say"
-  // from an explicit `false` for downstream diagnostics).
-  const multiTab = configuration.multiTab ?? defaults.multiTab
   const autoAria = configuration.autoAria ?? defaults.autoAria
   return {
     ...configuration,
@@ -675,7 +584,6 @@ function mergeWithDefaults<
     ...(getDisplayState === undefined ? {} : { getDisplayState }),
     ...(maxRecursionDepth === undefined ? {} : { maxRecursionDepth }),
     ...(sensitiveNames === undefined ? {} : { sensitiveNames }),
-    ...(multiTab === undefined ? {} : { multiTab }),
     ...(autoAria === undefined ? {} : { autoAria }),
   } as UseFormConfiguration<Form, GetValueFormType, Schema, Defaults>
 }
@@ -717,9 +625,9 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   //
   // The walker emits opaque `PathKey` strings (canonicalised JSON
   // segment arrays). The rest of the runtime — `setValueAtPath`, DU
-  // reshape, hydration apply, persistence payloads, history snapshots,
-  // multi-tab sync — keys `blankPaths` by the same PathKey form, so we
-  // pass `walked.paths` straight through to `createFormStore` without
+  // reshape, hydration apply, persistence payloads, history snapshots —
+  // keys `blankPaths` by the same PathKey form, so we pass
+  // `walked.paths` straight through to `createFormStore` without
   // reformatting at this boundary.
   let initialBlankPaths: ReadonlyArray<string> | undefined
   if (pending === undefined) {
@@ -730,8 +638,7 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   // global > undefined-falls-to-library-default). An empty array `[]`
   // is the explicit opt-out ("nothing is sensitive on this form") and
   // the factory honors it. The resulting closures are frozen onto the
-  // FormStore so persistence, multi-tab sync, and DevTools all share
-  // one source of truth.
+  // FormStore so persistence and DevTools share one source of truth.
   const resolvedSensitiveNames = configuration.sensitiveNames
   const resolvedIsSensitivePath =
     resolvedSensitiveNames === undefined ? undefined : createIsSensitivePath(resolvedSensitiveNames)

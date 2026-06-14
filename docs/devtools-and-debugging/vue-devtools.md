@@ -69,7 +69,7 @@ The wire-up is code-split, so the chunk isn't pulled in when `devtools: false`; 
 
 ## What you see
 
-The Vue DevTools panel surfaces the same data as the [Nuxt panel](/docs/devtools-and-debugging/devtools-panel): form list, editable JSON value tree, schema/user error split, aggregates, and the event timeline. Both surfaces render values raw; DevTools is a dev-only surface, so the sensitive-name list gates persistence and multi-tab broadcasts, not display.
+The Vue DevTools panel surfaces the same data as the [Nuxt panel](/docs/devtools-and-debugging/devtools-panel): form list, editable JSON value tree, schema/user error split, aggregates, and the event timeline. Both surfaces render values raw; DevTools is a dev-only surface, so the sensitive-name list gates persistence, not display.
 
 | Surface              | What it is                                                              |
 | -------------------- | ----------------------------------------------------------------------- |
@@ -104,4 +104,4 @@ This is the practical advantage over the Nuxt panel for multi-app monorepos: pic
 
 - [The Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel): the Nuxt-native alternative, same data surface.
 - [Troubleshooting](/docs/devtools-and-debugging/troubleshooting): what to look for in the panels when forms misbehave.
-- [Sensitive-name protection](/docs/persistence/sensitive-names): the list that gates persistence writes and multi-tab broadcasts.
+- [Sensitive-name protection](/docs/persistence/sensitive-names): the list that gates persistence writes.

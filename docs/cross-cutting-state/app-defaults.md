@@ -112,13 +112,12 @@ type AttaformDefaults = {
   getDisplayState?: GetDisplayState
   maxRecursionDepth?: number
   sensitiveNames?: readonly string[]
-  multiTab?: boolean
 }
 ```
 
 `getDisplayState` resolves `field.displayState` and its `show*` projections: the centralized "what should this field surface right now?" reducer, returning one of idle, pending, error, or success. Set it once at the app level so every form follows the same convention. To keep the default behavior but retune the anti-flash spinner timing, pass `makeDefaultDisplayState({ showDelay, minVisible })`. See [Display state and showing errors](/docs/validation/showing-errors) for the full contract.
 
-`sensitiveNames` extends the heuristic that gates persistence opt-ins and multi-tab broadcasts. See [Sensitive-name protection](/docs/persistence/sensitive-names).
+`sensitiveNames` extends the heuristic that gates persistence opt-ins. See [Sensitive-name protection](/docs/persistence/sensitive-names).
 
 ## What's NOT supported (and why)
 
@@ -180,6 +179,6 @@ Fully equivalent for the consumer; every `useAppForm` call gets your defaults; p
 
 ## Where to next
 
-- [Sensitive-name protection](/docs/persistence/sensitive-names): extend the resolved list once at the app level, tighten persistence and multi-tab in one move.
+- [Sensitive-name protection](/docs/persistence/sensitive-names): extend the resolved list once at the app level, tighten persistence across every form in one move.
 - [Display state and showing errors](/docs/validation/showing-errors): set the `getDisplayState` predicate app-wide for a consistent feel across forms.
 - [When validation runs](/docs/validation/when-validation-runs): `validateOn` and `debounceMs` defaults shape every form in the app.

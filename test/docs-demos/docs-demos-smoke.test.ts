@@ -34,9 +34,9 @@ vi.setConfig({ testTimeout: 15_000 })
  * Coverage:
  *   - `entries`: every demo with a runnable gesture + assert.
  *   - `deferred`: demos that genuinely don't admit a single-mount
- *     smoke gesture (file uploads in jsdom, true multi-tab sync,
- *     IndexedDB backends). Each carries a reason; the meta-test
- *     counts them as tracked so a new demo can't sneak in untracked.
+ *     smoke gesture (file uploads in jsdom, IndexedDB backends). Each
+ *     carries a reason; the meta-test counts them as tracked so a new
+ *     demo can't sneak in untracked.
  *
  * Adding a new demo to disk without an `entries` entry or `deferred`
  * registration fails the meta-test in CI.
@@ -1298,10 +1298,6 @@ const deferred: { slug: string; reason: string }[] = [
     slug: 'transforms-async',
     reason:
       'A file-upload gesture feeding an async transform is not testable under jsdom; needs an integration runner.',
-  },
-  {
-    slug: 'multi-tab-sync',
-    reason: 'Multi-tab sync requires a real BroadcastChannel across separate Window instances.',
   },
   {
     slug: 'storage-backends',

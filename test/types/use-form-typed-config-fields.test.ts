@@ -9,15 +9,15 @@ import type { GetDisplayState } from '../../src/runtime/types/types-api'
 /**
  * SF2 parity gate. v3-direct (`attaform/zod-v3`) historically carried
  * a hand-rolled `UseFormConfigurationWithZod` that listed every option
- * by hand and silently dropped five fields v4 + the abstract
+ * by hand and silently dropped four fields v4 + the abstract
  * `UseFormConfiguration` accept: `getDisplayState`, `maxRecursionDepth`,
- * `sensitiveNames`, `multiTab`, `autoAria`. Runtime already spread the
+ * `sensitiveNames`, `autoAria`. Runtime already spread the
  * full config through to `useAbstractForm`, so the gap was purely
- * type-level — v3-direct callers got an excess-property error on five
+ * type-level — v3-direct callers got an excess-property error on four
  * options that worked at runtime.
  *
  * The dual-green proof: every typed entry point (`attaform/zod`,
- * `attaform/zod-v3`, `attaform/zod-v4`) accepts the same five fields
+ * `attaform/zod-v3`, `attaform/zod-v4`) accepts the same four fields
  * with no excess-property errors. Runs at typecheck time only — the
  * `_neverInvoked` wrappers declare real calls so TypeScript exercises
  * call-site inference, but the functions are never invoked.
@@ -54,14 +54,6 @@ describe('useForm — typed-config field surface (SF2)', () => {
       void _neverInvoked
     })
 
-    it('accepts multiTab', () => {
-      function _neverInvoked() {
-        const form = useFormV3({ schema: schemaV3, key: 'paired', multiTab: true })
-        expectTypeOf(form.key).toMatchTypeOf<string>()
-      }
-      void _neverInvoked
-    })
-
     it('accepts autoAria', () => {
       function _neverInvoked() {
         const form = useFormV3({ schema: schemaV3, autoAria: false })
@@ -70,7 +62,7 @@ describe('useForm — typed-config field surface (SF2)', () => {
       void _neverInvoked
     })
 
-    it('accepts all five together', () => {
+    it('accepts all four together', () => {
       function _neverInvoked() {
         const form = useFormV3({
           schema: schemaV3,
@@ -78,7 +70,6 @@ describe('useForm — typed-config field surface (SF2)', () => {
           getDisplayState,
           maxRecursionDepth: 96,
           sensitiveNames: ['ssn', 'taxId'],
-          multiTab: true,
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed'>()
@@ -88,7 +79,7 @@ describe('useForm — typed-config field surface (SF2)', () => {
   })
 
   describe('attaform/zod-v4', () => {
-    it('accepts all five together (reference)', () => {
+    it('accepts all four together (reference)', () => {
       function _neverInvoked() {
         const form = useFormV4({
           schema: schemaV4,
@@ -96,7 +87,6 @@ describe('useForm — typed-config field surface (SF2)', () => {
           getDisplayState,
           maxRecursionDepth: 96,
           sensitiveNames: ['ssn', 'taxId'],
-          multiTab: true,
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed'>()
@@ -106,7 +96,7 @@ describe('useForm — typed-config field surface (SF2)', () => {
   })
 
   describe('attaform/zod (unified)', () => {
-    it('accepts all five together on a v3 schema', () => {
+    it('accepts all four together on a v3 schema', () => {
       function _neverInvoked() {
         const form = useFormZ({
           schema: schemaV3,
@@ -114,7 +104,6 @@ describe('useForm — typed-config field surface (SF2)', () => {
           getDisplayState,
           maxRecursionDepth: 96,
           sensitiveNames: ['ssn', 'taxId'],
-          multiTab: true,
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed-v3'>()
@@ -122,7 +111,7 @@ describe('useForm — typed-config field surface (SF2)', () => {
       void _neverInvoked
     })
 
-    it('accepts all five together on a v4 schema', () => {
+    it('accepts all four together on a v4 schema', () => {
       function _neverInvoked() {
         const form = useFormZ({
           schema: schemaV4,
@@ -130,7 +119,6 @@ describe('useForm — typed-config field surface (SF2)', () => {
           getDisplayState,
           maxRecursionDepth: 96,
           sensitiveNames: ['ssn', 'taxId'],
-          multiTab: true,
           autoAria: false,
         })
         expectTypeOf(form.key).toEqualTypeOf<'composed-v4'>()

@@ -75,7 +75,6 @@ function makeRegisterValue<T>(initial: T): {
     acknowledgeSensitive: false,
     persistOptIns: createPersistOptInRegistry(),
     isSensitivePath: () => false,
-    multiTab: true,
     acceptsUndefined: false,
     acceptsString: true,
   }

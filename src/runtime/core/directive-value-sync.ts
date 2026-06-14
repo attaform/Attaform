@@ -40,7 +40,6 @@ export interface ValueSyncOptions {
  * Reactively mirror a register binding's reactive source onto the DOM for
  * changes that DON'T ride a host re-render:
  *
- *   - cross-tab sync (`applyFormReplacement` from the multi-tab module),
  *   - a sibling component's `setValue` / `reset` / `clear`,
  *   - any imperative store write while the bound component's template
  *     reads no field state (a display-only form never re-renders).

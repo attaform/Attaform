@@ -9,7 +9,6 @@
     Workflow,
     TerminalSquare,
     Webhook,
-    MonitorSmartphone,
     ArrowRight,
     ExternalLink,
   } from 'lucide-vue-next'
@@ -17,10 +16,10 @@
   // Feature cards on the homepage. Same single-color icon-chip
   // discipline as the docs landing: every chip on this page uses
   // the brand-soft pair so the page reads as one product surface.
-  // Nine cards: types + validation + accessibility + arrays +
+  // Eight cards: types + validation + accessibility + arrays +
   // persistence (the "first scroll" group), then multistep +
-  // devtools + server errors + multi-tab (the "stays nice as the
-  // form grows" group).
+  // devtools + server errors (the "stays nice as the form grows"
+  // group).
   const { attaformVersion } = useRuntimeConfig().public
 
   // Canonical snippet for the "From schema to submit" section.
@@ -60,7 +59,7 @@
   const registerLines = [
     `${LT}input v-register="form.register('email')" />`,
     `${LT}input v-register="form.register('email', { persist: true })" />`,
-    `${LT}input v-register="form.register('email', { persist: true, transforms: [lowercase], multiTab: false })" />`,
+    `${LT}input v-register="form.register('email', { persist: true, transforms: [lowercase] })" />`,
   ]
 
   // The wizard callout snippet. Pure TS expressions, so we tell
@@ -171,11 +170,6 @@
       icon: Webhook,
       title: 'Server-side errors',
       body: '`parseApiErrors(payload, { formKey: form.key })` normalizes any API envelope into the same `ValidationError` shape your template already reads.',
-    },
-    {
-      icon: MonitorSmartphone,
-      title: 'Multi-tab sync',
-      body: 'Same-keyed forms in same-origin tabs auto-pair over `BroadcastChannel` and mirror every mutation in near real-time. Sensitive paths filtered.',
     },
   ]
 </script>
@@ -331,7 +325,7 @@
             <p class="mt-3 text-base text-fg-muted">
               <UiInlineCode>v-register</UiInlineCode> is a Vue directive, not a wrapper component.
               One line on a native <UiInlineCode>&lt;input&gt;</UiInlineCode> opts that field into
-              typed binding, coercion, persistence, multi-tab sync, and the sensitive-name guard.
+              typed binding, coercion, persistence, and the sensitive-name guard.
             </p>
           </div>
           <div>
@@ -397,8 +391,8 @@
               :tree="registerLineThreeTree"
             />
             <p class="mt-3 max-w-3xl text-base text-fg-muted">
-              Same line. Add a sync DOM-input transform, opt out of multi-tab sync, all without
-              touching the markup elsewhere on the page.
+              Same line. Add a sync DOM-input transform, all without touching the markup elsewhere
+              on the page.
             </p>
           </li>
         </ol>
@@ -455,7 +449,7 @@
           </h2>
           <p class="mt-4 text-lg text-fg-muted">
             Inferred types. Live validation. Multistep flows. Devtools. Server-side errors,
-            multi-tab sync, persistence, undo/redo. Everything you need, nothing you have to wire.
+            persistence, undo/redo. Everything you need, nothing you have to wire.
           </p>
         </div>
 

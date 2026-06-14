@@ -189,10 +189,9 @@ export type { DisplayTimings } from './runtime/core/display-state'
 //
 //   useForm({ sensitiveNames: [...DEFAULT_SENSITIVE_NAMES, 'mrn'] })
 //
-// The resolved list gates persistence writes and multi-tab sync
-// broadcasts — one configurable source of truth for "what counts as
-// sensitive" across those surfaces. (DevTools renders raw values by
-// design; it does not redact.)
+// The resolved list gates persistence writes — one configurable
+// source of truth for "what counts as sensitive." (DevTools renders
+// raw values by design; it does not redact.)
 export { DEFAULT_SENSITIVE_NAMES } from './runtime/core/persistence/sensitive-names'
 
 // API-error parser. Pure transformation: takes a server response in

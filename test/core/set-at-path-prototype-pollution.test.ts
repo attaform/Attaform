@@ -2,8 +2,8 @@
  * Prototype-pollution gate for `setAtPath` (path-walker.ts).
  *
  * `setAtPath` is the copy-on-write walker behind every value mutation
- * the runtime performs: `form.setValue(path, value)`, multi-tab patch
- * apply (`applyPatchesForward` / `Inverse`), and history undo/redo.
+ * the runtime performs: `form.setValue(path, value)`, history undo/redo
+ * patch apply (`applyPatchesForward` / `Inverse`), and hydration.
  * Every consumer-controlled path eventually reaches it. Without
  * protection, a `__proto__` segment lands at `rec[head] = …` on a
  * plain `{}` intermediate and the inherited `[[Set]]` accessor

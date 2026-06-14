@@ -291,8 +291,8 @@ export function pluckPaths(form: unknown, pathKeys: Iterable<PathKey>): unknown 
  * sensitive container, while shedding the unacknowledged secrets a
  * non-sensitive container opt-in dragged along.
  *
- * Mirrors multi-tab's `stripSensitivePathsDeep`, but keyed off the
- * persist opt-in set rather than stripping every sensitive path.
+ * Keyed off the persist opt-in set rather than stripping every
+ * sensitive path.
  */
 export function stripUnacknowledgedSensitiveLeaves(
   form: unknown,

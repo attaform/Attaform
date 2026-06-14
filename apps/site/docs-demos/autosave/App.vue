@@ -25,10 +25,28 @@
     toast.success(`Saved ${path}`, { description: String(value) })
   }
 
-  const { status, isSaving, failed } = useAutosave(form, ['email', 'displayName', 'bio'], save, {
-    debounceMs: 600,
-    gateOnValidity: (path) => path !== 'email',
-  })
+  const { status, isSaving, failed, runWithoutAutosave } = useAutosave(
+    form,
+    ['email', 'displayName', 'bio'],
+    save,
+    { debounceMs: 600, gateOnValidity: (path) => path !== 'email' }
+  )
+
+  function hydrate() {
+    runWithoutAutosave(() =>
+      form.setValue({
+        email: 'ada@analytical.engine',
+        displayName: 'Ada Lovelace',
+        bio: 'Mathematician, first programmer.',
+      })
+    )
+    toast.info('Loaded saved profile, no autosave fired')
+  }
+
+  function resetForm() {
+    runWithoutAutosave(() => form.reset())
+    toast.info('Reset, no autosave fired')
+  }
 
   const fields = [
     { path: 'email', label: 'Email', placeholder: 'ada@example.com' },
@@ -65,7 +83,8 @@
 
     <p class="lede">
       Email saves as a draft: even an invalid address persists as you type, while Attaform still
-      flags it below. Display name and bio gate on validity, holding back until they pass.
+      flags it below. Display name and bio gate on validity, holding back until they pass. Load the
+      saved profile or reset to watch a write land with no autosave at all.
     </p>
 
     <label v-for="field in fields" :key="field.path">
@@ -88,5 +107,10 @@
       <input v-model="failSaves" type="checkbox" />
       Make saves fail
     </label>
+
+    <div class="actions">
+      <button type="button" class="primary" @click="hydrate">Load saved profile</button>
+      <button type="button" class="ghost" @click="resetForm">Reset</button>
+    </div>
   </form>
 </template>

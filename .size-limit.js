@@ -269,7 +269,12 @@ export default [
     // the persistence/ engine, sensitive-names, insecure-context-warn, the
     // persistOptIns / isSensitivePath core remnants, and the WriteMeta.persist
     // thread all left the bundle. Measured at 44.52 KB.
-    limit: '46 KB',
+    //
+    // Lowered 46 → 44 KB on the form.onChange removal branch
+    // (chore/rip-onchange): on-change.ts, the change registry + dispatch at the
+    // write funnel, and the WriteMeta.silent / SetValueOptions thread all left
+    // the shared core chunk. Measured at 43.43 KB.
+    limit: '44 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -427,7 +432,12 @@ export default [
     // Lowered 66 → 60 KB on the persist removal branch (chore/rip-persist):
     // the shared core chunk drops the persistence/ engine + sensitive-names +
     // insecure-context-warn. Measured at 58.72 KB.
-    limit: '60 KB',
+    //
+    // Lowered 60 → 58 KB on the form.onChange removal branch
+    // (chore/rip-onchange): the unified entry's shared core chunk drops the
+    // onChange seam (on-change.ts + dispatch + the silent thread). Measured at
+    // 57.64 KB.
+    limit: '58 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -540,7 +550,11 @@ export default [
     // Lowered 60 → 54 KB on the persist removal branch (chore/rip-persist):
     // drops the persistence/ engine + sensitive-names + insecure-context-warn.
     // Measured at 52.65 KB.
-    limit: '54 KB',
+    //
+    // Lowered 54 → 52 KB on the form.onChange removal branch
+    // (chore/rip-onchange): same shared core chunk drops the onChange seam
+    // (on-change.ts + dispatch + the silent thread). Measured at 51.56 KB.
+    limit: '52 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -728,7 +742,11 @@ export default [
     // Lowered 62 → 56 KB on the persist removal branch (chore/rip-persist):
     // drops the persistence/ engine + sensitive-names + insecure-context-warn.
     // Measured at 54.03 KB.
-    limit: '56 KB',
+    //
+    // Lowered 56 → 54 KB on the form.onChange removal branch
+    // (chore/rip-onchange): same shared core chunk drops the onChange seam.
+    // zod-v3.mjs, the tightest adapter bundle, measured at 52.93 KB.
+    limit: '54 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

@@ -11,8 +11,8 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Read-half parity: `validateAsync` and `handleSubmit` must await async
  * `.refine` predicates identically on the v3 and v4 adapters.
  *
- * This is the validation half of the onChange / autosave story. The
- * write half (`form.onChange`) persists a value; the read half decides
+ * This is the validation half of the autosave story. The write half (a
+ * `watch` on `form.values`) persists a value; the read half decides
  * whether that value is allowed; the autosave gate composes them through
  * `await form.validateAsync(path)`. That gate only holds if the per-field
  * `validateAsync(path)` awaits the field's async refine on both adapters,

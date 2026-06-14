@@ -110,12 +110,19 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
     expect(src).not.toMatch(/require\(\s*['"]zod['"]\s*\)/)
   })
 
-  it('zod-v3 entry references zod (directly or via a shared chunk)', () => {
-    // Unbuild's chunker may pull the zod import into a shared chunk
-    // when more than one entry shares v3 internals (e.g. the unified
-    // entry's runtime dispatch). Either form is correct — the v3
-    // adapter must depend on zod somewhere in its closure.
-    expect(closureContainsZodImport(join(distDir, 'zod-v3.mjs'))).toBe(true)
+  it('zod-v3 entry carries no static `zod` import (consumer-schema-driven)', () => {
+    // Post-#383 the v3 adapter rebuilds its slim / stripped schema nodes
+    // from the consumer's OWN schema instead of reaching for an ambient
+    // `zod`, so `attaform/zod-v3` has no static bare-`zod` import anywhere
+    // in its closure: its zod-v3 imports are type-only (erased at build),
+    // and it duck-types the schema passed to `useForm`. That keeps the v3
+    // bundle decoupled from whichever Zod major the consumer hoists. The
+    // only runtime `from 'zod'` lives in zod-v4/strip.ts, reachable from
+    // the v4 + unified entries below but not from here. A flip to `true`
+    // would mean a v4-only module (e.g. strip.ts) got re-co-located into
+    // the v3 closure by the chunk splitter, which is worth a look rather
+    // than a silent pass.
+    expect(closureContainsZodImport(join(distDir, 'zod-v3.mjs'))).toBe(false)
   })
 
   it('zod-v4 entry references zod (directly or via a shared chunk)', () => {

@@ -1,6 +1,6 @@
 ---
 title: Sensitive-name protection
-description: A built-in heuristic warns and skips the persist opt-in for paths like password / cvv / ssn. One configurable list gates persistence writes and multi-tab broadcasts.
+description: A built-in heuristic warns and skips the persist opt-in for paths like password / cvv / ssn. One configurable list gates persistence writes.
 metaRows:
   - label: Category
     value: Module
@@ -52,7 +52,7 @@ When persistence is intentional (custom encrypted adapter, narrow-scope internal
 <input v-register="form.register('password', { persist: true, acknowledgeSensitive: true })" />
 ```
 
-The acknowledgement silences the warning for that exact register call and lets the value through to storage. It does NOT remove the path from the resolved sensitive-names list, so the same path stays stripped from multi-tab broadcasts.
+The acknowledgement silences the warning for that exact register call and lets the value through to storage. It does NOT remove the path from the resolved sensitive-names list; any other `register` call for the same path still warns until you acknowledge it there too.
 
 Treat `acknowledgeSensitive: true` as a code-review trigger, not a soundness boundary. The heuristic doesn't catch alias-typed paths (`register('pswd' as 'password')`), abbreviated variants not in the list, or schemas with deliberately innocuous keys for sensitive data. Per-field opt-in is the real defense; this is a default to lean against.
 
@@ -74,10 +74,7 @@ The resolved list applies to every form created by that app. Per-form overrides 
 
 ## One list, two surfaces
 
-The resolved `sensitiveNames` list gates two write paths:
-
-- **Persistence**: `{ persist: true }` on a sensitive path warns and skips the opt-in. Container opt-ins shed nested sensitive leaves the same way (`register('payment', { persist: true })` writes `payment.last4` but not `payment.cvv`, even if no one ever directly registered `cvv`). The field stays out of storage unless you acknowledge it.
-- **Multi-tab sync**: matching paths are stripped _outbound_ (the broadcaster never posts them) AND rejected _inbound_ (receivers drop them even if a peer tries to slip them through).
+The resolved `sensitiveNames` list gates the persist opt-in: `{ persist: true }` on a sensitive path warns and skips the opt-in. Container opt-ins shed nested sensitive leaves the same way (`register('payment', { persist: true })` writes `payment.last4` but not `payment.cvv`, even if no one ever directly registered `cvv`). The field stays out of storage unless you acknowledge it.
 
 DevTools renders raw values by design. It is a dev-only surface, and redacting across every place a value surfaces (panels, logs, network tabs, breakpoints, source maps) is impractical security theater, not a real safeguard. Don't share your screen with the DevTools panel open over a customer's session.
 
@@ -85,4 +82,3 @@ DevTools renders raw values by design. It is a dev-only surface, and redacting a
 
 - [Per-field opt-in](/docs/persistence/per-field-opt-in): the deliberate per-path opt-in this heuristic backstops.
 - [Storage backends](/docs/persistence/storage-backends): the form-level gate before the field gate even matters.
-- [Multi-tab sync](/docs/cross-cutting-state/multi-tab-sync): the second subsystem that uses the same resolved list.

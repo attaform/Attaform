@@ -127,6 +127,5 @@ The default `max: 128` keeps at most 128 reachable positions across the undo + r
 
 ## Where to next
 
-- [Multi-tab sync](/docs/cross-cutting-state/multi-tab-sync): values converge across tabs; the history chain stays tab-local (each tab walks its own user's intent).
 - [`reset` & `resetField`](/docs/writing-and-mutating/reset): recorded as positions; the pre-reset state stays one undo away.
 - [Persistence overview](/docs/persistence/overview): picks up undo / redo as normal mutations.

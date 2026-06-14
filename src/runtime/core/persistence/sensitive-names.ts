@@ -24,9 +24,9 @@ import type { Path, PathKey, Segment } from '../paths'
  * })
  * ```
  *
- * The same resolved predicate gates persistence writes and multi-tab
- * sync broadcasts — one source of truth for "what counts as sensitive"
- * across those surfaces. (DevTools renders raw values by design.)
+ * The same resolved predicate gates persistence writes — one source of
+ * truth for "what counts as sensitive." (DevTools renders raw values
+ * by design.)
  *
  * **Non-goals.** This is not a soundness guarantee. Adversarial paths
  * (`'sensitive_data'`, `'CCV'` instead of `'CVV'`) can slip through.
@@ -167,9 +167,9 @@ export function createSegmentMatchesSensitive(
  * dotted-string, or canonical JSON `PathKey`) against the resolved
  * name list. True iff ANY segment matches.
  *
- * Same predicate gates persistence writes, multi-tab broadcasts, AND
- * the DevTools edit-rejection check — consumers configure once via
- * `sensitiveNames` and every surface respects it.
+ * Same predicate gates persistence writes AND the DevTools
+ * edit-rejection check — consumers configure once via `sensitiveNames`
+ * and every surface respects it.
  */
 export function createIsSensitivePath(
   names: readonly string[] = DEFAULT_SENSITIVE_NAMES

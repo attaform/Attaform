@@ -208,8 +208,8 @@ export type AbstractSchema<Form, GetValueFormType> = {
    *
    * Resolves a `Promise` so adapters can defer the structural walk (and
    * its `canonicalStringify` helper) onto a dynamic import. The framework
-   * only ever needs the fingerprint on opt-in async paths (the multi-tab
-   * channel name, the persistence storage key) plus a dev-only mismatch
+   * only ever needs the fingerprint on opt-in async paths (the
+   * persistence storage key) plus a dev-only mismatch
    * warning, so none of those bytes belong on the eager `useForm` path.
    *
    * The library uses this to detect schema mismatches at a shared
@@ -925,24 +925,6 @@ export type WriteMeta = {
    */
   readonly hydration?: boolean
   /**
-   * When `true`, this write originated from a sibling tab's
-   * BroadcastChannel broadcast (the multi-tab sync module's inbound
-   * apply). Listeners that initiate side effects check this flag to
-   * avoid amplification loops and spurious side effects:
-   *
-   * - The multi-tab sync OUTBOUND broadcaster skips so a remote-driven
-   *   write doesn't echo back across the channel.
-   * - The history module updates its diff anchor but does NOT push a
-   *   delta — remote writes aren't part of the local user's undo
-   *   timeline.
-   * - The persistence writer skips so the receiving tab doesn't
-   *   double-persist a value the originating tab already wrote.
-   *
-   * Internal — set by `createMultiTabSyncModule`. Don't set from
-   * consumer code.
-   */
-  readonly crossTab?: boolean
-  /**
    * When `true`, this write lands normally (storage, validation,
    * persistence, history) but does NOT notify `form.onChange` handlers.
    * The side-channel reacts to user edits, not programmatic rebaselines:
@@ -1512,9 +1494,8 @@ export type UseFormConfiguration<
   maxRecursionDepth?: number
   /**
    * Override the path-segment name stems treated as sensitive for this
-   * form. Sensitive paths are excluded from persistence writes and
-   * multi-tab sync broadcasts. (DevTools renders raw values by design;
-   * it does not redact.)
+   * form. Sensitive paths are excluded from persistence writes.
+   * (DevTools renders raw values by design; it does not redact.)
    *
    * Resolution: per-form value (this field) > global default
    * (`createAttaform({ defaults: { sensitiveNames } })`) > library
@@ -1525,39 +1506,6 @@ export type UseFormConfiguration<
    * See `AttaformDefaults.sensitiveNames` for composition examples.
    */
   sensitiveNames?: readonly string[]
-  /**
-   * Cross-tab synchronisation via BroadcastChannel. **Defaults to
-   * `false` (opt-in).** Setting `true` on a keyed `useForm` callsite
-   * auto-pairs the form with same-keyed siblings in other same-origin
-   * tabs and mirrors their mutations in near real-time.
-   *
-   * **Resolution order (per-register override > per-form > global > library):**
-   *
-   *   register(path, { multiTab })  >  useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`false`)
-   *
-   * **Why opt-in.** Same-keyed forms broadcasting by default leaks
-   * surprise: a user editing in one tab sees their values appear in a
-   * sibling tab they forgot was open, including PII / PHI for forms
-   * that don't explicitly use `sensitiveNames`. Mirrors the `persist`
-   * default (also opt-in): both opt-in surfaces compose into one
-   * consistent "richer state needs explicit consent" rule.
-   *
-   * **What's stripped even when opt-in.** `File` and `Blob` values
-   * never traverse the channel regardless of this flag (security +
-   * `structuredClone` cost). Sensitive-named paths (via
-   * `sensitiveNames`) are stripped both directions. See the
-   * multi-tab sync page for the full security model.
-   *
-   * **Secure-context requirement.** Even with `multiTab: true`, sync
-   * is silently disabled outside `window.isSecureContext === true`
-   * (HTTPS or localhost). On plain HTTP a one-shot dev warning fires
-   * and the module noops.
-   *
-   * **Anonymous (auto-keyed) forms skip sync entirely** — without a
-   * consumer-supplied `key`, cross-tab identity is undefined and the
-   * channel would be solo by construction.
-   */
-  multiTab?: boolean
   /**
    * Whether `v-register` automatically manages aria attributes
    * (`aria-invalid`, `aria-busy`, `aria-required`, `aria-describedby`)
@@ -1743,10 +1691,9 @@ export type AttaformDefaults = {
   maxRecursionDepth?: number
   /**
    * Override the path-segment name stems treated as sensitive.
-   * Sensitive paths are excluded from persistence writes and multi-tab
-   * sync broadcasts — one configurable source of truth across those
-   * surfaces. (DevTools renders raw values by design; it does not
-   * redact.)
+   * Sensitive paths are excluded from persistence writes — one
+   * configurable source of truth. (DevTools renders raw values by
+   * design; it does not redact.)
    *
    * Library default is `DEFAULT_SENSITIVE_NAMES` (exported from
    * `attaform`); compose to extend:
@@ -1766,31 +1713,6 @@ export type AttaformDefaults = {
    * additive lists via the exported default).
    */
   sensitiveNames?: readonly string[]
-  /**
-   * App-wide default for `useForm({ multiTab })`. Library default is
-   * `false` (opt-in) — same posture as `persist`. Set to `true` once
-   * at the plugin level to enable cross-tab sync for every form in
-   * the app by default; individual forms can still opt out via
-   * `useForm({ multiTab: false })`.
-   *
-   * **Resolution order (per-form wins):**
-   *
-   *   useForm({ multiTab })  >  AttaformDefaults.multiTab  >  library default (`false`)
-   *
-   * **Why opt-in.** Auto-broadcasting same-keyed forms surprises users
-   * (a value typed in one tab appearing in another they forgot was
-   * open) and leaks state for forms that don't explicitly use
-   * `sensitiveNames`. Paired with `persist` (also opt-in), the two
-   * "richer state" surfaces follow one consistent rule: explicit
-   * consent.
-   *
-   * **Secure-context gate.** Even with `multiTab: true`, sync only
-   * activates over HTTPS or localhost. On plain HTTP, the module
-   * silently noops with a one-shot dev-mode warning — production
-   * deployments MUST be served over HTTPS for sync to function. See
-   * the multi-tab-sync recipe's Security section for the threat model.
-   */
-  multiTab?: boolean
   /**
    * App-wide default for `useForm({ autoAria })`. Library default is
    * `true`: `v-register` keeps `aria-invalid` / `aria-busy` /
@@ -2206,25 +2128,6 @@ export type RegisterOptions = {
    */
   acknowledgeSensitive?: boolean
   /**
-   * Opt this field OUT of multi-tab sync. The form-level cascade
-   * activates sync by default; passing `multiTab: false` on a single
-   * register call keeps that path tab-local — outbound patches at
-   * the path are stripped, and inbound patches at the path are
-   * rejected (symmetric tab-local behaviour).
-   *
-   * The opt-out is downgrade-only — you cannot pass `multiTab: true`
-   * to bring sync back on a form whose form-level `multiTab` is
-   * `false` (in that case the sync module never instantiated; there's
-   * no broadcaster to opt back into).
-   *
-   * Use for fields that hold transient per-tab UI state inside an
-   * otherwise-synced form (e.g. an editor's cursor position field
-   * mirrored into the form for save-on-blur), or for individual
-   * paths the consumer wants to scope to the originating tab without
-   * disabling sync globally.
-   */
-  multiTab?: boolean
-  /**
    * Sync transformation pipeline applied to user-typed values before
    * they reach form state. Composes left-to-right: each transform
    * receives the previous transform's output (or the directive-
@@ -2404,31 +2307,6 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   isSensitivePath: (path: Path | PathKey | string) => boolean
-  /**
-   * Whether this binding declared `register('path', { multiTab: false })`.
-   * Drives the directive's mount/unmount lifecycle: when `false`, the
-   * directive's `created` hook bumps `state.noSyncPaths` for this
-   * path, and `beforeUnmount` decrements. When `true` (the default),
-   * the binding rides the form-level cascade.
-   * @internal
-   */
-  multiTab: boolean
-  /**
-   * Pre-bound mount hook for `multiTab: false` bindings — calls
-   * `state.incrementNoSyncOptOut(path)` with this binding's path.
-   * `undefined` when `multiTab !== false`. The directive invokes
-   * during the mount lifecycle.
-   * @internal
-   */
-  markNoSync?: () => void
-  /**
-   * Pre-bound unmount hook for `multiTab: false` bindings — calls
-   * `state.decrementNoSyncOptOut(path)`. Paired with `markNoSync`;
-   * the directive invokes on `beforeUnmount` (and on `beforeUpdate`
-   * when the binding transitions out of opt-out).
-   * @internal
-   */
-  unmarkNoSync?: () => void
   /**
    * Sync transform pipeline applied by the directive's assigner to
    * user-typed values before they reach form state. See

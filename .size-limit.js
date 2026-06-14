@@ -257,7 +257,14 @@ export default [
     // opt-out through setValue / reset so hydration and reset never fire
     // saves; build-form-api.ts + use-abstract-form.ts surface form.onChange
     // + useForm({ onChange }). Measured at 53.39 KB.
-    limit: '54 KB',
+    //
+    // Lowered 54 → 52 KB on the multi-tab-sync removal branch
+    // (chore/rip-multitab): multi-tab-sync.ts and the async chunk
+    // esbuild inlines back into this single-file build left the bundle,
+    // along with the WriteMeta.crossTab thread, the state.noSyncPaths
+    // ref-counted opt-out, and the RegisterValue markNoSync /
+    // unmarkNoSync hooks. Measured at 51.44 KB.
+    limit: '52 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -406,7 +413,12 @@ export default [
     // onChange seam (on-change.ts registry + change context, create-form-
     // store dispatch + { silent } opt-out, form.onChange / useForm({
     // onChange }) surface). Measured at 67.44 KB.
-    limit: '68 KB',
+    //
+    // Lowered 68 → 66 KB on the multi-tab-sync removal branch
+    // (chore/rip-multitab): the unified entry's shared core chunk drops
+    // multi-tab-sync.ts plus the crossTab / noSyncPaths remnants.
+    // Measured at 65.48 KB.
+    limit: '66 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -511,7 +523,11 @@ export default [
     // same shared core chunk (on-change.ts registry + change context,
     // create-form-store dispatch + { silent } opt-out, form.onChange /
     // useForm({ onChange }) surface). Measured at 61.33 KB.
-    limit: '62 KB',
+    //
+    // Lowered 62 → 60 KB on the multi-tab-sync removal branch
+    // (chore/rip-multitab): same shared core chunk drops multi-tab-sync.ts
+    // plus the crossTab / noSyncPaths remnants. Measured at 59.34 KB.
+    limit: '60 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -690,7 +706,13 @@ export default [
     // the shared core. zod-v3.mjs lands at 62.96; this restores ~1 KB of headroom
     // (the 63 cap was the predicted bind point and left ~40 bytes, within gzip
     // measurement jitter and apt to flake the gate). Measured at 62.96 KB.
-    limit: '64 KB',
+    //
+    // Lowered 64 → 62 KB on the multi-tab-sync removal branch
+    // (chore/rip-multitab): same shared core chunk drops multi-tab-sync.ts
+    // plus the crossTab / noSyncPaths remnants. zod-v3.mjs measured at
+    // 60.81 KB; the 62 cap keeps ~1.2 KB headroom (61 would leave ~0.2,
+    // within gzip jitter).
+    limit: '62 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

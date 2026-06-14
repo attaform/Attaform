@@ -66,39 +66,6 @@ export function syncPersistOptIn(
 }
 
 /**
- * Reconcile the multi-tab sync OPT-OUT (`register('path',
- * { multiTab: false })`) across binding lifecycle transitions.
- * Symmetric with `syncPersistOptIn` for the multi-tab dimension.
- *
- * The RV's `markNoSync` / `unmarkNoSync` closures are pre-bound to
- * the canonical path key + the FormStore's ref-counted opt-out
- * registry (see `state.incrementNoSyncOptOut`). When `multiTab !==
- * false`, both closures are `undefined` and this function noops on
- * the hot path.
- *
- * Handles every transition:
- *   - undefined → opted-out: increment
- *   - opted-out → undefined: decrement
- *   - opted-out → opted-out (same path): no-op (idempotent)
- *   - opted-out → opted-out (path changed): decrement old, increment new
- */
-export function syncMultiTabOptOut(value: unknown, oldValue: unknown): void {
-  const wasOptedOut = isRegisterValue(oldValue) && oldValue.unmarkNoSync !== undefined
-  const wantsOptOut = isRegisterValue(value) && value.markNoSync !== undefined
-  if (!wasOptedOut && !wantsOptOut) return
-  if (wasOptedOut) {
-    const old = oldValue as RegisterValue
-    const samePath = wantsOptOut && (value as RegisterValue).path === old.path
-    if (!samePath) old.unmarkNoSync?.()
-  }
-  if (wantsOptOut) {
-    const v = value as RegisterValue
-    const samePathOld = wasOptedOut && (oldValue as RegisterValue).path === v.path
-    if (!samePathOld) v.markNoSync?.()
-  }
-}
-
-/**
  * Migrate the element's registration entry across binding-value
  * transitions. Symmetric with `syncPersistOptIn` for the
  * persistence opt-in dimension; this one tracks element-to-path

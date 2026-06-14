@@ -7,7 +7,7 @@ description: The case for picking Attaform for Vue 3 forms. Type-safe end to end
 
 > Five marks of a great form library. Attaform's North star, top to bottom.
 
-Forms look simple from the outside. Inside, they're a thicket of subtle details: blank-value tracking, persistence, sensitive-name protection, multi-tab sync, SSR, async validation, nested objects and discriminated unions, efficient DOM tracking, errors flowing from validators and your server into one reactive form API. A great library handles every one for you, without making you reach for the type plumbing or wire up the side-channels yourself.
+Forms look simple from the outside. Inside, they're a thicket of subtle details: blank-value tracking, persistence, sensitive-name protection, SSR, async validation, nested objects and discriminated unions, efficient DOM tracking, errors flowing from validators and your server into one reactive form API. A great library handles every one for you, without making you reach for the type plumbing or wire up the side-channels yourself.
 
 These five convictions guide Attaform's design:
 
@@ -79,7 +79,6 @@ These ship with the core, typed and orchestrated as first-class features:
 - Field arrays with stable keys and per-item validation.
 - Undo / redo with bounded history, opt-in per form.
 - Persistence with per-field opt-in, local / session / IndexedDB / custom backends, and sensitive-name guards out of the box.
-- Multi-tab sync over BroadcastChannel, secure-context gated.
 - Discriminated unions with variant memory across discriminator switches.
 - A DevTools panel that surfaces every form on the page: values, errors, history, persistence drafts.
 

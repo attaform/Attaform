@@ -154,4 +154,3 @@ Attaform ships [zero runtime dependencies](/docs/getting-started/why-attaform), 
 - [`onChange`](/docs/cross-cutting-state/on-change): the side-channel primitive this recipe is built on.
 - [Async refinements](/docs/validation/async-refinements): the server-side validity checks the gate runs.
 - [`setValue` patterns](/docs/writing-and-mutating/set-value): the `{ silent }` write for hydrating a form without echoing saves.
-- [Multi-tab sync](/docs/cross-cutting-state/multi-tab-sync): keep autosaved forms convergent across a user's tabs.

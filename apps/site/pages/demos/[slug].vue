@@ -121,9 +121,8 @@
             <p class="mt-4 text-sm text-fg-muted">
               Editing <UiInlineCode>apps/site/docs-demos/{{ sourceLabel }}</UiInlineCode
               >. The playground is a self-contained sandbox: source edits and form state stay local
-              to this tab so you can experiment freely. To see cross-tab features in action
-              (multi-tab sync, persistence across reloads), open the inline demo on the docs page in
-              two browser tabs.
+              to this tab so you can experiment freely. To see persistence in action (form state
+              restored across reloads), reload the inline demo on the docs page.
             </p>
           </div>
           <div class="flex items-center gap-3 text-sm">

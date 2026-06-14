@@ -65,7 +65,7 @@ if (form.setValue('age', 21)) {
 
 ## Same pipeline as `v-register`
 
-Every `setValue` call flows through the same write pipeline as the directive: slim-type gating, dirty / touched tracking, persistence, multi-tab sync, history. The reactive surface (`values`, `fields`, validation) reacts identically. No "programmatic writes are second-class" carve-out.
+Every `setValue` call flows through the same write pipeline as the directive: slim-type gating, dirty / touched tracking, persistence, history. The reactive surface (`values`, `fields`, validation) reacts identically. No "programmatic writes are second-class" carve-out.
 
 The one difference: `setValue` writes are **never coerced**. Coercion is for user-typed DOM strings; values you pass to `setValue` are already typed at the call site (TypeScript checks it), so coercion would be a no-op at best and a footgun at worst.
 

@@ -64,7 +64,7 @@ Numeric blank-state survives reload symmetrically. A field with no `defaultValue
 - Tab A is mid-debounce; Tab B writes; Tab A's debounce overwrites.
 - The persistence module doesn't subscribe to the `storage` event; fresh writes from another tab don't replay into the live form.
 
-If multi-tab consistency matters, use `'session'` (tab-scoped) or layer [Multi-tab sync](/docs/cross-cutting-state/multi-tab-sync) on top. That _does_ mirror live edits across tabs via `BroadcastChannel`, and works orthogonally to persistence.
+If multi-tab consistency matters, use `'session'` (tab-scoped) so each tab keeps its own draft, or coordinate live convergence in your own app layer. Persistence intentionally stays last-writer-wins.
 
 ## Cross-SFC behavior
 
@@ -104,6 +104,5 @@ The full walkthrough on each pattern lives in [`useRegister` for custom componen
 
 ## Where to next
 
-- [Multi-tab sync](/docs/cross-cutting-state/multi-tab-sync): live convergence across same-origin tabs (different problem; complementary to persistence).
 - [`useRegister`](/docs/binding-inputs/use-register): the recommended pattern for custom components, persistence-aware.
 - [Persistence overview](/docs/persistence/overview): the two-gate model and schema-aware hydration in one page.

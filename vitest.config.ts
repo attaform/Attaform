@@ -65,9 +65,9 @@ export default defineConfig({
     // and fails to import them.
     include: ['test/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
     // Global setup file: stubs `window.isSecureContext = true` so the
-    // secure-context gate doesn't disable multi-tab sync and built-in
-    // persistence in jsdom-backed tests, and resets the
-    // one-shot dev-warning dedup between tests.
+    // secure-context gate doesn't disable built-in persistence in
+    // jsdom-backed tests, and resets the one-shot dev-warning dedup
+    // between tests.
     setupFiles: ['./test/setup.ts'],
     // Materialize the docs-demos' generated `styles.css` once before the
     // suite runs. The files are gitignored and produced at dev/build time by

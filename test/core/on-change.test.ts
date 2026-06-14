@@ -165,7 +165,7 @@ describe('form.onChange registry', () => {
   })
 
   describe('suppression: edits, not rebaselines', () => {
-    it.each(['hydration', 'crossTab', 'silent'] as const)('meta.%s suppresses dispatch', (flag) => {
+    it.each(['hydration', 'silent'] as const)('meta.%s suppresses dispatch', (flag) => {
       const state = makeState()
       const { calls, handler } = recorder()
       state.registerOnChange('email', handler, undefined, noForm)

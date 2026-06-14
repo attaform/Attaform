@@ -10,9 +10,9 @@
  * The directive's `beforeUpdate` hook only re-syncs `el.value` on a host
  * re-render. The value-sync watch (`setupValueSync`, run from `mounted`)
  * is what catches the no-re-render case. Without it the store updates but
- * the `<input>` stays stale — the multi-tab demo's exact failure, where a
- * patch received from another tab landed in the store yet never repainted
- * the input.
+ * the `<input>` stays stale: an imperative store write (a sibling
+ * component's `setValue`) lands in the store yet never repaints an input
+ * bound in a display-only component that triggers no re-render.
  *
  * These exercise the directive hooks directly (no Vue render cycle) so the
  * only thing under test is the reactive DOM sync. The mock RegisterValue
@@ -53,7 +53,6 @@ function makeRegisterValue<T>(initial: T): MutableMockRv<T> {
     acknowledgeSensitive: false,
     persistOptIns: createPersistOptInRegistry(),
     isSensitivePath: () => false,
-    multiTab: true,
     acceptsUndefined: false,
     acceptsString: true,
     beginTransform: () => 0,

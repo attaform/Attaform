@@ -142,12 +142,10 @@ Typed two-way binding to `form.values.email`, with schema-driven coercion at the
 Same line. The field now writes through to the form's persistence backend on every keystroke, with the sensitive-name guard catching accidental `password`-style opt-ins.
 
 ```vue
-<input
-  v-register="form.register('email', { persist: true, transforms: [lowercase], multiTab: false })"
-/>
+<input v-register="form.register('email', { persist: true, transforms: [lowercase] })" />
 ```
 
-Same line. Add a sync DOM-input transform, opt out of multi-tab sync, all without touching the markup elsewhere.
+Same line. Add a sync DOM-input transform, all without touching the markup elsewhere.
 
 ## Features
 
@@ -160,7 +158,6 @@ Same line. Add a sync DOM-input transform, opt out of multi-tab sync, all withou
 - **Discriminated-union variant memory.** Switching a discriminator (`notify.channel: 'email' → 'sms' → 'email'`) restores the previous variant's typed subtree by default. Pass `useForm({ rememberVariants: false })` to drop on switch.
 - **Field arrays.** `append` / `prepend` / `insert` / `remove` / `swap` / `move` / `replace`, fully typed at the call site.
 - **Drafts and undo / redo.** Per-field opt-in persistence (`localStorage` / `sessionStorage` / IndexedDB / custom backend) and a bounded undo stack.
-- **Multi-tab sync.** Same-keyed `useForm` callsites in same-origin tabs auto-pair over `BroadcastChannel` and mirror every mutation in near real-time. Sensitive paths filtered both directions; HTTPS-or-localhost required.
 - **Server errors.** `parseApiErrors(payload, { formKey: form.key })` normalizes any API envelope into the same `ValidationError` shape your template already reads. Pair with `form.setFieldErrors(...)`; user errors survive schema revalidation.
 - **Stable error codes.** Every `ValidationError` carries `code: string`. Attaform codes (`atta:`) live on the exported `AttaformErrorCode` enum; adapter codes use a `zod:` prefix; consumers pick their own (`api:`, `auth:`, …).
 - **Clearable required fields.** The `unset` sentinel marks a field displayed-empty while storage holds the schema's slim default. Submit fails with `'No value supplied'` for required schemas; `.optional()` / `.nullable()` / `.default(N)` opt out.

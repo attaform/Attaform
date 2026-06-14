@@ -847,7 +847,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * cascade (`useForm({ sensitiveNames })` > global default >
    * library `DEFAULT_SENSITIVE_NAMES`). Used by:
    *  - the persistence opt-in gate (`allowSensitivePersist`);
-   *  - the multi-tab sync module (outbound strip + inbound reject);
    *  - DevTools edit rejection;
    *  - any future surface that needs to flag "this path holds
    *    sensitive data."
@@ -857,37 +856,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * resolved-config surface.
    */
   readonly isSensitivePath: (path: Path | PathKey | string) => boolean
-
-  /**
-   * Canonical path keys explicitly opted OUT of multi-tab sync by
-   * `register(path, { multiTab: false })`. The sync module's outbound
-   * broadcaster strips patches at these paths AND the inbound listener
-   * rejects them — symmetric tab-local behaviour for selected fields.
-   *
-   * Read-only Set view; mutate via `incrementNoSyncOptOut` /
-   * `decrementNoSyncOptOut` which maintain a per-path ref count so
-   * multiple bindings on the same path balance correctly across
-   * dynamic conditional renders. Empty by default.
-   */
-  readonly noSyncPaths: ReadonlySet<PathKey>
-
-  /**
-   * Ref-counted "this path is tab-local" registration. Called by
-   * `v-register`'s `created` hook for any binding that declared
-   * `register('x', { multiTab: false })`. The first call for a given
-   * path adds it to `noSyncPaths`; subsequent calls just bump the
-   * ref count. Pair with `decrementNoSyncOptOut`.
-   */
-  incrementNoSyncOptOut(path: PathKey): void
-
-  /**
-   * Symmetric companion to `incrementNoSyncOptOut`. Called by
-   * `v-register`'s `beforeUnmount` hook. When the ref count for a
-   * path drops to zero, the path is removed from `noSyncPaths` —
-   * dynamic toggling (the binding rendered conditionally) restores
-   * full sync to the path when the last opt-out unmounts.
-   */
-  decrementNoSyncOptOut(path: PathKey): void
 
   /**
    * Resolved schema-coercion index — the merged config from
@@ -994,8 +962,8 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * Pre-resolved sensitive-path predicate. Built by the caller from
    * the `sensitiveNames` cascade (`useForm({ sensitiveNames })` >
    * global default > library `DEFAULT_SENSITIVE_NAMES`). Stored on
-   * the FormStore for use by persistence enforcement, multi-tab sync,
-   * DevTools, and the per-form variant of the heuristic. Optional;
+   * the FormStore for use by persistence enforcement, DevTools, and
+   * the per-form variant of the heuristic. Optional;
    * when omitted, the library-default closure is used.
    */
   readonly isSensitivePath?: ((path: Path | PathKey | string) => boolean) | undefined
@@ -1207,30 +1175,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // its subscription (mount order between the directive and
   // wirePersistence isn't guaranteed).
   const persistOptIns = createPersistOptInRegistry()
-  // Per-register `multiTab: false` opt-out tracker. Populated by the
-  // directive's mount hook for bindings that pass `{ multiTab: false }`;
-  // read by the multi-tab sync module to filter outbound + inbound
-  // patches symmetrically. Ref-counted under the hood — the `Set`
-  // view exposed to readers reflects "any binding currently
-  // declares this path as tab-local."
-  const noSyncPaths = new Set<PathKey>()
-  const noSyncPathCounts = new Map<PathKey, number>()
-
-  function incrementNoSyncOptOut(path: PathKey): void {
-    const next = (noSyncPathCounts.get(path) ?? 0) + 1
-    noSyncPathCounts.set(path, next)
-    if (next === 1) noSyncPaths.add(path)
-  }
-
-  function decrementNoSyncOptOut(path: PathKey): void {
-    const current = noSyncPathCounts.get(path) ?? 0
-    if (current <= 1) {
-      noSyncPathCounts.delete(path)
-      noSyncPaths.delete(path)
-      return
-    }
-    noSyncPathCounts.set(path, current - 1)
-  }
 
   // Resolve the coercion config to a concrete index ONCE per form.
   // The index is keyed by `${input}->${output}` for O(1) per-keystroke
@@ -1245,8 +1189,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   // Sensitive-path predicates: caller-provided (built from the
   // `sensitiveNames` cascade in `use-abstract-form.ts`) or the
-  // library-default closure. Same predicate gates persistence,
-  // multi-tab sync, DevTools.
+  // library-default closure. Same predicate gates persistence
+  // and DevTools.
   const resolvedIsSensitivePath = options.isSensitivePath ?? defaultIsSensitivePath
 
   // State-scoped teardown hooks. Persistence / history / any other
@@ -3035,8 +2979,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // (it shouldn't, but defensive) doesn't keep the registry alive
     // through stale path entries on a disposed store.
     persistOptIns.clear()
-    noSyncPaths.clear()
-    noSyncPathCounts.clear()
   }
 
   function getValueAtPath(path: Path): unknown {
@@ -4101,9 +4043,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     modules,
     persistOptIns,
     isSensitivePath: resolvedIsSensitivePath,
-    noSyncPaths,
-    incrementNoSyncOptOut,
-    decrementNoSyncOptOut,
     coerceIndex,
     blankPaths,
     originalBlankPaths,

@@ -1,8 +1,20 @@
 # Changelog
 
 ## Unreleased
+### Removed
 
-_No unreleased changes yet._
+- **Multi-tab synchronisation has been removed, and Attaform's trust story is
+  sharper for it.** `useForm({ multiTab })`, the
+  `createAttaform({ defaults: { multiTab } })` default, the per-field
+  `register(path, { multiTab: false })` opt-out, and the BroadcastChannel engine
+  behind them are gone. Form values stay in memory where they belong: nothing
+  mirrors a field across tabs, so there is no PII on the wire and one fewer
+  client-side surface for an auditor to reason about. Forms that need tabs to
+  agree can coordinate through a backend or a channel the app owns, which is
+  where realtime state with auth and encryption actually lives. Pre-1.0, so this
+  lands without a deprecation shim; the `RegisterValue.markNoSync` /
+  `unmarkNoSync` hooks and the internal cross-tab write plumbing go with it.
+  (#XXX)
 
 ## v0.22.0
 ### Added

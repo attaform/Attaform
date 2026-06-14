@@ -37,8 +37,8 @@ import type {
  *   actually changed (the store's identity short-circuit), so a matching
  *   patch exists iff there was a real change.
  * - **Fires on edits, not rebaselines.** `meta.hydration` (persistence
- *   restore), `meta.crossTab` (sibling-tab echo), and `meta.silent` (reset's
- *   tag and the consumer `{ silent }` opt-out) suppress dispatch.
+ *   restore) and `meta.silent` (reset's tag and the consumer `{ silent }`
+ *   opt-out) suppress dispatch.
  * - **A handler never throws into the write.** Every handler invocation,
  *   source resolution, and `onError` call is wrapped; a throw routes to
  *   `onError` or is swallowed (logged in dev), never rethrown into the
@@ -104,7 +104,7 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 
 /** A write that rebaselines or echoes rather than reflecting a user edit. */
 function isSuppressed(meta: WriteMeta | undefined): boolean {
-  return meta?.hydration === true || meta?.crossTab === true || meta?.silent === true
+  return meta?.hydration === true || meta?.silent === true
 }
 
 /** Canonicalize a string / string[] source into a deduped resolved-path list. */

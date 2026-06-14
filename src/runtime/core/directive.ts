@@ -34,11 +34,7 @@ import {
   type AriaCarrier,
 } from './directive-aria'
 import { vRegisterFile } from './directive-file'
-import {
-  syncElementRegistration,
-  syncMultiTabOptOut,
-  syncPersistOptIn,
-} from './directive-lifecycle'
+import { syncElementRegistration, syncPersistOptIn } from './directive-lifecycle'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
 import { setupValueSync, teardownValueSync } from './directive-value-sync'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
@@ -1048,10 +1044,6 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // Per-element persist opt-in is reconciled at the dynamic level so
     // the per-tag variants stay focused on their input semantics.
     syncPersistOptIn(el, binding.value, undefined, vnode.props?.['type'])
-    // Per-path multi-tab opt-out lives at the dynamic level too —
-    // ref-counted on the FormStore so multiple bindings on the same
-    // path balance correctly across conditional renders.
-    syncMultiTabOptOut(binding.value, undefined)
 
     // Always run the per-tag variant's `created` — listener-body bail
     // (`shouldBailListener`) prevents the bubbled-write bug on
@@ -1109,8 +1101,6 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // prior RegisterValue so the helper can diff persist / path / registry
     // and migrate the entry without thrashing.
     syncPersistOptIn(el, binding.value, binding.oldValue, vnode.props?.['type'])
-    // Reactive multi-tab opt-out toggling — same diff strategy.
-    syncMultiTabOptOut(binding.value, binding.oldValue)
     // Same diff for the form's element map. Catches the
     // `useRegister`-driven swap (binding mounted with `undefined`,
     // a real RV arrives on the next render), the dynamic-path case,
@@ -1167,10 +1157,6 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // hunt for the latest entry.
     if (isRegisterValue(value)) {
       value.persistOptIns.removeAllFor(getOrAssignElementId(el))
-      // Mirror cleanup for multi-tab opt-out — decrement ref count so
-      // the path doesn't stay tab-local after every opted-out binding
-      // unmounts.
-      value.unmarkNoSync?.()
     }
 
     if (!isRegisterValue(value)) return

@@ -23,9 +23,37 @@
   so an autosave can gate its write on `await form.validateAsync(path)` and
   persist only what passes. New `onChange` and autosave guides, plus an async
   server-validation guide, document the split. Verified against both the Zod v3
-  and v4 adapters; zero new runtime dependencies. (#XXX)
+  and v4 adapters; zero new runtime dependencies. (#395)
+
+### Fixed
+
+- **The Zod v3 adapter holds up under a mixed Zod-major install.** When a
+  project hoisted Zod v4 alongside the Zod v3 a schema was authored with, the
+  adapter rebuilt its internal slim and stripped schema nodes through the
+  ambient `z`, which the published build resolves to whichever Zod the consumer
+  hoists. Under that mismatch the rebuilt nodes came out v4-shaped, the v3 walk
+  read an empty set of accepted paths, and every `setValue` was silently dropped
+  behind a misattributed warning that the path was not in your schema. The
+  adapter now reconstructs each node from the consumer's own node, keeping it on
+  the authoring Zod's prototype and patching only the parts that change, so it
+  builds nothing from the ambient `z` and the mismatch is impossible by
+  construction rather than merely diagnosed. Pinned by a skew test that mounts
+  the v3 adapter onto v4 and proves writes, default seeding, and union routing
+  all still work; zero new dependencies. (#383)
 
 ### Performance
+
+- **A runtime-performance pass across the hot paths, with behaviour frozen.** A
+  sweep of the shared core banked a set of wins on the work that runs on every
+  keystroke, mount, and submit: less work per validation, narrower reactive
+  scope so a write re-renders fewer fields, and lighter SSR and hydration. Every
+  win is byte-identical in the bundle, since this targeted wall-clock,
+  allocations, and render work rather than size, and each is provably
+  behaviour-preserving: a golden-master lock freezes Attaform's observable
+  surface (values, errors by code and path, field and list identity, union
+  routing) and runs the full suite against both the Zod v3 and v4 adapters, so
+  the core got faster with nothing observable changing. Zero new dependencies.
+  (#379)
 
 - **Array mutation scales with the change, not the form.** Adding, inserting,
   reordering, or removing a row now costs work proportional to the one element
@@ -37,7 +65,7 @@
   to a hundred-row grid is several times cheaper, and the per-op cost stays flat
   as the array grows. Behaviour is unchanged, pinned by a call-count regression
   guard and the full array suite across the Zod v3 and v4 adapters; zero new
-  dependencies. (#XXX)
+  dependencies. (#399)
 
 - **Reordering or editing a row is a touched-rows update at any nesting depth,
   not a whole-list re-render.** The typed array helpers (`append` / `insert` /
@@ -56,7 +84,7 @@
   `setValue('rows', wholeNewArray)` is a container-target write and still replaces
   the reference, just like writing any other container. Pinned by a
   reactivity-contract suite and re-render-count guards across the Zod v3 and v4
-  adapters; zero new dependencies. (#XXX)
+  adapters; zero new dependencies. (#400)
 
 - **A row's field state stays put when the list grows or shrinks.** Reading
   `form.fields` or `form.list` over an array builds one `FieldState` per row, and
@@ -74,7 +102,20 @@
   sibling row is added or removed. Behaviour is unchanged, pinned by a
   recompute-count regression guard, a reactive-coupling test on the path walker,
   and the full array and reactivity suites across the Zod v3 and v4 adapters;
-  zero new dependencies, no size change. (#XXX)
+  zero new dependencies, no size change. (#402, #403)
+
+- **Rolling a list's field state up is linear in its size, not quadratic.**
+  Reading `form.fields` or `form.list` rolls each container's state up from its
+  descendant leaves, and that rollup had scanned every leaf in the whole form
+  and kept its own, so building the state for an N-row list cost O(N^2) in the
+  row count and every structural array op paid it again. The rollup now walks
+  only the container's own subtree, so `form.list` and the array path drop to
+  linear in N and the per-op cost stays flat as the list grows: in a jsdom probe
+  a with-render append over a 200-row list came down roughly 13x and a swap
+  roughly 37x. The reactive dependency narrows the same way, so a change inside
+  one row's subtree no longer invalidates a sibling's rolled-up state. Output is
+  byte-identical to the old scan, pinned by a recompute-count guard across the
+  Zod v3 and v4 adapters; zero new dependencies, no size change. (#384)
 
 ## v0.21.2
 ### Changed

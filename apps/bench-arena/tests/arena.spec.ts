@@ -214,17 +214,46 @@ interface MemoryResult {
   series: { retained: number[]; churn: number[]; leak: number[] }
 }
 
+/** CDP allocation-sampling interval (bytes): fine enough to resolve a burst's
+ *  hundreds-of-KB allocation, coarse enough to stay low-overhead on the heaviest
+ *  libraries' multi-MB bursts. */
+const ALLOC_SAMPLE_BYTES = 4096
+
+/** A node of CDP's allocation-sampling profile; `selfSize` is the sampled bytes
+ *  attributed to that frame, with descendants carrying the rest of the tree. */
+interface SamplingNode {
+  selfSize: number
+  children?: SamplingNode[]
+}
+
+/** Total sampled bytes in an allocation profile: every node's self-size, summed. */
+function sampledBytes(node: SamplingNode): number {
+  let total = node.selfSize
+  for (const child of node.children ?? []) total += sampledBytes(child)
+  return total
+}
+
 /**
- * Drive the memory dimension. The page only installs mount/type/teardown hooks;
- * a precise heap is read driver-side through CDP, since the in-page
- * performance.memory is quantized to uselessness (tens-of-MB buckets that ignore
- * real allocations). Per cycle, with `s0` the collected baseline, `s1` the
- * collected live mount, `s2` the heap after a keystroke burst (uncollected), and
- * `s3` the collected heap after teardown: retained = s1 - s0 (live-form heap),
- * churn = s2 - s1 (the burst's allocation), leak = s3 - s0 (post-teardown
+ * Drive the memory dimension. The page only installs mount/type/teardown hooks; a
+ * precise heap is read driver-side through CDP, since the in-page performance.memory
+ * is quantized to uselessness (tens-of-MB buckets that ignore real allocations).
+ *
+ * Retained and leak come from collected-heap snapshots: with `s0` the collected
+ * baseline, `s1` the collected live mount, and `s3` the collected heap after
+ * teardown, retained = s1 - s0 (live-form heap) and leak = s3 - s0 (post-teardown
  * residual). A leak that makes the baseline creep leaves every per-cycle delta
- * correct. Production preview only: a dev build's HMR registry retains every
- * mount and swamps the signal (leak then reads as the whole retained heap).
+ * correct.
+ *
+ * Churn (a keystroke burst's allocation pressure) is measured by the CDP allocation
+ * sampler around the burst, NOT by an uncollected post-burst `usedSize` delta. A raw
+ * snapshot reads whatever transient garbage V8 has not swept yet at that instant,
+ * which is governed by GC scheduling rather than allocation: the same burst can read
+ * tens of MB one moment and a few hundred KB after a sweep, though the memory it
+ * truly retains is identical (collect first and it is). The sampler records
+ * allocations as they happen, independent of when they are collected, so churn
+ * reflects the bytes a burst allocates, not V8's lazy-heap timing. Production preview
+ * only: a dev build's HMR registry retains every mount and swamps the signal (leak
+ * then reads as the whole retained heap).
  */
 async function runMemoryCell(
   page: Page,
@@ -272,9 +301,13 @@ async function runMemoryCell(
     await gc()
     const s1 = await used()
     retained.push(Math.max(0, s1 - s0))
+    // The burst's allocation, measured by the sampler (GC-timing-independent), not
+    // an uncollected post-burst usedSize delta (which reads V8's unswept transient
+    // heap rather than allocation). See the function docblock.
+    await client.send('HeapProfiler.startSampling', { samplingInterval: ALLOC_SAMPLE_BYTES })
     await page.evaluate(() => (window as MemoryWindow).__BENCH_MEM__?.typeBurst())
-    const s2 = await used()
-    churn.push(Math.max(0, s2 - s1))
+    const { profile } = await client.send('HeapProfiler.stopSampling')
+    churn.push(sampledBytes(profile.head))
     await page.evaluate(() => (window as MemoryWindow).__BENCH_MEM__?.teardown())
     await gc()
     const s3 = await used()

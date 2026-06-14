@@ -19,6 +19,7 @@
  */
 import * as v from 'valibot'
 import { z } from 'zod'
+import { z as z4 } from 'zod-v4'
 import type { ScenarioParams } from '../../adapters/contract'
 import { type NativeRule, type ScenarioShape } from './types'
 
@@ -83,6 +84,17 @@ export function wizardZod3(params: ScenarioParams): z.ZodTypeAny {
     shape[stepKey(i)] = z.object(fields)
   }
   return z.object(shape)
+}
+
+/** zod v4 mirror of {@link wizardZod3}, fed to the Attaform (Zod 4) adapter. */
+export function wizardZod4(params: ScenarioParams): z4.ZodType {
+  const shape: Record<string, z4.ZodType> = {}
+  for (let i = 0; i < stepCount(params); i++) {
+    const fields: Record<string, z4.ZodType> = {}
+    for (let j = 0; j < FIELDS_PER_STEP; j++) fields[fieldName(j)] = z4.string().min(MIN_LENGTH)
+    shape[stepKey(i)] = z4.object(fields)
+  }
+  return z4.object(shape)
 }
 
 /** valibot mirror for formisch. */

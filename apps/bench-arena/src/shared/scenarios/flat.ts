@@ -12,6 +12,7 @@
  */
 import * as v from 'valibot'
 import { z } from 'zod'
+import { z as z4 } from 'zod-v4'
 import type { ScenarioParams } from '../../adapters/contract'
 import { fieldCount, type NativeRule, type ScenarioShape } from './types'
 
@@ -44,6 +45,14 @@ export function flatZod3(params: ScenarioParams): z.ZodTypeAny {
   const shape: Record<string, z.ZodTypeAny> = {}
   for (let i = 0; i < F; i++) shape[`f${i}`] = z.string().min(MIN_LENGTH)
   return z.object(shape)
+}
+
+/** zod v4 mirror of {@link flatZod3}, fed to the Attaform (Zod 4) adapter. */
+export function flatZod4(params: ScenarioParams): z4.ZodType {
+  const F = fieldCount(params)
+  const shape: Record<string, z4.ZodType> = {}
+  for (let i = 0; i < F; i++) shape[`f${i}`] = z4.string().min(MIN_LENGTH)
+  return z4.object(shape)
 }
 
 /** valibot mirror for formisch. */

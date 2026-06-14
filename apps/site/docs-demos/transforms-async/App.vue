@@ -8,7 +8,7 @@
     '# links.txt: one web address per line. Blank lines and # comments are skipped.',
     'attaform.com',
     'https://Example.com/Docs/Getting-Started',
-    'github.com/attaform/attaform',
+    'github.com/attaform/Attaform',
     '',
     'zod.dev/Guides/Migration',
     'ftp://files.example.com/not-a-web-link',

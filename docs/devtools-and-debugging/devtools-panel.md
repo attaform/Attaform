@@ -46,9 +46,9 @@ One entry per registered form, keyed by the form's `key`. Click a form to inspec
 
 ### Form value
 
-The current `form.values` as an interactive JSON tree. **Editable from the panel:** your edit flows through `setValueAtPath` and drives the whole reactive pipeline (validation, persistence opt-in, history). The panel writes back into the same store the form reads from, so a value edited in DevTools is indistinguishable from one typed into an input.
+The current `form.values` as an interactive JSON tree. **Editable from the panel:** your edit flows through `setValueAtPath` and drives the whole reactive pipeline (validation, history). The panel writes back into the same store the form reads from, so a value edited in DevTools is indistinguishable from one typed into an input.
 
-Values render verbatim. The panel is dev-only, so it doesn't mask passwords / tokens / secrets; debugging a credential flow typically needs the actual value. The sensitive-name heuristic still applies elsewhere in Attaform (persistence writes), it's just not applied to the dev surface. Close the panel before a screen share if a value would be sensitive on camera, the same hygiene as the browser's own DevTools console.
+Values render verbatim. The panel is dev-only, so it doesn't mask passwords / tokens / secrets; debugging a credential flow typically needs the actual value. Close the panel before a screen share if a value would be sensitive on camera, the same hygiene as the browser's own DevTools console.
 
 ### Schema Errors / User Errors
 
@@ -84,13 +84,12 @@ Capacity is capped at 200 events per session; older entries fall off the back. H
 
 ## Sensitive data and the panel
 
-The panel renders form values raw. DevTools is a dev-only surface, and redacting across every place a value surfaces (panels, logs, network tabs, breakpoints, source maps) is impractical security theater, not a real safeguard. For production-data spelunking on a sensitive surface, use a non-prod environment with synthetic data instead. The same list of names ([Sensitive-name protection](/docs/persistence/sensitive-names)) still gates persistence writes.
+The panel renders form values raw. DevTools is a dev-only surface, and redacting across every place a value surfaces (panels, logs, network tabs, breakpoints, source maps) is impractical security theater, not a real safeguard. For production-data spelunking on a sensitive surface, use a non-prod environment with synthetic data instead.
 
 ## What's coming
 
 - **Field flags** (touched / focused / blurred) in the inspector: values + errors are surfaced today, UI interaction state isn't.
 - **History stack visualization.** Undo / redo snapshots show on the timeline via `form.change` entries; the stack itself isn't a separate node yet.
-- **Persisted payload preview.** Inspect live form state in the inspector; for the serialized payload on disk, open Application → Storage in the browser DevTools.
 
 ## Caveats
 
@@ -102,4 +101,3 @@ The panel renders form values raw. DevTools is a dev-only surface, and redacting
 
 - [Vue DevTools integration](/docs/devtools-and-debugging/vue-devtools): the alternative for Vite / bare-Vue projects, or as a complement on Nuxt.
 - [Troubleshooting](/docs/devtools-and-debugging/troubleshooting): what the panel surfaces, in narrative form.
-- [Sensitive-name protection](/docs/persistence/sensitive-names): the list that gates persistence writes.

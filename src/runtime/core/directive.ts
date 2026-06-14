@@ -34,7 +34,7 @@ import {
   type AriaCarrier,
 } from './directive-aria'
 import { vRegisterFile } from './directive-file'
-import { syncElementRegistration, syncPersistOptIn } from './directive-lifecycle'
+import { syncElementRegistration } from './directive-lifecycle'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
 import { setupValueSync, teardownValueSync } from './directive-value-sync'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
@@ -47,7 +47,6 @@ import type {
   RegisterTextCustomDirective,
   RegisterValue,
 } from '../types/types-api'
-import { getOrAssignElementId } from './persistence/opt-in-registry'
 import {
   applyCoerce,
   assignKey,
@@ -1041,10 +1040,6 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
 
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   created(el, binding, vnode) {
-    // Per-element persist opt-in is reconciled at the dynamic level so
-    // the per-tag variants stay focused on their input semantics.
-    syncPersistOptIn(el, binding.value, undefined, vnode.props?.['type'])
-
     // Always run the per-tag variant's `created` — listener-body bail
     // (`shouldBailListener`) prevents the bubbled-write bug on
     // non-supported roots while letting consumer overrides through.
@@ -1096,11 +1091,6 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     }
   },
   beforeUpdate(el, binding, vnode, prevVNode) {
-    // Reactive opt-in toggling: `register('foo', { persist: rememberMe })`
-    // re-evaluates on every parent render. `binding.oldValue` holds the
-    // prior RegisterValue so the helper can diff persist / path / registry
-    // and migrate the entry without thrashing.
-    syncPersistOptIn(el, binding.value, binding.oldValue, vnode.props?.['type'])
     // Same diff for the form's element map. Catches the
     // `useRegister`-driven swap (binding mounted with `undefined`,
     // a real RV arrives on the next render), the dynamic-path case,
@@ -1150,14 +1140,6 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // Stop the reactive value-sync watch (text / textarea bindings). A
     // no-op for variants that never set one up.
     teardownValueSync(el)
-
-    // Drop every opt-in this element ever held — `removeAllFor` sweeps
-    // by elementId rather than (id, path), which covers the case where
-    // the binding's path changed across updates and we don't want to
-    // hunt for the latest entry.
-    if (isRegisterValue(value)) {
-      value.persistOptIns.removeAllFor(getOrAssignElementId(el))
-    }
 
     if (!isRegisterValue(value)) return
 

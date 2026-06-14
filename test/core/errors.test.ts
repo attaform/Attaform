@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AnonPersistError,
   AttaformError,
   InvalidPathError,
   OutsideSetupError,
@@ -72,76 +71,6 @@ describe('error classes', () => {
     })
   })
 
-  describe('AnonPersistError', () => {
-    it('extends Error with correct name', () => {
-      const err = new AnonPersistError({ cause: 'no-key' })
-      expect(err).toBeInstanceOf(Error)
-      expect(err).toBeInstanceOf(AnonPersistError)
-      expect(err.name).toBe('AnonPersistError')
-    })
-
-    it('exposes schemaFields, callSite, and cause as readable properties', () => {
-      const err = new AnonPersistError({
-        cause: 'no-key',
-        schemaFields: ['email', 'password'],
-        callSite: 'spike.vue:171:21',
-      })
-      expect(err.schemaFields).toEqual(['email', 'password'])
-      expect(err.callSite).toBe('spike.vue:171:21')
-      expect(err.cause).toBe('no-key')
-    })
-
-    it('cause "no-key" message describes anonymous-key drift and points at key:', () => {
-      const err = new AnonPersistError({ cause: 'no-key' })
-      expect(err.message).toContain('useForm({ persist: ... })')
-      expect(err.message).toContain('key:')
-      expect(err.message).toContain('Fix:')
-    })
-
-    it('cause "register-without-config" message describes the dropped opt-in and offers two fixes', () => {
-      const err = new AnonPersistError({ cause: 'register-without-config' })
-      expect(err.message).toContain('register(')
-      expect(err.message).toContain('persist:')
-      // Both directions of the fix should be visible:
-      expect(err.message).toMatch(/add `persist:|remove `\{ persist: true \}`/)
-    })
-
-    it('embeds schema fields when provided', () => {
-      const err = new AnonPersistError({
-        cause: 'no-key',
-        schemaFields: ['email', 'password'],
-      })
-      expect(err.message).toContain('{ email, password }')
-    })
-
-    it('omits the fields clause gracefully when schemaFields is empty', () => {
-      const err = new AnonPersistError({
-        cause: 'no-key',
-        schemaFields: [],
-      })
-      expect(err.message).not.toContain('Form fields:')
-    })
-
-    it('appends the callSite at the end of the message when provided', () => {
-      const err = new AnonPersistError({
-        cause: 'no-key',
-        callSite: 'spike.vue:171:21',
-      })
-      expect(err.message).toContain('spike.vue:171:21')
-    })
-
-    it('throws with instanceof-checkable type across module boundaries', () => {
-      const thrown = ((): unknown => {
-        try {
-          throw new AnonPersistError({ cause: 'no-key' })
-        } catch (e) {
-          return e
-        }
-      })()
-      expect(thrown).toBeInstanceOf(AnonPersistError)
-    })
-  })
-
   // AttaformError is the shared parent of every library-emitted error class so
   // consumers can write a single polymorphic catch (`catch (e) { if (e
   // instanceof AttaformError) ... }`) instead of OR-chaining instanceof
@@ -155,12 +84,10 @@ describe('error classes', () => {
       expect(new RegistryNotInstalledError()).toBeInstanceOf(AttaformError)
       expect(new OutsideSetupError()).toBeInstanceOf(AttaformError)
       expect(new ReservedFormKeyError('__atta:foo')).toBeInstanceOf(AttaformError)
-      expect(new AnonPersistError({ cause: 'no-key' })).toBeInstanceOf(AttaformError)
     })
 
     it('still extends Error so consumers using catch (e: Error) keep working', () => {
       expect(new InvalidPathError('x')).toBeInstanceOf(Error)
-      expect(new AnonPersistError({ cause: 'no-key' })).toBeInstanceOf(Error)
     })
 
     it('preserves message + cause + name on the subclass when caught as AttaformError', () => {

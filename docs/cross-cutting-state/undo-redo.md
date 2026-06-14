@@ -118,8 +118,6 @@ After `clear()`: `canUndo === false`, `canRedo === false`, `size === 1`. The cur
 
 - **`reset()`** is itself a mutation; the pre-reset state stays one undo away. Consumers who want a hard wipe call `form.history.clear()` after `reset()`, or pop a confirmation dialog before calling `reset()`.
 - **Live field validation** still runs on undo / redo; the restored state validates like any other.
-- **Persistence** picks up each undo / redo as a normal mutation and writes the restored state to the configured backend.
-- **Persistence hydration** is the floor: once the hydrated value applies, the chain reseeds and `undo()` can't reach back into the transient pre-hydration default.
 
 ## Memory
 
@@ -128,4 +126,3 @@ The default `max: 128` keeps at most 128 reachable positions across the undo + r
 ## Where to next
 
 - [`reset` & `resetField`](/docs/writing-and-mutating/reset): recorded as positions; the pre-reset state stays one undo away.
-- [Persistence overview](/docs/persistence/overview): picks up undo / redo as normal mutations.

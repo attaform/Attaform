@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 //
-// Spike: `debounceMs: 0` (the new default) and `persist.debounceMs: 0`
-// as the off switch. Demonstrates the user-visible difference between
-// an EXPLICIT slow debounce and the synchronous flow: every keystroke
-// produces immediate error feedback / immediate persistence write,
+// Spike: `debounceMs: 0` (the new default). Demonstrates the
+// user-visible difference between an EXPLICIT slow debounce and the
+// synchronous flow: every keystroke produces immediate error feedback,
 // without waiting for a `setTimeout` macrotask.
 //
 // "Synchronous" here means "no `setTimeout` indirection on the
@@ -12,14 +11,14 @@
 // `await Promise.resolve()` between keystrokes is enough to surface
 // errors. A form with an explicit positive `debounceMs` needs a real
 // `setTimeout(>0)` flush to surface anything.
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormConfig, UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitForPersistence, waitUntil } from '../utils/form-harness'
+import { waitUntil } from '../utils/form-harness'
 
 let app: App | undefined
 afterEach(() => {
@@ -191,133 +190,5 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     const bad2: Opts = { schema, validateOn: 'submit', debounceMs: 0 }
     void bad1
     void bad2
-  })
-})
-
-describe('spike — persist.debounceMs: 0 writes immediately on every form change', () => {
-  const schema = z.object({ note: z.string() })
-
-  it('default debounce: storage is empty until the 300 ms timer fires', async () => {
-    // Fake timers step the persistence debounce timer in virtual time
-    // — the test verifies BEFORE / AFTER the 300 ms window without
-    // burning wall-clock seconds, and the contract is sharper than a
-    // wall-clock poll (which could not distinguish "timer fired" from
-    // "wall-clock ran past it").
-    //
-    // Pre-warm the lazily-imported persistence chunk so its wiring IIFE
-    // resolves on a microtask under the fake timers installed below.
-    await import('../../src/runtime/core/persistence/wire-persistence')
-    vi.useFakeTimers()
-    try {
-      const writes: { key: string; value: unknown }[] = []
-      const memoryAdapter = {
-        async getItem(): Promise<unknown> {
-          return null
-        },
-        async setItem(key: string, value: unknown): Promise<void> {
-          writes.push({ key, value })
-        },
-        async removeItem(): Promise<void> {},
-        async listKeys(): Promise<string[]> {
-          return []
-        },
-      }
-
-      const handle: { api?: UseFormReturn<typeof schema> } = {}
-      const Parent = defineComponent({
-        setup() {
-          handle.api = useForm({
-            schema,
-            defaultValues: { note: '' },
-            key: `persist-default-${Math.random().toString(36).slice(2)}`,
-            persist: { storage: memoryAdapter },
-          })
-          const rv = handle.api.register('note', { persist: true })
-          return () =>
-            h('div', null, [
-              withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [[vRegister, rv]]),
-            ])
-        },
-      })
-      app = createApp(Parent).use(createAttaform())
-      const root = document.createElement('div')
-      document.body.appendChild(root)
-      app.mount(root)
-
-      await waitForPersistence(app)
-      const input = root.querySelector('[data-field="note"]') as HTMLInputElement
-      input.value = 'hello'
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-
-      // Advance to just BEFORE the 300 ms debounce window — the timer
-      // hasn't fired, so no write should have landed.
-      await vi.advanceTimersByTimeAsync(299)
-      expect(writes.length).toBe(0)
-
-      // Cross the threshold — exactly one coalesced write lands.
-      await vi.advanceTimersByTimeAsync(2)
-      expect(writes.length).toBe(1)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('debounceMs: 0: every keystroke kicks off a write immediately', async () => {
-    const writes: { key: string; value: unknown }[] = []
-    const memoryAdapter = {
-      async getItem(): Promise<unknown> {
-        return null
-      },
-      async setItem(key: string, value: unknown): Promise<void> {
-        writes.push({ key, value })
-      },
-      async removeItem(): Promise<void> {},
-      async listKeys(): Promise<string[]> {
-        return []
-      },
-    }
-
-    const handle: { api?: UseFormReturn<typeof schema> } = {}
-    const Parent = defineComponent({
-      setup() {
-        handle.api = useForm({
-          schema,
-          defaultValues: { note: '' },
-          key: `persist-zero-${Math.random().toString(36).slice(2)}`,
-          persist: { storage: memoryAdapter, debounceMs: 0 },
-        })
-        const rv = handle.api.register('note', { persist: true })
-        return () =>
-          h('div', null, [
-            withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [[vRegister, rv]]),
-          ])
-      },
-    })
-    app = createApp(Parent).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    // Allow mount-time setup to settle.
-    await waitUntil(() => (writes.length === 0 ? true : null), 50)
-
-    const input = root.querySelector('[data-field="note"]') as HTMLInputElement
-
-    await waitForPersistence(app)
-    // Three keystrokes → three writes. No coalescing since the timer
-    // is the gate that would have collapsed bursts.
-    let expected = 0
-    for (const typed of ['h', 'he', 'hel']) {
-      input.value = typed
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      expected += 1
-      const target = expected
-      await waitUntil(() => (writes.length >= target ? true : null))
-    }
-    expect(writes.length).toBe(3)
-    // Last write reflects the last typed value.
-    const lastEnvelope = writes[writes.length - 1]?.value as {
-      data: { form: { note: string } }
-    }
-    expect(lastEnvelope.data.form.note).toBe('hel')
   })
 })

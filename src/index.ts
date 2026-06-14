@@ -72,8 +72,6 @@ export type {
   FormErrorsSurface,
   FormKey,
   FormMeta,
-  FormStorage,
-  FormStorageKind,
   GetDisplayState,
   HandleSubmit,
   HistoryConfig,
@@ -89,9 +87,6 @@ export type {
   OnInvalidSubmitPolicy,
   OnSubmit,
   PendingValidationStatus,
-  PersistConfig,
-  PersistConfigOptions,
-  PersistIncludeMode,
   ReactiveValidationStatus,
   RegisterDirective,
   RegisterFlatPath,
@@ -161,7 +156,6 @@ export type { AttaformDevtoolsBridge } from './runtime/core/devtools-shared'
 // instanceof AttaformError) ... }`) instead of OR-chaining instanceof
 // checks for each subclass.
 export {
-  AnonPersistError,
   AttaformError,
   InvalidPathError,
   InvalidUseFormConfigError,
@@ -182,17 +176,6 @@ export {
   makeDefaultDisplayState,
 } from './runtime/core/display-state'
 export type { DisplayTimings } from './runtime/core/display-state'
-
-// Library-default list of identifier name stems flagged as sensitive
-// (password, ssn, cvv, token, etc.). Compose with `sensitiveNames` at
-// the global or per-form level to extend:
-//
-//   useForm({ sensitiveNames: [...DEFAULT_SENSITIVE_NAMES, 'mrn'] })
-//
-// The resolved list gates persistence writes — one configurable
-// source of truth for "what counts as sensitive." (DevTools renders
-// raw values by design; it does not redact.)
-export { DEFAULT_SENSITIVE_NAMES } from './runtime/core/persistence/sensitive-names'
 
 // API-error parser. Pure transformation: takes a server response in
 // the common shapes (wrapped envelope, raw details record) and returns

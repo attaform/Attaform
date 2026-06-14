@@ -143,11 +143,7 @@
    * `src/runtime/core/devtools.ts` so both surfaces have identical
    * semantics:
    *   1. canonicalize the structured path
-   *   2. refuse sensitive-name paths (the tree already gates the UI,
-   *      but a defensive check here keeps the contract honest)
-   *   3. derive the persist flag from the path's element opt-ins
-   *   4. call setValueAtPath with the same write-meta the bound input
-   *      would have produced
+   *   2. call setValueAtPath with that path
    */
   // Field-state inspector. Click any key in the Form value tree to
   // "select" that path; the Field state section below resolves
@@ -259,12 +255,8 @@
     const form = activeForm.value
     if (form === null) return
     try {
-      const { segments: canonicalPath, key: canonicalKey } = canonicalizePath(
-        rawPath as readonly Segment[]
-      )
-      form.setValueAtPath(canonicalPath, next, {
-        persist: form.persistOptIns.hasAnyOptInForPath(canonicalKey),
-      })
+      const { segments: canonicalPath } = canonicalizePath(rawPath as readonly Segment[])
+      form.setValueAtPath(canonicalPath, next)
       // The host's setValueAtPath fires `onFormChange` listeners, which
       // bumps our updateTick (see subscribeForm) — that refreshes the
       // panel's view of the new value on the next microtask.

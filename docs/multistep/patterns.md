@@ -1,6 +1,6 @@
 ---
 title: Patterns
-description: Idiomatic wizard patterns. Linear flows, branching with function slots, dynamic terminals, per-step persistence, per-step undo. Small primitives composed through the steps array without library-side magic.
+description: Idiomatic wizard patterns. Linear flows, branching with function slots, dynamic terminals, active-step persistence, per-step undo. Small primitives composed through the steps array without library-side magic.
 metaRows:
   - label: Category
     value: Patterns
@@ -11,12 +11,12 @@ metaRows:
     value: '(ctx) => pickedForm | string | undefined'
     kind: code
   - label: Per-step
-    value: persistence + undo follow each form
+    value: undo follows each form
 ---
 
 # Patterns
 
-> Each step of a wizard is a regular `useForm` call. The wizard is a thin orchestrator over the `steps` array. Linear flows, branching graphs, dynamic terminals, per-step persistence, and per-step undo all compose through the same primitives the rest of Attaform exposes, without special wizard knobs.
+> Each step of a wizard is a regular `useForm` call. The wizard is a thin orchestrator over the `steps` array. Linear flows, branching graphs, dynamic terminals, active-step persistence, and per-step undo all compose through the same primitives the rest of Attaform exposes, without special wizard knobs.
 
 ::docs-meta-table
 ::
@@ -132,35 +132,17 @@ For heavier branching (a slot whose resolver is expensive enough that re-evaluat
 
 `wizard.handleSubmit` catches the upstream validation gaps that `goTo` lets through. Clicking Finish on a step the user jumped to without filling earlier forms validates everything, surfaces every error, and (with `focusFirstError: true`, the default) jumps the wizard back to the first failing step.
 
-## Per-step persistence
+## Persisting the active step
 
-Each step is its own `useForm` call, so each step gets its own `persist` config. The wizard composes naturally with whatever you wire on each form:
+What the wizard persists is the active step, via `?step=<key>` on the URL by default (see [URL sync](/docs/multistep/url-sync)). A refresh lands the user back on the step they were on, with the navigation cursor intact.
 
 ```ts
-const account = useForm({
-  schema: accountSchema,
-  key: 'signup-account',
-  persist: 'local', // localStorage, namespaced by key
-})
-
-const profile = useForm({
-  schema: profileSchema,
-  key: 'signup-profile',
-  persist: 'session', // sessionStorage, separate scope from account
-})
-
-const review = useForm({
-  schema: reviewSchema,
-  key: 'signup-review',
-  // No persist; consent stays in-memory only
-})
+const account = useForm({ schema: accountSchema, key: 'signup-account' })
+const profile = useForm({ schema: profileSchema, key: 'signup-profile' })
+const review = useForm({ schema: reviewSchema, key: 'signup-review' })
 
 const wizard = useWizard({ steps: [account, profile, review] })
 ```
-
-`account` and `profile` survive a refresh; `review` doesn't. The wizard itself doesn't persist field state; what _it_ persists is the active step, via `?step=<key>` on the URL by default (see [URL sync](/docs/multistep/url-sync)). The two stories compose: per-form persistence keeps the field values, the wizard-level URL sync keeps the navigation cursor.
-
-Sensitive-name protection applies per-form: `password`, `creditCard`, `ssn`, and friends never persist regardless of the per-step `persist` setting. See [Sensitive-name protection](/docs/persistence/sensitive-names).
 
 ## Per-step undo
 
@@ -224,5 +206,4 @@ A descendant component reaches it via `injectWizard('signup')`. See [`injectWiza
 - [Step slots](/docs/multistep/step-slots) for the four slot kinds (form, string, function, `lazy()`).
 - [`injectWizard`](/docs/multistep/inject-wizard) for cross-component access to the wizard handle.
 - [URL sync](/docs/multistep/url-sync) for wizard-level `?step=<key>` round-tripping.
-- [Per-field opt-in](/docs/persistence/per-field-opt-in) for the per-form persistence story.
 - [Undo & redo](/docs/cross-cutting-state/undo-redo) for the per-form history chain.

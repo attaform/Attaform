@@ -10,8 +10,8 @@
 //
 // Stubbed during the docs rebuild. Phase 1 lands the spine pages
 // (Introduction, Quick start, Schema contract, v-register overview,
-// validation timing, handleSubmit, persistence overview,
-// troubleshooting). Later phases fill in the remaining ~56 pages.
+// validation timing, handleSubmit, troubleshooting). Later phases
+// fill in the remaining pages.
 
 export type DocsLink = { title: string; to: string }
 // A non-clickable label that groups the page links beneath it inside a
@@ -125,17 +125,6 @@ export const docsNavigation: DocsSection[] = [
       { title: 'handleSubmit', to: '/docs/submitting/handle-submit' },
       { title: 'Server-side errors', to: '/docs/submitting/server-side-errors' },
       { title: 'Focus & scroll on invalid submit', to: '/docs/submitting/focus-scroll' },
-    ],
-  },
-  {
-    heading: 'Persistence',
-    links: [
-      { title: 'Persistence overview', to: '/docs/persistence/overview' },
-      { title: 'Storage backends', to: '/docs/persistence/storage-backends' },
-      { title: 'Per-field opt-in', to: '/docs/persistence/per-field-opt-in' },
-      { title: 'Sensitive-name protection', to: '/docs/persistence/sensitive-names' },
-      { title: 'Imperative persistence', to: '/docs/persistence/imperative' },
-      { title: 'Edge cases & hydration', to: '/docs/persistence/edge-cases' },
     ],
   },
   {

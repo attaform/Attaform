@@ -264,7 +264,12 @@ export default [
     // along with the WriteMeta.crossTab thread, the state.noSyncPaths
     // ref-counted opt-out, and the RegisterValue markNoSync /
     // unmarkNoSync hooks. Measured at 51.44 KB.
-    limit: '52 KB',
+    //
+    // Lowered 52 → 46 KB on the persist removal branch (chore/rip-persist):
+    // the persistence/ engine, sensitive-names, insecure-context-warn, the
+    // persistOptIns / isSensitivePath core remnants, and the WriteMeta.persist
+    // thread all left the bundle. Measured at 44.52 KB.
+    limit: '46 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -418,7 +423,11 @@ export default [
     // (chore/rip-multitab): the unified entry's shared core chunk drops
     // multi-tab-sync.ts plus the crossTab / noSyncPaths remnants.
     // Measured at 65.48 KB.
-    limit: '66 KB',
+    //
+    // Lowered 66 → 60 KB on the persist removal branch (chore/rip-persist):
+    // the shared core chunk drops the persistence/ engine + sensitive-names +
+    // insecure-context-warn. Measured at 58.72 KB.
+    limit: '60 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -527,7 +536,11 @@ export default [
     // Lowered 62 → 60 KB on the multi-tab-sync removal branch
     // (chore/rip-multitab): same shared core chunk drops multi-tab-sync.ts
     // plus the crossTab / noSyncPaths remnants. Measured at 59.34 KB.
-    limit: '60 KB',
+    //
+    // Lowered 60 → 54 KB on the persist removal branch (chore/rip-persist):
+    // drops the persistence/ engine + sensitive-names + insecure-context-warn.
+    // Measured at 52.65 KB.
+    limit: '54 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -710,9 +723,12 @@ export default [
     // Lowered 64 → 62 KB on the multi-tab-sync removal branch
     // (chore/rip-multitab): same shared core chunk drops multi-tab-sync.ts
     // plus the crossTab / noSyncPaths remnants. zod-v3.mjs measured at
-    // 60.81 KB; the 62 cap keeps ~1.2 KB headroom (61 would leave ~0.2,
-    // within gzip jitter).
-    limit: '62 KB',
+    // 60.81 KB.
+    //
+    // Lowered 62 → 56 KB on the persist removal branch (chore/rip-persist):
+    // drops the persistence/ engine + sensitive-names + insecure-context-warn.
+    // Measured at 54.03 KB.
+    limit: '56 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

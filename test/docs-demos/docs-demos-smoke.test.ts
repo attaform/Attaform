@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitForPersistence, waitUntil } from '../utils/form-harness'
+import { waitUntil } from '../utils/form-harness'
 
 // Every smoke case drives a real demo SFC with real timers (the
 // async-refinements demo alone simulates ~700ms of server latency).
@@ -114,24 +114,6 @@ function preAt(root: HTMLElement, index: number): HTMLPreElement {
   return p
 }
 
-async function expectStorageHas(needle: string, storage: Storage) {
-  // Persistence writes are debounced. Polling resolves the instant
-  // the storage entry lands, so the only timing dependency is the
-  // shared `waitUntil` ceiling (a safety net for an infinite hang),
-  // not a coupling to a specific debounce window.
-  const found = await waitUntil<true>(() => {
-    for (let i = 0; i < storage.length; i++) {
-      const key = storage.key(i)
-      if (key !== null && storage.getItem(key)?.includes(needle) === true) return true
-    }
-    return null
-  })
-  if (found !== true) {
-    const which = storage === sessionStorage ? 'sessionStorage' : 'localStorage'
-    throw new Error(`expected some ${which} entry to contain "${needle}"`)
-  }
-}
-
 const entries: SmokeEntry[] = [
   // ─── EXISTING PHASE 1 (Issue 1 / PR #330) ─────────────────────
   {
@@ -161,36 +143,6 @@ const entries: SmokeEntry[] = [
     },
     assert: async (root) => {
       expect(pre(root).textContent).toContain('my-slug')
-    },
-  },
-  {
-    // Type into the title input; the field has `persist: true`, so
-    // a sessionStorage write must land.
-    slug: 'persistence-overview',
-    gesture: async (root) => {
-      const title = root.querySelector<HTMLInputElement>('input')
-      if (!title) throw new Error('title input not found')
-      await dispatchInput(title, 'AttaformLives')
-    },
-    assert: async () => {
-      await expectStorageHas('AttaformLives', sessionStorage)
-    },
-  },
-  {
-    // Same persistence write, but the opt-in checkbox controls the
-    // write. Default is `persistTitle = true`, so a typed value
-    // should land in storage without toggling.
-    slug: 'per-field-opt-in',
-    gesture: async (root) => {
-      const inputs = root.querySelectorAll<HTMLInputElement>(
-        'input[type="text"], input:not([type])'
-      )
-      const title = inputs.item(0)
-      if (title === null) throw new Error('title input not found')
-      await dispatchInput(title, 'PerFieldHello')
-    },
-    assert: async () => {
-      await expectStorageHas('PerFieldHello', sessionStorage)
     },
   },
   {
@@ -1178,42 +1130,6 @@ const entries: SmokeEntry[] = [
       expect(preAt(root, 0).textContent ?? '').toContain('5551234567')
     },
   },
-  {
-    // Type into score; submit; the draft persists across submit
-    // because the demo sets clearOnSubmitSuccess: false. Smoke
-    // verifies the typed score flowed into form state.
-    slug: 'persistence-edge-cases',
-    gesture: async (root) => {
-      const score = root.querySelector<HTMLInputElement>('input[type="number"], input[type="text"]')
-      if (!score) throw new Error('score input not found')
-      await dispatchInput(score, '75')
-    },
-    assert: async (root) => {
-      const score = root.querySelector<HTMLInputElement>('input[type="number"], input[type="text"]')
-      expect(score?.value).toBe('75')
-    },
-  },
-  {
-    // Type into the title input, click the first persist button;
-    // a log entry appears with a timestamp.
-    slug: 'imperative-persistence',
-    gesture: async (root) => {
-      const title = root.querySelector<HTMLInputElement>('input[type="text"], input:not([type])')
-      if (!title) throw new Error('title input not found')
-      await dispatchInput(title, 'Imperative')
-      const persist = Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find((b) =>
-        b.textContent?.includes('persist')
-      )
-      if (!persist) throw new Error('persist button not found')
-      persist.click()
-      // The log list updates after the imperative call.
-      await waitUntil(() => root.querySelector('ul li') ?? null, 2000)
-    },
-    assert: async (root) => {
-      const log = root.querySelector('ul')
-      expect(log?.textContent ?? '').toMatch(/persist/i)
-    },
-  },
 
   // ─── PHASE 2: MULTISTEP + CROSS-CUTTING ───────────────────────
   {
@@ -1299,19 +1215,14 @@ const deferred: { slug: string; reason: string }[] = [
     reason:
       'A file-upload gesture feeding an async transform is not testable under jsdom; needs an integration runner.',
   },
-  {
-    slug: 'storage-backends',
-    reason: 'IndexedDB adapter under jsdom does not provide a reliable cross-mount surface.',
-  },
 ]
 
 describe('docs-demos smoke', () => {
   let mounted: { app: App; root: HTMLElement } | undefined
 
   beforeEach(() => {
-    // Each entry runs in a clean storage so the persistence
-    // assertions can rely on `includes(needle)` rather than
-    // tracking last-write generation numbers.
+    // Each entry runs against clean storage so a demo that touches
+    // Web Storage starts from a known state.
     sessionStorage.clear()
     localStorage.clear()
     // The docs demos use a Nuxt auto-imported `toast` in submit
@@ -1350,11 +1261,6 @@ describe('docs-demos smoke', () => {
       await nextTick()
       mounted = { app, root }
 
-      // Persistence is dynamically imported off the useForm path, so its
-      // write subscription attaches a few microtasks after mount. A demo
-      // that persists would miss a gesture fired before then; establish
-      // first (no-op for demos without persist).
-      await waitForPersistence(app)
       await entry.gesture(root)
       await entry.assert(root)
     })

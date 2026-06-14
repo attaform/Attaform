@@ -31,7 +31,7 @@ Every Attaform-emitted throw extends `AttaformError`, so a single polymorphic ca
 import { AttaformError } from 'attaform'
 
 try {
-  // useForm setup, register call, persist call, etc.
+  // useForm setup, register call, etc.
 } catch (err) {
   if (err instanceof AttaformError) {
     // It's one of ours; log and handle.
@@ -45,15 +45,13 @@ try {
 Branch on the subclass for targeted handling:
 
 ```ts
-import { AttaformError, OutsideSetupError, AnonPersistError } from 'attaform'
+import { AttaformError, OutsideSetupError } from 'attaform'
 
 try {
   // …
 } catch (err) {
   if (err instanceof OutsideSetupError) {
     // Move the call into a Vue setup function
-  } else if (err instanceof AnonPersistError) {
-    // Pass a stable `key` so persistence has a deterministic prefix
   } else if (err instanceof AttaformError) {
     // Catch-all
   } else {
@@ -95,15 +93,6 @@ An Attaform API needs the registry attached to a Vue app, but it isn't installed
 ### `ReservedFormKeyError`
 
 The `__atta:` namespace is reserved for internal use; passing a form key starting with `__atta:` throws. Pick a different prefix.
-
-### `AnonPersistError`
-
-Persistence is configured on an anonymous (no `key`) form. The cause property distinguishes:
-
-- `'no-key'`: no `key` passed; persistence needs a stable key to prefix storage entries.
-- `'register-without-config'`: a register call passes `{ persist: true }` against an anonymous form (which wouldn't have a backend even with `persist:` on the form).
-
-Carries `schemaFields` (the leaves on the form's schema, for diagnostic context) and `callSite` (the file:line of the offending call).
 
 ## `AttaformErrorCode`
 

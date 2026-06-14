@@ -9,7 +9,7 @@ import type {
   CustomDirectiveRegisterAssignerFn,
   RegisterValue,
 } from '../../src/runtime/types/types-api'
-import { waitForPersistence, waitUntil } from '../utils/form-harness'
+import { waitUntil } from '../utils/form-harness'
 
 /**
  * Fire-time contract for consumer-supplied assigners.
@@ -193,96 +193,5 @@ describe('fire-time contract: consumer-installed assigner sees (value, rv) consi
 
     expect(calls.length).toBeGreaterThanOrEqual(1)
     expect(calls[0]).toBe('HI')
-  })
-
-  /**
-   * Persistence-meta auto-attach: the demo pattern is
-   * `rv.setValueWithInternalPath(value)` with no explicit `meta`. The
-   * RV's `registerElement` (called by the directive at bind time) stores
-   * the el; `setValueWithInternalPath` consults the per-element opt-in
-   * registry on writes that don't carry their own meta. So a consumer
-   * assigner installed against an element registered with
-   * `register('path', { persist: true })` participates in the same
-   * persistence channel the directive's default assigner uses.
-   *
-   * Pre-fix: meta home lived in the directive's default assigner only;
-   * consumer-installed assigners silently dropped the persist flag,
-   * `form.values` updated, storage stayed empty, the next mount
-   * rehydrated to schema default.
-   */
-  it('a consumer-installed assigner participates in per-element persistence opt-in', async () => {
-    const schema = z.object({ color: z.string() })
-    const writes: { key: string; value: unknown }[] = []
-    const memoryAdapter = {
-      getItem(): Promise<unknown> {
-        return Promise.resolve(null)
-      },
-      setItem(key: string, value: unknown): Promise<void> {
-        writes.push({ key, value })
-        return Promise.resolve()
-      },
-      removeItem(): Promise<void> {
-        return Promise.resolve()
-      },
-      listKeys(): Promise<string[]> {
-        return Promise.resolve([])
-      },
-    }
-
-    let widgetEl: HTMLDivElement | undefined
-    const Parent = defineComponent({
-      setup() {
-        const api = useForm({
-          schema,
-          defaultValues: { color: '#000' },
-          key: `assigner-persist-${Math.random().toString(36).slice(2)}`,
-          persist: { storage: memoryAdapter, debounceMs: 0 },
-        })
-        const widget = ref<HTMLDivElement | null>(null)
-
-        // The demo's exact shape: read picked color off dataset and
-        // forward via `rv.setValueWithInternalPath(value)` with no meta.
-        // The RV auto-attaches the per-element persist meta from its
-        // bound element's opt-in.
-        const colorAssigner: CustomDirectiveRegisterAssignerFn = (_value, rv) => {
-          const el = widget.value
-          if (!el || !rv) return false
-          rv.setValueWithInternalPath(el.dataset['color'] ?? '')
-          return true
-        }
-
-        onMounted(() => {
-          const el = widget.value
-          if (el === null) return
-          widgetEl = el
-          ;(el as HTMLDivElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn })[assignKey] =
-            colorAssigner
-        })
-
-        return () =>
-          withDirectives(h('div', { ref: widget, 'data-color': api.values['color'] }), [
-            [vRegister, api.register('color', { persist: true })],
-          ])
-      },
-    })
-
-    app = createApp(Parent).use(createAttaform())
-    root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    await waitUntil(() => (widgetEl !== undefined ? true : null))
-
-    if (widgetEl === undefined) throw new Error('widget element never resolved')
-
-    await waitForPersistence(app)
-    widgetEl.dataset['color'] = '#16a34a'
-    widgetEl.dispatchEvent(new Event('input', { bubbles: true }))
-
-    await waitUntil(() => (writes.length >= 1 ? true : null), 200)
-    expect(writes.length).toBeGreaterThanOrEqual(1)
-    const envelope = writes[writes.length - 1]?.value as {
-      data: { form: { color: string } }
-    }
-    expect(envelope.data.form.color).toBe('#16a34a')
   })
 })

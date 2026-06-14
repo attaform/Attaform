@@ -104,4 +104,3 @@ This is the practical advantage over the Nuxt panel for multi-app monorepos: pic
 
 - [The Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel): the Nuxt-native alternative, same data surface.
 - [Troubleshooting](/docs/devtools-and-debugging/troubleshooting): what to look for in the panels when forms misbehave.
-- [Sensitive-name protection](/docs/persistence/sensitive-names): the list that gates persistence writes.

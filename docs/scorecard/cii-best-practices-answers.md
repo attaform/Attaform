@@ -63,7 +63,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [apps/site/content/docs](https://github.com/attaform/Attaform/tree/main/apps/site/content/docs)
-**Notes:** Per-symbol reference pages: `useForm`, `useRegister`, `useWizard`, `injectForm`, plus schema, validation, persistence, undo/redo. Every public API symbol has its own page with the inference-first DX walkthroughs Attaform is built around.
+**Notes:** Per-symbol reference pages: `useForm`, `useRegister`, `useWizard`, `injectForm`, plus schema, validation, SSR, undo/redo. Every public API symbol has its own page with the inference-first DX walkthroughs Attaform is built around.
 
 ### 10. `sites_https`: Project sites MUST support HTTPS using TLS.
 
@@ -249,7 +249,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [Recent PRs adding tests](https://github.com/attaform/Attaform/pulls?q=is%3Apr+is%3Aclosed)
-**Notes:** Recent example: PRs #308, #309 (prototype-pollution remediation) each landed dedicated regression tests in `test/core/persistence/proto-pollution.test.ts`, `test/core/set-at-path-prototype-pollution.test.ts`, etc. Every feature PR includes its matching test file.
+**Notes:** Recent example: PRs #308, #309 (prototype-pollution remediation) each landed dedicated regression tests in `test/core/set-at-path-prototype-pollution.test.ts`, etc. Every feature PR includes its matching test file.
 
 ### 40. `tests_documented_added`: Test policy SHOULD be documented in change-proposal instructions.
 
@@ -329,7 +329,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 ### 53. `crypto_password_storage`: Passwords MUST be stored as iterated hashes with per-user salt.
 
 **Answer:** N/A.
-**Notes:** Attaform does not store passwords. Forms may collect password input, but persistence of that value is the consumer application's responsibility. Attaform's `persistence/` layer treats sensitive paths as opt-in with explicit acknowledgement requirements (see `persistence/index.ts` sensitive-leaf scrub).
+**Notes:** Attaform does not store passwords. Form values are held in memory only and are never written to browser storage by Attaform; persistence of any collected value is the consumer application's responsibility.
 
 ### 54. `crypto_random`: Cryptographic keys and nonces MUST be generated using secure random generators.
 

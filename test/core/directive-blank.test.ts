@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DirectiveBinding, VNode } from 'vue'
 import { ref, type Ref } from 'vue'
 import { vRegister } from '../../src/runtime/core/directive'
-import { createPersistOptInRegistry } from '../../src/runtime/core/persistence/opt-in-registry'
 import type { PathKey } from '../../src/runtime/core/paths'
 import type { InternalRegisterValue, RegisterValue } from '../../src/runtime/types/types-api'
 
@@ -58,10 +57,6 @@ function makeRegisterValue<T>(initial: T): {
     segments: Object.freeze(['mock']),
     formKey: 'mock-form',
     formInstanceId: 'mock-inst',
-    persist: false,
-    acknowledgeSensitive: false,
-    persistOptIns: createPersistOptInRegistry(),
-    isSensitivePath: () => false,
     acceptsUndefined: false,
     acceptsString: true,
   }

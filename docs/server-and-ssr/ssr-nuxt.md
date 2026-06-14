@@ -118,5 +118,4 @@ The Nuxt module auto-wires the [Attaform DevTools panel](/docs/devtools-and-debu
 ## Where to next
 
 - [SSR hydration: bare Vue](/docs/server-and-ssr/ssr-bare-vue): the same round-trip without the Nuxt module, when you're not on Nuxt.
-- [Persistence overview](/docs/persistence/overview): different problem (durable drafts vs. one-time SSR snapshot), composable with SSR.
 - [Performance](/docs/server-and-ssr/performance): what SSR hydration costs in practice.

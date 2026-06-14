@@ -1,13 +1,9 @@
-import { effectScope, warn, watch, type VNode } from 'vue'
+import { effectScope, watch, type VNode } from 'vue'
 import type {
   CustomDirectiveRegisterAssignerFn,
   RegisterModelDynamicCustomDirective,
-  RegisterValue,
 } from '../types/types-api'
-import { __DEV__ } from './dev'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
-import type { PathKey } from './paths'
-import type { PersistOptInRegistry } from './persistence/opt-in-registry'
 import { fireAssigner, setAssignFunction } from './assigner-pipeline'
 import { isRegisterValue, isTransforming } from './register-protocol'
 
@@ -62,35 +58,6 @@ function readFilesFromInput(el: HTMLInputElement): File[] | File | null {
 }
 
 /**
- * Per-form dedupe for the persisted-file-input dev warning. Keyed on
- * the form's `PersistOptInRegistry` (every form has its own instance)
- * so the warning fires once per (form, path) — a single noisy hint
- * during development rather than per-mount, per-keystroke noise.
- */
-const warnedPersistedFileForms: WeakMap<PersistOptInRegistry, Set<PathKey>> | null = __DEV__
-  ? new WeakMap<PersistOptInRegistry, Set<PathKey>>()
-  : null
-
-function maybeWarnPersistedFile(value: RegisterValue): void {
-  if (!__DEV__ || warnedPersistedFileForms === null) return
-  if (value.persist !== true) return
-  let warnedPaths = warnedPersistedFileForms.get(value.persistOptIns)
-  if (warnedPaths === undefined) {
-    warnedPaths = new Set<PathKey>()
-    warnedPersistedFileForms.set(value.persistOptIns, warnedPaths)
-  }
-  if (warnedPaths.has(value.path)) return
-  warnedPaths.add(value.path)
-  warn(
-    `[attaform] register('${value.path}', { persist: true }) on <input type="file"> — ` +
-      `files can't ride a refresh (browsers block programmatic writes to ` +
-      `<input type="file">), so this path won't be saved. For long-lived ` +
-      `flows, upload on selection and persist the resulting URL or ID in a ` +
-      `sibling string field.`
-  )
-}
-
-/**
  * Symbol slot for the per-element effect-scope teardown function. The
  * blank-resync watcher inside `created` runs in its own scope so we
  * can stop it on `beforeUnmount` without depending on the surrounding
@@ -108,9 +75,7 @@ type FileScopeCarrier = { [fileScopeKey]?: () => void }
  * through `derivedBlankErrors` on required-file fields — same channel
  * as required numbers / bigints.
  *
- * The persistence carve-out lives in `syncPersistOptIn`: file paths
- * never enter `persistOptIns`, never serialize, never rehydrate. The
- * `beforeUpdate` hook keeps the DOM in lockstep with storage by
+ * The `beforeUpdate` hook keeps the DOM in lockstep with storage by
  * clearing `el.value` when storage transitions to blank — the only
  * programmatic write browsers permit on file inputs.
  */
@@ -132,7 +97,6 @@ export const vRegisterFile: RegisterModelDynamicCustomDirective = {
     // (sync or async); an async transform drives the busy / pending / settle
     // machinery exactly as on a text input.
     setAssignFunction(input, vnode, value)
-    maybeWarnPersistedFile(value)
 
     // Seed the blank-path channel on register. Storage shape gets
     // canonicalised to `null` / `[]` whenever the consumer's default

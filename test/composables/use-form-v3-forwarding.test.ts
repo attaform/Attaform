@@ -1,23 +1,19 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
+import { afterEach, describe, expect, it } from 'vitest'
+import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod-v3'
-import type { FormStorage, UseFormReturnType } from '../../src/runtime/types/types-api'
-import { vRegister } from '../../src/runtime/core/directive'
+import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { useForm } from '../../src/zod-v3'
-import { fingerprintZodSchema } from '../../src/runtime/adapters/zod-v3/fingerprint'
-import { hashStableString } from '../../src/runtime/core/hash'
-import { waitForPersistence, waitUntil } from '../utils/form-harness'
+import { waitUntil } from '../utils/form-harness'
 
 /**
  * Regression pin: the zod v3 `useForm` wrapper used to hand-pick the
  * options it forwarded to `useAbstractForm`, silently dropping the
- * opt-in ones (`onInvalidSubmit`, `validateOn`, `debounceMs`, `persist`,
+ * opt-in ones (`onInvalidSubmit`, `validateOn`, `debounceMs`,
  * `history`). These tests prove each option now reaches the runtime.
  */
 
-const schema = z.object({ email: z.string(), password: z.string() })
 type Form = { email: string; password: string }
 type ApiReturn = UseFormReturnType<Form, Form>
 
@@ -69,67 +65,5 @@ describe('v3 useForm forwards opt-in options to useAbstractForm', () => {
     await waitUntil(() => (api.errors.email?.[0]?.message === 'bad email' ? true : null))
 
     expect(api.errors.email?.[0]?.message).toBe('bad email')
-  })
-
-  it('forwards persist — custom FormStorage receives setItem calls', async () => {
-    const setItem = vi.fn().mockResolvedValue(undefined)
-    const storage: FormStorage = {
-      getItem: () => Promise.resolve(undefined),
-      setItem,
-      removeItem: () => Promise.resolve(),
-      listKeys: () => Promise.resolve([]),
-    }
-
-    // Persistence is per-element opt-in, so the test must drive its
-    // mutation through a real <input v-register="register('email',
-    // { persist: true })">. Programmatic `api.setValue` doesn't reach
-    // the persistence pipeline by design.
-    const handle: { api?: ApiReturn; emailInput?: HTMLInputElement } = {}
-    const App = defineComponent({
-      setup() {
-        const api = useForm({
-          schema,
-          key: 'v3-persist',
-          persist: { storage, debounceMs: 20 },
-        } as never) as ApiReturn
-        handle.api = api
-        return () =>
-          h('div', [
-            withDirectives(
-              h('input', {
-                type: 'text',
-                ref: (el): void => {
-                  if (el !== null) handle.emailInput = el as HTMLInputElement
-                },
-              }),
-              [[vRegister, api.register('email', { persist: true })]]
-            ),
-          ])
-      },
-    })
-    const app = createApp(App).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    apps.push(app)
-
-    // Simulate the user typing — the directive's input handler will
-    // attach `meta.persist = true` (this element opted in) and the
-    // persistence subscription will fire.
-    const input = handle.emailInput
-    if (input === undefined) throw new Error('email input not mounted')
-    await waitForPersistence(app)
-    input.value = 'alice@example.com'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitUntil(() => (setItem.mock.calls.length > 0 ? true : null))
-
-    expect(setItem).toHaveBeenCalled()
-    const [key, payload] = setItem.mock.calls[0] ?? []
-    const fp = hashStableString(fingerprintZodSchema(schema))
-    expect(key).toBe(`attaform:v3-persist:${fp}`)
-    expect(payload).toMatchObject({
-      v: 6,
-      data: { form: { email: 'alice@example.com' } },
-    })
   })
 })

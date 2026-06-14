@@ -83,25 +83,6 @@ If you just want to reshape the value before write (uppercase, trim, parse), rea
 
 `assignKey` is for cases where the extracted value isn't right at all: different source, different shape, different element type. Web Components, custom widgets, third-party libraries that don't speak the standard DOM event surface.
 
-## Persistence integrates automatically
-
-If the bound element opted in via `register('path', { persist: true })`, `rv.setValueWithInternalPath(value)` auto-attaches the persist meta. The write flows to the configured storage backend without the assigner threading anything explicit.
-
-```ts
-const colorAssigner: CustomDirectiveRegisterAssignerFn = (_value, rv) => {
-  const el = widgetEl.value
-  if (!el || !rv) return false
-  // No second arg, no meta to assemble: the rv consults the
-  // per-element opt-in registered against this element.
-  rv.setValueWithInternalPath(el.dataset.color ?? '')
-  return true
-}
-```
-
-Template pairing: `<div ref="widget" v-register="form.register('color', { persist: true })" />`. The opt-in lives at the `register` call site, per the [two-gate policy](/docs/persistence/per-field-opt-in); the assigner just commits the write.
-
-Bypass the auto-attach by passing an explicit second arg, e.g. `rv.setValueWithInternalPath(value, { persist: false })` for a transient write that shouldn't persist even when the element is opted in.
-
 ## Where to next
 
 - [Register transforms](/docs/binding-inputs/transforms): the higher-level option for value reshaping.

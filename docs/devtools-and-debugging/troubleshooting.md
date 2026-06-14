@@ -77,14 +77,7 @@ Three usual suspects:
 - **Non-JSON-safe value in the form?** `Date`, `Map`, `Set`, `BigInt`, and circular refs don't survive `JSON.stringify`. Coerce at the form boundary (`z.date().transform((d) => d.toISOString())`) or use Nuxt's `devalue`-based payload (automatic under Nuxt).
 - **`escapeForInlineScript` missing on the bare-Vue side?** A form value containing `</script>` breaks the inline payload. Wrap `JSON.stringify(payload)` in `escapeForInlineScript`. Not required under Nuxt.
 
-## "Persisted state is gone after a schema change"
-
-Working as intended. Storage keys carry the schema's fingerprint: when the schema changes shape, the fingerprint changes, the old key becomes unreachable, and the orphan-cleanup pass on the next mount removes it. No manual `version` bump needed.
-
-To invalidate drafts without changing the schema (e.g. shipping a security fix that requires fresh state), call `form.clearPersistedDraft()` on mount.
-
 ## Where to next
 
 - [The form](/docs/reading-the-form/the-form): the full reactive surface.
 - [`errors`](/docs/reading-the-form/errors): per-path error reads.
-- [Persistence overview](/docs/persistence/overview): the dual opt-in model and storage backends.

@@ -152,10 +152,6 @@ Reading `form.errors.income` directly gives you whatever the schema and the blan
 
 The `atta:no-value-supplied` error surfaces in `form.errors.<path>` and in `form.meta.errors`: same shape as a schema-emitted error, distinct `code` for filtering.
 
-## `blank` and persistence
-
-Persistence treats `blankPaths` as first-class state. The persisted envelope includes the set, so a cleared numeric field stays visually empty after a reload (storage holds the slim default; the displayed-empty state survives). Without this, a "Score: " field a user cleared would resurrect as "0" after refresh, which is incorrect for the UX.
-
 ## `blank` and history
 
 Every history position captures the `blankPaths` set at the time of the snapshot. Undoing a "type a number, then clear it" sequence restores both the value AND the blank bit. The field reads as empty the way it did before the undo.

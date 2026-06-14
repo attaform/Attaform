@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitForPersistence, waitUntil } from '../utils/form-harness'
+import { waitUntil } from '../utils/form-harness'
 
 /**
  * `<input type="file" v-register>` end-to-end coverage.
@@ -261,141 +261,6 @@ describe('<input type="file" v-register> — required-file error', () => {
     if (captured.api === undefined) throw new Error('unreachable')
     const errs = captured.api.errors.id
     expect(Array.isArray(errs) && errs.length > 0).toBe(true)
-  })
-})
-
-describe('<input type="file" v-register> — persistence carve-out', () => {
-  const apps: App[] = []
-
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
-  afterEach(() => {
-    while (apps.length > 0) apps.pop()?.unmount()
-    document.body.innerHTML = ''
-    localStorage.clear()
-  })
-
-  it('never persists file values regardless of register({ persist: true })', async () => {
-    const schema = z.object({
-      avatar: z.file().nullable(),
-      title: z.string(),
-    })
-    const captured: { api?: UseFormReturn<typeof schema> } = {}
-
-    const Parent = defineComponent({
-      setup() {
-        const form = useForm({
-          schema,
-          key: 'file-persist-carveout',
-          persist: { storage: 'local', key: 'file-persist-test', debounceMs: 5 },
-          strict: false,
-        })
-        captured.api = form
-        return () =>
-          h('div', [
-            withDirectives(h('input', { type: 'file', class: 'avatar' }), [
-              [vRegister, form.register('avatar', { persist: true })],
-            ]),
-            withDirectives(h('input', { type: 'text', class: 'title' }), [
-              [vRegister, form.register('title', { persist: true })],
-            ]),
-          ])
-      },
-    })
-
-    const app = createApp(Parent).use(createAttaform())
-    apps.push(app)
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    await waitUntil(() => (captured.api?.fields.avatar.blank === true ? true : null))
-
-    if (captured.api === undefined) throw new Error('unreachable')
-    const fileInput = root.querySelector('input.avatar') as HTMLInputElement
-    const textInput = root.querySelector('input.title') as HTMLInputElement
-
-    await waitForPersistence(app)
-    setFiles(fileInput, [makeFile()])
-    dispatchChange(fileInput)
-    textInput.value = 'release notes'
-    textInput.dispatchEvent(new Event('input', { bubbles: true }))
-
-    // The persisted key has a schema-hash suffix (`file-persist-test:<hash>`),
-    // so a bare `getItem('file-persist-test')` predicate would burn the
-    // full ceiling waiting for an exact key that is never written.
-    await waitUntil(() => {
-      return Object.keys(localStorage).some((k) => k.startsWith('file-persist-test:')) ? true : null
-    }, 200)
-
-    const raw = Object.keys(localStorage).find((k) => k.startsWith('file-persist-test:'))
-    expect(raw).toBeDefined()
-    if (raw === undefined) throw new Error('unreachable')
-    const payload = JSON.parse(localStorage.getItem(raw) ?? '{}') as {
-      data?: { form?: Record<string, unknown> }
-    }
-    expect(payload.data?.form).toBeDefined()
-    expect('avatar' in (payload.data?.form ?? {})).toBe(false)
-    expect(payload.data?.form?.['title']).toBe('release notes')
-  })
-
-  it('emits a one-time dev warn when persist is set on a file input', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
-    const schema = z.object({
-      avatar: z.file().nullable(),
-      banner: z.file().nullable(),
-    })
-
-    const Parent = defineComponent({
-      setup() {
-        const form = useForm({
-          schema,
-          key: 'file-warn-dedup',
-          persist: { storage: 'local', key: 'file-warn-test', debounceMs: 5 },
-          strict: false,
-        })
-        return () =>
-          h('div', [
-            withDirectives(h('input', { type: 'file', class: 'avatar' }), [
-              [vRegister, form.register('avatar', { persist: true })],
-            ]),
-            withDirectives(h('input', { type: 'file', class: 'avatar-dup' }), [
-              [vRegister, form.register('avatar', { persist: true })],
-            ]),
-            withDirectives(h('input', { type: 'file', class: 'banner' }), [
-              [vRegister, form.register('banner', { persist: true })],
-            ]),
-          ])
-      },
-    })
-
-    const app = createApp(Parent).use(createAttaform())
-    apps.push(app)
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-
-    await waitUntil(
-      () =>
-        warnSpy.mock.calls.filter((c: unknown[]) =>
-          String(c[0] ?? '').includes('on <input type="file">')
-        ).length > 0
-          ? true
-          : null,
-      200
-    )
-
-    const fileWarns = warnSpy.mock.calls.filter((c: unknown[]) =>
-      String(c[0] ?? '').includes('on <input type="file">')
-    )
-    const avatarWarns = fileWarns.filter((c: unknown[]) => String(c[0] ?? '').includes('avatar'))
-    const bannerWarns = fileWarns.filter((c: unknown[]) => String(c[0] ?? '').includes('banner'))
-    expect(avatarWarns.length).toBe(1)
-    expect(bannerWarns.length).toBe(1)
-
-    warnSpy.mockRestore()
   })
 })
 

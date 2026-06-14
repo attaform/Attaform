@@ -30,7 +30,7 @@
   "capabilities": [
     {
       "lib": "attaform",
-      "displayName": "Attaform",
+      "displayName": "Attaform (Zod 3)",
       "layer": "headless-form-state",
       "schemaLib": "zod3",
       "ownsInputs": false,

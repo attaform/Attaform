@@ -326,11 +326,11 @@ jobs:
         # `pnpm version <X> --no-git-tag-version` writes the new version
         # into package.json and fires the `version` npm-hook
         # (promote-changelog.mjs + generate-release-notes.mjs +
-        # `git add CHANGELOG.md RELEASES.md`). The `--no-git-tag-version`
+        # sync-doc-versions.mjs + a `git add` of CHANGELOG.md, RELEASES.md,
+        # and the version-stamped scorecard doc). The `--no-git-tag-version`
         # flag suppresses the auto-commit AND the auto-tag — the staged
         # files stay in the index, where the Stage bump step finalizes
-        # the index for `git write-tree` byte-match + createCommitOnBranch
-        # consumption.
+        # the index for createCommitOnBranch consumption.
         #
         # RELEASE_NOTES_TARGET_REF is consumed by generate-release-notes.mjs
         # when calling `gh api .../generate-notes` — for hotfix releases
@@ -372,29 +372,46 @@ jobs:
       - name: Stage bump
         run: |
           set -euo pipefail
-          # `pnpm version` staged CHANGELOG.md + RELEASES.md (via the
-          # `version` hook's `git add` step) and modified package.json
-          # in the working tree without staging it. The publishConfig.tag
-          # edit above only touches package.json. Stage package.json
-          # explicitly so the index reflects every bump change for the
-          # `git write-tree` byte-match below.
+          # `pnpm version` staged CHANGELOG.md + RELEASES.md + the
+          # version-stamped scorecard doc (via the `version` hook's
+          # `git add` step) and modified package.json in the working tree
+          # without staging it. The publishConfig.tag edit above only
+          # touches package.json. Stage package.json explicitly so the
+          # index reflects every bump change for createCommitOnBranch
+          # below.
           #
           # No local commit. The signed commit is produced by the
           # `Create signed bump commit` step via createCommitOnBranch
-          # against the same staged files.
+          # against this same staged set.
           git add package.json
 
-          # Defense in depth: createCommitOnBranch below sends exactly
-          # the three bump files as additions. Any other staged file
-          # would silently fall off the resulting commit, so we assert
-          # the invariant on the index here, where the run log still
-          # shows what was unexpectedly modified.
+          # Defense in depth: createCommitOnBranch below builds its
+          # additions from exactly this staged set, so assert the set
+          # before it becomes a commit. CHANGELOG.md, RELEASES.md, and
+          # package.json are always part of a bump. The docs that
+          # sync-doc-versions.mjs stamps ride along only when their
+          # version marker is present; that script is deliberately
+          # tolerant and skips a re-worded doc, so they are allowed but
+          # not required. Any path outside this allow-list fails the
+          # release here, where the run log still shows what was modified.
           STAGED=$(git diff --cached --name-only | sort)
-          EXPECTED=$(printf '%s\n' CHANGELOG.md RELEASES.md package.json | sort)
-          if [ "$STAGED" != "$EXPECTED" ]; then
-            echo "::error::Unexpected files staged for release commit:"
-            git diff --cached --name-only | sed 's/^/::error::  /'
-            echo "::error::Expected exactly: CHANGELOG.md, RELEASES.md, package.json"
+          REQUIRED=$(printf '%s\n' CHANGELOG.md RELEASES.md package.json | sort)
+          ALLOWED=$(printf '%s\n' \
+            CHANGELOG.md \
+            RELEASES.md \
+            package.json \
+            docs/scorecard/cii-best-practices-answers.md | sort)
+          MISSING=$(comm -23 <(printf '%s\n' "$REQUIRED") <(printf '%s\n' "$STAGED"))
+          UNEXPECTED=$(comm -13 <(printf '%s\n' "$ALLOWED") <(printf '%s\n' "$STAGED"))
+          if [ -n "$MISSING" ] || [ -n "$UNEXPECTED" ]; then
+            echo "::error::Release commit staging invariant violated."
+            if [ -n "$MISSING" ]; then
+              printf '%s\n' "$MISSING" | sed '/^$/d; s/^/::error::  missing required file: /'
+            fi
+            if [ -n "$UNEXPECTED" ]; then
+              printf '%s\n' "$UNEXPECTED" | sed '/^$/d; s/^/::error::  unexpected staged file: /'
+            fi
+            echo "::error::Required: CHANGELOG.md, RELEASES.md, package.json. Also allowed: docs/scorecard/cii-best-practices-answers.md"
             exit 1
           fi
           echo "Files staged for release commit:"
@@ -560,17 +577,24 @@ jobs:
               { stdio: "inherit" }
             );
 
-            // Read + base64-encode the three bump files. Anything else
-            // modified in the workspace is excluded by construction;
-            // the Stage bump step already asserted the index contains
-            // exactly these three paths.
+            // Read + base64-encode every file in the release commit.
+            // The set is whatever the Stage bump step staged and
+            // asserted: package.json, CHANGELOG.md, RELEASES.md, plus any
+            // version-stamped docs. Building `additions` from the index
+            // keeps this step in lock-step with that assertion, so a new
+            // stamp target can never silently fall off the commit.
+            const staged = execFileSync("git", [
+              "diff", "--cached", "--name-only", "-z",
+            ])
+              .toString("utf8")
+              .split("\0")
+              .filter(Boolean);
             const encode = (path) =>
               fs.readFileSync(path).toString("base64");
-            const additions = [
-              { path: "package.json", contents: encode("package.json") },
-              { path: "CHANGELOG.md", contents: encode("CHANGELOG.md") },
-              { path: "RELEASES.md", contents: encode("RELEASES.md") },
-            ];
+            const additions = staged.map((path) => ({
+              path,
+              contents: encode(path),
+            }));
 
             // Build the GraphQL request body. The mutation is wrapped
             // around a single `$input: CreateCommitOnBranchInput!`
@@ -648,6 +672,7 @@ jobs:
               "- `package.json`: version bumped, `publishConfig.tag` set to `" + distTag + "`",
               "- `CHANGELOG.md`: `## Unreleased` promoted to `## v" + version + "`",
               "- `RELEASES.md`: auto-generated GitHub release-notes entry prepended",
+              "- `docs/scorecard/cii-best-practices-answers.md`: `current:` version marker stamped to `" + version + "`",
               "",
               "### After merge",
               "",

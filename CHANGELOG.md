@@ -47,7 +47,7 @@
   and `form.toRef`: debounced, validity-gated, with per-field and aggregate status
   plus a `runWithoutAutosave` pause for hydrating and resetting without echoing
   saves. Dropping the seam also trims the eager bundle and lightens the always-on
-  write path. Pre-1.0, so this lands without a deprecation shim. (#XXX)
+  write path. Pre-1.0, so this lands without a deprecation shim. (#417)
 
 ## v0.22.0
 ### Added

@@ -12,6 +12,7 @@ import { type Page, expect, test } from '@playwright/test'
 
 const ADAPTERS = [
   'attaform',
+  'attaform-zod4',
   'vee-validate',
   'tanstack',
   'formisch',

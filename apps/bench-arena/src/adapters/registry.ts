@@ -1,3 +1,4 @@
+import { attaformZod4Adapter } from './attaform-zod4/adapter'
 import { attaformAdapter } from './attaform/adapter'
 import type { BenchAdapter } from './contract'
 import { formischAdapter } from './formisch/adapter'
@@ -16,6 +17,7 @@ import { vuelidateAdapter } from './vuelidate/adapter'
  */
 export const adapters: Record<string, BenchAdapter> = {
   [attaformAdapter.meta.id]: attaformAdapter,
+  [attaformZod4Adapter.meta.id]: attaformZod4Adapter,
   [veeValidateAdapter.meta.id]: veeValidateAdapter,
   [tanstackAdapter.meta.id]: tanstackAdapter,
   [formischAdapter.meta.id]: formischAdapter,

@@ -36,8 +36,12 @@ export type DimensionId =
 /** The design-point a library occupies; the fairness axis. */
 export type LayerId = 'headless-form-state' | 'headless-validation-only' | 'batteries-included'
 
-/** Which validator the adapter feeds. zod v3 is pinned across the zod cohort. */
-export type SchemaLib = 'zod3' | 'valibot' | 'native'
+/**
+ * Which validator the adapter feeds. zod v3 is the shared schema across the zod
+ * cohort; `zod4` is the dedicated Attaform (Zod 4) row, which exercises the same
+ * shapes through Attaform's zod-v4 adapter.
+ */
+export type SchemaLib = 'zod3' | 'zod4' | 'valibot' | 'native'
 
 /** Validation trigger under test. `input` is the primary (universal) pass. */
 export type TriggerMode = 'input' | 'blur'

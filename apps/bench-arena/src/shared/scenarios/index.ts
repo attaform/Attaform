@@ -1,19 +1,21 @@
 import type { ScenarioId, ScenarioParams } from '../../adapters/contract'
 import type * as v from 'valibot'
 import type { z } from 'zod'
-import { arraysNative, arraysShape, arraysValibot, arraysZod3 } from './arrays'
+import type { z as z4 } from 'zod-v4'
+import { arraysNative, arraysShape, arraysValibot, arraysZod3, arraysZod4 } from './arrays'
 import {
   discriminatedUnionNative,
   discriminatedUnionShape,
   discriminatedUnionValibot,
   discriminatedUnionZod3,
+  discriminatedUnionZod4,
 } from './discriminated-union'
-import { flatNative, flatShape, flatValibot, flatZod3 } from './flat'
-import { gridNative, gridShape, gridValibot, gridZod3 } from './grid'
-import { massiveNative, massiveShape, massiveValibot, massiveZod3 } from './massive'
-import { nestedNative, nestedShape, nestedValibot, nestedZod3 } from './nested'
+import { flatNative, flatShape, flatValibot, flatZod3, flatZod4 } from './flat'
+import { gridNative, gridShape, gridValibot, gridZod3, gridZod4 } from './grid'
+import { massiveNative, massiveShape, massiveValibot, massiveZod3, massiveZod4 } from './massive'
+import { nestedNative, nestedShape, nestedValibot, nestedZod3, nestedZod4 } from './nested'
 import type { NativeRule, ScenarioShape } from './types'
-import { wizardNative, wizardShape, wizardValibot, wizardZod3 } from './wizard'
+import { wizardNative, wizardShape, wizardValibot, wizardZod3, wizardZod4 } from './wizard'
 
 export { leafSeed, nestRules } from './types'
 export type { NativeRule, ScenarioShape } from './types'
@@ -69,6 +71,28 @@ export function zodSchemaFor(scenario: ScenarioId, params: ScenarioParams): z.Zo
       return wizardZod3(params)
     default:
       return notYet(scenario, 'zod schema')
+  }
+}
+
+/** zod v4 schema, fed only to the Attaform (Zod 4) adapter (same shapes as v3). */
+export function zodV4SchemaFor(scenario: ScenarioId, params: ScenarioParams): z4.ZodType {
+  switch (scenario) {
+    case 'flat':
+      return flatZod4(params)
+    case 'nested':
+      return nestedZod4(params)
+    case 'arrays':
+      return arraysZod4(params)
+    case 'grid':
+      return gridZod4(params)
+    case 'discriminated-union':
+      return discriminatedUnionZod4(params)
+    case 'massive':
+      return massiveZod4(params)
+    case 'wizard':
+      return wizardZod4(params)
+    default:
+      return notYet(scenario, 'zod v4 schema')
   }
 }
 

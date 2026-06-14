@@ -442,14 +442,15 @@ async function measureMount(
  * instead reads the byte-exact heap through CDP (HeapProfiler.collectGarbage +
  * Runtime.getHeapUsage), collecting before and after each hook call.
  *
- * One mount/teardown cycle yields three drift-robust deltas: with `s0` the
- * collected baseline, `s1` the collected heap of the live mount, `s2` the heap
- * after a keystroke burst (no collection), and `s3` the collected heap after
- * teardown, the driver records retained `s1 - s0` (live-form heap), churn
- * `s2 - s1` (the burst's allocation pressure), and leak `s3 - s0` (residual a
- * mount/unmount leaves behind). A leak that makes `s0` creep upward across
- * cycles leaves every per-cycle delta correct, so retained and leak stay honest
- * even as the page accumulates.
+ * One mount/teardown cycle yields three drift-robust figures: with `s0` the
+ * collected baseline, `s1` the collected heap of the live mount, and `s3` the
+ * collected heap after teardown, the driver records retained `s1 - s0` (live-form
+ * heap) and leak `s3 - s0` (residual a mount/unmount leaves behind). A leak that
+ * makes `s0` creep upward across cycles leaves every per-cycle delta correct, so
+ * retained and leak stay honest even as the page accumulates. Churn (the burst's
+ * allocation pressure) is read from the CDP allocation sampler wrapped around the
+ * burst, not from an uncollected post-burst delta, which would track V8's GC
+ * scheduling rather than allocation (see `runMemoryCell`).
  *
  * The DOM is held constant for the bare-input cohort, so the figures isolate the
  * library's own reactive and validation state; the compiled schema (zod/valibot)

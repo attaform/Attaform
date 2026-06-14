@@ -1,5 +1,42 @@
 # Releases
 
+## v0.22.0 — 2026-06-14
+
+## What's Changed
+* perf: land the runtime-performance program (byte-identical wins + analysis) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/379
+* feat(bench-arena): fair, reproducible cross-library Vue form benchmark by @ozzyfromspace in https://github.com/attaform/Attaform/pull/382
+* fix(zod-v3): reconstruct slim/stripped nodes version-faithfully to survive zod skew by @ozzyfromspace in https://github.com/attaform/Attaform/pull/383
+* perf(field-state): linear-time container aggregation via subtree walk by @ozzyfromspace in https://github.com/attaform/Attaform/pull/384
+* ci(bench-arena): reliable and fast monthly refresh by @ozzyfromspace in https://github.com/attaform/Attaform/pull/385
+* fix(bench-arena): reliable first monthly refresh (pegged-renderer DNF + lint generated results) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/387
+* fix(bench-arena): guarantee one machine per dimension of introspection by @ozzyfromspace in https://github.com/attaform/Attaform/pull/389
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/390
+* ci(bench-arena): split massive-rest by dimension for cap headroom by @ozzyfromspace in https://github.com/attaform/Attaform/pull/391
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/392
+* feat: form.onChange + async server validation by @ozzyfromspace in https://github.com/attaform/Attaform/pull/395
+* refactor(demos): shared build-time style system (flat to folder) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/396
+* chore(deps-dev): bump esbuild from 0.28.0 to 0.28.1 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/397
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/398
+* perf(arrays): scope array-op write work to the changed element, not all N by @ozzyfromspace in https://github.com/attaform/Attaform/pull/399
+* perf(arrays): a row mutation updates only the touched rows, at any nesting depth by @ozzyfromspace in https://github.com/attaform/Attaform/pull/400
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/401
+* perf(arrays): scope element field-state to its own subtree, not the array length by @ozzyfromspace in https://github.com/attaform/Attaform/pull/402
+* perf(arrays): scope hasAtPath to the queried index, not the array length by @ozzyfromspace in https://github.com/attaform/Attaform/pull/403
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/405
+* feat(bench): add the Attaform (Zod 4) adapter and order the comparison by performance by @ozzyfromspace in https://github.com/attaform/Attaform/pull/406
+* fix(bench-arena): measure memory churn by allocation sampler, not an uncollected snapshot by @ozzyfromspace in https://github.com/attaform/Attaform/pull/407
+* fix(bench-arena): match the zod-isolation importer case-insensitively for CI by @ozzyfromspace in https://github.com/attaform/Attaform/pull/408
+* chore(docs): fix wrong-case repo links and stale version claims; stamp version at release by @ozzyfromspace in https://github.com/attaform/Attaform/pull/409
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/410
+* chore(bench-arena): label the Attaform rows by zod major (Zod 3 / Zod 4) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/411
+* docs(changelog): capture unreleased changes since v0.21.2 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/412
+* fix(release-pr): stage the version-stamped scorecard doc by @ozzyfromspace in https://github.com/attaform/Attaform/pull/413
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.21.2...v0.22.0
+
+---
+
 ## v0.21.2 — 2026-06-08
 
 ## What's Changed

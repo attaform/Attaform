@@ -24,10 +24,16 @@ function attaformZodVersionIsolation(): Plugin {
     name: 'attaform-zod-version-isolation',
     enforce: 'pre',
     async resolveId(source, importer) {
+      // Case-insensitive: the importer is the dist file's real (symlink-resolved)
+      // path, whose `attaform` segment is the checkout directory, and CI capitalizes
+      // it. GitHub checks this repo out to `.../Attaform/Attaform/dist/`, while the
+      // dev tree lives at `.../attaform/dist/`; a case-sensitive test matched only
+      // the latter, so in CI the redirect never fired and the v4 adapter resolved the
+      // v3 `zod` instead, surfacing as the discriminated-union cells failing to mount.
       if (
         source === 'zod' &&
         importer !== undefined &&
-        /[\\/]attaform[\\/]dist[\\/]/.test(importer)
+        /[\\/]attaform[\\/]dist[\\/]/i.test(importer)
       ) {
         return this.resolve('zod-v4', `${BENCH_DIR}vite.config.ts`, { skipSelf: true })
       }

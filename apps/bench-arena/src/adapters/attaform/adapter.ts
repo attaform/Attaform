@@ -49,7 +49,7 @@ const unsupported = (op: string): never => {
 export const attaformAdapter: BenchAdapter = {
   meta: {
     id: 'attaform',
-    displayName: 'Attaform',
+    displayName: 'Attaform (zod@v3)',
     layer: 'headless-form-state',
     schemaLib: 'zod3',
     ownsInputs: false,

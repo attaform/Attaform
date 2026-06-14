@@ -126,7 +126,7 @@ Run with `pnpm bench`. The regression gate only fires on benches that follow the
 
 ## Peer-dep coverage
 
-Per-PR CI covers Node 18 / 20 / 22 / LTS against the devDep-pinned peer versions. A weekly workflow sweeps Vue 3.5 through 3.6, Vite 5 / 6, Nuxt 3.16 through Nuxt 4. Jobs fail independently; versions not yet released surface as failed cells without blocking the main CI.
+Per-PR CI runs the suite on the current Node LTS (22.x today; the `engines.node` floor is Node 22) against the devDep-pinned peer versions. A weekly workflow sweeps Vue 3.5 through 3.6, Vite 5 / 6, Nuxt 3.16 through Nuxt 4. Jobs fail independently; versions not yet released surface as failed cells without blocking the main CI.
 
 ## Where to next
 

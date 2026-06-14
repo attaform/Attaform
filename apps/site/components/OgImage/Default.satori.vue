@@ -128,7 +128,7 @@
           display: flex;
         "
       >
-        Vue 3 · Nuxt 4 · Zod
+        Vue 3 · Nuxt 3 / 4 · Zod
       </span>
     </div>
   </div>

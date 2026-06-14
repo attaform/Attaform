@@ -31,7 +31,7 @@
   `PersistIncludeMode` types, the `DEFAULT_SENSITIVE_NAMES` export, the
   `AnonPersistError` class, and the `WriteMeta.persist` write tag. `useWizard`'s
   `persist` / `restore` URL step-position sync is a different feature and is
-  untouched. Pre-1.0, so this lands without a deprecation shim. (#XXX)
+  untouched. Pre-1.0, so this lands without a deprecation shim. (#416)
 
 ## v0.22.0
 ### Added

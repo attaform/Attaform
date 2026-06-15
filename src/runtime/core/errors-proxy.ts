@@ -4,6 +4,7 @@ import type { FormStore } from './create-form-store'
 import { aggregateErrorsAt } from './field-state-api'
 import { getAtPath, hasAtPath } from './path-walker'
 import {
+  ROOT_PATH_KEY,
   canonicalizePath,
   isPathPrefix,
   segmentsForPathKey,
@@ -178,9 +179,11 @@ export function buildErrorsProxy<F extends GenericForm>(
  * variants) stay hidden; user-supplied entries are surfaced
  * unconditionally so server errors and manual marks at unknown keys
  * land in `Object.keys` / spread / iteration. Global errors at the
- * root `[]` are the container-self of root, not a child key, so the
- * strict-descendant guard below drops them (read them via `errors([])`
- * / `meta.errors`); a literal `''` field enumerates under the key `''`.
+ * root `[]` are root form context, not a child key, so the strict-
+ * descendant guard below drops them from enumeration (read them via
+ * `errors([])` / `meta.errors`, or find them under the `'[]'` key in the
+ * materialised `JSON.stringify` dump); a literal `''` field enumerates
+ * under the key `''`.
  */
 function errorAwareContainerKeys<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -228,14 +231,18 @@ function errorAwareContainerKeys<F extends GenericForm>(
  * slot never appears.
  *
  * Global errors at the root `[]` (root `.refine()`, hydration failures,
- * `setFormErrors`) are the container-self of ROOT, which has no `''`
- * sentinel slot — `''` is a free field key at root. They're surfaced
- * via `errors([])` / `meta.errors`, not by drilling, so they're skipped
- * here and never appear in the tree.
+ * `setFormErrors`) are the root form's own context. They are NEVER the
+ * `''` slot — `''` is a plain field key and conflating the two is a hard
+ * boundary. When materialising the root container they're surfaced under
+ * the root-path key `'[]'` (the same token `errors([])` reads), so a
+ * whole-form `JSON.stringify(form.errors)` carries every error the form
+ * holds while `''` stays a field slot. When materialising any
+ * sub-container they're out of scope and skipped.
  *
  * Placement rules per error entry at `fullPath`:
  *
- *   - Root `[]` bucket — skipped (see above).
+ *   - Root `[]` bucket — at the root materialisation, place under the
+ *     root-path key `'[]'`; at a sub-container materialisation, skip.
  *   - Container-self at the current materialisation root (`fullPath`
  *     exactly equals `containerSegments`, depth >= 1) — place at
  *     `tree['']`.
@@ -291,12 +298,18 @@ function materializeErrors<F extends GenericForm>(
       const fullPath = segmentsForPathKey(pathKey)
       if (fullPath === null) continue
 
-      // Root `[]` bucket (global / root `.refine()` / hydration /
-      // `setFormErrors`) is the container-self of ROOT, which has no
-      // `''` sentinel slot (`''` is a free field key at root). It's
-      // read via `errors([])` / `meta.errors`, not by drilling, so it
-      // never lands in the materialised tree.
-      if (fullPath.length === 0) continue
+      // Root `[]` bucket — global / root `.refine()` / hydration /
+      // `setFormErrors`, the root form's own context. It is NEVER the
+      // `''` slot: `''` is a plain field key, and conflating the two is
+      // a hard boundary. At the root materialisation, surface global
+      // errors under the root-path key `'[]'` (the same token
+      // `errors([])` reads) so `JSON.stringify(form.errors)` expresses
+      // every error the form holds while `''` stays untouched. At a
+      // sub-container materialisation global is out of scope, so skip.
+      if (fullPath.length === 0) {
+        if (containerSegments.length === 0) placeAt(tree, [ROOT_PATH_KEY], errors)
+        continue
+      }
 
       // Standard descendant-or-equal check against the materialisation
       // container. Strict descendants AND the container itself

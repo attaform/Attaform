@@ -127,6 +127,7 @@ type ValidationError = {
   readonly message: string
   readonly code: string
   readonly formKey: string
+  readonly data?: Json | null
 }
 ```
 
@@ -134,6 +135,7 @@ type ValidationError = {
 - `message`: the human-readable error text.
 - `code`: stable identifier (`atta:no-value-supplied`, `zod:invalid_type`, `api:duplicate-email`, etc.).
 - `formKey`: which form emitted the error. Useful for cross-form aggregation in wizards.
+- `data`: optional, opaque JSON payload a server attached to the error (a captcha challenge, a lockout `unlocks_at` timestamp, an MFA step-up descriptor). Attaform carries it untouched; your UI reads it. Typed as `Json` (the JSON-serialisable value shape).
 
 The `code` is what consumers branch on; the `message` is what templates render. Avoid matching `message` strings; they're localized and may change over time without breaking the public contract.
 

@@ -49,7 +49,8 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 | Type                                                  | Source                  | Purpose                                                              |
 | ----------------------------------------------------- | ----------------------- | -------------------------------------------------------------------- |
-| `ValidationError`                                     | runtime/types/types-api | The error shape (`{ path, message, code, formKey }`).                |
+| `ValidationError`                                     | runtime/types/types-api | The error shape (`{ path, message, code, formKey, data? }`).         |
+| `Json`                                                | runtime/types/types-api | JSON-serialisable value; the type of the optional `data` payload.    |
 | `ValidationResponse<Form>`                            | runtime/types/types-api | Discriminated success-or-failure validation result with parsed data. |
 | `ValidationResponseWithoutValue<Form>`                | runtime/types/types-api | Same shape minus the `data` payload (used by `validateAsync`).       |
 | `ReactiveValidationStatus<Form>`                      | runtime/types/types-api | Discriminated pending-vs-settled reactive validation status.         |

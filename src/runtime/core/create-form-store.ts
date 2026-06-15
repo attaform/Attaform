@@ -152,12 +152,12 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * Schema-driven errors. Written ONLY by the schema validation pipeline:
    * `scheduleFieldValidation`, `handleSubmit`, the construction-time seed,
    * history restore, and hydration. Cleared by `reset` / `resetField` and by
-   * a successful submit. `setFieldErrors*` APIs do NOT touch this Map.
+   * a successful submit. `setErrors` / `clearErrors` do NOT touch this Map.
    */
   readonly schemaErrors: Map<PathKey, ValidationError[]>
   /**
-   * User-injected errors. Written ONLY by the `setFieldErrors*` API surfaces
-   * (and history / hydration replay). Survives schema revalidation and
+   * User-injected errors. Written ONLY by the `setErrors` / `clearErrors`
+   * API surface (and history / hydration replay). Survives schema revalidation and
    * successful submits — the consumer owns its lifetime explicitly.
    */
   readonly userErrors: Map<PathKey, ValidationError[]>
@@ -546,9 +546,9 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   applySchemaErrorsForSubtree(path: Path, errors: ValidationError[]): void
 
-  // User-driven writers. Used by build-form-api's setFieldErrors* surfaces.
+  // User-driven writers. Used by build-form-api's setErrors / clearErrors.
   setAllUserErrors(errors: readonly ValidationError[]): void
-  addUserErrors(errors: readonly ValidationError[]): void
+  setUserErrorsForPath(path: Path, errors: readonly ValidationError[]): void
   clearUserErrors(path?: Path): void
 
   /**
@@ -838,8 +838,7 @@ export type FormStoreHydration = {
   readonly schemaErrors: ReadonlyArray<readonly [string, unknown]>
   /**
    * User-injected errors snapshot. Replayed into `userErrors` at
-   * construction. Allows server-side `setFieldErrors` /
-   * `addFieldErrors` calls (typically fed from `parseApiErrors`) to
+   * construction. Allows server-side errors set through `setErrors` to
    * round-trip through hydration.
    */
   readonly userErrors: ReadonlyArray<readonly [string, unknown]>
@@ -1306,8 +1305,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // source-order rendering) works correctly.
   let sortedRegistrationsCache: Array<{ path: Path; element: HTMLElement }> | null = null
   // Errors are split by source so each writer touches exactly one slot.
-  // Schema validation owns `schemaErrors`; the `setFieldErrors*` APIs own
-  // `userErrors`. The two stores merge on read via `getErrorsForPath` and
+  // Schema validation owns `schemaErrors`; the `setErrors` / `clearErrors`
+  // API owns `userErrors`. The two stores merge on read via `getErrorsForPath` and
   // the top-level `errors` drillable Proxy in build-form-api.
   const schemaErrors = reactive(new Map<PathKey, ValidationError[]>()) as Map<
     PathKey,
@@ -2903,8 +2902,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   /**
    * Append every entry in `entries` to its target Map at the canonical
    * path key. Existing entries at that key are preserved (merge-append),
-   * which matches the documented `addFieldErrors` semantics. Allocates a
-   * fresh array per target key to keep the reactive trigger surface
+   * so a single `replaceErrorsIn` pass lands multiple errors at the same
+   * path. Allocates a fresh array per target key to keep the reactive
+   * trigger surface
    * obvious — Vue's collection handlers fire on `.set`, not on in-place
    * push.
    *
@@ -3027,14 +3027,25 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     clearErrorsIn(schemaErrors, path)
   }
 
-  // --- User writers (setFieldErrors* surfaces + history/hydration) ---
+  // --- User writers (setErrors / clearErrors + history/hydration) ---
 
   function setAllUserErrors(entries: readonly ValidationError[]): void {
     replaceErrorsIn(userErrors, entries)
   }
 
-  function addUserErrors(entries: readonly ValidationError[]): void {
-    appendErrorsTo(userErrors, entries)
+  /**
+   * Replace the user-error bucket at exactly `path` with `entries`,
+   * leaving every other path untouched. Backs the path-scoped
+   * `form.setErrors(path, …)`. Empty `entries` deletes the bucket.
+   * Mirrors `setSchemaErrorsForPath` on the validation side.
+   */
+  function setUserErrorsForPath(path: Path, entries: readonly ValidationError[]): void {
+    const { key } = canonicalizePath(path)
+    if (entries.length === 0) {
+      userErrors.delete(key)
+      return
+    }
+    userErrors.set(key, [...entries])
   }
 
   function clearUserErrors(path?: Path): void {
@@ -3888,7 +3899,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     clearSchemaErrors,
     applySchemaErrorsForSubtree,
     setAllUserErrors,
-    addUserErrors,
+    setUserErrorsForPath,
     clearUserErrors,
     getErrorsForPath,
     ensurePathOrdinal,

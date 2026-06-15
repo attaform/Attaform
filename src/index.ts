@@ -51,9 +51,6 @@ export { defaultCoercionRules, defineCoercion } from './runtime/core/schema-coer
 // Public types
 export type {
   AbstractSchema,
-  ApiErrorDetails,
-  ApiErrorEntry,
-  ApiErrorEnvelope,
   AttaformDefaults,
   CoercionEntry,
   CoercionRegistry,
@@ -63,6 +60,7 @@ export type {
   DisplayCtx,
   DisplayMachine,
   DisplayState,
+  ErrorInput,
   ErrorsProxyShape,
   FieldMetaPayload,
   FieldState,
@@ -169,13 +167,3 @@ export {
   makeDefaultDisplayState,
 } from './runtime/core/display-state'
 export type { DisplayTimings } from './runtime/core/display-state'
-
-// API-error parser. Pure transformation: takes a server response in
-// the common shapes (wrapped envelope, raw details record) and returns
-// `ValidationError[]` + an `ok` discriminator for malformed payloads.
-// Pair with `form.setFieldErrors` (or `addFieldErrors`) to apply the
-// result. The form API has no `setFieldErrorsFromApi` shortcut by
-// design — keeping the parse step explicit is the consolidation move
-// that lets the form's setter surface stay narrow.
-export { parseApiErrors, PARSE_API_ERRORS_DEFAULTS } from './runtime/core/parse-api-errors'
-export type { ParseApiErrorsOptions, ParseApiErrorsResult } from './runtime/core/parse-api-errors'

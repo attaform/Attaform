@@ -15,5 +15,16 @@ import type { z } from 'zod'
  * Widened per feature: the discriminated-union arm
  * (`z.discriminatedUnion`, variant forms) lands alongside its runtime
  * support.
+ *
+ * `z.ZodObject` MUST keep its `z.ZodRawShape` argument. The unified
+ * entry's v4 overload constrains on `SupportedRootSchema & ZodV4Internals`
+ * to keep v3 schemas out (see `../unified/types-zod-major.ts`). In a
+ * single-major (v3-only) consumer install, the published `.d.mts`
+ * resolves this `z` to v3, where bare `z.ZodObject` is missing its
+ * required shape argument and degrades to an `any`-like error type;
+ * `any` then absorbs the union and `any & ZodV4Internals` collapses back
+ * to `any`, so the marker stops excluding v3 schemas and the read slot
+ * poisons to `never`. `z.ZodRecord` carries defaults for both arguments,
+ * so it stays a concrete type in either major.
  */
-export type SupportedRootSchema = z.ZodObject | z.ZodRecord
+export type SupportedRootSchema = z.ZodObject<z.ZodRawShape> | z.ZodRecord

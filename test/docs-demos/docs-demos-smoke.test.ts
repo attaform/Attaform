@@ -1036,31 +1036,30 @@ const entries: SmokeEntry[] = [
     },
   },
   {
-    // Submit with the simulated server's "taken" email + reserved
-    // username; the parsed errors flow into the form's errors
-    // map and render under each field.
+    // Sign in as the locked account; the simulated server returns a
+    // form-level error whose `data` payload carries the unlock time,
+    // surfaced through form.errors([]) in the banner.
     slug: 'server-side-errors',
     gesture: async (root) => {
       const inputs = root.querySelectorAll<HTMLInputElement>('input')
       const email = inputs.item(0)
-      const username = inputs.item(1)
-      if (email === null || username === null)
+      const password = inputs.item(1)
+      if (email === null || password === null)
         throw new Error('server-side-errors inputs not found')
-      await dispatchInput(email, 'taken@example.com')
-      await dispatchInput(username, 'admin')
+      await dispatchInput(email, 'locked@example.com')
+      await dispatchInput(password, 'hunter2')
       const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')
       if (!submit) throw new Error('submit button not found')
       submit.click()
-      // The simulated server resolves async; poll for the
-      // emitted error.
-      await waitUntil(() => root.querySelector('em') ?? null, 2000)
+      // The simulated server resolves async; poll for the emitted
+      // form-level lockout banner.
+      await waitUntil(() => root.querySelector('.banner') ?? null, 2000)
     },
     assert: async (root) => {
       const text = root.textContent ?? ''
-      // The demo's parseApiErrors writes both an "already
-      // registered" message and a "reserved" message into form
-      // state; smoke checks for either marker.
-      expect(text.toLowerCase()).toMatch(/registered|reserved|taken/)
+      // The lockout lands at the global [] bucket and renders in the
+      // banner; its data payload adds the unlock time.
+      expect(text.toLowerCase()).toMatch(/locked|too many|try again/)
     },
   },
   {

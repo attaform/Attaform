@@ -46,12 +46,31 @@ export interface SchemaFactoryOptions {
 }
 
 /**
+ * A JSON-serialisable value: the recursive shape of anything that
+ * survives a `JSON.stringify` / `JSON.parse` round-trip unchanged.
+ * The type of `ValidationError.data`.
+ *
+ * The object arm is a named interface rather than an inline index
+ * signature: TypeScript expands an anonymous recursive alias eagerly
+ * and tips into a depth-limit error (TS2589) when `Json` is checked
+ * inside a large structural type (e.g. the form store). A named
+ * reference defers that expansion.
+ */
+export type Json = string | number | boolean | null | JsonArray | JsonObject
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- a named array arm (not inline `Json[]`) is what defers the recursion and avoids TS2589
+interface JsonArray extends Array<Json> {}
+interface JsonObject {
+  [key: string]: Json
+}
+
+/**
  * One validation failure. `path` points at the offending field as a
  * structured array — `['user', 'address', 0, 'line1']` for a nested
  * field, `['']` (the empty-string path) for a form-level error
  * (root `.refine()` messages, `setFormErrors()` entries, server-
  * emitted form banners). `formKey` identifies which form produced
  * the error so a single error list can be routed to multiple forms.
+ * The optional `data` slot carries an arbitrary server payload.
  *
  * Returned by `validate()` / `validateAsync()` / `handleSubmit`'s
  * `onError` callback, and by `parseApiErrors` for server responses.
@@ -80,6 +99,14 @@ export type ValidationError = {
    *   exact-message string matching.
    */
   code: string
+  /**
+   * Optional structured payload attached to the error. Attaform never
+   * sets or reads this; it is a passthrough slot for whatever a server
+   * sends alongside the message (a captcha challenge, a lockout
+   * `unlocks_at` timestamp, an MFA step-up descriptor) so the UI can
+   * act on it. Survives serialise / hydrate and undo / redo unchanged.
+   */
+  data?: Json | null
 }
 
 /** Settled validation result when the form (or subtree) parsed successfully. */

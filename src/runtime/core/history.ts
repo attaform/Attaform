@@ -1,5 +1,5 @@
 import { computed, shallowRef, type ComputedRef } from 'vue'
-import type { HistoryConfig, ValidationError, WriteMeta } from '../types/types-api'
+import type { HistoryConfig, Json, ValidationError, WriteMeta } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './defaults'
@@ -102,18 +102,51 @@ function captureErrorEntries(map: Map<PathKey, ValidationError[]>): ErrorEntries
 }
 
 /**
+ * Structural equality for two `ValidationError.data` payloads (opaque
+ * JSON). Most errors carry no `data`, so the `a === b` fast path (both
+ * `undefined`, or the same reference) settles the common case; the
+ * recursive walk only runs when two distinct payloads are present.
+ */
+function dataEqual(a: Json | null | undefined, b: Json | null | undefined): boolean {
+  if (a === b) return true
+  if (a === null || b === null || a === undefined || b === undefined) return false
+  if (typeof a !== typeof b) return false
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (!dataEqual(a[i], b[i])) return false
+    }
+    return true
+  }
+  if (Array.isArray(b)) return false
+  if (typeof a === 'object') {
+    const ao = a as { [k: string]: Json }
+    const bo = b as { [k: string]: Json }
+    const keys = Object.keys(ao)
+    if (keys.length !== Object.keys(bo).length) return false
+    for (const k of keys) {
+      if (!Object.prototype.hasOwnProperty.call(bo, k)) return false
+      if (!dataEqual(ao[k], bo[k])) return false
+    }
+    return true
+  }
+  return false
+}
+
+/**
  * Field-by-field equality for two ValidationErrors. Identity-equal first:
  * ValidationError objects pass by reference through the snapshot chain
  * (not cloned), so most comparisons short-circuit here. On an identity
- * miss, compare message / code / formKey and the path (reference-equal or
- * structurally equal).
+ * miss, compare message / code / formKey, the path (reference-equal or
+ * structurally equal), and the opaque `data` payload (structurally).
  */
 function errorFieldsEqual(av: ValidationError, bvi: ValidationError): boolean {
   if (av === bvi) return true
   if (av.message !== bvi.message) return false
   if (av.code !== bvi.code) return false
   if (av.formKey !== bvi.formKey) return false
-  return av.path === bvi.path || pathsEqual(av.path, bvi.path)
+  if (av.path !== bvi.path && !pathsEqual(av.path, bvi.path)) return false
+  return dataEqual(av.data, bvi.data)
 }
 
 export function errorsEqual(a: ErrorEntries, b: ErrorEntries): boolean {

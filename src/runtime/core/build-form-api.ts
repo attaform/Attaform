@@ -611,12 +611,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     }
     state.userErrors.set(
       FORM_ERRORS_PATH_KEY,
-      errors.map((e) => ({
-        path: [...FORM_ERRORS_PATH],
-        message: e.message,
-        formKey: state.formKey,
-        code: e.code ?? 'atta:form-error',
-      }))
+      errors.map((e) => {
+        const entry: ValidationError = {
+          path: [...FORM_ERRORS_PATH],
+          message: e.message,
+          formKey: state.formKey,
+          code: e.code ?? 'atta:form-error',
+        }
+        if (e.data !== undefined) entry.data = e.data
+        return entry
+      })
     )
   }
 

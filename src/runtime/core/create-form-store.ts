@@ -129,6 +129,9 @@ function isHydratedValidationErrorArray(value: unknown): value is ValidationErro
     if (!Array.isArray(e.path)) return false
     if (typeof e.formKey !== 'string') return false
     if (typeof e.code !== 'string') return false
+    // `data` is an opaque JSON passthrough: it arrived via JSON.parse,
+    // so it is structurally JSON by construction. Don't hard-validate
+    // it here — it rides along on the entry untouched.
   }
   return true
 }

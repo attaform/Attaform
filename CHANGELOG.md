@@ -22,6 +22,14 @@
   inside `handleSubmit` narrows to the active variant. zod v3 and zod v4 both get
   it, both tested, and object-rooted forms behave exactly as before. (#424)
 
+- **A server can now attach a structured payload to an error, and Attaform
+  carries it straight to your UI.** Every `ValidationError` gained an optional
+  `data` slot, typed as the newly exported `Json` value shape, for whatever rides
+  alongside the message: a captcha challenge, a lockout `unlocks_at` timestamp, an
+  MFA step-up descriptor. Attaform never inspects it; it flows untouched through
+  `form.errors`, `form.meta.errors`, the SSR serialise / hydrate round-trip, and
+  undo / redo. Read it where you render the error and act on it. (#426)
+
 ## v0.23.0
 ### Removed
 

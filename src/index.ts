@@ -75,6 +75,7 @@ export type {
   GetDisplayState,
   HandleSubmit,
   HistoryConfig,
+  Json,
   MetaTrackerValue,
   OnError,
   OnInvalidSubmitPolicy,

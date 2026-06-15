@@ -749,7 +749,7 @@ export function aggregateErrorsAt<F extends GenericForm>(
       if (!isPathPrefix(prefix, segs)) continue
       // Skip inactive variants (e.g. the inactive arm of a discriminated
       // union after a switch). The root bucket `[]` (global / root
-      // `.refine()` errors, `setFormErrors`) has `segs.length === 0` and
+      // `.refine()` errors, `setErrors`) has `segs.length === 0` and
       // is never variant-bound, so the `segs.length > 0` guard always
       // retains it. Container-level errors (cross-field refines on a
       // container path) are filtered when their container path is

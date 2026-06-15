@@ -116,18 +116,16 @@ describe('history — default (history: true)', () => {
   it('restores errors alongside the form on undo', () => {
     const { app, api } = mountForm(true)
     apps.push(app)
-    // setFieldErrors does NOT trigger onFormChange — the snapshot
+    // setErrors does NOT trigger onFormChange — the snapshot
     // captured at a later form mutation is what carries the errors
     // forward. Sequence below captures: form='a' (no errors),
-    // setFieldErrors lands, form='b' snapshot now has the errors.
+    // setErrors lands, form='b' snapshot now has the errors.
     api.setValue('email', 'a')
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad', code: 'api:validation' }])
     api.setValue('email', 'b')
     // clear errors live, then mutate form once more so the NEXT
     // snapshot captures the cleared state.
-    api.clearFieldErrors('email')
+    api.clearErrors('email')
     api.setValue('email', 'c')
     expect(api.errors.email).toEqual([])
     // Undo once — snapshot taken at the 'b' mutation carried the

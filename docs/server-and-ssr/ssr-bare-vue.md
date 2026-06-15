@@ -156,4 +156,4 @@ Install the `attaform/vite` plugin (see above). The runtime renders consistent a
 
 - [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt): the same round-trip with zero wiring.
 - [Performance](/docs/server-and-ssr/performance): what hydration costs at scale.
-- [`parseApiErrors`](/docs/server-and-ssr/parse-api-errors): turn server 4xx responses into reactive form errors.
+- [Server-side errors](/docs/submitting/server-side-errors): turn server 4xx responses into reactive form errors with `form.setErrors`.

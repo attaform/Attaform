@@ -34,7 +34,7 @@
 
 - **Form-level errors moved to the root `[]` path, and the empty-string key
   `''` is now yours to use as an ordinary field.** Global errors (a root
-  `.refine()`, `setFormErrors`, a hydration failure) live at the
+  `.refine()`, an imperatively-set form error, a hydration failure) live at the
   structurally-distinct root `[]` instead of the empty-string path `['']`. So
   `form.errors('')` now reads a literal `''` field, and the new
   `form.errors([])` reads only the global bucket, undiluted by field errors.
@@ -43,6 +43,32 @@
   kept distinct from every field. The two never conflate: `''` is a plain field
   key, `[]` is root form context. zod v3 and zod v4 both get it, both tested.
   (#427)
+
+- **One pair of setters now owns the manual error layer: `form.setErrors` and
+  `form.clearErrors`.** `setErrors(errors)` replaces the whole manual layer,
+  `setErrors(prev => next)` updates it functionally, and `setErrors(path, errors)`
+  scopes to one path, mirroring `form.setValue`. Input is lenient: an `Error`, a
+  partial `{ message?, path?, code?, data? }`, or an array of either, a missing
+  message coerced to `"Unknown error"` and a missing code defaulting to
+  `atta:user-error`. What you read back stays the firm `ValidationError`, formKey
+  always stamped; because `formKey` is also accepted-and-ignored on input, a value
+  you read back is itself valid input. An entry with no path lands at the global
+  root `[]`, and the form stamps its own key on every entry. zod v3 and zod v4
+  both get it, both tested. (#434)
+
+### Removed
+
+- **The five error setters and the `parseApiErrors` parser are gone, folded into
+  `setErrors` / `clearErrors`.** `setFieldErrors`, `addFieldErrors`,
+  `clearFieldErrors`, `setFormErrors`, and `clearFormErrors` collapse into the two
+  new setters. `parseApiErrors`, its `PARSE_API_ERRORS_DEFAULTS`, and the
+  `ApiErrorEnvelope` / `ApiErrorDetails` / `ApiErrorEntry` / `ParseApiErrorsOptions`
+  / `ParseApiErrorsResult` types go with it: the canonical server contract is a
+  `ValidationError[]` handed straight to `form.setErrors`, and a server that speaks
+  another shape maps it in one `.map()` at the call site. Retiring the
+  shape-guessing walker also drops its hostile-payload size caps and one more
+  client-side surface an auditor had to reason about. Pre-1.0, so this lands
+  without deprecation shims. (#434)
 
 ## v0.23.0
 ### Removed

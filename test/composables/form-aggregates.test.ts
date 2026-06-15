@@ -77,23 +77,19 @@ describe('useForm — dirty / valid form-level aggregates', () => {
     expect(form.meta.dirty).toBe(false)
   })
 
-  it('recording errors via setFieldErrors flips valid false', () => {
+  it('recording errors via setErrors flips valid false', () => {
     const { app, form } = harness()
     apps.push(app)
-    form.setFieldErrors([
-      { path: ['email'], message: 'required', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'required', code: 'api:validation' }])
     expect(form.meta.valid).toBe(false)
   })
 
   it('clearing errors flips valid back to true', () => {
     const { app, form } = harness()
     apps.push(app)
-    form.setFieldErrors([
-      { path: ['email'], message: 'required', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'required', code: 'api:validation' }])
     expect(form.meta.valid).toBe(false)
-    form.clearFieldErrors()
+    form.clearErrors()
     expect(form.meta.valid).toBe(true)
   })
 

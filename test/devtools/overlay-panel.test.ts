@@ -105,7 +105,7 @@ describe('AttaformDevtoolsPanel — form display', () => {
       formKey: 'errs',
       schema: fakeSchema<{ email: string }>({ email: '' }),
     })
-    state.addUserErrors([
+    state.setAllUserErrors([
       { message: 'looks bad', path: ['email'], formKey: 'errs', code: 'api:bad-email' },
     ])
     registry.forms.set('errs', state)

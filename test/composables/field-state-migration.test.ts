@@ -70,9 +70,7 @@ describe('identity-keyed element state — move carries every element fact', () 
   it('carries user-set errors to the new index', () => {
     const { app, form } = harness(['a', 'b', 'c'])
     apps.push(app)
-    form.setFieldErrors([
-      { message: 'bad', path: ['tags', 0], formKey: form.key, code: 'custom:test' },
-    ])
+    form.setErrors([{ message: 'bad', path: ['tags', 0], code: 'custom:test' }])
     expect(form.fields('tags.0')?.errors.map((e) => e.message)).toEqual(['bad'])
 
     form.move('tags', 0, 2)
@@ -98,9 +96,7 @@ describe('identity-keyed element state — move carries every element fact', () 
     apps.push(app)
     form.setValue('tags.0', 'EDITED')
     form.touch('tags.0')
-    form.setFieldErrors([
-      { message: 'bad', path: ['tags', 0], formKey: form.key, code: 'custom:test' },
-    ])
+    form.setErrors([{ message: 'bad', path: ['tags', 0], code: 'custom:test' }])
 
     form.move('tags', 0, 2)
 

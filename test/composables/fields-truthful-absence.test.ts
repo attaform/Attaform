@@ -154,7 +154,7 @@ describe.each(adapters)('truthful absence — $name', ({ mount }) => {
 
   it('errors: a server error at a non-schema key surfaces; an unknown key is undefined', () => {
     const form = mountForm(mount)
-    form.setFieldErrors([
+    form.setErrors([
       { path: ['ghost'], message: 'server says no', formKey: form.key, code: 'api:validation' },
     ])
     // The error stores "hold" `ghost`, so the gate keeps it reachable

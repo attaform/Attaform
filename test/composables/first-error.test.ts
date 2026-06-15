@@ -54,8 +54,8 @@ type FieldStateLike = {
 
 type FormLike = {
   fields: (path?: string | readonly (string | number)[]) => FieldStateLike
-  setFieldErrors: (errors: readonly ValidationError[]) => void
-  clearFieldErrors: (path?: string | readonly (string | number)[]) => void
+  setErrors: (errors: readonly ValidationError[]) => void
+  clearErrors: (path?: string | readonly (string | number)[]) => void
   key: string
 }
 
@@ -73,9 +73,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
 
     it('firstError === errors[0] (referential equality)', () => {
       const form = makeForm()
-      form.setFieldErrors([
-        { path: ['email'], message: 'required', formKey: form.key, code: 'test' },
-      ])
+      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
       const errs = form.fields('email').errors
       expect(errs.length).toBe(1)
       expect(form.fields('email').firstError).toBe(errs[0])
@@ -83,9 +81,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
 
     it('firstError is a ValidationError object (has .message, .path, .code)', () => {
       const form = makeForm()
-      form.setFieldErrors([
-        { path: ['email'], message: 'required', formKey: form.key, code: 'test' },
-      ])
+      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
       const first = form.fields('email').firstError
       expect(first).toBeDefined()
       expect(typeof first?.message).toBe('string')
@@ -97,7 +93,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
       const form = makeForm()
       // Inject in REVERSE schema order (users first, then email-equivalent
       // earlier path) — `firstError` should still surface schema-first.
-      form.setFieldErrors([
+      form.setErrors([
         {
           path: ['users', 1, 'label'],
           message: 'late',
@@ -119,12 +115,10 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
 
     it('firstError is reactive: clearing the underlying error flips it back to undefined', async () => {
       const form = makeForm()
-      form.setFieldErrors([
-        { path: ['email'], message: 'required', formKey: form.key, code: 'test' },
-      ])
+      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
       await nextTick()
       expect(form.fields('email').firstError).toBeDefined()
-      form.clearFieldErrors('email')
+      form.clearErrors('email')
       await nextTick()
       expect(form.fields('email').errors.length).toBe(0)
       expect(form.fields('email').firstError).toBeUndefined()
@@ -132,9 +126,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
 
     it('firstError is independent of showErrors (default heuristic gate)', () => {
       const form = makeForm()
-      form.setFieldErrors([
-        { path: ['email'], message: 'required', formKey: form.key, code: 'test' },
-      ])
+      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
       // Default heuristic: untouched + submissionAttempts=0 → showErrors === false
       expect(form.fields('email').showErrors).toBe(false)
       // ...but firstError is still the data, regardless.

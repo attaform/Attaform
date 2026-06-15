@@ -147,12 +147,11 @@ describe('form.fields — errors propagation', () => {
   it('surfaces user-injected errors at the path', () => {
     const mounted = mountForm()
     app = mounted.app
-    mounted.api.setFieldErrors([
+    mounted.api.setErrors([
       {
         path: ['email'],
         message: 'taken',
         code: 'custom',
-        formKey: mounted.api.key,
       },
     ])
     expect(mounted.api.fields.email.errors).toHaveLength(1)
@@ -162,12 +161,11 @@ describe('form.fields — errors propagation', () => {
   it('errors at one path do not leak to another', () => {
     const mounted = mountForm()
     app = mounted.app
-    mounted.api.setFieldErrors([
+    mounted.api.setErrors([
       {
         path: ['email'],
         message: 'taken',
         code: 'custom',
-        formKey: mounted.api.key,
       },
     ])
     expect(mounted.api.fields.email.errors).toHaveLength(1)

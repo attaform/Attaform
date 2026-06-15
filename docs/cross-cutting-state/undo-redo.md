@@ -76,7 +76,7 @@ What's NOT captured:
 - **Submission lifecycle**: `meta.submissionAttempts`, `meta.submitError`.
 - **Validation in-flight state**.
 
-Calling `setFieldErrors` / `addFieldErrors` / `clearFieldErrors` does NOT record a position; those only touch the error map. Whatever errors are live when the next mutation lands go into that mutation's delta.
+Calling `setErrors` / `clearErrors` does NOT record a position; those only touch the error map. Whatever errors are live when the next mutation lands go into that mutation's delta.
 
 ## Keyboard shortcuts
 

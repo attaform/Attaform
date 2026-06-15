@@ -16,7 +16,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *     error array (cross-field refines, server-side container marks).
  *   - `JSON.stringify(form.errors.<container>)` materialises as
  *     `{ '': [...], <descendant keys>: [...] }` — both surfaces visible.
- *   - The root `''` slot (form-level errors, root refines, setFormErrors)
+ *   - The root `''` slot (form-level errors, root refines, setErrors)
  *     is the same convention generalised down to every container depth.
  *   - Schemas that legitimately declare a field named `''` share the
  *     slot: the field's own errors and any container-self errors
@@ -67,17 +67,15 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       }),
     })
     const form = mount(schema, { profile: { bio: '' } })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['profile'],
         message: 'cross-field refine failed',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['profile', 'bio'],
         message: 'bio too long',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -96,18 +94,16 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       }),
     })
     const form = mount(schema, { name: '', profile: { bio: '' } })
-    form.setFieldErrors([
-      { path: ['name'], message: 'name required', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: ['name'], message: 'name required', code: 'api:validation' },
       {
         path: ['profile'],
         message: 'profile refine failed',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['profile', 'bio'],
         message: 'bio too long',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -126,11 +122,10 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       profile: z.object({ bio: z.string() }),
     })
     const form = mount(schema, { profile: { bio: '' } })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['profile'],
         message: 'profile refine failed',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -145,7 +140,7 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
   it('root form-level errors live at [] (errors([])), not the "" slot', () => {
     const schema = z.object({ name: z.string() })
     const form = mount(schema, { name: '' })
-    form.setFormErrors([{ message: 'whole-form bad' }])
+    form.setErrors([{ message: 'whole-form bad' }])
     // Global errors are at the root `[]`, read via errors([]).
     expect(form.errors([])).toEqual([
       expect.objectContaining({ message: 'whole-form bad', path: [] }),
@@ -163,17 +158,15 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       }),
     })
     const form = mount(schema, { profile: { '': '', bio: '' } })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['profile'],
         message: 'container refine failed',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['profile', ''],
         message: 'literal empty key required',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -190,9 +183,7 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       profile: z.object({ bio: z.string() }),
     })
     const form = mount(schema, { name: '', profile: { bio: '' } })
-    form.setFieldErrors([
-      { path: ['name'], message: 'name required', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['name'], message: 'name required', code: 'api:validation' }])
     const root = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>
     expect(root['profile']).toBeUndefined()
     // The sentinel must NOT appear empty.
@@ -204,11 +195,10 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       profile: z.object({ bio: z.string() }),
     })
     const form = mount(schema, { profile: { bio: '' } })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['profile'],
         message: 'lonely refine',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -225,23 +215,20 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       }),
     })
     const form = mount(schema, { outer: { inner: { leaf: '' } } })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['outer'],
         message: 'outer refine',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['outer', 'inner'],
         message: 'inner refine',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['outer', 'inner', 'leaf'],
         message: 'leaf bad',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -285,17 +272,15 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
       profile: z.object({ bio: z.string() }),
     })
     const form = mount(schema, { profile: { bio: '' } })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['profile'],
         message: 'profile refine',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['profile', 'bio'],
         message: 'bio bad',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])

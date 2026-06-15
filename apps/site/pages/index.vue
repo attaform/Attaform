@@ -169,7 +169,7 @@
     {
       icon: Webhook,
       title: 'Server-side errors',
-      body: '`parseApiErrors(payload, { formKey: form.key })` normalizes any API envelope into the same `ValidationError` shape your template already reads.',
+      body: '`form.setErrors(response.errors)` mounts server-sent `ValidationError[]` into the same reactive surface your template already reads, each error carrying an optional `data` payload.',
     },
   ]
 </script>

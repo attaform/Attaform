@@ -73,33 +73,32 @@ describe('form.errors(path) — aggregation at any depth', () => {
   })
 
   function seedAllErrors(api: Api): void {
-    api.setFieldErrors([
+    // One whole-layer write: four field errors plus a global (path-less)
+    // entry. A second whole-layer call would replace, not merge, so the
+    // global rides along in the same array.
+    api.setErrors([
       {
         path: ['cargo'],
         message: 'cargo invalid',
-        formKey: api.key,
         code: 'api:cargo',
       },
       {
         path: ['cargo', 'items'],
         message: 'items invalid',
-        formKey: api.key,
         code: 'api:items',
       },
       {
         path: ['cargo', 'items', 0, 'sku'],
         message: 'sku bad',
-        formKey: api.key,
         code: 'api:sku',
       },
       {
         path: ['service', 'airline'],
         message: 'airline bad',
-        formKey: api.key,
         code: 'api:airline',
       },
+      { message: 'capacity full' },
     ])
-    api.setFormErrors([{ message: 'capacity full' }])
   }
 
   it('returns errors at the prefix and every descendant', () => {
@@ -193,18 +192,17 @@ describe('form.errors(path) — aggregation at any depth', () => {
 
     expect(stepInvalid.value).toBe(false)
 
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['cargo', 'items', 0, 'sku'],
         message: 'sku bad',
-        formKey: api.key,
         code: 'api:sku',
       },
     ])
     await nextTick()
     expect(stepInvalid.value).toBe(true)
 
-    api.clearFieldErrors('cargo.items.0.sku')
+    api.clearErrors('cargo.items.0.sku')
     await nextTick()
     expect(stepInvalid.value).toBe(false)
   })

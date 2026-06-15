@@ -67,13 +67,14 @@ interface JsonObject {
  * One validation failure. `path` points at the offending field as a
  * structured array — `['user', 'address', 0, 'line1']` for a nested
  * field, `[]` (the root path) for a form-level error (root `.refine()`
- * messages, `setFormErrors()` entries, hydration failures, server-
- * emitted form banners). `formKey` identifies which form produced the
- * error so a single error list can be routed to multiple forms. The
- * optional `data` slot carries an arbitrary server payload.
+ * messages, `setErrors` entries with no path, hydration failures,
+ * server-emitted form banners). `formKey` identifies which form
+ * produced the error so a single error list can be routed to multiple
+ * forms. The optional `data` slot carries an arbitrary server payload.
  *
  * Returned by `validate()` / `validateAsync()` / `handleSubmit`'s
- * `onError` callback, and by `parseApiErrors` for server responses.
+ * `onError` callback, and accepted (leniently, as `ErrorInput`) by
+ * `form.setErrors`.
  */
 export type ValidationError = {
   /** Human-readable message describing the failure. */
@@ -81,7 +82,7 @@ export type ValidationError = {
   /**
    * Structured path of the offending field. The root path `[]` is the
    * form-level bucket — the dedicated home for errors that don't belong
-   * to any specific field (root `.refine()`, `setFormErrors`, hydration
+   * to any specific field (root `.refine()`, `setErrors`, hydration
    * failures). The empty-STRING path `['']` is unrelated: an ordinary
    * literal empty-key field.
    */
@@ -109,6 +110,33 @@ export type ValidationError = {
    */
   data?: Json | null
 }
+
+/**
+ * The lenient input shape `form.setErrors` accepts: a real `Error`, or
+ * a partial `ValidationError` where every field is optional.
+ *
+ * - `message`: omitted or empty coerces to `"Unknown error"`.
+ * - `path`: defaults to `[]` (a global, form-level error). Ignored by
+ *   the path-scoped `setErrors(path, …)` form, which stamps its own.
+ * - `code`: defaults to `atta:user-error`.
+ * - `data`: forwarded verbatim onto the produced `ValidationError`.
+ * - `formKey`: accepted but ignored — the form always stamps its own.
+ *
+ * Because every field is optional and `formKey` is accepted-and-ignored,
+ * `ValidationError` is a subtype of `ErrorInput`: a `ValidationError[]`
+ * you read back, or a server response that already emits the shape, pipes
+ * straight into `form.setErrors` with no adapter and no excess-property
+ * friction.
+ */
+export type ErrorInput =
+  | Error
+  | {
+      message?: string
+      path?: (string | number)[]
+      code?: string
+      data?: Json | null
+      formKey?: FormKey
+    }
 
 /** Settled validation result when the form (or subtree) parsed successfully. */
 export type ValidationResponseSuccess<TData> = {
@@ -3198,67 +3226,6 @@ export type ValuesSurface<F> = Readonly<LiftedValueShape<F>> & {
 }
 
 /**
- * A single server-side error entry. Carries both the human-readable
- * `message` and a stable `code` identifier — both fields are required.
- * The `code` is stamped verbatim onto the produced `ValidationError`,
- * so consumers can branch on it without string-matching on `message`.
- *
- * Pick a prefix for your codes (`api:`, `auth:`, etc.) and stay
- * consistent so error-rendering UIs can switch on the code.
- */
-export type ApiErrorEntry = {
-  /** Human-readable failure description. */
-  message: string
-  /**
-   * Stable machine identifier for the failure (e.g. `'api:duplicate-email'`).
-   * Forwarded verbatim onto the produced `ValidationError`.
-   */
-  code: string
-}
-
-/**
- * Shape of a server-side error details record. Keys are dotted field
- * paths; values are either a single entry, an array of entries, or a
- * mix of structured and bare-string entries. Each entry is one of:
- *
- * - **Structured** — `{ message: string, code: string }`. The `code`
- *   forwards verbatim onto the produced `ValidationError`.
- * - **Bare string** — a plain string. The Rails / Django REST
- *   Framework / Laravel default JSON shape (`{ field: ["msg"] }`).
- *   Synthesized into `{ message: <string>, code: <defaultCode> }` at
- *   parse time, where `defaultCode` defaults to `'api:unknown'` and
- *   is configurable via `parseApiErrors`'s options bag.
- *
- * Multiple entries at the same path produce multiple
- * `ValidationError`s — useful for a single field that fails multiple
- * checks (e.g. `password` is too short *and* missing a digit).
- */
-export type ApiErrorDetails = Record<string, ApiErrorValue>
-
-/**
- * One entry inside an {@link ApiErrorDetails} value — either the
- * strict `{ message, code }` object, or a bare string (synthesised
- * with the parser's `defaultCode`).
- */
-export type ApiErrorValue = string | ApiErrorEntry | ReadonlyArray<string | ApiErrorEntry>
-
-/**
- * Outer envelope `parseApiErrors` accepts. Both the wrapped form
- * (`{ error: { details } }`) and the unwrapped form (`{ details }`)
- * are recognised; raw detail records (`{ email: { message, code } }`)
- * are also accepted directly.
- */
-export type ApiErrorEnvelope = {
-  /** Wrapped error envelope — `parseApiErrors` reads `details` from inside. */
-  error?: {
-    details?: ApiErrorDetails
-    [k: string]: unknown
-  }
-  /** Unwrapped error envelope. */
-  details?: ApiErrorDetails
-}
-
-/**
  * Reactive form-level flags, counters, and aggregates returned as
  * `form.meta`. "Meta" because every other surface (`form.values`,
  * `form.errors`, `form.fields`) is data-shaped — `form.meta` holds
@@ -3769,12 +3736,8 @@ export type UseFormReturnType<
   /**
    * The form's identifier — either the explicit `key` passed to
    * `useForm` or an auto-generated unique id when `key` was omitted.
-   * Use it when feeding API errors through `parseApiErrors`:
-   *
-   * ```ts
-   * const result = parseApiErrors(serverPayload, { formKey: form.key })
-   * if (result.ok) form.setFieldErrors(result.errors)
-   * ```
+   * Every `ValidationError` this form produces carries it as `formKey`,
+   * so a shared error list can be routed back to the right form.
    *
    * Typed as the literal `K` when an explicit `key` was passed; falls
    * back to `FormKey` when omitted (auto-generated id).
@@ -3896,9 +3859,9 @@ export type UseFormReturnType<
    * (`form.errors['user.profile.email']`) — JS dot notation splits
    * on literal dots.
    *
-   * Read-only — populate via `setFieldErrors`, `addFieldErrors`, and
-   * `clearFieldErrors`. Server-side errors flow through
-   * `parseApiErrors` first.
+   * Read-only — populate via `setErrors` / `clearErrors`. A server
+   * response that already emits `ValidationError[]` pipes straight into
+   * `setErrors` with no adapter.
    */
   errors: FormErrorsSurface<Form>
 
@@ -3927,77 +3890,65 @@ export type UseFormReturnType<
   }
 
   /**
-   * Replace every field error for this form with the provided list.
-   * Useful after `parseApiErrors` produces a fresh batch from a
-   * server response.
+   * Set the form's manual error layer. One surface for server-side
+   * errors, optimistic-UI errors, and form-level banners: a field error
+   * and a global (form-level) error are the same thing at different
+   * paths, so there is no separate field/form split.
+   *
+   * Input is lenient ({@link ErrorInput}): a real `Error`, a partial
+   * `{ message?, path?, code?, data? }`, or an array of either. The form
+   * stamps its own `formKey`, defaults a missing `code` to
+   * `atta:user-error`, and coerces a missing or empty `message` to
+   * `"Unknown error"` instead of throwing. A server that already emits
+   * `ValidationError[]` satisfies the input shape directly, so
+   * `form.setErrors(response.errors)` needs no adapter.
+   *
+   * Three call forms, mirroring `setValue`:
    *
    * ```ts
-   * const result = parseApiErrors(payload, { formKey: form.key })
-   * if (result.ok) form.setFieldErrors(result.errors)
+   * // Whole-layer replace. An entry with no `path` is a global,
+   * // form-level error (path `[]`); add a `path` to target a field.
+   * form.setErrors([{ path: ['email'], message: 'Already taken' }])
+   * form.setErrors({ message: 'Capacity exceeded' })   // global banner
+   * form.setErrors(new Error('Network unreachable'))   // message coerced
+   *
+   * // Functional update. `prev` is the current manual layer, flat.
+   * form.setErrors((prev) => [...prev, { message: 'And one more' }])
+   *
+   * // Path-scoped. The path is stamped onto every entry, and only that
+   * // path's bucket is replaced. `prev` is that path's manual errors.
+   * form.setErrors('email', [{ message: 'Already taken' }])
+   * form.setErrors(['profile', 'handle'], { message: 'Reserved' })
+   * form.setErrors('email', (prev) => prev.slice(0, 1))
    * ```
+   *
+   * Replaces only the manual layer; schema/validation errors live in a
+   * separate store and merge on read. Pass `[]` to clear the manual
+   * layer (or use `clearErrors`, which also clears the schema layer).
    */
-  setFieldErrors: (errors: ValidationError[]) => void
+  setErrors: {
+    (update: (prev: ValidationError[]) => ErrorInput | ErrorInput[]): void
+    (errors: ErrorInput | ErrorInput[]): void
+    (
+      path: string | (string | number)[],
+      errors: ErrorInput | ErrorInput[] | ((prev: ValidationError[]) => ErrorInput | ErrorInput[])
+    ): void
+  }
 
   /**
-   * Append errors to the existing set without clearing prior entries.
-   * Use when reporting an additional issue alongside existing errors
-   * (e.g. a partial server response).
-   */
-  addFieldErrors: (errors: ValidationError[]) => void
-
-  /**
-   * Clear errors. Pass a path to clear errors for a single field;
-   * call with no arguments to clear every error on the form.
+   * Clear errors at one path, or everywhere. Clears BOTH the manual
+   * layer (set through `setErrors`) and the schema/validation layer at
+   * the target. With always-on validation the schema half re-populates
+   * on the next mutation if the value is still invalid, so the cleared
+   * state is short-lived for a field that is still wrong.
    *
    * ```ts
-   * form.clearFieldErrors('email')   // clear one field
-   * form.clearFieldErrors()          // clear all
+   * form.clearErrors('email')   // one field
+   * form.clearErrors([])        // the global, form-level bucket
+   * form.clearErrors()          // every error on the form
    * ```
    */
-  clearFieldErrors: (path?: string | (string | number)[]) => void
-
-  /**
-   * Replace the form-level errors — the entries at the empty path
-   * (`path: []`) — without disturbing any field-level errors. Pass an
-   * empty array to clear them all.
-   *
-   * ```ts
-   * form.setFormErrors([{ message: 'Capacity exceeded' }])
-   * form.setFormErrors([
-   *   { message: 'Capacity exceeded', code: 'capacity:exceeded' },
-   *   { message: 'Pickup window full' },
-   * ])
-   * form.setFormErrors([])  // clear
-   * ```
-   *
-   * Only `message` is required. `code` defaults to `'atta:form-error'`.
-   * Any caller-provided `path` or `formKey` is ignored — `path` is
-   * always forced to `[]` (this API is form-level-only by definition)
-   * and `formKey` is filled in from the form instance. The lenient
-   * input shape lets you pipe `parseApiErrors` output (or any
-   * `ValidationError[]`) straight in:
-   *
-   * ```ts
-   * const result = parseApiErrors(payload, { formKey: form.key })
-   * if (result.ok) form.setFormErrors(result.errors)
-   * ```
-   *
-   * Form-level errors land at the root path `[]`. They surface in
-   * `form.meta.errors` (alongside field errors), in `form.errors()`
-   * (the whole-form aggregate), and — uniquely — in `form.errors([])`,
-   * which returns ONLY the global bucket. They are NOT a child key of
-   * the path-keyed `form.errors` drill proxy (`form.errors['']` reads
-   * the unrelated literal `''` field), so read them via `errors([])` /
-   * `meta.errors`, or split programmatically with
-   * `meta.errors.filter(e => e.path.length === 0)`.
-   */
-  setFormErrors: (errors: ReadonlyArray<Partial<ValidationError> & { message: string }>) => void
-
-  /**
-   * Clear every form-level error. Equivalent to `setFormErrors([])`;
-   * field errors are untouched.
-   */
-  clearFormErrors: () => void
+  clearErrors: (path?: string | (string | number)[]) => void
 
   // --- Form-level meta ---
 

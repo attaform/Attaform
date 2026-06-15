@@ -263,7 +263,8 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
     // schema "too small" error. Both should end up in password's slot
     // (ordinal 1), in schema-then-user per-store order. email's
     // schema error stays at ordinal 0 in front.
-    api.addFieldErrors([
+    api.setErrors((prev) => [
+      ...prev,
       {
         path: ['password'],
         message: 'reused recently',

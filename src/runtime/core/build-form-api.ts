@@ -3,6 +3,7 @@ import type {
   BlankPathsView,
   CoercionRegistry,
   DisplayState,
+  ErrorInput,
   FormErrorsSurface,
   FormHistoryNamespace,
   FormMeta,
@@ -18,9 +19,9 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import type { DeepPartial, DefaultValuesInput, GenericForm } from '../types/types-core'
-import { __DEV__ } from './dev'
 import type { FormStore } from './create-form-store'
 import { structuralSnapshot } from './diff-apply'
+import { AttaformErrorCode } from './error-codes'
 import { buildErrorsProxy } from './errors-proxy'
 import { buildFieldArrayApi } from './field-arrays'
 import {
@@ -501,8 +502,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   //   2. `derivedBlankErrors` — the reactively-derived "No value supplied"
   //      class. Pure function of `(blankPaths, schema.isRequiredAtPath)`,
   //      no writers.
-  //   3. `userErrors` — API-injected errors written by `setFieldErrors*`
-  //      / `parseApiErrors`-fed entries.
+  //   3. `userErrors` — manual errors written by `setErrors` /
+  //      `clearErrors` (server responses, optimistic UI, and the like).
   //
   // Iteration order at each leaf is schema → derived-blank → user, so
   // consumers reading `errors.email` see the structural / synthesised
@@ -521,109 +522,100 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // error" need is served by `form.meta.errors` (flat ValidationError[]).
   const errorsProxy = buildErrorsProxy(state)
 
-  function filterToOwnFormKey(
-    errors: ValidationError[],
-    op: 'setFieldErrors' | 'addFieldErrors'
+  // `setErrors` / `clearErrors` own the `userErrors` store — the manual
+  // error layer that merges with schema/validation errors on read. The
+  // five legacy field/form setters collapse into these two: a field
+  // error and a form-level (global) error are the same thing at
+  // different paths (a field path vs the root path `[]`), so one surface
+  // covers both.
+  //
+  // Input is lenient (`ErrorInput`): a real `Error`, a partial
+  // `{ message?, path?, code?, data? }`, or an array of either. The form
+  // always stamps its own `formKey` and defaults a missing `code`; a
+  // missing or empty message coerces to "Unknown error" rather than
+  // throwing (library code never throws into the consumer app). What the
+  // store holds is always a firm `ValidationError`.
+  type SetErrorsArg =
+    | ErrorInput
+    | ErrorInput[]
+    | ((prev: ValidationError[]) => ErrorInput | ErrorInput[])
+
+  function normalizeErrorInput(item: ErrorInput, scope: Path | undefined): ValidationError {
+    if (item instanceof Error) {
+      return {
+        message: item.message.length > 0 ? item.message : 'Unknown error',
+        path: scope !== undefined ? [...scope] : [],
+        formKey: state.formKey,
+        code: AttaformErrorCode.UserError,
+      }
+    }
+    const entry: ValidationError = {
+      message:
+        typeof item.message === 'string' && item.message.length > 0
+          ? item.message
+          : 'Unknown error',
+      path: scope !== undefined ? [...scope] : Array.isArray(item.path) ? [...item.path] : [],
+      formKey: state.formKey,
+      code:
+        typeof item.code === 'string' && item.code.length > 0
+          ? item.code
+          : AttaformErrorCode.UserError,
+    }
+    if (item.data !== undefined) entry.data = item.data
+    return entry
+  }
+
+  function normalizeErrorInputs(
+    input: ErrorInput | ErrorInput[],
+    scope: Path | undefined
   ): ValidationError[] {
-    const own: ValidationError[] = []
-    let dropped = 0
-    for (const e of errors) {
-      if (e.formKey === state.formKey) own.push(e)
-      else dropped++
-    }
-    if (__DEV__ && dropped > 0) {
-      console.warn(
-        `[attaform] ${op}: dropped ${dropped} error(s) with non-matching formKey ` +
-          `(this form's key is "${String(state.formKey)}"). Errors are scoped to ` +
-          `the form that produced them — pass them to the matching form instance.`
-      )
-    }
-    return own
+    const items = Array.isArray(input) ? input : [input]
+    return items.map((item) => normalizeErrorInput(item, scope))
   }
 
-  function setFieldErrors(errors: ValidationError[]): void {
-    // `setAllUserErrors` clears the entire user-error map before
-    // writing, which would also wipe the form-level bucket (the root
-    // key `'[]'`). The form-level slot is owned by `setFormErrors` /
-    // `clearFormErrors` and is logically separate from field errors —
-    // replace-all field-error writes must not touch it. Preserve the
-    // bucket across the call.
-    const preserved = state.userErrors.get(ROOT_PATH_KEY)
-    state.setAllUserErrors(filterToOwnFormKey(errors, 'setFieldErrors'))
-    if (preserved !== undefined && preserved.length > 0) {
-      state.userErrors.set(ROOT_PATH_KEY, preserved)
+  function flattenUserErrors(): ValidationError[] {
+    const all: ValidationError[] = []
+    for (const errs of state.userErrors.values()) all.push(...errs)
+    return all
+  }
+
+  function setErrors(arg1: SetErrorsArg | string | (string | number)[], arg2?: SetErrorsArg): void {
+    // Path form needs two args AND a path-shaped first arg, exactly like
+    // `setValue`: a lone array argument is a whole-layer error list, not
+    // a path. `setErrors(path, …)` stamps `path` onto every entry and
+    // replaces only that path's bucket; the no-path forms replace the
+    // entire user layer (a default-path `[]` entry lands in the global
+    // bucket, so there is no separate form-level setter anymore).
+    const isScoped = arguments.length >= 2 && (typeof arg1 === 'string' || Array.isArray(arg1))
+    if (isScoped) {
+      const { segments, key } = canonicalizePath(arg1 as string | Path)
+      const input = arg2 as SetErrorsArg
+      const resolved =
+        typeof input === 'function' ? input((state.userErrors.get(key) ?? []).slice()) : input
+      state.setUserErrorsForPath(segments, normalizeErrorInputs(resolved, segments))
+      return
     }
+    const input = arg1 as SetErrorsArg
+    const resolved = typeof input === 'function' ? input(flattenUserErrors()) : input
+    state.setAllUserErrors(normalizeErrorInputs(resolved, undefined))
   }
 
-  function addFieldErrors(errors: ValidationError[]): void {
-    state.addUserErrors(filterToOwnFormKey(errors, 'addFieldErrors'))
-  }
-
-  function clearFieldErrors(path?: string | (string | number)[]): void {
-    // Pragmatic semantic: "make the errors at this path go away" —
-    // clears both the schema-owned and user-owned stores. With always-on
-    // validation the schema half re-populates on the next mutation if
-    // the value is still invalid, so the inconsistency is short-lived
-    // and confined to "before the next keystroke / submit." See
-    // docs/migration/0.11-to-0.12.md for the rationale.
+  function clearErrors(path?: string | (string | number)[]): void {
+    // Pragmatic "make the errors here go away" — clears BOTH the
+    // schema-owned and user-owned stores at the target (or everywhere
+    // when no path is given). With always-on validation the schema half
+    // re-populates on the next mutation if the value is still invalid,
+    // so the inconsistency is short-lived. No form-level bucket is
+    // special-cased: global errors live at the root path `[]`, just
+    // another bucket, cleared by `clearErrors([])` or the no-arg sweep.
     if (path === undefined) {
-      // Same logical separation as `setFieldErrors`: a no-arg
-      // `clearFieldErrors()` clears every FIELD error but must NOT
-      // wipe the form-level bucket (the root key `'[]'`). Form-level
-      // lifecycle belongs to `clearFormErrors()`.
-      const preserved = state.userErrors.get(ROOT_PATH_KEY)
       state.clearSchemaErrors()
       state.clearUserErrors()
-      if (preserved !== undefined && preserved.length > 0) {
-        state.userErrors.set(ROOT_PATH_KEY, preserved)
-      }
       return
     }
     const segments = canonicalizePath(path as string | Path).segments
     state.clearSchemaErrors(segments)
     state.clearUserErrors(segments)
-  }
-
-  function setFormErrors(
-    errors: ReadonlyArray<Partial<ValidationError> & { message: string }>
-  ): void {
-    // Surgically replace just the form-level entry. Going through
-    // `setAllUserErrors` / `setFieldErrors` would clobber every field
-    // error too — wrong for "set this top-of-form message without
-    // disturbing field validation."
-    //
-    // Form-level errors live at the root path `[]` (PathKey `'[]'`),
-    // the collision-proof home for messages that belong to no field.
-    // Aggregate reads (`errors()`, `meta.errors`) surface them
-    // alongside field errors, while `errors([])` returns ONLY this
-    // bucket — the dedicated global channel. `errors('')` is unrelated:
-    // it reads the literal `''` field.
-    //
-    // Caller-provided `path` and `formKey` are intentionally ignored:
-    // this API is form-level-only by definition and the form knows
-    // its own key. The lenient input shape lets callers pipe
-    // `ValidationError[]` straight in without having to map first.
-    if (errors.length === 0) {
-      state.userErrors.delete(ROOT_PATH_KEY)
-      return
-    }
-    state.userErrors.set(
-      ROOT_PATH_KEY,
-      errors.map((e) => {
-        const entry: ValidationError = {
-          path: [...ROOT_PATH],
-          message: e.message,
-          formKey: state.formKey,
-          code: e.code ?? 'atta:form-error',
-        }
-        if (e.data !== undefined) entry.data = e.data
-        return entry
-      })
-    )
-  }
-
-  function clearFormErrors(): void {
-    state.userErrors.delete(ROOT_PATH_KEY)
   }
 
   // --- Submission lifecycle ---
@@ -1183,11 +1175,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       return errorsProxy as unknown as FormErrorsSurface<Form>
     },
     toRef: gated(pathToRef) as UseFormReturnType<Form, GetValueFormType>['toRef'],
-    setFieldErrors: gated(setFieldErrors),
-    addFieldErrors: gated(addFieldErrors),
-    clearFieldErrors: gated(clearFieldErrors),
-    setFormErrors: gated(setFormErrors),
-    clearFormErrors: gated(clearFormErrors),
+    setErrors: gated(setErrors) as UseFormReturnType<Form, GetValueFormType>['setErrors'],
+    clearErrors: gated(clearErrors),
     get meta() {
       void state.activate()
       return formMeta

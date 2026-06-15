@@ -19,7 +19,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  * For `form.errors` specifically, two additional contracts:
  *
- *   - Global errors at the root `[]` (`setFormErrors([{message}])`) are
+ *   - Global errors at the root `[]` (`setErrors([{message}])`) are
  *     the root's own bucket, NOT a child key, so they do NOT appear in
  *     the serialized tree — read them via `errors([])` / `meta.errors`.
  *     A literal `''` field is an ordinary child key and serialises
@@ -100,10 +100,10 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
   describe('form.errors', () => {
     it('Vue template binding renders field errors as JSON; global errors live at [], not the tree', async () => {
       const form = mountSimple()
-      form.setFieldErrors([
-        { path: ['email'], message: 'taken', formKey: form.key, code: 'api:dup' },
+      form.setErrors([
+        { path: ['email'], message: 'taken', code: 'api:dup' },
+        { message: 'oh snap!' },
       ])
-      form.setFormErrors([{ message: 'oh snap!' }])
       await nextTick()
 
       const rendered = toDisplayString(form.errors)
@@ -121,7 +121,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
 
     it('JSON.stringify(form.errors) excludes global errors (read via errors([]))', async () => {
       const form = mountSimple()
-      form.setFormErrors([{ message: 'capacity exceeded' }])
+      form.setErrors([{ message: 'capacity exceeded' }])
       await nextTick()
 
       const tree = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>
@@ -135,11 +135,10 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       // referencing an unknown key (`nonExistent.field`) is the
       // consumer's data — the proxy must surface it for debugging
       // even though `hasAtPath` would normally filter the path out.
-      form.setFieldErrors([
+      form.setErrors([
         {
           path: ['nonExistent', 'field'],
           message: 'server says no',
-          formKey: form.key,
           code: 'api:unknown',
         },
       ])
@@ -202,45 +201,61 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
     })
   })
 
-  describe('setFieldErrors / setFormErrors isolation', () => {
-    it('clearFieldErrors() with no path preserves form-level errors', async () => {
+  describe('setErrors / clearErrors scoping', () => {
+    it('clearErrors(path) clears one field and leaves the global bucket', async () => {
       const form = mountSimple()
-      form.setFormErrors([{ message: 'capacity exceeded' }])
-      form.setFieldErrors([
-        { path: ['email'], message: 'taken', formKey: form.key, code: 'api:dup' },
-      ])
+      form.setErrors([], [{ message: 'capacity exceeded' }])
+      form.setErrors('email', [{ message: 'taken', code: 'api:dup' }])
       await nextTick()
 
-      form.clearFieldErrors()
+      form.clearErrors('email')
       await nextTick()
 
       // Field error gone.
       expect(form.errors.email).toEqual([])
-      // Form-level survives — `clearFieldErrors` is field-scope only.
-      // Use `clearFormErrors` to drop form-level.
+      // Global survives — a path-scoped clear leaves other buckets alone.
       expect(form.errors([])[0]?.message).toBe('capacity exceeded')
     })
 
-    it('setFieldErrors does NOT wipe a previously-set form-level error', async () => {
-      // setFormErrors stores at the root bucket `[]`; setFieldErrors
-      // writes field errors. The two manage logically distinct slots
-      // and must not clobber each other in either order.
+    it('clearErrors() with no path clears everything, global included', async () => {
       const form = mountSimple()
-      form.setFormErrors([{ message: 'capacity exceeded' }])
-      form.setFieldErrors([
-        { path: ['email'], message: 'taken', formKey: form.key, code: 'api:dup' },
-      ])
+      form.setErrors([], [{ message: 'capacity exceeded' }])
+      form.setErrors('email', [{ message: 'taken', code: 'api:dup' }])
       await nextTick()
 
-      // Field error landed.
+      form.clearErrors()
+      await nextTick()
+
+      expect(form.errors.email).toEqual([])
+      expect(form.errors([])).toEqual([])
+    })
+
+    it('scoped setErrors writes target distinct buckets without clobbering', async () => {
+      // A path-scoped setErrors replaces only that path's bucket, so a
+      // field-error write and a global write in turn leave both intact.
+      const form = mountSimple()
+      form.setErrors([], [{ message: 'capacity exceeded' }])
+      form.setErrors('email', [{ message: 'taken', code: 'api:dup' }])
+      await nextTick()
+
       expect(form.errors.email?.[0]?.message).toBe('taken')
-      // Form-level survives — it was set first and the field-error
-      // write must NOT have cleared the root bucket.
       expect(form.errors([])[0]?.message).toBe('capacity exceeded')
-      // Aggregate sees both.
       const flat = form.meta.errors
       expect(flat.find((e) => e.message === 'taken')).toBeDefined()
       expect(flat.find((e) => e.message === 'capacity exceeded')).toBeDefined()
+    })
+
+    it('whole-layer setErrors replaces every bucket, global included', async () => {
+      // The no-path form is a full replace of the manual layer: a later
+      // whole-layer call drops earlier entries at every path.
+      const form = mountSimple()
+      form.setErrors([], [{ message: 'capacity exceeded' }])
+      form.setErrors([{ path: ['email'], message: 'taken', code: 'api:dup' }])
+      await nextTick()
+
+      expect(form.errors.email?.[0]?.message).toBe('taken')
+      // Global was dropped by the whole-layer replace.
+      expect(form.errors([])).toEqual([])
     })
   })
 

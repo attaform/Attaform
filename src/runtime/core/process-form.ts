@@ -417,7 +417,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         state.activeSubmissions.value += 1
         state.submitting.value = true
         state.submitError.value = null
-        // Clear user-set errors (`setFormErrors` / `setFieldErrors`) so a
+        // Clear user-set errors (set via `setErrors`) so a
         // fresh attempt starts from a clean user-error slate. Done at
         // ENTRY (before validation, before the callback): the consumer's
         // callback is where the NEW errors are set, so clearing on the way
@@ -426,7 +426,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // a prior server error in that case too. Schema errors are
         // recomputed by the validation pass below; this is the user store's
         // equivalent reset. Unconditional and total (form + field) — the
-        // dominant `setFormErrors` use is the server's verdict on the
+        // dominant `setErrors` use is the server's verdict on the
         // prior attempt, which a new attempt supersedes.
         state.clearUserErrors()
         // Drain in-flight async register transforms before validating, so a
@@ -503,7 +503,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // validation passed AND no required-blank errors exist, so the
         // schema-error store goes empty. User-injected errors persist —
         // consumers managing their own warning/info state via
-        // setFieldErrors keep ownership of that lifecycle. Skip the
+        // setErrors keep ownership of that lifecycle. Skip the
         // clear when reset already cleared (and bumped gen) — any
         // errors injected by post-reset user mutations would be wrongly
         // wiped otherwise.

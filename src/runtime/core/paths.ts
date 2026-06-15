@@ -52,7 +52,7 @@ function normalizeSegment(raw: Segment): Segment {
  * The empty-string input `''` is the **literal empty-key path** `['']`,
  * an ordinary (if rare) field address, not the root. Use the array
  * form `[]` for the root. Form-level errors (root `.refine()`,
- * `setFormErrors`) live at the root path `[]` and are read via
+ * `setErrors` with no path) live at the root path `[]` and are read via
  * `errors([])`, never `errors('')`.
  *
  * Throws `InvalidPathError` for paths with empty INTERNAL segments
@@ -292,7 +292,7 @@ export function coerceToPathKey(input: string): PathKey {
  * The root path — an empty segment tuple. Pass to APIs that accept a
  * `Path` to address the form value as a whole, and the home for
  * form-level (global) errors: root `.refine()` messages, hydration
- * failures, and `setFormErrors` entries all live at `[]`. Aggregate
+ * failures, and `setErrors` entries with no path all live at `[]`. Aggregate
  * reads (`errors()`, `meta.errors`) surface them alongside field
  * errors; `errors([])` returns the global bucket alone.
  *

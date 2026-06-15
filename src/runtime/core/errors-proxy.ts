@@ -26,7 +26,7 @@ import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
  *   form.errors('address.city')        // function-call (dynamic / programmatic)
  *   form.errors(['address', 'city'])   // path-array form
  *   form.errors()                      // whole-form aggregate (== meta.errors)
- *   form.errors([])                    // global bucket only (root .refine() / setFormErrors)
+ *   form.errors([])                    // global bucket only (root .refine() / setErrors)
  *
  * Specialises `buildSurfaceProxy` (see surface-proxy.ts) with:
  * - `resolveLeaf`: merges schemaErrors + derivedBlankErrors + userErrors
@@ -58,7 +58,7 @@ export function buildErrorsProxy<F extends GenericForm>(
       // live form (e.g. the inactive variant of a DU after a switch)
       // are hidden because they're library-produced verdicts against
       // state that's been replaced. USER errors (set via
-      // `setFieldErrors` / `setFormErrors`) are the consumer's data
+      // `setErrors`) are the consumer's data
       // — server replies, programmatic warnings, manual marks — and
       // we never silently drop them, even at paths the schema
       // doesn't know about. Per-field reads
@@ -126,7 +126,7 @@ export function buildErrorsProxy<F extends GenericForm>(
     //
     // The root is the one carve-out. An EXPLICIT root path
     // (`errors([])`) returns ONLY the global `[]` bucket (root
-    // `.refine()`, hydration failures, `setFormErrors`) via
+    // `.refine()`, hydration failures, `setErrors`) via
     // `getErrorsForPath`, giving consumers a dedicated channel for
     // global messages undiluted by field errors. The no-arg `errors()`
     // instead resolves the FULL aggregate through `resolveRootCall`
@@ -231,7 +231,7 @@ function errorAwareContainerKeys<F extends GenericForm>(
  * slot never appears.
  *
  * Global errors at the root `[]` (root `.refine()`, hydration failures,
- * `setFormErrors`) are the root form's own context. They are NEVER the
+ * `setErrors`) are the root form's own context. They are NEVER the
  * `''` slot — `''` is a plain field key and conflating the two is a hard
  * boundary. When materialising the root container they're surfaced under
  * the root-path key `'[]'` (the same token `errors([])` reads), so a
@@ -276,7 +276,7 @@ function materializeErrors<F extends GenericForm>(
   // when a third-party walker bypasses Vue's instrumentation) sees a
   // standard prototype chain. The `safeAssign` calls in `placeAt`
   // land a literal `__proto__` segment as an own data property; no
-  // matter what `setFieldErrors` / `setFormErrors` hands in, the
+  // matter what `setErrors` hands in, the
   // pollution arrow can't reassign the container's prototype.
   const tree: Record<string, unknown> | unknown[] = Array.isArray(liveContainer) ? [] : {}
 
@@ -299,7 +299,7 @@ function materializeErrors<F extends GenericForm>(
       if (fullPath === null) continue
 
       // Root `[]` bucket — global / root `.refine()` / hydration /
-      // `setFormErrors`, the root form's own context. It is NEVER the
+      // `setErrors`, the root form's own context. It is NEVER the
       // `''` slot: `''` is a plain field key, and conflating the two is
       // a hard boundary. At the root materialisation, surface global
       // errors under the root-path key `'[]'` (the same token

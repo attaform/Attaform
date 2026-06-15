@@ -596,7 +596,7 @@ describe('buildProcessForm', () => {
     it('submit-success after reset() does NOT clear schemaErrors set by post-reset writers', async () => {
       // Symmetry case: a successful submit's `clearSchemaErrors()` would
       // wipe entries that a post-reset code path (e.g. user
-      // `setFieldErrors` between reset and submit-resolution) had
+      // `setErrors` between reset and submit-resolution) had
       // legitimately written. Same generation guard prevents that.
       let releaseValidate!: (resp: ValidationResponse<Signup>) => void
       const validatePromise = new Promise<ValidationResponse<Signup>>((resolve) => {
@@ -628,12 +628,10 @@ describe('buildProcessForm', () => {
     })
   })
 
-  // The `setFieldErrorsFromApi` factory was retired in 0.12 in favour of
-  // the pure `parseApiErrors` helper. Pure-parser behaviour is covered by
-  // `test/core/parse-api-errors.test.ts`; the consumer-side write
-  // (`form.setFieldErrors(parseApiErrors(payload).errors)`) is integration
-  // territory tested in `test/composables/use-abstract-form.test.ts` and
-  // the field-errors-view tests.
+  // Server-side errors are written by handing the server's
+  // `ValidationError[]` straight to `form.setErrors` (no parse step).
+  // That consumer-side write is integration territory, covered in
+  // `test/composables/field-errors-view.test.ts`.
 
   // C3 — sharpened dev-warn when validate() is called outside an
   // effect scope. The watcher leaks (intentional behaviour), but the

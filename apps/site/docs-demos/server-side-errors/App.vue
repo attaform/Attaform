@@ -1,55 +1,77 @@
 <script setup lang="ts">
+  import { computed } from 'vue'
   import { useForm } from 'attaform/zod'
-  import { parseApiErrors } from 'attaform'
   import { z } from 'zod'
   import './styles.css'
 
   const form = useForm({
     schema: z.object({
       email: z.email(),
-      username: z.string().min(3),
+      password: z.string().min(1, 'Enter your password'),
     }),
-    defaultValues: { username: '' },
+    defaultValues: { email: '', password: '' },
     key: 'docs-demo-server-side-errors',
   })
 
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-  function simulateServerCall(values: { email: string; username: string }) {
-    const errors: Array<{ path: string; message: string }> = []
-    if (values.email === 'taken@example.com') {
-      errors.push({ path: 'email', message: 'Already registered' })
+  function simulateServerCall(values: { email: string; password: string }) {
+    if (values.email === 'locked@example.com') {
+      return {
+        ok: false,
+        errors: [
+          {
+            message: 'Too many attempts. This account is locked.',
+            code: 'auth:locked',
+            data: { unlocksAt: new Date(Date.now() + 15 * 60_000).toISOString() },
+          },
+        ],
+      }
     }
-    if (values.username === 'admin') {
-      errors.push({ path: 'username', message: 'Reserved username' })
+    if (values.password !== 'hunter2') {
+      return {
+        ok: false,
+        errors: [{ path: ['password'], message: 'Incorrect email or password.' }],
+      }
     }
-    return { ok: errors.length === 0, details: errors }
+    return { ok: true, errors: [] }
   }
 
+  const lockout = computed(() => {
+    const locked = (form.errors([]) ?? []).find((e) => e.code === 'auth:locked')
+    if (!locked) return null
+    const data = locked.data as { unlocksAt?: string } | null | undefined
+    const unlocksAt = data?.unlocksAt ? new Date(data.unlocksAt).toLocaleTimeString() : null
+    return { message: locked.message, unlocksAt }
+  })
+
   const onSubmit = form.handleSubmit(async (values) => {
-    form.clearFieldErrors()
+    form.clearErrors()
     await wait(500)
 
     const response = simulateServerCall(values)
-
     if (!response.ok) {
-      const parsed = parseApiErrors(response, { formKey: 'docs-demo-server-side-errors' })
-      if (parsed.ok) {
-        form.setFieldErrors(parsed.errors)
-        return
-      }
+      form.setErrors(response.errors)
+      return
     }
 
-    toast.success(`Account created: ${values.username}`, { description: values })
+    toast.success('Signed in', { description: values.email })
   })
 </script>
 
 <template>
   <form class="demo" @submit.prevent="onSubmit">
     <p class="hint">
-      Try <code>taken@example.com</code> for email and <code>admin</code> for username to see the
-      simulated server response route through <code>parseApiErrors</code>.
+      Enter the wrong password (the demo accepts <code>hunter2</code>) to land a field error, or
+      sign in as <code>locked@example.com</code> to see a form-level lockout whose
+      <code>data</code> payload carries the unlock time. One
+      <code>form.setErrors(response.errors)</code> call places every error at its path.
     </p>
+
+    <div v-if="lockout" class="banner error">
+      {{ lockout.message }}
+      <template v-if="lockout.unlocksAt"> Try again after {{ lockout.unlocksAt }}.</template>
+    </div>
 
     <label>
       <span>Email</span>
@@ -58,13 +80,17 @@
     </label>
 
     <label>
-      <span>Username</span>
-      <input v-register="form.register('username')" />
-      <em v-if="form.fields.username.showErrors">{{ form.fields.username.firstError?.message }}</em>
+      <span>Password</span>
+      <input
+        v-register="form.register('password')"
+        type="password"
+        autocomplete="current-password"
+      />
+      <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
     </label>
 
     <button :disabled="form.meta.submitting" type="submit">
-      {{ form.meta.submitting ? 'Checking with server…' : 'Create account' }}
+      {{ form.meta.submitting ? 'Signing in…' : 'Sign in' }}
     </button>
   </form>
 </template>

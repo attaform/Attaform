@@ -11,7 +11,7 @@
   a members table keyed by id, a settings editor, a tag map, without keeping a
   parallel list of your own; a bare record root defaults to an empty map. zod v3
   and zod v4 both get it, both tested, and object-rooted forms behave exactly as
-  before. (#393)
+  before. (#421)
 
 ## v0.23.0
 ### Removed

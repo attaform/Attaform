@@ -15,19 +15,21 @@ import type { z } from 'zod'
 import type { z as zV3 } from 'zod-v3'
 import type { StorageShape as StorageShapeV4 } from '../zod-v4/types-storage-shape'
 import type { StorageShape as StorageShapeV3 } from '../zod-v3/types-storage-shape'
-import type { UnwrapZodObject } from '../zod-v3/types-zod-adapter'
+import type { UnwrapZodRoot } from '../zod-v3/types-zod-adapter'
+import type { SupportedRootSchema as SupportedRootSchemaV4 } from '../zod-v4/types-root'
+import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/types-root'
 import type { GenericForm } from '../../types/types-core'
 
-export type V4FormOf<S extends z.ZodObject> = z.input<S> extends GenericForm ? z.input<S> : never
-export type V4OutOf<S extends z.ZodObject> = z.output<S> extends GenericForm ? z.output<S> : never
-export type V4ReadOf<S extends z.ZodObject> =
+export type V4FormOf<S extends SupportedRootSchemaV4> =
+  z.input<S> extends GenericForm ? z.input<S> : never
+export type V4OutOf<S extends SupportedRootSchemaV4> =
+  z.output<S> extends GenericForm ? z.output<S> : never
+export type V4ReadOf<S extends SupportedRootSchemaV4> =
   StorageShapeV4<S> extends GenericForm ? StorageShapeV4<S> : never
 
-export type V3FormOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
-  zV3.input<UnwrapZodObject<S>> extends GenericForm ? zV3.input<UnwrapZodObject<S>> : never
-export type V3OutOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
-  zV3.output<UnwrapZodObject<S>> extends GenericForm ? zV3.output<UnwrapZodObject<S>> : never
-export type V3ReadOf<S extends zV3.ZodObject<zV3.ZodRawShape>> =
-  StorageShapeV3<UnwrapZodObject<S>> extends GenericForm
-    ? StorageShapeV3<UnwrapZodObject<S>>
-    : never
+export type V3FormOf<S extends SupportedRootSchemaV3> =
+  zV3.input<UnwrapZodRoot<S>> extends GenericForm ? zV3.input<UnwrapZodRoot<S>> : never
+export type V3OutOf<S extends SupportedRootSchemaV3> =
+  zV3.output<UnwrapZodRoot<S>> extends GenericForm ? zV3.output<UnwrapZodRoot<S>> : never
+export type V3ReadOf<S extends SupportedRootSchemaV3> =
+  StorageShapeV3<UnwrapZodRoot<S>> extends GenericForm ? StorageShapeV3<UnwrapZodRoot<S>> : never

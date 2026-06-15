@@ -39,6 +39,6 @@ export type {
   TypeWithNullableDynamicKeys,
   ZodTypeWithInnerType,
 } from './runtime/adapters/zod-v3/types-zod'
-export type { UnwrapZodObject } from './runtime/adapters/zod-v3/types-zod-adapter'
+export type { UnwrapZodRoot } from './runtime/adapters/zod-v3/types-zod-adapter'
 export { fieldMeta, withMeta } from './runtime/adapters/zod-v3/field-meta'
 export type { FieldMetaPayload } from './runtime/core/field-meta'

@@ -3433,6 +3433,24 @@ export interface BlankPathsView {
   [Symbol.iterator](): IterableIterator<Path>
 }
 
+/**
+ * The no-arg `form.record()` call form, present only when the form root
+ * is itself an open record (`z.record(K, V)`). `string extends keyof
+ * Form` is the open-keyset probe: true for `Record<string, V>`, false
+ * for a fixed `z.object` shape. On a fixed object this resolves to
+ * `unknown`, which contributes nothing to the intersection in `record`
+ * below, so the no-arg call form simply does not exist there (and
+ * `form.record()` stays a compile error, as it should when the root has
+ * a closed key set). On a record root it mirrors the path-addressed
+ * `record(path)` overload: one `FieldState` per entry, keyed by the
+ * record's own runtime keys.
+ */
+export type RootRecordView<Form> = string extends keyof Form
+  ? Form extends Record<string, infer RootValue>
+    ? () => Readonly<Record<string, FieldState<RootValue>>>
+    : unknown
+  : unknown
+
 export type UseFormReturnType<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,
@@ -4183,10 +4201,22 @@ export type UseFormReturnType<
    * when the key leaves. `form.fields(path)` remains the single
    * aggregated container for the whole record; `record` is the
    * per-entry view.
+   *
+   * When the form root is itself a record (`useForm({ schema:
+   * z.record(K, V) })` — a dictionary form), call `form.record()` with
+   * no argument for the root entry view:
+   *
+   * ```vue
+   * <div v-for="(member, id) in form.record()" :key="id">
+   *   <input v-register="form.register(id)" />
+   *   <p v-if="member.showErrors">{{ member.firstError?.message }}</p>
+   * </div>
+   * ```
    */
-  record: <Path extends RecordPath<Form>>(
-    path: Path
-  ) => Readonly<Record<string, FieldState<RecordValue<Form, Path>>>>
+  record: RootRecordView<Form> &
+    (<Path extends RecordPath<Form>>(
+      path: Path
+    ) => Readonly<Record<string, FieldState<RecordValue<Form, Path>>>>)
   /**
    * Read-only view of the form's blank path set. Reactive — Vue 3.5
    * tracks `.has()` / `for..of` / size accesses, so consumers can drive

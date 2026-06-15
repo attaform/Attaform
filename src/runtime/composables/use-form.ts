@@ -9,7 +9,8 @@ import type {
   ValidateOnConfig,
 } from '../types/types-api'
 import type { DefaultValuesInput, GenericForm } from '../types/types-core'
-import type { UnwrapZodObject } from '../adapters/zod-v3/types-zod-adapter'
+import type { UnwrapZodRoot } from '../adapters/zod-v3/types-zod-adapter'
+import type { SupportedRootSchema } from '../adapters/zod-v3/types-root'
 import type { StorageShape } from '../adapters/zod-v3/types-storage-shape'
 import { useAbstractForm } from './use-abstract-form'
 
@@ -24,13 +25,13 @@ import { useAbstractForm } from './use-abstract-form'
  * the v4 adapter's own `FormOf`/`OutOf`/`ReadOf` aliases verbatim so
  * v3 and v4 carry the same per-call depth cost.
  */
-type FormOf<Schema extends z.ZodObject<z.ZodRawShape>> =
-  z.input<UnwrapZodObject<Schema>> extends GenericForm ? z.input<UnwrapZodObject<Schema>> : never
-type OutOf<Schema extends z.ZodObject<z.ZodRawShape>> =
-  z.output<UnwrapZodObject<Schema>> extends GenericForm ? z.output<UnwrapZodObject<Schema>> : never
-type ReadOf<Schema extends z.ZodObject<z.ZodRawShape>> =
-  StorageShape<UnwrapZodObject<Schema>> extends GenericForm
-    ? StorageShape<UnwrapZodObject<Schema>>
+type FormOf<Schema extends SupportedRootSchema> =
+  z.input<UnwrapZodRoot<Schema>> extends GenericForm ? z.input<UnwrapZodRoot<Schema>> : never
+type OutOf<Schema extends SupportedRootSchema> =
+  z.output<UnwrapZodRoot<Schema>> extends GenericForm ? z.output<UnwrapZodRoot<Schema>> : never
+type ReadOf<Schema extends SupportedRootSchema> =
+  StorageShape<UnwrapZodRoot<Schema>> extends GenericForm
+    ? StorageShape<UnwrapZodRoot<Schema>>
     : never
 
 /**
@@ -83,7 +84,7 @@ export function useForm<
  *
  * For Zod v4, import from `attaform/zod` instead.
  */
-export function useForm<Schema extends z.ZodObject<z.ZodRawShape>, K extends FormKey = FormKey>(
+export function useForm<Schema extends SupportedRootSchema, K extends FormKey = FormKey>(
   configuration: Omit<
     UseFormConfiguration<
       FormOf<Schema>,

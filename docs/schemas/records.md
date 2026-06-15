@@ -155,8 +155,11 @@ The aggregate `form.meta.errors` flattens every entry's errors into one list, in
 - **`z.map(K, V)`**: when you need `Map`'s insertion order, non-string keys, or structured-clone fidelity for IndexedDB persistence.
 - **`z.object({ … })`**: when the keys are fixed and known at schema-write time. Records are for the dynamic case.
 
+When the record is the entire form rather than a field inside one, reach for a [dictionary form](/docs/schemas/dictionary-forms): the `z.record` becomes the schema root, `form.values` is the map itself, and `form.record()` iterates it.
+
 ## Where to next
 
+- [Dictionary forms](/docs/schemas/dictionary-forms): a `z.record` schema as the form root, not just a field inside an object.
 - [Arrays & tuples](/docs/schemas/arrays-and-tuples): numeric-keyed sequences; the other half of the "many-items" picture.
 - [Nested objects](/docs/schemas/nested-objects): fixed-shape composition; the alternative when keys are known.
 - [`unset`, the blank-anywhere sentinel](/docs/writing-and-mutating/unset): how to flag a single record entry blank, or wipe the whole record back to `{}`.

@@ -52,4 +52,16 @@ form.handleSubmit((data) => {
   void data
 })
 
-export { form }
+// Record-root form — a `z.record` schema as the root (dictionary form),
+// the new surface this guards. Same single-major hazard as the object
+// root: the v4 overload must not greedily match this v3 record, or the
+// read slot collapses to `never`. The `z.ZodRecord` arm of the v4
+// SupportedRootSchema carries argument defaults, so it stays a concrete
+// type; this pins that it keeps discriminating in a one-major install.
+const rosterSchema = z.record(z.string(), z.object({ tier: z.number() }))
+const roster = useForm({ schema: rosterSchema, key: 'roster-v3' })
+
+// Read slot must resolve to the record map (not `never`, not `any`).
+type _RosterEntry = Expect<Equal<ReturnType<typeof roster.values>['member-1'], { tier: number }>>
+
+export { form, roster }

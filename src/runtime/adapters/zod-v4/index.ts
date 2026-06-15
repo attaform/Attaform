@@ -17,6 +17,7 @@ import type {
 import type { DefaultValuesInput, FlatPath, GenericForm, NestedType } from '../../types/types-core'
 import { zodV4Adapter } from './adapter'
 import type { StorageShape } from './types-storage-shape'
+import type { SupportedRootSchema } from './types-root'
 
 export { zodV4Adapter as zodAdapter } from './adapter'
 export { UnsupportedSchemaError } from './errors'
@@ -98,14 +99,14 @@ export type PathOutput<Schema extends z.ZodType, Path extends string> =
  * generics ride on the alias rather than re-evaluating the
  * conditional from scratch.
  */
-type FormOf<Schema extends z.ZodObject> =
+type FormOf<Schema extends SupportedRootSchema> =
   z.input<Schema> extends GenericForm ? z.input<Schema> : never
-type OutOf<Schema extends z.ZodObject> =
+type OutOf<Schema extends SupportedRootSchema> =
   z.output<Schema> extends GenericForm ? z.output<Schema> : never
-type ReadOf<Schema extends z.ZodObject> =
+type ReadOf<Schema extends SupportedRootSchema> =
   StorageShape<Schema> extends GenericForm ? StorageShape<Schema> : never
 
-export function useForm<Schema extends z.ZodObject, K extends FormKey = FormKey>(
+export function useForm<Schema extends SupportedRootSchema, K extends FormKey = FormKey>(
   configuration: Omit<
     UseFormConfiguration<
       FormOf<Schema>,

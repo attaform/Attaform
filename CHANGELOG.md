@@ -53,7 +53,7 @@
   `atta:user-error`. What you read back stays the firm `ValidationError`, formKey
   always stamped. An entry with no path lands at the global root `[]`, and the
   form stamps its own key on every entry. zod v3 and zod v4 both get it, both
-  tested. (#NNN)
+  tested. (#434)
 
 ### Removed
 
@@ -67,7 +67,7 @@
   another shape maps it in one `.map()` at the call site. Retiring the
   shape-guessing walker also drops its hostile-payload size caps and one more
   client-side surface an auditor had to reason about. Pre-1.0, so this lands
-  without deprecation shims. (#NNN)
+  without deprecation shims. (#434)
 
 ## v0.23.0
 ### Removed

@@ -28,7 +28,7 @@
   alongside the message: a captcha challenge, a lockout `unlocks_at` timestamp, an
   MFA step-up descriptor. Attaform never inspects it; it flows untouched through
   `form.errors`, `form.meta.errors`, the SSR serialise / hydrate round-trip, and
-  undo / redo. Read it where you render the error and act on it.
+  undo / redo. Read it where you render the error and act on it. (#426)
 
 ## v0.23.0
 ### Removed

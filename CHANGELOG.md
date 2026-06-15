@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.24.0
 ### Added
 
 - **A `z.record` schema can now be the whole form, not just a field inside

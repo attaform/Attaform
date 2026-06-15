@@ -1,5 +1,18 @@
 # Releases
 
+## v0.23.0 — 2026-06-14
+
+## What's Changed
+* refactor(multitab)!: remove multi-tab sync and its BroadcastChannel engine by @ozzyfromspace in https://github.com/attaform/Attaform/pull/415
+* refactor(persist)!: remove form-value persistence and its storage backends by @ozzyfromspace in https://github.com/attaform/Attaform/pull/416
+* refactor(onchange)!: remove form.onChange and the { silent } write opt-out by @ozzyfromspace in https://github.com/attaform/Attaform/pull/417
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/418
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.22.0...v0.23.0
+
+---
+
 ## v0.22.0 — 2026-06-14
 
 ## What's Changed

@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.23.0
 ### Removed
 
 - **Multi-tab synchronisation has been removed, and Attaform's trust story is

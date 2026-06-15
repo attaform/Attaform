@@ -1436,9 +1436,11 @@ export type FormStore<TData extends GenericForm> = Map<FormKey, TData>
 export type OnSubmit<Form extends GenericForm> = (form: Form) => void | Promise<void>
 
 /**
- * Callback invoked by `handleSubmit` when validation fails. Receives
- * the full list of errors. Bind this when you want to react to
- * submit failures explicitly (alongside or instead of the
+ * Callback invoked by `handleSubmit` on a failed submit. Fires when
+ * client validation fails AND when the submit callback leaves errors in
+ * the user-error layer (the `setErrors(...); return` server-rejection
+ * pattern). Receives the full list of errors. Bind this when you want to
+ * react to submit failures explicitly (alongside or instead of the
  * automatic `onInvalidSubmit` UI nudge).
  */
 export type OnError = (error: ValidationError[]) => void | Promise<void>
@@ -3300,10 +3302,14 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    *
    * The submit handler does NOT re-throw — its returned promise always
    * resolves, so binding it to `@submit.prevent` never manufactures a
-   * `window` unhandledrejection. This is the single channel for "the
-   * submit failed", read the same way in templates and after an
-   * imperative `await submit()`. Like `hydrateError`, it stays distinct
-   * from the curated user-error store: render it where you choose:
+   * `window` unhandledrejection. This is the channel for an UNEXPECTED
+   * submit failure (a thrown exception or rejected promise), read the
+   * same way in templates and after an imperative `await submit()`. An
+   * EXPECTED rejection handled the documented way (`setErrors(...)` then
+   * `return`, no throw) surfaces through the error store and `onError`
+   * instead, leaving `submitError` `null`. Like `hydrateError`, it stays
+   * distinct from the curated user-error store: render it where you
+   * choose:
    *
    * ```vue
    * <p v-if="form.meta.submitError">{{ form.meta.submitError.message }}</p>
@@ -3322,11 +3328,18 @@ export type FormMeta<F = unknown> = FieldState<F> & {
   readonly errorCount: number
 
   /**
-   * `true` once a `handleSubmit` callback has resolved without
-   * throwing. Independent of `submissionAttempts` — a failed submit
-   * (validation failure or callback rejection) increments attempts but
-   * leaves `submitted` at `false`. Templates read it as "the form has
-   * been submitted successfully at least once."
+   * `true` once a `handleSubmit` callback has resolved without throwing
+   * AND left no errors behind. Independent of `submissionAttempts` — a
+   * failed submit (validation failure, callback rejection, or a callback
+   * that calls `setErrors` and returns) increments attempts but leaves
+   * `submitted` at `false`. Templates read it as "the form has been
+   * submitted successfully at least once."
+   *
+   * The error check is scoped to the user-error layer (`setErrors` /
+   * `clearErrors`): the documented server-rejection pattern
+   * (`setErrors(response.errors); return`) is a failed submit, so it does
+   * not flip `submitted`. A background async refinement that writes a
+   * schema error mid-submit does not retroactively fail it.
    *
    * Cleared by `form.reset()` alongside `submissionAttempts` and
    * `submitError`. For "the user has attempted a submit," read

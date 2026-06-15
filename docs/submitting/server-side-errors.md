@@ -75,13 +75,20 @@ What you read back is firm: every `ValidationError` has a `message`, a `path`, a
 ```ts
 type ErrorInput =
   | Error
-  | { message?: string; path?: (string | number)[]; code?: string; data?: Json | null }
+  | {
+      message?: string
+      path?: (string | number)[]
+      code?: string
+      data?: Json | null
+      formKey?: FormKey
+    }
 ```
 
 - **`message`** is optional. An `Error` contributes its `message`; a missing or empty message becomes `"Unknown error"` rather than throwing.
 - **`path`** defaults to `[]` (form level). The scoped `setErrors(path, ...)` form stamps the path for you and ignores any path on the entry.
 - **`code`** defaults to `atta:user-error`. Set your own (`auth:locked`, `api:duplicate`) to branch on it in the UI.
 - **`data`** is an opaque `Json` payload Attaform never inspects. It rides along untouched, so a lockout can carry its unlock time, a challenge its captcha token, a step-up its MFA descriptor.
+- **`formKey`** is accepted but ignored: the form always stamps its own. So a `ValidationError` you read back (from `form.errors()`, or a server that already speaks the shape) is itself valid input, with no mapping required.
 
 Reading `data` where you render the error is how the lockout banner in the demo knows when to unlock:
 

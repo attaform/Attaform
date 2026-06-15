@@ -51,9 +51,10 @@
   partial `{ message?, path?, code?, data? }`, or an array of either, a missing
   message coerced to `"Unknown error"` and a missing code defaulting to
   `atta:user-error`. What you read back stays the firm `ValidationError`, formKey
-  always stamped. An entry with no path lands at the global root `[]`, and the
-  form stamps its own key on every entry. zod v3 and zod v4 both get it, both
-  tested. (#434)
+  always stamped; because `formKey` is also accepted-and-ignored on input, a value
+  you read back is itself valid input. An entry with no path lands at the global
+  root `[]`, and the form stamps its own key on every entry. zod v3 and zod v4
+  both get it, both tested. (#434)
 
 ### Removed
 

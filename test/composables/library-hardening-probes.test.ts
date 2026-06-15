@@ -4904,6 +4904,7 @@ describe('chaos — setErrors at edge paths', () => {
         path: ['name'],
         message: 'server error',
         code: 'test:server',
+        formKey: 'some-other-form',
       },
     ])
     await nextTick()

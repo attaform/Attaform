@@ -120,10 +120,13 @@ export type ValidationError = {
  *   the path-scoped `setErrors(path, …)` form, which stamps its own.
  * - `code`: defaults to `atta:user-error`.
  * - `data`: forwarded verbatim onto the produced `ValidationError`.
+ * - `formKey`: accepted but ignored — the form always stamps its own.
  *
- * `formKey` is intentionally absent: the form stamps its own. A server
- * that already emits `ValidationError[]` satisfies this shape, so its
- * response pipes straight into `form.setErrors` with no adapter.
+ * Because every field is optional and `formKey` is accepted-and-ignored,
+ * `ValidationError` is a subtype of `ErrorInput`: a `ValidationError[]`
+ * you read back, or a server response that already emits the shape, pipes
+ * straight into `form.setErrors` with no adapter and no excess-property
+ * friction.
  */
 export type ErrorInput =
   | Error
@@ -132,6 +135,7 @@ export type ErrorInput =
       path?: (string | number)[]
       code?: string
       data?: Json | null
+      formKey?: FormKey
     }
 
 /** Settled validation result when the form (or subtree) parsed successfully. */

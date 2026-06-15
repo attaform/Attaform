@@ -124,7 +124,7 @@ function setErrorsContract(make: () => TestForm): void {
 
   it('always restamps formKey with this form, ignoring any provided', () => {
     const form = make()
-    form.setErrors([{ path: ['email'], message: 'taken', formKey: 'someone-else' } as ErrorInput])
+    form.setErrors([{ path: ['email'], message: 'taken', formKey: 'someone-else' }])
 
     expect(field(form, 'email')[0]?.formKey).toBe(form.key)
   })

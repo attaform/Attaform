@@ -9,7 +9,9 @@
  *   - All three `setErrors` call forms type-check (whole-layer replace,
  *     functional updater, path-scoped), including the path-scoped updater.
  *   - The updater's `prev` is a firm `ValidationError[]`.
- *   - `formKey` is NOT an accepted input field — the form stamps its own.
+ *   - `formKey` is accepted but ignored (the form stamps its own), so
+ *     `ValidationError` is a subtype of `ErrorInput` and read-back errors
+ *     round-trip as input.
  *   - `clearErrors` accepts no arg, a string path, or a segment array.
  */
 import { useForm } from '../../../dist/zod'
@@ -46,9 +48,18 @@ form.clearErrors('email')
 form.clearErrors(['email'])
 form.clearErrors([])
 
-// formKey is output-only — the form stamps its own, so the input shape
-// rejects it. If this stops erroring, the input contract has drifted.
-// @ts-expect-error - ErrorInput has no formKey.
+// formKey is accepted but ignored — the form stamps its own. A
+// ValidationError read off the form is therefore valid input: the output
+// type is a subtype of the input type, no excess-property friction.
 form.setErrors([{ message: 'x', formKey: 'nope' }])
+const roundTrip: ValidationError = {
+  message: 'taken',
+  path: ['email'],
+  code: 'api:dup',
+  formKey: 'set-errors-fixture',
+}
+const asInput: ErrorInput = roundTrip
+form.setErrors([roundTrip])
+form.setErrors(asInput)
 
 export { form }

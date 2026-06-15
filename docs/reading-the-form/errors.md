@@ -59,7 +59,7 @@ For display ergonomics, gating by [`getDisplayState`](/docs/validation/showing-e
 form.errors.profile // sub-Proxy: { '': [...refines], bio: [...], ... }
 form.errors('profile') // flat array: every error inside profile + container-self
 form.errors() // flat array: every error in the form
-form.errors([]) // flat array: global errors only (root .refine(), setFormErrors)
+form.errors([]) // flat array: global errors only (root .refine(), form-level setErrors)
 ```
 
 `form.errors()` is the cheapest "is anything wrong?" check (`form.errors().length === 0` when the form is valid). Its narrower companion `form.errors([])` returns only the global, form-level errors (a root `.refine()`, an imperatively-set form error), with no field errors mixed in. For aggregated counts and submission-state bits, see [`form.meta`](/docs/reading-the-form/meta). When you serialize the dot-form (`JSON.stringify(form.errors)` or `{{ form.errors }}` in a template), the Proxy materializes the live sparse tree, so you can dump the whole error state for debugging without losing structure; global errors sit under the `'[]'` key in that dump, kept distinct from every field.
@@ -90,22 +90,22 @@ form.errors.profile.bio // leaf errors on bio
 
 The call form is the flat alternative: `form.errors('profile')` returns one `ValidationError[]` containing the refine PLUS every descendant leaf error in declaration order, no structure. Reach for the structural tree when you want to render per-field; reach for the call form when you want "anything wrong under this container?".
 
-The sentinel is a nested-container convention: it appears one level deep or more. The root has no `''` self-slot, because at the root `''` is just an ordinary field key. `form.errors['']` reads a literal field named `''` (a rare but valid schema key), while global, form-level errors (a root `.refine()`, a `setFormErrors` call) live at the structurally-distinct root path and read through `form.errors([])`. In a `JSON.stringify(form.errors)` dump they appear under the `'[]'` key, never under `''`, so the two never collide.
+The sentinel is a nested-container convention: it appears one level deep or more. The root has no `''` self-slot, because at the root `''` is just an ordinary field key. `form.errors['']` reads a literal field named `''` (a rare but valid schema key), while global, form-level errors (a root `.refine()`, a path-less `setErrors` call) live at the structurally-distinct root path and read through `form.errors([])`. In a `JSON.stringify(form.errors)` dump they appear under the `'[]'` key, never under `''`, so the two never collide.
 
 If your schema legitimately declares a field literally named `''` at a nested container (an exceptionally rare choice), that leaf's own errors and the container-self errors share the sentinel slot, and both arrays concatenate into a single read. At the root no such collision exists: `''` is a plain field there, kept entirely separate from the global bucket at `form.errors([])`.
 
 ## Setting errors imperatively
 
-Server-side errors land in the same reactive store as Zod errors:
+Server-side errors land in the same reactive store as Zod errors. Hand `form.setErrors` a `ValidationError[]` and each entry lands at its `path`:
 
 ```ts
-form.setFieldErrors([
-  { path: 'email', message: 'Already taken' },
-  { path: 'profile.handle', message: 'Reserved' },
+form.setErrors([
+  { path: ['email'], message: 'Already taken' },
+  { path: ['profile', 'handle'], message: 'Reserved' },
 ])
 ```
 
-`form.errors.email` and `form.errors.profile.handle` update immediately, and any `form.fields.<path>.firstError` / `form.fields.<path>.showErrors` reads update with them. Pair with [`parseApiErrors`](/docs/server-and-ssr/parse-api-errors) to convert a server response payload into the `{ path, message }` shape `setFieldErrors` expects; the render surface is identical whether the error came from Zod or your API.
+`form.errors.email` and `form.errors.profile.handle` update immediately, and any `form.fields.<path>.firstError` / `form.fields.<path>.showErrors` reads update with them. The render surface is identical whether the error came from Zod or your API. See [Server-side errors](/docs/submitting/server-side-errors) for the full `handleSubmit` flow: scoped and functional updates, clearing, and the opaque `data` payload slot.
 
 ## Where to next
 
@@ -114,4 +114,4 @@ form.setFieldErrors([
 - [`fields`](/docs/reading-the-form/fields): per-leaf state, including the gated `firstError` / `showErrors` pairing.
 - [`meta`](/docs/reading-the-form/meta): the form-level aggregates (`errorCount`, `valid`, `submitting`, etc.).
 - [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.
-- [Server-side errors](/docs/submitting/server-side-errors): `setFieldErrors` + `parseApiErrors` in full.
+- [Server-side errors](/docs/submitting/server-side-errors): `setErrors` and `clearErrors` in full.

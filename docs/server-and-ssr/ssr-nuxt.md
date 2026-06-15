@@ -62,12 +62,12 @@ The Nuxt module auto-imports `useForm` from the unified entry point. No `import`
 </script>
 ```
 
-For the Zod-typed wrapper (`useForm` from `attaform/zod`), or for any other helper (`injectForm`, `useWizard`, `useRegister`, `parseApiErrors`, `unset`, `defaultDisplayState`), import explicitly:
+For the Zod-typed wrapper (`useForm` from `attaform/zod`), or for any other helper (`injectForm`, `useWizard`, `useRegister`, `unset`, `defaultDisplayState`), import explicitly:
 
 ```vue
 <script setup lang="ts">
   import { injectForm, useWizard } from 'attaform/zod'
-  import { parseApiErrors } from 'attaform'
+  import { defaultDisplayState, unset } from 'attaform'
 </script>
 ```
 

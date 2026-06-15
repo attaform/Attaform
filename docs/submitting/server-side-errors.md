@@ -1,118 +1,138 @@
 ---
 title: Server-side errors
-description: parseApiErrors translates API failure responses into ValidationError[]; setFieldErrors / addFieldErrors / clearFieldErrors mount them into the same reactive surface the validator uses.
+description: form.setErrors mounts server errors into the same reactive surface the validator uses. One shape in (an Error or { message?, path?, code?, data? }), one shape out (ValidationError).
 metaRows:
   - label: Category
-    value: Helper + Return methods
-  - label: Parser
-    value: parseApiErrors(envelope, { formKey })
+    value: Return methods
+  - label: Set
+    value: form.setErrors(errors) · form.setErrors(path, errors)
     kind: code
-  - label: Mounters
-    value: setFieldErrors · addFieldErrors · clearFieldErrors
+  - label: Clear
+    value: form.clearErrors(path?)
     kind: code
-  - label: Returns
-    value: '{ ok: true, errors } | { ok: false, reason }'
+  - label: Accepts
+    value: 'Error | { message?, path?, code?, data? }'
     kind: code
 ---
 
 # Server-side errors
 
-> Treat API failures the same as schema failures: same reactive surface, same `firstError` reads, same focus / scroll behavior on submit.
+> A server rejection is just another invalid path. Hand Attaform the errors and they land in the same reactive surface as schema errors: same `firstError` reads, same focus and scroll on submit, same display gating.
 
 ::docs-meta-table
 ::
 
-Submit with `taken@example.com` as the email and `admin` as the username to watch the simulated server response route through `parseApiErrors` → `setFieldErrors`. The errors land at `errors.email` and `errors.username`, the field-level `firstError` surfaces them next to the inputs, and the form-level focus pull treats them like any other invalid path. Submit with different values to see the success path fire.
+The demo signs in against a simulated backend. Submit with the wrong password to land an error right under the field; sign in as `locked@example.com` to get a form-level lockout whose structured `data` payload carries the unlock time. Every response routes through a single `form.setErrors` call.
 
 ::docs-demo{slug="server-side-errors" label="Server Errors Demo"}
 ::
 
-## The flow
+## One shape in, one shape out
 
-A successful round-trip lands a value at the form; a failed one needs to land an error at the right path. The three pieces:
-
-1. **`parseApiErrors(envelope, { formKey })`**: normalizes the server response into `ValidationError[]`.
-2. **`form.setFieldErrors(errors)`** (or `form.addFieldErrors`): mounts the parsed errors into the form's reactive surface.
-3. **`form.clearFieldErrors(path?)`**: drops them when the user starts editing or the next submit fires.
+Attaform reads and writes errors in one shape, `ValidationError`, the same record the validator produces. So when your server speaks that shape, there is nothing to translate: hand the array straight to `form.setErrors`.
 
 ```ts
-import { parseApiErrors } from 'attaform'
-
 const onSubmit = form.handleSubmit(async (values) => {
-  form.clearFieldErrors()
-  const response = await api.signup(values)
+  form.clearErrors()
+  const response = await api.signIn(values)
 
   if (!response.ok) {
-    const parsed = parseApiErrors(response, { formKey: form.key })
-    if (parsed.ok) {
-      form.setFieldErrors(parsed.errors)
-      return
-    }
+    form.setErrors(response.errors)
+    return
   }
   // success path
 })
 ```
 
-## `parseApiErrors`
+`response.errors` is a `ValidationError[]`: each entry carries a `message`, an optional `path`, an optional `code`, and an optional `data` payload. An entry with a `path` lands at that field; an entry with no path lands at the form level, in the global `[]` bucket. `form.setErrors` stamps the form key on every entry as it lands, so errors stay isolated to this form.
+
+## `setErrors` and `clearErrors`
+
+`form.setErrors` owns the manual error layer, the errors you set by hand. Schema errors live in their own layer and merge in on read, so setting manual errors never disturbs validation. Its call forms mirror [`form.setValue`](/docs/writing-and-mutating/set-value):
+
+| Call                      | Effect                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| `setErrors(errors)`       | Replace the whole manual layer with this list. Each entry lands at its own `path`. |
+| `setErrors(prev => next)` | Functional replace. `prev` is the current manual layer as a `ValidationError[]`.   |
+| `setErrors(path, errors)` | Scope to one path. Replaces that path's manual errors and stamps the path for you. |
+| `clearErrors(path?)`      | Clear one path, or everything with no argument, schema and manual errors alike.    |
 
 ```ts
-parseApiErrors(
-  envelope: ApiErrorEnvelope,
-  options: { formKey: string }
-): { ok: true; errors: ValidationError[] } | { ok: false; reason: string }
+form.setErrors(response.errors) // whole layer, each entry at its path
+form.setErrors([{ message: 'Service unavailable, try again shortly.' }]) // a form-level banner
+form.setErrors('email', [{ message: 'Already registered' }]) // scoped to one field
+form.setErrors((prev) => [...prev, { path: ['email'], message: 'Also flagged by fraud check' }])
+form.clearErrors('email') // one field
+form.clearErrors() // everything
 ```
 
-`ApiErrorEnvelope` is the shape the server returns: a wrapped object with a `details` array of `{ path, message }` entries. The parser:
+A whole-layer `setErrors` is a full replace: any path absent from the new list is cleared. Reach for the scoped form or the functional updater when you want to touch one path and leave the rest alone.
 
-- Validates the envelope shape; returns `{ ok: false, reason }` when it doesn't conform.
-- Maps each entry's `path` to the form's path tuple.
-- Stamps each error with the form key for cross-form isolation.
+## The error shape
 
-When the response is a plain `200 { ok: true }`, skip the call entirely; `parseApiErrors` is for failure paths.
-
-## Mounting errors
-
-Three methods land parsed errors into the form:
-
-| Method                    | Use                                                                                                                                 |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `setFieldErrors(errors)`  | Replace the current error set with the supplied list. Use after a fresh server round-trip.                                          |
-| `addFieldErrors(errors)`  | Append to the existing set without clearing prior entries. Use when reporting an additional issue alongside existing schema errors. |
-| `clearFieldErrors(path?)` | Drop all errors (no arg) or just one path's errors. Use when the user edits a field that previously had a server error.             |
+What you read back is firm: every `ValidationError` has a `message`, a `path`, a `code`, and a `formKey`. What you pass in is loose, so a server response rarely needs massaging:
 
 ```ts
-form.setFieldErrors(parsedErrors)
-form.addFieldErrors([{ path: ['email'], message: 'Already registered', code: 'custom' }])
-form.clearFieldErrors('email')
-form.clearFieldErrors() // clear everything
+type ErrorInput =
+  | Error
+  | { message?: string; path?: (string | number)[]; code?: string; data?: Json | null }
 ```
 
-## Same reactive surface
+- **`message`** is optional. An `Error` contributes its `message`; a missing or empty message becomes `"Unknown error"` rather than throwing.
+- **`path`** defaults to `[]` (form level). The scoped `setErrors(path, ...)` form stamps the path for you and ignores any path on the entry.
+- **`code`** defaults to `atta:user-error`. Set your own (`auth:locked`, `api:duplicate`) to branch on it in the UI.
+- **`data`** is an opaque `Json` payload Attaform never inspects. It rides along untouched, so a lockout can carry its unlock time, a challenge its captcha token, a step-up its MFA descriptor.
 
-Once mounted, server errors are indistinguishable from schema errors at the read surfaces:
+Reading `data` where you render the error is how the lockout banner in the demo knows when to unlock:
 
-- `form.errors.email` returns the `ValidationError[]` (server or schema, same shape).
-- `form.fields.email.firstError` returns the first one.
-- `form.fields.email.showErrors` gates display per the [`getDisplayState`](/docs/validation/showing-errors) predicate.
-- `form.focusFirstError()` pulls focus to the first server error just like a schema one.
+```ts
+const lockout = computed(() => {
+  const locked = (form.errors([]) ?? []).find((e) => e.code === 'auth:locked')
+  const data = locked?.data as { unlocksAt?: string } | null | undefined
+  return data?.unlocksAt ? new Date(data.unlocksAt) : null
+})
+```
 
-No special "this is a server error" surface in the template. The render code reads `form.fields.<path>.firstError?.message` the same way for both kinds.
+## Servers that speak a different shape
 
-## Auto-clear on edit
+When a backend returns its own envelope, map it to `ValidationError` in one pass at the call site. There is no parser to configure and no shape for Attaform to guess at: you own the one line that knows your server, and everything past it is the canonical contract.
 
-By default, editing a field after a server error landed at that path does NOT auto-clear the error: it'll persist until the next submit re-runs or `form.clearFieldErrors` fires explicitly. Most servers want a fresh round-trip before the error is "cleared," so this matches the network round-trip semantics.
+```ts
+const response = await api.signUp(values)
 
-For "clear on edit" UX, hook a watcher on the path and call `clearFieldErrors(path)`:
+if (!response.ok) {
+  form.setErrors(response.failures.map((f) => ({ path: f.field.split('.'), message: f.detail })))
+  return
+}
+```
+
+## The same reactive surface
+
+Once set, server errors are indistinguishable from schema errors at every read:
+
+- `form.errors.email` returns the `ValidationError[]` at that path, server or schema, same shape.
+- `form.fields.email.firstError` returns the first one, and `form.fields.email.showErrors` gates its display through the [display-state](/docs/validation/showing-errors) predicate.
+- `form.errors([])` returns the form-level errors on their own, ideal for a top-of-form banner.
+- `form.focusFirstError()` pulls focus to the first server error exactly as it would a schema one.
+
+No "this one came from the server" branch in your template. The render code reads `form.fields.<path>.firstError?.message` the same way for both.
+
+## Clearing on a fresh round-trip
+
+A server error stays put until you clear it: editing the field does not drop it on its own, which matches the network round-trip (the value is not re-checked until the next submit). Clearing the whole layer at the top of `handleSubmit` is the common rhythm, so each submit starts clean.
+
+For clear-on-edit UX, watch the path and clear it:
 
 ```ts
 watch(
   () => form.values.email,
-  () => form.clearFieldErrors('email')
+  () => form.clearErrors('email')
 )
 ```
 
 ## Where to next
 
 - [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface server errors plug into.
-- [Focus & scroll on invalid submit](/docs/submitting/focus-scroll): same machinery, applied to server errors after mount.
+- [Focus & scroll on invalid submit](/docs/submitting/focus-scroll): the same machinery, applied to server errors after they land.
 - [`errors`](/docs/reading-the-form/errors): the reactive read surface for every error, server or schema.
+- [Types reference](/docs/reference/types): `ValidationError`, `ErrorInput`, and `Json` in full.

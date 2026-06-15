@@ -87,8 +87,7 @@ The form handle returned by `useForm({ schema })`:
 - `form.setValue(path, value)`, `form.reset(defaults?)`, `form.resetField(path)`, `form.clear(path?)`, `form.unset(path)` programmatic writes.
 - `form.append`, `form.prepend`, `form.insert`, `form.remove`, `form.swap`, `form.move`, `form.replace` typed field-array mutations. An element's state (value, errors, dirty, touched) travels with it across reorders.
 - `form.validate(path?)`, `form.validateAsync(path?)`, `form.parse(path?)` manual validation. `form.parse` is always async (no sync variant by design) and resolves the parsed Zod output.
-- `form.setFieldErrors(errors)`, `form.addFieldErrors(errors)`, `form.clearFieldErrors(path?)` server-error routing.
-- `form.setFormErrors(errors)`, `form.clearFormErrors()` form-level errors.
+- `form.setErrors(errors)`, `form.setErrors(path, errors)`, `form.setErrors(updater)`, `form.clearErrors(path?)` set or clear the manual error layer. A path-less error is form-level at the root `[]`; each error accepts an optional `data` payload.
 - `form.history.{undo, redo, clear, canUndo, canRedo, size}` undo/redo namespace.
 - `form.applyInvalidSubmitPolicy(policy?)`, `form.focusFirstError()`, `form.scrollToFirstError()` UX primitives.
 - `form.touch(path?)`, `form.toRef(path)`, `form.rehydrate()` introspection and lifecycle helpers.
@@ -166,7 +165,7 @@ Patterns that keep Attaform code clean.
 
 - [`handleSubmit`](https://www.attaform.com/docs/submitting/handle-submit): the full lifecycle.
 - [Focus and scroll](https://www.attaform.com/docs/submitting/focus-scroll): invalid-submit policy.
-- [Server-side errors](https://www.attaform.com/docs/submitting/server-side-errors): `parseApiErrors` + `form.setFieldErrors`.
+- [Server-side errors](https://www.attaform.com/docs/submitting/server-side-errors): `form.setErrors` and `form.clearErrors`.
 
 ## Writing and mutating
 
@@ -195,7 +194,6 @@ Patterns that keep Attaform code clean.
 
 - [SSR in Nuxt](https://www.attaform.com/docs/server-and-ssr/ssr-nuxt): the canonical SSR setup.
 - [SSR in bare Vue](https://www.attaform.com/docs/server-and-ssr/ssr-bare-vue): without Nuxt.
-- [`parseApiErrors`](https://www.attaform.com/docs/server-and-ssr/parse-api-errors): route server responses into `form.errors`.
 - [Performance](https://www.attaform.com/docs/server-and-ssr/performance): measured numbers anchored against the 60 fps budget.
 
 ## DevTools and debugging

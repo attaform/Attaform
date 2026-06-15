@@ -1,1 +1,1 @@
-{ "with": ["label", "input", "error", "hint", "code", "button"] }
+{ "with": ["banner", "label", "input", "error", "hint", "code", "button"] }

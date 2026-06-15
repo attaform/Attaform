@@ -42,6 +42,7 @@
   `JSON.stringify(form.errors)` dump carries global errors under the `'[]'` key,
   kept distinct from every field. The two never conflate: `''` is a plain field
   key, `[]` is root form context. zod v3 and zod v4 both get it, both tested.
+  (#427)
 
 ## v0.23.0
 ### Removed

@@ -679,6 +679,21 @@ const entries: SmokeEntry[] = [
       expect(tokens).toContain('mae')
     },
   },
+  {
+    // Variant-root form: the whole schema is a `z.discriminatedUnion`.
+    // Switch the method <select> to bank; the variant swap reshapes
+    // storage and renders the bank-only IBAN field.
+    slug: 'variant-forms',
+    gesture: async (root) => {
+      const select = root.querySelector<HTMLSelectElement>('select')
+      if (!select) throw new Error('method select not found')
+      select.value = 'bank'
+      await dispatchChange(select)
+    },
+    assert: async (root) => {
+      expect(root.textContent ?? '').toContain('IBAN')
+    },
+  },
 
   // ─── PHASE 2: READING STATE ───────────────────────────────────
   {

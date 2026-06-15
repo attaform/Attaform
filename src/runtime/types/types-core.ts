@@ -82,12 +82,17 @@ export type FlatPathBuilder<
  * Inlining at consumer call sites compounds into TS2589 territory
  * when multiple complex forms share a scope. Consumers should reach
  * for `FlatPath` instead; this alias is not part of the stable surface.
+ *
+ * The `Form extends unknown` wrapper distributes over a top-level
+ * union so each member contributes its OWN `keyof` — a discriminated-
+ * union root (`z.discriminatedUnion`) thus exposes every variant's
+ * keys as addressable paths, not just the discriminator that naked
+ * `keyof (A | B)` would intersect to. For a single object / array /
+ * record `Form` it is a one-member no-op and stays byte-identical to
+ * the prior walk. Interior unions already distribute inside
+ * `FlatPathBuilder` via its `infer Value` step.
  */
-export type PartialFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPathBuilder<
-  Form,
-  'partial',
-  Key
->
+export type PartialFlatPath<Form> = Form extends unknown ? FlatPathBuilder<Form, 'partial'> : never
 
 // FlatPath Generic Gotchas:
 //
@@ -112,7 +117,7 @@ export type PartialFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPat
  * `register(path)`, `toRef(path)`, etc.) so paths autocomplete in
  * the IDE and typos compile-error.
  */
-export type FlatPath<Form, Key extends keyof Form = keyof Form> = PartialFlatPath<Form, Key>
+export type FlatPath<Form> = PartialFlatPath<Form>
 
 /**
  * Convert a tuple of path segments to its dotted-string equivalent.

@@ -27,6 +27,8 @@ import type {
   ValidateOnConfig,
 } from '../../types/types-api'
 import type { DefaultValuesInput } from '../../types/types-core'
+import type { SupportedRootSchema as SupportedRootSchemaV4 } from '../zod-v4/types-root'
+import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/types-root'
 import type { V3FormOf, V3OutOf, V3ReadOf, V4FormOf, V4OutOf, V4ReadOf } from './types-projections'
 
 /**
@@ -84,7 +86,10 @@ export type UseFormConfigV3<
 /**
  * The return shape of `useForm` for a given Zod schema. Dispatches
  * once on the schema's major version and projects to the matching
- * adapter's `Form` / `Out` / `Read` slots.
+ * adapter's `Form` / `Out` / `Read` slots. The dispatch matches the
+ * full `SupportedRootSchema` per major, so an object, record, or
+ * discriminated-union root all resolve here exactly as the runtime
+ * `useForm` overloads accept them.
  *
  * Replaces `ReturnType<typeof useForm<Schema, K>>` in test code with
  * concrete schemas. For generic helpers (`<S extends z.ZodObject>`),
@@ -96,9 +101,9 @@ export type UseFormConfigV3<
 export type UseFormReturn<
   Schema,
   K extends FormKey = FormKey,
-> = Schema extends z.ZodObject<z.ZodRawShape> & ZodV4Internals
+> = Schema extends SupportedRootSchemaV4 & ZodV4Internals
   ? UseFormReturnType<V4FormOf<Schema>, V4OutOf<Schema>, V4ReadOf<Schema>, K>
-  : Schema extends zV3.ZodObject<zV3.ZodRawShape>
+  : Schema extends SupportedRootSchemaV3
     ? UseFormReturnType<V3FormOf<Schema>, V3OutOf<Schema>, V3ReadOf<Schema>, K>
     : never
 
@@ -110,7 +115,7 @@ export type UseFormReturn<
 export type UseFormConfig<
   Schema,
   K extends FormKey = FormKey,
-> = Schema extends z.ZodObject<z.ZodRawShape> & ZodV4Internals
+> = Schema extends SupportedRootSchemaV4 & ZodV4Internals
   ? Omit<
       UseFormConfiguration<
         V4FormOf<Schema>,
@@ -121,7 +126,7 @@ export type UseFormConfig<
       >,
       'schema' | 'validateOn' | 'debounceMs'
     > & { schema: Schema } & ValidateOnConfig
-  : Schema extends zV3.ZodObject<zV3.ZodRawShape>
+  : Schema extends SupportedRootSchemaV3
     ? Omit<
         UseFormConfiguration<
           V3FormOf<Schema>,

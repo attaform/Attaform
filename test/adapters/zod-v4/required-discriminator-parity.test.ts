@@ -157,4 +157,20 @@ describe('zod v4: required + discriminator parity', () => {
       expect(adapter.getUnionDiscriminatorAtPath(['p'])?.discriminatorKey).toBe('kind')
     })
   })
+
+  describe('discriminated union at the ROOT (variant form)', () => {
+    it('resolves the root discriminator + variants via getUnionDiscriminatorAtPath([])', () => {
+      const schema = z.discriminatedUnion('method', [
+        z.object({ method: z.literal('card'), cardNumber: z.string() }),
+        z.object({ method: z.literal('bank'), iban: z.string() }),
+      ])
+      const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+      const ctx = adapter.getUnionDiscriminatorAtPath([])
+      expect(ctx).toBeDefined()
+      expect(ctx?.discriminatorKey).toBe('method')
+      expect(ctx?.isVariantSelected('card')).toBe(true)
+      expect(ctx?.isVariantSelected('bank')).toBe(true)
+      expect(ctx?.isVariantSelected('paypal')).toBe(false)
+    })
+  })
 })

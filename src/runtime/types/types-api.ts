@@ -1599,11 +1599,14 @@ export type MetaTrackerValue = {
 // recursion in `types-core.ts`; the `'register'` mode skips container
 // paths because `v-register` only binds onto leaf-backing native
 // elements (`<input>` / `<select>` / `<textarea>`).
-export type RegisterFlatPath<Form, Key extends keyof Form = keyof Form> = FlatPathBuilder<
-  Form,
-  'register',
-  Key
->
+//
+// The `Form extends unknown` wrapper distributes over a top-level union
+// (a `z.discriminatedUnion` root) so each variant's keys register, not
+// just the shared discriminator; for a single-shape `Form` it is a
+// one-member no-op. Mirrors `PartialFlatPath` in `types-core.ts`.
+export type RegisterFlatPath<Form> = Form extends unknown
+  ? FlatPathBuilder<Form, 'register'>
+  : never
 
 /**
  * A transformation applied to a field's value as user input flows
@@ -3720,13 +3723,12 @@ export type UseFormReturnType<
    * user-typed values before they reach form state.
    */
   register: {
-    <Path extends RegisterFlatPath<Form, keyof Form>>(
+    <Path extends RegisterFlatPath<Form>>(
       path: Path,
       options?: RegisterOptions
     ): RegisterValue<NestedReadType<WriteShape<ReadForm>, Path>>
     <const S extends ReadonlyArray<string | number>>(
-      segments: S &
-        ([JoinSegments<S>] extends [RegisterFlatPath<Form, keyof Form>] ? unknown : never),
+      segments: S & ([JoinSegments<S>] extends [RegisterFlatPath<Form>] ? unknown : never),
       options?: RegisterOptions
     ): RegisterValue<NestedReadType<WriteShape<ReadForm>, JoinSegments<S>>>
   }

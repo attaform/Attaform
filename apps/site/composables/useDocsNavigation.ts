@@ -59,6 +59,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'How values are stored', to: '/docs/schemas/storage-shape' },
       { title: 'Optional, nullable, defaulted', to: '/docs/schemas/optional-nullable' },
       { title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' },
+      { title: 'Variant forms', to: '/docs/schemas/variant-forms' },
       { title: 'Arrays & tuples', to: '/docs/schemas/arrays-and-tuples' },
       { title: 'Records & maps', to: '/docs/schemas/records' },
       { title: 'Dictionary forms', to: '/docs/schemas/dictionary-forms' },

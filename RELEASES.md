@@ -1,5 +1,19 @@
 # Releases
 
+## v0.24.0 — 2026-06-15
+
+## What's Changed
+* feat(form): z.record schema roots (dictionary forms) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/421
+* feat(form): z.discriminatedUnion schema roots (variant forms) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/424
+* feat(errors): add optional ValidationError.data payload slot by @ozzyfromspace in https://github.com/attaform/Attaform/pull/426
+* refactor(errors): global errors at root [], free the '' key, add errors([]) carve-out by @ozzyfromspace in https://github.com/attaform/Attaform/pull/427
+* refactor(errors): collapse setters into setErrors / clearErrors, drop parseApiErrors by @ozzyfromspace in https://github.com/attaform/Attaform/pull/434
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.23.0...v0.24.0
+
+---
+
 ## v0.23.0 — 2026-06-14
 
 ## What's Changed

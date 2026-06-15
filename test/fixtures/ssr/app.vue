@@ -3,6 +3,7 @@
   // The SSR fixture exercises the zod v3 adapter via useForm auto-import.
   // Installed side-by-side with zod v4 via pnpm alias.
   import { z } from 'zod-v3'
+  import AriaWrapper from './AriaWrapper.vue'
 
   const schema = z.object({
     favoriteGame: z.string().default('chess'),
@@ -88,6 +89,16 @@
     key: 'hydration-check',
   })
   hydrationForm.setValue('hydratedField', 'server-written-value')
+
+  // -- autoAria component-host fixture (#404) --
+  // A required field rendered through a presentational wrapper component.
+  // The wrapper's root <div> must NOT carry aria-required (invalid ARIA on
+  // a role-less element); the inner <input> the wrapper re-binds via
+  // useRegister carries it. Exercises the compiled-SSR null-vnode path.
+  const ariaHostForm = useForm({
+    schema: z.object({ email: z.string().min(1) }),
+    key: 'aria-host',
+  })
 </script>
 
 <template>
@@ -199,6 +210,11 @@
       <div id="hydration-check">
         <span id="hydration-check-value">{{ hydrationForm.values.hydratedField }}</span>
       </div>
+    </section>
+
+    <section>
+      <h2>autoAria component host</h2>
+      <AriaWrapper v-register="ariaHostForm.register('email')" />
     </section>
   </div>
 </template>

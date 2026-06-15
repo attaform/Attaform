@@ -319,4 +319,32 @@ describe('SSR behavior of useForm', async () => {
       expect(typedHtml).toMatch(/__NUXT(?:_DATA)?__/)
     })
   })
+
+  /*
+    Test Suite: autoAria on a component host (#404)
+    Focus: v-register on a custom component must not stamp aria-required on
+    the component's wrapper root (invalid ARIA on a role-less <div>); the
+    inner control the wrapper re-binds via useRegister carries it. This is
+    the production compiled-SSR null-vnode path the runtime hook can't see
+    without the component-host modifier the transform stamps.
+  */
+  describe('SSR behavior of autoAria component host >>', () => {
+    it('does not stamp aria-required on the component host wrapper root', async () => {
+      const html = await $fetch('/')
+      assertHTML(html)
+      const $ = cheerio.load(html as string)
+      const wrapper = $('#aria-host-wrapper')
+      expect(wrapper.length).toBe(1)
+      expect(wrapper.attr('aria-required')).toBeUndefined()
+    })
+
+    it('keeps aria-required on the inner bound control', async () => {
+      const html = await $fetch('/')
+      assertHTML(html)
+      const $ = cheerio.load(html as string)
+      const inner = $('#aria-host-inner')
+      expect(inner.length).toBe(1)
+      expect(inner.attr('aria-required')).toBe('true')
+    })
+  })
 })

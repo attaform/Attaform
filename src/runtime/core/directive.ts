@@ -22,6 +22,7 @@ import {
   isRegisterValue,
   isTransforming,
   REGISTER_OWNER_MARKER,
+  SSR_COMPONENT_HOST_MODIFIER,
   V_REGISTER_MARKER,
 } from './register-protocol'
 import { __DEV__ } from './dev'
@@ -1184,7 +1185,12 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
       realVnode !== null &&
       typeof realVnode.type === 'string' &&
       INTERACTIVE_TAG_NAMES.has(realVnode.type.toUpperCase())
-    const suppressHostAria = realVnode !== null && !isInteractiveElementVnode
+    // The compile-time componentBridgeTransform stamps this modifier on a
+    // component-host v-register, the only signal available under compiled
+    // SSR's null vnode.
+    const isComponentHostModifier = binding.modifiers[SSR_COMPONENT_HOST_MODIFIER] === true
+    const suppressHostAria =
+      isComponentHostModifier || (realVnode !== null && !isInteractiveElementVnode)
     const ariaProps = suppressHostAria ? undefined : getSSRAriaProps(rv, realVnode)
 
     // Form-state (`value` / `checked`) is the runtime path's analogue of

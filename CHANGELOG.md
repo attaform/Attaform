@@ -13,6 +13,15 @@
   and zod v4 both get it, both tested, and object-rooted forms behave exactly as
   before. (#421)
 
+- **A `z.discriminatedUnion` schema can now be the whole form, not just a field
+  inside one.** `useForm({ schema: z.discriminatedUnion('method', […]) })` is a
+  variant form: `form.values` reads the active variant at the top level,
+  `form.register('cardNumber')` binds a variant field by its own key, and writing
+  the discriminator reshapes the whole form to the chosen variant, old keys
+  purged and new keys seeded, with variant memory on by default. The parsed value
+  inside `handleSubmit` narrows to the active variant. zod v3 and zod v4 both get
+  it, both tested, and object-rooted forms behave exactly as before. (#423)
+
 ## v0.23.0
 ### Removed
 

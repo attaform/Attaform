@@ -117,8 +117,11 @@ The form-level `form.meta.errors` aggregate is **NOT** variant-filtered; errors 
 
 If the user types a discriminator value that doesn't match any variant (`channel: 'fax'` against `'email' | 'sms' | 'push'`), the reshape is skipped; the variant fields stay as they were, and the schema surfaces a refinement error on the discriminator itself. Template variant-conditional rendering can branch on the schema's kind rather than relying on the runtime to "guess" a variant.
 
+When the whole form is one of several shapes rather than a field nested inside one, reach for a [variant form](/docs/schemas/variant-forms): the `z.discriminatedUnion` becomes the schema root, `form.values` reads the active variant at the top level, and variant fields bind by their own key.
+
 ## Where to next
 
+- [Variant forms](/docs/schemas/variant-forms): a `z.discriminatedUnion` schema as the form root, not just a field inside an object.
 - [Variant memory](/docs/writing-and-mutating/variant-memory): when to keep the prior typed subtree, when to drop it.
 - [`setValue` patterns](/docs/writing-and-mutating/set-value): programmatic writes that drive the same reshape.
 - [`errors`](/docs/reading-the-form/errors): the variant-filtered per-leaf view vs. the un-filtered aggregate.

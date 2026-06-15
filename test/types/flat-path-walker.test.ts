@@ -54,6 +54,24 @@ describe('PartialFlatPath — container + array-root + leaf enumeration', () => 
     expectTypeOf<Extract<Paths, 'a.b.c'>>().toEqualTypeOf<'a.b.c'>()
     expectTypeOf<Extract<Paths, 'a.b.c.d'>>().toEqualTypeOf<'a.b.c.d'>()
   })
+
+  it('distributes over a top-level discriminated-union root (every variant key)', () => {
+    // A `z.discriminatedUnion` root value shape. The `Form extends
+    // unknown` wrapper distributes over the union so each variant
+    // contributes its OWN keys, not just the shared discriminator that
+    // naked `keyof (A | B | C)` would intersect to.
+    type Form =
+      | { method: 'card'; cardNumber: string; cvc: string }
+      | { method: 'bank'; iban: string }
+      | { method: 'invoice'; poNumber: string; netDays: number }
+    type Paths = PartialFlatPath<Form>
+    expectTypeOf<Extract<Paths, 'method'>>().toEqualTypeOf<'method'>()
+    expectTypeOf<Extract<Paths, 'cardNumber'>>().toEqualTypeOf<'cardNumber'>()
+    expectTypeOf<Extract<Paths, 'cvc'>>().toEqualTypeOf<'cvc'>()
+    expectTypeOf<Extract<Paths, 'iban'>>().toEqualTypeOf<'iban'>()
+    expectTypeOf<Extract<Paths, 'poNumber'>>().toEqualTypeOf<'poNumber'>()
+    expectTypeOf<Extract<Paths, 'netDays'>>().toEqualTypeOf<'netDays'>()
+  })
 })
 
 describe('RegisterFlatPath — leaf-only enumeration (no containers)', () => {
@@ -98,5 +116,21 @@ describe('RegisterFlatPath — leaf-only enumeration (no containers)', () => {
     expectTypeOf<Extract<Paths, 'a.b'>>().toEqualTypeOf<never>()
     expectTypeOf<Extract<Paths, 'a.b.c'>>().toEqualTypeOf<never>()
     expectTypeOf<Extract<Paths, 'a.b.c.d'>>().toEqualTypeOf<'a.b.c.d'>()
+  })
+
+  it('distributes over a top-level discriminated-union root (every variant leaf registrable)', () => {
+    // Each variant key backs a native element, so all are registrable
+    // leaves; the discriminator drives the variant `<select>` / radios.
+    type Form =
+      | { method: 'card'; cardNumber: string; cvc: string }
+      | { method: 'bank'; iban: string }
+      | { method: 'invoice'; poNumber: string; netDays: number }
+    type Paths = RegisterFlatPath<Form>
+    expectTypeOf<Extract<Paths, 'method'>>().toEqualTypeOf<'method'>()
+    expectTypeOf<Extract<Paths, 'cardNumber'>>().toEqualTypeOf<'cardNumber'>()
+    expectTypeOf<Extract<Paths, 'cvc'>>().toEqualTypeOf<'cvc'>()
+    expectTypeOf<Extract<Paths, 'iban'>>().toEqualTypeOf<'iban'>()
+    expectTypeOf<Extract<Paths, 'poNumber'>>().toEqualTypeOf<'poNumber'>()
+    expectTypeOf<Extract<Paths, 'netDays'>>().toEqualTypeOf<'netDays'>()
   })
 })

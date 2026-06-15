@@ -64,4 +64,25 @@ const roster = useForm({ schema: rosterSchema, key: 'roster-v3' })
 // Read slot must resolve to the record map (not `never`, not `any`).
 type _RosterEntry = Expect<Equal<ReturnType<typeof roster.values>['member-1'], { tier: number }>>
 
-export { form, roster }
+// Variant-root form — a `z.discriminatedUnion` schema as the root
+// (variant form), the other new non-object root. Same single-major
+// hazard: the v4 overload must not greedily match this v3 DU, or the
+// read slot collapses to `never`. The v4 SupportedRootSchema's DU arm
+// is written fully applied (v3 requires both arguments, in the reverse
+// order of v4), so it stays concrete and keeps discriminating here.
+const paymentSchema = z.discriminatedUnion('method', [
+  z.object({ method: z.literal('card'), cardNumber: z.string() }),
+  z.object({ method: z.literal('bank'), iban: z.string() }),
+])
+const payment = useForm({ schema: paymentSchema, key: 'payment-v3' })
+
+// Read slot must lift the union (not collapse to `never`/`any`): the
+// discriminator widens to `string`, per-variant keys read `T | undefined`.
+type _PayMethod = Expect<Equal<typeof payment.values.method, string>>
+type _PayCard = Expect<Equal<typeof payment.values.cardNumber, string | undefined>>
+type _PayIban = Expect<Equal<typeof payment.values.iban, string | undefined>>
+
+// A per-variant key must be addressable as a root register path.
+payment.register('cardNumber')
+
+export { form, roster, payment }

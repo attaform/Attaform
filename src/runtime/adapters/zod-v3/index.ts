@@ -157,12 +157,13 @@ export function zodAdapter<
   })
   if (
     !isZodSchemaType(_strippedRoot, 'ZodObject') &&
-    !isZodSchemaType(_strippedRoot, 'ZodRecord')
+    !isZodSchemaType(_strippedRoot, 'ZodRecord') &&
+    !isZodSchemaType(_strippedRoot, 'ZodDiscriminatedUnion')
   ) {
     const name = getTypeName(_strippedRoot)
     throw new Error(
-      `Attaform: useForm schema root must be a ZodObject or ZodRecord (got ${name}). ` +
-        `Wrap other shapes under a key.`
+      `Attaform: useForm schema root must be a ZodObject, ZodRecord, or ` +
+        `ZodDiscriminatedUnion (got ${name}). Wrap other shapes under a key.`
     )
   }
 

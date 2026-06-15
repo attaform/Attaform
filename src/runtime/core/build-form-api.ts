@@ -35,8 +35,6 @@ import type { HistoryModule } from './history'
 import { getAtPath } from './path-walker'
 import {
   canonicalizePath,
-  FORM_ERRORS_PATH,
-  FORM_ERRORS_PATH_KEY,
   ROOT_PATH,
   ROOT_PATH_KEY,
   segmentsForPathKey,
@@ -545,15 +543,15 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   function setFieldErrors(errors: ValidationError[]): void {
     // `setAllUserErrors` clears the entire user-error map before
-    // writing, which would also wipe the form-level bucket
-    // (`FORM_ERRORS_PATH_KEY`). The form-level slot is owned by
-    // `setFormErrors` / `clearFormErrors` and is logically separate
-    // from field errors — replace-all field-error writes must not
-    // touch it. Preserve the bucket across the call.
-    const preserved = state.userErrors.get(FORM_ERRORS_PATH_KEY)
+    // writing, which would also wipe the form-level bucket (the root
+    // key `'[]'`). The form-level slot is owned by `setFormErrors` /
+    // `clearFormErrors` and is logically separate from field errors —
+    // replace-all field-error writes must not touch it. Preserve the
+    // bucket across the call.
+    const preserved = state.userErrors.get(ROOT_PATH_KEY)
     state.setAllUserErrors(filterToOwnFormKey(errors, 'setFieldErrors'))
     if (preserved !== undefined && preserved.length > 0) {
-      state.userErrors.set(FORM_ERRORS_PATH_KEY, preserved)
+      state.userErrors.set(ROOT_PATH_KEY, preserved)
     }
   }
 
@@ -571,13 +569,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     if (path === undefined) {
       // Same logical separation as `setFieldErrors`: a no-arg
       // `clearFieldErrors()` clears every FIELD error but must NOT
-      // wipe the form-level bucket. Form-level lifecycle belongs to
-      // `clearFormErrors()`.
-      const preserved = state.userErrors.get(FORM_ERRORS_PATH_KEY)
+      // wipe the form-level bucket (the root key `'[]'`). Form-level
+      // lifecycle belongs to `clearFormErrors()`.
+      const preserved = state.userErrors.get(ROOT_PATH_KEY)
       state.clearSchemaErrors()
       state.clearUserErrors()
       if (preserved !== undefined && preserved.length > 0) {
-        state.userErrors.set(FORM_ERRORS_PATH_KEY, preserved)
+        state.userErrors.set(ROOT_PATH_KEY, preserved)
       }
       return
     }
@@ -594,26 +592,26 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     // error too — wrong for "set this top-of-form message without
     // disturbing field validation."
     //
-    // Form-level errors live at the empty-string path bucket
-    // (PathKey `'[""]'`, segments `['']`). Distinct from the root
-    // subtree address `[]`: aggregate reads like `errors([])` /
-    // `errors()` still surface them, while `errors('')` returns ONLY
-    // this bucket — the dedicated channel for `<FieldErrors path="" />`.
+    // Form-level errors live at the root path `[]` (PathKey `'[]'`),
+    // the collision-proof home for messages that belong to no field.
+    // Aggregate reads (`errors()`, `meta.errors`) surface them
+    // alongside field errors, while `errors([])` returns ONLY this
+    // bucket — the dedicated global channel. `errors('')` is unrelated:
+    // it reads the literal `''` field.
     //
     // Caller-provided `path` and `formKey` are intentionally ignored:
     // this API is form-level-only by definition and the form knows
     // its own key. The lenient input shape lets callers pipe
-    // `ValidationError[]` (e.g. from `parseApiErrors`) straight in
-    // without having to map first.
+    // `ValidationError[]` straight in without having to map first.
     if (errors.length === 0) {
-      state.userErrors.delete(FORM_ERRORS_PATH_KEY)
+      state.userErrors.delete(ROOT_PATH_KEY)
       return
     }
     state.userErrors.set(
-      FORM_ERRORS_PATH_KEY,
+      ROOT_PATH_KEY,
       errors.map((e) => {
         const entry: ValidationError = {
-          path: [...FORM_ERRORS_PATH],
+          path: [...ROOT_PATH],
           message: e.message,
           formKey: state.formKey,
           code: e.code ?? 'atta:form-error',
@@ -625,7 +623,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   }
 
   function clearFormErrors(): void {
-    state.userErrors.delete(FORM_ERRORS_PATH_KEY)
+    state.userErrors.delete(ROOT_PATH_KEY)
   }
 
   // --- Submission lifecycle ---

@@ -9,22 +9,20 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
 
 /**
  * `form.setFormErrors` / `form.clearFormErrors` write and clear the
- * form-level errors — entries at the empty-string path `['']`,
- * stored in the `'[""]'` PathKey bucket — without disturbing any
- * field-level error. Form-level entries are visible across every
- * read surface:
+ * form-level (global) errors — entries at the root path `[]`, stored in
+ * the `'[]'` PathKey bucket — without disturbing any field-level error.
+ * Form-level entries are visible across these read surfaces:
  *
  *   - `form.meta.errors` — the flat aggregate, unfiltered.
- *   - `form.errors('')` — the dedicated form-level read.
- *   - `form.errors` proxy iteration / `JSON.stringify(form.errors)`
- *     / `{{ form.errors }}` — surfaces under the empty-string key
- *     in the serialised tree so debug-prints don't silently lose
- *     them.
+ *   - `form.errors([])` — the dedicated global read (root bucket only).
+ *   - `form.errors()` — the full aggregate (every field error plus the
+ *     global bucket).
  *
- * The path-keyed drill `form.errors.<field>` still only resolves
- * schema field paths (`form.errors.` has no `''` field), so the
- * form-level bucket is reached via the call form or via iteration,
- * not dot-access.
+ * They are NOT a child key of the errors proxy: `JSON.stringify(form.
+ * errors)` and proxy iteration don't surface them (the root `[]` bucket
+ * has no `''` slot — `''` is a free field key), and `form.errors('')`
+ * reads the unrelated literal `''` field. Read global errors through
+ * `errors([])` / `meta.errors`.
  */
 
 const schema = z.object({
@@ -50,7 +48,7 @@ function mount(): { app: App; api: Api } {
 }
 
 const formLevel = (errors: readonly ValidationError[]): readonly ValidationError[] =>
-  errors.filter((e) => e.path.length === 1 && e.path[0] === '')
+  errors.filter((e) => e.path.length === 0)
 
 describe('form.setFormErrors / clearFormErrors', () => {
   const apps: App[] = []
@@ -68,7 +66,7 @@ describe('form.setFormErrors / clearFormErrors', () => {
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({
       message: 'Capacity exceeded',
-      path: [''],
+      path: [],
       formKey: api.key,
       code: 'atta:form-error',
     })
@@ -82,7 +80,7 @@ describe('form.setFormErrors / clearFormErrors', () => {
 
     const entries = formLevel(api.meta.errors)
     expect(entries.map((e) => e.message)).toEqual(['a', 'b', 'c'])
-    for (const e of entries) expect(e.path).toEqual([''])
+    for (const e of entries) expect(e.path).toEqual([])
   })
 
   it('replaces (does not append) on each call', () => {
@@ -158,30 +156,31 @@ describe('form.setFormErrors / clearFormErrors', () => {
     expect(entries[1]?.code).toBe('atta:form-error')
   })
 
-  it('form-level errors surface in form.errors at the empty-string key', () => {
+  it('form-level errors surface via errors([]) and meta.errors, not the proxy tree', () => {
     const { app, api } = mount()
     apps.push(app)
 
     api.setFormErrors([{ message: 'Capacity exceeded' }])
 
-    // Form-level errors (empty-string path bucket) appear in the
-    // serialised proxy tree under the `''` key so debug-prints
-    // (`{{ JSON.stringify(form.errors, null, 2) }}`) don't silently
-    // drop them. They also remain reachable via `form.errors('')`
-    // and the flat `form.meta.errors` aggregate.
-    const tree = JSON.parse(JSON.stringify(api.errors)) as Record<string, unknown>
-    expect(tree['']).toMatchObject([{ message: 'Capacity exceeded' }])
-    expect(api.errors('')).toMatchObject([{ message: 'Capacity exceeded' }])
+    // Global errors live at the root `[]`, reached via the dedicated
+    // `errors([])` channel and the flat `meta.errors` aggregate. They
+    // are NOT a child key, so the serialised proxy tree has no `''`
+    // slot for them and `errors('')` reads the unrelated literal `''`
+    // field (empty here).
+    expect(api.errors([])).toMatchObject([{ message: 'Capacity exceeded' }])
     expect(api.meta.errors).toHaveLength(1)
+    const tree = JSON.parse(JSON.stringify(api.errors)) as Record<string, unknown>
+    expect(tree['']).toBeUndefined()
+    expect(api.errors('')).toEqual([])
   })
 
-  it('accepts full ValidationError[] (e.g. from parseApiErrors)', () => {
+  it('accepts full ValidationError[] with caller path / formKey ignored', () => {
     const { app, api } = mount()
     apps.push(app)
 
     // Caller-provided path / formKey are ignored — `setFormErrors`
-    // forces the form-level path (['']) and the owning formKey, so
-    // `parseApiErrors` output pipes in without mapping.
+    // forces the root path (`[]`) and the owning formKey, so a server's
+    // ValidationError[] pipes in without mapping.
     api.setFormErrors([
       {
         path: ['ignored', 'on', 'purpose'],
@@ -195,7 +194,7 @@ describe('form.setFormErrors / clearFormErrors', () => {
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({
       message: 'Capacity exceeded',
-      path: [''],
+      path: [],
       formKey: api.key,
       code: 'api:capacity',
     })

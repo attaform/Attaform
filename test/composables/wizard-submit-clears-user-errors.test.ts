@@ -47,7 +47,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
 }
 
 const formLevel = (errors: readonly ValidationError[]): readonly ValidationError[] =>
-  errors.filter((e) => e.path.length === 1 && e.path[0] === '')
+  errors.filter((e) => e.path.length === 0)
 
 describe('wizard.handleSubmit clears user-set errors on processed forms at entry', () => {
   const apps: App[] = []

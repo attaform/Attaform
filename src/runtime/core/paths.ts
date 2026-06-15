@@ -49,10 +49,11 @@ function normalizeSegment(raw: Segment): Segment {
  * parseDottedPath('')                     // ['']  (the empty-string key)
  * ```
  *
- * The empty-string input `''` is the **literal empty-key path**, not
- * the root. Use the array form `[]` for root. Form-level errors
- * (root `.refine()`) live at the empty-string path bucket so
- * `errors('')` returns them without sweeping every field error too.
+ * The empty-string input `''` is the **literal empty-key path** `['']`,
+ * an ordinary (if rare) field address, not the root. Use the array
+ * form `[]` for the root. Form-level errors (root `.refine()`,
+ * `setFormErrors`) live at the root path `[]` and are read via
+ * `errors([])`, never `errors('')`.
  *
  * Throws `InvalidPathError` for paths with empty INTERNAL segments
  * (`'a..b'`, leading or trailing dots). For keys containing literal
@@ -288,30 +289,21 @@ export function coerceToPathKey(input: string): PathKey {
 }
 
 /**
- * The root path — an empty segment tuple. Pass to APIs that accept
- * a `Path` to address the form value as a whole.
+ * The root path — an empty segment tuple. Pass to APIs that accept a
+ * `Path` to address the form value as a whole, and the home for
+ * form-level (global) errors: root `.refine()` messages, hydration
+ * failures, and `setFormErrors` entries all live at `[]`. Aggregate
+ * reads (`errors()`, `meta.errors`) surface them alongside field
+ * errors; `errors([])` returns the global bucket alone.
+ *
+ * The empty SEGMENT tuple `[]` is structurally unconstructible as a
+ * field path, so it can never collide with a schema key, unlike the
+ * empty STRING key `''` (path `['']`, key `'[""]'`), which is an
+ * ordinary field address.
  */
 export const ROOT_PATH: Path = Object.freeze([])
 /** Stable string key for the root path. */
 export const ROOT_PATH_KEY = '[]' as PathKey
-
-/**
- * The form-level path — a one-segment path with the empty-string
- * key. Conventionally home for errors that don't belong to any
- * specific field: root `.refine()` messages, server-emitted form
- * errors, capacity / availability / cross-field-summary banners.
- *
- * Distinct from `ROOT_PATH` (`[]`): the root is the whole-form
- * subtree address (e.g. `errors([])` returns every error). The
- * form-level path is a sibling-of-no-field path that aggregation
- * walks DON'T sweep into per-field reads — `errors('field')`
- * returns only the field's errors, never the form-level bucket,
- * and `errors('')` returns only the form-level bucket, never the
- * field errors.
- */
-export const FORM_ERRORS_PATH: Path = Object.freeze([''])
-/** Stable string key for the form-level errors path. */
-export const FORM_ERRORS_PATH_KEY = '[""]' as PathKey
 
 /**
  * `true` when `path` starts with every segment of `prefix` (in order).

@@ -20,7 +20,6 @@ import { humanize } from './humanize'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
   canonicalizePath,
-  FORM_ERRORS_PATH_KEY,
   isPathPrefix,
   keyForSegments,
   segmentsForPathKey,
@@ -748,20 +747,15 @@ export function aggregateErrorsAt<F extends GenericForm>(
       const segs = segmentsForPathKey(pathKey)
       if (segs === null) continue
       if (!isPathPrefix(prefix, segs)) continue
-      // Skip inactive variants. Form-level errors are always retained
-      // — they're not variant-bound. Two flavours qualify:
-      //   - the empty path `[]` (kept for parity with any legacy
-      //     entries / cross-adapter paths);
-      //   - the empty-string bucket `['']`, which is the conventional
-      //     home for root `.refine()` errors and `setFormErrors()`
-      //     entries.
-      // Container-level errors (cross-field refines on a container
-      // path) are filtered when their CONTAINER path is reachable;
-      // the refine pinned the error at the container, not at any
-      // particular leaf.
-      if (pathKey === FORM_ERRORS_PATH_KEY) {
-        // Always retain — form-level bucket.
-      } else if (segs.length > 0 && !hasAtPath(formValue, segs)) continue
+      // Skip inactive variants (e.g. the inactive arm of a discriminated
+      // union after a switch). The root bucket `[]` (global / root
+      // `.refine()` errors, `setFormErrors`) has `segs.length === 0` and
+      // is never variant-bound, so the `segs.length > 0` guard always
+      // retains it. Container-level errors (cross-field refines on a
+      // container path) are filtered when their container path is
+      // unreachable; the refine pinned the error at the container, not at
+      // any particular leaf.
+      if (segs.length > 0 && !hasAtPath(formValue, segs)) continue
       const ordinal = state.ensurePathOrdinal(pathKey)
       const existing = buckets.get(ordinal)
       if (existing === undefined) buckets.set(ordinal, [...list])

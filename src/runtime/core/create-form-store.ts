@@ -39,9 +39,8 @@ import { AttaformErrorCode, makeBlankRequiredError } from './error-codes'
 import {
   canonicalizePath,
   coerceToPathKey,
-  FORM_ERRORS_PATH,
-  FORM_ERRORS_PATH_KEY,
   isPathPrefix,
+  ROOT_PATH,
   ROOT_PATH_KEY,
   segmentsForPathKey,
   type Path,
@@ -2908,41 +2907,24 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
    * fresh array per target key to keep the reactive trigger surface
    * obvious — Vue's collection handlers fire on `.set`, not on in-place
    * push.
+   *
+   * Form-level (global) errors arrive with `err.path: []` and store at
+   * the root key `'[]'` directly, no rerouting. Aggregate reads
+   * (`errors()`, `meta.errors`) surface them; `errors([])` returns the
+   * root bucket alone, while `errors('')` reads the unrelated literal
+   * `''` field at key `'[""]'`.
    */
-  /**
-   * Form-level errors — entries whose absolute path is the empty
-   * tuple `[]` — live in the empty-string bucket (`'[""]'` PathKey,
-   * segments `['']`). The convention lets `errors('')` return ONLY
-   * the form-level bucket without sweeping every field error. Any
-   * write that arrives with `err.path: []` (top-level handleSubmit
-   * validation, root-scope `scheduleFieldValidation` re-stamping,
-   * user APIs piping `parseApiErrors`-style entries) gets rerouted
-   * here at the storage boundary.
-   */
-  function rerouteFormLevelEntry(err: ValidationError): ValidationError {
-    if (err.path.length === 0) {
-      return { ...err, path: [...FORM_ERRORS_PATH] }
-    }
-    return err
-  }
-
-  function pathKeyForEntry(err: ValidationError): PathKey {
-    if (err.path.length === 0) return FORM_ERRORS_PATH_KEY
-    return canonicalizePath(err.path as Path).key
-  }
-
   function appendErrorsTo(
     map: Map<PathKey, ValidationError[]>,
     entries: readonly ValidationError[]
   ): void {
     for (const raw of entries) {
-      const err = rerouteFormLevelEntry(raw)
-      const key = pathKeyForEntry(err)
+      const { key } = canonicalizePath(raw.path as Path)
       const current = map.get(key)
       if (current === undefined) {
-        map.set(key, [err])
+        map.set(key, [raw])
       } else {
-        map.set(key, [...current, err])
+        map.set(key, [...current, raw])
       }
     }
   }
@@ -3001,36 +2983,31 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
    * their original slot.
    */
   function applySchemaErrorsForSubtree(path: Path, entries: ValidationError[]): void {
-    // Root-scope re-validation (path === []) of a schema with a
-    // top-level `.refine()` produces an absolute-path-empty entry.
-    // Reroute those to the form-level bucket so the parent-key check
-    // below reflects the storage convention; otherwise the dropped
-    // parent (`'[]'`) and the surviving form-level entry (`'[""]'`)
-    // never reconcile and the refine error gets nuked on every
-    // re-run.
-    const parentKey = path.length === 0 ? FORM_ERRORS_PATH_KEY : canonicalizePath(path).key
+    // The container being re-validated. A root-scope pass (path === [])
+    // of a schema with a top-level `.refine()` produces an entry at the
+    // empty path `[]`, which canonicalises to the same `'[]'` key as
+    // `parentKey`, so the surviving refine entry and the parent
+    // reconcile naturally without any rerouting.
+    const parentKey = canonicalizePath(path).key
     // Group by each error's own canonical storage key FIRST so we know
     // which keys survive this pass. Multiple issues at the same path
     // (e.g. two refinements failing the same leaf) merge into one
     // array — preserves adapter ordering within the leaf.
     const grouped = new Map<PathKey, ValidationError[]>()
     for (const raw of entries) {
-      const err = rerouteFormLevelEntry(raw)
-      const key = pathKeyForEntry(err)
+      const { key } = canonicalizePath(raw.path as Path)
       const list = grouped.get(key)
-      if (list === undefined) grouped.set(key, [err])
-      else list.push(err)
+      if (list === undefined) grouped.set(key, [raw])
+      else list.push(raw)
     }
     // Drop the parent key only if not in the new pass.
     if (!grouped.has(parentKey)) schemaErrors.delete(parentKey)
     // Drop stale descendants: existing keys under `path` that the new
     // pass doesn't write (DU-variant leaves that disappeared on
-    // reshape). Keys that DO appear in `grouped` stay where they are
-    // — the `set` below updates them in place. For root-scope passes
-    // (`path === []`) the form-level bucket is treated as the
-    // "parent" — `isPathKeyUnder('[""]', [])` would otherwise sweep
-    // it into the descendant set and clobber refine errors that the
-    // new pass also writes.
+    // reshape). Keys that DO appear in `grouped` stay where they are —
+    // the `set` below updates them in place. The parent key is exempt
+    // (handled just above), so a root-scope pass keeps its own `'[]'`
+    // refine entry rather than sweeping it into the descendant set.
     for (const existingKey of [...schemaErrors.keys()]) {
       if (existingKey === parentKey) continue
       if (isPathKeyUnder(existingKey, path) && !grouped.has(existingKey)) {
@@ -3420,13 +3397,13 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   }
 
   function clearHydrationFailedEntry(): void {
-    const existing = schemaErrors.get(FORM_ERRORS_PATH_KEY)
+    const existing = schemaErrors.get(ROOT_PATH_KEY)
     if (existing === undefined) return
     const filtered = existing.filter((e) => e.code !== AttaformErrorCode.HydrationFailed)
     if (filtered.length === 0) {
-      schemaErrors.delete(FORM_ERRORS_PATH_KEY)
+      schemaErrors.delete(ROOT_PATH_KEY)
     } else {
-      schemaErrors.set(FORM_ERRORS_PATH_KEY, filtered)
+      schemaErrors.set(ROOT_PATH_KEY, filtered)
     }
   }
 
@@ -3439,12 +3416,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           : 'Hydration failed'
     const entry: ValidationError = {
       message,
-      path: [...FORM_ERRORS_PATH],
+      path: [...ROOT_PATH],
       formKey,
       code: AttaformErrorCode.HydrationFailed,
     }
-    const existing = schemaErrors.get(FORM_ERRORS_PATH_KEY) ?? []
-    schemaErrors.set(FORM_ERRORS_PATH_KEY, [...existing, entry])
+    const existing = schemaErrors.get(ROOT_PATH_KEY) ?? []
+    schemaErrors.set(ROOT_PATH_KEY, [...existing, entry])
     return entry
   }
 

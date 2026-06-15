@@ -15,10 +15,11 @@ import { waitUntil } from '../utils/form-harness'
  *
  * Two distinct behaviors converge to produce the observation:
  *
- *   1. `form.errors('')` and `form.errors()` legitimately return
- *      different values — the first canonicalises to the form-level
- *      bucket (`['']`), the second to the root subtree (`[]`).
- *      Swapping one for the other changes the rendered JSON.
+ *   1. `form.errors('')`, `form.errors([])`, and `form.errors()`
+ *      legitimately return different values — `errors('')` reads the
+ *      literal `''` field, `errors([])` the global bucket alone, and
+ *      `errors()` the whole-form aggregate. Swapping one for another
+ *      changes the rendered JSON.
  *
  *   2. Vite / Nuxt HMR re-evaluates `<script setup>` on template-only
  *      edits, which tears down the consuming component scope and
@@ -42,7 +43,7 @@ describe('errors call-form: empty-string vs no-arg divergence', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('form.errors with empty-string path returns the form-level bucket only', async () => {
+  it("form.errors([]) returns the global bucket; errors('') reads the literal '' field", async () => {
     const schema = z.object({ email: z.email() })
     const handle: { api?: ApiFor<typeof schema> } = {}
     const App = defineComponent({
@@ -62,16 +63,19 @@ describe('errors call-form: empty-string vs no-arg divergence', () => {
     apps.push(app)
     const api = handle.api as ApiFor<typeof schema>
 
-    api.setFormErrors([
-      { message: 'form-level: bad payload', code: 'consumer:test', path: [''], formKey: api.key },
-    ])
+    api.setFormErrors([{ message: 'form-level: bad payload', code: 'consumer:test' }])
 
+    const callGlobal = (
+      api.errors as unknown as (p: readonly (string | number)[]) => readonly ValidationError[]
+    )([])
+    expect(Array.isArray(callGlobal)).toBe(true)
+    expect(callGlobal.some((e) => e.message === 'form-level: bad payload')).toBe(true)
+    expect(callGlobal.every((e) => e.path.length === 0)).toBe(true)
+
+    // `errors('')` reads the literal '' field, which this schema has
+    // no error for — distinct from the global bucket above.
     const callEmptyString = (api.errors as unknown as (p: string) => readonly ValidationError[])('')
-
-    expect(Array.isArray(callEmptyString)).toBe(true)
-    expect(callEmptyString.length).toBeGreaterThan(0)
-    expect(callEmptyString.every((e) => e.path[0] === '')).toBe(true)
-    expect(callEmptyString.some((e) => e.message === 'form-level: bad payload')).toBe(true)
+    expect(callEmptyString).toEqual([])
   })
 
   it('form.errors() no-arg returns the root aggregate (every error at every path)', async () => {

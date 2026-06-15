@@ -224,9 +224,7 @@ describe.each(adapters)('ValidationError.data through the form API — $name', (
       { message: 'too many attempts', data: { unlocksAt: '2026-01-01T00:00:00Z' } },
     ])
 
-    const formLevel = api.meta.errors.find(
-      (e: ValidationError) => e.path.length === 1 && e.path[0] === ''
-    )
+    const formLevel = api.meta.errors.find((e: ValidationError) => e.path.length === 0)
     expect(formLevel?.message).toBe('too many attempts')
     expect(formLevel?.data).toEqual({ unlocksAt: '2026-01-01T00:00:00Z' })
   })

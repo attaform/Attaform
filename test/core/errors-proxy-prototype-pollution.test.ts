@@ -162,12 +162,12 @@ describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', (
     expect(probe[SENTINEL]).toBeUndefined()
   })
 
-  it('setFormErrors at the synthetic root path still lands at the form level', () => {
+  it('setFormErrors lands in the global bucket, read via errors([])', () => {
     const { api, app } = mount()
     api.setFormErrors([{ message: 'root-level error' }])
-    const formLevel = api.errors('')
+    const global = api.errors([])
     app.unmount()
-    expect(formLevel).toEqual(
+    expect(global).toEqual(
       expect.arrayContaining([expect.objectContaining({ message: 'root-level error' })])
     )
   })

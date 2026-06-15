@@ -142,12 +142,17 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
     ])
   })
 
-  it('form.errors[""] still returns root form-level errors (regression)', () => {
+  it('root form-level errors live at [] (errors([])), not the "" slot', () => {
     const schema = z.object({ name: z.string() })
     const form = mount(schema, { name: '' })
     form.setFormErrors([{ message: 'whole-form bad' }])
-    const rootSelf = (form.errors as unknown as { ['']: readonly { message: string }[] })['']
-    expect(rootSelf).toEqual([expect.objectContaining({ message: 'whole-form bad', path: [''] })])
+    // Global errors are at the root `[]`, read via errors([]).
+    expect(form.errors([])).toEqual([
+      expect.objectContaining({ message: 'whole-form bad', path: [] }),
+    ])
+    // `errors['']` reads the literal '' field — empty, never the global bucket.
+    const rootSelf = (form.errors as unknown as { ['']?: readonly { message: string }[] })['']
+    expect(rootSelf ?? []).toEqual([])
   })
 
   it('schema with literal "" field and container refine share the "" slot (collision)', () => {

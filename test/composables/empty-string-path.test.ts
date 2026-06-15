@@ -8,22 +8,22 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `''` is a real one-segment path, distinct from the root `[]`.
+ * `''` is a real one-segment path (the literal empty-key field `['']`),
+ * distinct from the root `[]`. Form-level (global) errors live at the
+ * root `[]`, NOT at `['']` — so `''` is a free, ordinary field key. The
+ * contract:
  *
- * The maintainer's surprise: building a `<FieldErrors path="" />` for
- * parent `.refine()` messages renders all field errors, not just the
- * root-level refine. Root cause: `canonicalizePath('')` collapses
- * the empty string to root segments `[]`. The new contract:
- *
- *   - `errors()` / `errors([])` → all errors (subtree-at-root)
- *   - `errors('')` → only the form-level bucket (root `.refine()` errors)
+ *   - `errors()` → all errors (full aggregate, == `meta.errors`)
+ *   - `errors([])` → ONLY the global bucket (root `.refine()`,
+ *     `setFormErrors`); a dedicated channel undiluted by field errors
+ *   - `errors('')` → the literal `''` field (empty for a normal schema
+ *     with no `''` key), never the global bucket
  *   - `errors('field')` → unchanged subtree-at-field
  *   - `values('')` → undefined for normal schemas (no literal `''` key)
  *   - `values()` / `values([])` → whole form
  *
- * Adapter side: Zod errors with `path: []` (root `.refine()`) are
- * rerouted to `path: ['']` at storage so the `'[""]'` PathKey bucket
- * holds them. `errors('')` reads that bucket naturally.
+ * Adapter side: Zod errors with `path: []` (root `.refine()`) store at
+ * the root `[]` bucket (PathKey `'[]'`) directly, no rerouting.
  */
 
 const apps: App[] = []
@@ -96,7 +96,7 @@ describe('empty-string path semantics — zod-v3 adapter', () => {
     )
   }
 
-  it('errors() returns every error (root subtree)', async () => {
+  it('errors() returns every error (full aggregate)', async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
@@ -107,26 +107,26 @@ describe('empty-string path semantics — zod-v3 adapter', () => {
     expect(all).toEqual(['Required', 'Required', 'must differ'].sort())
   })
 
-  it('errors([]) returns every error (same as no-arg)', async () => {
+  it('errors([]) returns ONLY the global (root .refine) bucket', async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
-    const all = (callErrors(form)([]) ?? []).map((e) => e.message).sort()
-    expect(all).toEqual(['Required', 'Required', 'must differ'].sort())
+    const global = (callErrors(form)([]) ?? []).map((e) => e.message)
+    expect(global).toEqual(['must differ'])
   })
 
-  it("errors('') returns ONLY the form-level (root .refine) bucket", async () => {
+  it("errors('') reads the literal '' field (empty here), never the global bucket", async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
-    const formLevel = (callErrors(form)('') ?? []).map((e) => e.message)
-    expect(formLevel).toEqual(['must differ'])
+    const literal = (callErrors(form)('') ?? []).map((e) => e.message)
+    expect(literal).toEqual([])
   })
 
   it("errors('from') still returns the field's subtree (unchanged)", async () => {
@@ -178,7 +178,7 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
     )
   }
 
-  it('errors() returns every error (root subtree)', async () => {
+  it('errors() returns every error (full aggregate)', async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
@@ -189,26 +189,26 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
     expect(all).toEqual(['Required', 'Required', 'must differ'].sort())
   })
 
-  it('errors([]) returns every error (same as no-arg)', async () => {
+  it('errors([]) returns ONLY the global (root .refine) bucket', async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
-    const all = (callErrors(form)([]) ?? []).map((e) => e.message).sort()
-    expect(all).toEqual(['Required', 'Required', 'must differ'].sort())
+    const global = (callErrors(form)([]) ?? []).map((e) => e.message)
+    expect(global).toEqual(['must differ'])
   })
 
-  it("errors('') returns ONLY the form-level (root .refine) bucket", async () => {
+  it("errors('') reads the literal '' field (empty here), never the global bucket", async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
-    const formLevel = (callErrors(form)('') ?? []).map((e) => e.message)
-    expect(formLevel).toEqual(['must differ'])
+    const literal = (callErrors(form)('') ?? []).map((e) => e.message)
+    expect(literal).toEqual([])
   })
 
   it("errors('from') still returns the field's subtree (unchanged)", async () => {
@@ -225,5 +225,81 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
   it("values('') is undefined when there's no literal '' field", () => {
     const form = makeForm()
     expect(callValues(form)('')).toBeUndefined()
+  })
+})
+
+// -----------------------------------------------------------------------------
+// Literal root '' field — proves '' is free of form-level duty. errors('')
+// reads THIS field; errors([]) still returns the global bucket alone.
+// -----------------------------------------------------------------------------
+
+describe("literal root '' field — zod-v3 adapter", () => {
+  const schema = zV3
+    .object({
+      '': zV3.string().min(1, 'empty-key required'),
+      name: zV3.string().min(1, 'name required'),
+    })
+    .refine((v) => v[''] !== v.name, { message: 'must differ' })
+
+  function makeForm() {
+    return mountWithApp(() =>
+      useFormV3({
+        schema: schema as unknown as zV3.ZodObject<{
+          '': zV3.ZodString
+          name: zV3.ZodString
+        }>,
+        key: `literal-empty-v3-${Math.random()}`,
+        strict: false,
+        defaultValues: { '': '', name: '' },
+      })
+    )
+  }
+
+  it("errors('') reads the '' field, errors([]) the global bucket, errors() both", async () => {
+    const form = makeForm()
+    await form.handleSubmit(
+      () => {},
+      () => {}
+    )()
+    await flushValidations(form)
+    expect((callErrors(form)('') ?? []).map((e) => e.message)).toEqual(['empty-key required'])
+    expect((callErrors(form)([]) ?? []).map((e) => e.message)).toEqual(['must differ'])
+    expect((callErrors(form)() ?? []).map((e) => e.message).sort()).toEqual(
+      ['empty-key required', 'name required', 'must differ'].sort()
+    )
+  })
+})
+
+describe("literal root '' field — zod-v4 adapter", () => {
+  const schema = zV4
+    .object({
+      '': zV4.string().min(1, 'empty-key required'),
+      name: zV4.string().min(1, 'name required'),
+    })
+    .refine((v) => v[''] !== v.name, { message: 'must differ' })
+
+  function makeForm() {
+    return mountWithApp(() =>
+      useFormV4({
+        schema,
+        key: `literal-empty-v4-${Math.random()}`,
+        strict: false,
+        defaultValues: { '': '', name: '' },
+      })
+    )
+  }
+
+  it("errors('') reads the '' field, errors([]) the global bucket, errors() both", async () => {
+    const form = makeForm()
+    await form.handleSubmit(
+      () => {},
+      () => {}
+    )()
+    await flushValidations(form)
+    expect((callErrors(form)('') ?? []).map((e) => e.message)).toEqual(['empty-key required'])
+    expect((callErrors(form)([]) ?? []).map((e) => e.message)).toEqual(['must differ'])
+    expect((callErrors(form)() ?? []).map((e) => e.message).sort()).toEqual(
+      ['empty-key required', 'name required', 'must differ'].sort()
+    )
   })
 })

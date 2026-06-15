@@ -57,7 +57,9 @@ async function flushValidations(form: { meta: { validating: boolean } }): Promis
   await nextTick()
 }
 
-type ErrorAtPath = (p: string) => Array<{ message: string }> | undefined
+type ErrorAtPath = (
+  p: string | readonly (string | number)[]
+) => Array<{ message: string }> | undefined
 function errorsAt(form: { errors: unknown }): ErrorAtPath {
   return form.errors as unknown as ErrorAtPath
 }
@@ -165,18 +167,18 @@ describe('Ancestor container refine — clears/re-fires on descendant change', (
       () => {},
       () => {}
     )()
-    expect(errorsAt(form)('')?.map((e) => e.message)).toContain('Passwords must match')
+    expect(errorsAt(form)([])?.map((e) => e.message)).toContain('Passwords must match')
 
     // Match the descendant — root refine MUST clear.
     form.setValue('confirmPassword', 'one')
     await flushValidations(form)
-    expect((errorsAt(form)('') ?? []).filter((e) => e.message === 'Passwords must match')).toEqual(
+    expect((errorsAt(form)([]) ?? []).filter((e) => e.message === 'Passwords must match')).toEqual(
       []
     )
 
     // Mismatch again — root refine MUST come back.
     form.setValue('confirmPassword', 'three')
     await flushValidations(form)
-    expect(errorsAt(form)('')?.map((e) => e.message)).toContain('Passwords must match')
+    expect(errorsAt(form)([])?.map((e) => e.message)).toContain('Passwords must match')
   })
 })

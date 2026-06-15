@@ -19,10 +19,11 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  * For `form.errors` specifically, two additional contracts:
  *
- *   - Form-level errors (set via `setFormErrors([{message}])`, stored
- *     at the empty-string path bucket) MUST appear in the serialized
- *     output, keyed at the empty string. Otherwise consumers debug-
- *     printing the proxy can't see them.
+ *   - Global errors at the root `[]` (`setFormErrors([{message}])`) are
+ *     the root's own bucket, NOT a child key, so they do NOT appear in
+ *     the serialized tree — read them via `errors([])` / `meta.errors`.
+ *     A literal `''` field is an ordinary child key and serialises
+ *     normally.
  *   - User errors at paths the schema doesn't know about (server
  *     replies referencing an unknown field — drift, typo, soft-renamed
  *     field) MUST appear too. They're the consumer's data; the
@@ -97,14 +98,8 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
   })
 
   describe('form.errors', () => {
-    it('Vue template binding renders form-level + field errors as JSON', async () => {
+    it('Vue template binding renders field errors as JSON; global errors live at [], not the tree', async () => {
       const form = mountSimple()
-      // Order matters: `setFieldErrors` calls `setAllUserErrors`
-      // which CLEARS the user-error map before writing, including
-      // the form-level bucket. Field-first, form-after preserves
-      // both. Reversing the order today wipes the form-level entry
-      // — tracked separately as a setFieldErrors-vs-setFormErrors
-      // isolation bug.
       form.setFieldErrors([
         { path: ['email'], message: 'taken', formKey: form.key, code: 'api:dup' },
       ])
@@ -114,24 +109,24 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       const rendered = toDisplayString(form.errors)
       const parsed = JSON.parse(rendered)
 
-      // Field error visible (already worked).
+      // Field error visible in the serialised tree.
       expect(parsed.email).toBeDefined()
       expect((parsed.email as Array<{ message: string }>)[0]?.message).toBe('taken')
 
-      // Form-level visible at the empty-string key (the canonical
-      // form-level path).
-      expect(parsed['']).toBeDefined()
-      expect((parsed[''] as Array<{ message: string }>)[0]?.message).toBe('oh snap!')
+      // Global errors at the root [] are NOT a child key, so they don't
+      // serialise into the tree. Read them via errors([]) / meta.errors.
+      expect(parsed['']).toBeUndefined()
+      expect(form.errors([])[0]?.message).toBe('oh snap!')
     })
 
-    it('JSON.stringify(form.errors) includes form-level user errors', async () => {
+    it('JSON.stringify(form.errors) excludes global errors (read via errors([]))', async () => {
       const form = mountSimple()
       form.setFormErrors([{ message: 'capacity exceeded' }])
       await nextTick()
 
       const tree = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>
-      expect(tree['']).toBeDefined()
-      expect((tree[''] as Array<{ message: string }>)[0]?.message).toBe('capacity exceeded')
+      expect(tree['']).toBeUndefined()
+      expect(form.errors([])[0]?.message).toBe('capacity exceeded')
     })
 
     it('JSON.stringify(form.errors) includes user errors at paths NOT in the schema', async () => {
@@ -223,11 +218,11 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       expect(form.errors.email).toEqual([])
       // Form-level survives — `clearFieldErrors` is field-scope only.
       // Use `clearFormErrors` to drop form-level.
-      expect(form.errors('')?.[0]?.message).toBe('capacity exceeded')
+      expect(form.errors([])[0]?.message).toBe('capacity exceeded')
     })
 
     it('setFieldErrors does NOT wipe a previously-set form-level error', async () => {
-      // setFormErrors stores at the empty-string bucket; setFieldErrors
+      // setFormErrors stores at the root bucket `[]`; setFieldErrors
       // writes field errors. The two manage logically distinct slots
       // and must not clobber each other in either order.
       const form = mountSimple()
@@ -240,8 +235,8 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       // Field error landed.
       expect(form.errors.email?.[0]?.message).toBe('taken')
       // Form-level survives — it was set first and the field-error
-      // write must NOT have cleared the empty-string bucket.
-      expect(form.errors('')?.[0]?.message).toBe('capacity exceeded')
+      // write must NOT have cleared the root bucket.
+      expect(form.errors([])[0]?.message).toBe('capacity exceeded')
       // Aggregate sees both.
       const flat = form.meta.errors
       expect(flat.find((e) => e.message === 'taken')).toBeDefined()

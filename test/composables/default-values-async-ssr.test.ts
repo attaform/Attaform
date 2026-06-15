@@ -174,7 +174,7 @@ describe('async-defaults SSR rejection path', () => {
     const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
     expect(hydrationErr).toBeDefined()
     expect(hydrationErr?.message).toBe('upstream-down')
-    expect(hydrationErr?.path).toEqual([''])
+    expect(hydrationErr?.path).toEqual([])
     expect(api.hydrateError).toEqual(hydrationErr)
 
     // Payload serialises with the form-level error included.

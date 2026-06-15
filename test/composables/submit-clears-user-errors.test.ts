@@ -58,7 +58,7 @@ function mount(defaultValues: { email: string; password: string }): { app: App; 
 const valid = { email: 'user@example.com', password: 'password1' }
 
 const formLevel = (errors: readonly ValidationError[]): readonly ValidationError[] =>
-  errors.filter((e) => e.path.length === 1 && e.path[0] === '')
+  errors.filter((e) => e.path.length === 0)
 const atPath = (errors: readonly ValidationError[], field: string): readonly ValidationError[] =>
   errors.filter((e) => e.path[0] === field)
 

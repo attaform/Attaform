@@ -114,11 +114,27 @@ export type SurfaceOptions<TLeaf> = {
    * returns the aggregated container `FieldState`; same dual-mode
    * applies to `form.errors(path)`.
    *
-   * `proxy()` (no-arg) calls `resolveCallTarget([])` so consumers
-   * grab the root state with one call (`form.fields()` aggregates
-   * over the whole form).
+   * A no-arg `proxy()` resolves the whole-form aggregate. By default
+   * that is `resolveCallTarget([])`; a surface that needs `proxy()`
+   * and `proxy([])` to differ provides `resolveRootCall` (below) for
+   * the no-arg case and keeps the explicit `[]` path on
+   * `resolveCallTarget`.
    */
   readonly resolveCallTarget: (path: Path) => unknown
+  /**
+   * Optional terminal for the NO-ARG root call (`proxy()`), distinct
+   * from the explicit root path (`proxy([])`). When provided, a no-arg
+   * call at the root resolves through this instead of
+   * `resolveCallTarget([])`; dotted/array args and every non-root node
+   * are unaffected.
+   *
+   * The errors surface uses it for the global carve-out: `errors()`
+   * returns the FULL aggregate (every field error plus the global
+   * bucket, matching `meta.errors`) while `errors([])` returns ONLY the
+   * global `[]` bucket. Surfaces that want `proxy()` and `proxy([])` to
+   * coincide (`fields`, `values`) omit it.
+   */
+  readonly resolveRootCall?: () => unknown
   /**
    * Optional predicate: paths that should terminate via `resolveLeaf`
    * even when `schema.isLeafAtPath` returns false. The errors surface
@@ -357,7 +373,16 @@ export function buildSurfaceProxy<TLeaf>(opts: SurfaceOptions<TLeaf>): SurfacePr
         // resolves the absolutised arg path. Non-root containers are
         // object / Array targets and never reach this trap.
         const arg = args[0] as string | Path | undefined
-        if (arg === undefined) return opts.resolveCallTarget(segments as Path)
+        if (arg === undefined) {
+          // No-arg root call. A surface may distinguish the whole-form
+          // aggregate (`proxy()`) from the explicit root path
+          // (`proxy([])`) by providing `resolveRootCall`; without it,
+          // both route through `resolveCallTarget([])`.
+          if (segments.length === 0 && opts.resolveRootCall !== undefined) {
+            return opts.resolveRootCall()
+          }
+          return opts.resolveCallTarget(segments as Path)
+        }
         const { segments: argSegs } = canonicalizePath(arg)
         return opts.resolveCallTarget(argSegs)
       },

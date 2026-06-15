@@ -189,22 +189,23 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
     expect(selfSlot?.some((e) => matchesRefine(e as ValidationError))).toBe(true)
   })
 
-  it('form-level errors surface at form.errors[""] (root self-slot)', async () => {
-    // The empty-string key is reserved for the root form-level bucket
-    // (hydration failures, root `.refine()` results, `setFormErrors`
-    // entries). Returns `readonly ValidationError[]` directly — no
-    // descend, no materialize. Container-level errors live elsewhere
-    // (call form `form.errors('address')`); the `''` convention is
-    // root-only.
+  it('form-level errors live at the root [] (errors([])), not the "" slot', async () => {
+    // The root `[]` is the form-level bucket (hydration failures, root
+    // `.refine()` results, `setFormErrors` entries). Read it via the
+    // dedicated `errors([])` call form — it returns
+    // `readonly ValidationError[]` directly. The `''` slot is the
+    // unrelated literal empty-key field.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
     api.setFormErrors([{ message: 'manual form-level error', code: 'consumer:test' }])
     await nextTick()
 
-    const formLevel = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']
-    expect(Array.isArray(formLevel)).toBe(true)
-    expect(formLevel?.some((e) => e.message === 'manual form-level error')).toBe(true)
-    expect(formLevel?.[0]?.path).toEqual([''])
+    const global = (
+      api.errors as unknown as (p: readonly (string | number)[]) => readonly ValidationError[]
+    )([])
+    expect(Array.isArray(global)).toBe(true)
+    expect(global.some((e) => e.message === 'manual form-level error')).toBe(true)
+    expect(global[0]?.path).toEqual([])
   })
 })
 

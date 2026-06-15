@@ -272,16 +272,16 @@ describe('form.meta.errors — flat aggregate', () => {
     expect(form.meta.errors).toEqual([])
   })
 
-  it("includes form-level errors (path: [''])", () => {
-    // setFieldErrors entries that arrive with `path: []` are rerouted
-    // at storage to the form-level bucket (`['']`), so the aggregate
-    // surfaces them with the new contract path.
+  it('includes form-level errors (path: [])', () => {
+    // A setFieldErrors entry that arrives with `path: []` stores at the
+    // root bucket (`'[]'`) directly, so the aggregate surfaces it with
+    // the root path unchanged.
     const form = mount(schema, { email: '', password: '' })
     form.setFieldErrors([
       { path: [], message: 'whole-form invalid', formKey: form.key, code: 'api:validation' },
     ])
     expect(form.meta.errors).toHaveLength(1)
-    expect(form.meta.errors[0]?.path).toEqual([''])
+    expect(form.meta.errors[0]?.path).toEqual([])
   })
 })
 
@@ -1133,14 +1133,12 @@ describe('surface materialisation — predictable representations + complex erro
     expect(afterSwitch.notify?.address).toBeUndefined()
   })
 
-  it("form-level errors (path: ['']) surface in form.errors at the empty-string key, plus form.meta.errors and form.errors('')", () => {
-    // Form-level user entries (set via `setFormErrors` or arriving
-    // through `setFieldErrors([{ path: [] }])` which reroutes to the
-    // empty-string bucket) MUST surface in the serialised
-    // `form.errors` tree under the empty-string key. Otherwise
-    // debug-prints (`{{ JSON.stringify(form.errors, null, 2) }}`)
-    // silently lose them. They also stay reachable via
-    // `form.errors('')` and `form.meta.errors`.
+  it('form-level errors (path: []) surface via errors([]) and meta.errors, not the proxy tree', () => {
+    // Form-level user entries (set via `setFormErrors`, or arriving
+    // through `setFieldErrors([{ path: [] }])`) live at the root `[]`.
+    // They are NOT a child key, so the serialised `form.errors` tree has
+    // no slot for them — read them via `form.errors([])` and the flat
+    // `form.meta.errors`. Field errors still serialise normally.
     const schema = z.object({ name: z.string() })
     const form = mount(schema, { name: '' })
     form.setFieldErrors([
@@ -1150,10 +1148,11 @@ describe('surface materialisation — predictable representations + complex erro
 
     const errorsTree = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>
     expect(errorsTree['name']).toMatchObject([{ message: 'name bad' }])
-    expect(errorsTree['']).toMatchObject([{ message: 'whole-form invalid' }])
+    expect(errorsTree['']).toBeUndefined()
 
-    // Dedicated form-level read still works.
-    expect(form.errors('')).toMatchObject([{ message: 'whole-form invalid' }])
+    // Dedicated global read; errors('') reads the (empty) literal '' field.
+    expect(form.errors([])).toMatchObject([{ message: 'whole-form invalid' }])
+    expect(form.errors('')).toEqual([])
 
     // Flat aggregate captures both entries.
     expect(form.meta.errors).toHaveLength(2)

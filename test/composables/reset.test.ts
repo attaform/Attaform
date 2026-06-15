@@ -188,28 +188,31 @@ describe('useForm — resetField(path)', () => {
     expect(form.values()).toEqual(before)
   })
 
-  it("resetField('') clears form-level errors but leaves named fields untouched", () => {
-    // `''` is the form-level error bucket — the canonical home for
-    // errors that don't belong to any specific field (root `.refine()`
-    // messages, `setFormErrors` entries, server-emitted form errors).
-    // It is one path among many, NOT a "reset everything" alias —
-    // resetField on it clears that bucket only.
+  it("resetField('') targets the literal '' field, NOT the global bucket", () => {
+    // Form-level (global) errors live at the root `[]`, set/cleared via
+    // setFormErrors / clearFormErrors. `''` is now an ordinary literal
+    // empty-key field, so resetField('') targets THAT field, never the
+    // global bucket — clearFormErrors() is the tool for global errors.
     const { app, form } = harness()
     apps.push(app)
     form.setValue('email', 'kept@example.com')
     form.setFormErrors([{ message: 'capacity exceeded', code: 'api:capacity' }])
 
-    expect(form.errors('')).toHaveLength(1)
+    expect(form.errors([])).toHaveLength(1)
 
-    // @ts-expect-error - `''` (form-level error bucket) is not enumerated
-    // in this schema's FlatPath. The runtime accepts it as a real path —
-    // see the `setFormErrors` API note that errors land at `path: ['']`.
+    // @ts-expect-error - `''` is not a FlatPath of this schema; the
+    // runtime accepts it as the literal empty-key field path (a no-op
+    // here, since the schema declares no `''` field).
     form.resetField('')
 
-    // Named field untouched — `''` is its own path.
+    // The global bucket and the named field are both untouched — `''`
+    // is neither's home.
+    expect(form.errors([])).toHaveLength(1)
     expect(form.values.email).toBe('kept@example.com')
-    // Form-level bucket cleared.
-    expect(form.errors('')).toEqual([])
+
+    // clearFormErrors() is the tool for the global bucket.
+    form.clearFormErrors()
+    expect(form.errors([])).toEqual([])
   })
 })
 

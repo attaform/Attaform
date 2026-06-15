@@ -105,7 +105,7 @@ describe('useForm — function-form defaultValues, rejection path', () => {
     const hydrationErr = api.meta.errors.find((e) => e.code === AttaformErrorCode.HydrationFailed)
     expect(hydrationErr).toBeDefined()
     expect(hydrationErr?.message).toBe('csr fetch failed')
-    expect(hydrationErr?.path).toEqual([''])
+    expect(hydrationErr?.path).toEqual([])
     expect(api.hydrateError).toEqual(hydrationErr)
   })
 

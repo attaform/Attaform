@@ -3,19 +3,23 @@
   import { z } from 'zod'
   import './styles.css'
 
-  const schema = z.object({
-    name: z.string().min(1, 'Name is required'),
-    email: z.email('Enter a valid email'),
-    profile: z
-      .object({
-        bio: z.string().max(50, 'Keep it under 50 chars'),
-        handle: z.string().min(1, 'Pick a handle'),
-      })
-      .refine(
-        (p) => p.handle.length === 0 || p.bio.toLowerCase().includes(p.handle.toLowerCase()),
-        { message: 'Bio must mention your handle.' }
-      ),
-  })
+  const schema = z
+    .object({
+      name: z.string().min(1, 'Name is required'),
+      email: z.email('Enter a valid email'),
+      profile: z
+        .object({
+          bio: z.string().max(50, 'Keep it under 50 chars'),
+          handle: z.string().min(1, 'Pick a handle'),
+        })
+        .refine(
+          (p) => p.handle.length === 0 || p.bio.toLowerCase().includes(p.handle.toLowerCase()),
+          { message: 'Bio must mention your handle.' }
+        ),
+    })
+    .refine((v) => v.name.trim().length > 0 || v.email.includes('@'), {
+      message: 'Add a name or a valid email so we can identify you.',
+    })
 
   const form = useForm({
     schema,
@@ -75,10 +79,19 @@
       </section>
 
       <section>
+        <h4>Form-level errors</h4>
+        <p class="hint"
+          ><code>form.errors([])</code> returns only the global, root-level errors (the form-wide
+          refine), separate from every field. They never touch the <code>''</code> key.</p
+        >
+        <pre>{{ JSON.stringify(form.errors([]), null, 2) }}</pre>
+      </section>
+
+      <section>
         <h4>Whole form</h4>
         <p class="hint"
-          ><code>form.errors</code> materialises the full sparse tree of errors across the
-          schema.</p
+          ><code>form.errors</code> materialises the full sparse tree of errors across the schema.
+          Root-level errors sit under the <code>'[]'</code> key, every field under its own path.</p
         >
         <pre>{{ JSON.stringify(form.errors, null, 2) }}</pre>
       </section>

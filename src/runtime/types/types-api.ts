@@ -66,11 +66,11 @@ interface JsonObject {
 /**
  * One validation failure. `path` points at the offending field as a
  * structured array — `['user', 'address', 0, 'line1']` for a nested
- * field, `['']` (the empty-string path) for a form-level error
- * (root `.refine()` messages, `setFormErrors()` entries, server-
- * emitted form banners). `formKey` identifies which form produced
- * the error so a single error list can be routed to multiple forms.
- * The optional `data` slot carries an arbitrary server payload.
+ * field, `[]` (the root path) for a form-level error (root `.refine()`
+ * messages, `setFormErrors()` entries, hydration failures, server-
+ * emitted form banners). `formKey` identifies which form produced the
+ * error so a single error list can be routed to multiple forms. The
+ * optional `data` slot carries an arbitrary server payload.
  *
  * Returned by `validate()` / `validateAsync()` / `handleSubmit`'s
  * `onError` callback, and by `parseApiErrors` for server responses.
@@ -79,10 +79,11 @@ export type ValidationError = {
   /** Human-readable message describing the failure. */
   message: string
   /**
-   * Structured path of the offending field. The empty-string path
-   * `['']` is the form-level bucket — the dedicated home for errors
-   * that don't belong to any specific field, distinct from the
-   * whole-form subtree address `[]`.
+   * Structured path of the offending field. The root path `[]` is the
+   * form-level bucket — the dedicated home for errors that don't belong
+   * to any specific field (root `.refine()`, `setFormErrors`, hydration
+   * failures). The empty-STRING path `['']` is unrelated: an ordinary
+   * literal empty-key field.
    */
   path: (string | number)[]
   /** Identifies which form produced this error. */
@@ -2977,13 +2978,17 @@ type DiscriminatedLeaf<
 
 /**
  * Intersection augmenting every container in the `form.errors` walker
- * with a `''` sentinel slot — the per-container home for cross-field
- * refine errors, server-side container marks, and (at root) form-level
- * errors. Gated on `Kind extends 'errors'` so `form.values` and
- * `form.fields` surfaces stay untouched. Carve-out for schemas that
+ * with a `''` slot. At a depth >= 1 container it's the container-self
+ * sentinel — the home for cross-field refine errors and server-side
+ * container marks; at root the `''` property addresses the literal
+ * empty-key field. Gated on `Kind extends 'errors'` so `form.values`
+ * and `form.fields` surfaces stay untouched. Carve-out for schemas that
  * legitimately declare a `''` field: the declared field type wins; at
  * runtime the two collide harmlessly (errors at the literal leaf and
  * any container-self errors share the slot via array concat).
+ *
+ * Global (root) errors are NOT this slot: they live at the root `[]`
+ * and are read via the `errors([])` call-form, never `errors['']`.
  */
 type ContainerSelfErrorsSlot<T, Kind> = Kind extends 'errors'
   ? '' extends keyof T
@@ -3129,9 +3134,11 @@ export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
   ): readonly ValidationError[]
   (segments: ReadonlyArray<string | number>): readonly ValidationError[]
   /**
-   * No-arg call returns the form-level error aggregate — same as
-   * `form.errors([])` and `form.meta.errors`. Always a readonly array;
-   * empty when the form has no errors.
+   * No-arg call returns the whole-form error aggregate — same as
+   * `form.meta.errors`: every field error plus the global bucket.
+   * Distinct from `form.errors([])`, which returns ONLY the global
+   * (root) bucket. Always a readonly array; empty when the form has no
+   * errors.
    */
   (): readonly ValidationError[]
 }
@@ -3975,15 +3982,14 @@ export type UseFormReturnType<
    * if (result.ok) form.setFormErrors(result.errors)
    * ```
    *
-   * Form-level errors land at the empty-string path bucket
-   * (`path: ['']`). They surface in `form.meta.errors` (alongside
-   * field errors), in `form.errors()` / `form.errors([])` (whole-form
-   * subtree aggregates), and — uniquely — in `form.errors('')`,
-   * which returns ONLY the form-level bucket. They're excluded from
-   * the path-keyed `form.errors` drill proxy because no nested-object
-   * key represents the empty-string path. Read them via
-   * `meta.errors.filter(e => e.path.length === 1 && e.path[0] === '')`
-   * if you need a programmatic split.
+   * Form-level errors land at the root path `[]`. They surface in
+   * `form.meta.errors` (alongside field errors), in `form.errors()`
+   * (the whole-form aggregate), and — uniquely — in `form.errors([])`,
+   * which returns ONLY the global bucket. They are NOT a child key of
+   * the path-keyed `form.errors` drill proxy (`form.errors['']` reads
+   * the unrelated literal `''` field), so read them via `errors([])` /
+   * `meta.errors`, or split programmatically with
+   * `meta.errors.filter(e => e.path.length === 0)`.
    */
   setFormErrors: (errors: ReadonlyArray<Partial<ValidationError> & { message: string }>) => void
 

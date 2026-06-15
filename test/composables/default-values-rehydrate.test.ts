@@ -129,7 +129,7 @@ describe('form.rehydrate', () => {
 
   it('preserves the prior hydrateError while the retry is in flight (SWR)', async () => {
     // Stale-while-revalidate: the previous attempt's error stays
-    // visible through `form.hydrateError` and `form.errors['']` until
+    // visible through `form.hydrateError` and `form.errors([])` until
     // the new attempt settles. Mirrors the field-validation contract
     // (`field.validating === true` keeps the error in the store; the
     // UX gate decides whether to surface it). Without SWR, pressing
@@ -155,16 +155,20 @@ describe('form.rehydrate', () => {
     expect(api.hydrating).toBe(true)
     // SWR: the prior error survives the in-flight window.
     expect(api.hydrateError?.message).toBe('first-attempt failed')
-    const formLevel = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']
-    expect(formLevel?.[0]?.message).toBe('first-attempt failed')
+    const formLevel = (
+      api.errors as unknown as (p: readonly (string | number)[]) => readonly ValidationError[]
+    )([])
+    expect(formLevel[0]?.message).toBe('first-attempt failed')
 
     resolveSecond({ email: 'recovered@example.com', name: 'Recovered' })
     await inFlight
 
     // New verdict landed; the stale error is cleared.
     expect(api.hydrateError).toBeNull()
-    const formLevelAfter = (api.errors as unknown as Record<string, readonly ValidationError[]>)['']
-    expect(formLevelAfter ?? []).toEqual([])
+    const formLevelAfter = (
+      api.errors as unknown as (p: readonly (string | number)[]) => readonly ValidationError[]
+    )([])
+    expect(formLevelAfter).toEqual([])
     expect(api.values.email).toBe('recovered@example.com')
   })
 })

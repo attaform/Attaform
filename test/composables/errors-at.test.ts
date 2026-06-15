@@ -138,29 +138,32 @@ describe('form.errors(path) — aggregation at any depth', () => {
     expect(segments).toEqual(dotted)
   })
 
-  it('root array prefix [] matches every error including form-level', () => {
+  it('no-arg errors() is the full aggregate; errors([]) is the global bucket only', () => {
     const { app, api } = mount()
     apps.push(app)
     seedAllErrors(api)
 
     const noArg = (callErrors(api)() ?? []).map((e) => e.message).sort()
-    const allSegments = (callErrors(api)([]) ?? []).map((e) => e.message).sort()
-    expect(noArg).toEqual(allSegments)
-    expect(allSegments).toEqual(
+    expect(noArg).toEqual(
       ['airline bad', 'capacity full', 'cargo invalid', 'items invalid', 'sku bad'].sort()
     )
+
+    // errors([]) is the dedicated global channel: ONLY the root bucket
+    // (here the single form-level 'capacity full'), not every field.
+    const global = (callErrors(api)([]) ?? []).map((e) => e.message)
+    expect(global).toEqual(['capacity full'])
   })
 
-  it("dotted-string '' is the form-level path, not the root subtree", () => {
+  it("dotted-string '' reads the literal '' field, not the global bucket", () => {
     const { app, api } = mount()
     apps.push(app)
     seedAllErrors(api)
 
-    // `''` is one segment (the empty-string key), distinct from
-    // root `[]`. Form-level errors live at this PathKey, so the
-    // call returns ONLY the form-level bucket.
-    const formLevel = (callErrors(api)('') ?? []).map((e) => e.message)
-    expect(formLevel).toEqual(['capacity full'])
+    // `''` is one segment (the literal empty-string key), distinct from
+    // root `[]`. This schema has no `''` field, so the read is empty;
+    // the global bucket ('capacity full') is reached via errors([]).
+    const literal = (callErrors(api)('') ?? []).map((e) => e.message)
+    expect(literal).toEqual([])
   })
 
   it('returns undefined for a path with no matching errors', () => {

@@ -3249,15 +3249,11 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it("resetField('') clears form-level errors but leaves named fields untouched", async () => {
-    // `''` is the form-level error bucket — the path where errors that
-    // don't belong to any specific field live (`setFormErrors`, root
-    // `.refine()` messages, server-emitted form errors). It is NOT a
-    // "reset everything" alias. `resetField('')` resets the field at
-    // that path: storage at `''` typically doesn't exist (schemas don't
-    // name a field `''`), so nothing in `form.values` changes, but
-    // errors at `''` are cleared — matching the consumer model where
-    // every path-addressed API treats `''` as one path among many.
+  it("resetField('') targets the literal '' field, NOT the global bucket", async () => {
+    // Form-level (global) errors live at the root `[]`, set/cleared via
+    // setFormErrors / clearFormErrors. `''` is an ordinary literal
+    // empty-key field, so resetField('') targets THAT field, never the
+    // global bucket — and it is NOT a "reset everything" alias.
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -3266,19 +3262,21 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     await nextTick()
 
     expect(api.values.name).toBe('Ada')
-    expect(api.errors('')).toHaveLength(1)
+    expect(api.errors([])).toHaveLength(1)
 
-    // Cast loose: this probe deliberately calls `resetField` with an
-    // empty-string path to assert it's NOT a "reset everything" alias.
-    // The typed signature only accepts known schema paths.
+    // Cast loose: the typed signature only accepts known schema paths.
+    // For a schema with no `''` field this is a no-op on values.
     ;(api.resetField as (path: string) => void)('')
     await nextTick()
 
-    // Named field is untouched — `''` is a distinct path, not an
-    // alias for the whole form.
+    // Named field and the global bucket are both untouched — `''` is
+    // neither's home.
     expect(api.values.name).toBe('Ada')
-    // Form-level errors at `''` are cleared.
-    expect(api.errors('')).toEqual([])
+    expect(api.errors([])).toHaveLength(1)
+
+    // clearFormErrors() is the tool for the global bucket.
+    api.clearFormErrors()
+    expect(api.errors([])).toEqual([])
   })
 
   it('resetField on a container path broadcasts the reset to descendants', async () => {

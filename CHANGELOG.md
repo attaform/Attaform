@@ -20,7 +20,7 @@
   the discriminator reshapes the whole form to the chosen variant, old keys
   purged and new keys seeded, with variant memory on by default. The parsed value
   inside `handleSubmit` narrows to the active variant. zod v3 and zod v4 both get
-  it, both tested, and object-rooted forms behave exactly as before. (#423)
+  it, both tested, and object-rooted forms behave exactly as before. (#424)
 
 ## v0.23.0
 ### Removed

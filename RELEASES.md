@@ -1,5 +1,17 @@
 # Releases
 
+## v0.24.1 — 2026-06-15
+
+## What's Changed
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/436
+* fix(aria): scope aria-required for array checkboxes (#381) and component hosts (#404) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/437
+* fix: setErrors-and-return is a failed submit, not a success (#438) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/439
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.0...v0.24.1
+
+---
+
 ## v0.24.0 — 2026-06-15
 
 ## What's Changed

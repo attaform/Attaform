@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.24.1
 ### Fixed
 
 - **A multi-select checkbox group no longer announces every box as required.**

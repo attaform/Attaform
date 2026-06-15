@@ -22,6 +22,7 @@ import {
   isRegisterValue,
   isTransforming,
   REGISTER_OWNER_MARKER,
+  SSR_COMPONENT_HOST_MODIFIER,
   V_REGISTER_MARKER,
 } from './register-protocol'
 import { __DEV__ } from './dev'
@@ -1119,7 +1120,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
         setupAria(ariaEl, value, vnode)
       } else {
         mergeAriaLocks(ariaEl, vnode)
-        applyAria(ariaEl, value)
+        applyAria(ariaEl, value, vnode)
       }
     }
   },
@@ -1170,7 +1171,30 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // SSR path; under compiled SSR an authored aria attribute can't be
     // detected here, and the client directive reconciles it on hydration.
     const realVnode = (vnode as VNode | null) ?? null
-    const ariaProps = getSSRAriaProps(rv, realVnode)
+    // autoAria attrs belong on the bound form control, never on a
+    // component host's root element (a presentational wrapper would carry
+    // an invalid aria-* attribute). On the runtime path Vue invokes this
+    // hook for both the component vnode and the resolved root element, so
+    // emit only for an interactive form-control element vnode; a component
+    // vnode or a non-control root (e.g. a wrapper <div>) is suppressed.
+    // The inner control the component re-binds via useRegister emits its
+    // own aria. A `null` vnode is the compiled-SSR path, which cannot see
+    // the element here and is handled by the component-host signal the
+    // transform stamps. (#404)
+    const isInteractiveElementVnode =
+      realVnode !== null &&
+      typeof realVnode.type === 'string' &&
+      INTERACTIVE_TAG_NAMES.has(realVnode.type.toUpperCase())
+    // The compile-time componentBridgeTransform stamps this modifier on a
+    // component-host v-register, the only signal available under compiled
+    // SSR's null vnode. `modifiers` is typed as always-present, but the
+    // compiled SSR helper (and synthetic bindings) can omit it, so treat it
+    // as optional the same way the vnode above is.
+    const modifiers = binding.modifiers as Record<string, boolean> | undefined
+    const isComponentHostModifier = modifiers?.[SSR_COMPONENT_HOST_MODIFIER] === true
+    const suppressHostAria =
+      isComponentHostModifier || (realVnode !== null && !isInteractiveElementVnode)
+    const ariaProps = suppressHostAria ? undefined : getSSRAriaProps(rv, realVnode)
 
     // Form-state (`value` / `checked`) is the runtime path's analogue of
     // the compile-time transform's injected binding. Compiled SSR passes a

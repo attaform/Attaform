@@ -93,3 +93,88 @@ describe('auto-aria SSR', () => {
     expect(html).not.toContain('aria-required')
   })
 })
+
+describe('auto-aria SSR — array-member checkboxes (#381)', () => {
+  it('omits aria-required on every checkbox bound to a required array path', async () => {
+    const schema = z.object({ permissions: z.array(z.string()) })
+    const Comp = defineComponent({
+      setup() {
+        const form = useForm({
+          schema,
+          key: `ssr-381-${Math.random().toString(36).slice(2)}`,
+          defaultValues: { permissions: ['role_create'] },
+        })
+        return () =>
+          h(
+            'fieldset',
+            ['role_create', 'role_update', 'member_invite'].map((v) =>
+              withDirectives(h('input', { type: 'checkbox', value: v }), [
+                [vRegister, form.register('permissions')],
+              ])
+            )
+          )
+      },
+    })
+    const html = await renderToString(createSSRApp(Comp).use(createAttaform()))
+    expect(html).not.toContain('aria-required')
+  })
+
+  it('still emits aria-required for a required single boolean checkbox', async () => {
+    const schema = z.object({ agree: z.boolean() })
+    const Comp = defineComponent({
+      setup() {
+        const form = useForm({ schema, key: `ssr-381-bool-${Math.random().toString(36).slice(2)}` })
+        return () =>
+          withDirectives(h('input', { type: 'checkbox' }), [[vRegister, form.register('agree')]])
+      },
+    })
+    const html = await renderToString(createSSRApp(Comp).use(createAttaform()))
+    expect(html).toContain('aria-required="true"')
+  })
+})
+
+describe('auto-aria SSR — component host (#404)', () => {
+  it('does not stamp aria-required on a component host root', async () => {
+    const schema = z.object({ email: z.string() })
+    // Presentational wrapper whose root is a non-control <div>.
+    const FieldWrapper = defineComponent({
+      name: 'FieldWrapper',
+      setup:
+        (_, { slots }) =>
+        () =>
+          h('div', { class: 'field-wrapper' }, slots['default']?.()),
+    })
+    const Comp = defineComponent({
+      setup() {
+        const form = useForm({
+          schema,
+          key: `ssr-404-${Math.random().toString(36).slice(2)}`,
+          defaultValues: { email: '' },
+        })
+        return () =>
+          withDirectives(h(FieldWrapper, null, { default: () => h('input', { type: 'text' }) }), [
+            [vRegister, form.register('email')],
+          ])
+      },
+    })
+    const html = await renderToString(createSSRApp(Comp).use(createAttaform()))
+    // The role-less wrapper <div> must not carry aria-required.
+    expect(html).not.toContain('aria-required')
+  })
+
+  it('still emits aria-required on a bare native control (positive control)', async () => {
+    const schema = z.object({ email: z.string() })
+    const Comp = defineComponent({
+      setup() {
+        const form = useForm({
+          schema,
+          key: `ssr-404-native-${Math.random().toString(36).slice(2)}`,
+        })
+        return () =>
+          withDirectives(h('input', { type: 'text' }), [[vRegister, form.register('email')]])
+      },
+    })
+    const html = await renderToString(createSSRApp(Comp).use(createAttaform()))
+    expect(html).toContain('aria-required="true"')
+  })
+})

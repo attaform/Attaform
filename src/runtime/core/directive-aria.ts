@@ -1,5 +1,7 @@
 import { effectScope, watch, type VNode } from 'vue'
 import type { DisplayState, RegisterValue } from '../types/types-api'
+import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
+import { isArray, isSet } from './vue-shared-shim'
 
 /**
  * The aria attributes the directive keeps in sync with the field's
@@ -62,16 +64,23 @@ function setAriaAttr(el: HTMLElement, attr: string, value: string | null): void 
  * screen-reader signal stays in lockstep with the visible error state.
  * Binding to the gated display state (not raw `errors`) keeps the
  * signal honest about whether the consumer's `getDisplayState`
- * predicate has admitted the verdict for surfacing.
+ * predicate has admitted the verdict for surfacing. `suppressRequired`
+ * withholds `aria-required` for array / set checkbox groups, where no
+ * single member is individually required (#381).
  */
-function resolveAriaValue(attr: string, rv: RegisterValue, ds: DisplayState): string | null {
+function resolveAriaValue(
+  attr: string,
+  rv: RegisterValue,
+  ds: DisplayState,
+  suppressRequired: boolean
+): string | null {
   switch (attr) {
     case 'aria-invalid':
       return ds === 'error' ? 'true' : null
     case 'aria-busy':
       return ds === 'pending' ? 'true' : null
     case 'aria-required':
-      return rv.isRequired === true ? 'true' : null
+      return rv.isRequired === true && !suppressRequired ? 'true' : null
     case 'aria-describedby':
       return ds === 'error' && rv.aria?.errorId !== undefined ? rv.aria.errorId : null
     default:
@@ -80,15 +89,52 @@ function resolveAriaValue(attr: string, rv: RegisterValue, ds: DisplayState): st
 }
 
 /**
+ * Whether `aria-required` must be withheld for this binding. A checkbox
+ * that aggregates into an array / set model is one member of a group:
+ * no single member is individually required, an empty selection is
+ * valid, and `aria-required` on a checkbox specifically announces "this
+ * box must be checked." So the required signal is suppressed for array /
+ * set checkbox members (#381), while a single boolean checkbox and a
+ * multi-select `<select>` (both valid `aria-required` carriers) keep it.
+ * The collection check reads the seeded model value, mirroring the
+ * `vRegisterCheckbox` array / set detection.
+ */
+function suppressesRequired(rv: RegisterValue, isCheckbox: boolean): boolean {
+  if (!isCheckbox) return false
+  const model = rv.innerRef.value
+  return isArray(model) || isSet(model)
+}
+
+/**
+ * A native checkbox input, identified by tag name (uppercase, matching
+ * `el.tagName`) and resolved `type`. The type is sourced from the vnode
+ * props rather than the DOM: Vue's `created` directive hook runs before
+ * props are patched, so `el.type` is not yet `'checkbox'` at the first
+ * aria paint (the same reason `resolveDynamicModel` reads
+ * `vnode.props.type`).
+ */
+function isCheckboxInput(tagName: string, type: unknown): boolean {
+  return tagName === 'INPUT' && typeof type === 'string' && type.toLowerCase() === 'checkbox'
+}
+
+/**
  * Reflect the binding's gated display state onto the unmanaged aria
  * attributes. Each managed attr is set or removed independently.
  */
-export function applyAria(el: AriaCarrier, rv: RegisterValue): void {
+export function applyAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode | null): void {
   if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  // Only real form controls carry autoAria (see setupAria). (#404)
+  if (!INTERACTIVE_TAG_NAMES.has(el.tagName)) return
   const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
   const ds = rv.ariaDisplayState.value
+  const vnodeType = vnode?.props?.['type']
+  const checkbox = isCheckboxInput(
+    el.tagName,
+    typeof vnodeType === 'string' ? vnodeType : (el as HTMLInputElement).type
+  )
+  const suppressRequired = suppressesRequired(rv, checkbox)
   for (const attr of MANAGED_ARIA_ATTRS) {
-    if (!locks.has(attr)) setAriaAttr(el, attr, resolveAriaValue(attr, rv, ds))
+    if (!locks.has(attr)) setAriaAttr(el, attr, resolveAriaValue(attr, rv, ds, suppressRequired))
   }
 }
 
@@ -100,12 +146,17 @@ export function applyAria(el: AriaCarrier, rv: RegisterValue): void {
  */
 export function setupAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode): void {
   if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  // autoAria only manages real form controls. When v-register lands on a
+  // component host (a presentational wrapper such as a <div>), the attrs
+  // would be invalid ARIA on a role-less element; the inner control the
+  // component re-binds via useRegister carries them instead. (#404)
+  if (!INTERACTIVE_TAG_NAMES.has(el.tagName)) return
   mergeAriaLocks(el, vnode)
-  applyAria(el, rv)
+  applyAria(el, rv, vnode)
   const displayState = rv.ariaDisplayState
   const scope = effectScope(true)
   scope.run(() => {
-    watch(displayState, () => applyAria(el, rv), { flush: 'post' })
+    watch(displayState, () => applyAria(el, rv, vnode), { flush: 'post' })
   })
   el[ariaScopeKey] = (): void => scope.stop()
 }
@@ -128,10 +179,12 @@ export function getSSRAriaProps(
   if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return undefined
   const props = vnode?.props ?? null
   const ds = rv.ariaDisplayState.value
+  const tagName = typeof vnode?.type === 'string' ? vnode.type.toUpperCase() : ''
+  const suppressRequired = suppressesRequired(rv, isCheckboxInput(tagName, props?.['type']))
   const out: Record<string, string> = {}
   for (const attr of MANAGED_ARIA_ATTRS) {
     if (props !== null && attr in props) continue
-    const value = resolveAriaValue(attr, rv, ds)
+    const value = resolveAriaValue(attr, rv, ds, suppressRequired)
     if (value !== null) out[attr] = value
   }
   return out

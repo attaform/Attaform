@@ -67,6 +67,8 @@ By default, `v-register` keeps a field's aria attributes in sync with its [displ
 
 These track the same gated `displayState` that drives `form.fields.email.showErrors`, so the announcement and the visible message reveal together, never on a half-typed value. The required and invalid states are emitted during SSR too, so a server-rendered form is accessible before hydration.
 
+`aria-required` is scoped with care. A checkbox that rolls up into an array or set group never carries it, since no single box is required on its own and an empty selection is valid; the requirement lives on the group. And every attribute lands on the real form control: when `v-register` is on a wrapper component, the attributes follow the inner element it re-binds with [`useRegister`](/docs/binding-inputs/use-register), never the presentational root.
+
 ### Wiring the error element
 
 Auto-aria sets `aria-describedby` to [`form.fields.<path>.aria.errorId`](/docs/reading-the-form/fields). Put that id on your error element so the reference resolves:

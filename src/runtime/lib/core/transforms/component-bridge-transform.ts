@@ -13,6 +13,7 @@ import {
   type SourceLocation,
   type TemplateChildNode,
 } from '@vue/compiler-core'
+import { SSR_COMPONENT_HOST_MODIFIER } from '../../../core/register-protocol'
 import {
   flattenExpression,
   getSummarizedProps,
@@ -470,6 +471,20 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
         p.arg.content === 'registerValue'
     )
     if (alreadyInjected) return
+
+    // Signal compiled SSR that this v-register host is a component, so the
+    // directive's getSSRProps suppresses autoAria on the host root (the
+    // inner control the component re-binds via useRegister carries it).
+    // The runtime path reads the component vnode directly; compiled SSR
+    // only has a null vnode, so this modifier is the channel. (#404)
+    if (
+      registerProp.type === NodeTypes.DIRECTIVE &&
+      !registerProp.modifiers.some(
+        (m) => m.type === NodeTypes.SIMPLE_EXPRESSION && m.content === SSR_COMPONENT_HOST_MODIFIER
+      )
+    ) {
+      registerProp.modifiers.push(createSimpleExpression(SSR_COMPONENT_HOST_MODIFIER, true))
+    }
 
     const customElementProp: DirectiveNode = {
       arg: createSimpleExpression('registerValue', true),

@@ -26,7 +26,7 @@ describe('renderAttaformState', () => {
   it('extracts form data and source-segregated errors for every registered form', () => {
     const { app, state } = seedServerApp('signup', 'a@a')
     // Schema validation populates the schema-error store directly via
-    // setSchemaErrorsForPath. setFieldErrors-style API calls would
+    // setSchemaErrorsForPath. setErrors-style API calls would
     // populate userErrors; here we test both round-trip independently.
     state.setSchemaErrorsForPath(
       ['email'],

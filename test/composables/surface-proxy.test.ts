@@ -210,9 +210,7 @@ describe('form.errors — callable form', () => {
 
   it('form.errors("path") returns the leaf array', () => {
     const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
-    form.setFieldErrors([
-      { path: ['email'], message: 'taken', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'taken', code: 'api:validation' }])
     expect((form.errors as unknown as (p: string) => unknown)('email')).toEqual([
       { path: ['email'], message: 'taken', formKey: form.key, code: 'api:validation' },
     ])
@@ -229,9 +227,7 @@ describe('form.errors — callable form', () => {
 
   it('form.errors at a container materialises descendants as a nested tree', () => {
     const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
-    form.setFieldErrors([
-      { path: ['address', 'city'], message: 'bad', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['address', 'city'], message: 'bad', code: 'api:validation' }])
     // Container materialisation: the underlying nested error tree, not `{}`.
     expect(JSON.parse(JSON.stringify(form.errors.address))).toEqual({
       city: [
@@ -251,9 +247,9 @@ describe('form.meta.errors — flat aggregate', () => {
 
   it('aggregates all per-path errors into a single ValidationError[]', () => {
     const form = mount(schema, { email: '', password: '' })
-    form.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: form.key, code: 'api:validation' },
-      { path: ['password'], message: 'bad pass', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: ['email'], message: 'bad email', code: 'api:validation' },
+      { path: ['password'], message: 'bad pass', code: 'api:validation' },
     ])
     expect(form.meta.errors).toHaveLength(2)
     expect(form.meta.errors.map((e) => e.path[0])).toEqual(['email', 'password'])
@@ -263,23 +259,19 @@ describe('form.meta.errors — flat aggregate', () => {
     const form = mount(schema, { email: '', password: '' })
     expect(form.meta.errors).toEqual([])
 
-    form.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
     expect(form.meta.errors).toHaveLength(1)
 
-    form.clearFieldErrors('email')
+    form.clearErrors('email')
     expect(form.meta.errors).toEqual([])
   })
 
   it('includes form-level errors (path: [])', () => {
-    // A setFieldErrors entry that arrives with `path: []` stores at the
+    // A setErrors entry that arrives with `path: []` stores at the
     // root bucket (`'[]'`) directly, so the aggregate surfaces it with
     // the root path unchanged.
     const form = mount(schema, { email: '', password: '' })
-    form.setFieldErrors([
-      { path: [], message: 'whole-form invalid', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: [], message: 'whole-form invalid', code: 'api:validation' }])
     expect(form.meta.errors).toHaveLength(1)
     expect(form.meta.errors[0]?.path).toEqual([])
   })
@@ -339,9 +331,9 @@ describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
 
   it('String(form.errors) reflects the populated error model when errors exist', () => {
     const form = mount(schema, { email: '', address: { city: '' } })
-    form.setFieldErrors([
-      { path: ['email'], message: 'Required', formKey: form.key, code: 'api:validation' },
-      { path: ['address', 'city'], message: 'Required', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: ['email'], message: 'Required', code: 'api:validation' },
+      { path: ['address', 'city'], message: 'Required', code: 'api:validation' },
     ])
     // Surface (String/{{ }}) and model (form.meta.errors) agree on the data.
     expect(form.meta.errors).toHaveLength(2)
@@ -402,9 +394,7 @@ describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
     expect(JSON.parse(concatEmpty.slice(0, -1))).toEqual({})
 
     // Populated error model → materialised tree mirrors the underlying data.
-    form.setFieldErrors([
-      { path: ['email'], message: 'Required', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'Required', code: 'api:validation' }])
     const concatPopulated = `${form.errors}!`
     expect(concatPopulated.endsWith('!')).toBe(true)
     expect(JSON.parse(concatPopulated.slice(0, -1))).toMatchObject({
@@ -424,9 +414,7 @@ describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
     // sub-proxy. Now it returns a primitive string consistent with the
     // `Symbol.toPrimitive` output AND consistent with the underlying model.
     const form = mount(schema, { email: '', address: { city: '' } })
-    form.setFieldErrors([
-      { path: ['email'], message: 'Required', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'Required', code: 'api:validation' }])
     const out = (form.errors as unknown as { toString(): string }).toString()
     expect(typeof out).toBe('string')
     expect(JSON.parse(out)).toMatchObject({
@@ -569,9 +557,7 @@ describe('surface proxies — hasOwnProperty resolves to the real method (not a 
 
   it('container (errors): hasOwnProperty agrees with Object.keys', () => {
     const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
-    form.setFieldErrors([
-      { path: ['email'], message: 'taken', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'taken', code: 'api:validation' }])
     expect(ownHas(form.errors, 'email')).toBe(true)
     expect(ownHas(form.errors, 'not-a-field')).toBe(false)
     expect(ownHas(form.errors, 'email')).toBe(Object.keys(form.errors).includes('email'))
@@ -668,9 +654,7 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
   it('errors should not be {} when a required field has a leaf error (the headline case)', () => {
     const schema = z.object({ name: z.string(), age: z.number() })
     const form = mount(schema, { name: '', age: 0 })
-    form.setFieldErrors([
-      { path: ['name'], message: 'Required', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['name'], message: 'Required', code: 'api:validation' }])
     const serialised = JSON.parse(JSON.stringify(form.errors))
     expect(serialised).not.toEqual({})
     expect(serialised).toMatchObject({
@@ -685,15 +669,14 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
       tags: z.array(z.string()),
     })
     const form = mount(schema, { name: '', address: { city: '', zip: '' }, tags: ['a', 'b'] })
-    form.setFieldErrors([
-      { path: ['name'], message: 'Required', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: ['name'], message: 'Required', code: 'api:validation' },
       {
         path: ['address', 'city'],
         message: 'Required',
-        formKey: form.key,
         code: 'api:validation',
       },
-      { path: ['tags', 0], message: 'Bad tag', formKey: form.key, code: 'api:validation' },
+      { path: ['tags', 0], message: 'Bad tag', code: 'api:validation' },
     ])
     const root = JSON.parse(JSON.stringify(form.errors))
     expect(root).toMatchObject({
@@ -712,18 +695,16 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
       address: z.object({ city: z.string(), zip: z.string() }),
     })
     const form = mount(schema, { name: '', address: { city: '', zip: '' } })
-    form.setFieldErrors([
-      { path: ['name'], message: 'Required', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: ['name'], message: 'Required', code: 'api:validation' },
       {
         path: ['address', 'city'],
         message: 'Bad',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['address', 'zip'],
         message: 'Bad zip',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -739,13 +720,9 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
   it('merges schemaErrors + derivedBlankErrors + userErrors at the same path', () => {
     const schema = z.object({ name: z.string() })
     const form = mount(schema, { name: '' })
-    // userErrors via setFieldErrors
-    form.setFieldErrors([
-      { path: ['name'], message: 'A', formKey: form.key, code: 'api:validation' },
-    ])
-    form.addFieldErrors([
-      { path: ['name'], message: 'B', formKey: form.key, code: 'api:validation' },
-    ])
+    // userErrors via setErrors
+    form.setErrors([{ path: ['name'], message: 'A', code: 'api:validation' }])
+    form.setErrors((prev) => [...prev, { path: ['name'], message: 'B', code: 'api:validation' }])
     const serialised = JSON.parse(JSON.stringify(form.errors)) as { name: { message: string }[] }
     expect(serialised.name).toHaveLength(2)
     expect(serialised.name.map((e) => e.message)).toEqual(['A', 'B'])
@@ -765,17 +742,15 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
       ]),
     })
     const form = mount(schema, { notify: { channel: 'email', address: 'a@b.com' } })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['notify', 'address'],
         message: 'bad addr',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['notify', 'number'],
         message: 'bad num',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -793,9 +768,7 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
     expect(JSON.parse(JSON.stringify(form.errors))).toEqual({})
 
     // Set: model gains one entry → materialised tree mirrors it.
-    form.setFieldErrors([
-      { path: ['name'], message: 'Required', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['name'], message: 'Required', code: 'api:validation' }])
     expect(form.meta.errors).toHaveLength(1)
     expect(JSON.parse(JSON.stringify(form.errors))).toMatchObject({
       name: [{ message: 'Required', path: ['name'] }],
@@ -805,7 +778,7 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
     // cached proxy is the SAME reference, but the closures inside
     // `containerProxyAt` re-read the live stores every call, so
     // JSON.stringify produces fresh output rather than the previous shape.
-    form.clearFieldErrors('name')
+    form.clearErrors('name')
     expect(form.meta.errors).toEqual([])
     expect(JSON.parse(JSON.stringify(form.errors))).toEqual({})
   })
@@ -982,9 +955,9 @@ describe('surface materialisation — predictable representations + complex erro
   it('errors at array indices materialise as a sparse object (only erroring indices appear)', () => {
     const schema = z.object({ tags: z.array(z.string()) })
     const form = mount(schema, { tags: ['ok', 'bad', 'also-ok', 'also-bad'] })
-    form.setFieldErrors([
-      { path: ['tags', 1], message: 'second is bad', formKey: form.key, code: 'api:validation' },
-      { path: ['tags', 3], message: 'fourth is bad', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: ['tags', 1], message: 'second is bad', code: 'api:validation' },
+      { path: ['tags', 3], message: 'fourth is bad', code: 'api:validation' },
     ])
 
     // The materialiser allocates an array at `tags` (numeric next-seg)
@@ -1017,17 +990,15 @@ describe('surface materialisation — predictable representations + complex erro
         { name: 'Carol', number: '+3' },
       ],
     })
-    form.setFieldErrors([
+    form.setErrors([
       {
         path: ['contacts', 0, 'number'],
         message: 'Alice number bad',
-        formKey: form.key,
         code: 'api:validation',
       },
       {
         path: ['contacts', 2, 'name'],
         message: 'Carol name bad',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -1078,15 +1049,15 @@ describe('surface materialisation — predictable representations + complex erro
     // Required numeric field, marked blank explicitly via the `unset`
     // sentinel: `derivedBlankErrors` injects "No value supplied" at the
     // path. A second user-supplied error at the same path stacks via
-    // `addFieldErrors`. Both must appear in the materialised tree.
+    // a functional `setErrors` update. Both must appear in the materialised tree.
     const schema = z.object({ income: z.number() })
     const form = mount(schema, { income: unset })
 
-    form.addFieldErrors([
+    form.setErrors((prev) => [
+      ...prev,
       {
         path: ['income'],
         message: 'Server says income is suspicious',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -1099,7 +1070,7 @@ describe('surface materialisation — predictable representations + complex erro
     const messages = root.income.map((e) => e.message)
     // Derived blank error from the numeric required gate.
     expect(messages).toContain('No value supplied')
-    // User-injected error from the addFieldErrors call.
+    // User-injected error from the setErrors call.
     expect(messages).toContain('Server says income is suspicious')
   })
 
@@ -1134,16 +1105,16 @@ describe('surface materialisation — predictable representations + complex erro
   })
 
   it('form-level errors (path: []) surface via errors([]) and meta.errors, not the proxy tree', () => {
-    // Form-level user entries (set via `setFormErrors`, or arriving
-    // through `setFieldErrors([{ path: [] }])`) live at the root `[]`.
+    // Form-level user entries (set via `setErrors`, or arriving
+    // through `setErrors([{ path: [] }])`) live at the root `[]`.
     // They are NOT a child key, so the serialised `form.errors` tree has
     // no slot for them — read them via `form.errors([])` and the flat
     // `form.meta.errors`. Field errors still serialise normally.
     const schema = z.object({ name: z.string() })
     const form = mount(schema, { name: '' })
-    form.setFieldErrors([
-      { path: [], message: 'whole-form invalid', formKey: form.key, code: 'api:validation' },
-      { path: ['name'], message: 'name bad', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: [], message: 'whole-form invalid', code: 'api:validation' },
+      { path: ['name'], message: 'name bad', code: 'api:validation' },
     ])
 
     const errorsTree = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>

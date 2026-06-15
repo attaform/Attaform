@@ -80,12 +80,10 @@ describe('useForm — reset()', () => {
     expect(form.values.profile.age).toBe(0)
   })
 
-  it('clears errors pre-populated via setFieldErrors', () => {
+  it('clears errors pre-populated via setErrors', () => {
     const { app, form } = harness()
     apps.push(app)
-    form.setFieldErrors([
-      { path: ['email'], message: 'taken', formKey: form.key, code: 'api:validation' },
-    ])
+    form.setErrors([{ path: ['email'], message: 'taken', code: 'api:validation' }])
     expect(form.meta.valid).toBe(false)
 
     form.reset()
@@ -155,9 +153,9 @@ describe('useForm — resetField(path)', () => {
   it('clears errors on the reset path but preserves sibling errors', () => {
     const { app, form } = harness()
     apps.push(app)
-    form.setFieldErrors([
-      { path: ['email'], message: 'email error', formKey: form.key, code: 'api:validation' },
-      { path: ['password'], message: 'password error', formKey: form.key, code: 'api:validation' },
+    form.setErrors([
+      { path: ['email'], message: 'email error', code: 'api:validation' },
+      { path: ['password'], message: 'password error', code: 'api:validation' },
     ])
 
     form.resetField('email')
@@ -189,14 +187,14 @@ describe('useForm — resetField(path)', () => {
   })
 
   it("resetField('') targets the literal '' field, NOT the global bucket", () => {
-    // Form-level (global) errors live at the root `[]`, set/cleared via
-    // setFormErrors / clearFormErrors. `''` is now an ordinary literal
-    // empty-key field, so resetField('') targets THAT field, never the
-    // global bucket — clearFormErrors() is the tool for global errors.
+    // Form-level (global) errors live at the root `[]`, set via
+    // setErrors and cleared via clearErrors([]). `''` is now an ordinary
+    // literal empty-key field, so resetField('') targets THAT field,
+    // never the global bucket.
     const { app, form } = harness()
     apps.push(app)
     form.setValue('email', 'kept@example.com')
-    form.setFormErrors([{ message: 'capacity exceeded', code: 'api:capacity' }])
+    form.setErrors([{ message: 'capacity exceeded', code: 'api:capacity' }])
 
     expect(form.errors([])).toHaveLength(1)
 
@@ -210,8 +208,8 @@ describe('useForm — resetField(path)', () => {
     expect(form.errors([])).toHaveLength(1)
     expect(form.values.email).toBe('kept@example.com')
 
-    // clearFormErrors() is the tool for the global bucket.
-    form.clearFormErrors()
+    // clearErrors([]) is the tool for the global bucket.
+    form.clearErrors([])
     expect(form.errors([])).toEqual([])
   })
 })

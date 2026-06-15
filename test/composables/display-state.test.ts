@@ -100,7 +100,7 @@ type FieldStateLike = {
 
 type FormLike = {
   fields: (path?: string | readonly (string | number)[]) => FieldStateLike
-  setFieldErrors: (errors: readonly ValidationError[]) => void
+  setErrors: (errors: readonly ValidationError[]) => void
   setValue: (path: string, value: unknown) => boolean
   touch: (path?: string | readonly (string | number)[]) => void
   handleSubmit: (
@@ -142,7 +142,7 @@ type AdapterFactory = (pluginOptions?: Parameters<typeof createAttaform>[0]) => 
 function describeAdapter(label: string, makeForm: AdapterFactory): void {
   describe(label, () => {
     function injectError(form: FormLike, path: readonly (string | number)[], message: string) {
-      form.setFieldErrors([{ path: [...path], message, formKey: form.key, code: 'test' }])
+      form.setErrors([{ path: [...path], message, formKey: form.key, code: 'test' }])
     }
 
     describe('default heuristic — leaf', () => {
@@ -326,9 +326,7 @@ function describeOverrideTier(
 ): void {
   describe(label, () => {
     function inject(form: FormLike) {
-      form.setFieldErrors([
-        { path: ['email'], message: 'required', formKey: form.key, code: 'test' },
-      ])
+      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
     }
 
     // A reducer that surfaces errors purely on touch, ignoring the
@@ -515,7 +513,7 @@ describe('getDisplayState — cross-cutting', () => {
         })
       )
     )
-    form.setFieldErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
+    form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
     // Trigger evaluation
     void form.fields('email').displayState
     await nextTick()
@@ -544,7 +542,7 @@ describe('getDisplayState — cross-cutting', () => {
         })
       )
     )
-    form.setFieldErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
+    form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
     // path[0] === 'urgent' is false for 'email' — falls through to the
     // default, which is 'idle' at this state (untouched, submissionAttempts=0).
     await nextTick()
@@ -589,7 +587,7 @@ describe('getDisplayState — cross-cutting', () => {
         })
       )
     )
-    form.setFieldErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
+    form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
     // Read the field twice to exercise the predicate path on a hot
     // re-read; the warn should still fire once (dedup on the predicate
     // reference).
@@ -1595,7 +1593,7 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
     editAndBlur(input('a'), 'x')
     await new Promise((r) => setTimeout(r, 0))
     // B carries a committed error but was never touched (its gate is closed).
-    api.setFieldErrors([{ path: ['b'], message: 'b required', formKey: api.key, code: 'test' }])
+    api.setErrors([{ path: ['b'], message: 'b required', formKey: api.key, code: 'test' }])
     await nextTick()
     expect(api.fields('a').displayState).toBe('success')
     expect(api.fields('b').displayState).toBe('idle')
@@ -1632,7 +1630,7 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
     editAndBlur(input('pw.a'), 'x')
     await new Promise((r) => setTimeout(r, 0))
     // ...then pin a cross-field error at the object path itself (a non-leaf).
-    api.setFieldErrors([{ path: ['pw'], message: 'must match', formKey: api.key, code: 'test' }])
+    api.setErrors([{ path: ['pw'], message: 'must match', formKey: api.key, code: 'test' }])
     await nextTick()
     expect(api.fields('pw').displayState).toBe('error')
     // It rolls up to the root even though no LEAF carries the error.

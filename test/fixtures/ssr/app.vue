@@ -1,6 +1,5 @@
 <script setup lang="ts">
   import { useForm } from '@runtime/composables/use-form'
-  import { parseApiErrors } from '@runtime/core/parse-api-errors'
   // The SSR fixture exercises the zod v3 adapter via useForm auto-import.
   // Installed side-by-side with zod v4 via pnpm alias.
   import { z } from 'zod-v3'
@@ -25,7 +24,7 @@
   // bindings (Vue auto-unwraps top-level refs but not refs nested in plain
   // objects, so `directErrorForm.errors.value` would not unwrap reliably).
 
-  // Direct setFieldErrors on the server, rendered into HTML so the SSR test
+  // Direct setErrors on the server, rendered into HTML so the SSR test
   // can prove the reactive error store survives serialisation/hydration.
   const directErrorSchema = z.object({
     email: z.string().email(),
@@ -43,7 +42,7 @@
     // appearing at errors[0].
     strict: false,
   })
-  directForm.setFieldErrors([
+  directForm.setErrors([
     {
       message: 'Email already in use',
       path: ['email'],
@@ -58,28 +57,17 @@
     },
   ])
 
-  // Parsed-from-API helper applied during setup, simulating a 422 from
-  // the server being mapped onto fields before the page renders.
+  // A server 422 mapped onto fields before the page renders: the
+  // server's ValidationError[] hands straight to setErrors, two entries
+  // at the same `username` path.
   const apiErrorForm = useForm({
     schema: z.object({ username: z.string() }),
     key: 'errors-from-api',
   })
-  const parsedApi = parseApiErrors(
-    {
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Invalid input',
-        details: {
-          username: [
-            { message: 'Username taken', code: 'api:duplicate-username' },
-            { message: 'Reserved word', code: 'api:reserved-word' },
-          ],
-        },
-      },
-    },
-    { formKey: apiErrorForm.key }
-  )
-  if (parsedApi.ok) apiErrorForm.setFieldErrors(parsedApi.errors)
+  apiErrorForm.setErrors([
+    { message: 'Username taken', path: ['username'], code: 'api:duplicate-username' },
+    { message: 'Reserved word', path: ['username'], code: 'api:reserved-word' },
+  ])
 
   // -- handleSubmit return-shape fixture --
   // Proves handleSubmit(cb) returns a function (not a Promise) so it can be
@@ -177,7 +165,7 @@
     <section>
       <h2>Error API</h2>
 
-      <!-- Direct setFieldErrors -->
+      <!-- Direct setErrors -->
       <div id="errors-direct">
         <span id="errors-direct-fielderrors-email">{{
           directForm.errors.email?.[0]?.message ?? ''
@@ -191,7 +179,7 @@
         <span id="errors-direct-count">{{ directForm.meta.errors.length }}</span>
       </div>
 
-      <!-- parseApiErrors → setFieldErrors -->
+      <!-- Server 422 errors → setErrors -->
       <div id="errors-from-api">
         <span id="errors-from-api-first">{{
           apiErrorForm.errors.username?.[0]?.message ?? ''

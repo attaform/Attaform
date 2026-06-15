@@ -4,7 +4,6 @@ import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { z } from 'zod'
-import { parseApiErrors } from '../../src/runtime/core/parse-api-errors'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
@@ -54,9 +53,7 @@ describe('form.errors — leaf-aware drillable proxy', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
 
     expect(api.errors.email?.[0]?.message).toBe('bad email')
   })
@@ -68,18 +65,16 @@ describe('form.errors — leaf-aware drillable proxy', () => {
     expect(api.errors.email).toEqual([])
   })
 
-  it('reflects updates after setFieldErrors / clearFieldErrors', () => {
+  it('reflects updates after setErrors / clearErrors', () => {
     const { app, api } = mount()
     apps.push(app)
 
     expect(api.errors.email).toEqual([])
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'taken', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'taken', code: 'api:validation' }])
     expect(api.errors.email?.[0]?.message).toBe('taken')
 
-    api.clearFieldErrors('email')
+    api.clearErrors('email')
     expect(api.errors.email).toEqual([])
   })
 
@@ -87,9 +82,7 @@ describe('form.errors — leaf-aware drillable proxy', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
 
     // Model shape: the root container emits a nested map keyed by leaf path.
     const root = JSON.parse(JSON.stringify(api.errors))
@@ -112,9 +105,7 @@ describe('form.errors — callable form', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
 
     const dotted = api.errors.email
     const called = (api.errors as unknown as (p: string) => unknown)('email')
@@ -136,9 +127,7 @@ describe('form.errors — callable form', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
 
     const fromArray = (api.errors as unknown as (p: readonly string[]) => unknown)(['email'])
     const fromDotted = (api.errors as unknown as (p: string) => unknown)('email')
@@ -157,9 +146,7 @@ describe('form.errors — readonly contract', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
 
     // PASS2-4: writes through the readonly proxy warn-and-noop instead
     // of throwing `TypeError` under strict mode. The actual readonly
@@ -178,9 +165,7 @@ describe('form.errors — readonly contract', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
 
     expect(() => {
       // @ts-expect-error — runtime proves the trap matches the type promise.
@@ -217,54 +202,40 @@ describe('form.errors — reactivity in render scope', () => {
 
     expect(renderedMessage).toBe('')
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'bad email', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
     await nextTick()
     expect(renderedMessage).toBe('bad email')
 
-    api.clearFieldErrors('email')
+    api.clearErrors('email')
     await nextTick()
     expect(renderedMessage).toBe('')
   })
 
-  // End-to-end coverage for the spike's "Simulate API 400" flow:
-  // parseApiErrors → setFieldErrors → form.errors.<path> read. Pre-fix
-  // the bare-string Rails / DRF / Laravel shape (`{ field: ["msg"] }`)
-  // returned `result.ok === false`, the `if (result.ok) ...` guard
-  // skipped, and the form rendered no error messages even though the
-  // API response carried valid information. Now both shapes flow
-  // through end-to-end.
-  it('parseApiErrors → setFieldErrors → form.errors renders the messages (Rails-style payload)', () => {
+  // End-to-end coverage for the "Simulate API 400" flow: a server's
+  // ValidationError[] handed straight to setErrors, then read back
+  // through form.errors.<path>. No adapter step — the lenient input
+  // shape accepts the server's entries directly.
+  it('setErrors → form.errors renders the injected messages', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    const result = parseApiErrors(
-      {
-        email: ['Email is reserved.'],
-        password: ['Profanity filter rejected this.'],
-      },
-      { formKey: api.key }
-    )
-    expect(result.ok).toBe(true)
-    if (result.ok) api.setFieldErrors(result.errors)
+    api.setErrors([
+      { path: ['email'], message: 'Email is reserved.', code: 'api:unknown' },
+      { path: ['password'], message: 'Profanity filter rejected this.', code: 'api:unknown' },
+    ])
 
     expect(api.errors.email?.[0]?.message).toBe('Email is reserved.')
     expect(api.errors.email?.[0]?.code).toBe('api:unknown')
     expect(api.errors.password?.[0]?.message).toBe('Profanity filter rejected this.')
   })
 
-  it('parseApiErrors honors a custom defaultCode end-to-end', () => {
+  it('scoped setErrors(path, …) renders at that field with its code', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    const result = parseApiErrors(
-      { email: 'taken' },
-      { formKey: api.key, defaultCode: 'api:server-validation' }
-    )
-    expect(result.ok).toBe(true)
-    if (result.ok) api.setFieldErrors(result.errors)
+    api.setErrors('email', [{ message: 'taken', code: 'api:server-validation' }])
 
+    expect(api.errors.email?.[0]?.message).toBe('taken')
     expect(api.errors.email?.[0]?.code).toBe('api:server-validation')
   })
 
@@ -282,17 +253,13 @@ describe('form.errors — reactivity in render scope', () => {
       }
     )
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'first', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'first', code: 'api:validation' }])
     await nextTick()
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'second', formKey: api.key, code: 'api:validation' },
-    ])
+    api.setErrors([{ path: ['email'], message: 'second', code: 'api:validation' }])
     await nextTick()
 
-    api.clearFieldErrors('email')
+    api.clearErrors('email')
     await nextTick()
 
     watcher()

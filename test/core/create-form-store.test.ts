@@ -186,15 +186,36 @@ describe('createFormStore', () => {
       ])
     })
 
-    it('addUserErrors appends to existing user entries at the same path', () => {
+    it('setAllUserErrors buckets multiple entries at the same path', () => {
       const state = makeState()
-      state.addUserErrors([
+      state.setAllUserErrors([
         { message: 'first', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-      ])
-      state.addUserErrors([
         { message: 'second', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
       ])
       expect(state.getErrorsForPath(['email'])).toHaveLength(2)
+    })
+
+    it('setUserErrorsForPath replaces only the targeted bucket', () => {
+      const state = makeState()
+      state.setAllUserErrors([
+        { message: 'e', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
+        { message: 'p', path: ['password'], formKey: 'test', code: 'atta:test-fixture' },
+      ])
+      state.setUserErrorsForPath(
+        ['email'],
+        [{ message: 'e2', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+      )
+      expect(state.getErrorsForPath(['email']).map((x) => x.message)).toEqual(['e2'])
+      expect(state.getErrorsForPath(['password']).map((x) => x.message)).toEqual(['p'])
+    })
+
+    it('setUserErrorsForPath with an empty list deletes the bucket', () => {
+      const state = makeState()
+      state.setAllUserErrors([
+        { message: 'e', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
+      ])
+      state.setUserErrorsForPath(['email'], [])
+      expect(state.getErrorsForPath(['email'])).toEqual([])
     })
 
     it('clearSchemaErrors() with no args removes all schema errors for this form', () => {

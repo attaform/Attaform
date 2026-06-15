@@ -191,13 +191,13 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
 
   it('form-level errors live at the root [] (errors([])), not the "" slot', async () => {
     // The root `[]` is the form-level bucket (hydration failures, root
-    // `.refine()` results, `setFormErrors` entries). Read it via the
+    // `.refine()` results, `setErrors` entries). Read it via the
     // dedicated `errors([])` call form — it returns
     // `readonly ValidationError[]` directly. The `''` slot is the
     // unrelated literal empty-key field.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
-    api.setFormErrors([{ message: 'manual form-level error', code: 'consumer:test' }])
+    api.setErrors([{ message: 'manual form-level error', code: 'consumer:test' }])
     await nextTick()
 
     const global = (

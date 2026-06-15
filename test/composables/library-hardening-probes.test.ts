@@ -3250,15 +3250,15 @@ describe("chaos — resetField with the form-level errors path ''", () => {
   })
 
   it("resetField('') targets the literal '' field, NOT the global bucket", async () => {
-    // Form-level (global) errors live at the root `[]`, set/cleared via
-    // setFormErrors / clearFormErrors. `''` is an ordinary literal
+    // Form-level (global) errors live at the root `[]`, set via setErrors
+    // and cleared via clearErrors([]). `''` is an ordinary literal
     // empty-key field, so resetField('') targets THAT field, never the
     // global bucket — and it is NOT a "reset everything" alias.
     const { app, api } = mountProfile()
     apps.push(app)
 
     api.setValue('name', 'Ada')
-    api.setFormErrors([{ message: 'capacity exceeded', code: 'api:capacity' }])
+    api.setErrors([{ message: 'capacity exceeded', code: 'api:capacity' }])
     await nextTick()
 
     expect(api.values.name).toBe('Ada')
@@ -3274,8 +3274,8 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     expect(api.values.name).toBe('Ada')
     expect(api.errors([])).toHaveLength(1)
 
-    // clearFormErrors() is the tool for the global bucket.
-    api.clearFormErrors()
+    // clearErrors([]) is the tool for the global bucket.
+    api.clearErrors([])
     expect(api.errors([])).toEqual([])
   })
 
@@ -4605,7 +4605,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
 })
 
 // =====================================================================
-// 11. ROUND 7 — records, tuples, Map/Set, setFieldErrors edges,
+// 11. ROUND 7 — records, tuples, Map/Set, setErrors edges,
 //     plugin install, concurrency race, DoS string.
 // =====================================================================
 
@@ -4863,8 +4863,8 @@ describe('chaos — Map / Set values at leaves', () => {
   })
 })
 
-// -------------------- 11.4 setFieldErrors corner cases --------------------
-describe('chaos — setFieldErrors at edge paths', () => {
+// -------------------- 11.4 setErrors corner cases --------------------
+describe('chaos — setErrors at edge paths', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4876,11 +4876,10 @@ describe('chaos — setFieldErrors at edge paths', () => {
 
     let threw = false
     try {
-      api.setFieldErrors([
+      api.setErrors([
         {
           path: ['no', 'such', 'path'],
           message: 'phantom error',
-          formKey: api.key,
           code: 'test:phantom',
         },
       ])
@@ -4896,24 +4895,25 @@ describe('chaos — setFieldErrors at edge paths', () => {
     expect(api.values.notify.channel).toBe('email')
   })
 
-  it('with mismatched formKey does not surface the error in api.errors', async () => {
+  it('stamps the form key on setErrors entries (input formKey is not a filter)', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['name'],
-        message: 'wrong-form error',
-        formKey: 'totally-different-form-key',
-        code: 'test:wrong-form',
+        message: 'server error',
+        code: 'test:server',
       },
     ])
     await nextTick()
 
-    // The formKey field is the targeted form's identifier. Errors with
-    // a non-matching formKey should be ignored — they're for a
-    // different form instance.
-    expect(api.errors('name')).toEqual([])
+    // setErrors does not filter by formKey — the entry surfaces at its
+    // path, stamped with THIS form's own key. The form owns whatever it
+    // is handed; there is no cross-form rejection.
+    const errs = api.errors('name') ?? []
+    expect(errs).toHaveLength(1)
+    expect(errs[0]?.formKey).toBe(api.key)
   })
 
   it('survives an error object with a circular reference in `cause`', async () => {
@@ -4923,21 +4923,19 @@ describe('chaos — setFieldErrors at edge paths', () => {
     type CircularError = {
       path: (string | number)[]
       message: string
-      formKey: string
       code: string
       cause?: { ref: unknown }
     }
     const cyclic: CircularError = {
       path: ['name'],
       message: 'circular',
-      formKey: api.key,
       code: 'test:circular',
     }
     cyclic.cause = { ref: cyclic } // ← cycle
 
     let threw = false
     try {
-      api.setFieldErrors([cyclic])
+      api.setErrors([cyclic])
       await nextTick()
     } catch {
       threw = true

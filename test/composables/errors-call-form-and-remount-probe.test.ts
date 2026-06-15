@@ -63,7 +63,7 @@ describe('errors call-form: empty-string vs no-arg divergence', () => {
     apps.push(app)
     const api = handle.api as ApiFor<typeof schema>
 
-    api.setFormErrors([{ message: 'form-level: bad payload', code: 'consumer:test' }])
+    api.setErrors([{ message: 'form-level: bad payload', code: 'consumer:test' }])
 
     const callGlobal = (
       api.errors as unknown as (p: readonly (string | number)[]) => readonly ValidationError[]
@@ -98,9 +98,7 @@ describe('errors call-form: empty-string vs no-arg divergence', () => {
     apps.push(app)
     const api = handle.api as ApiFor<typeof schema>
 
-    api.setFormErrors([
-      { message: 'form-level: bad payload', code: 'consumer:test', path: [''], formKey: api.key },
-    ])
+    api.setErrors([{ message: 'form-level: bad payload', code: 'consumer:test' }])
 
     const callNoArg = (api.errors as unknown as () => readonly ValidationError[])()
 

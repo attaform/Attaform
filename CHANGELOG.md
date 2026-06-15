@@ -2,7 +2,21 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **A multi-select checkbox group no longer announces every box as required.**
+  `aria-required` is now scoped to the control that owns it: a checkbox that
+  aggregates into a `z.array(...)` or `z.set(...)` model omits it, since no single
+  box is required on its own and an empty selection is valid, while a required
+  single boolean checkbox keeps it. Fixed on the client, in runtime SSR, and in
+  compiled SSR. (#381)
+
+- **autoAria attributes land on the bound control, never on a component wrapper's
+  root.** When `v-register` is placed on a custom component, `aria-required` and
+  the other managed aria attributes now follow the inner element re-bound with
+  `useRegister`, instead of stamping the component's presentational root and
+  leaving a role-less `<div>` carrying an invalid ARIA attribute. Fixed on the
+  client and the server, including compiled SSR. (#404)
 
 ## v0.24.0
 ### Added

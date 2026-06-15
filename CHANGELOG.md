@@ -30,6 +30,19 @@
   `form.errors`, `form.meta.errors`, the SSR serialise / hydrate round-trip, and
   undo / redo. Read it where you render the error and act on it. (#426)
 
+### Changed
+
+- **Form-level errors moved to the root `[]` path, and the empty-string key
+  `''` is now yours to use as an ordinary field.** Global errors (a root
+  `.refine()`, `setFormErrors`, a hydration failure) live at the
+  structurally-distinct root `[]` instead of the empty-string path `['']`. So
+  `form.errors('')` now reads a literal `''` field, and the new
+  `form.errors([])` reads only the global bucket, undiluted by field errors.
+  `form.errors()` and `form.meta.errors` stay the full aggregate, and a
+  `JSON.stringify(form.errors)` dump carries global errors under the `'[]'` key,
+  kept distinct from every field. The two never conflate: `''` is a plain field
+  key, `[]` is root form context. zod v3 and zod v4 both get it, both tested.
+
 ## v0.23.0
 ### Removed
 

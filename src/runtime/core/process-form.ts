@@ -511,10 +511,33 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           state.clearSchemaErrors()
         }
         await onSubmit(merged.data)
-        // Flip `submitted` true once the user callback resolved
-        // without throwing — independent of `submissionAttempts`.
-        // Generation guard: a `reset()` that fired during the await
-        // already zeroed the submission surface; honor the consumer's
+        // #438: a callback that left errors in the user-error layer did not
+        // succeed. The entry-clear above means any user error present now was
+        // set by this callback (the documented setErrors-and-return
+        // server-rejection path). Route it through the same failure path as a
+        // client validation failure rather than flipping `submitted`: focus
+        // the first error (generation-gated, like the validation-failure
+        // branch) and run `onError` with what the callback left behind. On the
+        // success-then-setErrors path schema errors were just cleared and
+        // validation passed, so `userErrors` is the complete current error set
+        // and doubles as the `onError` payload.
+        if (state.userErrors.size > 0) {
+          if (state.submissionGeneration.value === genAtEntry) {
+            applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
+          }
+          if (onError !== undefined) {
+            try {
+              await onError(Array.from(state.userErrors.values()).flat())
+            } catch (cause) {
+              throw new SubmitErrorHandlerError('User-provided onError threw', { cause })
+            }
+          }
+          return
+        }
+        // Flip `submitted` true once the user callback resolved without
+        // throwing AND left no errors behind — independent of
+        // `submissionAttempts`. Generation guard: a `reset()` that fired during
+        // the await already zeroed the submission surface; honor the consumer's
         // intent by leaving `submitted` at the post-reset `false`.
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitted.value = true

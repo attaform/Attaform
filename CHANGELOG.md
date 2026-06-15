@@ -18,6 +18,16 @@
   leaving a role-less `<div>` carrying an invalid ARIA attribute. Fixed on the
   client and the server, including compiled SSR. (#404)
 
+- **A submit callback that hands a server rejection to `setErrors` and returns
+  no longer reads as a success.** `form.meta.submitted` flips `true` only when
+  the callback resolves without throwing and leaves no errors set, so the
+  documented `setErrors(response.errors); return` pattern marks a failed submit
+  instead of rendering a success banner. The first error now auto-focuses on
+  submit, exactly as a schema failure does, and `onError` fires with what the
+  callback set. `wizard.handleSubmit` gains the same safeguard: a server
+  rejection keeps `wizard.done` at `false` on the final step and holds the
+  wizard on the current step instead of advancing past a rejected one. (#438)
+
 ## v0.24.0
 ### Added
 

@@ -437,7 +437,15 @@ export default [
     // (chore/rip-onchange): the unified entry's shared core chunk drops the
     // onChange seam (on-change.ts + dispatch + the silent thread). Measured at
     // 57.64 KB.
-    limit: '58 KB',
+    //
+    // Raised 58 → 59 KB on the submit-success-semantics branch (#438): the
+    // post-callback failure routing lands in the shared core chunk. process-
+    // form's handleSubmit gains a userErrors-non-empty check after onSubmit
+    // (focus + onError + early return so a setErrors-and-return callback no
+    // longer flips submitted), mirrored in use-wizard (collectCallbackErrors +
+    // focusFirstWizardError, gating done / step-advance on a clean callback).
+    // Measured at 58.08 KB.
+    limit: '59 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

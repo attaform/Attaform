@@ -46,6 +46,8 @@ const onSubmit = form.handleSubmit(async (values) => {
 
 `response.errors` is a `ValidationError[]`: each entry carries a `message`, an optional `path`, an optional `code`, and an optional `data` payload. An entry with a `path` lands at that field; an entry with no path lands at the form level, in the global `[]` bucket. `form.setErrors` stamps the form key on every entry as it lands, so errors stay isolated to this form.
 
+Returning after `setErrors` is a failed submit, treated exactly like a schema failure: `form.meta.submitted` stays `false`, focus pulls to the first error, and your `onError` callback fires with the errors you set. You do not need to throw to signal the rejection, and you do not need to call `form.focusFirstError()` by hand. Reserve a thrown error for the unexpected (a network drop, a 500), which lands on `form.meta.submitError` instead.
+
 ## `setErrors` and `clearErrors`
 
 `form.setErrors` owns the manual error layer, the errors you set by hand. Schema errors live in their own layer and merge in on read, so setting manual errors never disturbs validation. Its call forms mirror [`form.setValue`](/docs/writing-and-mutating/set-value):

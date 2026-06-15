@@ -561,8 +561,14 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     isFixedObjectAtPath(path) {
-      // Root form is a fixed object — a closed top-level key set.
-      if (path.length === 0) return true
+      // At the root, consult the root schema's own kind. A fixed-shape
+      // object has a closed top-level key set, so the proxy descends
+      // into its declared keys. A record / discriminated-union / array
+      // root is an open container, so the proxy falls back to live keys
+      // (record entries, the active variant's fields) there.
+      if (path.length === 0) {
+        return intro.kindOf(services.peelAllWrappers(rootSchema)) === 'object'
+      }
       const resolved = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
       // A path the schema doesn't declare is not a fixed object; the
       // proxy falls back to live keys there.

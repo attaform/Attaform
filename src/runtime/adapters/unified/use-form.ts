@@ -31,8 +31,6 @@
  * those subpaths are never rewritten and never load the other
  * adapter.
  */
-import type { z } from 'zod'
-import type { z as zV3 } from 'zod-v3'
 import { InvalidUseFormConfigError } from '../../core/errors'
 import { isZodV4SchemaShape } from '../../core/zod-shape'
 import type { ZodV4Internals } from './types-zod-major'
@@ -46,6 +44,8 @@ import type {
   UseFormConfiguration,
 } from '../../types/types-api'
 import type { DefaultValuesInput } from '../../types/types-core'
+import type { SupportedRootSchema as SupportedRootSchemaV4 } from '../zod-v4/types-root'
+import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/types-root'
 import type { V3FormOf, V3OutOf, V3ReadOf, V4FormOf, V4OutOf, V4ReadOf } from './types-projections'
 
 /**
@@ -69,7 +69,7 @@ import type { V3FormOf, V3OutOf, V3ReadOf, V4FormOf, V4OutOf, V4ReadOf } from '.
  * through to the v3 overload below. See `types-zod-major.ts`.
  */
 export function useForm<
-  Schema extends z.ZodObject<z.ZodRawShape> & ZodV4Internals,
+  Schema extends SupportedRootSchemaV4 & ZodV4Internals,
   K extends FormKey = FormKey,
 >(
   configuration: Omit<
@@ -101,7 +101,7 @@ export function useForm<
  * v3 schemas match this overload; v4 schemas hit the v4 overload
  * above first and never reach here.
  */
-export function useForm<Schema extends zV3.ZodObject<zV3.ZodRawShape>, K extends FormKey = FormKey>(
+export function useForm<Schema extends SupportedRootSchemaV3, K extends FormKey = FormKey>(
   configuration: Omit<
     UseFormConfiguration<
       V3FormOf<Schema>,

@@ -19,6 +19,7 @@ import { assertSupportedKinds } from './assert-supported'
 import { unwrapToDiscriminatedUnion } from './discriminator'
 import { zodIssuesToValidationErrors } from './errors'
 import { deriveDefault, getDefaultValuesFromZodSchema } from './default-values'
+import type { SupportedRootSchema } from './types-root'
 import {
   assertZodVersion,
   containsAsyncRefine,
@@ -240,7 +241,7 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
  * descent via `maxRecursionDepth`.
  */
 export function zodV4Adapter<
-  FormSchema extends z.ZodObject,
+  FormSchema extends SupportedRootSchema,
   Form extends z.input<FormSchema>,
   GetValueFormType extends z.output<FormSchema> = z.output<FormSchema>,
 >(
@@ -356,7 +357,7 @@ function runStrictGetDefaultsV4<Form>(
   maxRecursionDepth: number
 ): DefaultValuesResponse<Form> {
   const { data } = getDefaultValuesFromZodSchema<Form>({
-    schema: rootSchema as unknown as z.ZodObject,
+    schema: rootSchema,
     useDefaultSchemaValues: config.useDefaultSchemaValues,
     constraints: config.constraints,
     maxRecursionDepth,

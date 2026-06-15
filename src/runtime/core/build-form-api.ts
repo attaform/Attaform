@@ -1093,9 +1093,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // and its keys tracks the key set, so the view recomputes when an entry
   // joins or leaves. The frozen result is read-only; grow or shrink the
   // record through `setValue` at an entry path.
+  //
+  // Called with no argument (`form.record()`) it views the root, for a
+  // dictionary form whose schema root is itself a record. The typed
+  // surface only offers the no-arg form when the root is an open record.
   const EMPTY_FIELD_RECORD: Readonly<Record<string, unknown>> = Object.freeze({})
-  function record(path: string): Readonly<Record<string, unknown>> {
-    const { segments } = canonicalizePath(path)
+  function record(path?: string): Readonly<Record<string, unknown>> {
+    // No argument addresses the form root (a dictionary form whose schema
+    // root is a record). A bare `''` is the literal empty-key path, not
+    // the root, so the root case keys off `undefined`, not a default `''`.
+    const segments = path === undefined ? [] : canonicalizePath(path).segments
     const value = state.getValueAtPath(segments)
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       return EMPTY_FIELD_RECORD
@@ -1108,7 +1115,9 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     // write — `safeAssign` lands it as an own data property here.
     const out: Record<string, unknown> = {}
     for (const key of Object.keys(value as Record<string, unknown>)) {
-      safeAssign(out, key, callTerminal(`${path}.${key}`))
+      // Root (`segments` empty) addresses entries by bare key; a nested
+      // record prefixes the entry path with its own path.
+      safeAssign(out, key, callTerminal(segments.length === 0 ? key : `${path}.${key}`))
     }
     return Object.freeze(out)
   }

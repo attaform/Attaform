@@ -1,8 +1,17 @@
 # Changelog
 
 ## Unreleased
+### Added
 
-_No unreleased changes yet._
+- **A `z.record` schema can now be the whole form, not just a field inside
+  one.** `useForm({ schema: z.record(keySchema, valueSchema) })` is a
+  dictionary form: `form.values` is the map itself, `form.register('ada.tier')`
+  binds an entry field, and the new no-arg `form.record()` hands back the root
+  entry view, one `FieldState` per key. Iterate keys you only learn at run time,
+  a members table keyed by id, a settings editor, a tag map, without keeping a
+  parallel list of your own; a bare record root defaults to an empty map. zod v3
+  and zod v4 both get it, both tested, and object-rooted forms behave exactly as
+  before. (#393)
 
 ## v0.23.0
 ### Removed

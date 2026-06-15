@@ -60,7 +60,10 @@ export function deriveDefault(
 // internal callers (the v4 strict-mode flow still consults it).
 
 export type GetDefaultValuesOptions = {
-  schema: z.ZodObject
+  // `z.ZodType`, not `z.ZodObject`: the derivation walk is generic over
+  // the root kind (object, record, discriminated-union), and the
+  // algorithm bottoms out at `deriveDefault` which handles each.
+  schema: z.ZodType
   useDefaultSchemaValues: boolean
   constraints: unknown
   maxRecursionDepth: number

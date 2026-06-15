@@ -125,14 +125,15 @@ import { V3_INTROSPECTOR } from './walker-introspector'
 let warnedZodCodeMissing = false
 
 /**
- * Wrap a Zod v3 `ZodObject` schema in an `AbstractSchema` factory.
+ * Wrap a Zod v3 form-root schema (`ZodObject` or `ZodRecord`) in an
+ * `AbstractSchema` factory.
  *
  * Most consumers never call this directly — `useForm` from
  * `attaform/zod-v3` does the wrapping automatically. Reach
  * for it only when integrating with a custom code path that needs
  * the adapter outside of `useForm`.
  *
- * Throws if the underlying schema isn't a `ZodObject`.
+ * Throws if the underlying schema isn't a supported form root.
  */
 export function zodAdapter<
   FormSchema extends z.ZodSchema,
@@ -154,9 +155,15 @@ export function zodAdapter<
     stripZodEffects: true,
     stripZodRefinements: true,
   })
-  if (!isZodSchemaType(_strippedRoot, 'ZodObject')) {
+  if (
+    !isZodSchemaType(_strippedRoot, 'ZodObject') &&
+    !isZodSchemaType(_strippedRoot, 'ZodRecord')
+  ) {
     const name = getTypeName(_strippedRoot)
-    throw new Error(`ZodAdapter: expected ZodObject, got ${name}`)
+    throw new Error(
+      `Attaform: useForm schema root must be a ZodObject or ZodRecord (got ${name}). ` +
+        `Wrap other shapes under a key.`
+    )
   }
 
   // `options.maxRecursionDepth` caps `z.lazy(...)` descent in

@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Return method
   - label: Type
-    value: (path) => Readonly<Record<string, FieldState>>
+    value: (path?) => Readonly<Record<string, FieldState>>
     kind: code
   - label: Keyed
     value: 'Yes, by record key'
@@ -68,6 +68,20 @@ The existing entries keep their field states and their component instances; only
 
 `form.fields('scoresByTeam')` remains the single aggregated container for the whole record: one rolled-up FieldState whose `errors`, `valid`, and `touched` summarize every entry at once. Reach for the aggregate when you want one verdict for the record, and for `record` when you want an entry each.
 
+## The root record, `form.record()`
+
+When the schema root is itself a `z.record` (a [dictionary form](/docs/schemas/dictionary-forms)), call `form.record()` with no argument for the root entry view. It hands back the same keyed object of field states, one per entry, for the form's top-level map:
+
+```vue
+<template>
+  <div v-for="(member, id) in form.record()" :key="id">
+    <input v-register="form.register(`${id}.tier`)" type="number" />
+  </div>
+</template>
+```
+
+The no-argument form is available only on a record root; on a fixed-shape object root it is a compile error, the same way the path form requires a record path. See [Dictionary forms](/docs/schemas/dictionary-forms) for the whole-form story.
+
 ## `list` is the array counterpart
 
 For an array, reach for [`list`](/docs/reading-the-form/list), which returns an ordered FieldState array keyed by an allocated identity token that survives reorders. `record` and `list` split cleanly by path type: a record reads through `record`, an array through `list`, and each rejects the other at compile time.
@@ -75,6 +89,7 @@ For an array, reach for [`list`](/docs/reading-the-form/list), which returns an 
 ## Where to next
 
 - [`list`](/docs/reading-the-form/list): the array counterpart, one FieldState per element with reorder-stable keys.
+- [Dictionary forms](/docs/schemas/dictionary-forms): a `z.record` schema as the form root, iterated with the no-argument `form.record()`.
 - [Records & maps](/docs/schemas/records): declaring a `z.record(...)` schema and binding its entries.
 - [`fields`](/docs/reading-the-form/fields): the per-leaf FieldState every entry carries.
 - [`setValue`](/docs/writing-and-mutating/set-value): how an entry joins or leaves the record.

@@ -61,6 +61,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Discriminated unions', to: '/docs/schemas/discriminated-unions' },
       { title: 'Arrays & tuples', to: '/docs/schemas/arrays-and-tuples' },
       { title: 'Records & maps', to: '/docs/schemas/records' },
+      { title: 'Dictionary forms', to: '/docs/schemas/dictionary-forms' },
       { title: 'Nested objects', to: '/docs/schemas/nested-objects' },
       { title: 'AbstractSchema', to: '/docs/schemas/abstract-schema' },
     ],

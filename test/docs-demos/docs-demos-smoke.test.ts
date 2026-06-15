@@ -657,6 +657,28 @@ const entries: SmokeEntry[] = [
       expect(tokens).toContain('NewAthlete')
     },
   },
+  {
+    // Record-root form: the whole schema is a `z.record`. Type a new
+    // member id and click the "form.setValue(id, …)" button; the demo's
+    // `addMember` writes a new root key and a row joins the no-arg
+    // `form.record()` view.
+    slug: 'dictionary-forms',
+    gesture: async (root) => {
+      const addInput = root.querySelector<HTMLInputElement>('.actions input')
+      if (!addInput) throw new Error('add-member input not found')
+      await dispatchInput(addInput, 'mae')
+      const addButton = root.querySelector<HTMLButtonElement>('.actions button')
+      if (!addButton) throw new Error('add-member button not found')
+      addButton.click()
+      await nextTick()
+    },
+    assert: async (root) => {
+      const tokens = Array.from(root.querySelectorAll<HTMLElement>('.token')).map(
+        (t) => t.textContent ?? ''
+      )
+      expect(tokens).toContain('mae')
+    },
+  },
 
   // ─── PHASE 2: READING STATE ───────────────────────────────────
   {

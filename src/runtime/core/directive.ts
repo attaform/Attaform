@@ -1187,8 +1187,11 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
       INTERACTIVE_TAG_NAMES.has(realVnode.type.toUpperCase())
     // The compile-time componentBridgeTransform stamps this modifier on a
     // component-host v-register, the only signal available under compiled
-    // SSR's null vnode.
-    const isComponentHostModifier = binding.modifiers[SSR_COMPONENT_HOST_MODIFIER] === true
+    // SSR's null vnode. `modifiers` is typed as always-present, but the
+    // compiled SSR helper (and synthetic bindings) can omit it, so treat it
+    // as optional the same way the vnode above is.
+    const modifiers = binding.modifiers as Record<string, boolean> | undefined
+    const isComponentHostModifier = modifiers?.[SSR_COMPONENT_HOST_MODIFIER] === true
     const suppressHostAria =
       isComponentHostModifier || (realVnode !== null && !isInteractiveElementVnode)
     const ariaProps = suppressHostAria ? undefined : getSSRAriaProps(rv, realVnode)

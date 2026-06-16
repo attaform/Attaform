@@ -64,6 +64,13 @@ import { walkUnspecified } from './unset-walker'
 import { mergeSparseHydration } from './merge-hydration'
 
 /**
+ * A value that holds descendant leaves — an array or a plain object. The dirty
+ * machinery treats anything else (primitive, `undefined`, `null`) as a leaf, so
+ * replacing a container with one of those drops a whole subtree at once.
+ */
+const isContainer = (value: unknown): boolean => Array.isArray(value) || isPlainRecord(value)
+
+/**
  * Per-form closure state — the single store owned by each `useForm` call.
  * Bundles the form value, the summary record, element references, field
  * state, the meta tracker, and the error stores under one keyed-by-
@@ -642,6 +649,15 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * no longer see the shape change.
    */
   hasStructuralChangeUnder(path: Path): boolean
+  /**
+   * Whether a baseline-present container under `path` was replaced wholesale by
+   * a non-container (e.g. `setValue('profile', undefined)`) and is still absent.
+   * The other half of removal-driven `dirty`: such a subtree's leaves vanish
+   * from the live value, so neither the present-leaf walk nor the array tracker
+   * can see the loss. Self-filters by current liveness, so a refilled path stops
+   * counting.
+   */
+  hasRemovedSubtreeUnder(path: Path): boolean
   getFieldRecord(path: Path): FieldRecord | undefined
   getOriginalAtPath(path: Path): unknown
   /**
@@ -1334,6 +1350,18 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // picking up exactly the change that prompted the originals
   // mutation.
   const originals = reactive(new Map<PathKey, OriginalsRecord>()) as Map<PathKey, OriginalsRecord>
+
+  // Paths where a baseline-present container (object or array) was replaced
+  // wholesale by a non-container — `setValue('profile', undefined)` and the
+  // like. Every leaf under such a path vanishes from the live value at once, so
+  // the present-leaf dirty walk can't see the loss and the array identity
+  // tracker (which only follows array -> array writes) doesn't apply; this set
+  // is how a container removal still dirties the form (#420, the non-array
+  // sibling of an array shrink). Reactivity rides on the form-value mutation
+  // that always accompanies a write here, so a plain Set is enough — and the
+  // membership read self-filters by current liveness, so it needs no reactive
+  // collection deps of its own. Cleared on `reset()`.
+  const removedSubtrees = new Set<PathKey>()
 
   // Blank bookkeeping. The reactive Set tracks paths whose
   // displayed state should be EMPTY even though storage holds a real
@@ -2353,6 +2381,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // `currentValue` here, while it still reflects the array the operation
     // acted on. Only the `arrayOp` branch reads it.
     const oldArrayLength = Array.isArray(currentValue) ? currentValue.length : 0
+    // For a wholesale array replacement (no `arrayOp` to follow), anchor the
+    // identity baseline at the PRE-write order before `applyTargetedWrite`
+    // resizes the array in place. On an array's first track this is the only
+    // chance to capture its baseline length: realigning only afterwards (below)
+    // would anchor the already-resized order, so a shrink — an element removal —
+    // on a never-rendered array would read structurally pristine and fail to
+    // dirty the form (#420). The post-write realign then advances the current
+    // order while the baseline stays put, so the length delta surfaces through
+    // `hasStructuralChangeUnder`. Idempotent once the array is tracked, and it
+    // mirrors what the `arrayOp` branch already gets for free by reconstructing
+    // the pre-op length before replaying its permutation.
+    if (meta?.arrayOp === undefined && Array.isArray(value) && Array.isArray(currentValue)) {
+      arrayIdentity.realign(path)
+    }
     applyTargetedWrite(path, completedValue, meta)
     // Variant-memory bookkeeping for array structural mutations. The
     // field-array helpers tag each op with an `arrayOp` describing
@@ -2377,6 +2419,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {
       variantMemory.clearUnderPath(path)
       arrayIdentity.realign(path)
+    } else if (isContainer(currentValue) && !isContainer(value)) {
+      // A baseline-present container dropped to a non-container: record the path
+      // so the container dirty check still fires for the vanished subtree (see
+      // `removedSubtrees`). Gated on real baseline presence so removing an
+      // optional section that was empty at construction — added, then cleared
+      // again — lands back at pristine rather than reading dirty.
+      if (subtreeHadRealBaseline(path, currentValue)) {
+        removedSubtrees.add(canonicalizePath(path).key)
+      }
     }
     const effectiveModeAfterWrite = meta?.instance?.validateOn ?? fieldValidationMode
     if (effectiveModeAfterWrite === 'change') {
@@ -3481,6 +3532,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // reorder or removal made before this reset no longer reads as a
     // structural change once the form is back at its baseline.
     arrayIdentity.rebaselineAll()
+    // The post-reset value is the new baseline, so any subtree dropped before
+    // this reset is no longer a removal to flag.
+    removedSubtrees.clear()
     // Rebuild originals from the new baseline. The set becomes the
     // post-reset pristine reference — a subsequent dirty comparison
     // returns false until the consumer mutates again.
@@ -3788,6 +3842,39 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return arrayIdentity.hasStructuralChangeUnder(path)
   }
 
+  // Did the subtree at `prefix` (its pre-write value in `removedValue`) hold any
+  // leaf that was part of the construction / reset baseline — a real recorded
+  // value, not an absence baseline seeded for a runtime-added path? Bounds the
+  // check to the subtree being dropped by enumerating that subtree's own leaves,
+  // so it only walks what `setValue` is removing, on the rare container ->
+  // non-container write.
+  function subtreeHadRealBaseline(prefix: Path, removedValue: unknown): boolean {
+    let had = false
+    diffAndApply(removedValue, undefined, prefix, (patch) => {
+      if (had || patch.kind !== 'removed') return
+      const record = originals.get(canonicalizePath(patch.path).key)
+      if (record?.value !== undefined) had = true
+    })
+    return had
+  }
+
+  function hasRemovedSubtreeUnder(prefix: Path): boolean {
+    if (removedSubtrees.size === 0) return false
+    for (const key of removedSubtrees) {
+      const segments = segmentsForPathKey(key)
+      if (segments === null) continue
+      if (!isPathPrefix(prefix, segments)) continue
+      // Skip a recorded path that a later write refilled with a container: the
+      // present-leaf walk then judges it (an identical refill reads pristine, a
+      // changed one dirties), so only a still-absent subtree counts as removed
+      // here. Read raw — the accompanying write already fired the dirty walk's
+      // own dep on this path, so no reactive tracking is needed to re-run.
+      if (isContainer(getAtPath(toRaw(form.value), segments))) continue
+      return true
+    }
+    return false
+  }
+
   function getFieldRecord(path: Path): FieldRecord | undefined {
     const { key } = canonicalizePath(path)
     return fields.get(key)
@@ -3914,6 +4001,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     isPristineAtPath,
     isPristineAtPathByKey,
     hasStructuralChangeUnder,
+    hasRemovedSubtreeUnder,
     getFieldRecord,
     getOriginalAtPath,
     getFirstErrorElement,

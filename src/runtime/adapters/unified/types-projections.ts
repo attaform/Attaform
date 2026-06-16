@@ -26,11 +26,11 @@ import type { GenericForm } from '../../types/types-core'
  * is the reflexive escape arm `AcceptableDefaults` adds to the
  * `defaultValues` slot so a generic form wrapper forwarding `z.input<S>`
  * type-checks under a free `S` (#422). It must stay syntactically identical
- * to what the wrapper forwards: wrapping it in a conditional (e.g. `extends
- * GenericForm ? … : never`) makes it a deferred conditional that no longer
- * matches the forwarded value under a generic. Wrong-major schemas can't
- * reach the slot — they are rejected at the overload's `schema` constraint
- * first — so the raw input never widens the slot for the wrong major.
+ * to what the wrapper forwards: wrapping it in a conditional makes it a
+ * deferred conditional that no longer matches the forwarded value under a
+ * generic. Wrong-major schemas can't actually bind the slot — they are
+ * rejected at the overload's `schema` constraint — so the raw input never
+ * widens the slot for the wrong major.
  */
 export type V4SchemaInput<S extends SupportedRootSchemaV4> = z.input<S>
 export type V3SchemaInput<S extends SupportedRootSchemaV3> = zV3.input<S>

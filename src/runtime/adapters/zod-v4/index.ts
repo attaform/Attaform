@@ -14,13 +14,7 @@ import type {
   UseFormConfiguration,
   SchemaFactoryOptions,
 } from '../../types/types-api'
-import type {
-  AcceptableDefaults,
-  DefaultValuesInput,
-  FlatPath,
-  GenericForm,
-  NestedType,
-} from '../../types/types-core'
+import type { AcceptableDefaults, FlatPath, GenericForm, NestedType } from '../../types/types-core'
 import { zodV4Adapter } from './adapter'
 import type { StorageShape } from './types-storage-shape'
 import type { SupportedRootSchema } from './types-root'
@@ -118,7 +112,11 @@ export function useForm<Schema extends SupportedRootSchema, K extends FormKey = 
       FormOf<Schema>,
       OutOf<Schema>,
       AbstractSchema<FormOf<Schema>, OutOf<Schema>>,
-      DefaultValuesInput<FormOf<Schema>>,
+      // `defaultValues` is Omitted below and re-supplied via the
+      // `AcceptableDefaults` intersection, so this `DefaultValues` slot is
+      // inert. `never` avoids re-instantiating the deep `DefaultValuesInput`
+      // cascade here (a TS2589 margin in the bundled `.d.ts`).
+      never,
       K
     >,
     'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'

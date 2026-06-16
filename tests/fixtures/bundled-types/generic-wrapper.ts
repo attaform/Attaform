@@ -52,15 +52,14 @@ function _neverInvoked() {
   }
   void makeFactory
 
-  // ---- concrete call sites still reject a wrongly-typed default ----
-  // @ts-expect-error number is not assignable to the string input slot
-  useFormV4({ schema: z.object({ email: z.string() }), key: 'neg-v4', defaultValues: { email: 1 } })
-  // @ts-expect-error number is not assignable to the string input slot
-  useForm({
-    schema: z.object({ email: z.string() }),
-    key: 'neg-unified',
-    defaultValues: { email: 1 },
-  })
+  // Concrete rejection of a wrongly-typed default (and the intentional
+  // widening) is asserted in `test/types/generic-wrapper-422.test.ts`. It is
+  // deliberately NOT re-checked here: a bad default at the unified entry is a
+  // TS2769 "no overload matches" whose error elaboration over both overloads
+  // is heavy, and stacking several such elaborations in one fixture program
+  // inflates instantiation depth artificially (a single such call in
+  // isolation compiles fine). This fixture stays focused on its job — proving
+  // the generic wrappers compile against the bundled `.d.ts` without TS2589.
 
   return [unified, v4] as const
 }

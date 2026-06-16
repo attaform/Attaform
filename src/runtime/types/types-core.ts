@@ -668,9 +668,22 @@ export type DefaultValuesInput<T> = T extends string
  * stays a deferred conditional cascade that is not provably assignable,
  * tripping TS2589 / TS2769. No runtime effect; the slot only governs what
  * the type checker accepts.
+ *
+ * `DefaultValuesInput<Form>` is computed ONCE — passed as the `DVI` type
+ * argument to `AcceptableDefaultsOf` and referenced across the value and
+ * factory arms — rather than inlined in each arm, which would
+ * re-instantiate the (deep) cascade three times per overload and, across
+ * the unified entry's two overloads at a concrete call site, tip the
+ * bundled `.d.ts` into TS2589. The arms stay a DIRECT union (not a
+ * conditional over the cascade) so the `SchemaInput` arm remains
+ * reflexively matchable under a generic.
  */
-export type AcceptableDefaults<Form, SchemaInput> =
-  | DefaultValuesInput<Form>
+export type AcceptableDefaults<Form, SchemaInput> = AcceptableDefaultsOf<
+  DefaultValuesInput<Form>,
+  SchemaInput
+>
+type AcceptableDefaultsOf<DVI, SchemaInput> =
+  | DVI
   | SchemaInput
-  | (() => DefaultValuesInput<Form> | SchemaInput)
-  | (() => Promise<DefaultValuesInput<Form> | SchemaInput>)
+  | (() => DVI | SchemaInput)
+  | (() => Promise<DVI | SchemaInput>)

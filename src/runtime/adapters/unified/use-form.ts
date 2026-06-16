@@ -43,7 +43,7 @@ import type {
   UseFormReturnType,
   UseFormConfiguration,
 } from '../../types/types-api'
-import type { AcceptableDefaults, DefaultValuesInput } from '../../types/types-core'
+import type { AcceptableDefaults } from '../../types/types-core'
 import type { SupportedRootSchema as SupportedRootSchemaV4 } from '../zod-v4/types-root'
 import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/types-root'
 import type {
@@ -86,7 +86,13 @@ export function useForm<
       V4FormOf<Schema>,
       V4OutOf<Schema>,
       AbstractSchema<V4FormOf<Schema>, V4OutOf<Schema>>,
-      DefaultValuesInput<V4FormOf<Schema>>,
+      // `defaultValues` is Omitted below and re-supplied via the
+      // `AcceptableDefaults` intersection, so this `DefaultValues` slot is
+      // inert. `never` keeps it from re-instantiating the deep
+      // `DefaultValuesInput` cascade here — that redundant instantiation,
+      // across both overloads at a concrete call site, tips the bundled
+      // `.d.ts` into TS2589.
+      never,
       K
     >,
     'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
@@ -126,7 +132,8 @@ export function useForm<Schema extends SupportedRootSchemaV3, K extends FormKey 
       V3FormOf<Schema>,
       V3OutOf<Schema>,
       AbstractSchema<V3FormOf<Schema>, V3OutOf<Schema>>,
-      DefaultValuesInput<V3FormOf<Schema>>,
+      // Inert `DefaultValues` slot — see the v4 overload above.
+      never,
       K
     >,
     'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'

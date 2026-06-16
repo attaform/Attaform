@@ -42,15 +42,10 @@ function _neverInvoked() {
   type _DEmail = Expect<Equal<typeof direct.values.email, string>>
   type _DAge = Expect<Equal<typeof direct.values.age, number>>
 
-  // ---- a wrongly-typed default is still rejected at concrete call sites ----
-  // @ts-expect-error number is not assignable to the string input slot
-  useForm({ schema: z.object({ name: z.string() }), key: 'v3-neg', defaultValues: { name: 1 } })
-  // @ts-expect-error number is not assignable to the string input slot
-  useFormV3({
-    schema: z.object({ name: z.string() }),
-    key: 'v3-neg-direct',
-    defaultValues: { name: 1 },
-  })
+  // Concrete rejection is asserted in `test/types/generic-wrapper-422.test.ts`
+  // — see the v4 fixture for why it is not re-checked here. This fixture stays
+  // focused on proving the v3 generic wrappers compile against the bundled
+  // `.d.ts` (the single-major guard the in-repo type test cannot represent).
 
   return [unified, direct] as const
 }

@@ -165,3 +165,75 @@ describe('componentBridgeTransform — E1 source-location fidelity', () => {
     expect(valueProp.loc.start.line).toBeGreaterThan(0)
   })
 })
+
+describe('componentBridgeTransform — slotted options on a component host (#394)', () => {
+  // A `v-register` on a component wrapper (e.g. a styled `<CustomSelect>`
+  // whose template is `<select><slot/></select>`) projects its `<option>`s
+  // as parent-authored slot content. Those options are still present in the
+  // host's `node.children` at transform time, so they must be marked with
+  // `:selected` exactly like the inline-`<select>` path — otherwise the SSR
+  // HTML omits the selected option and the browser flashes the first option
+  // until hydration corrects it.
+  it('marks a slotted option under a component host (the bug: was 0)', () => {
+    const code = compileWithTransform(
+      `<CustomSelect v-register="form.register('role')"><option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option></CustomSelect>`
+    )
+    expect(countSelectedBindings(code)).toBe(1)
+  })
+
+  it('marks options projected through an explicit <template #default>', () => {
+    const code = compileWithTransform(
+      `<CustomSelect v-register="form.register('role')"><template #default><option value="a">A</option></template></CustomSelect>`
+    )
+    expect(countSelectedBindings(code)).toBe(1)
+  })
+
+  it('marks options inside a scoped slot', () => {
+    const code = compileWithTransform(
+      `<CustomSelect v-register="form.register('role')"><template #default="{ x }"><option value="a">{{ x }}</option></template></CustomSelect>`
+    )
+    expect(countSelectedBindings(code)).toBe(1)
+  })
+
+  it('marks a slotted option under a kebab-case custom-element host', () => {
+    const code = compileWithTransform(
+      `<my-select v-register="form.register('role')"><option value="a">A</option></my-select>`
+    )
+    expect(countSelectedBindings(code)).toBe(1)
+  })
+
+  it('descends through a wrapper element in the slot to reach the option', () => {
+    const code = compileWithTransform(
+      `<CustomSelect v-register="form.register('role')"><div><option value="a">A</option></div></CustomSelect>`
+    )
+    expect(countSelectedBindings(code)).toBe(1)
+  })
+
+  it('falls back to static text content for a value-less slotted option', () => {
+    const code = compileWithTransform(
+      `<CustomSelect v-register="form.register('role')"><option>apple</option></CustomSelect>`
+    )
+    expect(countSelectedBindings(code)).toBe(1)
+    expect(code).toContain('"apple"')
+  })
+
+  it('marks every member option on a multi-select wrapper (membership form, no host :value)', () => {
+    // `multiple` on the host routes through the same machinery as a native
+    // `<select multiple>`: per-option `:selected` carries initial state via
+    // the `findIndex` membership branch, and the host `:value` injection is
+    // suppressed (patching `select.value` on a multi-select would clobber it).
+    const code = compileWithTransform(
+      `<CustomSelect v-register="form.register('roles')" multiple><option value="a">A</option><option value="b">B</option></CustomSelect>`
+    )
+    expect(countSelectedBindings(code)).toBe(2)
+    expect(code).toContain('findIndex')
+    expect(code).not.toMatch(/\bvalue:\s*[^,}\n]*displayValue/)
+  })
+
+  it('leaves the inline <select> path at exactly one binding (no double-injection)', () => {
+    const code = compileWithTransform(
+      `<select v-register="form.register('role')"><option value="a">A</option></select>`
+    )
+    expect(countSelectedBindings(code)).toBe(1)
+  })
+})

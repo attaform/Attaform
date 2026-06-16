@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.24.2
 ### Fixed
 
 - **A `<select>` you wrap in your own component now keeps its server-rendered

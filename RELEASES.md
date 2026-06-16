@@ -1,5 +1,20 @@
 # Releases
 
+## v0.24.2 — 2026-06-15
+
+## What's Changed
+* chore(size): tree-shaking tripwires proving useForm drops useWizard by @ozzyfromspace in https://github.com/attaform/Attaform/pull/442
+* fix(types): let generic useForm wrappers forward defaultValues (#422) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/443
+* fix(dirty): detect removal of seeded array elements and container subtrees (#420) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/444
+* fix(ssr): mark slotted <option>s on a v-register component host (#394) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/445
+* test(ssr): cross-render-path parity matrix for v-register (#378) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/446
+* docs(changelog): note the fixes landed since v0.24.1 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/447
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.1...v0.24.2
+
+---
+
 ## v0.24.1 — 2026-06-15
 
 ## What's Changed

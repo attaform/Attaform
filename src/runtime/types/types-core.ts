@@ -643,3 +643,47 @@ export type DefaultValuesInput<T> = T extends string
                   : T extends object
                     ? { [K in keyof T]?: DefaultValuesInput<T[K]> } | Unset
                     : T
+
+/**
+ * The type accepted at a `useForm` overload's `defaultValues` slot.
+ *
+ * `Form` is the schema's input projection; `SchemaInput` is the schema's
+ * own input type (`z.input<Schema>`). A `defaultValues` value is one of:
+ *  - `DefaultValuesInput<Form>` — the partial, `Unset`-widened in-progress
+ *    shape. `defaultValues` deliberately accepts a form mid-completion: a
+ *    leaf may be blank or hold a not-yet-valid value (a `z.email()` field
+ *    accepts any `string`, not only valid emails). Sharp, fully-validated
+ *    types are produced only at `handleSubmit`.
+ *  - `SchemaInput` — the schema's full input shape.
+ *  - a sync or async factory returning either of the above.
+ *
+ * `SchemaInput` is REDUNDANT at a concrete call site: a schema's input is
+ * always assignable to its own `DefaultValuesInput`, so this arm adds
+ * nothing a concrete caller could not already pass and does not weaken the
+ * per-field checking (`number` is still rejected where `string` is
+ * expected). It earns its place for the generic form-wrapper case (#422):
+ * when the schema is a free type parameter `S`, a forwarded `z.input<S>`
+ * is REFLEXIVELY assignable to the `SchemaInput` arm — a relation TS can
+ * decide even under a generic — whereas `DefaultValuesInput<Form>` alone
+ * stays a deferred conditional cascade that is not provably assignable,
+ * tripping TS2589 / TS2769. No runtime effect; the slot only governs what
+ * the type checker accepts.
+ *
+ * `DefaultValuesInput<Form>` is computed ONCE — passed as the `DVI` type
+ * argument to `AcceptableDefaultsOf` and referenced across the value and
+ * factory arms — rather than inlined in each arm, which would
+ * re-instantiate the (deep) cascade three times per overload and, across
+ * the unified entry's two overloads at a concrete call site, tip the
+ * bundled `.d.ts` into TS2589. The arms stay a DIRECT union (not a
+ * conditional over the cascade) so the `SchemaInput` arm remains
+ * reflexively matchable under a generic.
+ */
+export type AcceptableDefaults<Form, SchemaInput> = AcceptableDefaultsOf<
+  DefaultValuesInput<Form>,
+  SchemaInput
+>
+type AcceptableDefaultsOf<DVI, SchemaInput> =
+  | DVI
+  | SchemaInput
+  | (() => DVI | SchemaInput)
+  | (() => Promise<DVI | SchemaInput>)

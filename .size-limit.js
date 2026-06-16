@@ -562,7 +562,17 @@ export default [
     // Lowered 54 → 52 KB on the form.onChange removal branch
     // (chore/rip-onchange): same shared core chunk drops the onChange seam
     // (on-change.ts + dispatch + the silent thread). Measured at 51.56 KB.
-    limit: '52 KB',
+    //
+    // Raised 52 → 53 KB on the meta.dirty removal-detection branch (#420):
+    // the shared core chunk gains the removal-dirty machinery in
+    // create-form-store.ts — the pre-write identity-baseline realign for a
+    // wholesale array shrink, plus the removedSubtrees set + isContainer /
+    // subtreeHadRealBaseline / hasRemovedSubtreeUnder helpers and the reset()
+    // clear for a container -> non-container drop — and field-state-api.ts
+    // consults hasRemovedSubtreeUnder in the container dirty rollup. zod-v4.mjs,
+    // the tightest full entry (zod-v3 still has ~0.5 KB headroom), had spent its
+    // and crossed 52. Measured at 52.12 KB.
+    limit: '53 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

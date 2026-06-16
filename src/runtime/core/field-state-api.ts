@@ -497,6 +497,15 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     pristine = false
     dirty = true
   }
+  // A baseline-present object or array replaced wholesale by a non-container
+  // (e.g. `setValue('profile', undefined)`) drops every leaf under it from the
+  // live value at once, so the positional walk above never visits the vanished
+  // leaves and the array tracker (array -> array only) can't see it either. Ask
+  // the store whether such a subtree under this container is still absent.
+  if (!dirty && state.hasRemovedSubtreeUnder(segments)) {
+    pristine = false
+    dirty = true
+  }
   // Aggregate errors at this prefix. Drives `form.fields(p).errors`,
   // `form.errors(p)`, and `form.meta.errors` through one helper so
   // the three surfaces read identically. Active-variant filter

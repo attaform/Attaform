@@ -8,7 +8,7 @@ import type {
   UseFormConfiguration,
   ValidateOnConfig,
 } from '../types/types-api'
-import type { DefaultValuesInput, GenericForm } from '../types/types-core'
+import type { AcceptableDefaults, DefaultValuesInput, GenericForm } from '../types/types-core'
 import type { UnwrapZodRoot } from '../adapters/zod-v3/types-zod-adapter'
 import type { SupportedRootSchema } from '../adapters/zod-v3/types-root'
 import type { StorageShape } from '../adapters/zod-v3/types-storage-shape'
@@ -52,13 +52,21 @@ export function useForm<
   GetValueFormType extends GenericForm = Form,
   K extends FormKey = FormKey,
 >(
-  configuration: UseFormConfiguration<
-    Form,
-    GetValueFormType,
-    AbstractSchema<Form, GetValueFormType>,
-    DefaultValuesInput<Form>,
-    K
-  >
+  configuration: Omit<
+    UseFormConfiguration<
+      Form,
+      GetValueFormType,
+      AbstractSchema<Form, GetValueFormType>,
+      DefaultValuesInput<Form>,
+      K
+    >,
+    'defaultValues'
+  > & {
+    // #422: `Form` itself is the reflexive escape arm — a generic wrapper
+    // over a custom adapter forwards a `Form`-typed default, so the slot
+    // accepts `Form` without tripping TS2589 / TS2769. See `AcceptableDefaults`.
+    defaultValues?: AcceptableDefaults<Form, Form>
+  }
 ): UseFormReturnType<Form, GetValueFormType, Form, K>
 /**
  * Create a form bound to a Zod v3 `ZodObject` schema.
@@ -93,8 +101,15 @@ export function useForm<Schema extends SupportedRootSchema, K extends FormKey = 
       DefaultValuesInput<FormOf<Schema>>,
       K
     >,
-    'schema' | 'validateOn' | 'debounceMs'
-  > & { schema: Schema } & ValidateOnConfig
+    'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
+  > & {
+    schema: Schema
+    // #422 — see the abstract-schema overload above for the escape-arm
+    // rationale. The arm is the schema's raw input (`z.input<Schema>`, NOT
+    // routed through `UnwrapZodRoot` or a conditional, so it stays identical
+    // to a wrapper's forwarded `z.input<S>` and matches reflexively).
+    defaultValues?: AcceptableDefaults<FormOf<Schema>, z.input<Schema>>
+  } & ValidateOnConfig
 ): UseFormReturnType<FormOf<Schema>, OutOf<Schema>, ReadOf<Schema>, K>
 // Untyped impl signature. The two overloads above are the public typed
 // contract; this signature exists only so the body has somewhere to

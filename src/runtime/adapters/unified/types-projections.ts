@@ -20,6 +20,21 @@ import type { SupportedRootSchema as SupportedRootSchemaV4 } from '../zod-v4/typ
 import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/types-root'
 import type { GenericForm } from '../../types/types-core'
 
+/**
+ * The schema's own input type, exactly as a consumer would reference it
+ * (`z.input<S>`) — NOT routed through `GenericForm` / `UnwrapZodRoot`. This
+ * is the reflexive escape arm `AcceptableDefaults` adds to the
+ * `defaultValues` slot so a generic form wrapper forwarding `z.input<S>`
+ * type-checks under a free `S` (#422). It must stay syntactically identical
+ * to what the wrapper forwards: wrapping it in a conditional (e.g. `extends
+ * GenericForm ? … : never`) makes it a deferred conditional that no longer
+ * matches the forwarded value under a generic. Wrong-major schemas can't
+ * reach the slot — they are rejected at the overload's `schema` constraint
+ * first — so the raw input never widens the slot for the wrong major.
+ */
+export type V4SchemaInput<S extends SupportedRootSchemaV4> = z.input<S>
+export type V3SchemaInput<S extends SupportedRootSchemaV3> = zV3.input<S>
+
 export type V4FormOf<S extends SupportedRootSchemaV4> =
   z.input<S> extends GenericForm ? z.input<S> : never
 export type V4OutOf<S extends SupportedRootSchemaV4> =

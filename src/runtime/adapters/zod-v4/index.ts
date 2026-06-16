@@ -14,7 +14,13 @@ import type {
   UseFormConfiguration,
   SchemaFactoryOptions,
 } from '../../types/types-api'
-import type { DefaultValuesInput, FlatPath, GenericForm, NestedType } from '../../types/types-core'
+import type {
+  AcceptableDefaults,
+  DefaultValuesInput,
+  FlatPath,
+  GenericForm,
+  NestedType,
+} from '../../types/types-core'
 import { zodV4Adapter } from './adapter'
 import type { StorageShape } from './types-storage-shape'
 import type { SupportedRootSchema } from './types-root'
@@ -115,8 +121,17 @@ export function useForm<Schema extends SupportedRootSchema, K extends FormKey = 
       DefaultValuesInput<FormOf<Schema>>,
       K
     >,
-    'schema' | 'validateOn' | 'debounceMs'
-  > & { schema: Schema } & ValidateOnConfig
+    'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
+  > & {
+    schema: Schema
+    // #422: the `AcceptableDefaults` slot adds the schema's own input
+    // (`z.input<Schema>`, raw — NOT the `FormOf` conditional, which would no
+    // longer match a forwarded value under a generic) as a reflexive escape
+    // arm so a generic form wrapper forwarding `defaultValues` does not trip
+    // TS2589 / TS2769. Redundant at concrete call sites; see
+    // `AcceptableDefaults`.
+    defaultValues?: AcceptableDefaults<FormOf<Schema>, z.input<Schema>>
+  } & ValidateOnConfig
 ): UseFormReturnType<FormOf<Schema>, OutOf<Schema>, ReadOf<Schema>, K> {
   // Foot-gun guard: catches `useForm(z.object({...}))` (raw schema as
   // the first arg — its `.schema` field is undefined), `useForm()` (no

@@ -1,8 +1,32 @@
 # Changelog
 
 ## Unreleased
+### Fixed
 
-_No unreleased changes yet._
+- **A `<select>` you wrap in your own component now keeps its server-rendered
+  selection.** Placing `v-register` on a styled wrapper whose template is
+  `<select><slot /></select>`, with the `<option>`s projected through the slot,
+  used to drop the chosen option's `selected` from the server HTML, so the first
+  option flashed in until hydration corrected it. The wrapper's slotted options
+  are now marked exactly like an inline `<select>`, at any slot depth or shape,
+  for single and multiple selection, on both zod v3 and zod v4. (#394)
+
+- **`form.meta.dirty` now notices a removal, not just an addition.** Un-checking
+  a pre-checked box in an array-bound checkbox group, removing a seeded array
+  element, or clearing an optional subtree with `setValue('profile', undefined)`
+  now flips `meta.dirty` to `true`, so a Save button bound to
+  `:disabled="!form.meta.dirty"` enables after a revoke the same way it does
+  after a grant. The field value was always right; only the structural dirty
+  verdict was asymmetric. Both zod v3 and zod v4. (#420)
+
+- **A generic helper around `useForm` can now forward `defaultValues` without a
+  type error.** Sharing form plumbing through a wrapper that is generic over its
+  schema, then passing a schema-derived `defaultValues` straight through, used to
+  trip a type error (and a depth blow-up on zod v3). The `defaultValues` slot now
+  accepts the schema's own input reflexively, so the wrapper compiles while
+  concrete call sites keep their exact per-field checking. A types-only change
+  that brings zod v3 to full parity with zod v4 across the `attaform/zod`,
+  `attaform/zod-v4`, and `attaform/zod-v3` entries. (#422)
 
 ## v0.24.1
 ### Fixed

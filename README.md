@@ -16,7 +16,7 @@ A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod 
 >
 > Because Vue and Nuxt devs deserve nice things, too.
 
-**Try it live.** Tweak a schema, edit the template, and watch the form rebind in the browser at [attaform.com/demos](https://www.attaform.com/demos). No install needed.
+**Try it live.** Tweak a schema, edit the template, and watch the form rebind in the browser at [attaform.dev/demos](https://attaform.dev/demos). No install needed.
 
 ## Installation
 
@@ -78,7 +78,7 @@ Attaform pairs well with `noUncheckedIndexedAccess: true`:
 
 It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 sets this for you.
 
-> **Try it live.** Skip the install and tweak a schema in your browser at [attaform.com/demos](https://www.attaform.com/demos).
+> **Try it live.** Skip the install and tweak a schema in your browser at [attaform.dev/demos](https://attaform.dev/demos).
 
 ## Quick start
 
@@ -121,9 +121,9 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 - **`form.history`**: consolidated undo/redo namespace (`undo()`, `redo()`, `clear()`, `canUndo`, `canRedo`, `size`).
 - **`form.register(path)`**: typed two-way binding. Pair with `v-register` on `<input>` / `<textarea>` / `<select>`.
 - **`form.handleSubmit(onValid, onInvalid?)`**: runs validation, dispatches. The valid callback receives the strict Zod-inferred type.
-- **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers: see [Entry points](https://www.attaform.com/docs/reference/entry-points).
+- **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers: see [Entry points](https://attaform.dev/docs/reference/entry-points).
 
-> **Try it live.** Tweak this schema, edit the template, and watch the form rebind in the browser at [attaform.com/demos](https://www.attaform.com/demos). No install needed.
+> **Try it live.** Tweak this schema, edit the template, and watch the form rebind in the browser at [attaform.dev/demos](https://attaform.dev/demos). No install needed.
 
 ## `v-register`: one line, every option
 
@@ -165,14 +165,14 @@ Same line. Compose a transform pipeline and opt this field out of automatic aria
 
 ## Documentation
 
-Full docs live at [www.attaform.com](https://www.attaform.com):
+Full docs live at [attaform.dev](https://attaform.dev):
 
-- [**Quick start**](https://www.attaform.com/docs/getting-started/quick-start): schema, form, submit, in one page.
-- [**Why Attaform**](https://www.attaform.com/docs/getting-started/why-attaform): the convictions behind the design.
-- [**Entry points**](https://www.attaform.com/docs/reference/entry-points): every public export, grouped by subpath.
-- [**useWizard**](https://www.attaform.com/docs/multistep/use-wizard): multistep flows with shared state and validation.
-- [**Performance**](https://www.attaform.com/docs/server-and-ssr/performance): how it scales; when to worry.
-- [**Troubleshooting**](https://www.attaform.com/docs/devtools-and-debugging/troubleshooting): common gotchas and fixes.
+- [**Quick start**](https://attaform.dev/docs/getting-started/quick-start): schema, form, submit, in one page.
+- [**Why Attaform**](https://attaform.dev/docs/getting-started/why-attaform): the convictions behind the design.
+- [**Entry points**](https://attaform.dev/docs/reference/entry-points): every public export, grouped by subpath.
+- [**useWizard**](https://attaform.dev/docs/multistep/use-wizard): multistep flows with shared state and validation.
+- [**Performance**](https://attaform.dev/docs/server-and-ssr/performance): how it scales; when to worry.
+- [**Troubleshooting**](https://attaform.dev/docs/devtools-and-debugging/troubleshooting): common gotchas and fixes.
 - [**Changelog**](./CHANGELOG.md): full release history.
 
 ## Status

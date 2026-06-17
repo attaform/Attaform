@@ -53,7 +53,7 @@ export class InvalidUseFormConfigError extends AttaformError {
     super(
       '[attaform] useForm received an invalid configuration (a schema directly, no argument, ' +
         'or no `schema` field). Pass it as `useForm({ schema })` — the schema is one of several ' +
-        'configuration options. See https://attaform.com/docs/api/use-form-return for the full ' +
+        'configuration options. See https://attaform.dev/docs/reading-the-form/the-form for the full ' +
         'configuration shape.'
     )
   }

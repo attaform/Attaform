@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.24.3
 ### Changed
 
 - **Attaform's home is now [attaform.dev](https://attaform.dev).** The docs site,

@@ -1,5 +1,15 @@
 # Releases
 
+## v0.24.3 — 2026-06-17
+
+## What's Changed
+* chore: migrate canonical domain to attaform.dev by @ozzyfromspace in https://github.com/attaform/Attaform/pull/450
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.2...v0.24.3
+
+---
+
 ## v0.24.2 — 2026-06-15
 
 ## What's Changed

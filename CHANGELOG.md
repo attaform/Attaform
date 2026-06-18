@@ -1,8 +1,12 @@
 # Changelog
 
 ## Unreleased
+### Changed
 
-_No unreleased changes yet._
+- **Attaform's home is now [attaform.dev](https://attaform.dev).** The docs site,
+  the npm package `homepage`, the Nuxt module's devtools docs link, and the URL
+  printed by the `useForm` configuration error now point at the new domain. The
+  former `attaform.com` address redirects to it, so existing links keep working.
 
 ## v0.24.2
 ### Fixed

@@ -356,12 +356,12 @@ export default defineNuxtConfig({
   // canonicals + OG meta + structured-data URLs all resolve against
   // `site.url`.
   //
-  // Pin to the **www** host — the apex `attaform.com` 301s to
-  // `www.attaform.com` at the Vercel layer. Emitting sitemap entries
-  // (and canonicals, and og:url) on the apex would mean every URL the
-  // crawler hits redirects, wasting crawl budget and signaling
-  // duplicate content. The canonical host is www; everything we ship
-  // points there directly.
+  // Pin to the apex host. `attaform.dev` is the canonical origin;
+  // `www.attaform.dev` and both `attaform.com` hosts 301 to it at the
+  // Vercel layer. Emitting sitemap entries (and canonicals, and og:url)
+  // on the apex means the crawler reaches the canonical URL with no
+  // redirect hop, so no crawl budget is wasted and no duplicate-content
+  // signal is sent. Everything we ship points at the apex.
   //
   // `indexable` gates the ENTIRE SEO-discovery surface on a single
   // env flag — same gate the IndexNow ping uses
@@ -390,7 +390,7 @@ export default defineNuxtConfig({
   // direct backlinks from indexable pages — which production never
   // emits to preview hostnames.
   site: {
-    url: 'https://www.attaform.com',
+    url: 'https://attaform.dev',
     name: 'Attaform',
     description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
     defaultLocale: 'en',

@@ -39,7 +39,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const SITE_ROOT = resolve(SCRIPT_DIR, '..')
 const SITEMAP_PATH = resolve(SITE_ROOT, '.output/public/sitemap.xml')
 
-const HOST = 'www.attaform.com'
+const HOST = 'attaform.dev'
 const KEY = '2e71a5ced510106b3dfca644c1ccb49d'
 const KEY_LOCATION = `https://${HOST}/${KEY}.txt`
 const ENDPOINT = 'https://api.indexnow.org/IndexNow'
@@ -69,7 +69,7 @@ async function main() {
   // The sitemap is small (one entry per public page), regex
   // extraction is enough — no XML parser dependency. Each candidate is
   // parsed via `new URL` and asserted against the production HOST so a
-  // sneaky entry like `https://www.attaform.com.evil.com/` (which
+  // sneaky entry like `https://attaform.dev.evil.com/` (which
   // satisfies a byte-prefix check) gets rejected. Closes CodeQL alert
   // #15 (rule js/file-access-to-http).
   const urls = Array.from(sitemap.matchAll(/<loc>([^<]+)<\/loc>/g))

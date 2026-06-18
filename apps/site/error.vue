@@ -28,7 +28,7 @@
     const title = encodeURIComponent('Broken docs link')
     const route = useRequestURL()
     const body = encodeURIComponent(
-      `I hit a 404 while browsing attaform.com.\n\nURL: ${route.pathname}\nReferrer: (paste here if you came from a link)`
+      `I hit a 404 while browsing attaform.dev.\n\nURL: ${route.pathname}\nReferrer: (paste here if you came from a link)`
     )
     return `https://github.com/attaform/Attaform/issues/new?title=${title}&body=${body}`
   })

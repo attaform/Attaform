@@ -120,7 +120,7 @@
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Cross-platform',
       description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
-      url: 'https://www.attaform.com',
+      url: 'https://attaform.dev',
       author: { '@type': 'Person', name: 'Oswald Chisala' },
       // MIT-licensed and free — surface the price-zero offer so the
       // SoftwareApplication node validates against Google's required

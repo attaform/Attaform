@@ -120,7 +120,7 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 - **`form.meta`**: form-level flags and counters (`submitting`, `valid`, `dirty`, `submissionAttempts`, the flat `meta.errors` aggregate, the per-mount `instanceId`, …).
 - **`form.history`**: consolidated undo/redo namespace (`undo()`, `redo()`, `clear()`, `canUndo`, `canRedo`, `size`).
 - **`form.register(path)`**: typed two-way binding. Pair with `v-register` on `<input>` / `<textarea>` / `<select>`.
-- **`form.handleSubmit(onValid, onInvalid?)`**: runs validation, dispatches. The valid callback receives the strict Zod-inferred type.
+- **`form.handleSubmit(onSubmit, onError?)`**: runs validation, then dispatches. The submit callback receives the strict Zod-inferred type.
 - **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers: see [Entry points](https://attaform.dev/docs/reference/entry-points).
 
 > **Try it live.** Tweak this schema, edit the template, and watch the form rebind in the browser at [attaform.dev/demos](https://attaform.dev/demos). No install needed.
@@ -157,7 +157,7 @@ Same line. Compose a transform pipeline and opt this field out of automatic aria
 - **DevTools panel.** Auto-wired in Nuxt. Walk history, edit values live, inspect every form on the page. No probes to install.
 - **Discriminated-union variant memory.** Switching a discriminator (`notify.channel: 'email' → 'sms' → 'email'`) restores the previous variant's typed subtree by default. Pass `useForm({ rememberVariants: false })` to drop on switch.
 - **Field arrays.** `append` / `prepend` / `insert` / `remove` / `swap` / `move` / `replace`, fully typed at the call site.
-- **Undo / redo.** A bounded undo stack via `form.history` (`undo()` / `redo()` / `canUndo` / `canRedo`).
+- **Undo / redo.** Opt in with `useForm({ history: true })` for a bounded undo stack via `form.history` (`undo()` / `redo()` / `canUndo` / `canRedo`).
 - **Server errors.** `form.setErrors(response.errors)` mounts a server's `ValidationError[]` into the same reactive surface your template already reads. Each error carries an optional `data` payload (a captcha challenge, a lockout time); user errors survive schema revalidation.
 - **Stable error codes.** Every `ValidationError` carries `code: string`. Attaform codes (`atta:`) live on the exported `AttaformErrorCode` enum; adapter codes use a `zod:` prefix; consumers pick their own (`api:`, `auth:`, …).
 - **Clearable required fields.** The `unset` sentinel marks a field displayed-empty while storage holds the schema's slim default. Submit fails with `'No value supplied'` for required schemas; `.optional()` / `.nullable()` / `.default(N)` opt out.

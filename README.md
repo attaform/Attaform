@@ -16,86 +16,28 @@ A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod 
 >
 > Because Vue and Nuxt devs deserve nice things, too.
 
-**Try it live.** Tweak a schema, edit the template, and watch the form rebind in the browser at [attaform.dev/demos](https://attaform.dev/demos). No install needed.
+**[Try it live →](https://attaform.dev/demos)** Tweak a schema, edit the template, and watch the form rebind in your browser. No install needed.
 
-## Installation
+## Quick start
 
 ```bash
 npm install attaform zod
 ```
 
-That's it for client-side rendering. Forms render and validate the moment you call `useForm`; the registry self-installs on first use.
-
-### Going further
-
-**Nuxt 3 / 4.** Add the module:
-
-```ts
-// nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ['attaform/nuxt'],
-})
-```
-
-**Bare Vue + SSR.** Add the Vite plugin so server-rendered HTML matches the hydrated client (the plugin injects `:value` / `:checked` bindings at compile time):
-
-```ts
-// vite.config.ts
-import vue from '@vitejs/plugin-vue'
-import { attaform } from 'attaform/vite'
-
-export default defineConfig({
-  plugins: [vue(), attaform()],
-})
-```
-
-The Vite plugin also rewrites `attaform/zod` imports at build time to `attaform/zod-v3` or `attaform/zod-v4`, so your bundle ships only the adapter you actually use.
-
-**App-wide options.** Install the Vue plugin if you want to set defaults or disable devtools:
-
-```ts
-// main.ts
-import { createApp } from 'vue'
-import { createAttaform } from 'attaform'
-
-createApp(App)
-  .use(createAttaform({ defaults: { debounceMs: 100 } }))
-  .mount('#app')
-```
-
-### Recommended tsconfig
-
-Attaform pairs well with `noUncheckedIndexedAccess: true`:
-
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "noUncheckedIndexedAccess": true
-  }
-}
-```
-
-It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 sets this for you.
-
-> **Try it live.** Skip the install and tweak a schema in your browser at [attaform.dev/demos](https://attaform.dev/demos).
-
-## Quick start
-
 ```vue
 <script setup lang="ts">
   import { z } from 'zod'
-  import { useForm } from 'attaform/zod' // auto-detects Zod major
+  import { useForm } from 'attaform/zod' // auto-detects your Zod major
 
   const schema = z.object({
     username: z.string().min(2, 'At least 2 characters'),
     password: z.string().min(8, 'At least 8 characters'),
   })
 
-  const form = useForm({ schema, key: 'signup' })
+  const form = useForm({ schema })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    await $fetch('/api/signup', { method: 'POST', body: JSON.stringify(values) })
+    await fetch('/api/signup', { method: 'POST', body: JSON.stringify(values) })
   })
 </script>
 
@@ -112,78 +54,41 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 </template>
 ```
 
-`useForm({ schema, key })` returns a Pinia-style reactive form. Read leaves directly, no `.value`:
+Hand the schema to `useForm`, bind each input with `v-register`, and Attaform owns the values, the coercion, the live errors, and the typed submit payload. That is the whole loop.
 
-- **`form.values`**: current values. `form.values.username`, `form.values.address.city`.
-- **`form.errors`**: per-field errors, keyed by dotted path. `form.errors.username?.[0]?.message`.
-- **`form.fields`**: per-field flags (`dirty`, `touched`, `errors`, `blank`, …). `form.fields.username.dirty`.
-- **`form.meta`**: form-level flags and counters (`submitting`, `submitted`, `valid`, `dirty`, `submissionAttempts`, the flat `meta.errors` aggregate, the per-mount `instanceId`, …).
-- **`form.history`**: consolidated undo/redo namespace (`undo()`, `redo()`, `clear()`, `canUndo`, `canRedo`, `size`).
-- **`form.register(path)`**: typed two-way binding. Pair with `v-register` on `<input>` / `<textarea>` / `<select>`.
-- **`form.handleSubmit(onSubmit, onError?)`**: runs validation, then dispatches. The submit callback receives the strict Zod-inferred type.
-- **`form.setValue(path, value)`**, **`form.reset()`**, field-array helpers: see [Entry points](https://attaform.dev/docs/reference/entry-points).
+**[Full walkthrough →](https://attaform.dev/docs/getting-started/quick-start)** Setting up Nuxt, Vite, or bare Vue? See the [installation guide](https://attaform.dev/docs/getting-started/installation).
 
-> **Try it live.** Tweak this schema, edit the template, and watch the form rebind in the browser at [attaform.dev/demos](https://attaform.dev/demos). No install needed.
+## Highlights
 
-## `v-register`: one line, every option
-
-`v-register` stays on the same native `<input>`. Every option you add opts into another runtime feature without touching the template structure.
-
-```vue
-<input v-register="form.register('email')" />
-```
-
-Typed two-way binding to `form.values.email`, with schema-driven coercion at the directive layer.
-
-```vue
-<input v-register="form.register('slug', { transforms: [lowercase] })" />
-```
-
-Same line. The field now runs a sync write-time transform, normalizing the value before it reaches form state.
-
-```vue
-<input v-register="form.register('slug', { transforms: [lowercase, dashify], autoAria: false })" />
-```
-
-Same line. Compose a transform pipeline and opt this field out of automatic aria wiring, all without touching the markup elsewhere.
-
-## Features
-
-- **Schema-driven types.** Every path, value, and error is inferred from your Zod schema. No `any`, no manual type plumbing.
-- **Live validation.** `validateOn: 'change'` by default with synchronous `debounceMs: 0`. `'blur'` and `'submit'` (opt-out) modes available. Async refinements await before submit dispatches.
-- **Schema-driven coercion.** String DOM input flows into the schema's typed slot (`string→number`, `string→boolean`) at the directive layer. Default-on; pass `useForm({ coerce: false })` to disable or a custom `CoercionRegistry` to extend.
-- **Register transforms.** `form.register('slug', { transforms: [lowercase, dashify] })` runs sync write-time normalization before storage commit.
-- **First-class multistep.** `useWizard` composes `useForm` instances into a flow with shared navigation, per-step validation, state retained across steps, and deep-link restore.
-- **DevTools panel.** Auto-wired in Nuxt. Walk history, edit values live, inspect every form on the page. No probes to install.
-- **Discriminated-union variant memory.** Switching a discriminator (`notify.channel: 'email' → 'sms' → 'email'`) restores the previous variant's typed subtree by default. Pass `useForm({ rememberVariants: false })` to drop on switch.
-- **Field arrays.** `append` / `prepend` / `insert` / `remove` / `swap` / `move` / `replace`, fully typed at the call site.
-- **Undo / redo.** Opt in with `useForm({ history: true })` for a bounded undo stack via `form.history` (`undo()` / `redo()` / `canUndo` / `canRedo`).
-- **Server errors.** `form.setErrors(response.errors)` mounts a server's `ValidationError[]` into the same reactive surface your template already reads. Each error carries an optional `data` payload (a captcha challenge, a lockout time); user errors survive schema revalidation.
-- **Stable error codes.** Every `ValidationError` carries `code: string`. Attaform codes (`atta:`) live on the exported `AttaformErrorCode` enum; adapter codes use a `zod:` prefix; consumers pick their own (`api:`, `auth:`, …).
-- **Clearable required fields.** The `unset` sentinel marks a field displayed-empty while storage holds the schema's slim default. Submit fails with `'No value supplied'` for required schemas; `.optional()` / `.nullable()` / `.default(N)` opt out.
-- **SSR.** Nuxt handles the payload round-trip automatically; bare Vue uses `renderAttaformState` / `hydrateAttaformState`.
+- **The schema is the form.** Types, defaults, validation, per-field errors, and the submit payload all flow from one Zod schema. No `any`, no manual type plumbing, on both Zod v3 and v4 from a single `attaform/zod` import. [Why Attaform →](https://attaform.dev/docs/getting-started/why-attaform)
+- **`useForm` is the core.** A reactive, fully typed form: read `form.values`, `form.errors`, `form.fields`, and `form.meta` directly, then write with `form.setValue`, `form.reset`, and typed field-array helpers. [The form →](https://attaform.dev/docs/reading-the-form/the-form)
+- **`useWizard` for multistep.** Compose forms into a flow with shared navigation, per-step validation, state retained across steps, and deep-link restore. [useWizard →](https://attaform.dev/docs/multistep/use-wizard)
+- **SSR-native.** Server-rendered HTML matches the hydrated client with no flash. Auto-wired in Nuxt, one Vite plugin for bare Vue. [SSR in Nuxt →](https://attaform.dev/docs/server-and-ssr/ssr-nuxt)
+- **DevTools built in.** Inspect every form on the page, walk its history, and edit values live. No probes to install. [DevTools panel →](https://attaform.dev/docs/devtools-and-debugging/devtools-panel)
+- **Secure by construction.** Zero runtime dependencies (no supply-chain surface), prototype-pollution-safe deep writes, and Attaform never throws into your app. [Security policy →](./SECURITY.md)
 
 ## Documentation
 
-Full docs live at [attaform.dev](https://attaform.dev):
+Full docs live at **[attaform.dev](https://attaform.dev)**.
 
-- [**Quick start**](https://attaform.dev/docs/getting-started/quick-start): schema, form, submit, in one page.
-- [**Why Attaform**](https://attaform.dev/docs/getting-started/why-attaform): the convictions behind the design.
-- [**Entry points**](https://attaform.dev/docs/reference/entry-points): every public export, grouped by subpath.
-- [**useWizard**](https://attaform.dev/docs/multistep/use-wizard): multistep flows with shared state and validation.
-- [**Performance**](https://attaform.dev/docs/server-and-ssr/performance): how it scales; when to worry.
-- [**Troubleshooting**](https://attaform.dev/docs/devtools-and-debugging/troubleshooting): common gotchas and fixes.
-- [**Changelog**](./CHANGELOG.md): full release history.
+- [Quick start](https://attaform.dev/docs/getting-started/quick-start): schema, form, submit, in one page.
+- [Installation](https://attaform.dev/docs/getting-started/installation): Vue, Nuxt, and Vite setup.
+- [Entry points](https://attaform.dev/docs/reference/entry-points): every public export, grouped by subpath.
+- [Performance](https://attaform.dev/docs/server-and-ssr/performance): how it scales, when to worry.
+- [Troubleshooting](https://attaform.dev/docs/devtools-and-debugging/troubleshooting): common gotchas and fixes.
+- [Changelog](./CHANGELOG.md): full release history.
 
 ## Status
 
-Pre-1.0. SemVer applies from `v1.0` onward; 0.x minor bumps may still include breaking changes, each documented in the [Changelog](./CHANGELOG.md).
+Pre-1.0. SemVer applies from `v1.0` onward; `0.x` minor bumps may still include breaking changes, each documented in the [changelog](./CHANGELOG.md).
+
+## Security
+
+Found a vulnerability? Please report it privately through the [security policy](./SECURITY.md).
 
 ## License
 
-MIT; see [LICENSE](./LICENSE).
-
-<!-- Badges -->
+MIT, see [LICENSE](./LICENSE).
 
 [npm-version-src]: https://img.shields.io/npm/v/attaform/latest.svg?style=flat&colorA=020420&colorB=00DC82
 [npm-version-href]: https://npmjs.com/package/attaform

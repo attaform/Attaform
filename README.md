@@ -117,7 +117,7 @@ It catches stale `form.values.contacts[N]` reads at compile time. Nuxt 3 / 4 set
 - **`form.values`**: current values. `form.values.username`, `form.values.address.city`.
 - **`form.errors`**: per-field errors, keyed by dotted path. `form.errors.username?.[0]?.message`.
 - **`form.fields`**: per-field flags (`dirty`, `touched`, `errors`, `blank`, …). `form.fields.username.dirty`.
-- **`form.meta`**: form-level flags and counters (`submitting`, `valid`, `dirty`, `submissionAttempts`, the flat `meta.errors` aggregate, the per-mount `instanceId`, …).
+- **`form.meta`**: form-level flags and counters (`submitting`, `submitted`, `valid`, `dirty`, `submissionAttempts`, the flat `meta.errors` aggregate, the per-mount `instanceId`, …).
 - **`form.history`**: consolidated undo/redo namespace (`undo()`, `redo()`, `clear()`, `canUndo`, `canRedo`, `size`).
 - **`form.register(path)`**: typed two-way binding. Pair with `v-register` on `<input>` / `<textarea>` / `<select>`.
 - **`form.handleSubmit(onSubmit, onError?)`**: runs validation, then dispatches. The submit callback receives the strict Zod-inferred type.

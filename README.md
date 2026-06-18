@@ -88,7 +88,7 @@ Found a vulnerability? Please report it privately through the [security policy](
 
 ## License
 
-© 2025-present [Oswald Chisala](https://www.linkedin.com/in/chisalao/). Released under the [MIT License](./LICENSE).
+© 2026 [Oswald Chisala](https://www.linkedin.com/in/chisalao/). Released under the [MIT License](./LICENSE).
 
 [npm-version-src]: https://img.shields.io/npm/v/attaform/latest.svg?style=flat&colorA=020420&colorB=00DC82
 [npm-version-href]: https://npmjs.com/package/attaform

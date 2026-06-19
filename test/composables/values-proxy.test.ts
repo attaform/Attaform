@@ -220,12 +220,11 @@ describe('form.errors — readonly proxy over the form error map', () => {
   it('reflects user-injected errors on dotted-key access', () => {
     const { api, unmount } = mountForm()
     try {
-      api.setFieldErrors([
+      api.setErrors([
         {
           path: ['email'],
           message: 'taken',
           code: 'custom',
-          formKey: api.key,
         },
       ])
       expect(api.errors.email).toHaveLength(1)

@@ -96,7 +96,7 @@ The `__atta:` namespace is reserved for internal use; passing a form key startin
 
 ## `AttaformErrorCode`
 
-A small, stable enum for Attaform-emitted `ValidationError.code` values. The codes follow `atta:` prefix convention; pair with `parseApiErrors` to read the `code` field reactively in templates.
+A small, stable enum for Attaform-emitted `ValidationError.code` values. The codes follow the `atta:` prefix convention, so templates can branch on `code` rather than matching message strings.
 
 ```ts
 import { AttaformErrorCode } from 'attaform'
@@ -131,7 +131,7 @@ type ValidationError = {
 }
 ```
 
-- `path`: the canonical segment tuple (`['profile', 'email']`). Field errors carry their field's path; global, form-level errors (a root `.refine()`, a `setFormErrors` call) carry the empty root path `[]` and read through `form.errors([])`.
+- `path`: the canonical segment tuple (`['profile', 'email']`). Field errors carry their field's path; global, form-level errors (a root `.refine()`, a path-less `setErrors` call) carry the empty root path `[]` and read through `form.errors([])`.
 - `message`: the human-readable error text.
 - `code`: stable identifier (`atta:no-value-supplied`, `zod:invalid_type`, `api:duplicate-email`, etc.).
 - `formKey`: which form emitted the error. Useful for cross-form aggregation in wizards.
@@ -151,6 +151,5 @@ The prefix tells you where the error came from without parsing the rest of the s
 
 ## Where to next
 
-- [`parseApiErrors`](/docs/server-and-ssr/parse-api-errors): generate consumer-coded `ValidationError`s from server responses.
 - [The `blank` field-state bit](/docs/validation/blank): the side-channel that surfaces `atta:no-value-supplied`.
 - [Server-side errors](/docs/submitting/server-side-errors): the full flow from API failure to reactive `form.errors`.

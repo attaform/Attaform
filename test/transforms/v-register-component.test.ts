@@ -149,14 +149,14 @@ describe('v-register on Vue components — AST behaviour', () => {
       expect(code).toContain('registerValue:')
     })
 
-    it('does NOT recurse into slot children — option-tagged slot content gets no :selected', () => {
-      // ⚠ Asymmetry: native <select v-register>'s <option> children get
-      // a `:selected` binding injected at compile time (D3 fallback, etc).
-      // For <MyCustomSelect v-register>'s slot-content <option>s, the
-      // recursion is gated on `if (isSelect)`, so the same options pass
-      // through unmodified. A "transparent custom select" wrapper has to
-      // implement option-selection itself by reading `props.value`
-      // (auto-injected above) inside its template.
+    it('recurses into slot children — option-tagged slot content gets :selected (#394)', () => {
+      // #394: a `v-register` on a component wrapper projects its <option>s as
+      // parent-authored slot content, which is still present in the host's
+      // node.children at transform time. Those options now receive the same
+      // `:selected` binding a native <select v-register>'s inline options do,
+      // so wrapping a <select> in a styled component keeps the SSR-selected
+      // option instead of dropping it (and flashing the first option until
+      // hydration). The host still receives the value + registerValue pair.
       const code = compileWith(
         `<MyCustomSelect v-register="form.register('role')">
            <option value="admin">Admin</option>
@@ -167,11 +167,11 @@ describe('v-register on Vue components — AST behaviour', () => {
       // The component itself gets the value + registerValue prop pair.
       expect(code).toContain('displayValue')
       expect(code).toContain('registerValue:')
-      // But the slot-content options stay raw — no `:selected` was
-      // injected. Vue codegen still uses the keyword "selected" in
-      // patch flag comments if any prop named "selected" exists; we
-      // search for the BINDING form `selected:` to be precise.
-      expect(code).not.toMatch(/selected:\s*\(.*\)\?\.innerRef\?\.value/)
+      // And the slot-content options are now marked, same as the native
+      // path. Vue codegen also uses the keyword "selected" in patch-flag
+      // comments, so we search for the BINDING form `selected:` to be precise.
+      expect(code).toContain('innerRef')
+      expect(code).toMatch(/selected:\s*\(/)
     })
 
     it('still injects :selected on direct <option> children of a native <select v-register>', () => {

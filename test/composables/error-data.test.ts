@@ -203,7 +203,7 @@ describe.each(adapters)('ValidationError.data through the form API — $name', (
 
   it('carries data on a field error through the drill and aggregate reads', () => {
     const api = mountForm()
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['email'],
         message: 'verify',
@@ -218,11 +218,9 @@ describe.each(adapters)('ValidationError.data through the form API — $name', (
     expect(fromMeta?.data).toEqual(challenge)
   })
 
-  it('carries data on a form-level error set via setFormErrors', () => {
+  it('carries data on a form-level error set via setErrors', () => {
     const api = mountForm()
-    api.setFormErrors([
-      { message: 'too many attempts', data: { unlocksAt: '2026-01-01T00:00:00Z' } },
-    ])
+    api.setErrors([{ message: 'too many attempts', data: { unlocksAt: '2026-01-01T00:00:00Z' } }])
 
     const formLevel = api.meta.errors.find((e: ValidationError) => e.path.length === 0)
     expect(formLevel?.message).toBe('too many attempts')
@@ -231,7 +229,7 @@ describe.each(adapters)('ValidationError.data through the form API — $name', (
 
   it('omits data when none is supplied', () => {
     const api = mountForm()
-    api.setFieldErrors([{ path: ['email'], message: 'taken', formKey: api.key, code: 'api:dupe' }])
+    api.setErrors([{ path: ['email'], message: 'taken', formKey: api.key, code: 'api:dupe' }])
 
     expect(api.errors.email?.[0]).not.toHaveProperty('data')
   })

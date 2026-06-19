@@ -13,7 +13,7 @@
  * `form.errors('ghost')` already returned the merged errors today —
  * this just makes enumeration agree.
  *
- * Global errors at the root `[]` (`setFormErrors`, root `.refine()`)
+ * Global errors at the root `[]` (`setErrors`, root `.refine()`)
  * are NOT a child key, so they never enumerate here and never appear
  * in the serialised tree; every surface agrees, and they're read via
  * `form.errors([])` / `form.meta.errors`.
@@ -52,7 +52,7 @@ const adapters = [
 describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
   it("Object.keys(form.errors) excludes '' for a global error (it lives at [])", () => {
     const { api, app } = mount()
-    api.setFormErrors([{ message: 'top-level' }])
+    api.setErrors([{ message: 'top-level' }])
     const keys = Object.keys(api.errors)
     app.unmount()
     // Global errors are the root's own bucket, not a child key.
@@ -61,7 +61,7 @@ describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
 
   it("Object.keys(form.errors) includes a server-set 'ghost' key", () => {
     const { api, app } = mount()
-    api.setFieldErrors([
+    api.setErrors([
       { path: ['ghost'], message: 'unknown key', formKey: api.key, code: 'atta:server' },
     ])
     const keys = Object.keys(api.errors)
@@ -71,7 +71,7 @@ describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
 
   it("Object.keys(form.errors.address) includes a nested server-set 'ghost' key", () => {
     const { api, app } = mount()
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['address', 'ghost'],
         message: 'unknown nested key',
@@ -90,7 +90,7 @@ describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
   // separate finding, not in scope for enumeration parity).
   it('form.errors([]) returns the merged global errors', () => {
     const { api, app } = mount()
-    api.setFormErrors([{ message: 'top-level' }])
+    api.setErrors([{ message: 'top-level' }])
     const global = api.errors([]) as unknown[]
     app.unmount()
     expect(global.length).toBeGreaterThan(0)
@@ -98,8 +98,8 @@ describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
 
   it('spread {...form.errors} reflects server keys but not the global bucket', () => {
     const { api, app } = mount()
-    api.setFormErrors([{ message: 'top-level' }])
-    api.setFieldErrors([
+    api.setErrors([{ message: 'top-level' }])
+    api.setErrors([
       { path: ['ghost'], message: 'unknown key', formKey: api.key, code: 'atta:server' },
     ])
     const spread = { ...(api.errors as Record<string, unknown>) }

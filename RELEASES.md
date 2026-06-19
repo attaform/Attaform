@@ -1,5 +1,56 @@
 # Releases
 
+## v0.24.3 — 2026-06-17
+
+## What's Changed
+* chore: migrate canonical domain to attaform.dev by @ozzyfromspace in https://github.com/attaform/Attaform/pull/450
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.2...v0.24.3
+
+---
+
+## v0.24.2 — 2026-06-15
+
+## What's Changed
+* chore(size): tree-shaking tripwires proving useForm drops useWizard by @ozzyfromspace in https://github.com/attaform/Attaform/pull/442
+* fix(types): let generic useForm wrappers forward defaultValues (#422) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/443
+* fix(dirty): detect removal of seeded array elements and container subtrees (#420) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/444
+* fix(ssr): mark slotted <option>s on a v-register component host (#394) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/445
+* test(ssr): cross-render-path parity matrix for v-register (#378) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/446
+* docs(changelog): note the fixes landed since v0.24.1 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/447
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.1...v0.24.2
+
+---
+
+## v0.24.1 — 2026-06-15
+
+## What's Changed
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/436
+* fix(aria): scope aria-required for array checkboxes (#381) and component hosts (#404) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/437
+* fix: setErrors-and-return is a failed submit, not a success (#438) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/439
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.0...v0.24.1
+
+---
+
+## v0.24.0 — 2026-06-15
+
+## What's Changed
+* feat(form): z.record schema roots (dictionary forms) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/421
+* feat(form): z.discriminatedUnion schema roots (variant forms) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/424
+* feat(errors): add optional ValidationError.data payload slot by @ozzyfromspace in https://github.com/attaform/Attaform/pull/426
+* refactor(errors): global errors at root [], free the '' key, add errors([]) carve-out by @ozzyfromspace in https://github.com/attaform/Attaform/pull/427
+* refactor(errors): collapse setters into setErrors / clearErrors, drop parseApiErrors by @ozzyfromspace in https://github.com/attaform/Attaform/pull/434
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.23.0...v0.24.0
+
+---
+
 ## v0.23.0 — 2026-06-14
 
 ## What's Changed

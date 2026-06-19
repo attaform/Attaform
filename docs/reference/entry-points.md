@@ -95,9 +95,6 @@ import {
   SubmitErrorHandlerError,
   // Validation-error codes
   AttaformErrorCode,
-  // API-error parser
-  parseApiErrors,
-  PARSE_API_ERRORS_DEFAULTS,
   // Display-state heuristic default
   defaultDisplayState,
   // Path primitives (custom adapters only)

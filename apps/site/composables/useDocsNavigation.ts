@@ -156,7 +156,6 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'SSR hydration: Nuxt', to: '/docs/server-and-ssr/ssr-nuxt' },
       { title: 'SSR hydration: bare Vue', to: '/docs/server-and-ssr/ssr-bare-vue' },
-      { title: 'Parsing API errors', to: '/docs/server-and-ssr/parse-api-errors' },
       { title: 'Performance', to: '/docs/server-and-ssr/performance' },
     ],
   },

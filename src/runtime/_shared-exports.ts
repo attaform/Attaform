@@ -12,8 +12,13 @@
  * Rollup builds keep the barrel from defeating per-entry pruning. A
  * consumer importing only `useForm` from `attaform/zod-v4` still gets
  * a bundle that includes nothing else from this barrel — the unused
- * names are eliminated at build time. `pnpm check:size` is the
- * standing gate.
+ * names are eliminated at build time. `useWizard` shares a chunk with
+ * `useAbstractForm`, so that elimination is intra-chunk; the standing
+ * gate is the set of `import:` tripwires in `.size-limit.js` (the
+ * `{ useForm } only`, `{ injectForm } only`, and `{ useRegister }
+ * only` caps), which bundle a single named import and tree-shake the
+ * rest. The whole-entry caps there cannot see a single-import
+ * regression; these can.
  *
  * Names that stay per-entry (do NOT add them here):
  * - `useForm` — different source per entry (abstract / unified

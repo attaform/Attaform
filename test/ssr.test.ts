@@ -212,13 +212,12 @@ describe('SSR behavior of useForm', async () => {
 
   /*
     Test Suite: Reactive field-error API in SSR
-    Focus: Errors set on the server (via setFieldErrors, including ones
-    parsed from API responses via parseApiErrors) must serialise into
+    Focus: Errors set on the server (via setErrors) must serialise into
     the rendered HTML and survive hydration. Also covers that
     form.fields.<path>.errors mirrors the underlying store.
   */
   describe('SSR behavior of error API >>', () => {
-    it('renders direct setFieldErrors output for each path', async () => {
+    it('renders direct setErrors output for each path', async () => {
       const html = await $fetch('/')
       assertHTML(html)
       const window = new JSDOM(html).window
@@ -318,6 +317,34 @@ describe('SSR behavior of useForm', async () => {
       // matching the rendered <span>. `window.__NUXT__` (or the newer
       // __NUXT_DATA__ script node) is where Nuxt stashes it.
       expect(typedHtml).toMatch(/__NUXT(?:_DATA)?__/)
+    })
+  })
+
+  /*
+    Test Suite: autoAria on a component host (#404)
+    Focus: v-register on a custom component must not stamp aria-required on
+    the component's wrapper root (invalid ARIA on a role-less <div>); the
+    inner control the wrapper re-binds via useRegister carries it. This is
+    the production compiled-SSR null-vnode path the runtime hook can't see
+    without the component-host modifier the transform stamps.
+  */
+  describe('SSR behavior of autoAria component host >>', () => {
+    it('does not stamp aria-required on the component host wrapper root', async () => {
+      const html = await $fetch('/')
+      assertHTML(html)
+      const $ = cheerio.load(html as string)
+      const wrapper = $('#aria-host-wrapper')
+      expect(wrapper.length).toBe(1)
+      expect(wrapper.attr('aria-required')).toBeUndefined()
+    })
+
+    it('keeps aria-required on the inner bound control', async () => {
+      const html = await $fetch('/')
+      assertHTML(html)
+      const $ = cheerio.load(html as string)
+      const inner = $('#aria-host-inner')
+      expect(inner.length).toBe(1)
+      expect(inner.attr('aria-required')).toBe('true')
     })
   })
 })

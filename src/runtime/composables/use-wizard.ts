@@ -1097,6 +1097,43 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out
   }
 
+  // Lift the user-error layer of each PROCESSED form into the wizard's
+  // aggregate shape. The post-callback mirror of `collectErrors` (#438):
+  // after a clean validation pass, a callback that called `setErrors` on
+  // a step left those errors here. Scoped to the keys the submit actually
+  // processed (final = every step, intermediate = the active one),
+  // matching the entry-clear scope, so a stale error on an unprocessed
+  // step never fails the submit.
+  function collectCallbackErrors(keys: Iterable<FormKey>): WizardAggregateError[] {
+    const out: WizardAggregateError[] = []
+    for (const key of keys) {
+      const store = registry.forms.get(key)
+      if (store === undefined) continue
+      for (const errs of store.userErrors.values()) {
+        for (const err of errs) out.push(toWizardAggregateError(err, key))
+      }
+    }
+    return out
+  }
+
+  // Move to the first failed step and run its invalid-submit focus
+  // policy. Shared by the validation-failure path and the post-callback
+  // error path (#438) so both honor `options.focusFirstError` the same
+  // way, and runs BEFORE onError so the consumer can override the focus.
+  async function focusFirstWizardError(errors: readonly WizardAggregateError[]): Promise<void> {
+    if (options.focusFirstError === false) return
+    const firstFailedKey = errors[0]?.formKey
+    if (firstFailedKey === undefined || !isCompiledKey(firstFailedKey)) return
+    moveTo(firstFailedKey)
+    await nextTick()
+    const failedForm = formsRecord.value[firstFailedKey]
+    if (failedForm === undefined) return
+    const failedSource = asSubmissionSource(failedForm)
+    if (typeof failedSource.applyInvalidSubmitPolicy === 'function') {
+      failedSource.applyInvalidSubmitPolicy()
+    }
+  }
+
   function handleSubmit(
     onSubmit: WizardOnSubmit,
     onError?: WizardOnError
@@ -1186,6 +1223,25 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           }
           const ctx = buildSubmitContext(valuesMap, currentKey, final)
           await onSubmit(ctx)
+          // #438 parity with form.handleSubmit: a callback that left errors
+          // on a processed step (the documented `setErrors(...); return`
+          // server-rejection path) has NOT succeeded. The entry-clear above
+          // means any user error present now was set by this callback. Route
+          // it through the same failure path as a validation failure: focus
+          // the first error, fire onError, and return WITHOUT completing
+          // (final) or advancing past the rejected step (intermediate).
+          const callbackErrors = collectCallbackErrors(results.keys())
+          if (callbackErrors.length > 0) {
+            await focusFirstWizardError(callbackErrors)
+            if (onError !== undefined) {
+              try {
+                await onError(callbackErrors)
+              } catch (cause) {
+                throw new SubmitErrorHandlerError('User-provided onError threw', { cause })
+              }
+            }
+            return
+          }
           if (final) {
             done.value = true
           } else {
@@ -1202,20 +1258,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           // form.handleSubmit: the consumer's onError can override the
           // focus, and a throwing onError still leaves the first error
           // focused rather than stranding the user.
-          if (options.focusFirstError !== false) {
-            const firstFailedKey = errors[0]?.formKey
-            if (firstFailedKey !== undefined && isCompiledKey(firstFailedKey)) {
-              moveTo(firstFailedKey)
-              await nextTick()
-              const failedForm = formsRecord.value[firstFailedKey]
-              if (failedForm !== undefined) {
-                const failedSource = asSubmissionSource(failedForm)
-                if (typeof failedSource.applyInvalidSubmitPolicy === 'function') {
-                  failedSource.applyInvalidSubmitPolicy()
-                }
-              }
-            }
-          }
+          await focusFirstWizardError(errors)
           if (onError !== undefined) {
             try {
               await onError(errors)

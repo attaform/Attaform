@@ -1690,7 +1690,7 @@ describe('variant memory — history (undo/redo) interaction', () => {
  *   - `fields.<path>.errors` answers "what does the schema runtime
  *     currently say about this path?" — empty for inactive-variant
  *     leaves (their entries clear on reshape).
- *   - User-injected errors (`setFieldErrors`) DO persist across
+ *   - User-injected errors (`setErrors`) DO persist across
  *     variant switches: they live in a separate store the schema
  *     validation pipeline never touches.
  *
@@ -1776,11 +1776,10 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     apps.push(app)
     await nextTick()
 
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['notify', 'address'],
         message: 'server says address is taken',
-        formKey: api.key,
         code: 'api:validation',
       },
     ])

@@ -1,6 +1,73 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.24.3
+### Changed
+
+- **Attaform's home is now [attaform.dev](https://attaform.dev).** The docs site,
+  the npm package `homepage`, the Nuxt module's devtools docs link, and the URL
+  printed by the `useForm` configuration error now point at the new domain. The
+  former `attaform.com` address redirects to it, so existing links keep working.
+
+## v0.24.2
+### Fixed
+
+- **A `<select>` you wrap in your own component now keeps its server-rendered
+  selection.** Placing `v-register` on a styled wrapper whose template is
+  `<select><slot /></select>`, with the `<option>`s projected through the slot,
+  used to drop the chosen option's `selected` from the server HTML, so the first
+  option flashed in until hydration corrected it. The wrapper's slotted options
+  are now marked exactly like an inline `<select>`, at any slot depth or shape,
+  for single and multiple selection, on both zod v3 and zod v4. (#394)
+
+- **`form.meta.dirty` now notices a removal, not just an addition.** Un-checking
+  a pre-checked box in an array-bound checkbox group, removing a seeded array
+  element, or clearing an optional subtree with `setValue('profile', undefined)`
+  now flips `meta.dirty` to `true`, so a Save button bound to
+  `:disabled="!form.meta.dirty"` enables after a revoke the same way it does
+  after a grant. The field value was always right; only the structural dirty
+  verdict was asymmetric. Both zod v3 and zod v4. (#420)
+
+- **A generic helper around `useForm` can now forward `defaultValues` without a
+  type error.** Sharing form plumbing through a wrapper that is generic over its
+  schema, then passing a schema-derived `defaultValues` straight through, used to
+  trip a type error (and a depth blow-up on zod v3). The `defaultValues` slot now
+  accepts the schema's own input reflexively, so the wrapper compiles while
+  concrete call sites keep their exact per-field checking. A types-only change
+  that brings zod v3 to full parity with zod v4 across the `attaform/zod`,
+  `attaform/zod-v4`, and `attaform/zod-v3` entries. (#422)
+
+## v0.24.1
+### Fixed
+
+- **A multi-select checkbox group no longer announces every box as required.**
+  `aria-required` is now scoped to the control that owns it: a checkbox that
+  aggregates into a `z.array(...)` or `z.set(...)` model omits it, since no single
+  box is required on its own and an empty selection is valid, while a required
+  single boolean checkbox keeps it. Fixed on the client, in runtime SSR, and in
+  compiled SSR. (#381)
+
+- **autoAria attributes land on the bound control, never on a component wrapper's
+  root.** When `v-register` is placed on a custom component, `aria-required` and
+  the other managed aria attributes now follow the inner element re-bound with
+  `useRegister`, instead of stamping the component's presentational root and
+  leaving a role-less `<div>` carrying an invalid ARIA attribute. Fixed on the
+  client and the server, including compiled SSR. (#404)
+
+- **A submit callback that hands a server rejection to `setErrors` and returns
+  no longer reads as a success.** `form.meta.submitted` flips `true` only when
+  the callback resolves without throwing and leaves no errors set, so the
+  documented `setErrors(response.errors); return` pattern marks a failed submit
+  instead of rendering a success banner. The first error now auto-focuses on
+  submit, exactly as a schema failure does, and `onError` fires with what the
+  callback set. `wizard.handleSubmit` gains the same safeguard: a server
+  rejection keeps `wizard.done` at `false` on the final step and holds the
+  wizard on the current step instead of advancing past a rejected one. (#438)
+
+## v0.24.0
 ### Added
 
 - **A `z.record` schema can now be the whole form, not just a field inside
@@ -34,7 +101,7 @@
 
 - **Form-level errors moved to the root `[]` path, and the empty-string key
   `''` is now yours to use as an ordinary field.** Global errors (a root
-  `.refine()`, `setFormErrors`, a hydration failure) live at the
+  `.refine()`, an imperatively-set form error, a hydration failure) live at the
   structurally-distinct root `[]` instead of the empty-string path `['']`. So
   `form.errors('')` now reads a literal `''` field, and the new
   `form.errors([])` reads only the global bucket, undiluted by field errors.
@@ -43,6 +110,32 @@
   kept distinct from every field. The two never conflate: `''` is a plain field
   key, `[]` is root form context. zod v3 and zod v4 both get it, both tested.
   (#427)
+
+- **One pair of setters now owns the manual error layer: `form.setErrors` and
+  `form.clearErrors`.** `setErrors(errors)` replaces the whole manual layer,
+  `setErrors(prev => next)` updates it functionally, and `setErrors(path, errors)`
+  scopes to one path, mirroring `form.setValue`. Input is lenient: an `Error`, a
+  partial `{ message?, path?, code?, data? }`, or an array of either, a missing
+  message coerced to `"Unknown error"` and a missing code defaulting to
+  `atta:user-error`. What you read back stays the firm `ValidationError`, formKey
+  always stamped; because `formKey` is also accepted-and-ignored on input, a value
+  you read back is itself valid input. An entry with no path lands at the global
+  root `[]`, and the form stamps its own key on every entry. zod v3 and zod v4
+  both get it, both tested. (#434)
+
+### Removed
+
+- **The five error setters and the `parseApiErrors` parser are gone, folded into
+  `setErrors` / `clearErrors`.** `setFieldErrors`, `addFieldErrors`,
+  `clearFieldErrors`, `setFormErrors`, and `clearFormErrors` collapse into the two
+  new setters. `parseApiErrors`, its `PARSE_API_ERRORS_DEFAULTS`, and the
+  `ApiErrorEnvelope` / `ApiErrorDetails` / `ApiErrorEntry` / `ParseApiErrorsOptions`
+  / `ParseApiErrorsResult` types go with it: the canonical server contract is a
+  `ValidationError[]` handed straight to `form.setErrors`, and a server that speaks
+  another shape maps it in one `.map()` at the call site. Retiring the
+  shape-guessing walker also drops its hostile-payload size caps and one more
+  client-side surface an auditor had to reason about. Pre-1.0, so this lands
+  without deprecation shims. (#434)
 
 ## v0.23.0
 ### Removed

@@ -32,7 +32,7 @@ Real-browser numbers from `pnpm bench`, single-threaded on contemporary hardware
 | Single-field keystroke, 100-leaf form                         | 6 µs    |
 | Single-field keystroke, 500-leaf form                         | 30 µs   |
 | Validation overhead per keystroke (`validateOn: 'change'`)    | 5 µs    |
-| Submit lifecycle (validate → submit → parse → setFieldErrors) | 3.4 µs  |
+| Submit lifecycle (validate → submit → setErrors)              | 3.4 µs  |
 | Path canonicalization (cache hit)                             | 60 ns   |
 | Sensitive-name check (common pattern, early hit)              | 70 ns   |
 | Persistence write, `'local'` / `'session'` (100-leaf payload) | 2.8 µs  |

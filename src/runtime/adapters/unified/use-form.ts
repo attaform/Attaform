@@ -43,10 +43,19 @@ import type {
   UseFormReturnType,
   UseFormConfiguration,
 } from '../../types/types-api'
-import type { DefaultValuesInput } from '../../types/types-core'
+import type { AcceptableDefaults } from '../../types/types-core'
 import type { SupportedRootSchema as SupportedRootSchemaV4 } from '../zod-v4/types-root'
 import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/types-root'
-import type { V3FormOf, V3OutOf, V3ReadOf, V4FormOf, V4OutOf, V4ReadOf } from './types-projections'
+import type {
+  V3FormOf,
+  V3OutOf,
+  V3ReadOf,
+  V3SchemaInput,
+  V4FormOf,
+  V4OutOf,
+  V4ReadOf,
+  V4SchemaInput,
+} from './types-projections'
 
 /**
  * Create a form bound to a Zod v4 schema.
@@ -77,11 +86,27 @@ export function useForm<
       V4FormOf<Schema>,
       V4OutOf<Schema>,
       AbstractSchema<V4FormOf<Schema>, V4OutOf<Schema>>,
-      DefaultValuesInput<V4FormOf<Schema>>,
+      // `defaultValues` is Omitted below and re-supplied via the
+      // `AcceptableDefaults` intersection, so this `DefaultValues` slot is
+      // inert. `never` keeps it from re-instantiating the deep
+      // `DefaultValuesInput` cascade here — that redundant instantiation,
+      // across both overloads at a concrete call site, tips the bundled
+      // `.d.ts` into TS2589.
+      never,
       K
     >,
-    'schema' | 'validateOn' | 'debounceMs'
-  > & { schema: Schema } & ValidateOnConfig
+    'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
+  > & {
+    schema: Schema
+    // #422: the `AcceptableDefaults` slot adds the schema's own input
+    // (`V4SchemaInput<Schema>`) as a reflexive escape arm so a generic form
+    // wrapper forwarding `defaultValues` does not trip TS2589 / TS2769.
+    // The arm is redundant at concrete call sites (a schema's input is a
+    // subset of its `DefaultValuesInput`), so concrete checking is
+    // unchanged. The return type never references the slot, so field
+    // inference is preserved through the wrapper. See `AcceptableDefaults`.
+    defaultValues?: AcceptableDefaults<V4FormOf<Schema>, V4SchemaInput<Schema>>
+  } & ValidateOnConfig
 ): UseFormReturnType<V4FormOf<Schema>, V4OutOf<Schema>, V4ReadOf<Schema>, K>
 /**
  * Create a form bound to a Zod v3 schema.
@@ -107,11 +132,16 @@ export function useForm<Schema extends SupportedRootSchemaV3, K extends FormKey 
       V3FormOf<Schema>,
       V3OutOf<Schema>,
       AbstractSchema<V3FormOf<Schema>, V3OutOf<Schema>>,
-      DefaultValuesInput<V3FormOf<Schema>>,
+      // Inert `DefaultValues` slot — see the v4 overload above.
+      never,
       K
     >,
-    'schema' | 'validateOn' | 'debounceMs'
-  > & { schema: Schema } & ValidateOnConfig
+    'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
+  > & {
+    schema: Schema
+    // #422 — see the v4 overload above for the escape-arm rationale.
+    defaultValues?: AcceptableDefaults<V3FormOf<Schema>, V3SchemaInput<Schema>>
+  } & ValidateOnConfig
 ): UseFormReturnType<V3FormOf<Schema>, V3OutOf<Schema>, V3ReadOf<Schema>, K>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useForm(configuration: any): any {

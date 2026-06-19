@@ -6,7 +6,7 @@
 
   const sample = [
     '# links.txt: one web address per line. Blank lines and # comments are skipped.',
-    'attaform.com',
+    'attaform.dev',
     'https://Example.com/Docs/Getting-Started',
     'github.com/attaform/Attaform',
     '',

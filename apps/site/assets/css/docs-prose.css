@@ -226,7 +226,7 @@
 }
 
 /* Long unbreakable identifiers in inline code — function signatures
-   like `parseApiErrors(payload, options): ParseApiErrorsResult` or
+   like `useForm<Schema>(options): UseFormReturnType<Schema>` or
    long type names — would otherwise force the heading / paragraph
    to be at least as wide as the longest identifier. `overflow-wrap:
    anywhere` lets the browser break inside identifiers as a last

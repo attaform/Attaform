@@ -47,7 +47,8 @@ When the returned handler fires:
 2. Sync validation runs across every active path.
 3. Async refinements are awaited.
 4. If every refinement passes, `onSubmit(values)` is called with the **parsed** Zod output: `.transform`-aware, fully typed.
-5. If anything fails, focus pulls to the first invalid field and `onError(errors)` fires (when supplied).
+5. The submit counts as a success, flipping `form.meta.submitted` to `true`, only when `onSubmit` resolves without throwing and leaves no errors set. A callback that hands a server rejection to `setErrors` and returns is a failed submit (see [server-side errors](/docs/submitting/server-side-errors)).
+6. On any failure, whether a validation error, a thrown callback, or errors the callback set with `setErrors`, focus pulls to the first invalid field and `onError(errors)` fires (when supplied).
 
 While step 4 is awaiting your `onSubmit` callback, `form.meta.submitting` is `true`. It flips back when the callback resolves or rejects (`handleSubmit` catches and surfaces errors through `onError`).
 

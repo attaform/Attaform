@@ -36,9 +36,8 @@ export type SerializedFormData = {
    */
   readonly schemaErrors: ReadonlyArray<readonly [string, unknown]>
   /**
-   * Errors set explicitly via `setFieldErrors` / `addFieldErrors`
-   * (typically from a server response parsed via `parseApiErrors`)
-   * at snapshot time. Replayed at hydration; persists across
+   * Errors set explicitly via `setErrors` (typically a server
+   * response) at snapshot time. Replayed at hydration; persists across
    * client-side re-validation.
    */
   readonly userErrors: ReadonlyArray<readonly [string, unknown]>

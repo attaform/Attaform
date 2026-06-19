@@ -10,7 +10,7 @@ import { waitUntil } from '../utils/form-harness'
 
 /**
  * A fresh `handleSubmit` attempt clears user-set errors
- * (`setFormErrors` / `setFieldErrors`) at ENTRY — before validation,
+ * (`setErrors` / `setErrors`) at ENTRY — before validation,
  * before the consumer's callback — so every attempt starts from a clean
  * user-error slate. This mirrors `submitError`, which already nulls at
  * entry; together they make a submit a "reset the error surface, then
@@ -18,7 +18,7 @@ import { waitUntil } from '../utils/form-harness'
  *
  * Entry (not exit) is the only correct point: the consumer's `onSubmit`
  * is where the NEW errors are set (a failed `await api.save()` →
- * `setFormErrors`), so clearing after it would wipe what was just set;
+ * `setErrors`), so clearing after it would wipe what was just set;
  * and clearing only on success leaves stale errors when the next attempt
  * fails differently or fails client validation.
  *
@@ -74,7 +74,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
 
     // Attempt 1 fails at the server → sets a form-level error.
     await api.handleSubmit(() => {
-      api.setFormErrors([{ message: 'Server error' }])
+      api.setErrors([{ message: 'Server error' }])
     })(new Event('submit'))
     expect(formLevel(api.meta.errors)).toHaveLength(1)
 
@@ -90,9 +90,9 @@ describe('handleSubmit clears user-set errors at entry', () => {
 
     // Attempt 1: server rejects both fields.
     await api.handleSubmit(() => {
-      api.setFieldErrors([
-        { path: ['email'], message: 'email taken', formKey: api.key, code: 'api:validation' },
-        { path: ['password'], message: 'password pwned', formKey: api.key, code: 'api:validation' },
+      api.setErrors([
+        { path: ['email'], message: 'email taken', code: 'api:validation' },
+        { path: ['password'], message: 'password pwned', code: 'api:validation' },
       ])
     })(new Event('submit'))
     expect(atPath(api.meta.errors, 'email')).toHaveLength(1)
@@ -101,9 +101,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
     // Attempt 2: server rejects only email — the stale password error
     // must not linger.
     await api.handleSubmit(() => {
-      api.setFieldErrors([
-        { path: ['email'], message: 'email taken', formKey: api.key, code: 'api:validation' },
-      ])
+      api.setErrors([{ path: ['email'], message: 'email taken', code: 'api:validation' }])
     })(new Event('submit'))
     await waitUntil(() => atPath(api.meta.errors, 'password').length === 0)
     expect(atPath(api.meta.errors, 'email')).toHaveLength(1)
@@ -115,7 +113,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
     apps.push(app)
 
     await api.handleSubmit(() => {
-      api.setFormErrors([{ message: 'Server error' }])
+      api.setErrors([{ message: 'Server error' }])
     })(new Event('submit'))
     expect(formLevel(api.meta.errors)).toHaveLength(1)
 
@@ -132,7 +130,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
     const { app, api } = mount(valid)
     apps.push(app)
     await api.handleSubmit(() => {
-      api.setFormErrors([{ message: 'fresh error' }])
+      api.setErrors([{ message: 'fresh error' }])
     })(new Event('submit'))
     const entries = formLevel(api.meta.errors)
     expect(entries).toHaveLength(1)
@@ -142,7 +140,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
   it('clears user errors set OUTSIDE a submit (unconditional, no opt-out)', async () => {
     const { app, api } = mount(valid)
     apps.push(app)
-    api.setFormErrors([{ message: 'set imperatively' }])
+    api.setErrors([{ message: 'set imperatively' }])
     expect(formLevel(api.meta.errors)).toHaveLength(1)
 
     await api.handleSubmit(() => {})(new Event('submit'))
@@ -153,7 +151,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
   it('does not clear user errors on an imperative parse() / validateAsync (submit-only)', async () => {
     const { app, api } = mount(valid)
     apps.push(app)
-    api.setFormErrors([{ message: 'keep me' }])
+    api.setErrors([{ message: 'keep me' }])
     await api.parse()
     await api.validateAsync()
     expect(formLevel(api.meta.errors)).toHaveLength(1)

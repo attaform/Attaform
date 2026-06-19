@@ -30,7 +30,7 @@
   // We bump the tick on every host event we DO have a callback for
   // (`onFormChange` / `onSubmitSuccess` / `onReset`), plus a 250ms
   // polling fallback for state that changes outside those events (user
-  // errors via `setFieldErrors*`, submit-lifecycle flags). The panel's
+  // errors via `setErrors`, submit-lifecycle flags). The panel's
   // own reactivity then re-evaluates everything in one pass — cheap
   // because the underlying reads are direct property accesses.
   const updateTick = ref(0)
@@ -379,7 +379,7 @@
 
   // Polling fallback for state that changes outside the `onFormChange` /
   // `onSubmitSuccess` / `onReset` event surface — user errors injected
-  // via `setFieldErrors*`, submit-lifecycle flags between events, or
+  // via `setErrors`, submit-lifecycle flags between events, or
   // new forms registered in the host's registry. 120ms is faster than
   // a human can notice between an input event and a visible panel
   // refresh; gas-cost is negligible (one ref-bump every 120ms).

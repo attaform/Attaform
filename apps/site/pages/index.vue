@@ -120,7 +120,7 @@
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Cross-platform',
       description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
-      url: 'https://www.attaform.com',
+      url: 'https://attaform.dev',
       author: { '@type': 'Person', name: 'Oswald Chisala' },
       // MIT-licensed and free — surface the price-zero offer so the
       // SoftwareApplication node validates against Google's required
@@ -169,7 +169,7 @@
     {
       icon: Webhook,
       title: 'Server-side errors',
-      body: '`parseApiErrors(payload, { formKey: form.key })` normalizes any API envelope into the same `ValidationError` shape your template already reads.',
+      body: '`form.setErrors(response.errors)` mounts server-sent `ValidationError[]` into the same reactive surface your template already reads, each error carrying an optional `data` payload.',
     },
   ]
 </script>

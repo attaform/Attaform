@@ -363,12 +363,12 @@ describe('derivedBlankErrors — independent of imperative writers', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('clearFieldErrors() does NOT remove derived errors (they re-derive from state)', async () => {
+  it('clearErrors() does NOT remove derived errors (they re-derive from state)', async () => {
     const { app, api } = mountNumeric()
     apps.push(app)
 
     expect(api.errors.income?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
-    api.clearFieldErrors('income')
+    api.clearErrors('income')
     await nextTick()
     // Derived class is a pure function of state — clearing the
     // imperative stores can't make it go away. Only changing the
@@ -376,15 +376,14 @@ describe('derivedBlankErrors — independent of imperative writers', () => {
     expect(api.errors.income?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
   })
 
-  it('setFieldErrors at the same path coexists with derived', async () => {
+  it('setErrors at the same path coexists with derived', async () => {
     const { app, api } = mountNumeric()
     apps.push(app)
 
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['income'],
         message: 'too low',
-        formKey: api.key,
         code: 'api:tooLow',
       },
     ])

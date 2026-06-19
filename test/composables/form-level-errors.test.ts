@@ -8,10 +8,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { ValidationError } from '../../src/runtime/types/types-api'
 
 /**
- * `form.setFormErrors` / `form.clearFormErrors` write and clear the
- * form-level (global) errors — entries at the root path `[]`, stored in
- * the `'[]'` PathKey bucket — without disturbing any field-level error.
- * Form-level entries are visible across these read surfaces:
+ * Global (form-level) errors are just `setErrors` entries with no path:
+ * they live at the root path `[]`, stored in the `'[]'` PathKey bucket.
+ * There is no separate form-level setter; `setErrors` covers field and
+ * global errors alike. Global entries are visible across these reads:
  *
  *   - `form.meta.errors` — the flat aggregate, unfiltered.
  *   - `form.errors([])` — the dedicated global read (root bucket only).
@@ -19,10 +19,9 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  *     global bucket).
  *
  * They are NOT a child key of the errors proxy: `JSON.stringify(form.
- * errors)` and proxy iteration don't surface them (the root `[]` bucket
- * has no `''` slot — `''` is a free field key), and `form.errors('')`
- * reads the unrelated literal `''` field. Read global errors through
- * `errors([])` / `meta.errors`.
+ * errors)` and proxy iteration don't surface them under `''` (the root
+ * `[]` bucket has no `''` slot — `''` is a free field key), and
+ * `form.errors('')` reads the unrelated literal `''` field.
  */
 
 const schema = z.object({
@@ -50,17 +49,17 @@ function mount(): { app: App; api: Api } {
 const formLevel = (errors: readonly ValidationError[]): readonly ValidationError[] =>
   errors.filter((e) => e.path.length === 0)
 
-describe('form.setFormErrors / clearFormErrors', () => {
+describe('setErrors — global / form-level errors at []', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('writes a single form-level error with the default code', () => {
+  it('writes a single global error (no path) with the default code', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFormErrors([{ message: 'Capacity exceeded' }])
+    api.setErrors([{ message: 'Capacity exceeded' }])
 
     const entries = formLevel(api.meta.errors)
     expect(entries).toHaveLength(1)
@@ -68,77 +67,59 @@ describe('form.setFormErrors / clearFormErrors', () => {
       message: 'Capacity exceeded',
       path: [],
       formKey: api.key,
-      code: 'atta:form-error',
+      code: 'atta:user-error',
     })
   })
 
-  it('writes multiple form-level errors in order', () => {
+  it('writes multiple global errors in order', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFormErrors([{ message: 'a' }, { message: 'b' }, { message: 'c' }])
+    api.setErrors([{ message: 'a' }, { message: 'b' }, { message: 'c' }])
 
     const entries = formLevel(api.meta.errors)
     expect(entries.map((e) => e.message)).toEqual(['a', 'b', 'c'])
     for (const e of entries) expect(e.path).toEqual([])
   })
 
-  it('replaces (does not append) on each call', () => {
+  it('whole-layer setErrors replaces (does not append) on each call', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFormErrors([{ message: 'first' }])
-    api.setFormErrors([{ message: 'second' }])
+    api.setErrors([{ message: 'first' }])
+    api.setErrors([{ message: 'second' }])
 
     const entries = formLevel(api.meta.errors)
     expect(entries).toHaveLength(1)
     expect(entries[0]?.message).toBe('second')
   })
 
-  it('does not disturb pre-existing field errors', () => {
+  it('scoped setErrors([], …) sets the global bucket without disturbing field errors', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'taken', formKey: api.key, code: 'api:duplicate' },
-    ])
-    api.setFormErrors([{ message: 'Capacity exceeded' }])
+    api.setErrors('email', [{ message: 'taken', code: 'api:duplicate' }])
+    api.setErrors([], [{ message: 'Capacity exceeded' }])
 
     expect(api.errors.email?.[0]?.message).toBe('taken')
-    expect(formLevel(api.meta.errors)).toHaveLength(1)
-    expect(formLevel(api.meta.errors)[0]?.message).toBe('Capacity exceeded')
-    // Two total: one field, one form-level.
+    const entries = formLevel(api.meta.errors)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.message).toBe('Capacity exceeded')
+    // Two total: one field, one global.
     expect(api.meta.errors).toHaveLength(2)
   })
 
-  it('setFormErrors([]) clears form-level errors only', () => {
+  it('clearErrors([]) clears the global bucket only', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFieldErrors([
-      { path: ['email'], message: 'taken', formKey: api.key, code: 'api:duplicate' },
-    ])
-    api.setFormErrors([{ message: 'Capacity exceeded' }])
+    api.setErrors('email', [{ message: 'taken', code: 'api:duplicate' }])
+    api.setErrors([], [{ message: 'one' }, { message: 'two' }])
 
-    api.setFormErrors([])
+    api.clearErrors([])
 
     expect(formLevel(api.meta.errors)).toHaveLength(0)
     // Field error survives.
-    expect(api.errors.email?.[0]?.message).toBe('taken')
-  })
-
-  it('clearFormErrors() is equivalent to setFormErrors([])', () => {
-    const { app, api } = mount()
-    apps.push(app)
-
-    api.setFieldErrors([
-      { path: ['email'], message: 'taken', formKey: api.key, code: 'api:duplicate' },
-    ])
-    api.setFormErrors([{ message: 'one' }, { message: 'two' }])
-
-    api.clearFormErrors()
-
-    expect(formLevel(api.meta.errors)).toHaveLength(0)
     expect(api.errors.email?.[0]?.message).toBe('taken')
   })
 
@@ -146,21 +127,21 @@ describe('form.setFormErrors / clearFormErrors', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFormErrors([
+    api.setErrors([
       { message: 'a', code: 'capacity:exceeded' },
       { message: 'b' }, // default code
     ])
 
     const entries = formLevel(api.meta.errors)
     expect(entries[0]?.code).toBe('capacity:exceeded')
-    expect(entries[1]?.code).toBe('atta:form-error')
+    expect(entries[1]?.code).toBe('atta:user-error')
   })
 
-  it('form-level errors surface via errors([]) and meta.errors, not the proxy tree', () => {
+  it('global errors surface via errors([]) and meta.errors, not the proxy tree', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    api.setFormErrors([{ message: 'Capacity exceeded' }])
+    api.setErrors([{ message: 'Capacity exceeded' }])
 
     // Global errors live at the root `[]`, reached via the dedicated
     // `errors([])` channel and the flat `meta.errors` aggregate. They
@@ -174,22 +155,31 @@ describe('form.setFormErrors / clearFormErrors', () => {
     expect(api.errors('')).toEqual([])
   })
 
-  it('accepts full ValidationError[] with caller path / formKey ignored', () => {
+  it('whole-layer setErrors respects each entry path; formKey is stamped from the form', () => {
     const { app, api } = mount()
     apps.push(app)
 
-    // Caller-provided path / formKey are ignored — `setFormErrors`
-    // forces the root path (`[]`) and the owning formKey, so a server's
-    // ValidationError[] pipes in without mapping.
-    api.setFormErrors([
+    // A server's ValidationError[] pipes in without mapping: each entry
+    // lands at its OWN path (a missing path is the global bucket), and
+    // the form stamps its own formKey on each.
+    api.setErrors([
       {
-        path: ['ignored', 'on', 'purpose'],
-        formKey: 'wrong-key',
+        path: ['email'],
+        message: 'taken',
+        code: 'api:duplicate',
+      },
+      {
         message: 'Capacity exceeded',
         code: 'api:capacity',
       },
     ])
 
+    expect(api.errors.email?.[0]).toMatchObject({
+      message: 'taken',
+      path: ['email'],
+      formKey: api.key,
+      code: 'api:duplicate',
+    })
     const entries = formLevel(api.meta.errors)
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({

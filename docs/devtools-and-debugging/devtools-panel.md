@@ -55,7 +55,7 @@ Values render verbatim. The panel is dev-only, so it doesn't mask passwords / to
 The error map keyed by path, split by source:
 
 - **Schema Errors**: what the validator (Zod adapter) produced. Cleared by `reset()` / `handleSubmit` success.
-- **User Errors**: what you wrote via `setFieldErrors` / `addFieldErrors` / the `parseApiErrors` server-error pipeline. Persists across revalidation and successful submits.
+- **User Errors**: the manual error layer you wrote via `setErrors` (server errors included). Persists across revalidation and successful submits.
 
 Splitting them tells you instantly whether validation or your application code emitted each error.
 

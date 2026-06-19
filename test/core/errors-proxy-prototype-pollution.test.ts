@@ -2,7 +2,7 @@
 /**
  * Prototype-pollution gate for `placeAt` (errors-proxy.ts).
  *
- * `setFieldErrors` accepts a `path` from consumer input — server
+ * `setErrors` accepts a `path` from consumer input — server
  * replies, manual marks. Without protection, a path whose first segment
  * is `__proto__` reaches `placeAt`'s `cursorRecord[lastKey] = errors`
  * write and pollutes `Object.prototype` for the whole process (CodeQL
@@ -82,7 +82,7 @@ describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', (
   it("['__proto__', X] lands at the declared path AND does not pollute Object.prototype", () => {
     const { api, app } = mount()
     const message = 'legit field literally named __proto__'
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['__proto__', SENTINEL],
         message,
@@ -115,7 +115,7 @@ describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', (
   it("['constructor', X] lands at the declared path AND does not pollute Object.prototype", () => {
     const { api, app } = mount()
     const message = 'legit field literally named constructor'
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['constructor', SENTINEL],
         message,
@@ -140,7 +140,7 @@ describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', (
   it("['prototype', X] lands at the declared path AND does not pollute Object.prototype", () => {
     const { api, app } = mount()
     const message = 'building-A spec mismatch (architecture firm prototype field)'
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['prototype', SENTINEL],
         message,
@@ -162,9 +162,9 @@ describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', (
     expect(probe[SENTINEL]).toBeUndefined()
   })
 
-  it('setFormErrors lands in the global bucket, read via errors([])', () => {
+  it('setErrors lands in the global bucket, read via errors([])', () => {
     const { api, app } = mount()
-    api.setFormErrors([{ message: 'root-level error' }])
+    api.setErrors([{ message: 'root-level error' }])
     const global = api.errors([])
     app.unmount()
     expect(global).toEqual(

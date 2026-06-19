@@ -71,8 +71,8 @@ describe('wizard.handleSubmit clears user-set errors on processed forms at entry
       return { wizard, account, review }
     })
     apps.push(app)
-    result.account.setFormErrors([{ message: 'acct server error' }])
-    result.review.setFormErrors([{ message: 'review server error' }])
+    result.account.setErrors([{ message: 'acct server error' }])
+    result.review.setErrors([{ message: 'review server error' }])
     result.wizard.goTo('wc-final-review')
 
     await result.wizard.handleSubmit(() => {})(new Event('submit'))
@@ -107,8 +107,8 @@ describe('wizard.handleSubmit clears user-set errors on processed forms at entry
     apps.push(app)
     // On the first (active) step; set errors on the active form and a
     // later, unprocessed one.
-    result.account.setFormErrors([{ message: 'acct err' }])
-    result.profile.setFormErrors([{ message: 'profile err' }])
+    result.account.setErrors([{ message: 'acct err' }])
+    result.profile.setErrors([{ message: 'profile err' }])
     expect(result.wizard.currentStep).toBe('wc-mid-account')
 
     await result.wizard.handleSubmit(() => {})(new Event('submit'))
@@ -134,7 +134,7 @@ describe('wizard.handleSubmit clears user-set errors on processed forms at entry
       return { wizard, account, review }
     })
     apps.push(app)
-    result.account.setFormErrors([{ message: 'stale' }])
+    result.account.setErrors([{ message: 'stale' }])
     result.wizard.goTo('wc-fail-review')
 
     await result.wizard.handleSubmit(vi.fn(), vi.fn())(new Event('submit'))
@@ -161,7 +161,7 @@ describe('wizard.handleSubmit clears user-set errors on processed forms at entry
     apps.push(app)
     result.wizard.goTo('wc-fresh-review')
     await result.wizard.handleSubmit(() => {
-      result.review.setFormErrors([{ message: 'fresh server error' }])
+      result.review.setErrors([{ message: 'fresh server error' }])
     })(new Event('submit'))
     const entries = formLevel(result.review.meta.errors)
     expect(entries).toHaveLength(1)

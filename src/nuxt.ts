@@ -104,7 +104,7 @@ export default defineNuxtModule<AttaformModuleOptions>({
     name: 'Attaform',
     configKey: 'attaform',
     version: pkgVersion,
-    docs: 'https://www.attaform.com/docs',
+    docs: 'https://attaform.dev/docs',
     compatibility: {
       nuxt: '>=3.0.0',
     },

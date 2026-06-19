@@ -13,6 +13,7 @@ import {
   type SourceLocation,
   type TemplateChildNode,
 } from '@vue/compiler-core'
+import { SSR_COMPONENT_HOST_MODIFIER } from '../../../core/register-protocol'
 import {
   flattenExpression,
   getSummarizedProps,
@@ -210,7 +211,10 @@ function inferOptionValueFromChildren(node: TemplateChildNode | RootNode): strin
  *   - `<MyComponent v-register>` and kebab-case custom-element hosts
  *     — injects a `:registerValue` bridge prop so `useRegister` inside
  *     the child sees the parent's RegisterValue (the binding the audit
- *     called out as the transform's "fires on every component" path).
+ *     called out as the transform's "fires on every component" path),
+ *     and marks any parent-authored slotted `<option>`s with `:selected`
+ *     the same way the native path does, so a `<select>` wrapped in a
+ *     styled component keeps its SSR-selected option (#394).
  *
  * Wired automatically by `attaform/vite` and `attaform/nuxt`. Use
  * directly only when integrating with a custom bundler.
@@ -439,10 +443,23 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       node.props.push(valueProp)
     }
 
+    // <option> children of a v-register host derive their SSR :selected from
+    // the host's single register. For a native <select> they're inline; for a
+    // component / custom-element host they're parent-authored slot content,
+    // still present in node.children at this (enter-phase) point in the parent
+    // AST -- before Vue's later buildSlots pass folds them into a slot
+    // function. Walking them here marks them identically, so wrapping a
+    // <select> in a styled component no longer drops the SSR selected option
+    // (and reintroduces a first-paint flash). traverseSelectNode is a no-op
+    // when there are no <option> descendants, so this is zero-cost for hosts
+    // that don't project options.
+    for (const child of node.children) {
+      traverseSelectNode(child, previousOptionExpressions) // start searching for options in dfs manner
+    }
+
     if (isSelect) {
-      for (const child of node.children) {
-        traverseSelectNode(child, previousOptionExpressions) // start searching for options in dfs manner
-      }
+      // Native <select> is fully handled by the option walk above plus the
+      // :value injection; component hosts fall through to the bridge prop.
       return
     }
 
@@ -470,6 +487,20 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
         p.arg.content === 'registerValue'
     )
     if (alreadyInjected) return
+
+    // Signal compiled SSR that this v-register host is a component, so the
+    // directive's getSSRProps suppresses autoAria on the host root (the
+    // inner control the component re-binds via useRegister carries it).
+    // The runtime path reads the component vnode directly; compiled SSR
+    // only has a null vnode, so this modifier is the channel. (#404)
+    if (
+      registerProp.type === NodeTypes.DIRECTIVE &&
+      !registerProp.modifiers.some(
+        (m) => m.type === NodeTypes.SIMPLE_EXPRESSION && m.content === SSR_COMPONENT_HOST_MODIFIER
+      )
+    ) {
+      registerProp.modifiers.push(createSimpleExpression(SSR_COMPONENT_HOST_MODIFIER, true))
+    }
 
     const customElementProp: DirectiveNode = {
       arg: createSimpleExpression('registerValue', true),

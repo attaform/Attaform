@@ -99,7 +99,7 @@ describe.each(adapters)('Array.prototype on array-shaped proxies — $name', ({ 
 
   it('form.errors.<array>.map iterates over per-index error arrays', () => {
     const { api, app } = mount()
-    api.setFieldErrors([
+    api.setErrors([
       {
         path: ['tags', 1],
         message: 'bad tag',

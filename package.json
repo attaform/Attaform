@@ -1,6 +1,6 @@
 {
   "name": "attaform",
-  "version": "0.23.0",
+  "version": "0.24.3",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "files": [
@@ -20,7 +20,7 @@
     "type": "git",
     "url": "https://github.com/attaform/Attaform"
   },
-  "homepage": "https://attaform.com",
+  "homepage": "https://attaform.dev",
   "scripts": {
     "dev": "pnpm dev:prepare && pnpm --filter attaform-site dev",
     "dev:prepare": "unbuild --stub && nuxi prepare apps/site",

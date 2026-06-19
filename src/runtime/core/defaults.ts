@@ -160,7 +160,7 @@ export interface NormalizeNumericOptionConfig {
   value: number
   /**
    * Human-readable identifier for the dev warning. Format like
-   * `useForm.debounceMs` or `parseApiErrors.maxEntries` so the warning
+   * `useForm.debounceMs` so the warning
    * tells the consumer which option carried the bad value.
    */
   source: string

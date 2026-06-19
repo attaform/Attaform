@@ -74,8 +74,8 @@ type WizardSubmitContext = {
 ```ts
 const onSubmit = wizard.handleSubmit(async (ctx) => {
   if (!ctx.isFinal) {
-    // Intermediate steps: wizard has already advanced; track a step-complete
-    // event and let the user keep going.
+    // Intermediate steps: validation passed. Track a step-complete event;
+    // the wizard advances once this callback returns without setting errors.
     analytics.track('wizard_step_complete', { step: ctx.currentKey })
     return
   }
@@ -92,8 +92,8 @@ const onSubmit = wizard.handleSubmit(async (ctx) => {
 
 The two calls do different work:
 
-- **Intermediate call** (`ctx.isFinal === false`). Validates the active form only. On success, the wizard advances to the next compiled step _before_ `onSubmit` runs, so any side effect in the callback fires from the new step. On failure, the wizard stays put and `onError` fires.
-- **Final call** (`ctx.isFinal === true`). Validates every form in parallel. On success, `onSubmit` runs once and `wizard.done` flips to `true` (monotonic, only `reset()` flips it back). On failure, the wizard stays on the terminal step and `onError` fires.
+- **Intermediate call** (`ctx.isFinal === false`). Validates the active form only. On a clean pass, `onSubmit` runs from the current step and the wizard then advances to the next compiled step. The advance is gated on the result: if validation fails, or if the callback hands a server rejection to `setErrors` and returns, the wizard stays put and `onError` fires.
+- **Final call** (`ctx.isFinal === true`). Validates every form in parallel. On success, `onSubmit` runs once and `wizard.done` flips to `true` (monotonic, only `reset()` flips it back). `done` flips only when the callback also leaves no errors set, so a `setErrors`-and-return server rejection keeps it `false`. On a validation failure, the wizard stays on the terminal step and `onError` fires.
 
 The two paths share one handler and one context shape, so the consumer never has to choose between "fire the mutation now" and "fire it later" until the `if (!ctx.isFinal) return` guard at the top of the callback.
 
@@ -115,7 +115,7 @@ const onSubmit = wizard.handleSubmit(
 )
 ```
 
-Each error carries `formKey`, `path`, `message`, and an optional `code`. The list combines validation errors from every form processed on this call with any activation failures (e.g., a form whose async `defaultValues` rejected). For wizard-wide error summaries that persist between submissions, drive them off [`wizard.allErrors`](/docs/multistep/aggregates#allerrors-for-wizard-wide-summaries) instead.
+Each error carries `formKey`, `path`, `message`, and an optional `code`. The list combines validation errors from every form processed on this call, any errors the callback set with `setErrors`, and any activation failures (e.g., a form whose async `defaultValues` rejected). For wizard-wide error summaries that persist between submissions, drive them off [`wizard.allErrors`](/docs/multistep/aggregates#allerrors-for-wizard-wide-summaries) instead.
 
 ## `focusFirstError`
 
@@ -154,5 +154,5 @@ Disabling the button is belt-and-braces; the wizard refuses re-entry on its own.
 
 - [`useWizard`](/docs/multistep/use-wizard) for the construction signature and the full wizard handle.
 - [Aggregates](/docs/multistep/aggregates) for `wizard.allValues` and `wizard.allErrors`, which mirror the data `ctx.values` carries.
-- [Statuses](/docs/multistep/statuses) for the per-step `FormStatus` rollup that flips `submitted: true` when the callback resolves.
+- [Statuses](/docs/multistep/statuses) for the per-step `FormStatus` rollup that flips `submitted: true` when the callback succeeds.
 - [Patterns](/docs/multistep/patterns) for branching flows that lean on `wizard.handleSubmit` for the final-step validation sweep.

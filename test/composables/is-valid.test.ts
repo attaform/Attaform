@@ -92,9 +92,7 @@ describe('per-prefix validity via form.fields(path).valid', () => {
   it('returns false when an error sits at one of the prefixes', () => {
     const { app, api } = mount()
     apps.push(app)
-    api.setFieldErrors([
-      { path: ['cargo', 'items', 0, 'sku'], message: 'sku bad', formKey: api.key, code: 'x' },
-    ])
+    api.setErrors([{ path: ['cargo', 'items', 0, 'sku'], message: 'sku bad', code: 'x' }])
     expect(allValid(api, ['cargo'])).toBe(false)
     expect(allValid(api, ['service'])).toBe(true)
   })
@@ -102,18 +100,14 @@ describe('per-prefix validity via form.fields(path).valid', () => {
   it('returns false when an error descends from one of the prefixes', () => {
     const { app, api } = mount()
     apps.push(app)
-    api.setFieldErrors([
-      { path: ['cargo', 'items'], message: 'items bad', formKey: api.key, code: 'x' },
-    ])
+    api.setErrors([{ path: ['cargo', 'items'], message: 'items bad', code: 'x' }])
     expect(allValid(api, ['cargo'])).toBe(false)
   })
 
   it('multi-path: false when ANY supplied prefix matches an error', () => {
     const { app, api } = mount()
     apps.push(app)
-    api.setFieldErrors([
-      { path: ['service', 'airline'], message: 'airline bad', formKey: api.key, code: 'x' },
-    ])
+    api.setErrors([{ path: ['service', 'airline'], message: 'airline bad', code: 'x' }])
     expect(allValid(api, ['cargo', 'service'])).toBe(false)
     expect(allValid(api, ['cargo'])).toBe(true)
     expect(allValid(api, ['service'])).toBe(false)
@@ -139,13 +133,11 @@ describe('per-prefix validity via form.fields(path).valid', () => {
     const cargoOk = computed(() => allValid(api, ['cargo']))
     expect(cargoOk.value).toBe(true)
 
-    api.setFieldErrors([
-      { path: ['cargo', 'items', 0, 'sku'], message: 'sku bad', formKey: api.key, code: 'x' },
-    ])
+    api.setErrors([{ path: ['cargo', 'items', 0, 'sku'], message: 'sku bad', code: 'x' }])
     await nextTick()
     expect(cargoOk.value).toBe(false)
 
-    api.clearFieldErrors(['cargo', 'items', 0, 'sku'])
+    api.clearErrors(['cargo', 'items', 0, 'sku'])
     await nextTick()
     expect(cargoOk.value).toBe(true)
   })
@@ -176,7 +168,7 @@ describe('per-prefix validity via form.fields(path).valid', () => {
   it('root prefix matches every error including form-level', () => {
     const { app, api } = mount()
     apps.push(app)
-    api.setFormErrors([{ message: 'capacity full' }])
+    api.setErrors([{ message: 'capacity full' }])
     expect(allValid(api, [[]])).toBe(false)
     // A scoped prefix doesn't see the form-level error.
     expect(allValid(api, ['cargo'])).toBe(true)

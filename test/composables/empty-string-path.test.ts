@@ -15,7 +15,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  *   - `errors()` → all errors (full aggregate, == `meta.errors`)
  *   - `errors([])` → ONLY the global bucket (root `.refine()`,
- *     `setFormErrors`); a dedicated channel undiluted by field errors
+ *     `setErrors`); a dedicated channel undiluted by field errors
  *   - `errors('')` → the literal `''` field (empty for a normal schema
  *     with no `''` key), never the global bucket
  *   - `errors('field')` → unchanged subtree-at-field

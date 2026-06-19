@@ -12,9 +12,9 @@ import type { FormKey, ValidationError } from '../types/types-api'
  *   `issue.code` (e.g. `zod:too_small`). No enum here because
  *   Zod's code list evolves.
  * - consumer-defined — anything the consumer's backend / app stamps
- *   onto a `ValidationError` (via the `parseApiErrors` wire payload
- *   or `setFieldErrors` directly). Pick a scope (`api:`, `auth:`,
- *   etc.) and stay consistent.
+ *   onto a `ValidationError` (a server response handed to `setErrors`,
+ *   or a code passed inline). Pick a scope (`api:`, `auth:`, etc.) and
+ *   stay consistent.
  *
  * Use these constants in tests and error-routing UI:
  *
@@ -58,6 +58,14 @@ export const AttaformErrorCode = {
    * `form.hydrateError` for retry UX.
    */
   ActivationFailed: 'atta:activation-failed',
+  /**
+   * Default code stamped on a manual error set through `form.setErrors`
+   * when the caller omits an explicit `code`. The `setErrors` input is
+   * lenient (`code` optional), so this is the fallback that keeps every
+   * produced `ValidationError` carrying a stable, branchable identifier.
+   * Override it per error by passing your own `code` (`api:…`, `auth:…`).
+   */
+  UserError: 'atta:user-error',
 } as const
 
 export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof AttaformErrorCode]

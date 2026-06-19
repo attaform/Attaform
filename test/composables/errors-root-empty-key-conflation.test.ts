@@ -13,7 +13,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  * `''` is a plain field key. It carries the literal `['']` field's
  * errors and nothing else, ever. Root / global form context (a root
- * `.refine()`, `setFormErrors`, hydration failures) lives at the root
+ * `.refine()`, `setErrors`, hydration failures) lives at the root
  * `[]` and only there. They are separate storage, separate reads, and
  * separate slots in the materialised `JSON.stringify(form.errors)` dump:
  *
@@ -30,15 +30,14 @@ interface ConflationForm {
   readonly errors: unknown
   readonly meta: { readonly validating: boolean }
   handleSubmit: (onValid: () => void, onInvalid: () => void) => (event?: Event) => Promise<unknown>
-  setFieldErrors: (
+  setErrors: (
     errors: ReadonlyArray<{
-      path: readonly (string | number)[]
+      path?: readonly (string | number)[]
       message: string
-      formKey: string
-      code: string
+      formKey?: string
+      code?: string
     }>
   ) => void
-  setFormErrors: (errors: ReadonlyArray<{ message: string }>) => void
 }
 
 const apps: App[] = []
@@ -128,14 +127,16 @@ function schemaConflationTests(makeInvalidForm: () => ConflationForm): void {
 }
 
 function imperativeConflationTests(makeValidForm: () => ConflationForm): void {
-  it('imperative errors: setFieldErrors([\'\']) -> "" slot, setFormErrors -> [] slot, no bleed', async () => {
+  it('imperative errors: a "" field entry and a global entry sit in distinct slots, no bleed', async () => {
     const form = makeValidForm()
     await flush(form)
 
-    form.setFieldErrors([
+    // One whole-layer write carrying both: the `['']` entry lands in the
+    // literal-field slot, the path-less entry in the global `[]` bucket.
+    form.setErrors([
       { path: [''], message: 'field boom', formKey: form.key, code: 'api:test' },
+      { message: 'global boom' },
     ])
-    form.setFormErrors([{ message: 'global boom' }])
     await flush(form)
 
     expect(slot(form, '')).toEqual(['field boom'])
@@ -152,7 +153,7 @@ function imperativeConflationTests(makeValidForm: () => ConflationForm): void {
     const form = makeValidForm()
     await flush(form)
 
-    form.setFormErrors([{ message: 'lonely global' }])
+    form.setErrors([{ message: 'lonely global' }])
     await flush(form)
 
     expect(slot(form, '[]')).toEqual(['lonely global'])

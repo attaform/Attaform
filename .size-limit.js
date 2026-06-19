@@ -437,7 +437,15 @@ export default [
     // (chore/rip-onchange): the unified entry's shared core chunk drops the
     // onChange seam (on-change.ts + dispatch + the silent thread). Measured at
     // 57.64 KB.
-    limit: '58 KB',
+    //
+    // Raised 58 → 59 KB on the submit-success-semantics branch (#438): the
+    // post-callback failure routing lands in the shared core chunk. process-
+    // form's handleSubmit gains a userErrors-non-empty check after onSubmit
+    // (focus + onError + early return so a setErrors-and-return callback no
+    // longer flips submitted), mirrored in use-wizard (collectCallbackErrors +
+    // focusFirstWizardError, gating done / step-advance on a clean callback).
+    // Measured at 58.08 KB.
+    limit: '59 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -554,7 +562,17 @@ export default [
     // Lowered 54 → 52 KB on the form.onChange removal branch
     // (chore/rip-onchange): same shared core chunk drops the onChange seam
     // (on-change.ts + dispatch + the silent thread). Measured at 51.56 KB.
-    limit: '52 KB',
+    //
+    // Raised 52 → 53 KB on the meta.dirty removal-detection branch (#420):
+    // the shared core chunk gains the removal-dirty machinery in
+    // create-form-store.ts — the pre-write identity-baseline realign for a
+    // wholesale array shrink, plus the removedSubtrees set + isContainer /
+    // subtreeHadRealBaseline / hasRemovedSubtreeUnder helpers and the reset()
+    // clear for a container -> non-container drop — and field-state-api.ts
+    // consults hasRemovedSubtreeUnder in the container dirty rollup. zod-v4.mjs,
+    // the tightest full entry (zod-v3 still has ~0.5 KB headroom), had spent its
+    // and crossed 52. Measured at 52.12 KB.
+    limit: '53 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -844,5 +862,91 @@ export default [
     gzip: true,
     ignore: ['@vue/compiler-core'],
     modifyEsbuildConfig: asEsmNode,
+  },
+
+  // ----------------------------------------------------------------
+  // Tree-shaking tripwires (single named import, NOT the whole entry).
+  //
+  // The entries above cap each subpath's FULL inlined surface. They do
+  // NOT prove that a consumer importing only one symbol drops the rest
+  // — `import:` does. size-limit's esbuild analyzer bundles ONLY the
+  // named import and tree-shakes the entry around it, so the gzipped
+  // number here is the real cost a consumer pays for that one symbol
+  // (Vue is external as for every entry; `zod` is ignored explicitly).
+  //
+  // The load-bearing case: `useWizard` shares its physical chunk with
+  // `useAbstractForm` (the engine behind every `useForm`), so dropping
+  // it relies on the consumer bundler's intra-chunk dead-code
+  // elimination, not a whole-module drop. These caps are the standing
+  // proof that elimination still works: a regression that makes
+  // `useForm` transitively reach `use-wizard.ts` (e.g. a shared helper
+  // migrating into it) pushes `{ useForm }` up by ~5 KB gzip and trips
+  // the cap — the kind of leak no full-entry cap above can see.
+  //
+  // Caps are snug against the measured size. They track the same shared
+  // core as the full entries, so they bump in lockstep on feature
+  // branches that legitimately grow `useForm`'s closure — same cadence
+  // as `index.mjs` / `zod.mjs` above. A jump LARGER than the
+  // accompanying full-entry bump is the leak signal.
+  {
+    name: 'zod: { useForm } only (no wizard/register/injectForm)',
+    path: 'dist/zod.mjs',
+    import: '{ useForm }',
+    // Unified entry, so `{ useForm }` pulls BOTH adapters (runtime
+    // dispatch) but NOT the wizard / injectForm / useRegister / unset /
+    // lazy surface that the full 59 KB cap above includes. The ~6 KB
+    // gap below that cap is the tree-shaken optional surface. Measured
+    // at 52.15 KB; ~0.85 KB headroom.
+    limit: '53 KB',
+    gzip: true,
+    ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    name: 'zod-v4: { useForm } only',
+    path: 'dist/zod-v4.mjs',
+    import: '{ useForm }',
+    // Single-adapter v4 entry: one adapter, no wizard surface. Measured
+    // at 45.99 KB; ~1 KB headroom.
+    limit: '47 KB',
+    gzip: true,
+    ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    name: 'zod-v3: { useForm } only',
+    path: 'dist/zod-v3.mjs',
+    import: '{ useForm }',
+    // Single-adapter v3 entry. Measured at 47.48 KB; ~0.5 KB headroom.
+    limit: '48 KB',
+    gzip: true,
+    ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    name: 'zod: { injectForm } only',
+    path: 'dist/zod.mjs',
+    import: '{ injectForm }',
+    // Reaching an ancestor form's surface (proxy + FieldState read
+    // machinery) without the schema / validation / store-creation that
+    // `useForm` carries, and crucially without the wizard surface.
+    // Measured at 22.44 KB; ~0.56 KB headroom.
+    limit: '23 KB',
+    gzip: true,
+    ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    name: 'zod: { useRegister } only',
+    path: 'dist/zod.mjs',
+    import: '{ useRegister }',
+    // The leanest field-rebind helper. The tightest tripwire: anything
+    // heavy leaking into it (form store, adapters, wizard) shows up
+    // immediately against this small baseline. Measured at 9.65 KB;
+    // ~0.35 KB headroom.
+    limit: '10 KB',
+    gzip: true,
+    ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
   },
 ]

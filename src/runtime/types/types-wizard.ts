@@ -228,9 +228,11 @@ export type WizardOnSubmit = (ctx: WizardSubmitContext) => void | Promise<void>
 
 /**
  * Optional `onError` callback registered via `wizard.handleSubmit`.
- * Receives the aggregate error list — entries originate from per-form
- * validation and activation failures (`atta:activation-failed`). Sync
- * or async; the returned promise gates `wizard.submitting`.
+ * Receives the aggregate error list. Entries originate from per-form
+ * validation, activation failures (`atta:activation-failed`), and a
+ * submit callback that left errors on a processed step (the
+ * `setErrors(...); return` server-rejection path). Sync or async; the
+ * returned promise gates `wizard.submitting`.
  */
 export type WizardOnError = (errors: readonly WizardAggregateError[]) => void | Promise<void>
 
@@ -438,25 +440,32 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    Forward-looking; reactive to current form
  *                    validity. Gates "Finish button enable" style UI.
  *  - `done`        — monotonic latch: flips `true` the first time a
- *                    final-step `handleSubmit` resolves without
- *                    throwing, and stays `true` through subsequent
- *                    edits or invalidations. Only `reset()` flips it
- *                    back. Gates "show success card" style UI that
- *                    should reflect submission history rather than
- *                    current validity.
+ *                    final-step `handleSubmit` resolves without throwing
+ *                    AND leaves no errors set on any step, and stays
+ *                    `true` through subsequent edits or invalidations. A
+ *                    callback that calls `setErrors` and returns (the
+ *                    documented server-rejection path) is a failed submit,
+ *                    so it does not flip `done`. Only `reset()` flips it
+ *                    back. Gates "show success card" style UI that should
+ *                    reflect submission history rather than current
+ *                    validity.
  *  - `submitting`  — `true` while a `wizard.handleSubmit` call is in
  *                    flight. Global re-entrance guard: every
  *                    navigation method also refuses while this is on.
  *  - `submissionAttempts` — count of `wizard.handleSubmit` invocations
  *                    (success or failure). Always bumps, including on
  *                    noop-form steps.
- *  - `submitError` — the error thrown by the most recent
+ *  - `submitError` — the error THROWN by the most recent
  *                    `wizard.handleSubmit` callback (or its `onError`),
  *                    coerced to a real `Error`. Mirrors
- *                    `form.meta.submitError`: cleared at submit entry and
- *                    by `reset()`, parked here rather than re-thrown, so
- *                    the handler resolves and never manufactures a
- *                    `window` unhandledrejection. `null` on success.
+ *                    `form.meta.submitError`: this is the unexpected-throw
+ *                    channel, so an expected rejection handled via
+ *                    `setErrors` (no throw) surfaces through the error
+ *                    surface and `onError` instead, leaving this `null`.
+ *                    Cleared at submit entry and by `reset()`, parked here
+ *                    rather than re-thrown, so the handler resolves and
+ *                    never manufactures a `window` unhandledrejection.
+ *                    `null` on success.
  *  - `visited`     — append-only breadcrumb of navigated step keys.
  *                    `back()` does not pop; the trail is the audit
  *                    log, not the back-stack.

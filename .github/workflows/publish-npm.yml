@@ -127,7 +127,7 @@ jobs:
       anything_to_do: ${{ steps.gates.outputs.anything_to_do }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Fetch tags so `git ls-remote --tags origin v<version>` is the
           # authoritative check (otherwise we'd be asking the local
@@ -243,7 +243,7 @@ jobs:
       attestations: write # Write the SLSA build-provenance attestation produced by `actions/attest-build-provenance` to GitHub Attestations.
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Full history needed for `git tag --sort=-version:refname`
           # inside the release-notes body builder + for the tag-target

@@ -66,7 +66,7 @@ jobs:
     name: Lint and format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
           # job; no `git push` or private-ref fetch needs the token
@@ -120,7 +120,7 @@ jobs:
     name: Typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
           # job; no `git push` or private-ref fetch needs the token
@@ -184,7 +184,7 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
           # job; no `git push` or private-ref fetch needs the token
@@ -232,7 +232,7 @@ jobs:
     name: Bundle size
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
           # job; no `git push` or private-ref fetch needs the token
@@ -288,7 +288,7 @@ jobs:
     name: Performance benchmarks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
           # job; no `git push` or private-ref fetch needs the token
@@ -341,7 +341,7 @@ jobs:
     # agnostic: a single LTS run is enough; the test matrix covers
     # the cross-version surface.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
           # job; no `git push` or private-ref fetch needs the token
@@ -394,7 +394,7 @@ jobs:
     # `pnpm check:coverage` (vitest with coverage instrumentation),
     # which also fails the job if coverage thresholds drop.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
           # job; no `git push` or private-ref fetch needs the token

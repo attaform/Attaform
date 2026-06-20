@@ -1,3 +1,11 @@
+/* Anchor the cascade layer order so PrimeVue's styled-mode CSS (used only by
+   the third-party-component docs gallery, see plugins/primevue.ts) lands in
+   an `@layer primevue` that sits below the site's own styles. This declares
+   the same theme/base/components/utilities order Tailwind v4 uses, with a
+   `primevue` slot inserted between base and components, so the site's
+   existing cascade is unchanged. Layer name declarations are allowed before
+   @import per the CSS spec. */
+@layer theme, base, primevue, components, utilities;
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 

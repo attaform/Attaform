@@ -235,7 +235,20 @@ export async function measureEager(define = PROD_DEFINE) {
 // thread drops the eager set ~1.0 kB, landing it at 42.47 kB gz. Budget
 // ratcheted 46_000 → 44_000 to lock it in; the full-bundle reclaim (~2 kB per
 // entry) is locked via the .size-limit.js caps (46→44 / 60→58 / 54→52 / 56→54).
-const BUDGET_GZ = 44_000
+//
+// RECORDED LOOSENING (esbuild 0.28.1 minifier drift + v-register third-party
+// binding): the #456 dev-deps bump moved esbuild to 0.28.1 (lockfile-pinned via
+// vite@8.0.16; this script resolves it as the newest installed copy), whose minifier
+// emits a larger output. Core features also landed since the onChange removal without
+// a ratchet (error model #423, submit semantics #438). Together these push the
+// clean-main eager set to ~44_011 bytes, ~11 bytes over the 44_000 budget independent
+// of any feature branch. The third-party-component v-model desugar then adds a small
+// setValueFromHost on the eager RegisterValue (a v-model host emits its typed value
+// through onUpdate:modelValue with no DOM input listener to flip the sticky interacted
+// bit, so the host write bundles the value write with markInteracted), landing eager
+// at ~44_020 bytes. Budget raised 44_000 → 44_500 to restore ~0.5 kB headroom for
+// minifier-version drift; never loosen it without a recorded reason in the commit.
+const BUDGET_GZ = 44_500
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

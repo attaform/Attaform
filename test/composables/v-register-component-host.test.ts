@@ -124,6 +124,53 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(true)
   })
 
+  it('excludes an aria-hidden (tabindex=-1) mirror — latches the visible control', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    // The reka-ui PinInput / BubbleInput pattern: a sr-only mirror input carries
+    // the value for a native submit. It is NOT type=hidden, so the selector
+    // matches it; the latch filter drops it for being out of the tab order and
+    // hidden from the a11y tree.
+    const visible = input({ type: 'text' })
+    const mirror = input({ type: 'text', tabindex: '-1', 'aria-hidden': 'true' })
+    const host = hostWith([visible, mirror])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    expect(elementCount(state, ['email'])).toBe(1)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+  })
+
+  it('excludes a tabindex=-1 mirror that lacks aria-hidden — latches the visible control', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    // The reka-ui Combobox BubbleInput uses data-hidden, not aria-hidden, so
+    // tabindex=-1 is the load-bearing signal that the mirror is not the control
+    // the user focuses.
+    const visible = input({ type: 'text' })
+    const mirror = input({ type: 'text', tabindex: '-1', 'data-hidden': '' })
+    const host = hostWith([visible, mirror])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    expect(elementCount(state, ['email'])).toBe(1)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+  })
+
+  it('a lone tabindex=-1 control declines the latch (documented mirror-heuristic edge)', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    // The heuristic treats tabindex=-1 as "not user-facing", so a single
+    // programmatically-focused control declines the latch and falls back to the
+    // no-latch connected mark. Value still binds via the v-model channel.
+    const host = hostWith([input({ type: 'text', tabindex: '-1' })])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    expect(elementCount(state, ['email'])).toBe(0)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+  })
+
   it('declines the latch for a composite (>1 control) but still marks connected', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])

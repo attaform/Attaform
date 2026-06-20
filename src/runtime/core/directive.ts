@@ -1048,11 +1048,25 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
 // unmounts without GC interaction (KeepAlive churn) leaves no residue.
 const componentHostLatch = new WeakMap<HTMLElement, HTMLElement | null>()
 
-// The inner form controls the host element-discovery latches onto. Hidden
-// mirror inputs (combobox/listbox patterns stash the bound value in a
-// `type=hidden` input) are excluded so they never win the exactly-one latch
-// over the visible control.
+// The inner form controls the host element-discovery latches onto. The
+// `type=hidden` exclusion drops the simplest mirror inputs; isLatchableControl
+// drops the visually-hidden, out-of-tab-order mirrors real headless components
+// render for native form submission.
 const HOST_CONTROL_SELECTOR = 'input:not([type=hidden]), select, textarea'
+
+// Whether a control discovered under a host is a real, user-facing one rather
+// than a form-submission mirror. Headless components (reka-ui's BubbleInput /
+// BubbleSelect and the like) render a second, visually-hidden control beside
+// the real one so a native form submit still carries the value. These are not
+// `type=hidden`: they sit at `tabindex="-1"` with sr-only styling, tagged
+// inconsistently (`aria-hidden="true"` on some, `data-hidden` on others).
+// Latching one would pin focus / aria onto an element the user can never reach,
+// and a lone real control beside a mirror would otherwise count as two and
+// decline the latch. The control to latch is the one the user can focus, so
+// drop anything pulled out of the tab order or hidden from the a11y tree.
+function isLatchableControl(el: Element): boolean {
+  return el.getAttribute('tabindex') !== '-1' && el.getAttribute('aria-hidden') !== 'true'
+}
 
 // The runtime half of v-register's third-party binding. The compile-time
 // componentBridgeTransform stamps SSR_COMPONENT_HOST_MODIFIER on a v-register
@@ -1078,13 +1092,16 @@ function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
     // desugar, so this binding is never a no-op -- claim ownership of the root.
   ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
 
-  // Latch the single inner form control. Latch only when exactly one control
+  // Latch the single inner form control, filtering out submission mirrors
+  // (isLatchableControl). Latch only when exactly one latchable control
   // resolves; zero or several (a composite widget) declines -- value still
   // binds, and `connected` rides the no-latch mark below. A host root that is
   // ITSELF an interactive control needs no handling here: the per-tag variant
   // (vRegisterText / vRegisterSelect) already registered it via callModelHook
   // before this runs, so the discriminator above returns early for it.
-  const descendants = el.querySelectorAll(HOST_CONTROL_SELECTOR)
+  const descendants = Array.from(el.querySelectorAll(HOST_CONTROL_SELECTOR)).filter(
+    isLatchableControl
+  )
   const control = descendants.length === 1 ? (descendants[0] as HTMLElement) : null
 
   if (control !== null) {

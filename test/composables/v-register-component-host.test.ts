@@ -755,3 +755,73 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
     for (const seg of segs) expect(seg.hasAttribute('aria-invalid')).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Container-path binding: a composite host bound directly to a CONTAINER path
+// (array / object) records its connect / focus state on the container's OWN
+// field record. The aggregate walk visits strict descendants only, so it must
+// also fold the container's own record in -- the same own-path case the file
+// directive hits. Dot access stays the subtree graph; the aggregate is the
+// call form `form.fields(path)`.
+// ---------------------------------------------------------------------------
+
+const containerHostSchema = z.object({ tags: z.array(z.string()) })
+type ContainerApi = UseFormReturn<typeof containerHostSchema>
+
+describe('v-register component host: container-path aggregate field-state', () => {
+  let app: App | undefined
+  afterEach(() => {
+    app?.unmount()
+    app = undefined
+    document.body.innerHTML = ''
+  })
+
+  async function mountContainerHost(): Promise<{
+    api: ContainerApi
+    host: () => HTMLElement | null
+  }> {
+    const handle: { api?: ContainerApi } = {}
+    const Parent = defineComponent({
+      setup() {
+        const api = useForm({
+          schema: containerHostSchema,
+          defaultValues: { tags: [] },
+          key: `container-host-${Math.random().toString(36).slice(2)}`,
+        })
+        handle.api = api
+        const rv = api.register('tags')
+        return () =>
+          withDirectives(h(CompositePin, { registerValue: rv }), [
+            [vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true }],
+          ])
+      },
+    })
+    app = createApp(Parent).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    await waitUntil(() =>
+      handle.api !== undefined && root.firstElementChild !== null ? true : null
+    )
+    await awaitSettle()
+    if (handle.api === undefined) throw new Error('mountContainerHost: api never set')
+    return { api: handle.api, host: () => root.firstElementChild as HTMLElement | null }
+  }
+
+  it('surfaces the container host own connected through the call-form aggregate', async () => {
+    const { api } = await mountContainerHost()
+    // CompositePin renders two inputs -> no single latch -> the no-latch host
+    // marks connected on the CONTAINER record, which the descendant walk skips.
+    // The own-record fold makes the aggregate reflect it.
+    expect(api.fields('tags').connected).toBe(true)
+  })
+
+  it('surfaces the container host own focus through the call-form aggregate', async () => {
+    const { api, host } = await mountContainerHost()
+    const first = host()?.querySelector('input.a')
+    if (!(first instanceof HTMLInputElement)) throw new Error('segment missing')
+    first.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    await waitUntil(() => (api.fields('tags').focused === true ? true : null))
+    expect(api.fields('tags').focused).toBe(true)
+  })
+})

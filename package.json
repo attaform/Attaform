@@ -166,6 +166,8 @@
     "lint-staged": "^17.0.4",
     "nuxt": "^4.4.2",
     "prettier": "^3.8.3",
+    "primevue": "^4.5.5",
+    "reka-ui": "^2.9.10",
     "rollup-plugin-dts": "^6.4.1",
     "size-limit": "^12.1.0",
     "typescript": "6.0.3",

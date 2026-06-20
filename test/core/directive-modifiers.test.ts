@@ -71,6 +71,7 @@ function makeRegisterValue<T>(initial: T): {
     registerElement: register,
     deregisterElement: deregister,
     setValueWithInternalPath: setValue,
+    setValueFromHost: setValue,
     markConnectedOptimistically: () => undefined,
     beginTransform: () => 0,
     isCurrentTransform: () => false,

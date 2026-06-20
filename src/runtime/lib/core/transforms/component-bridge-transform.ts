@@ -283,6 +283,13 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     // user's <select v-register=...> rather than line 0.
     const selectLoc: SourceLocation = node.loc
 
+    // Set by traverseSelectNode when it encounters any <option> descendant.
+    // Distinguishes a select-like host (native <select> or a component that
+    // projects slotted <option>s) from a plain input component host: the
+    // former keeps the legacy :value bind so SSR option selection survives,
+    // the latter gets the standard v-model pair instead.
+    let hasSlottedOptions = false
+
     function traverseSelectNode(
       _node: RootNode | TemplateChildNode,
       previousOptionExpressions: CompoundExpressionNode['children'][]
@@ -303,6 +310,10 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
         }
         return
       }
+
+      // This host projects at least one <option>: it's select-like, so the
+      // value channel stays :value (below) rather than the v-model pair.
+      hasSlottedOptions = true
 
       const optionProps = getSummarizedProps(_node)
       const valueIndex = optionProps.findIndex((p) => isExactKey(p.key, 'value'))
@@ -359,6 +370,21 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     const previousOptionExpressions: CompoundExpressionNode['children'][] =
       typeof multipleExpression === 'string' ? [[multipleExpression]] : [multipleExpression]
 
+    // <option> children of a v-register host derive their SSR :selected from
+    // the host's single register. For a native <select> they're inline; for a
+    // component / custom-element host they're parent-authored slot content,
+    // still present in node.children at this (enter-phase) point in the parent
+    // AST -- before Vue's later buildSlots pass folds them into a slot
+    // function. Walking them here marks them identically, so wrapping a
+    // <select> in a styled component no longer drops the SSR selected option
+    // (and reintroduces a first-paint flash). traverseSelectNode is a no-op
+    // when there are no <option> descendants, so this is zero-cost for hosts
+    // that don't project options. Run before the value-channel decision below
+    // so hasSlottedOptions is settled when we choose :value vs v-model.
+    for (const child of node.children) {
+      traverseSelectNode(child, previousOptionExpressions) // start searching for options in dfs manner
+    }
+
     // Multi-select hydration trap. Setting `select.value = X` on a
     // `<select multiple>` runs the spec's value-setter loop: for each
     // option, set selectedness to (option.value === X). For an array
@@ -388,11 +414,24 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     // hydration correctness is the right call.
     const isStaticallyNonMultiple = multipleExpression === 'false'
 
+    // Value-channel split (the corrected gate). A "select-like" host keeps the
+    // legacy :value bind: a native <select>, or a component / custom-element
+    // host that projects slotted <option>s. The option :selected marks are
+    // register-driven (generateEqualityExpression reads the register, never
+    // this :value), so :value never drove SSR selection -- it's retained only
+    // so the browser's single-select value patch lands. A plain input
+    // component host (no projected options) instead gets the standard Vue
+    // v-model pair, which is SSR-correct by construction and carries the typed
+    // model value rather than the stringified display form.
+    const isComponentHost = isCustomComponent || isKebabCustomElement
+    const isSelectLikeHost = isSelect || (isComponentHost && hasSlottedOptions)
+    const isPlainComponentHost = isComponentHost && !hasSlottedOptions
+
     const selectProps = node.props
     snapshotProps(selectProps)
     removePropsByName(selectProps, ['value']) // actively prevent an attribute collision
 
-    if (isStaticallyNonMultiple) {
+    if (isStaticallyNonMultiple && isSelectLikeHost) {
       // construct `:value` dynamic prop based on the existing `v-register` directive
       const valuePropExpArray = Array.isArray(registerSummarizedProp?.value)
         ? registerSummarizedProp.value
@@ -443,18 +482,99 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       node.props.push(valueProp)
     }
 
-    // <option> children of a v-register host derive their SSR :selected from
-    // the host's single register. For a native <select> they're inline; for a
-    // component / custom-element host they're parent-authored slot content,
-    // still present in node.children at this (enter-phase) point in the parent
-    // AST -- before Vue's later buildSlots pass folds them into a slot
-    // function. Walking them here marks them identically, so wrapping a
-    // <select> in a styled component no longer drops the SSR selected option
-    // (and reintroduces a first-paint flash). traverseSelectNode is a no-op
-    // when there are no <option> descendants, so this is zero-cost for hosts
-    // that don't project options.
-    for (const child of node.children) {
-      traverseSelectNode(child, previousOptionExpressions) // start searching for options in dfs manner
+    if (isPlainComponentHost) {
+      // A plain third-party / custom-element host speaks the standard Vue
+      // v-model contract. Strip first, then inject the pair. The strip does
+      // double duty: it drops any author-written v-model (a `v-model`
+      // directive, or an explicit `:modelValue` / `@update:modelValue`) so
+      // v-register owns the binding without a duplicate-prop collision, AND it
+      // drops a prior injection of our own `modelValue` / `onUpdate:modelValue`
+      // so a doubly-registered transform pipeline re-injects exactly once
+      // (the same strip-then-reinject idempotency the :value path above uses).
+      // :modelValue reads innerRef -- the typed model value (Date / number /
+      // array), not the stringified displayValue a <select> uses.
+      // onUpdate:modelValue routes through setValueFromHost, which writes the
+      // value AND flips the sticky `interacted` bit (a v-model host has no DOM
+      // input listener to do it), so blur-validation and the reward-early
+      // display state arm the same as they do for a native input.
+      removePropsByName(node.props, [
+        'model',
+        'modelValue',
+        'onUpdate:modelValue',
+        'update:modelValue',
+      ])
+
+      const modelValuePropExpArray = Array.isArray(registerSummarizedProp?.value)
+        ? registerSummarizedProp.value
+        : [registerSummarizedProp?.value ?? 'undefined']
+
+      const modelInitExpression = createCompoundExpression([
+        '(',
+        ...modelValuePropExpArray,
+        ')?.innerRef?.value',
+      ])
+      const modelSimpleExpression = createSimpleExpression(
+        flattenExpression(modelInitExpression),
+        false
+      )
+      let modelOutputExp: ExpressionNode
+      try {
+        modelOutputExp = processExpression(modelSimpleExpression, {
+          ...context,
+          prefixIdentifiers: false,
+        })
+      } catch (err) {
+        console.error(
+          '[attaform] component-bridge transform: processExpression failed for :modelValue; falling back to the unprocessed expression.',
+          err
+        )
+        modelOutputExp = modelSimpleExpression
+      }
+
+      const modelValueProp: DirectiveNode = {
+        rawName: ':modelValue',
+        arg: createSimpleExpression('modelValue', true),
+        exp: modelOutputExp,
+        name: 'bind',
+        modifiers: [],
+        type: NodeTypes.DIRECTIVE,
+        loc: selectLoc,
+      }
+      node.props.push(modelValueProp)
+
+      const updateInitExpression = createCompoundExpression([
+        '$event => (',
+        ...modelValuePropExpArray,
+        ')?.setValueFromHost?.($event)',
+      ])
+      const updateSimpleExpression = createSimpleExpression(
+        flattenExpression(updateInitExpression),
+        false
+      )
+      let updateOutputExp: ExpressionNode
+      try {
+        updateOutputExp = processExpression(updateSimpleExpression, {
+          ...context,
+          prefixIdentifiers: false,
+        })
+      } catch (err) {
+        console.error(
+          '[attaform] component-bridge transform: processExpression failed for onUpdate:modelValue; falling back to the unprocessed expression.',
+          err
+        )
+        updateOutputExp = updateSimpleExpression
+      }
+
+      const updateModelValueProp: DirectiveNode = {
+        rawName: '@update:modelValue',
+        arg: createSimpleExpression('onUpdate:modelValue', true),
+        exp: updateOutputExp,
+        name: 'bind',
+        modifiers: [],
+        type: NodeTypes.DIRECTIVE,
+        loc: selectLoc,
+      }
+      node.props.push(updateModelValueProp)
     }
 
     if (isSelect) {

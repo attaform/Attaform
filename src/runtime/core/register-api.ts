@@ -344,6 +344,22 @@ export function buildRegister<F extends GenericForm>(
         return state.setValueAtPath(segments, value, withInstanceMeta(meta))
       },
 
+      setValueFromHost: (value: unknown): boolean => {
+        // The write path for a third-party component bound by v-register's
+        // compile-time v-model desugar. The host emits its typed model value
+        // through `onUpdate:modelValue`; unlike a native control there is no
+        // DOM input listener, so this bundles the value write with
+        // markInteracted -- exactly as the native input listener pairs the
+        // assigner write with noteInteraction. Without the markInteracted,
+        // blur-validation and the reward-early display state would never arm
+        // for a v-model-bound component. The value is authoritative (the
+        // component's resolved model type), so it routes through the same
+        // no-coercion funnel as setValueWithInternalPath. Mark interacted
+        // before the write so any validation the write triggers sees the bit.
+        state.markInteracted(segments)
+        return state.setValueAtPath(segments, value, withInstanceMeta(undefined))
+      },
+
       // Called by the `vRegisterHint` compile-time transform's wrapping
       // IIFE on every server-side render of `<element v-register="…">`.
       // Without it, every SSR'd FieldState serialises `connected: false`

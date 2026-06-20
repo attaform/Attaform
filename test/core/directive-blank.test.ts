@@ -47,6 +47,7 @@ function makeRegisterValue<T>(initial: T): {
     registerElement: vi.fn(),
     deregisterElement: vi.fn(),
     setValueWithInternalPath: setValue,
+    setValueFromHost: setValue,
     markConnectedOptimistically: () => undefined,
     beginTransform: () => 0,
     isCurrentTransform: () => false,

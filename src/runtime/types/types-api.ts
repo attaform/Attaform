@@ -1905,6 +1905,16 @@ export type RegisterValue<Value = unknown> = Readonly<{
    */
   setValueWithInternalPath: (value: unknown, meta?: WriteMeta) => boolean
   /**
+   * Commit a value emitted by a third-party component bound through
+   * `v-register`'s compile-time v-model desugar. Writes the value (the
+   * component's typed model output, authoritative -- no coercion) AND marks
+   * the field interacted, since a v-model host has no DOM input listener to
+   * flip the sticky `interacted` bit. The injected `onUpdate:modelValue`
+   * handler is the only caller. Returns `true` when the write was accepted.
+   * @internal
+   */
+  setValueFromHost: (value: unknown) => boolean
+  /**
    * Mark this field as DOM-connected during SSR so a server-rendered
    * template that reads `form.fields.<path>.connected` doesn't
    * flicker on hydration. The `v-register` directive calls this for

@@ -12,7 +12,7 @@ import { useRegister } from '../../src/runtime/composables/use-register'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildRegister } from '../../src/runtime/core/register-api'
 import { canonicalizePath } from '../../src/runtime/core/paths'
-import type { RegisterValue } from '../../src/runtime/types/types-api'
+import type { GetDisplayState, RegisterValue } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
 
@@ -356,5 +356,145 @@ describe('v-register component host: integration (modifier plumbed through)', ()
     inner.dispatchEvent(new Event('focus'))
     await waitUntil(() => (m?.api.fields.email.focused === true ? true : null))
     expect(m.api.fields.email.focused).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 3: autoAria on the latched control. The host root's own setupAria (the
+// `created` hook) no-ops on a non-interactive wrapper, so the directive manages
+// aria on the discovered inner control instead, seeding the authored-attr locks
+// from live DOM attributes (no vnode is available for a runtime-discovered
+// element). Case A (useRegister wrapper) is untouched: its inner control's own
+// directive already manages aria, and activateComponentHost steps aside before
+// the latch.
+// ---------------------------------------------------------------------------
+
+const ariaSchema = z.object({ email: z.string().min(1), note: z.string().optional() })
+type AriaApi = UseFormReturn<typeof ariaSchema>
+
+const forceState =
+  (state: 'idle' | 'pending' | 'error' | 'success'): GetDisplayState =>
+  () => ({ display: state })
+
+type AriaHostMount = {
+  app: App
+  api: AriaApi
+  host: () => HTMLElement
+  inner: () => HTMLInputElement
+}
+
+async function mountAriaHost(
+  Child: ReturnType<typeof defineComponent>,
+  opts?: { getDisplayState?: GetDisplayState }
+): Promise<AriaHostMount> {
+  const handle: { api?: AriaApi } = {}
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const Parent = defineComponent({
+    setup() {
+      const api = useForm({
+        schema: ariaSchema,
+        key: `aria-host-${Math.random().toString(36).slice(2)}`,
+        ...(opts?.getDisplayState ? { getDisplayState: opts.getDisplayState } : {}),
+      })
+      handle.api = api
+      const rv = api.register('email')
+      return () =>
+        withDirectives(h(Child, { registerValue: rv }), [
+          [vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true }],
+        ])
+    },
+  })
+  const app = createApp(Parent).use(createAttaform())
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app.mount(root)
+  await waitUntil(() => (handle.api !== undefined && root.firstElementChild !== null ? true : null))
+  await awaitSettle()
+  warnSpy.mockRestore()
+  if (handle.api === undefined) throw new Error('mountAriaHost: api never set')
+  const host = (): HTMLElement => root.firstElementChild as HTMLElement
+  return {
+    app,
+    api: handle.api,
+    host,
+    inner: () => host().querySelector('input.inner') as HTMLInputElement,
+  }
+}
+
+// Authors aria-invalid on its own inner control, so the live-DOM lock has
+// something present at latch time to leave alone.
+const DivWrappedAuthoredAria = defineComponent({
+  name: 'DivWrappedAuthoredAria',
+  inheritAttrs: false,
+  setup: () => () =>
+    h('div', { class: 'wrapper' }, [
+      h('input', { type: 'text', class: 'inner', 'aria-invalid': 'false' }),
+    ]),
+})
+
+describe('v-register component host: autoAria on the latched control (Phase 3)', () => {
+  let m: AriaHostMount | undefined
+  afterEach(() => {
+    m?.app.unmount()
+    m = undefined
+    document.body.innerHTML = ''
+  })
+
+  it('lights up aria-required on the discovered control, not the wrapper root', async () => {
+    m = await mountAriaHost(DivWrappedInput, { getDisplayState: forceState('idle') })
+    // The required schema field surfaces aria-required on the inner control.
+    expect(m.inner().getAttribute('aria-required')).toBe('true')
+    // The presentational wrapper root carries no (invalid) aria.
+    expect(m.host().hasAttribute('aria-required')).toBe(false)
+  })
+
+  it('reflects a forced error state as aria-invalid + describedby on the control', async () => {
+    m = await mountAriaHost(DivWrappedInput, { getDisplayState: forceState('error') })
+    expect(m.inner().getAttribute('aria-invalid')).toBe('true')
+    expect(m.inner().getAttribute('aria-describedby')).toBe(m.api.fields.email.aria.errorId)
+  })
+
+  it('watches display state live — a failed submit flips aria-invalid post-mount', async () => {
+    m = await mountAriaHost(DivWrappedInput)
+    // Gate closed pre-interaction: nothing surfaced on the control.
+    expect(m.inner().hasAttribute('aria-invalid')).toBe(false)
+
+    // A failed submit opens the gate; the control's own watch flips
+    // aria-invalid with no parent re-render. This liveness is exactly what
+    // the runtime-SSR frozen seed lacked before this phase.
+    await m.api.handleSubmit(() => undefined)()
+    await waitUntil(() => (m?.inner().getAttribute('aria-invalid') === 'true' ? true : null))
+    expect(m.inner().getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('respects aria the component authored on its own control (live-DOM lock)', async () => {
+    m = await mountAriaHost(DivWrappedAuthoredAria, { getDisplayState: forceState('error') })
+    // The component shipped aria-invalid="false" on its control; the error
+    // state would set it true, but the lock seeded from the live attribute
+    // leaves it untouched.
+    expect(m.inner().getAttribute('aria-invalid')).toBe('false')
+    // Unauthored managed attrs still flow (the field is required).
+    expect(m.inner().getAttribute('aria-required')).toBe('true')
+  })
+
+  it('clears the control aria it set when the host unmounts', async () => {
+    m = await mountAriaHost(DivWrappedInput, { getDisplayState: forceState('error') })
+    const inner = m.inner()
+    expect(inner.getAttribute('aria-invalid')).toBe('true')
+    m.app.unmount()
+    m = undefined
+    // beforeUnmount tears down the control's watch and strips the attrs it set.
+    expect(inner.hasAttribute('aria-invalid')).toBe(false)
+    expect(inner.hasAttribute('aria-required')).toBe(false)
+    expect(inner.hasAttribute('aria-describedby')).toBe(false)
+  })
+
+  it('manages no control aria for a composite host (no latch, no target)', async () => {
+    m = await mountAriaHost(CompositePin, { getDisplayState: forceState('error') })
+    // More than one control -> no latch -> no discovered aria target. The
+    // composite widget owns its members' aria; value still binds via v-model.
+    const segs = m.host().querySelectorAll('input')
+    expect(segs.length).toBe(2)
+    for (const seg of segs) expect(seg.hasAttribute('aria-invalid')).toBe(false)
   })
 })

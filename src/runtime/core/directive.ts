@@ -31,6 +31,7 @@ import {
   getSSRAriaProps,
   mergeAriaLocks,
   setupAria,
+  setupAriaLive,
   teardownAria,
   type AriaCarrier,
 } from './directive-aria'
@@ -1091,6 +1092,12 @@ function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
     // seeds only `connected` + focus/blur listeners, never reading or writing
     // `el.value`, so it cannot fight the v-model value channel.
     rv.registerElement(control)
+    // Manage autoAria on the discovered control itself. The host root's own
+    // setupAria (the `created` hook) no-ops on a non-interactive wrapper, so
+    // without this the latched control carries no live aria. The live-DOM lock
+    // read honours aria the component authored on its own control (no vnode is
+    // available for a runtime-discovered element); a no-op when autoAria is off.
+    setupAriaLive(control as AriaCarrier, rv)
     componentHostLatch.set(el, control)
   } else {
     rv.markHostConnected(true)
@@ -1223,8 +1230,13 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // no-latch connected mark, then drop the record.
     if (componentHostLatch.has(el)) {
       const latchedControl = componentHostLatch.get(el)
-      if (latchedControl != null) value.deregisterElement(latchedControl)
-      else value.markHostConnected(false)
+      if (latchedControl != null) {
+        // Mirror activateComponentHost in reverse: stop the aria watch and
+        // clear the attrs we set on the control before releasing it. The
+        // host-root teardownAria above never reached this descendant.
+        teardownAria(latchedControl as AriaCarrier)
+        value.deregisterElement(latchedControl)
+      } else value.markHostConnected(false)
       componentHostLatch.delete(el)
     }
 

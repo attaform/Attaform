@@ -187,6 +187,36 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(false)
   })
 
+  it('no-latch host: widget-root focusin / focusout drive focused, ignoring intra-widget hops', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const a = input()
+    const b = input()
+    const host = hostWith([a, b])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+    // No single control to latch, so focus rides bubbling focusin / focusout on
+    // the host root rather than an element-level focus listener.
+    expect(elementCount(state, ['email'])).toBe(0)
+
+    // Entering a segment from outside (relatedTarget null) focuses the field.
+    a.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    expect(state.getFieldRecord(['email'])?.focused).toBe(true)
+
+    // A hop between segments (relatedTarget still inside the host) is not a
+    // blur: the field stays focused across the focusout / focusin pair.
+    a.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: b }))
+    b.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: a }))
+    expect(state.getFieldRecord(['email'])?.focused).toBe(true)
+
+    // Leaving the widget entirely (relatedTarget outside the host) blurs it.
+    b.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }))
+    expect(state.getFieldRecord(['email'])?.focused).toBe(false)
+    expect(state.getFieldRecord(['email'])?.blurred).toBe(true)
+
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+  })
+
   it('marks connected for a no-control widget and clears it on unmount', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
@@ -374,16 +404,34 @@ describe('v-register component host: integration (modifier plumbed through)', ()
     expect(m.warnings.filter((w) => w.includes('is a no-op')).length).toBe(0)
   })
 
-  it('composite host: connected true, but a segment focus does not track (Phase 2b scope)', async () => {
+  it('composite host: connected true, and focus tracks at the widget root', async () => {
     m = await mountHost(CompositePin)
     expect(m.api.fields.email.connected).toBe(true)
 
-    const a = m.hostEl()?.querySelector('input.a') as HTMLInputElement
-    a.dispatchEvent(new Event('focus'))
+    const host = m.hostEl()
+    const a = host?.querySelector('input.a')
+    const b = host?.querySelector('input.b')
+    if (!(a instanceof HTMLInputElement) || !(b instanceof HTMLInputElement)) {
+      throw new Error('composite segments missing')
+    }
+
+    // No control latched, so focus rides bubbling focusin / focusout on the
+    // widget root. Entering a segment focuses the field.
+    a.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    await waitUntil(() => (m?.api.fields.email.focused === true ? true : null))
+    expect(m.api.fields.email.focused).toBe(true)
+
+    // A hop between segments (relatedTarget inside the host) is not a blur.
+    a.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: b }))
+    b.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: a }))
     await awaitSettle()
-    // No control latched -> no focus listener -> focused stays at the optimistic
-    // false the connected mark seeded (widget-root focus is Phase 2b).
+    expect(m.api.fields.email.focused).toBe(true)
+
+    // Leaving the widget (relatedTarget outside) blurs it.
+    b.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }))
+    await waitUntil(() => (m?.api.fields.email.blurred === true ? true : null))
     expect(m.api.fields.email.focused).toBe(false)
+    expect(m.api.fields.email.blurred).toBe(true)
   })
 
   it('no-control widget: connected true on mount, cleared when the host unmounts', async () => {

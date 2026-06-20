@@ -264,7 +264,7 @@ describe('cross-library matrix: reka-ui', () => {
     expect(m.api.fields.field.connected).not.toBe(true)
   })
 
-  it('PinInput: composite (>1 segment) -> declines the latch, still connected', async () => {
+  it('PinInput: composite (>1 segment) -> declines the latch, focus tracks at the widget root', async () => {
     // The field is a string here only so `fields.field.connected` reads cleanly;
     // the latch outcome is DOM-driven (segment count), independent of the model
     // type, and PinInput renders from the array modelValue passed below.
@@ -279,10 +279,36 @@ describe('cross-library matrix: reka-ui', () => {
     // Value binds via v-model, so the field reads connected without a latch.
     expect(m.api.fields.field.connected).toBe(true)
 
-    // A segment focus does not track: no single control latched, so no element
-    // focus listener (widget-root focus is Phase 2b).
-    const seg = m.inner('input') as HTMLInputElement
-    seg.dispatchEvent(new Event('focus'))
+    // No single control latched (4 segments), so focus is tracked at the widget
+    // root via bubbling focusin / focusout rather than an element focus listener.
+    // reka-ui renders a visually-hidden BubbleInput mirror beside the segments
+    // (the same one isLatchableControl drops from the latch), so filter it out
+    // to reach the four user-facing segments.
+    const segs = Array.from(m.host()?.querySelectorAll('input') ?? []).filter(
+      (el) => el.getAttribute('aria-hidden') !== 'true' && el.getAttribute('tabindex') !== '-1'
+    )
+    expect(segs.length).toBe(4)
+    const [first, second] = segs
+    if (!(first instanceof HTMLInputElement) || !(second instanceof HTMLInputElement)) {
+      throw new Error('PinInput segments missing')
+    }
+
+    // Entering a segment from outside focuses the field.
+    first.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    await awaitSettle()
+    expect(m.api.fields.field.focused).toBe(true)
+
+    // Tabbing between segments is an intra-widget hop, not a blur: a focusout
+    // whose relatedTarget stays inside the host keeps the field focused.
+    first.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: second }))
+    second.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: first }))
+    await awaitSettle()
+    expect(m.api.fields.field.focused).toBe(true)
+
+    // Leaving the widget entirely (relatedTarget outside the host) blurs it.
+    second.dispatchEvent(
+      new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body })
+    )
     await awaitSettle()
     expect(m.api.fields.field.focused).toBe(false)
 
@@ -291,7 +317,7 @@ describe('cross-library matrix: reka-ui', () => {
     expect(m.api.fields.field.connected).toBe(false)
   })
 
-  it('Slider: no native control -> no latch, connected on mount and cleared on unmount', async () => {
+  it('Slider: no native control -> no latch, focus tracks the thumb, cleared on unmount', async () => {
     // String field for a clean `connected` read; Slider renders from the array
     // modelValue passed below (see the PinInput note).
     const m = await mountHost(z.object({ field: z.string() }), (_rv, vm) =>
@@ -304,6 +330,17 @@ describe('cross-library matrix: reka-ui', () => {
     // The thumb is a role=slider span, not a native control.
     expect(m.inner('input')).toBeNull()
     expect(m.api.fields.field.connected).toBe(true)
+
+    // No control to latch, so focus rides the widget root: focusing the thumb
+    // (a focusable span) marks the field focused; leaving the widget blurs it.
+    const thumb = m.host()?.querySelector('[role=slider]')
+    if (!(thumb instanceof HTMLElement)) throw new Error('Slider thumb missing')
+    thumb.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    await awaitSettle()
+    expect(m.api.fields.field.focused).toBe(true)
+    thumb.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }))
+    await awaitSettle()
+    expect(m.api.fields.field.focused).toBe(false)
 
     m.show.value = false
     await waitUntil(() => (m.api.fields.field.connected === false ? true : null))

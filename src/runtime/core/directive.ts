@@ -1117,7 +1117,25 @@ function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
     setupAriaLive(control as AriaCarrier, rv)
     componentHostLatch.set(el, control)
   } else {
+    // No single control to latch: a composite widget (PinInput's segments) or
+    // a control-less one (Slider). Value still binds via the v-model channel,
+    // so mark the host connected and track focus at the widget root. focusin /
+    // focusout bubble (focus / blur do not), so a root listener sees focus
+    // crossing the inner controls. A move whose relatedTarget stays inside the
+    // host is an intra-widget hop (segment to segment), not an enter / leave of
+    // the field, so it is skipped. Auto-detached by removeTrackedListeners at
+    // beforeUnmount.
     rv.markHostConnected(true)
+    addTrackedListener(el, 'focusin', (event) => {
+      const from = (event as FocusEvent).relatedTarget
+      if (from instanceof Node && el.contains(from)) return
+      rv.markFocused(true)
+    })
+    addTrackedListener(el, 'focusout', (event) => {
+      const to = (event as FocusEvent).relatedTarget
+      if (to instanceof Node && el.contains(to)) return
+      rv.markFocused(false)
+    })
     componentHostLatch.set(el, null)
   }
 }

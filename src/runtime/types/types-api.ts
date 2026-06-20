@@ -1932,6 +1932,16 @@ export type RegisterValue<Value = unknown> = Readonly<{
    */
   markHostConnected: (connected: boolean) => void
   /**
+   * Mark this field focused (`true`) or blurred (`false`) for a `v-register`
+   * component host with no single latched control -- a composite widget whose
+   * focus moves between inner segments, or a control-less one. The directive
+   * tracks focusin / focusout on the widget root and forwards here, so focus
+   * state and blur-validation still arm without an element-level focus
+   * listener. Carries this binding's instance meta (its `validateOn`).
+   * @internal
+   */
+  markFocused: (focused: boolean) => void
+  /**
    * `true` when an element already registered for this binding's path is
    * contained within (or equal to) `hostElement`. The directive's
    * component-host branch reads it to tell a `useRegister` wrapper (whose

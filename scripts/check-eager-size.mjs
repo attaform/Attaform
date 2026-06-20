@@ -248,7 +248,20 @@ export async function measureEager(define = PROD_DEFINE) {
 // bit, so the host write bundles the value write with markInteracted), landing eager
 // at ~44_020 bytes. Budget raised 44_000 → 44_500 to restore ~0.5 kB headroom for
 // minifier-version drift; never loosen it without a recorded reason in the commit.
-const BUDGET_GZ = 44_500
+//
+// RECORDED LOOSENING (v-register third-party Phase 5, feat/v-register-third-party):
+// the directive's no-latch host branch grows the rich FieldState for composite and
+// control-less third-party widgets. Item 1 (composite / no-control focus) adds an
+// rv.markFocused delegate plus a focusin / focusout pair on the widget root (with a
+// relatedTarget containment check so intra-widget tabbing is not a blur), since a
+// host with no single latchable control has no element-level focus listener. That
+// lands eager at ~44_523 bytes. The remaining Phase 5 items -- async self-heal (a
+// scoped MutationObserver for late-arriving controls) and the non-v-model /
+// multi-root dev diagnostics -- will each add more on the same eager directive
+// path. Budget raised 44_500 → 45_500 once for the whole phase rather than per item,
+// sized ahead of those two; ratchet it back to the true measured set at phase close.
+// Never loosen further without a recorded reason.
+const BUDGET_GZ = 45_500
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

@@ -376,6 +376,20 @@ export function buildRegister<F extends GenericForm>(
         state.markHostConnected(segments, connected)
       },
 
+      markFocused: (focused: boolean): void => {
+        // The no-latch host focus path. A composite widget (PinInput's
+        // segments) or a control-less one (Slider) exposes no single element
+        // for attachFocusListeners to bind focus / blur to, so the directive
+        // tracks focusin / focusout on the widget root and forwards here. Pass
+        // the same instance meta the latched-control focus listeners use, so a
+        // blur still drives this binding's validateOn blur-validation.
+        state.markFocused(
+          segments,
+          focused,
+          instanceMeta !== undefined ? { instance: instanceMeta } : undefined
+        )
+      },
+
       hasRegisteredDescendant: (hostElement: HTMLElement): boolean => {
         // Discriminator for the directive's component-host branch: is any
         // element already registered for this path contained within (or

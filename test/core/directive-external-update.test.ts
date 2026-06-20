@@ -46,6 +46,7 @@ function makeRegisterValue<T>(initial: T): MutableMockRv<T> {
     setValueFromHost: vi.fn(() => true),
     markConnectedOptimistically: () => undefined,
     markHostConnected: () => undefined,
+    markFocused: () => undefined,
     hasRegisteredDescendant: () => false,
     path: 'mock' as PathKey,
     segments: Object.freeze(['mock']),

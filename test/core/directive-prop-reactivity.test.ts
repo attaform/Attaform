@@ -63,6 +63,7 @@ function makeRegisterValue<T>(initial: T): {
     setValueFromHost: setValue,
     markConnectedOptimistically: () => undefined,
     markHostConnected: () => undefined,
+    markFocused: () => undefined,
     hasRegisteredDescendant: () => false,
     beginTransform: () => 0,
     isCurrentTransform: () => false,

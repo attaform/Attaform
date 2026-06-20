@@ -17,6 +17,15 @@ overrides:
   # unbuild's plugin array under `exactOptionalPropertyTypes`. One version
   # makes the types identical. Bump this in lockstep with vite/rollup.
   rollup: 4.61.1
+  # Pin devframe's h3 to Nitro's stable v1 line. devframe (transitive of
+  # @nuxtjs/seo via @unhead/bundler > @vitejs/devtools-kit) carries a
+  # pre-release h3 v2; when Nitro bundles the prerender server, the
+  # @nuxt/content sql-dump handler can bind its setResponseHeader to that v2
+  # copy and crash on the v1 event Nitro passes it ("Cannot read properties
+  # of undefined (reading 'set')"), which on Vercel cascaded into a
+  # /sitemap.xml 500. Scoped to devframe so @nuxt/test-utils keeps its own
+  # h3 v2 (the h3-next alias) for the e2e suite.
+  'devframe>h3': 1.15.11
 
 # Install-script allowlist. Any package NOT listed here has its
 # install / postinstall / preinstall scripts skipped at install

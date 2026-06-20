@@ -255,12 +255,15 @@ export async function measureEager(define = PROD_DEFINE) {
 // rv.markFocused delegate plus a focusin / focusout pair on the widget root (with a
 // relatedTarget containment check so intra-widget tabbing is not a blur), since a
 // host with no single latchable control has no element-level focus listener. That
-// lands eager at ~44_523 bytes. The remaining Phase 5 items -- async self-heal (a
-// scoped MutationObserver for late-arriving controls) and the non-v-model /
-// multi-root dev diagnostics -- will each add more on the same eager directive
-// path. Budget raised 44_500 → 45_500 once for the whole phase rather than per item,
-// sized ahead of those two; ratchet it back to the true measured set at phase close.
-// Never loosen further without a recorded reason.
+// lands eager at ~44_523 bytes. Two more Phase 5 items landed on the same eager
+// directive path: async self-heal (a scoped MutationObserver that latches a control
+// rendered after mount) and the multi-root drop diagnostic (a dev-only warn in
+// setValueFromHost when a value update arrives but the directive never attached; the
+// non-v-model diagnostic was dropped as undetectable post-matrix). Budget raised
+// 44_500 → 45_500 once for the whole phase rather than per item. Phase 5 is now
+// complete and lands eager at ~45_080 bytes, ~0.41 kB under this budget -- about the
+// conventional drift headroom, so the phase-wide estimate held and the budget stays
+// at 45_500. Never loosen further without a recorded reason.
 const BUDGET_GZ = 45_500
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href

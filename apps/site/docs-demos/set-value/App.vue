@@ -40,7 +40,7 @@
       <button type="button" @click="form.setValue(['profile', 'email'], 'champ@attaform.dev')">
         form.setValue(['profile', 'email'], …)
       </button>
-      <button type="button" @click="form.setValue('profile.age', (prev) => (prev ?? 0) + 1)">
+      <button type="button" @click="form.setValue('profile.age', (prev) => prev + 1)">
         form.setValue('profile.age', callback)
       </button>
       <button

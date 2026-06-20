@@ -918,7 +918,21 @@ export default [
     path: 'dist/zod-v3.mjs',
     import: '{ useForm }',
     // Single-adapter v3 entry. Measured at 47.48 KB; ~0.5 KB headroom.
-    limit: '48 KB',
+    //
+    // Raised 48 -> 49 KB tracking the v-register third-party-component
+    // branch (Phase 2 of plan zany-finding-melody): the directive gains its
+    // component-host element-discovery branch (activateComponentHost: the
+    // Case-A hasRegisteredDescendant discriminator, the exactly-one
+    // querySelectorAll latch via registerElement, the componentHostLatch
+    // teardown), create-form-store gains markHostConnected (client connected
+    // for a no-latch host), and the RegisterValue gains markHostConnected /
+    // hasRegisteredDescendant delegates (plus Phase 1's setValueFromHost).
+    // All eager (the directive ships in the always-on useForm closure), so
+    // the tripwire bumps in lockstep -- a legitimate ~0.35 KB feature growth,
+    // not a tree-shake leak. zod-v3.mjs is the tightest { useForm } tripwire,
+    // so it bound first; v4's still has ~0.5 KB headroom (46.46 KB) and the
+    // full entries are under cap. Measured at 48.01 KB.
+    limit: '49 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

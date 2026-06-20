@@ -1278,15 +1278,26 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
       isComponentHostModifier || (realVnode !== null && !isInteractiveElementVnode)
     const ariaProps = suppressHostAria ? undefined : getSSRAriaProps(rv, realVnode)
 
-    // Form-state (`value` / `checked`) is the runtime path's analogue of
-    // the compile-time transform's injected binding. Compiled SSR passes a
-    // `null` vnode (the transform already emitted the binding there), so
-    // this only fires for `h()` / `withDirectives` renders — the two
-    // mechanisms own disjoint paths and never double-emit. Without it, a
-    // render-function field rendered server-side carries its aria attrs
-    // but no value, painting empty for one frame before the client
-    // directive fills it in on mount.
-    const formStateProps = realVnode !== null ? getSSRFormStateProps(rv, realVnode) : undefined
+    // Form-state (`value` / `checked`) is the runtime path's per-element
+    // analogue of the transform's injected binding: without it a
+    // render-function field paints empty for one frame before the client
+    // directive fills it on mount. Compiled SSR for a directive bound DIRECTLY
+    // to an element passes a `null` vnode (the transform already emitted the
+    // binding), so the guard below skips it there.
+    //
+    // Suppressed for a component HOST (the modifier the transform stamps). Vue
+    // transfers a component-bound directive onto the component's root element
+    // and fires this hook there, so for a third-party host this would seed
+    // `value = displayValue` (the stringified model) onto the inner control
+    // and win the prop merge, clobbering the typed `:modelValue` channel the
+    // transform set up. The host's value rides v-model instead; the
+    // element-level seed must stay out of its way. A scalar model hid this
+    // (displayValue equals the rendered value); a typed model (array / Date)
+    // exposed the stringified clobber.
+    const formStateProps =
+      realVnode !== null && !isComponentHostModifier
+        ? getSSRFormStateProps(rv, realVnode)
+        : undefined
 
     if (ariaProps === undefined && formStateProps === undefined) return undefined
     // Disjoint key spaces (`aria-*` vs `value` / `checked`), so the merge

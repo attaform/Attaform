@@ -1234,6 +1234,16 @@ const deferred: { slug: string; reason: string }[] = [
     reason:
       'A file-upload gesture feeding an async transform is not testable under jsdom; needs an integration runner.',
   },
+  {
+    slug: 'third-party-reka-ui',
+    reason:
+      'Component-host v-register binds via the compile-time componentBridgeTransform, which this harness plain @vitejs/plugin-vue does not run; covered by test/third-party-components plus the live docs render and playground.',
+  },
+  {
+    slug: 'third-party-primevue',
+    reason:
+      'Same compile-time transform gap as third-party-reka-ui, and PrimeVue needs its own plugin (the harness installs only createAttaform); covered by test/third-party-components plus the live docs render and playground.',
+  },
 ]
 
 describe('docs-demos smoke', () => {

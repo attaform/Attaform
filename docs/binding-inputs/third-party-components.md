@@ -21,9 +21,14 @@ Attaform's happy path is markup you control: a native `<input>`, or a small wrap
 
 There is no separate API to learn for this. You write the same one line you would write on a native input, and Attaform does the reaching.
 
-Here is one `v-register` binding seven real components from two libraries. Interact with any of them and watch its value and field state update in the table below:
+Here is `v-register` binding real components from two libraries, the same one line on each. Interact with any control and watch its value flow into the form while its field state lights up beside it:
 
-::third-party-gallery
+::docs-demo{slug="third-party-reka-ui" label="reka-ui (headless)"}
+::
+
+reka-ui ships headless primitives, so each control above is unstyled markup the demo themes itself. PrimeVue ships fully themed components instead. The binding does not care either way:
+
+::docs-demo{slug="third-party-primevue" label="PrimeVue (themed)"}
 ::
 
 ## The one line you write
@@ -85,7 +90,7 @@ Most Vue components speak the standard `modelValue` / `update:modelValue` contra
 
 Attaform does not formally promise to support every component library in existence. What it offers is a set of careful heuristics, run at the directive and the compile-time transform, that make most standard Vue components bind without ceremony, plus the escape hatches above for the rest.
 
-The gallery above runs reka-ui and PrimeVue live. Behind it, the cross-library test suite exercises `v-register` against the real rendered output of all three, [reka-ui](https://reka-ui.com), [PrimeVue](https://primevue.org), and [Nuxt UI](https://ui.nuxt.com): single-input fields, spinbuttons, composite PIN inputs, control-less sliders, and fragment-rooted comboboxes each land in the matrix, so the behavior described on this page is pinned, not promised.
+The demos above run reka-ui and PrimeVue live. Behind them, the cross-library test suite exercises `v-register` against the real rendered output of all three, [reka-ui](https://reka-ui.com), [PrimeVue](https://primevue.org), and [Nuxt UI](https://ui.nuxt.com): single-input fields, spinbuttons, composite PIN inputs, control-less sliders, and fragment-rooted comboboxes each land in the matrix, so the behavior described on this page is pinned, not promised.
 
 ## Where to next
 

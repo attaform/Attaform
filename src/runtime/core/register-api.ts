@@ -1,4 +1,4 @@
-import { computed, ref, shallowReadonly, type Ref } from 'vue'
+import { computed, nextTick, ref, shallowReadonly, warn, type Ref } from 'vue'
 import type {
   CoercionRegistry,
   DisplayState,
@@ -15,6 +15,13 @@ import { computeFieldIdentity } from './field-ids'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
+import { __DEV__ } from './dev'
+
+// Dev-only dedup for the multi-root host warning: a host value update flowing
+// in while nothing was ever wired for the path means Vue dropped the directive
+// on a multi-root component. Keyed by form-instance + path so it fires once per
+// affected binding, and never bleeds the warning across separate forms.
+const warnedMultiRootHosts = new Set<string>()
 
 /**
  * Per-`useForm()`-instance config that the API layer threads through
@@ -357,7 +364,37 @@ export function buildRegister<F extends GenericForm>(
         // no-coercion funnel as setValueWithInternalPath. Mark interacted
         // before the write so any validation the write triggers sees the bit.
         state.markInteracted(segments)
-        return state.setValueAtPath(segments, value, withInstanceMeta(undefined))
+        const accepted = state.setValueAtPath(segments, value, withInstanceMeta(undefined))
+        // Dev diagnostic: a host value update flowed in, but nothing was ever
+        // wired for this path (no registered element, connected never set). The
+        // transform's v-model props ride a component's props / emits, which Vue
+        // keeps even when it drops a runtime directive on a multi-root
+        // (fragment) component -- so the value channel works while
+        // activateComponentHost never ran and the rich FieldState (connected /
+        // focus / aria / scroll-to-error) is silently missing. Re-check on the
+        // next tick so a component that emits during its own mount, before the
+        // directive's mounted runs, does not trip a false positive.
+        if (__DEV__) {
+          const dedupeKey = `${formInstanceId}:${pathKey}`
+          const isWired = (): boolean =>
+            (state.elements.get(pathKey)?.elements.size ?? 0) > 0 ||
+            state.getFieldRecord(segments)?.connected === true
+          if (!warnedMultiRootHosts.has(dedupeKey) && !isWired()) {
+            warnedMultiRootHosts.add(dedupeKey)
+            void nextTick(() => {
+              if (isWired()) return
+              warn(
+                `[attaform] v-register received a value update from a component it never ` +
+                  `attached to. Vue drops a runtime directive on a component with more than one ` +
+                  `root node (a fragment / multi-root template), so v-register's value binding ` +
+                  `works but its field state (connected, focus, aria, scroll-to-error) does not. ` +
+                  `Give the component a single element root, or wrap it so v-register lands on ` +
+                  `one element.`
+              )
+            })
+          }
+        }
+        return accepted
       },
 
       // Called by the `vRegisterHint` compile-time transform's wrapping

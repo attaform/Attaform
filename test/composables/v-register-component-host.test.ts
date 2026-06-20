@@ -329,12 +329,15 @@ describe('v-register component host: element discovery (store-level)', () => {
   it('setValueFromHost writes the value AND marks interacted (the v-model channel)', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
+    const host = hostWith([input({ type: 'text' })])
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
     expect(state.getFieldRecord(['email'])?.interacted ?? false).toBe(false)
 
     rv.setValueFromHost('typed@host')
 
     expect(state.getValueAtPath(['email'])).toBe('typed@host')
     expect(state.getFieldRecord(['email'])?.interacted).toBe(true)
+    hostHooks.beforeUnmount(host, hostBinding(rv))
   })
 
   it('a latched-control blur after a host edit arms blurredAfterInteraction', () => {
@@ -353,6 +356,55 @@ describe('v-register component host: element discovery (store-level)', () => {
     inner.dispatchEvent(new Event('blur'))
 
     expect(state.getFieldRecord(['email'])?.blurredAfterInteraction).toBe(true)
+  })
+
+  it('multi-root diagnostic: a host value update with nothing wired warns once', async () => {
+    const { register } = makeForm()
+    const rv = register(['email'])
+
+    // No host directive ran (Vue dropped it on a multi-root component): nothing
+    // registered, connected never set. The value update still arrives via the
+    // component's surviving v-model emit. Two updates -> exactly one warning.
+    rv.setValueFromHost('typed')
+    rv.setValueFromHost('typed again')
+    await awaitSettle()
+
+    const warned = warnSpy.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes('never attached to')
+    )
+    expect(warned.length).toBe(1)
+  })
+
+  it('multi-root diagnostic: a latched host does not warn', async () => {
+    const { register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([input({ type: 'text' })])
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    rv.setValueFromHost('typed')
+    await awaitSettle()
+
+    const warned = warnSpy.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes('never attached to')
+    )
+    expect(warned.length).toBe(0)
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+  })
+
+  it('multi-root diagnostic: a no-latch host (connected via the host mark) does not warn', async () => {
+    const { register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([input(), input()])
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    rv.setValueFromHost('typed')
+    await awaitSettle()
+
+    const warned = warnSpy.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes('never attached to')
+    )
+    expect(warned.length).toBe(0)
+    hostHooks.beforeUnmount(host, hostBinding(rv))
   })
 })
 

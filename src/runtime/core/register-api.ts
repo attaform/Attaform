@@ -372,6 +372,24 @@ export function buildRegister<F extends GenericForm>(
         state.markConnectedOptimistically(segments)
       },
 
+      markHostConnected: (connected: boolean): void => {
+        state.markHostConnected(segments, connected)
+      },
+
+      hasRegisteredDescendant: (hostElement: HTMLElement): boolean => {
+        // Discriminator for the directive's component-host branch: is any
+        // element already registered for this path contained within (or
+        // equal to) the host? True for a `useRegister` wrapper whose inner
+        // control self-registered before the host mounted (children mount
+        // first); false for a third-party component that registered nothing.
+        const record = state.elements.get(pathKey)
+        if (record === undefined) return false
+        for (const element of record.elements) {
+          if (hostElement.contains(element)) return true
+        }
+        return false
+      },
+
       // --- Async transform lifecycle (internal; the directive's
       // deferred orchestrator is the only legitimate consumer). Thin
       // path-bound delegates to the store's per-path token / counter

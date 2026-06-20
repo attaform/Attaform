@@ -1039,6 +1039,65 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
   ? new WeakSet<HTMLElement>()
   : null
 
+// Per-host-root record of the component-host branch's outcome, read back at
+// `beforeUnmount` to tear down symmetrically. Maps a host root element to the
+// inner control it latched, or `null` when it took the no-latch (markHost
+// connected) path. Absent means Case A (a useRegister wrapper the discriminator
+// skipped) or not a host at all -- nothing to undo. WeakMap so a host that
+// unmounts without GC interaction (KeepAlive churn) leaves no residue.
+const componentHostLatch = new WeakMap<HTMLElement, HTMLElement | null>()
+
+// The inner form controls the host element-discovery latches onto. Hidden
+// mirror inputs (combobox/listbox patterns stash the bound value in a
+// `type=hidden` input) are excluded so they never win the exactly-one latch
+// over the visible control.
+const HOST_CONTROL_SELECTOR = 'input:not([type=hidden]), select, textarea'
+
+// The runtime half of v-register's third-party binding. The compile-time
+// componentBridgeTransform stamps SSR_COMPONENT_HOST_MODIFIER on a v-register
+// that lands on a component host and injects the value channel (v-model for a
+// plain component, :value for a select-like one). Here the directive supplies
+// the rich FieldState: it discovers the real inner control and registers it
+// (connected + focus/blur + the aria / scroll-to-error target).
+//
+// Two host shapes are told apart at mount:
+//   - Case A (a useRegister wrapper): its inner `<input v-register>` already
+//     self-registered for this path (children mount before parents), so a
+//     registered element is contained in the host. That inner control owns
+//     value + FieldState and the injected v-model is inert; do nothing.
+//   - Case B (a third-party component): nothing is registered for this path.
+//     Latch the single inner control when exactly one resolves, else fall back
+//     to marking the host connected -- value still binds via the v-model
+//     channel. Either way set REGISTER_OWNER_MARKER so the deferred "no-op"
+//     warn skips: a value-binding host is not a no-op.
+function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
+  // Case A: a useRegister wrapper owns this path already. Leave it be.
+  if (rv.hasRegisteredDescendant(el))
+    return // Case B: a third-party component. Value binds via the transform's v-model
+    // desugar, so this binding is never a no-op -- claim ownership of the root.
+  ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
+
+  // Latch the single inner form control. Latch only when exactly one control
+  // resolves; zero or several (a composite widget) declines -- value still
+  // binds, and `connected` rides the no-latch mark below. A host root that is
+  // ITSELF an interactive control needs no handling here: the per-tag variant
+  // (vRegisterText / vRegisterSelect) already registered it via callModelHook
+  // before this runs, so the discriminator above returns early for it.
+  const descendants = el.querySelectorAll(HOST_CONTROL_SELECTOR)
+  const control = descendants.length === 1 ? (descendants[0] as HTMLElement) : null
+
+  if (control !== null) {
+    // `registerElement` is value-free: it gates on INTERACTIVE_TAG_NAMES and
+    // seeds only `connected` + focus/blur listeners, never reading or writing
+    // `el.value`, so it cannot fight the v-model value channel.
+    rv.registerElement(control)
+    componentHostLatch.set(el, control)
+  } else {
+    rv.markHostConnected(true)
+    componentHostLatch.set(el, null)
+  }
+}
+
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   created(el, binding, vnode) {
     // Always run the per-tag variant's `created` — listener-body bail
@@ -1053,6 +1112,17 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   },
   mounted(el, binding, vnode) {
     callModelHook(el, binding, vnode, null, 'mounted')
+
+    // Component-host element discovery. The transform stamps
+    // SSR_COMPONENT_HOST_MODIFIER on a v-register that lands on a component
+    // host; here the directive discovers the inner control and registers it
+    // for the rich FieldState (the value channel is the transform's job). The
+    // discriminator inside skips a useRegister wrapper. Runs before the warn
+    // below sets REGISTER_OWNER_MARKER on a Case-B host, suppressing the
+    // no-op warn that would otherwise fire on a non-interactive host root.
+    if (binding.modifiers[SSR_COMPONENT_HOST_MODIFIER] === true && isRegisterValue(binding.value)) {
+      activateComponentHost(el, binding.value)
+    }
 
     // Defer the unsupported-element warn one tick past `mounted`. By the
     // time this resolves:
@@ -1145,6 +1215,18 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     if (!isRegisterValue(value)) return
 
     value.deregisterElement(el)
+
+    // Component-host teardown (mirrors activateComponentHost). The
+    // deregisterElement above targets the host ROOT, which a Case-B branch
+    // never registered (its root is typically non-interactive), so it doesn't
+    // cover the latched descendant. Release that control, or clear the
+    // no-latch connected mark, then drop the record.
+    if (componentHostLatch.has(el)) {
+      const latchedControl = componentHostLatch.get(el)
+      if (latchedControl != null) value.deregisterElement(latchedControl)
+      else value.markHostConnected(false)
+      componentHostLatch.delete(el)
+    }
 
     // Remove internal state that the directive attaches directly to the
     // element. If the element is reused (<KeepAlive>, v-show), stale flags

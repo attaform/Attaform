@@ -73,6 +73,8 @@ function makeRegisterValue<T>(initial: T): {
     setValueWithInternalPath: setValue,
     setValueFromHost: setValue,
     markConnectedOptimistically: () => undefined,
+    markHostConnected: () => undefined,
+    hasRegisteredDescendant: () => false,
     beginTransform: () => 0,
     isCurrentTransform: () => false,
     endTransform: () => undefined,

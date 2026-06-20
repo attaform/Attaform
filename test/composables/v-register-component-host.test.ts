@@ -1,0 +1,360 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createApp, defineComponent, h, ref, withDirectives, type App, type Ref } from 'vue'
+import type { DirectiveBinding } from 'vue'
+import { z } from 'zod'
+import { useForm } from '../../src/zod'
+import type { UseFormReturn } from '../../src/zod'
+import { vRegister } from '../../src/runtime/core/directive'
+import { SSR_COMPONENT_HOST_MODIFIER } from '../../src/runtime/core/register-protocol'
+import { createAttaform } from '../../src/runtime/core/plugin'
+import { useRegister } from '../../src/runtime/composables/use-register'
+import { createFormStore } from '../../src/runtime/core/create-form-store'
+import { buildRegister } from '../../src/runtime/core/register-api'
+import { canonicalizePath } from '../../src/runtime/core/paths'
+import type { RegisterValue } from '../../src/runtime/types/types-api'
+import { fakeSchema } from '../utils/fake-schema'
+import { awaitSettle, waitUntil } from '../utils/form-harness'
+
+/**
+ * Phase 2 of the third-party-component story (plan
+ * `~/.claude/plans/zany-finding-melody.md`): the directive's runtime half.
+ *
+ * The compile-time `componentBridgeTransform` stamps
+ * `SSR_COMPONENT_HOST_MODIFIER` on a `v-register` that lands on a component
+ * host and injects the value channel. The directive supplies the rich
+ * FieldState: at `mounted` it discovers the real inner control and registers
+ * it (connected + focus/blur + the aria / scroll-to-error target), telling a
+ * `useRegister` wrapper (Case A — inner control self-registered) apart from a
+ * third-party component (Case B — nothing registered yet).
+ *
+ * Two test surfaces:
+ *   - store-level, driving the directive hooks against a real FormStore for
+ *     precise element-Set / FieldRecord assertions;
+ *   - integration, mounting a real component tree with the modifier injected
+ *     through `withDirectives`' 4-tuple, proving the compile-time signal
+ *     actually reaches `binding.modifiers` and the branch fires end to end.
+ */
+
+type F = { email: string; name: string }
+
+function elementCount(state: ReturnType<typeof createFormStore<F>>, path: string[]): number {
+  return state.elements.get(canonicalizePath(path).key)?.elements.size ?? 0
+}
+
+// ---------------------------------------------------------------------------
+// Store-level: drive the directive hooks directly against a real FormStore.
+// ---------------------------------------------------------------------------
+
+describe('v-register component host: element discovery (store-level)', () => {
+  // The directive's `mounted` schedules a deferred dev-warn via `nextTick`;
+  // for a Case-A host (no owner marker) it would log. Silence console.warn so
+  // the synchronous store assertions below aren't polluted by that microtask.
+  let warnSpy: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+  afterEach(() => {
+    warnSpy.mockRestore()
+    document.body.innerHTML = ''
+  })
+
+  function makeForm() {
+    const state = createFormStore<F>({
+      formKey: 'host',
+      schema: fakeSchema<F>({ email: '', name: '' }),
+      ssr: false,
+    })
+    return { state, register: buildRegister(state, 'host:inst') }
+  }
+
+  type FakeVNode = { props: Record<string, unknown> }
+  const hostHooks = vRegister as unknown as {
+    mounted: (el: Element, b: DirectiveBinding, v: FakeVNode, p: null) => void
+    beforeUnmount: (el: Element, b: DirectiveBinding) => void
+  }
+  function hostBinding(rv: RegisterValue): DirectiveBinding {
+    return {
+      value: rv,
+      oldValue: null,
+      modifiers: { [SSR_COMPONENT_HOST_MODIFIER]: true },
+      arg: undefined,
+      dir: {},
+      instance: null,
+    } as unknown as DirectiveBinding
+  }
+  const vnode: FakeVNode = { props: {} }
+
+  function hostWith(children: HTMLElement[]): HTMLElement {
+    const host = document.createElement('div')
+    for (const child of children) host.appendChild(child)
+    document.body.appendChild(host)
+    return host
+  }
+  function input(attrs: Record<string, string> = {}): HTMLInputElement {
+    const el = document.createElement('input')
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
+    return el
+  }
+
+  it('latches the single inner control — connected true, exactly one element registered', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const inner = input({ type: 'text' })
+    const host = hostWith([inner])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    expect(elementCount(state, ['email'])).toBe(1)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+  })
+
+  it('excludes a type=hidden mirror — latches the visible control', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const mirror = input({ type: 'hidden' })
+    const visible = input({ type: 'text' })
+    const host = hostWith([mirror, visible])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    // Two inputs in the DOM, but the hidden mirror is excluded by the
+    // selector, so exactly one control resolves and the latch takes it.
+    expect(elementCount(state, ['email'])).toBe(1)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+  })
+
+  it('declines the latch for a composite (>1 control) but still marks connected', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([input(), input(), input()])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    // No single control to latch -> no element registered, but value still
+    // binds via the v-model channel, so the field reads connected.
+    expect(elementCount(state, ['email'])).toBe(0)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+    expect(state.getFieldRecord(['email'])?.connected).toBe(false)
+  })
+
+  it('marks connected for a no-control widget and clears it on unmount', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+    expect(elementCount(state, ['email'])).toBe(0)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+    expect(state.getFieldRecord(['email'])?.connected).toBe(false)
+  })
+
+  it('Case A: a pre-registered descendant makes the host step aside (no double-register)', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const inner = input({ type: 'text' })
+    const host = hostWith([inner])
+
+    // Simulate the useRegister wrapper: the inner control self-registered for
+    // this path (children mount before parents) before the host's mounted.
+    rv.registerElement(inner)
+    expect(elementCount(state, ['email'])).toBe(1)
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+    // Discriminator matched -> the host took no latch, no second registration.
+    expect(elementCount(state, ['email'])).toBe(1)
+
+    // And the host's teardown must not deregister the inner control it never
+    // owned: the inner control's own directive is responsible for that.
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+    expect(elementCount(state, ['email'])).toBe(1)
+  })
+
+  it('setValueFromHost writes the value AND marks interacted (the v-model channel)', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    expect(state.getFieldRecord(['email'])?.interacted ?? false).toBe(false)
+
+    rv.setValueFromHost('typed@host')
+
+    expect(state.getValueAtPath(['email'])).toBe('typed@host')
+    expect(state.getFieldRecord(['email'])?.interacted).toBe(true)
+  })
+
+  it('a latched-control blur after a host edit arms blurredAfterInteraction', () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const inner = input({ type: 'text' })
+    const host = hostWith([inner])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+    expect(elementCount(state, ['email'])).toBe(1)
+
+    // A host value edit marks interacted; the first blur after that arms the
+    // gate (focus listeners ride the latched control via registerElement).
+    rv.setValueFromHost('typed')
+    inner.dispatchEvent(new Event('focus'))
+    inner.dispatchEvent(new Event('blur'))
+
+    expect(state.getFieldRecord(['email'])?.blurredAfterInteraction).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Integration: mount a real component tree with the modifier injected through
+// withDirectives' 4-tuple (dir, value, arg, modifiers), proving the
+// compile-time signal reaches binding.modifiers and the branch fires.
+// ---------------------------------------------------------------------------
+
+const schema = z.object({ email: z.string(), name: z.string() })
+type Api = UseFormReturn<typeof schema>
+
+type HostMount = {
+  app: App
+  api: Api
+  hostEl: () => HTMLElement | null
+  show: Ref<boolean>
+  warnings: string[]
+}
+
+async function mountHost(Child: ReturnType<typeof defineComponent>): Promise<HostMount> {
+  const handle: { api?: Api } = {}
+  const warnings: string[] = []
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+    warnings.push(args.map((a) => String(a)).join(' '))
+  })
+  const show = ref(true)
+
+  const Parent = defineComponent({
+    setup() {
+      const api = useForm({ schema, key: `host-${Math.random().toString(36).slice(2)}` })
+      handle.api = api
+      const rv = api.register('email')
+      return () => {
+        if (!show.value) return h('div', { class: 'placeholder' })
+        // The 4-tuple's modifiers slot mirrors what componentBridgeTransform
+        // stamps; `registerValue` mirrors its always-injected prop.
+        return withDirectives(h(Child, { registerValue: rv }), [
+          [vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true }],
+        ])
+      }
+    },
+  })
+
+  const app = createApp(Parent).use(createAttaform())
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app.mount(root)
+  await waitUntil(() => (handle.api !== undefined && root.firstElementChild !== null ? true : null))
+  await awaitSettle()
+  warnSpy.mockRestore()
+
+  if (handle.api === undefined) throw new Error('mountHost: api never set')
+  return {
+    app,
+    api: handle.api,
+    hostEl: () => root.firstElementChild as HTMLElement | null,
+    show,
+    warnings,
+  }
+}
+
+const DivWrappedInput = defineComponent({
+  name: 'DivWrappedInput',
+  inheritAttrs: false,
+  setup: () => () => h('div', { class: 'wrapper' }, [h('input', { type: 'text', class: 'inner' })]),
+})
+
+const CompositePin = defineComponent({
+  name: 'CompositePin',
+  inheritAttrs: false,
+  setup: () => () =>
+    h('div', { class: 'pin' }, [
+      h('input', { class: 'a', maxlength: '1' }),
+      h('input', { class: 'b', maxlength: '1' }),
+    ]),
+})
+
+const NoControlWidget = defineComponent({
+  name: 'NoControlWidget',
+  inheritAttrs: false,
+  setup: () => () => h('div', { class: 'slider' }, [h('span', 'no native control')]),
+})
+
+const UseRegisterWrapper = defineComponent({
+  name: 'UseRegisterWrapper',
+  inheritAttrs: false,
+  setup() {
+    const register = useRegister()
+    return { register }
+  },
+  render() {
+    return h('div', { class: 'wrapper' }, [
+      withDirectives(h('input', { type: 'text', class: 'inner' }), [[vRegister, this.register]]),
+    ])
+  },
+})
+
+describe('v-register component host: integration (modifier plumbed through)', () => {
+  let m: HostMount | undefined
+  afterEach(() => {
+    m?.app.unmount()
+    m = undefined
+    document.body.innerHTML = ''
+  })
+
+  it('div-wrapped input: the modifier activates Case B; inner-control focus tracks', async () => {
+    m = await mountHost(DivWrappedInput)
+    expect(m.hostEl()?.tagName).toBe('DIV')
+    expect(m.api.fields.email.connected).toBe(true)
+
+    const inner = m.hostEl()?.querySelector('input.inner') as HTMLInputElement
+    inner.dispatchEvent(new Event('focus'))
+    await waitUntil(() => (m?.api.fields.email.focused === true ? true : null))
+    expect(m.api.fields.email.focused).toBe(true)
+
+    inner.dispatchEvent(new Event('blur'))
+    await waitUntil(() => (m?.api.fields.email.blurred === true ? true : null))
+    expect(m.api.fields.email.blurred).toBe(true)
+  })
+
+  it('does NOT fire the "is a no-op" warn — a value-binding host is not a no-op', async () => {
+    m = await mountHost(DivWrappedInput)
+    expect(m.warnings.filter((w) => w.includes('is a no-op')).length).toBe(0)
+  })
+
+  it('composite host: connected true, but a segment focus does not track (Phase 2b scope)', async () => {
+    m = await mountHost(CompositePin)
+    expect(m.api.fields.email.connected).toBe(true)
+
+    const a = m.hostEl()?.querySelector('input.a') as HTMLInputElement
+    a.dispatchEvent(new Event('focus'))
+    await awaitSettle()
+    // No control latched -> no focus listener -> focused stays at the optimistic
+    // false the connected mark seeded (widget-root focus is Phase 2b).
+    expect(m.api.fields.email.focused).toBe(false)
+  })
+
+  it('no-control widget: connected true on mount, cleared when the host unmounts', async () => {
+    m = await mountHost(NoControlWidget)
+    expect(m.api.fields.email.connected).toBe(true)
+
+    m.show.value = false
+    await waitUntil(() => (m?.api.fields.email.connected === false ? true : null))
+    expect(m.api.fields.email.connected).toBe(false)
+  })
+
+  it('useRegister wrapper is Case A: the inner control owns binding, no "no-op" warn', async () => {
+    m = await mountHost(UseRegisterWrapper)
+    expect(m.warnings.filter((w) => w.includes('is a no-op')).length).toBe(0)
+
+    const inner = m.hostEl()?.querySelector('input.inner') as HTMLInputElement
+    inner.dispatchEvent(new Event('focus'))
+    await waitUntil(() => (m?.api.fields.email.focused === true ? true : null))
+    expect(m.api.fields.email.focused).toBe(true)
+  })
+})

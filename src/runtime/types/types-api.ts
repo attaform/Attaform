@@ -1923,6 +1923,24 @@ export type RegisterValue<Value = unknown> = Readonly<{
    */
   markConnectedOptimistically: () => void
   /**
+   * Mark this field DOM-connected (`true`) or disconnected (`false`) for a
+   * `v-register` component host that binds value through the v-model desugar
+   * but exposes no single inner control to register -- a composite widget,
+   * or none found. The directive calls it on mount / unmount; distinct from
+   * the SSR-only `markConnectedOptimistically`.
+   * @internal
+   */
+  markHostConnected: (connected: boolean) => void
+  /**
+   * `true` when an element already registered for this binding's path is
+   * contained within (or equal to) `hostElement`. The directive's
+   * component-host branch reads it to tell a `useRegister` wrapper (whose
+   * inner control self-registered) from a third-party component (which
+   * registered nothing), so the latch only runs for the latter.
+   * @internal
+   */
+  hasRegisteredDescendant: (hostElement: HTMLElement) => boolean
+  /**
    * Canonical, JSON-encoded path key for this binding (e.g.
    * `'["items",0,"name"]'`). Useful for stable Map / Set keys, log
    * messages, and equality checks against another `RegisterValue`'s

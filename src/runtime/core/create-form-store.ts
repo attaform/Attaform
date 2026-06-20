@@ -620,6 +620,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * source there).
    */
   markConnectedOptimistically(path: Path): void
+  /**
+   * Client-side connected mark for a `v-register` component host that binds
+   * value via the v-model channel but has no single inner control to latch
+   * (a composite widget, or none found). The directive calls it on mount
+   * (`true`) and unmount (`false`). Distinct from the SSR-only
+   * `markConnectedOptimistically`; idempotent on the leading edge.
+   */
+  markHostConnected(path: Path, connected: boolean): void
 
   // --- derived ---
   /**
@@ -3209,6 +3217,34 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     })
   }
 
+  function markHostConnected(path: Path, connected: boolean): void {
+    // Client-side connected marking for a `v-register` component host that
+    // binds value through the v-model channel but exposes no single inner
+    // control to latch (a composite widget, or none discovered). Distinct
+    // from the SSR-only `markConnectedOptimistically`: the directive calls
+    // this from its mount / unmount on the client, so it is the
+    // authoritative connect/disconnect for a no-latch host -- there's no
+    // element-Set entry to carry `connected` for it.
+    const { key } = canonicalizePath(path)
+    const current = fields.get(key)
+    if (connected) {
+      if (current?.connected === true) return
+      // Connect transition, mirroring `registerElement`: lift focused /
+      // blurred from null to optimistic booleans only when currently null.
+      touchFieldRecord(key, path, {
+        connected: true,
+        focused: current?.focused ?? false,
+        blurred: current?.blurred ?? true,
+      })
+    } else {
+      if (current?.connected !== true) return
+      // Disconnect transition, mirroring `deregisterElement`'s empty-Set
+      // branch: focused / blurred are DOM-state and meaningless with nothing
+      // connected, so flip them back to null.
+      touchFieldRecord(key, path, { connected: false, focused: null, blurred: null })
+    }
+  }
+
   function markFocused(
     path: Path,
     focused: boolean,
@@ -3997,6 +4033,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     markInteracted,
     touchAtPath,
     markConnectedOptimistically,
+    markHostConnected,
 
     isPristineAtPath,
     isPristineAtPathByKey,

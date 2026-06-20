@@ -45,6 +45,8 @@ function makeRegisterValue<T>(initial: T): MutableMockRv<T> {
     setValueWithInternalPath: vi.fn(() => true),
     setValueFromHost: vi.fn(() => true),
     markConnectedOptimistically: () => undefined,
+    markHostConnected: () => undefined,
+    hasRegisteredDescendant: () => false,
     path: 'mock' as PathKey,
     segments: Object.freeze(['mock']),
     formKey: 'mock-form',

@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, ref, withDirectives, type App, type Ref } from 'vue'
+import {
+  createApp,
+  defineComponent,
+  h,
+  onMounted,
+  ref,
+  withDirectives,
+  type App,
+  type Ref,
+} from 'vue'
 import type { DirectiveBinding } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
@@ -230,6 +239,72 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(false)
   })
 
+  it('self-heal: latches a control that renders one tick after mount (nextTick supersede)', async () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+    // No control at mount -> no-latch path: connected via the host mark, nothing
+    // registered in the element Set.
+    expect(elementCount(state, ['email'])).toBe(0)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+
+    // The real control arrives a tick later; the nextTick self-heal supersedes
+    // the no-latch state and latches it.
+    const late = input({ type: 'text' })
+    host.appendChild(late)
+    await waitUntil(() => (elementCount(state, ['email']) === 1 ? true : null))
+    expect(elementCount(state, ['email'])).toBe(1)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+
+    // The latched control owns focus now (element listener, proving the
+    // supersede ran registerElement on it).
+    late.dispatchEvent(new Event('focus'))
+    expect(state.getFieldRecord(['email'])?.focused).toBe(true)
+
+    // Teardown deregisters the now-latched control (Set empties -> disconnected).
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+    expect(state.getFieldRecord(['email'])?.connected).toBe(false)
+  })
+
+  it('self-heal: a MutationObserver latches a control that arrives after the first tick', async () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+    // Let the nextTick retry pass with still no control -> the observer arms.
+    await awaitSettle()
+    expect(elementCount(state, ['email'])).toBe(0)
+
+    // A genuinely-async control (post-fetch / Suspense) arrives later; the
+    // observer re-queries on the childList mutation and latches it.
+    host.appendChild(input({ type: 'text' }))
+    await waitUntil(() => (elementCount(state, ['email']) === 1 ? true : null))
+    expect(elementCount(state, ['email'])).toBe(1)
+    expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+  })
+
+  it('self-heal: the observer is disconnected on unmount (no latch onto a detached subtree)', async () => {
+    const { state, register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([])
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+    await awaitSettle()
+
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+    expect(state.getFieldRecord(['email'])?.connected).toBe(false)
+
+    // A control appended after teardown must not be latched by a stale observer.
+    host.appendChild(input({ type: 'text' }))
+    await awaitSettle()
+    expect(elementCount(state, ['email'])).toBe(0)
+  })
+
   it('Case A: a pre-registered descendant makes the host step aside (no double-register)', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
@@ -362,6 +437,22 @@ const NoControlWidget = defineComponent({
   setup: () => () => h('div', { class: 'slider' }, [h('span', 'no native control')]),
 })
 
+// Renders its inner control only after mount (a stand-in for a Suspense
+// boundary / post-fetch v-if): at the directive's mounted the host has no
+// control, so the self-heal must latch it once it appears.
+const AsyncControl = defineComponent({
+  name: 'AsyncControl',
+  inheritAttrs: false,
+  setup() {
+    const ready = ref(false)
+    onMounted(() => {
+      ready.value = true
+    })
+    return () =>
+      h('div', { class: 'async-wrapper' }, ready.value ? [h('input', { class: 'late' })] : [])
+  },
+})
+
 const UseRegisterWrapper = defineComponent({
   name: 'UseRegisterWrapper',
   inheritAttrs: false,
@@ -451,6 +542,25 @@ describe('v-register component host: integration (modifier plumbed through)', ()
     inner.dispatchEvent(new Event('focus'))
     await waitUntil(() => (m?.api.fields.email.focused === true ? true : null))
     expect(m.api.fields.email.focused).toBe(true)
+  })
+
+  it('async control: the self-heal latches an inner control rendered after mount', async () => {
+    m = await mountHost(AsyncControl)
+
+    // The control renders after the child's onMounted; the self-heal latches it.
+    await waitUntil(() => {
+      const late = m?.hostEl()?.querySelector('input.late')
+      return late ? true : null
+    })
+    const inner = m.hostEl()?.querySelector('input.late')
+    if (!(inner instanceof HTMLInputElement)) throw new Error('late control missing')
+
+    // Latched: the control's own focus listener now drives focused (proving the
+    // supersede ran registerElement on it, not just the widget-root tracking).
+    inner.dispatchEvent(new Event('focus'))
+    await waitUntil(() => (m?.api.fields.email.focused === true ? true : null))
+    expect(m.api.fields.email.focused).toBe(true)
+    expect(m.api.fields.email.connected).toBe(true)
   })
 })
 

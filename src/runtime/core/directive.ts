@@ -1048,6 +1048,25 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
 // unmounts without GC interaction (KeepAlive churn) leaves no residue.
 const componentHostLatch = new WeakMap<HTMLElement, HTMLElement | null>()
 
+// Widget-root focus listeners attached for a no-latch host, kept so a later
+// self-heal latch can detach them before the latched control's own focus / blur
+// listeners take over -- otherwise a focus would be counted on both the root
+// and the control.
+const hostFocusListeners = new WeakMap<
+  HTMLElement,
+  { focusin: EventListener; focusout: EventListener }
+>()
+
+// Self-heal MutationObservers, kept so `beforeUnmount` can disconnect a host
+// still waiting for an asynchronously-rendered control.
+const hostHealObservers = new WeakMap<HTMLElement, MutationObserver>()
+
+// Upper bound on MutationObserver callback batches the self-heal processes
+// before giving up on a host whose subtree keeps mutating without ever
+// resolving a single latchable control. Stops a no-latch host from carrying a
+// live observer for the rest of the page's life.
+const SELF_HEAL_MAX_MUTATION_BATCHES = 20
+
 // The inner form controls the host element-discovery latches onto. The
 // `type=hidden` exclusion drops the simplest mirror inputs; isLatchableControl
 // drops the visually-hidden, out-of-tab-order mirrors real headless components
@@ -1085,59 +1104,135 @@ function isLatchableControl(el: Element): boolean {
 //     to marking the host connected -- value still binds via the v-model
 //     channel. Either way set REGISTER_OWNER_MARKER so the deferred "no-op"
 //     warn skips: a value-binding host is not a no-op.
-function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
-  // Case A: a useRegister wrapper owns this path already. Leave it be.
-  if (rv.hasRegisteredDescendant(el))
-    return // Case B: a third-party component. Value binds via the transform's v-model
-    // desugar, so this binding is never a no-op -- claim ownership of the root.
-  ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
-
-  // Latch the single inner form control, filtering out submission mirrors
-  // (isLatchableControl). Latch only when exactly one latchable control
-  // resolves; zero or several (a composite widget) declines -- value still
-  // binds, and `connected` rides the no-latch mark below. A host root that is
-  // ITSELF an interactive control needs no handling here: the per-tag variant
-  // (vRegisterText / vRegisterSelect) already registered it via callModelHook
-  // before this runs, so the discriminator above returns early for it.
+// Query the host for the single user-facing control to bind, dropping
+// submission mirrors (isLatchableControl). Returns the element only when
+// exactly one resolves; zero or several (a composite widget, or a control that
+// has not rendered yet) returns null.
+function findHostControl(el: HTMLElement): HTMLElement | null {
   const descendants = Array.from(el.querySelectorAll(HOST_CONTROL_SELECTOR)).filter(
     isLatchableControl
   )
-  const control = descendants.length === 1 ? (descendants[0] as HTMLElement) : null
+  return descendants.length === 1 ? (descendants[0] as HTMLElement) : null
+}
 
-  if (control !== null) {
-    // `registerElement` is value-free: it gates on INTERACTIVE_TAG_NAMES and
-    // seeds only `connected` + focus/blur listeners, never reading or writing
-    // `el.value`, so it cannot fight the v-model value channel.
-    rv.registerElement(control)
-    // Manage autoAria on the discovered control itself. The host root's own
-    // setupAria (the `created` hook) no-ops on a non-interactive wrapper, so
-    // without this the latched control carries no live aria. The live-DOM lock
-    // read honours aria the component authored on its own control (no vnode is
-    // available for a runtime-discovered element); a no-op when autoAria is off.
-    setupAriaLive(control as AriaCarrier, rv)
-    componentHostLatch.set(el, control)
-  } else {
-    // No single control to latch: a composite widget (PinInput's segments) or
-    // a control-less one (Slider). Value still binds via the v-model channel,
-    // so mark the host connected and track focus at the widget root. focusin /
-    // focusout bubble (focus / blur do not), so a root listener sees focus
-    // crossing the inner controls. A move whose relatedTarget stays inside the
-    // host is an intra-widget hop (segment to segment), not an enter / leave of
-    // the field, so it is skipped. Auto-detached by removeTrackedListeners at
-    // beforeUnmount.
-    rv.markHostConnected(true)
-    addTrackedListener(el, 'focusin', (event) => {
-      const from = (event as FocusEvent).relatedTarget
-      if (from instanceof Node && el.contains(from)) return
-      rv.markFocused(true)
-    })
-    addTrackedListener(el, 'focusout', (event) => {
-      const to = (event as FocusEvent).relatedTarget
-      if (to instanceof Node && el.contains(to)) return
-      rv.markFocused(false)
-    })
-    componentHostLatch.set(el, null)
+// Bind a discovered control: register it for the rich FieldState and manage its
+// aria. `registerElement` is value-free (it gates on INTERACTIVE_TAG_NAMES and
+// seeds only `connected` + focus/blur listeners, never reading or writing
+// `el.value`), so it cannot fight the v-model value channel. The live-DOM aria
+// lock honours aria the component authored on its own control (no vnode is
+// available for a runtime-discovered element); a no-op when autoAria is off.
+function latchHostControl(el: HTMLElement, rv: RegisterValue, control: HTMLElement): void {
+  rv.registerElement(control)
+  setupAriaLive(control as AriaCarrier, rv)
+  componentHostLatch.set(el, control)
+}
+
+// No single control resolved: value still binds via the v-model channel, so
+// mark the host connected and track focus at the widget root. focusin /
+// focusout bubble (focus / blur do not), so a root listener sees focus crossing
+// the inner controls. A move whose relatedTarget stays inside the host is an
+// intra-widget hop (segment to segment), not an enter / leave of the field, so
+// it is skipped. The listeners ride addTrackedListener (auto-detached by
+// removeTrackedListeners at beforeUnmount); they are also stashed so a later
+// self-heal latch can detach them itself before the control's own focus / blur
+// listeners take over.
+function setupNoLatchHost(el: HTMLElement, rv: RegisterValue): void {
+  rv.markHostConnected(true)
+  const focusin: EventListener = (event) => {
+    const from = (event as FocusEvent).relatedTarget
+    if (from instanceof Node && el.contains(from)) return
+    rv.markFocused(true)
   }
+  const focusout: EventListener = (event) => {
+    const to = (event as FocusEvent).relatedTarget
+    if (to instanceof Node && el.contains(to)) return
+    rv.markFocused(false)
+  }
+  addTrackedListener(el, 'focusin', focusin)
+  addTrackedListener(el, 'focusout', focusout)
+  hostFocusListeners.set(el, { focusin, focusout })
+  componentHostLatch.set(el, null)
+}
+
+// Self-heal retry: a no-latch host re-queries for a control that arrived after
+// mount. When exactly one now resolves, supersede the no-latch state -- detach
+// the widget-root focus listeners (the control's own focus / blur listeners
+// take over via registerElement) and latch it. `connected` already reads true
+// from the host mark; registerElement keeps it true and the element Set owns it
+// from here, so beforeUnmount's deregister clears it. Returns true on supersede.
+function trySupersedeHostLatch(el: HTMLElement, rv: RegisterValue): boolean {
+  const control = findHostControl(el)
+  if (control === null) return false
+  const focusListeners = hostFocusListeners.get(el)
+  if (focusListeners !== undefined) {
+    el.removeEventListener('focusin', focusListeners.focusin)
+    el.removeEventListener('focusout', focusListeners.focusout)
+    hostFocusListeners.delete(el)
+  }
+  latchHostControl(el, rv, control)
+  return true
+}
+
+// A no-latch host may simply have rendered its single control late -- behind a
+// Suspense boundary, an async setup, or a post-fetch v-if. The directive's
+// `updated` does not fire on the component's own internal re-render (only on the
+// parent's), so poll for the control: once on the next tick (cheap, catches a
+// control a microtask late), then via a scoped, bounded MutationObserver for a
+// truly-async one. The first exactly-one match supersedes into a latch and
+// stops the search.
+function scheduleHostSelfHeal(el: HTMLElement, rv: RegisterValue): void {
+  void nextTick(() => {
+    // Bail if the host unmounted (record deleted) or already latched.
+    if (componentHostLatch.get(el) !== null || !el.isConnected) return
+    if (trySupersedeHostLatch(el, rv)) return
+    observeForLateHostControl(el, rv)
+  })
+}
+
+function observeForLateHostControl(el: HTMLElement, rv: RegisterValue): void {
+  let batches = 0
+  const observer = new MutationObserver(() => {
+    // Short-circuits so the latch attempt runs only while still unlatched and
+    // connected, and the batch counter only ticks on a batch that failed to
+    // latch. Stop on a latch, on teardown, or once the budget is spent.
+    const done =
+      componentHostLatch.get(el) !== null ||
+      !el.isConnected ||
+      trySupersedeHostLatch(el, rv) ||
+      ++batches >= SELF_HEAL_MAX_MUTATION_BATCHES
+    if (done) {
+      observer.disconnect()
+      hostHealObservers.delete(el)
+    }
+  })
+  observer.observe(el, { childList: true, subtree: true })
+  hostHealObservers.set(el, observer)
+}
+
+function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
+  // Case A: a useRegister wrapper owns this path already (its inner control
+  // self-registered before this host mounted, so a registered element is
+  // contained in the host). That control owns value + FieldState and the
+  // injected v-model is inert; leave it be.
+  if (rv.hasRegisteredDescendant(el))
+    return // Case B: a third-party component. Value binds via the transform's v-model
+    // desugar, so this binding is never a no-op -- claim ownership of the root so
+    // the deferred "no-op" warn skips. A host root that is ITSELF an interactive
+    // control was registered by the per-tag variant (callModelHook) and taken by
+    // the Case-A return above.
+  ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
+
+  // Latch the single inner control when exactly one resolves now; zero or
+  // several declines into the no-latch path. A control that has not rendered
+  // yet looks the same as none, so the no-latch path also starts the self-heal
+  // in case it is arriving asynchronously.
+  const control = findHostControl(el)
+  if (control !== null) {
+    latchHostControl(el, rv, control)
+    return
+  }
+  setupNoLatchHost(el, rv)
+  scheduleHostSelfHeal(el, rv)
 }
 
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
@@ -1264,6 +1359,13 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // cover the latched descendant. Release that control, or clear the
     // no-latch connected mark, then drop the record.
     if (componentHostLatch.has(el)) {
+      // A self-heal observer may still be waiting for an async control; stop it
+      // so it can't latch onto a detached subtree after unmount.
+      const healObserver = hostHealObservers.get(el)
+      if (healObserver !== undefined) {
+        healObserver.disconnect()
+        hostHealObservers.delete(el)
+      }
       const latchedControl = componentHostLatch.get(el)
       if (latchedControl != null) {
         // Mirror activateComponentHost in reverse: stop the aria watch and

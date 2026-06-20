@@ -9,7 +9,7 @@
   // missing file throws at render time, which fails Nuxt's prerender
   // for that page and surfaces in CI before reaching production. The
   // error message names the expected path so authors can react.
-  import { computed } from 'vue'
+  import { computed, defineAsyncComponent, type Component } from 'vue'
   import { ExternalLink } from 'lucide-vue-next'
 
   const props = withDefaults(
@@ -36,29 +36,33 @@
     () => `/demos/${props.slug}?from=${encodeURIComponent(route.path).replace(/%2F/gi, '/')}`
   )
 
-  // Eager glob: every demo SFC is bundled into the docs chunk. With
-  // Phase 1's ~7 demos (Phase 4's ~52) this is acceptable — each SFC
-  // shares Attaform / Vue / Zod which are already on the page.
+  // Lazy per-slug load. `import.meta.glob` without `eager` still yields the
+  // full slug -> dynamic-importer map at build time, so the existence check
+  // below resolves synchronously and a missing demo still fails the page's
+  // prerender. Only the matched demo's SFC, with its styles.css and any
+  // third-party deps, is fetched, on the page that embeds it.
+  //
+  // Eager-loading every demo pulled all ~60 stylesheets onto every docs page,
+  // so one demo's `.demo`-scoped element rules (`.demo button`, `.demo input`)
+  // bled onto another demo's controls, and unrelated demos' deps (reka-ui,
+  // PrimeVue) rode along into every page chunk. Lazy loading scopes each page
+  // to just the demos it renders. `defineAsyncComponent` resolves during SSR
+  // (awaited inside the page's Suspense boundary), so demos still prerender.
   //
   // Two shapes supported:
   //   - flat:   docs-demos/<slug>.vue              (single-file demo)
   //   - folder: docs-demos/<slug>/App.vue          (multi-file demo)
-  // The folder form wins when both exist; companion files inside the
-  // folder (FieldRow.vue, etc.) resolve through normal SFC imports at
-  // build time, so the glob only needs to find the entry point.
-  const flatModules = import.meta.glob<true, '', { default: unknown }>('../../docs-demos/*.vue', {
-    eager: true,
-  })
-  const folderEntries = import.meta.glob<true, '', { default: unknown }>(
-    '../../docs-demos/*/App.vue',
-    { eager: true }
-  )
+  // The folder form wins when both exist; companion files inside the folder
+  // (FieldRow.vue, etc.) resolve through normal SFC imports, so the glob only
+  // needs to find the entry point.
+  const flatImporters = import.meta.glob<{ default: Component }>('../../docs-demos/*.vue')
+  const folderImporters = import.meta.glob<{ default: Component }>('../../docs-demos/*/App.vue')
 
-  const folderEntry = folderEntries[`../../docs-demos/${props.slug}/App.vue`]
-  const flatEntry = flatModules[`../../docs-demos/${props.slug}.vue`]
-  const componentEntry = folderEntry ?? flatEntry
+  const importer =
+    folderImporters[`../../docs-demos/${props.slug}/App.vue`] ??
+    flatImporters[`../../docs-demos/${props.slug}.vue`]
 
-  if (componentEntry === undefined) {
+  if (importer === undefined) {
     throw new Error(
       `[DocsDemo] no demo found for slug "${props.slug}". ` +
         `Expected: apps/site/docs-demos/${props.slug}.vue ` +
@@ -67,7 +71,7 @@
     )
   }
 
-  const DemoComponent = componentEntry.default as unknown
+  const DemoComponent = defineAsyncComponent(importer)
 </script>
 
 <template>

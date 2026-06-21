@@ -274,7 +274,15 @@ export default [
     // (chore/rip-onchange): on-change.ts, the change registry + dispatch at the
     // write funnel, and the WriteMeta.silent / SetValueOptions thread all left
     // the shared core chunk. Measured at 43.43 KB.
-    limit: '44 KB',
+    //
+    // Raised 44 → 45 KB on the v-register third-party-component branch
+    // (feat/v-register-third-party): the directive's component-host
+    // element-discovery branch (activateComponentHost's latch / no-latch /
+    // self-heal / widget-root focus, plus the registerValue DOM-attr strip),
+    // create-form-store's markHostConnected, the RegisterValue host delegates,
+    // and the directly-bound-container own-record field-state fold all ship in
+    // the shared eager core. Measured at 44.28 KB.
+    limit: '45 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -445,7 +453,13 @@ export default [
     // longer flips submitted), mirrored in use-wizard (collectCallbackErrors +
     // focusFirstWizardError, gating done / step-advance on a clean callback).
     // Measured at 58.08 KB.
-    limit: '59 KB',
+    //
+    // Raised 59 → 60 KB tracking index.mjs's v-register third-party-component
+    // bump (same shared core chunk: directive component-host branch +
+    // registerValue strip + RegisterValue host delegates + markHostConnected +
+    // the directly-bound-container field-state fold). The unified entry bundles
+    // both adapters, so it absorbs the full delta. Measured at 59.31 KB.
+    limit: '60 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -572,7 +586,12 @@ export default [
     // consults hasRemovedSubtreeUnder in the container dirty rollup. zod-v4.mjs,
     // the tightest full entry (zod-v3 still has ~0.5 KB headroom), had spent its
     // and crossed 52. Measured at 52.12 KB.
-    limit: '53 KB',
+    //
+    // Raised 53 → 54 KB tracking index.mjs's v-register third-party-component
+    // bump (same shared core chunk: directive component-host branch +
+    // registerValue strip + RegisterValue host delegates + markHostConnected +
+    // the directly-bound-container field-state fold). Measured at 53.26 KB.
+    limit: '54 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -764,7 +783,13 @@ export default [
     // Lowered 56 → 54 KB on the form.onChange removal branch
     // (chore/rip-onchange): same shared core chunk drops the onChange seam.
     // zod-v3.mjs, the tightest adapter bundle, measured at 52.93 KB.
-    limit: '54 KB',
+    //
+    // Raised 54 → 55 KB tracking index.mjs's v-register third-party-component
+    // bump (same shared core chunk: directive component-host branch +
+    // registerValue strip + RegisterValue host delegates + markHostConnected +
+    // the directly-bound-container field-state fold). zod-v3.mjs, the tightest
+    // adapter bundle, crossed 54. Measured at 54.62 KB.
+    limit: '55 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -897,7 +922,13 @@ export default [
     // lazy surface that the full 59 KB cap above includes. The ~6 KB
     // gap below that cap is the tree-shaken optional surface. Measured
     // at 52.15 KB; ~0.85 KB headroom.
-    limit: '53 KB',
+    //
+    // Raised 53 → 54 KB tracking the v-register third-party-component branch
+    // (same shared eager core as the full entries above: directive
+    // component-host branch + registerValue strip + host delegates +
+    // markHostConnected + the directly-bound-container field-state fold).
+    // Measured at 53.45 KB.
+    limit: '54 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -908,7 +939,12 @@ export default [
     import: '{ useForm }',
     // Single-adapter v4 entry: one adapter, no wizard surface. Measured
     // at 45.99 KB; ~1 KB headroom.
-    limit: '47 KB',
+    //
+    // Raised 47 → 48 KB tracking the v-register third-party-component branch
+    // (same shared eager core: directive component-host branch + registerValue
+    // strip + host delegates + markHostConnected + the directly-bound-container
+    // field-state fold). Measured at 47.27 KB.
+    limit: '48 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -945,7 +981,11 @@ export default [
     // machinery) without the schema / validation / store-creation that
     // `useForm` carries, and crucially without the wizard surface.
     // Measured at 22.44 KB; ~0.56 KB headroom.
-    limit: '23 KB',
+    //
+    // Raised 23 → 24 KB tracking the v-register third-party-component branch:
+    // the directive's component-host branch + the registerValue strip ship in
+    // the shared core that injectForm reaches too. Measured at 23.51 KB.
+    limit: '24 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -958,7 +998,12 @@ export default [
     // heavy leaking into it (form store, adapters, wizard) shows up
     // immediately against this small baseline. Measured at 9.65 KB;
     // ~0.35 KB headroom.
-    limit: '10 KB',
+    //
+    // Raised 10 → 11 KB tracking the v-register third-party-component branch:
+    // the directive's component-host branch + the registerValue strip land in
+    // the shared core that useRegister pulls in. The tightest tripwire, so it
+    // shows the feature delta most starkly. Measured at 10.26 KB.
+    limit: '11 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

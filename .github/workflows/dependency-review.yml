@@ -107,3 +107,32 @@ jobs:
             Unlicense,
             WTFPL,
             Zlib
+          # Per-package carve-out from the license check. This is NOT a change
+          # to the allow-list above: strong copyleft stays excluded for every
+          # other dependency. sharp's native libvips binaries are
+          # LGPL-3.0-or-later (`@img/sharp-libvips-*`), and its win32 / wasm
+          # wrappers statically bundle libvips (`Apache-2.0 AND
+          # LGPL-3.0-or-later`). The strong-copyleft exclusion above guards
+          # against LGPL *JS* a consumer would bundle statically; it does not
+          # apply to these. They are native binaries, used only at BUILD time
+          # by the docs site (apps/site) for OG-image generation via sharp,
+          # never bundled into consumer JS, and absent from the published
+          # `attaform` package (zero runtime deps), so they never reach a
+          # consumer's install. Pulled in transitively by @nuxtjs/seo's
+          # og-image module (see #452). Add new platform purls here if sharp's
+          # native platform set changes.
+          allow-dependencies-licenses: >-
+            pkg:npm/@img/sharp-libvips-darwin-arm64,
+            pkg:npm/@img/sharp-libvips-darwin-x64,
+            pkg:npm/@img/sharp-libvips-linux-arm,
+            pkg:npm/@img/sharp-libvips-linux-arm64,
+            pkg:npm/@img/sharp-libvips-linux-ppc64,
+            pkg:npm/@img/sharp-libvips-linux-riscv64,
+            pkg:npm/@img/sharp-libvips-linux-s390x,
+            pkg:npm/@img/sharp-libvips-linux-x64,
+            pkg:npm/@img/sharp-libvips-linuxmusl-arm64,
+            pkg:npm/@img/sharp-libvips-linuxmusl-x64,
+            pkg:npm/@img/sharp-wasm32,
+            pkg:npm/@img/sharp-win32-arm64,
+            pkg:npm/@img/sharp-win32-ia32,
+            pkg:npm/@img/sharp-win32-x64

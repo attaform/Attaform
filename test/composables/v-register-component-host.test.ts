@@ -406,6 +406,37 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(warned.length).toBe(0)
     hostHooks.beforeUnmount(host, hostBinding(rv))
   })
+
+  it('strips the bridge registerValue attribute from a plain component host on mount', () => {
+    const { register } = makeForm()
+    const rv = register(['email'])
+    const host = hostWith([input({ type: 'text' })])
+    // Simulate the transform's `:registerValue` falling through to the host
+    // root: a third-party Vue component with inheritAttrs on that does not
+    // consume the bridge prop renders it as a DOM attribute.
+    host.setAttribute('registerValue', '[object Object]')
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    expect(host.hasAttribute('registervalue')).toBe(false)
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+  })
+
+  it('keeps the registerValue attribute on a custom-element host (read via assignKey)', () => {
+    const { register } = makeForm()
+    const rv = register(['email'])
+    // A custom element (hyphenated tag) reads `:registerValue` as a DOM
+    // attribute, so the strip must leave it in place.
+    const host = document.createElement('my-widget')
+    host.appendChild(input({ type: 'text' }))
+    document.body.appendChild(host)
+    host.setAttribute('registerValue', '[object Object]')
+
+    hostHooks.mounted(host, hostBinding(rv), vnode, null)
+
+    expect(host.hasAttribute('registervalue')).toBe(true)
+    hostHooks.beforeUnmount(host, hostBinding(rv))
+  })
 })
 
 // ---------------------------------------------------------------------------

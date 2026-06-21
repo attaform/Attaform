@@ -1222,6 +1222,19 @@ function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
     // the Case-A return above.
   ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
 
+  // Strip the bridge `registerValue` attribute the transform injects on the
+  // host. A useRegister wrapper consumes it and strips it from its own attrs in
+  // setup (Case A, returned above); a Web Component reads it as a DOM attribute
+  // via assignKey. A plain third-party Vue component does neither, so with
+  // inheritAttrs on it falls through to the host root as
+  // `registervalue="[object Object]"`. This is the directive's only hook on a
+  // component it does not author, so clean it here. Skip custom elements (their
+  // hyphenated tag), which legitimately read the attribute. Runs post-mount, so
+  // SSR output and client hydration still match before the removal.
+  if (!el.tagName.includes('-')) {
+    el.removeAttribute('registerValue')
+  }
+
   // Latch the single inner control when exactly one resolves now; zero or
   // several declines into the no-latch path. A control that has not rendered
   // yet looks the same as none, so the no-latch path also starts the self-heal

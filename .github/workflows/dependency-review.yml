@@ -122,17 +122,17 @@ jobs:
           # og-image module (see #452). Add new platform purls here if sharp's
           # native platform set changes.
           allow-dependencies-licenses: >-
-            pkg:npm/%40img/sharp-libvips-darwin-arm64,
-            pkg:npm/%40img/sharp-libvips-darwin-x64,
-            pkg:npm/%40img/sharp-libvips-linux-arm,
-            pkg:npm/%40img/sharp-libvips-linux-arm64,
-            pkg:npm/%40img/sharp-libvips-linux-ppc64,
-            pkg:npm/%40img/sharp-libvips-linux-riscv64,
-            pkg:npm/%40img/sharp-libvips-linux-s390x,
-            pkg:npm/%40img/sharp-libvips-linux-x64,
-            pkg:npm/%40img/sharp-libvips-linuxmusl-arm64,
-            pkg:npm/%40img/sharp-libvips-linuxmusl-x64,
-            pkg:npm/%40img/sharp-wasm32,
-            pkg:npm/%40img/sharp-win32-arm64,
-            pkg:npm/%40img/sharp-win32-ia32,
-            pkg:npm/%40img/sharp-win32-x64
+            pkg:npm/@img/sharp-libvips-darwin-arm64,
+            pkg:npm/@img/sharp-libvips-darwin-x64,
+            pkg:npm/@img/sharp-libvips-linux-arm,
+            pkg:npm/@img/sharp-libvips-linux-arm64,
+            pkg:npm/@img/sharp-libvips-linux-ppc64,
+            pkg:npm/@img/sharp-libvips-linux-riscv64,
+            pkg:npm/@img/sharp-libvips-linux-s390x,
+            pkg:npm/@img/sharp-libvips-linux-x64,
+            pkg:npm/@img/sharp-libvips-linuxmusl-arm64,
+            pkg:npm/@img/sharp-libvips-linuxmusl-x64,
+            pkg:npm/@img/sharp-wasm32,
+            pkg:npm/@img/sharp-win32-arm64,
+            pkg:npm/@img/sharp-win32-ia32,
+            pkg:npm/@img/sharp-win32-x64

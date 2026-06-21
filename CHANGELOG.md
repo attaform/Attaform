@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.24.4
 ### Added
 
 - **`v-register` now binds a component from any Vue UI library, with no new

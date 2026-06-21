@@ -1,5 +1,23 @@
 # Releases
 
+## v0.24.4 — 2026-06-20
+
+## What's Changed
+* chore(ci): bump github/codeql-action from 4.36.0 to 4.36.2 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/428
+* chore(ci): bump actions/download-artifact from 7.0.0 to 8.0.1 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/429
+* chore(ci): bump actions/checkout from 6.0.2 to 6.0.3 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/430
+* chore(deploy): install from the frozen lockfile on Vercel by @ozzyfromspace in https://github.com/attaform/Attaform/pull/454
+* chore(deps): pin devframe's h3 to v1 to dedupe the prerender bundle by @ozzyfromspace in https://github.com/attaform/Attaform/pull/455
+* chore(deps-dev): bump the dev-dependencies group across 1 directory with 24 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/456
+* feat(v-register): bind third-party component libraries by @ozzyfromspace in https://github.com/attaform/Attaform/pull/457
+* chore(ci): exempt sharp's native libvips binaries from the license check by @ozzyfromspace in https://github.com/attaform/Attaform/pull/459
+* chore(deps): bump the production-dependencies group across 1 directory with 6 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/458
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.3...v0.24.4
+
+---
+
 ## v0.24.3 — 2026-06-17
 
 ## What's Changed

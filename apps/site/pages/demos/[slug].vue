@@ -164,7 +164,7 @@
           </div>
         </div>
 
-        <DemoRepl height="calc(100vh - 16rem)" :initial-files="replFiles" />
+        <DemoRepl height="calc(100vh - 16rem)" :initial-files="replFiles" :scope-slug="slug" />
       </div>
     </UiContainer>
   </div>

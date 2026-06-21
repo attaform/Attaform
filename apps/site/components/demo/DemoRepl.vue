@@ -33,6 +33,12 @@
       // store seeds all entries verbatim; the file at `src/App.vue`
       // is the entry point.
       initialFiles?: Record<string, string>
+      // The demo slug, when this REPL is showing a docs demo. Forwarded to
+      // `<DemoReplEditor>`, which tags the preview iframe's mount root with
+      // the matching `demo-<slug>` class so the demo's generated stylesheet
+      // (scoped to that wrapper, see scripts/demo-styles/codegen.mjs) applies.
+      // Undefined for the default shipment demo, which is self-styled.
+      scopeSlug?: string
     }>(),
     { height: '37.5rem' }
   )
@@ -122,6 +128,7 @@
         v-if="showEditor"
         :initial-source="props.initialSource"
         :initial-files="props.initialFiles"
+        :scope-slug="props.scopeSlug"
       />
     </div>
   </div>

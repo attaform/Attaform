@@ -31,6 +31,7 @@ import {
   getSSRAriaProps,
   mergeAriaLocks,
   setupAria,
+  setupAriaLive,
   teardownAria,
   type AriaCarrier,
 } from './directive-aria'
@@ -1039,6 +1040,214 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
   ? new WeakSet<HTMLElement>()
   : null
 
+// Per-host-root record of the component-host branch's outcome, read back at
+// `beforeUnmount` to tear down symmetrically. Maps a host root element to the
+// inner control it latched, or `null` when it took the no-latch (markHost
+// connected) path. Absent means Case A (a useRegister wrapper the discriminator
+// skipped) or not a host at all -- nothing to undo. WeakMap so a host that
+// unmounts without GC interaction (KeepAlive churn) leaves no residue.
+const componentHostLatch = new WeakMap<HTMLElement, HTMLElement | null>()
+
+// Widget-root focus listeners attached for a no-latch host, kept so a later
+// self-heal latch can detach them before the latched control's own focus / blur
+// listeners take over -- otherwise a focus would be counted on both the root
+// and the control.
+const hostFocusListeners = new WeakMap<
+  HTMLElement,
+  { focusin: EventListener; focusout: EventListener }
+>()
+
+// Self-heal MutationObservers, kept so `beforeUnmount` can disconnect a host
+// still waiting for an asynchronously-rendered control.
+const hostHealObservers = new WeakMap<HTMLElement, MutationObserver>()
+
+// Upper bound on MutationObserver callback batches the self-heal processes
+// before giving up on a host whose subtree keeps mutating without ever
+// resolving a single latchable control. Stops a no-latch host from carrying a
+// live observer for the rest of the page's life.
+const SELF_HEAL_MAX_MUTATION_BATCHES = 20
+
+// The inner form controls the host element-discovery latches onto. The
+// `type=hidden` exclusion drops the simplest mirror inputs; isLatchableControl
+// drops the visually-hidden, out-of-tab-order mirrors real headless components
+// render for native form submission.
+const HOST_CONTROL_SELECTOR = 'input:not([type=hidden]), select, textarea'
+
+// Whether a control discovered under a host is a real, user-facing one rather
+// than a form-submission mirror. Headless components (reka-ui's BubbleInput /
+// BubbleSelect and the like) render a second, visually-hidden control beside
+// the real one so a native form submit still carries the value. These are not
+// `type=hidden`: they sit at `tabindex="-1"` with sr-only styling, tagged
+// inconsistently (`aria-hidden="true"` on some, `data-hidden` on others).
+// Latching one would pin focus / aria onto an element the user can never reach,
+// and a lone real control beside a mirror would otherwise count as two and
+// decline the latch. The control to latch is the one the user can focus, so
+// drop anything pulled out of the tab order or hidden from the a11y tree.
+function isLatchableControl(el: Element): boolean {
+  return el.getAttribute('tabindex') !== '-1' && el.getAttribute('aria-hidden') !== 'true'
+}
+
+// The runtime half of v-register's third-party binding. The compile-time
+// componentBridgeTransform stamps SSR_COMPONENT_HOST_MODIFIER on a v-register
+// that lands on a component host and injects the value channel (v-model for a
+// plain component, :value for a select-like one). Here the directive supplies
+// the rich FieldState: it discovers the real inner control and registers it
+// (connected + focus/blur + the aria / scroll-to-error target).
+//
+// Two host shapes are told apart at mount:
+//   - Case A (a useRegister wrapper): its inner `<input v-register>` already
+//     self-registered for this path (children mount before parents), so a
+//     registered element is contained in the host. That inner control owns
+//     value + FieldState and the injected v-model is inert; do nothing.
+//   - Case B (a third-party component): nothing is registered for this path.
+//     Latch the single inner control when exactly one resolves, else fall back
+//     to marking the host connected -- value still binds via the v-model
+//     channel. Either way set REGISTER_OWNER_MARKER so the deferred "no-op"
+//     warn skips: a value-binding host is not a no-op.
+// Query the host for the single user-facing control to bind, dropping
+// submission mirrors (isLatchableControl). Returns the element only when
+// exactly one resolves; zero or several (a composite widget, or a control that
+// has not rendered yet) returns null.
+function findHostControl(el: HTMLElement): HTMLElement | null {
+  const descendants = Array.from(el.querySelectorAll(HOST_CONTROL_SELECTOR)).filter(
+    isLatchableControl
+  )
+  return descendants.length === 1 ? (descendants[0] as HTMLElement) : null
+}
+
+// Bind a discovered control: register it for the rich FieldState and manage its
+// aria. `registerElement` is value-free (it gates on INTERACTIVE_TAG_NAMES and
+// seeds only `connected` + focus/blur listeners, never reading or writing
+// `el.value`), so it cannot fight the v-model value channel. The live-DOM aria
+// lock honours aria the component authored on its own control (no vnode is
+// available for a runtime-discovered element); a no-op when autoAria is off.
+function latchHostControl(el: HTMLElement, rv: RegisterValue, control: HTMLElement): void {
+  rv.registerElement(control)
+  setupAriaLive(control as AriaCarrier, rv)
+  componentHostLatch.set(el, control)
+}
+
+// No single control resolved: value still binds via the v-model channel, so
+// mark the host connected and track focus at the widget root. focusin /
+// focusout bubble (focus / blur do not), so a root listener sees focus crossing
+// the inner controls. A move whose relatedTarget stays inside the host is an
+// intra-widget hop (segment to segment), not an enter / leave of the field, so
+// it is skipped. The listeners ride addTrackedListener (auto-detached by
+// removeTrackedListeners at beforeUnmount); they are also stashed so a later
+// self-heal latch can detach them itself before the control's own focus / blur
+// listeners take over.
+function setupNoLatchHost(el: HTMLElement, rv: RegisterValue): void {
+  rv.markHostConnected(true)
+  const focusin: EventListener = (event) => {
+    const from = (event as FocusEvent).relatedTarget
+    if (from instanceof Node && el.contains(from)) return
+    rv.markFocused(true)
+  }
+  const focusout: EventListener = (event) => {
+    const to = (event as FocusEvent).relatedTarget
+    if (to instanceof Node && el.contains(to)) return
+    rv.markFocused(false)
+  }
+  addTrackedListener(el, 'focusin', focusin)
+  addTrackedListener(el, 'focusout', focusout)
+  hostFocusListeners.set(el, { focusin, focusout })
+  componentHostLatch.set(el, null)
+}
+
+// Self-heal retry: a no-latch host re-queries for a control that arrived after
+// mount. When exactly one now resolves, supersede the no-latch state -- detach
+// the widget-root focus listeners (the control's own focus / blur listeners
+// take over via registerElement) and latch it. `connected` already reads true
+// from the host mark; registerElement keeps it true and the element Set owns it
+// from here, so beforeUnmount's deregister clears it. Returns true on supersede.
+function trySupersedeHostLatch(el: HTMLElement, rv: RegisterValue): boolean {
+  const control = findHostControl(el)
+  if (control === null) return false
+  const focusListeners = hostFocusListeners.get(el)
+  if (focusListeners !== undefined) {
+    el.removeEventListener('focusin', focusListeners.focusin)
+    el.removeEventListener('focusout', focusListeners.focusout)
+    hostFocusListeners.delete(el)
+  }
+  latchHostControl(el, rv, control)
+  return true
+}
+
+// A no-latch host may simply have rendered its single control late -- behind a
+// Suspense boundary, an async setup, or a post-fetch v-if. The directive's
+// `updated` does not fire on the component's own internal re-render (only on the
+// parent's), so poll for the control: once on the next tick (cheap, catches a
+// control a microtask late), then via a scoped, bounded MutationObserver for a
+// truly-async one. The first exactly-one match supersedes into a latch and
+// stops the search.
+function scheduleHostSelfHeal(el: HTMLElement, rv: RegisterValue): void {
+  void nextTick(() => {
+    // Bail if the host unmounted (record deleted) or already latched.
+    if (componentHostLatch.get(el) !== null || !el.isConnected) return
+    if (trySupersedeHostLatch(el, rv)) return
+    observeForLateHostControl(el, rv)
+  })
+}
+
+function observeForLateHostControl(el: HTMLElement, rv: RegisterValue): void {
+  let batches = 0
+  const observer = new MutationObserver(() => {
+    // Short-circuits so the latch attempt runs only while still unlatched and
+    // connected, and the batch counter only ticks on a batch that failed to
+    // latch. Stop on a latch, on teardown, or once the budget is spent.
+    const done =
+      componentHostLatch.get(el) !== null ||
+      !el.isConnected ||
+      trySupersedeHostLatch(el, rv) ||
+      ++batches >= SELF_HEAL_MAX_MUTATION_BATCHES
+    if (done) {
+      observer.disconnect()
+      hostHealObservers.delete(el)
+    }
+  })
+  observer.observe(el, { childList: true, subtree: true })
+  hostHealObservers.set(el, observer)
+}
+
+function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
+  // Case A: a useRegister wrapper owns this path already (its inner control
+  // self-registered before this host mounted, so a registered element is
+  // contained in the host). That control owns value + FieldState and the
+  // injected v-model is inert; leave it be.
+  if (rv.hasRegisteredDescendant(el))
+    return // Case B: a third-party component. Value binds via the transform's v-model
+    // desugar, so this binding is never a no-op -- claim ownership of the root so
+    // the deferred "no-op" warn skips. A host root that is ITSELF an interactive
+    // control was registered by the per-tag variant (callModelHook) and taken by
+    // the Case-A return above.
+  ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
+
+  // Strip the bridge `registerValue` attribute the transform injects on the
+  // host. A useRegister wrapper consumes it and strips it from its own attrs in
+  // setup (Case A, returned above); a Web Component reads it as a DOM attribute
+  // via assignKey. A plain third-party Vue component does neither, so with
+  // inheritAttrs on it falls through to the host root as
+  // `registervalue="[object Object]"`. This is the directive's only hook on a
+  // component it does not author, so clean it here. Skip custom elements (their
+  // hyphenated tag), which legitimately read the attribute. Runs post-mount, so
+  // SSR output and client hydration still match before the removal.
+  if (!el.tagName.includes('-')) {
+    el.removeAttribute('registerValue')
+  }
+
+  // Latch the single inner control when exactly one resolves now; zero or
+  // several declines into the no-latch path. A control that has not rendered
+  // yet looks the same as none, so the no-latch path also starts the self-heal
+  // in case it is arriving asynchronously.
+  const control = findHostControl(el)
+  if (control !== null) {
+    latchHostControl(el, rv, control)
+    return
+  }
+  setupNoLatchHost(el, rv)
+  scheduleHostSelfHeal(el, rv)
+}
+
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   created(el, binding, vnode) {
     // Always run the per-tag variant's `created` — listener-body bail
@@ -1053,6 +1262,17 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   },
   mounted(el, binding, vnode) {
     callModelHook(el, binding, vnode, null, 'mounted')
+
+    // Component-host element discovery. The transform stamps
+    // SSR_COMPONENT_HOST_MODIFIER on a v-register that lands on a component
+    // host; here the directive discovers the inner control and registers it
+    // for the rich FieldState (the value channel is the transform's job). The
+    // discriminator inside skips a useRegister wrapper. Runs before the warn
+    // below sets REGISTER_OWNER_MARKER on a Case-B host, suppressing the
+    // no-op warn that would otherwise fire on a non-interactive host root.
+    if (binding.modifiers[SSR_COMPONENT_HOST_MODIFIER] === true && isRegisterValue(binding.value)) {
+      activateComponentHost(el, binding.value)
+    }
 
     // Defer the unsupported-element warn one tick past `mounted`. By the
     // time this resolves:
@@ -1146,6 +1366,30 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
 
     value.deregisterElement(el)
 
+    // Component-host teardown (mirrors activateComponentHost). The
+    // deregisterElement above targets the host ROOT, which a Case-B branch
+    // never registered (its root is typically non-interactive), so it doesn't
+    // cover the latched descendant. Release that control, or clear the
+    // no-latch connected mark, then drop the record.
+    if (componentHostLatch.has(el)) {
+      // A self-heal observer may still be waiting for an async control; stop it
+      // so it can't latch onto a detached subtree after unmount.
+      const healObserver = hostHealObservers.get(el)
+      if (healObserver !== undefined) {
+        healObserver.disconnect()
+        hostHealObservers.delete(el)
+      }
+      const latchedControl = componentHostLatch.get(el)
+      if (latchedControl != null) {
+        // Mirror activateComponentHost in reverse: stop the aria watch and
+        // clear the attrs we set on the control before releasing it. The
+        // host-root teardownAria above never reached this descendant.
+        teardownAria(latchedControl as AriaCarrier)
+        value.deregisterElement(latchedControl)
+      } else value.markHostConnected(false)
+      componentHostLatch.delete(el)
+    }
+
     // Remove internal state that the directive attaches directly to the
     // element. If the element is reused (<KeepAlive>, v-show), stale flags
     // like `composing: true` (IME in progress) would swallow user input.
@@ -1196,15 +1440,26 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
       isComponentHostModifier || (realVnode !== null && !isInteractiveElementVnode)
     const ariaProps = suppressHostAria ? undefined : getSSRAriaProps(rv, realVnode)
 
-    // Form-state (`value` / `checked`) is the runtime path's analogue of
-    // the compile-time transform's injected binding. Compiled SSR passes a
-    // `null` vnode (the transform already emitted the binding there), so
-    // this only fires for `h()` / `withDirectives` renders — the two
-    // mechanisms own disjoint paths and never double-emit. Without it, a
-    // render-function field rendered server-side carries its aria attrs
-    // but no value, painting empty for one frame before the client
-    // directive fills it in on mount.
-    const formStateProps = realVnode !== null ? getSSRFormStateProps(rv, realVnode) : undefined
+    // Form-state (`value` / `checked`) is the runtime path's per-element
+    // analogue of the transform's injected binding: without it a
+    // render-function field paints empty for one frame before the client
+    // directive fills it on mount. Compiled SSR for a directive bound DIRECTLY
+    // to an element passes a `null` vnode (the transform already emitted the
+    // binding), so the guard below skips it there.
+    //
+    // Suppressed for a component HOST (the modifier the transform stamps). Vue
+    // transfers a component-bound directive onto the component's root element
+    // and fires this hook there, so for a third-party host this would seed
+    // `value = displayValue` (the stringified model) onto the inner control
+    // and win the prop merge, clobbering the typed `:modelValue` channel the
+    // transform set up. The host's value rides v-model instead; the
+    // element-level seed must stay out of its way. A scalar model hid this
+    // (displayValue equals the rendered value); a typed model (array / Date)
+    // exposed the stringified clobber.
+    const formStateProps =
+      realVnode !== null && !isComponentHostModifier
+        ? getSSRFormStateProps(rv, realVnode)
+        : undefined
 
     if (ariaProps === undefined && formStateProps === undefined) return undefined
     // Disjoint key spaces (`aria-*` vs `value` / `checked`), so the merge

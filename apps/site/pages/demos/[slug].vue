@@ -6,8 +6,8 @@
   // arrives in an editor preloaded with exactly what they saw on the
   // docs page.
   //
-  // Per plan §3, the page also surfaces a "Back to docs" link that
-  // returns to the page hosting the inline demo. The originating
+  // Per plan section 3, the page also surfaces a "Back to docs" link
+  // that returns to the page hosting the inline demo. The originating
   // path travels through the `from` query parameter set by
   // <DocsDemo>; values that don't start with `/docs/` are dropped to
   // close the open-redirect angle. When no `from` is supplied (a
@@ -19,54 +19,42 @@
   const route = useRoute()
   const slug = computed(() => String(route.params['slug'] ?? ''))
 
-  // Eager glob: ships every demo's raw source in the page chunk.
-  // Lazy resolution is technically possible but buys little. The
-  // raw source is plain text (~1–2 KB) and the playground is
-  // already loading the heavyweight @vue/repl + Monaco bundle.
+  // Lazy globs: the keys (every demo's path) are known at build time, so the
+  // slug-existence check and `sourceLabel` below resolve synchronously, but a
+  // demo's raw source is fetched only when its own playground is opened.
+  // Eager loading shipped every demo's source in every playground page's
+  // chunk, the source-text twin of the styles.css collision DocsDemo had.
   //
   // Two shapes supported, mirroring DocsDemo's resolution:
   //   - flat:   docs-demos/<slug>.vue
-  //   - folder: docs-demos/<slug>/{App.vue, FieldRow.vue, schema.ts, styles.css, …}
-  // The folder form wins when both exist; every supported file inside
-  // the folder seeds into the REPL store under src/, preserving the
-  // import path so `import Foo from './Foo.vue'`,
-  // `import { schema } from './schema'`, and `import './styles.css'`
-  // all keep resolving without explicit extensions in consumer code.
-  const flatSources = import.meta.glob<true, string, string>('../../docs-demos/*.vue', {
-    eager: true,
+  //   - folder: docs-demos/<slug>/{App.vue, FieldRow.vue, schema.ts, styles.css}
+  // The folder form wins when both exist; every supported file inside the
+  // folder seeds into the REPL store under src/, preserving the import path so
+  // `import Foo from './Foo.vue'`, `import { schema } from './schema'`, and
+  // `import './styles.css'` all keep resolving without explicit extensions.
+  const flatImporters = import.meta.glob<false, string, string>('../../docs-demos/*.vue', {
     query: '?raw',
     import: 'default',
   })
-  const folderSources = import.meta.glob<true, string, string>(
+  const folderImporters = import.meta.glob<false, string, string>(
     '../../docs-demos/*/*.{vue,ts,js,css}',
     {
-      eager: true,
       query: '?raw',
       import: 'default',
     }
   )
 
-  // Build the file map the REPL editor will seed. Folder demos
-  // produce `{ 'src/App.vue': ..., 'src/FieldRow.vue': ... }`; flat
-  // demos collapse to `{ 'src/App.vue': ... }`. The REPL store also
-  // accepts a single entry, so the single-file case stays simple.
-  const initialFiles = computed<Record<string, string> | undefined>(() => {
-    const folderPrefix = `../../docs-demos/${slug.value}/`
-    const folderFiles: Record<string, string> = {}
-    for (const [key, source] of Object.entries(folderSources)) {
-      if (key.startsWith(folderPrefix)) {
-        const name = key.slice(folderPrefix.length)
-        folderFiles[`src/${name}`] = source
-      }
-    }
-    if (Object.keys(folderFiles).length > 0) return folderFiles
+  function folderEntriesFor(slugValue: string): [string, () => Promise<string>][] {
+    const prefix = `../../docs-demos/${slugValue}/`
+    return Object.entries(folderImporters).filter(([key]) => key.startsWith(prefix))
+  }
 
-    const flat = flatSources[`../../docs-demos/${slug.value}.vue`]
-    if (flat !== undefined) return { 'src/App.vue': flat }
-    return undefined
-  })
-
-  if (!initialFiles.value) {
+  // Synchronous existence check from the glob keys (built at compile time), so
+  // an unknown slug still returns a real 404 during SSR before any source is
+  // fetched.
+  const exists =
+    folderEntriesFor(slug.value).length > 0 || `../../docs-demos/${slug.value}.vue` in flatImporters
+  if (!exists) {
     throw createError({
       statusCode: 404,
       statusMessage: `No demo for slug "${slug.value}"`,
@@ -74,14 +62,12 @@
     })
   }
 
-  // Display name for the "Editing apps/site/docs-demos/..." inline
-  // code on the page header. Folder demos point at the directory;
-  // flat demos point at the single file.
-  const sourceLabel = computed(() => {
-    const folderPrefix = `../../docs-demos/${slug.value}/`
-    const hasFolder = Object.keys(folderSources).some((k) => k.startsWith(folderPrefix))
-    return hasFolder ? `${slug.value}/` : `${slug.value}.vue`
-  })
+  // Display name for the "Editing apps/site/docs-demos/..." inline code on the
+  // page header. Folder demos point at the directory; flat demos at the single
+  // file. Reads glob keys only, so it stays synchronous.
+  const sourceLabel = computed(() =>
+    folderEntriesFor(slug.value).length > 0 ? `${slug.value}/` : `${slug.value}.vue`
+  )
 
   function formatTitle(value: string): string {
     return value
@@ -108,6 +94,35 @@
     }
     return { to: '/demos', label: 'Back to demos' }
   })
+
+  // Fetch only the matched demo's source(s) and build the REPL's seed file
+  // map. Folder demos produce `{ 'src/App.vue': ..., 'src/schema.ts': ... }`;
+  // flat demos collapse to `{ 'src/App.vue': ... }`. `useAsyncData` resolves
+  // during SSR, so one slug's source lands in this page's payload (not all of
+  // them in the shared chunk), and re-runs when the route slug changes.
+  const { data: initialFiles } = await useAsyncData(
+    'playground-demo-files',
+    async (): Promise<Record<string, string>> => {
+      const folderEntries = folderEntriesFor(slug.value)
+      if (folderEntries.length > 0) {
+        const prefix = `../../docs-demos/${slug.value}/`
+        const files = await Promise.all(
+          folderEntries.map(async ([key, importer]) => {
+            const source = await importer()
+            return [`src/${key.slice(prefix.length)}`, source] as const
+          })
+        )
+        return Object.fromEntries(files)
+      }
+      const flat = flatImporters[`../../docs-demos/${slug.value}.vue`]
+      return flat ? { 'src/App.vue': await flat() } : {}
+    },
+    { watch: [slug] }
+  )
+
+  // `useAsyncData` types `data` as `T | null`; the editor prop wants
+  // `Record<string, string> | undefined`.
+  const replFiles = computed(() => initialFiles.value ?? undefined)
 </script>
 
 <template>
@@ -142,7 +157,7 @@
           </div>
         </div>
 
-        <DemoRepl height="calc(100vh - 16rem)" :initial-files="initialFiles" />
+        <DemoRepl height="calc(100vh - 16rem)" :initial-files="replFiles" />
       </div>
     </UiContainer>
   </div>

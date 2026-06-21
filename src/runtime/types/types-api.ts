@@ -1905,6 +1905,16 @@ export type RegisterValue<Value = unknown> = Readonly<{
    */
   setValueWithInternalPath: (value: unknown, meta?: WriteMeta) => boolean
   /**
+   * Commit a value emitted by a third-party component bound through
+   * `v-register`'s compile-time v-model desugar. Writes the value (the
+   * component's typed model output, authoritative -- no coercion) AND marks
+   * the field interacted, since a v-model host has no DOM input listener to
+   * flip the sticky `interacted` bit. The injected `onUpdate:modelValue`
+   * handler is the only caller. Returns `true` when the write was accepted.
+   * @internal
+   */
+  setValueFromHost: (value: unknown) => boolean
+  /**
    * Mark this field as DOM-connected during SSR so a server-rendered
    * template that reads `form.fields.<path>.connected` doesn't
    * flicker on hydration. The `v-register` directive calls this for
@@ -1912,6 +1922,34 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   markConnectedOptimistically: () => void
+  /**
+   * Mark this field DOM-connected (`true`) or disconnected (`false`) for a
+   * `v-register` component host that binds value through the v-model desugar
+   * but exposes no single inner control to register -- a composite widget,
+   * or none found. The directive calls it on mount / unmount; distinct from
+   * the SSR-only `markConnectedOptimistically`.
+   * @internal
+   */
+  markHostConnected: (connected: boolean) => void
+  /**
+   * Mark this field focused (`true`) or blurred (`false`) for a `v-register`
+   * component host with no single latched control -- a composite widget whose
+   * focus moves between inner segments, or a control-less one. The directive
+   * tracks focusin / focusout on the widget root and forwards here, so focus
+   * state and blur-validation still arm without an element-level focus
+   * listener. Carries this binding's instance meta (its `validateOn`).
+   * @internal
+   */
+  markFocused: (focused: boolean) => void
+  /**
+   * `true` when an element already registered for this binding's path is
+   * contained within (or equal to) `hostElement`. The directive's
+   * component-host branch reads it to tell a `useRegister` wrapper (whose
+   * inner control self-registered) from a third-party component (which
+   * registered nothing), so the latch only runs for the latter.
+   * @internal
+   */
+  hasRegisteredDescendant: (hostElement: HTMLElement) => boolean
   /**
    * Canonical, JSON-encoded path key for this binding (e.g.
    * `'["items",0,"name"]'`). Useful for stable Map / Set keys, log

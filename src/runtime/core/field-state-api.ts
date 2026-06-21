@@ -561,6 +561,23 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (since !== undefined && (transformingSince === null || since < transformingSince))
       transformingSince = since
   }
+  // A directive registered directly on THIS container path -- the file
+  // directive above, and a composite third-party host bound to an array /
+  // object via `v-register` -- records its interaction state on the
+  // container's OWN record, which the descendant walk skips (it visits strict
+  // descendants only). Fold those own-record flags into the disjunction so a
+  // directly-bound container surfaces its own connect / focus / touch state,
+  // exactly as a leaf reflects its own. A container nothing binds directly has
+  // no own record, so this is a no-op for the common case.
+  const ownRecord = state.fields.get(key)
+  if (ownRecord !== undefined) {
+    if (ownRecord.focused === true) focused = true
+    if (ownRecord.blurred === true) blurred = true
+    if (ownRecord.touched === true) touched = true
+    if (ownRecord.interacted === true) interacted = true
+    if (ownRecord.blurredAfterInteraction === true) blurredAfterInteraction = true
+    if (ownRecord.connected === true) connected = true
+  }
   const ownTransformError = state.transformErrors.get(key) ?? null
   const gated = asyncPending && !state.firstValidationDone.value
   const valid = !gated && errors.length === 0 && !validating

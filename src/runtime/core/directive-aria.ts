@@ -162,6 +162,52 @@ export function setupAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode): voi
 }
 
 /**
+ * Seed the authored-attr lock set from the element's current DOM
+ * attributes. Used for a runtime-discovered control (a third-party
+ * component host's latched inner control) that has no vnode: any managed
+ * aria attribute already present on the element was authored by the host
+ * component and stays off-limits for the binding's lifetime. The read is
+ * a one-time snapshot, so a managed attr the component toggles on later
+ * (from absent) is not detected; that is the inherent cost of having no
+ * vnode to lock against.
+ */
+function seedLocksFromDom(el: AriaCarrier): void {
+  let locks = el[ariaLockKey]
+  if (locks === undefined) {
+    locks = new Set<string>()
+    el[ariaLockKey] = locks
+  }
+  for (const attr of MANAGED_ARIA_ATTRS) {
+    if (el.hasAttribute(attr)) locks.add(attr)
+  }
+}
+
+/**
+ * Begin managing aria for a binding whose control was discovered at
+ * runtime, with no vnode available. Mirrors `setupAria` but reads the
+ * authored-attr locks from live DOM attributes (`seedLocksFromDom`)
+ * instead of vnode props, and paints with a `null` vnode so `applyAria`
+ * resolves the checkbox type from `el.type` (the control is fully mounted
+ * by latch time). Shares the same effect scope and `ariaScopeKey`, so
+ * `teardownAria` releases it unchanged. (#404 follow-up)
+ */
+export function setupAriaLive(el: AriaCarrier, rv: RegisterValue): void {
+  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  // The discovered control is an interactive element by construction (the
+  // host latch gates on input / select / textarea), but keep the tag gate
+  // for parity with setupAria / applyAria.
+  if (!INTERACTIVE_TAG_NAMES.has(el.tagName)) return
+  seedLocksFromDom(el)
+  applyAria(el, rv, null)
+  const displayState = rv.ariaDisplayState
+  const scope = effectScope(true)
+  scope.run(() => {
+    watch(displayState, () => applyAria(el, rv, null), { flush: 'post' })
+  })
+  el[ariaScopeKey] = (): void => scope.stop()
+}
+
+/**
  * Compute the aria props that should be emitted into the rendered
  * markup for an SSR / static render. Mirrors `applyAria`'s computation
  * but returns a props bag instead of mutating the DOM, so Vue's

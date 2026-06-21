@@ -81,8 +81,8 @@ const fixViteAssetImportMetaUrlFilter: VitePlugin = {
 
 // `pages/demos/[slug].vue`, `pages/demos/index.vue`, and
 // `components/content/DocsDemo.vue` each discover every demo SFC
-// via `import.meta.glob('../../docs-demos/*.vue', { eager: true })`.
-// The glob's key set is resolved once at module-eval time. When a
+// via `import.meta.glob('../../docs-demos/*.vue')`. The glob's key set
+// is resolved once at module-eval time, eager or lazy. When a
 // new SFC lands inside `docs-demos/` after a consumer module has
 // already compiled, Vite's default invalidation is best-effort: the
 // file watcher fires, but the consumer's transform cache does not

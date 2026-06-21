@@ -158,6 +158,51 @@ await copyFile(
   resolve(outDir, 'vue.esm-browser.prod.js')
 )
 
+// ─── Third-party component libraries (reka-ui + PrimeVue) ──────────
+//
+// The docs "third-party components" page ships two playground demos
+// that bind `v-register` to reka-ui (headless) and PrimeVue (themed)
+// components. For those demos to run in the @vue/repl preview iframe,
+// the libraries are self-hosted under /lib/ alongside vue/zod/attaform
+// and resolved through the iframe's import map (see DemoReplEditor).
+//
+// `vue` is externalized so every library shares the SINGLE Vue instance
+// the import map already provides — two Vue copies break provide/inject,
+// which both libraries lean on. Transitive deps (floating-ui, the
+// PrimeVue style engine, the theme presets, etc.) are bundled in.
+//
+// PrimeVue is built with code-splitting: `primevue/config` and each
+// `primevue/<component>` subpath share a module-level styling + service
+// singleton, so without a shared chunk every entry would carry its own
+// copy and the components would never see the theme installed by
+// `app.use(PrimeVue)`. reka-ui is a single barrel entry (one specifier,
+// no cross-entry singleton to preserve).
+//
+// One-shot `esbuild.build` (not a watch context): these come from
+// node_modules and don't change while the dev server runs, so they stay
+// out of the watched `ctxs` set that re-fires on every src/ edit.
+const resolveEsm = (specifier) => fileURLToPath(import.meta.resolve(specifier))
+
+await esbuild.build({
+  ...sharedEsbuildOpts,
+  entryPoints: { 'reka-ui': resolveEsm('reka-ui') },
+  external: ['vue'],
+})
+await esbuild.build({
+  ...sharedEsbuildOpts,
+  outdir: resolve(outDir, 'pv'),
+  splitting: true,
+  external: ['vue'],
+  entryPoints: {
+    config: resolveEsm('primevue/config'),
+    inputtext: resolveEsm('primevue/inputtext'),
+    password: resolveEsm('primevue/password'),
+    inputnumber: resolveEsm('primevue/inputnumber'),
+    rating: resolveEsm('primevue/rating'),
+    aura: resolveEsm('@primeuix/themes/aura'),
+  },
+})
+
 // ─── REPL worker assets ────────────────────────────────────────────
 //
 // @vue/repl's Monaco preset spawns workers via

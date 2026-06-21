@@ -21,6 +21,7 @@
     "@nuxt/content": "^3.13.0",
     "@nuxtjs/color-mode": "^4.0.0",
     "@nuxtjs/seo": "^5.1.3",
+    "@primeuix/themes": "^2.0.3",
     "@resvg/resvg-js": "^2.6.2",
     "@shikijs/twoslash": "^4.0.2",
     "@tailwindcss/typography": "^0.5.19",
@@ -29,6 +30,8 @@
     "attaform-bench-arena": "workspace:*",
     "better-sqlite3": "^12.9.0",
     "lucide-vue-next": "^1.0.0",
+    "primevue": "^4.5.5",
+    "reka-ui": "^2.9.10",
     "satori": "^0.26.0",
     "shiki": "^4.0.2",
     "vue-sonner": "^2.0.9"

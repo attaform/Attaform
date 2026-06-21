@@ -96,6 +96,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Register transforms', to: '/docs/binding-inputs/transforms' },
       { title: 'Schema-driven coercion', to: '/docs/binding-inputs/coercion' },
       { title: 'Custom assigners', to: '/docs/binding-inputs/custom-assigners' },
+      { title: 'Third-party components', to: '/docs/binding-inputs/third-party-components' },
     ],
   },
   {

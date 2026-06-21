@@ -243,6 +243,14 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
       }
     }
     if ('value' in rawAttrs) delete rawAttrs['value']
+    // The v-model desugar (componentBridgeTransform) injects `modelValue` +
+    // `onUpdate:modelValue` onto a plain component host. For a useRegister
+    // wrapper the inner control already owns value via its own v-register, so
+    // these bridge attrs are inert here -- strip them off the fallthrough bag
+    // so `modelValue` doesn't leak onto the inner DOM as a junk attribute and
+    // `onUpdate:modelValue` doesn't bind a dead listener.
+    if ('modelValue' in rawAttrs) delete rawAttrs['modelValue']
+    if ('onUpdate:modelValue' in rawAttrs) delete rawAttrs['onUpdate:modelValue']
   }
   // Capture+strip three times: synchronously in setup, then on
   // beforeMount, then on every beforeUpdate. The synchronous call is

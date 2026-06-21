@@ -2,7 +2,36 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Added
+
+- **`v-register` now binds a component from any Vue UI library, with no new
+  API.** The same `v-register="form.register(path)"` that binds a native
+  `<input>` also binds a component from a kit you already use, like reka-ui or
+  PrimeVue. At compile time Attaform wires the component's standard `v-model` for
+  the value, so storage holds the typed value your schema expects and the server
+  renders it correctly with no first-paint flash. At mount the directive reaches
+  in for the component's real control to light up focus, blur, `connected`, the
+  managed aria attributes, and focus-and-scroll-to-error, exactly as on a bare
+  input. Composite widgets built from several inputs (a PIN field) or with no
+  native control at all (a slider) track focus at the widget root, and a control
+  that renders late behind Suspense or an async boundary is picked up when it
+  arrives. Components with a non-standard model contract still bind through a
+  thin wrapper, a custom assigner, or `useRegister`; in development, a component
+  that drops the directive (a fragment root) is flagged with the wrapper fix.
+  Tested against reka-ui, PrimeVue, and Nuxt UI, on both zod v3 and zod v4.
+  (#457)
+
+### Fixed
+
+- **`form.fields('path')` on a directly-bound container now reflects its own
+  field state.** When a directive binds a container path directly, a file input
+  registered on a `z.array(...)`, or a composite component bound through
+  `v-register`, the container's aggregate FieldState (`connected`, `focused`,
+  `touched`, and the rest, read through the call form `form.fields('path')`)
+  rolled up only its descendant leaves and ignored the container's own record, so
+  the field read back disconnected and unfocused even while the bound control was
+  wired and focused. A directly-bound container now folds its own interaction
+  state into the aggregate. Both zod v3 and zod v4. (#457)
 
 ## v0.24.3
 ### Changed

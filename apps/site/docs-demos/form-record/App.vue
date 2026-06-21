@@ -17,7 +17,7 @@
   const newAthlete = ref('')
 
   const total = computed(() =>
-    Object.values(form.values.medals ?? {}).reduce((sum, count) => sum + (count ?? 0), 0)
+    Object.values(form.values.medals).reduce((sum, count) => sum + count, 0)
   )
 
   function addAthlete(): void {

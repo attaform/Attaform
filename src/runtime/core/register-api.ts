@@ -1,4 +1,4 @@
-import { computed, ref, shallowReadonly, type Ref } from 'vue'
+import { computed, nextTick, ref, shallowReadonly, warn, type Ref } from 'vue'
 import type {
   CoercionRegistry,
   DisplayState,
@@ -15,6 +15,13 @@ import { computeFieldIdentity } from './field-ids'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
+import { __DEV__ } from './dev'
+
+// Dev-only dedup for the multi-root host warning: a host value update flowing
+// in while nothing was ever wired for the path means Vue dropped the directive
+// on a multi-root component. Keyed by form-instance + path so it fires once per
+// affected binding, and never bleeds the warning across separate forms.
+const warnedMultiRootHosts = new Set<string>()
 
 /**
  * Per-`useForm()`-instance config that the API layer threads through
@@ -344,6 +351,52 @@ export function buildRegister<F extends GenericForm>(
         return state.setValueAtPath(segments, value, withInstanceMeta(meta))
       },
 
+      setValueFromHost: (value: unknown): boolean => {
+        // The write path for a third-party component bound by v-register's
+        // compile-time v-model desugar. The host emits its typed model value
+        // through `onUpdate:modelValue`; unlike a native control there is no
+        // DOM input listener, so this bundles the value write with
+        // markInteracted -- exactly as the native input listener pairs the
+        // assigner write with noteInteraction. Without the markInteracted,
+        // blur-validation and the reward-early display state would never arm
+        // for a v-model-bound component. The value is authoritative (the
+        // component's resolved model type), so it routes through the same
+        // no-coercion funnel as setValueWithInternalPath. Mark interacted
+        // before the write so any validation the write triggers sees the bit.
+        state.markInteracted(segments)
+        const accepted = state.setValueAtPath(segments, value, withInstanceMeta(undefined))
+        // Dev diagnostic: a host value update flowed in, but nothing was ever
+        // wired for this path (no registered element, connected never set). The
+        // transform's v-model props ride a component's props / emits, which Vue
+        // keeps even when it drops a runtime directive on a multi-root
+        // (fragment) component -- so the value channel works while
+        // activateComponentHost never ran and the rich FieldState (connected /
+        // focus / aria / scroll-to-error) is silently missing. Re-check on the
+        // next tick so a component that emits during its own mount, before the
+        // directive's mounted runs, does not trip a false positive.
+        if (__DEV__) {
+          const dedupeKey = `${formInstanceId}:${pathKey}`
+          const isWired = (): boolean =>
+            (state.elements.get(pathKey)?.elements.size ?? 0) > 0 ||
+            state.getFieldRecord(segments)?.connected === true
+          if (!warnedMultiRootHosts.has(dedupeKey) && !isWired()) {
+            warnedMultiRootHosts.add(dedupeKey)
+            void nextTick(() => {
+              if (isWired()) return
+              warn(
+                `[attaform] v-register received a value update from a component it never ` +
+                  `attached to. Vue drops a runtime directive on a component with more than one ` +
+                  `root node (a fragment / multi-root template), so v-register's value binding ` +
+                  `works but its field state (connected, focus, aria, scroll-to-error) does not. ` +
+                  `Give the component a single element root, or wrap it so v-register lands on ` +
+                  `one element.`
+              )
+            })
+          }
+        }
+        return accepted
+      },
+
       // Called by the `vRegisterHint` compile-time transform's wrapping
       // IIFE on every server-side render of `<element v-register="…">`.
       // Without it, every SSR'd FieldState serialises `connected: false`
@@ -354,6 +407,38 @@ export function buildRegister<F extends GenericForm>(
       // remains the source of truth.
       markConnectedOptimistically: (): void => {
         state.markConnectedOptimistically(segments)
+      },
+
+      markHostConnected: (connected: boolean): void => {
+        state.markHostConnected(segments, connected)
+      },
+
+      markFocused: (focused: boolean): void => {
+        // The no-latch host focus path. A composite widget (PinInput's
+        // segments) or a control-less one (Slider) exposes no single element
+        // for attachFocusListeners to bind focus / blur to, so the directive
+        // tracks focusin / focusout on the widget root and forwards here. Pass
+        // the same instance meta the latched-control focus listeners use, so a
+        // blur still drives this binding's validateOn blur-validation.
+        state.markFocused(
+          segments,
+          focused,
+          instanceMeta !== undefined ? { instance: instanceMeta } : undefined
+        )
+      },
+
+      hasRegisteredDescendant: (hostElement: HTMLElement): boolean => {
+        // Discriminator for the directive's component-host branch: is any
+        // element already registered for this path contained within (or
+        // equal to) the host? True for a `useRegister` wrapper whose inner
+        // control self-registered before the host mounted (children mount
+        // first); false for a third-party component that registered nothing.
+        const record = state.elements.get(pathKey)
+        if (record === undefined) return false
+        for (const element of record.elements) {
+          if (hostElement.contains(element)) return true
+        }
+        return false
       },
 
       // --- Async transform lifecycle (internal; the directive's

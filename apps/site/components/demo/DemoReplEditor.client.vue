@@ -17,6 +17,23 @@
   // editor chrome reads from a different starting point per route.
   import shipmentDemoSource from '~/repl-demos/shipment-demo.vue?raw'
 
+  // Attaform's compile-time template transforms, the same set
+  // `attaform/vite` (and the Nuxt module) push into Vue's template
+  // compiler for the real site build. Wiring them into the REPL's
+  // in-browser SFC compile (via `sfcOptions` below) makes the playground
+  // faithful to production: `v-register` on a third-party component host
+  // only binds because `componentBridgeTransform` injects the v-model
+  // bridge at compile time, and the optimistic-mark preamble / hint pair
+  // shapes every `v-register` expression the same way it does in a built
+  // app. Without these, component-host demos render inert and native
+  // demos skip a layer the production build applies.
+  import {
+    componentBridgeTransform,
+    inputTextAreaNodeTransform,
+    vRegisterPreambleTransform,
+    vRegisterHintTransform,
+  } from 'attaform/transforms'
+
   const props = withDefaults(
     defineProps<{
       initialSource?: string
@@ -141,12 +158,26 @@
     })
   }
 
+  // The reka-ui / primevue / @primeuix entries point at the self-hosted
+  // bundles `bundle-repl-deps.mjs` emits under `/lib/` (reka-ui as a
+  // single barrel; PrimeVue code-split so config + components share one
+  // styling singleton). They cost nothing for demos that don't import
+  // them — the iframe only fetches a module when a demo actually
+  // references the specifier. `vue` stays the single shared instance all
+  // of them externalize against.
   const importMap = {
     imports: {
       vue: '/lib/vue.esm-browser.prod.js',
       zod: '/lib/zod.js',
       attaform: '/lib/attaform.js',
       'attaform/zod': '/lib/attaform-zod.js',
+      'reka-ui': '/lib/reka-ui.js',
+      'primevue/config': '/lib/pv/config.js',
+      'primevue/inputtext': '/lib/pv/inputtext.js',
+      'primevue/password': '/lib/pv/password.js',
+      'primevue/inputnumber': '/lib/pv/inputnumber.js',
+      'primevue/rating': '/lib/pv/rating.js',
+      '@primeuix/themes/aura': '/lib/pv/aura.js',
     },
   }
 
@@ -237,11 +268,32 @@
       })();
     </${''}script>
   `
+  // Whether the seeded demo binds PrimeVue. PrimeVue needs its plugin
+  // installed (`app.use(PrimeVue, { theme })`) before any component
+  // mounts; reka-ui is headless and needs nothing. We gate on the
+  // INITIAL seed source, not the live editor buffer, so editing a demo
+  // never reloads the preview just to add or drop the plugin: the
+  // seeded third-party-primevue demo gets it, and every other playground
+  // stays plugin-free (and never fetches PrimeVue at all). The theme's
+  // dark selector matches DARK_SYNC_SOURCE's `.dark` toggle so PrimeVue's
+  // components follow the viewer's color scheme like the rest of the demo.
+  const seededSource = props.initialFiles
+    ? Object.values(props.initialFiles).join('\n')
+    : props.initialSource
+  const usesPrimeVue = seededSource.includes('primevue')
   const previewOptions = {
     headHTML: DARK_SYNC_SOURCE,
     customCode: {
-      importCode: `import { createAttaform } from 'attaform'`,
-      useCode: `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())`,
+      importCode:
+        `import { createAttaform } from 'attaform'` +
+        (usesPrimeVue
+          ? `\nimport PrimeVue from 'primevue/config'\nimport Aura from '@primeuix/themes/aura'`
+          : ''),
+      useCode:
+        `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())` +
+        (usesPrimeVue
+          ? `\napp.use(PrimeVue, { theme: { preset: Aura, options: { darkModeSelector: '.dark' } } })`
+          : ''),
     },
   }
 
@@ -434,10 +486,29 @@
     autoSaveText: false as const,
   }
 
+  // `sfcOptions.template.compilerOptions.nodeTransforms` runs Attaform's
+  // compile-time transforms inside @vue/repl's in-browser SFC compiler,
+  // in the same order `attaform/vite` installs them, with the preamble
+  // strictly before the hint: the preamble captures each `v-register`
+  // expression in its raw form, then the hint wraps it. This is what
+  // lets a component-host `v-register` bind in the playground; see the
+  // transforms import comment at the top of the script.
   const store = useStore({
     builtinImportMap: ref(importMap),
     resourceLinks,
     dependencyVersion,
+    sfcOptions: ref({
+      template: {
+        compilerOptions: {
+          nodeTransforms: [
+            componentBridgeTransform,
+            inputTextAreaNodeTransform,
+            vRegisterPreambleTransform,
+            vRegisterHintTransform,
+          ],
+        },
+      },
+    }),
   })
 
   // Seed a tsconfig alongside the demo source. @vue/repl ships its
@@ -626,6 +697,23 @@ declare const toast: ToastApi
   const ASSET_AMBIENT_DTS = `
 declare module '*.css';
 `
+  // Teach the editor's TS service about the third-party component
+  // specifiers the third-party-components demos import. The runtime
+  // resolves them through the import map (above); these ambient
+  // declarations keep the editor from flagging "Cannot find module"
+  // (TS2307) when Volar can't reach a CDN for their real types. Imports
+  // resolve as `any`, acceptable in a playground whose point is the
+  // Attaform binding, not reka-ui / PrimeVue internals. Seeded for every
+  // demo: a declaration for a module a demo never imports is inert.
+  const THIRD_PARTY_AMBIENT_DTS = `
+declare module 'reka-ui';
+declare module 'primevue/config';
+declare module 'primevue/inputtext';
+declare module 'primevue/password';
+declare module 'primevue/inputnumber';
+declare module 'primevue/rating';
+declare module '@primeuix/themes/aura';
+`
   // In-place diff of `store.files` against an incoming seed map. Used
   // by the dev-only HMR re-seed below; not called on first mount (the
   // initial seed still goes through @vue/repl's `setFiles` so mainFile,
@@ -682,7 +770,7 @@ declare module '*.css';
   // both shapes, matching @vue/repl's default mainFile.
   const seedFiles: Record<string, string> = {
     ...(props.initialFiles ?? { 'src/App.vue': props.initialSource }),
-    'src/playground-globals.d.ts': TOAST_AMBIENT_DTS + ASSET_AMBIENT_DTS,
+    'src/playground-globals.d.ts': TOAST_AMBIENT_DTS + ASSET_AMBIENT_DTS + THIRD_PARTY_AMBIENT_DTS,
     'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
   }
   // Flips true once the initial async setFiles has landed. Guards the

@@ -26,7 +26,15 @@
 // tests. This matrix guards path divergence and first-paint correctness only.
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
-import { Suspense, createSSRApp, defineComponent, h, ref, withDirectives } from 'vue'
+import {
+  Suspense,
+  createSSRApp,
+  defineComponent,
+  h,
+  ref,
+  withDirectives,
+  type Component,
+} from 'vue'
 import { useRegister } from '../../src'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
@@ -311,6 +319,170 @@ describe.each(ADAPTERS)('SSR cross-path parity ($name)', (adapter) => {
     expect(inputValue(runtimeHtml), 'runtime wrapper value').toBe('Acme PHA')
     // The two paths agree -- the lockstep the matrix exists to enforce.
     expect(inputValue(compiledHtml)).toBe(inputValue(runtimeHtml))
+  })
+
+  // Case B integration: a THIRD-PARTY v-model component (no useRegister; it
+  // declares a `modelValue` prop and renders it onto an inner control). The
+  // compiled path injects `:modelValue` via componentBridgeTransform; the
+  // runtime path seeds the inner control's value via the directive's
+  // getSSRProps firing on the transferred element. A scalar model paints the
+  // same value on both paths and survives hydration: on the client runtime
+  // path the host renders value="" (no modelValue prop reaches it), yet the
+  // seeded SSR value stays put (Vue leaves it during hydration).
+  it('integration: a third-party scalar component host paints + hydrates on both paths', async () => {
+    const { z, useForm } = adapter
+
+    const ThirdPartyInput = defineComponent({
+      name: 'ThirdPartyInput',
+      inheritAttrs: false,
+      props: ['modelValue'],
+      emits: ['update:modelValue'],
+      setup(props) {
+        return () => h('input', { type: 'text', value: props.modelValue ?? '' })
+      },
+    })
+
+    const ParentCompiled = defineComponent({
+      name: 'ScalarHostParentCompiled',
+      components: { ThirdPartyInput },
+      setup() {
+        const form = useForm({
+          schema: z.object({ orgName: z.string() }),
+          defaultValues: { orgName: 'Acme PHA' },
+          key: `xpath-scalarhost-compiled-${adapter.name}`,
+        })
+        return { form }
+      },
+      render: compileToRender(`<ThirdPartyInput v-register="form.register('orgName')" />`),
+    })
+
+    const ParentRuntime = defineComponent({
+      name: 'ScalarHostParentRuntime',
+      setup() {
+        const form = useForm({
+          schema: z.object({ orgName: z.string() }),
+          defaultValues: { orgName: 'Acme PHA' },
+          key: `xpath-scalarhost-runtime-${adapter.name}`,
+        })
+        return () => withDirectives(h(ThirdPartyInput), [[vRegister, form.register('orgName')]])
+      },
+    })
+
+    function innerValue(html: string): string | null {
+      const root = document.createElement('div')
+      root.innerHTML = html
+      const el = root.querySelector('input')
+      return el === null ? null : (el as HTMLInputElement).value
+    }
+
+    async function renderAndHydrate(
+      Comp: Component
+    ): Promise<{ ssr: string | null; client: string | null }> {
+      let ssr: string | null = null
+      let client: string | null = null
+      const warnings = await withWarnCapture(async () => {
+        const html = await renderToString(createSSRApp(Comp).use(createAttaform()))
+        ssr = innerValue(html)
+        const container = document.createElement('div')
+        container.innerHTML = html
+        document.body.appendChild(container)
+        const app = createSSRApp(Comp).use(createAttaform())
+        app.mount(container)
+        await settle()
+        client = container.querySelector('input')?.value ?? null
+        app.unmount()
+        container.remove()
+      })
+      expect(
+        warnings.filter((w) => /hydrat|mismatch/i.test(w)),
+        'no hydration mismatch'
+      ).toEqual([])
+      expect(
+        warnings.filter((w) => w.includes('is a no-op')),
+        'no false no-op warn'
+      ).toEqual([])
+      return { ssr, client }
+    }
+
+    const compiled = await renderAndHydrate(ParentCompiled)
+    const runtime = await renderAndHydrate(ParentRuntime)
+
+    expect(compiled.ssr, 'compiled SSR value').toBe('Acme PHA')
+    expect(runtime.ssr, 'runtime SSR value').toBe('Acme PHA')
+    expect(compiled.client, 'compiled post-hydration value').toBe('Acme PHA')
+    expect(runtime.client, 'runtime post-hydration value').toBe('Acme PHA')
+    expect(runtime.ssr).toBe(compiled.ssr)
+  })
+
+  // A TYPED (array) host pins the value-channel split. The transform carries
+  // the typed model on `:modelValue` (innerRef.value, not the stringified
+  // displayValue), so the host renders the real array -- `join('|')` proves it
+  // arrived as an array. The directive must NOT then clobber that with the
+  // per-element `value = displayValue` seed when it fires on the transferred
+  // inner control. On the COMPILED path it doesn't: the SSR_COMPONENT_HOST
+  // modifier rides the transferred fire, gating getSSRFormStateProps off, so
+  // the host's `alpha|beta` survives. The RUNTIME render-function path carries
+  // no modifier on that fire, so it cannot tell the host's inner control from a
+  // directly-bound native input and still seeds the stringified `alpha,beta`.
+  // That asymmetry is a documented limitation (the hand-written runtime path
+  // with a typed component host), mirroring select's runtime `selected`
+  // omission; the compiled SFC path -- how apps actually author -- is correct.
+  it('integration: a typed component host keeps its render on compiled, stringifies on runtime', async () => {
+    const { z, useForm } = adapter
+
+    const TagsHost = defineComponent({
+      name: 'TagsHost',
+      inheritAttrs: false,
+      props: ['modelValue'],
+      emits: ['update:modelValue'],
+      setup(props) {
+        return () => {
+          const v = props.modelValue
+          return h('input', { type: 'text', value: Array.isArray(v) ? v.join('|') : '' })
+        }
+      },
+    })
+
+    const ParentCompiled = defineComponent({
+      name: 'TagsHostParentCompiled',
+      components: { TagsHost },
+      setup() {
+        const form = useForm({
+          schema: z.object({ tags: z.array(z.string()) }),
+          defaultValues: { tags: ['alpha', 'beta'] },
+          key: `xpath-tagshost-compiled-${adapter.name}`,
+        })
+        return { form }
+      },
+      render: compileToRender(`<TagsHost v-register="form.register('tags')" />`),
+    })
+
+    const ParentRuntime = defineComponent({
+      name: 'TagsHostParentRuntime',
+      setup() {
+        const form = useForm({
+          schema: z.object({ tags: z.array(z.string()) }),
+          defaultValues: { tags: ['alpha', 'beta'] },
+          key: `xpath-tagshost-runtime-${adapter.name}`,
+        })
+        return () => withDirectives(h(TagsHost), [[vRegister, form.register('tags')]])
+      },
+    })
+
+    function innerValue(html: string): string | null {
+      const root = document.createElement('div')
+      root.innerHTML = html
+      const el = root.querySelector('input')
+      return el === null ? null : (el as HTMLInputElement).value
+    }
+
+    const compiledHtml = await renderToString(createSSRApp(ParentCompiled).use(createAttaform()))
+    const runtimeHtml = await renderToString(createSSRApp(ParentRuntime).use(createAttaform()))
+
+    // Compiled (the authored path): the typed model survives, host renders it.
+    expect(innerValue(compiledHtml), 'compiled: host render survives').toBe('alpha|beta')
+    // Runtime render-function path: documented limitation, stringified seed.
+    expect(innerValue(runtimeHtml), 'runtime: stringified displayValue').toBe('alpha,beta')
   })
 
   // Async-hydration row (#370): under Nuxt-style lazy hydration (an async

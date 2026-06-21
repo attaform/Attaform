@@ -25,7 +25,11 @@
   <form class="demo" @submit.prevent>
     <div class="field">
       <small>PrimeVue InputText</small>
-      <InputText v-register="form.register('username')" placeholder="jane.doe" />
+      <InputText
+        v-register="form.register('username')"
+        placeholder="jane.doe"
+        autocomplete="username"
+      />
       <div class="chips">
         <span class="chip" :class="{ on: form.fields('username')?.connected }">connected</span>
         <span class="chip" :class="{ on: form.fields('username')?.focused }">focused</span>

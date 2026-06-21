@@ -40,6 +40,7 @@
         :feedback="false"
         toggle-mask
         placeholder="at least 8"
+        :input-props="{ autocomplete: 'new-password' }"
       />
       <div class="chips">
         <span class="chip" :class="{ on: form.fields('password')?.connected }">connected</span>

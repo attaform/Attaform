@@ -2,9 +2,12 @@
 // per-demo `styles.css` from `core` (always) plus the fragments a demo names
 // in its `styles.json` ({ "with": ["input", "button", ...] }).
 //
-// Every selector is scoped under `.demo` so a demo's generated stylesheet,
-// imported globally by its App.vue, only ever touches that demo's subtree
-// (it cannot leak onto the surrounding docs page). The theme is fully
+// Every selector is authored under `.demo`, the class each demo root carries.
+// That alone is not isolation: a docs page renders many demos, and `.demo
+// button` would match every demo's buttons, so codegen rewrites each rule to a
+// per-demo wrapper class (`.demo-<slug> .demo ...`, see scopeToDemo) that pins
+// it to its own subtree. Author selectors here as plain `.demo ...`; the slug
+// wrapper is applied downstream. The theme is fully
 // self-contained: `core` defines its own `--color-*` tokens as resolved
 // hexes rather than borrowing the site's, so demos render identically inside
 // the playground iframe (which has no site stylesheet) and when copy-pasted

@@ -41,6 +41,10 @@
       // Wins over `initialSource` when present. The entry point must
       // be at `src/App.vue` (matches @vue/repl's default mainFile).
       initialFiles?: Record<string, string>
+      // Demo slug, when seeding a docs demo. Tags the preview iframe's mount
+      // root with `demo-<slug>` so the demo's wrapper-scoped stylesheet applies
+      // (see scopeClassCode below). Undefined for the self-styled default.
+      scopeSlug?: string
     }>(),
     { initialSource: () => shipmentDemoSource }
   )
@@ -281,6 +285,18 @@
     ? Object.values(props.initialFiles).join('\n')
     : props.initialSource
   const usesPrimeVue = seededSource.includes('primevue')
+  // Tag the preview iframe's mount root (`#app`) with the demo's `demo-<slug>`
+  // class. The demo's generated stylesheet scopes every rule to that wrapper
+  // so a docs page's many demos can't bleed into each other (see
+  // scripts/demo-styles/codegen.mjs); the playground reuses that same
+  // stylesheet, so without the class the demo would render unstyled. Emitted
+  // into `useCode`, which runs after `createApp(AppComponent)` and before
+  // `app.mount('#app')`, so the class lands on `#app` before the demo mounts
+  // into it. Gated on a slug (the default shipment demo is self-styled) and
+  // wrapped so a missing root can't throw out of the iframe bootstrap.
+  const scopeClassCode = props.scopeSlug
+    ? `\ntry { document.getElementById('app')?.classList.add(${JSON.stringify(`demo-${props.scopeSlug}`)}) } catch {}`
+    : ''
   const previewOptions = {
     headHTML: DARK_SYNC_SOURCE,
     customCode: {
@@ -293,7 +309,8 @@
         `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())` +
         (usesPrimeVue
           ? `\napp.use(PrimeVue, { theme: { preset: Aura, options: { darkModeSelector: '.dark' } } })`
-          : ''),
+          : '') +
+        scopeClassCode,
     },
   }
 

@@ -43,11 +43,19 @@
   // third-party deps, is fetched, on the page that embeds it.
   //
   // Eager-loading every demo pulled all ~60 stylesheets onto every docs page,
-  // so one demo's `.demo`-scoped element rules (`.demo button`, `.demo input`)
-  // bled onto another demo's controls, and unrelated demos' deps (reka-ui,
-  // PrimeVue) rode along into every page chunk. Lazy loading scopes each page
-  // to just the demos it renders. `defineAsyncComponent` resolves during SSR
-  // (awaited inside the page's Suspense boundary), so demos still prerender.
+  // so one demo's element rules (`.demo button`, `.demo input`) bled onto
+  // another demo's controls, and unrelated demos' deps (reka-ui, PrimeVue)
+  // rode along into every page chunk. Lazy loading scopes each page to just
+  // the demos it renders. `defineAsyncComponent` resolves during SSR (awaited
+  // inside the page's Suspense boundary), so demos still prerender.
+  //
+  // Lazy loading alone does not stop the element-rule bleed: a demo's
+  // stylesheet, once injected, stays in the document and accumulates as the
+  // reader navigates between docs pages, so a later demo's `.demo button`
+  // still reaches an earlier demo's buttons. The host element below carries a
+  // per-demo `demo-<slug>` class that the generated stylesheet scopes every
+  // rule to (see scripts/demo-styles/codegen.mjs), so each demo's styles can
+  // only touch its own subtree no matter what else is loaded.
   //
   // Two shapes supported:
   //   - flat:   docs-demos/<slug>.vue              (single-file demo)
@@ -87,7 +95,7 @@
       </NuxtLink>
     </div>
 
-    <div class="p-6">
+    <div class="p-6" :class="`demo-${props.slug}`">
       <component :is="DemoComponent" />
     </div>
   </div>

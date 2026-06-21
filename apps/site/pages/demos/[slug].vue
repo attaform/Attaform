@@ -100,8 +100,15 @@
   // flat demos collapse to `{ 'src/App.vue': ... }`. `useAsyncData` resolves
   // during SSR, so one slug's source lands in this page's payload (not all of
   // them in the shared chunk), and re-runs when the route slug changes.
+  //
+  // The key MUST carry the slug. `useAsyncData` stores one payload per key, so
+  // a constant key would make every `/demos/<slug>` route share a single cache
+  // entry: remounting the page (navigating out to the demos index and back
+  // into a different demo, say) replays whichever demo populated the key first,
+  // because a fresh mount reads `getCachedData` before `watch` can react.
+  // Per-slug keys mirror the docs route's `content-${route.path}`.
   const { data: initialFiles } = await useAsyncData(
-    'playground-demo-files',
+    `playground-demo-files:${slug.value}`,
     async (): Promise<Record<string, string>> => {
       const folderEntries = folderEntriesFor(slug.value)
       if (folderEntries.length > 0) {

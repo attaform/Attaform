@@ -23,7 +23,7 @@
     "attaform": "workspace:*"
   },
   "devDependencies": {
-    "@formisch/vue": "^0.8.0",
+    "@formisch/vue": "^0.11.0",
     "@formkit/vue": "^2.0.0",
     "@formkit/zod": "^2.0.0",
     "@playwright/test": "^1.60.0",

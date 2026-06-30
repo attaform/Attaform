@@ -108,8 +108,7 @@
   })
 
   const onSubmit = wizard.handleSubmit(
-    async ({ values, isFinal }) => {
-      if (!isFinal) return
+    async ({ values }) => {
       await new Promise((resolve) => setTimeout(resolve, 400))
       toast.success('Registration submitted!', { description: values })
     },

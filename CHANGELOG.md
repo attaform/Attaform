@@ -2,7 +2,28 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Changed
+
+- **`wizard.handleSubmit` now submits the whole wizard from any step, and
+  navigation is its own verb.** One call validates every step's form in
+  parallel, regardless of which step is active, and runs your `onSubmit` once
+  with every step's values; a clean pass latches `wizard.done`, and a failure
+  surfaces every step's errors at once through `onError`. It never moves the
+  pin. To advance a step only when it is valid, compose the active step's own
+  submit with navigation: `const onNext = wizard.activeForm.handleSubmit(() =>
+  wizard.next())`. For a non-blocking step, call `wizard.next()` directly. The
+  choice of verb is the policy, so there is no mode flag to remember.
+  `ctx.isFinal` stays on the context as positional information: it tells you
+  where the submit fired, never what got validated. (#471)
+
+- **`wizard.activeForm` is now a live view of the active step's form.**
+  Operating through it always targets the current step, so a handler captured
+  once at setup time, like `wizard.activeForm.handleSubmit(() => wizard.next())`,
+  stays correct as the wizard advances instead of pinning to the step it was
+  created on. It surfaces the full form handle (values, meta, history,
+  `handleSubmit`), schema-erased because the active step's schema is not
+  statically known. It is no longer identity-equal to the raw per-step handle;
+  reach for `wizard.forms[key]` when you need that exact object. (#471)
 
 ## v0.24.4
 ### Added

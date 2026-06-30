@@ -786,6 +786,14 @@ export type ReactiveValidationStatus<Form> = PendingValidationStatus | SettledVa
  *   manually via `form.focusFirstError()` or `form.scrollToFirstError()`
  *   from an `onError` callback.
  *
+ * Both focusing policies request `focusVisible: true`, so the browser
+ * paints a focus ring even though the move is programmatic. Where a UA
+ * doesn't yet support that hint, non-text controls (radio, checkbox,
+ * custom widgets) may end up focused without a visible ring after a
+ * pointer-driven submit; if you target those browsers, pair the policy
+ * with your own indicator (e.g. a `:focus-within` ring on the option
+ * wrapper).
+ *
  * If no errored field has a currently mounted, visible element, the
  * policy silently no-ops.
  */
@@ -4112,6 +4120,12 @@ export type UseFormReturnType<
    * Pass `{ preventScroll: true }` if you're scrolling separately
    * (e.g. via `scrollToFirstError`) and don't want the browser to
    * fight the explicit scroll.
+   *
+   * Requests `focusVisible: true` so the UA paints a focus ring even
+   * though the move is programmatic. Honored where supported; on
+   * browsers without it, non-text controls focused after a pointer
+   * submit may show no ring, so you may still want an app-side
+   * indicator.
    */
   focusFirstError: (options?: { preventScroll?: boolean }) => boolean
 

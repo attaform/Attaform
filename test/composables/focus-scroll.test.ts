@@ -140,17 +140,29 @@ describe('focusFirstError / scrollToFirstError', () => {
     app.unmount()
   })
 
-  it('focusFirstError focuses the first errored field', () => {
+  it('focusFirstError focuses the first errored field, requesting focusVisible', () => {
     const { api, app } = mountWith({ errorsFor: ['email', 'password'] })
     // Populate errors by running handleSubmit (the validator above
     // returns failure with the listed fields).
     const submit = api.handleSubmit(async () => {})
     return submit().then(() => {
       expect(api.focusFirstError()).toBe(true)
-      expect(focusSpy).toHaveBeenCalled()
+      // `focusVisible: true` is always requested so the moved-to field
+      // paints a ring even when focus is programmatic (#472).
+      expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
       // Instance on which focus was called should be the 'email' input.
       const focusedEl = focusSpy.mock.instances[0] as HTMLInputElement | undefined
       expect(focusedEl?.getAttribute('data-field')).toBe('email')
+      app.unmount()
+    })
+  })
+
+  it('focusFirstError layers caller options over the focusVisible hint', () => {
+    const { api, app } = mountWith({ errorsFor: ['email'] })
+    const submit = api.handleSubmit(async () => {})
+    return submit().then(() => {
+      expect(api.focusFirstError({ preventScroll: true })).toBe(true)
+      expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true, preventScroll: true })
       app.unmount()
     })
   })
@@ -220,7 +232,7 @@ describe('onInvalidSubmit policy wiring', () => {
       onInvalidSubmit: 'focus-first-error',
     })
     await api.handleSubmit(async () => {})()
-    expect(focusSpy).toHaveBeenCalled()
+    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
     expect(scrollSpy).not.toHaveBeenCalled()
     app.unmount()
   })
@@ -243,14 +255,14 @@ describe('onInvalidSubmit policy wiring', () => {
     })
     await api.handleSubmit(async () => {})()
     expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true, focusVisible: true })
     app.unmount()
   })
 
   it('default (focus-first-error): submit failure focuses the first errored field', async () => {
     const { api, app } = mountWith({ errorsFor: ['email'] })
     await api.handleSubmit(async () => {})()
-    expect(focusSpy).toHaveBeenCalled()
+    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
     expect(scrollSpy).not.toHaveBeenCalled()
     app.unmount()
   })
@@ -338,7 +350,7 @@ describe('applyInvalidSubmitPolicy — public API', () => {
     focusSpy.mockClear()
     scrollSpy.mockClear()
     api.applyInvalidSubmitPolicy()
-    expect(focusSpy).toHaveBeenCalled()
+    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
     expect(scrollSpy).not.toHaveBeenCalled()
     app.unmount()
   })
@@ -389,7 +401,7 @@ describe('applyInvalidSubmitPolicy — public API', () => {
     scrollSpy.mockClear()
     api.applyInvalidSubmitPolicy('both')
     expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true, focusVisible: true })
     app.unmount()
   })
 

@@ -102,7 +102,6 @@ Sticky finish buttons, sidebar status widgets, or any component in a different b
   const wizard = injectWizard('checkout-wizard')
 
   const finish = wizard?.handleSubmit(async (ctx) => {
-    if (!ctx.isFinal) return
     await api.checkout(ctx.values)
   })
 </script>

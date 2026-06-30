@@ -79,7 +79,7 @@ Every downstream surface treats the string slot identically to a form slot:
 - `wizard.steps[i]` reads as `{ key: 'welcome', form: <noopForm> }`.
 - `wizard.statuses['welcome']` reads as `{ valid: true, errorCount: 0, ... }`.
 - `wizard.allValues['welcome']` is the empty record `{}`.
-- `wizard.handleSubmit` on an affordance step validates as `{}` and advances.
+- `wizard.handleSubmit` validates the affordance step trivially as `{}`, along with every other step.
 
 The noop form is real: it carries a key, sits in the per-app registry, and participates in `injectForm('welcome')` lookups the same way any other form does. Affordance steps are first-class building blocks, not edge cases.
 

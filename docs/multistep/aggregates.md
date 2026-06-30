@@ -158,7 +158,7 @@ Submitting the wizard via `wizard.handleSubmit` is what populates `allErrors` wi
 
 ## `wizard.submissionAttempts` vs per-form attempts
 
-Each form keeps its own `meta.submissionAttempts`, incremented by `wizard.handleSubmit` whenever that form is in the validation set (intermediate steps validate only the active form; final-step submits validate every form). The wizard-level `wizard.submissionAttempts` increments once per `handleSubmit` invocation, regardless of how many forms were involved. For "did the user click Finish?" reach for `wizard.submissionAttempts`; for "has the user tried this step?" reach for the form's own `meta.submissionAttempts`.
+Each form keeps its own `meta.submissionAttempts`, incremented by `wizard.handleSubmit` for every form, since it always validates the whole step list. A gated Next built on `wizard.activeForm.handleSubmit(...)` bumps only the active form. The wizard-level `wizard.submissionAttempts` increments once per `handleSubmit` invocation, regardless of how many forms were involved. For "did the user submit the wizard?" reach for `wizard.submissionAttempts`; for "has the user tried this step?" reach for the form's own `meta.submissionAttempts`.
 
 ## Where to next
 

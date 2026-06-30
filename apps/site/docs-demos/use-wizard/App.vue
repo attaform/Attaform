@@ -30,9 +30,8 @@
 
   const wizard = useWizard({ steps: [account, profile, review] })
 
-  const onSubmit = wizard.handleSubmit(
+  const onFinish = wizard.handleSubmit(
     async (ctx) => {
-      if (!ctx.isFinal) return
       await new Promise((resolve) => setTimeout(resolve, 400))
       toast.success(`Welcome ${ctx.get(profile).name || 'aboard'}`, { description: ctx.values })
     },
@@ -123,11 +122,11 @@
         type="button"
         class="primary"
         :disabled="wizard.submitting"
-        @click="wizard.next()"
+        @click="wizard.tryNext()"
       >
         Next →
       </button>
-      <button v-else type="button" class="primary" :disabled="wizard.submitting" @click="onSubmit">
+      <button v-else type="button" class="primary" :disabled="wizard.submitting" @click="onFinish">
         {{ wizard.submitting ? 'Submitting…' : 'Finish' }}
       </button>
     </div>

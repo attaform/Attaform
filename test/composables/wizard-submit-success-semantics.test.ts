@@ -8,18 +8,17 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Parity with `form.handleSubmit` success semantics (#438), applied to
- * `wizard.handleSubmit`. A wizard callback that leaves errors on a
- * processed step form has NOT submitted that step successfully:
+ * `wizard.handleSubmit`, which always validates the whole step list. A
+ * wizard callback that leaves errors on a processed step has NOT
+ * submitted successfully:
  *
- *   - Final step: `wizard.done` must stay `false` (a server rejection
- *     is not completion).
- *   - Intermediate step: the wizard must NOT advance past a step the
- *     server just rejected.
- *   - `onError` must fire in both cases.
+ *   - `wizard.done` must stay `false` (a server rejection is not
+ *     completion), whether the submit fired from the final step or an
+ *     earlier one.
+ *   - `onError` must fire.
  *
- * The clean-return positive controls guard against over-correction:
- * a final submit that leaves no errors completes, and an intermediate
- * one advances.
+ * The clean-return positive control guards against over-correction: a
+ * clean submit latches `done` and never advances the pin.
  */
 
 const accountSchema = z.object({
@@ -78,7 +77,7 @@ describe('wizard.handleSubmit success semantics (#438)', () => {
     expect(onError).toHaveBeenCalledTimes(1)
   })
 
-  it('intermediate setErrors inside onSubmit does not advance past the rejected step', async () => {
+  it('setErrors inside onSubmit fails the submit even when fired from an intermediate step', async () => {
     const { app, result } = mountHarness(() => {
       const account = useForm({
         schema: accountSchema,
@@ -101,7 +100,10 @@ describe('wizard.handleSubmit success semantics (#438)', () => {
       result.account.setErrors([{ message: 'This email is already taken.' }])
     }, onError)(new Event('submit'))
 
+    // A clean validation pass whose callback leaves a user error is a
+    // failed submit (#438): no `done`, onError fires. The pin never moves.
     expect(result.wizard.currentStep).toBe('ws-mid-account')
+    expect(result.wizard.done).toBe(false)
     expect(onError).toHaveBeenCalledTimes(1)
   })
 
@@ -130,7 +132,7 @@ describe('wizard.handleSubmit success semantics (#438)', () => {
     expect(onError).not.toHaveBeenCalled()
   })
 
-  it('positive control: a clean intermediate submit advances to the next step', async () => {
+  it('positive control: a clean submit from an intermediate step latches done without advancing', async () => {
     const { app, result } = mountHarness(() => {
       const account = useForm({
         schema: accountSchema,
@@ -150,6 +152,8 @@ describe('wizard.handleSubmit success semantics (#438)', () => {
 
     await result.wizard.handleSubmit(() => {})(new Event('submit'))
 
-    expect(result.wizard.currentStep).toBe('ws-adv-review')
+    // Whole-wizard submit never advances the pin; a clean pass latches `done`.
+    expect(result.wizard.currentStep).toBe('ws-adv-account')
+    expect(result.wizard.done).toBe(true)
   })
 })

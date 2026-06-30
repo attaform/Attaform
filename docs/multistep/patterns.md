@@ -23,7 +23,7 @@ metaRows:
 
 ## Linear wizards
 
-The default shape: a list of forms in reading order. `wizard.next()` validates the active step before advancing; `wizard.back()` retreats. Out-of-bounds calls dev-warn and no-op.
+The default shape: a list of forms in reading order. `wizard.next()` advances and `wizard.back()` retreats; neither validates (navigation and submission are separate verbs). Out-of-bounds calls dev-warn and no-op.
 
 ```ts
 import { useForm, useWizard } from 'attaform/zod'
@@ -40,11 +40,19 @@ const review = useForm({ schema: reviewSchema, key: 'signup-review' })
 const wizard = useWizard({ steps: [account, profile, review] })
 ```
 
-`wizard.next()` validates the active form for you, so the template wires straight to it:
+To advance only when the active step is valid, reach for `wizard.tryNext()`. It validates the active step and advances on a clean pass, binding straight to the button:
 
 ```vue
-<button v-if="wizard.canAdvance" @click="wizard.next()">Next</button>
+<button v-if="wizard.canAdvance" @click="wizard.tryNext()">Next</button>
 ```
+
+For custom valid or invalid handling, compose the active step's submit with `next()` instead. `wizard.activeForm` is a live view of the current step, so one `const` captured here stays correct on every step:
+
+```ts
+const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
+```
+
+For a non-blocking flow (autosave, deferring the error waterfall to the final submit), wire the button to plain `wizard.next()` instead.
 
 Mix in affordance steps (bare strings) wherever the flow benefits from a screen that presents rather than collects:
 
@@ -183,7 +191,7 @@ A keyboard shortcut bound to the active step:
 </template>
 ```
 
-`wizard.activeForm` is identity-equal to the form in `wizard.forms[wizard.currentStep]`, so undo / redo dispatches to the right chain.
+`wizard.activeForm` is a live view of the current step's form, so undo / redo always dispatches to the active chain. It is no longer identity-equal to `wizard.forms[wizard.currentStep]`; reach for that record when you need a specific step's raw handle.
 
 Each step's history is independent: undoing on the `cargo` step doesn't retreat changes the user made on `billing`. That matches the user's mental model: "undo what I just typed here," not "undo the entire flow."
 

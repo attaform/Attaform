@@ -3327,8 +3327,8 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * `getDisplayState` predicates) but does NOT drive the library's
    * default `getDisplayState` heuristic. The reveal-on-submit story
    * runs entirely through `submissionAttempts`, which
-   * `wizard.handleSubmit` bumps on the active form at intermediate
-   * steps and on every form at the final step.
+   * `wizard.handleSubmit` bumps on every form (it always validates the
+   * whole step list).
    *
    * Distinct from `submissionAttempts`, which counts `handleSubmit`
    * passes only — wizard departures and form submissions are tracked

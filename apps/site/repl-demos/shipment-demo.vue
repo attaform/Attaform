@@ -550,16 +550,14 @@
   )
 
   // ─── Submit ──────────────────────────────────────────────────────
-  // `wizard.handleSubmit` validates the active form on intermediate
-  // steps (advances on success) and every form on the final step
-  // (awaits each async refinement: postal lookups, SKU checks,
-  // capacity, signature). On the final step we read each form's
-  // typed values via `ctx.get(form)` to assemble the booking payload.
+  // `wizard.handleSubmit` validates every form (awaiting each async
+  // refinement: postal lookups, SKU checks, capacity, signature) and
+  // never advances. We read each form's typed values via `ctx.get(form)`
+  // to assemble the booking payload.
   const submitError = ref<string | null>(null)
   const onSubmit = wizard.handleSubmit(
     (ctx) => {
       submitError.value = null
-      if (!ctx.isFinal) return
       const payload = {
         reference: ctx.get(refForm),
         cargo: ctx.get(cargoForm),
@@ -570,9 +568,8 @@
       resetAll()
     },
     () => {
-      submitError.value = wizard.isFinalStep
-        ? 'One or more steps need fixes. Use the summary below to jump to the offending field.'
-        : 'Please fix the highlighted fields on this step before continuing.'
+      submitError.value =
+        'One or more steps need fixes. Use the summary below to jump to the offending field.'
     }
   )
 
@@ -618,13 +615,12 @@
     },
   ])
 
-  // Undo/redo targets the form that owns the active step — each form
-  // has its own history stack so an undo on cargo doesn't roll back
-  // an address edit. `wizard.activeForm` widens to `AnyForm`; cast back
-  // to the actual form-handle union so the template can reach
-  // `history.canUndo` / `history.undo()` statically.
-  type WizardForm = typeof refForm | typeof cargoForm | typeof serviceForm | typeof reviewForm
-  const activeForm = computed(() => wizard.activeForm as WizardForm)
+  // Undo/redo targets the form that owns the active step: each form has
+  // its own history stack, so an undo on cargo doesn't roll back an
+  // address edit. `wizard.activeForm` is a live view of the active step's
+  // form, so reading `history.canUndo` / `history.undo()` through it
+  // always targets the current step.
+  const activeForm = computed(() => wizard.activeForm)
   const canGoNext = computed(() => wizard.statuses[wizard.currentStep]?.valid === true)
   const isAnyValidating = computed(() =>
     wizard.steps.some(

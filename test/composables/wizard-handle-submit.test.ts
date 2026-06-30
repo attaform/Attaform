@@ -5,23 +5,27 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { WizardSubmitContext } from '../../src/runtime/types/types-wizard'
+import type {
+  WizardAggregateError,
+  WizardSubmitContext,
+} from '../../src/runtime/types/types-wizard'
 
 /**
- * `wizard.handleSubmit` — universal submit handler across every step.
+ * `wizard.handleSubmit` — universal submit handler that always validates
+ * the entire step list, from any step.
  *
- *  - On intermediate steps, validates the active form only and
- *    advances to the next step on success.
- *  - On the final step, validates every compiled form (in parallel)
- *    and stays put; the consumer's `onSubmit` ships values via
- *    `ctx.values` + `ctx.get(form)`.
+ *  - Validates every compiled form (in parallel) regardless of which
+ *    step fired the submit, and never advances the pin; the consumer's
+ *    `onSubmit` ships values via `ctx.values` + `ctx.get(form)`, and a
+ *    clean submit latches `done`.
+ *  - Gating advance on a step's own validity is the composition
+ *    `activeForm.handleSubmit(() => wizard.next())`, exercised in
+ *    wizard-active-form.test.ts.
  *  - `submitting` gates re-entrance globally; navigation also refuses
  *    while a submit is in flight.
- *  - `focusFirstError` (default true) routes to the first failing
- *    form on final-step validation failure and fires that form's
- *    `applyInvalidSubmitPolicy()`.
- *  - String slots (noop forms) validate trivially — a `handleSubmit`
- *    on an affordance step is a clean advance.
+ *  - `focusFirstError` (default true) routes to the first failing form
+ *    and fires that form's `applyInvalidSubmitPolicy()`.
+ *  - String slots (noop forms) validate trivially.
  */
 
 const accountSchema = z.object({
@@ -255,7 +259,7 @@ describe('useWizard — handleSubmit on the final step', () => {
     expect(result.wizard.done).toBe(false)
   })
 
-  it('intermediate step: validates the active form only and advances on success', async () => {
+  it('a submit fired from an intermediate step validates the whole wizard and does not advance', async () => {
     const onSubmit = vi.fn<(ctx: WizardSubmitContext) => void>()
     const { app, result } = mountHarness(() => {
       const account = useForm({
@@ -266,10 +270,9 @@ describe('useWizard — handleSubmit on the final step', () => {
       const profile = useForm({
         schema: profileSchema,
         key: 'hs-5-profile',
-        // Empty `name` would fail validation, but the wizard is on
-        // `account` here — the intermediate path validates the active
-        // form only.
-        defaultValues: { city: 'Cambridge' },
+        // Valid: handleSubmit validates EVERY step, so profile must pass
+        // even though the wizard is parked on `account`.
+        defaultValues: { name: 'Ada', city: 'Cambridge' },
       })
       const review = useForm({
         schema: reviewSchema,
@@ -290,9 +293,15 @@ describe('useWizard — handleSubmit on the final step', () => {
     await result.wizard.handleSubmit(onSubmit)()
     expect(onSubmit).toHaveBeenCalledTimes(1)
     const ctx = onSubmit.mock.calls[0]?.[0] as WizardSubmitContext
+    // `isFinal` is positional (fired from an intermediate step), but the
+    // whole wizard was validated: every step's values are present.
     expect(ctx.isFinal).toBe(false)
     expect(ctx.currentKey).toBe('hs-5-account')
-    expect(result.wizard.currentStep).toBe('hs-5-profile')
+    expect(ctx.values['hs-5-profile']).toMatchObject({ name: 'Ada' })
+    expect(ctx.values['hs-5-review']).toMatchObject({ tos: true })
+    // Never advances the pin; a clean whole-wizard submit latches `done`.
+    expect(result.wizard.currentStep).toBe('hs-5-account')
+    expect(result.wizard.done).toBe(true)
   })
 
   it('intermediate step: failed validation keeps the active step and bumps submissionAttempts', async () => {
@@ -302,7 +311,7 @@ describe('useWizard — handleSubmit on the final step', () => {
       const account = useForm({
         schema: accountSchema,
         key: 'hs-6-account',
-        // Missing password — intermediate validation must fail.
+        // Missing password — whole-wizard validation must fail.
         defaultValues: { email: 'a@b.c' },
       })
       const review = useForm({
@@ -324,6 +333,80 @@ describe('useWizard — handleSubmit on the final step', () => {
     expect(onError).toHaveBeenCalledTimes(1)
     expect(result.wizard.currentStep).toBe('hs-6-account')
     expect(result.wizard.submissionAttempts).toBe(1)
+  })
+
+  it('back-edit: submitting from a stepped-back position validates the whole list and latches done', async () => {
+    const onSubmit = vi.fn<(ctx: WizardSubmitContext) => void>()
+    const { app, result } = mountHarness(() => {
+      const account = useForm({
+        schema: accountSchema,
+        key: 'hs-back-account',
+        defaultValues: { email: 'a@b.c', password: 'passw0rd' },
+      })
+      const profile = useForm({
+        schema: profileSchema,
+        key: 'hs-back-profile',
+        defaultValues: { name: 'Ada', city: 'Cambridge' },
+      })
+      const review = useForm({
+        schema: reviewSchema,
+        key: 'hs-back-review',
+        defaultValues: { tos: true as const },
+      })
+      return {
+        wizard: useWizard({ steps: [account, profile, review], restore: false, persist: false }),
+        profile,
+      }
+    })
+    apps.push(app)
+    // Walk to the final step, then step back and edit a middle field.
+    result.wizard.goTo('hs-back-review')
+    result.wizard.goTo('hs-back-profile')
+    expect(result.wizard.isFinalStep).toBe(false)
+    result.profile.setValue('city', 'Oxford')
+    await nextTick()
+
+    // Submitting from the middle still processes the whole wizard.
+    await result.wizard.handleSubmit(onSubmit)()
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const ctx = onSubmit.mock.calls[0]?.[0] as WizardSubmitContext
+    // `isFinal` reports where the submit fired (false), not what validated.
+    expect(ctx.isFinal).toBe(false)
+    expect(ctx.currentKey).toBe('hs-back-profile')
+    expect(ctx.values['hs-back-account']).toMatchObject({ email: 'a@b.c' })
+    expect(ctx.values['hs-back-profile']).toMatchObject({ city: 'Oxford' })
+    expect(ctx.values['hs-back-review']).toMatchObject({ tos: true })
+    expect(result.wizard.done).toBe(true)
+  })
+
+  it('a failed whole-wizard submit reports errors spanning every step, not just the active one', async () => {
+    const onError = vi.fn<(errors: readonly WizardAggregateError[]) => void>()
+    const { app, result } = mountHarness(() => {
+      const account = useForm({
+        schema: accountSchema,
+        key: 'hs-allerr-account',
+        // Invalid: missing password.
+        defaultValues: { email: 'a@b.c' },
+      })
+      const profile = useForm({
+        schema: profileSchema,
+        key: 'hs-allerr-profile',
+        // Invalid: empty name.
+        defaultValues: { city: 'Cambridge' },
+      })
+      return {
+        wizard: useWizard({ steps: [account, profile], restore: false, persist: false }),
+      }
+    })
+    apps.push(app)
+    // Fired from the FIRST step; pre-#471 this saw only the active form's errors.
+    expect(result.wizard.currentStep).toBe('hs-allerr-account')
+    await result.wizard.handleSubmit(() => {}, onError)()
+    expect(onError).toHaveBeenCalledTimes(1)
+    const errors = onError.mock.calls[0]?.[0] ?? []
+    const failedKeys = new Set(errors.map((e) => e.formKey))
+    expect(failedKeys.has('hs-allerr-account')).toBe(true)
+    expect(failedKeys.has('hs-allerr-profile')).toBe(true)
   })
 
   it('re-entrancy: a second handleSubmit while in flight dev-warns and no-ops', async () => {
@@ -599,7 +682,7 @@ describe('useWizard — handleSubmit on string slots (noop forms)', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('handleSubmit on an intermediate string slot advances without validation drama', async () => {
+  it('handleSubmit fired from an intermediate string slot validates the whole wizard and does not advance', async () => {
     const onSubmit = vi.fn<(ctx: WizardSubmitContext) => void>()
     const { app, result } = mountHarness(() => {
       const account = useForm({
@@ -620,7 +703,11 @@ describe('useWizard — handleSubmit on string slots (noop forms)', () => {
     const ctx = onSubmit.mock.calls[0]?.[0] as WizardSubmitContext
     expect(ctx.currentKey).toBe('hs-noop-1-intro')
     expect(ctx.isFinal).toBe(false)
-    expect(result.currentStep).toBe('hs-noop-1-account')
+    // The whole wizard is processed (account included); the pin stays on
+    // the intro slot.
+    expect(ctx.values['hs-noop-1-account']).toMatchObject({ email: 'a@b.c' })
+    expect(result.currentStep).toBe('hs-noop-1-intro')
+    expect(result.done).toBe(true)
   })
 
   it('handleSubmit on a final string slot fires onSubmit with every step in values', async () => {

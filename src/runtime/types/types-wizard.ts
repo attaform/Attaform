@@ -15,7 +15,8 @@
  * refs and through `wizard.handleSubmit`'s `ctx.get(formRef)` accessor.
  */
 
-import type { FormKey } from './types-api'
+import type { FormKey, UseFormReturnType } from './types-api'
+import type { GenericForm } from './types-core'
 
 /**
  * Minimum structural shape the wizard requires from a participating
@@ -197,8 +198,9 @@ export type WizardPersistFn = (state: WizardRestoreState) => void
 
 /**
  * Submit context passed to the `onSubmit` callback registered via
- * `wizard.handleSubmit(onSubmit, onError?)`. Same shape on every step;
- * `isFinal` distinguishes intermediate vs final calls.
+ * `wizard.handleSubmit(onSubmit, onError?)`. `handleSubmit` always
+ * processes the whole step list, so `values` carries every form's
+ * parsed output regardless of which step fired the submit.
  *
  *  - `values` — namespaced aggregate keyed by form key, mirroring
  *               `wizard.allValues`. Reflects parsed output for every
@@ -209,9 +211,11 @@ export type WizardPersistFn = (state: WizardRestoreState) => void
  *               because the form ref carries its schema info.
  *  - `currentKey` — key of the step that fired this submission.
  *  - `isFinal`   — `true` when `currentKey` is the last position in
- *               `wizard.steps`. Intermediate calls validate the active
- *               form only and advance; final calls validate every form
- *               and stay on the terminal step.
+ *               `wizard.steps`. Positional only: it reports where the
+ *               submit fired, never what got validated. A user who steps
+ *               back, edits, and submits from the middle sees
+ *               `isFinal === false`, yet the whole list is still
+ *               processed and `done` still latches on success.
  */
 export type WizardSubmitContext = {
   readonly values: Readonly<Record<FormKey, unknown>>
@@ -228,9 +232,11 @@ export type WizardOnSubmit = (ctx: WizardSubmitContext) => void | Promise<void>
 
 /**
  * Optional `onError` callback registered via `wizard.handleSubmit`.
- * Receives the aggregate error list. Entries originate from per-form
- * validation, activation failures (`atta:activation-failed`), and a
- * submit callback that left errors on a processed step (the
+ * Receives the aggregate error list spanning EVERY step (handleSubmit
+ * validates the whole wizard), so a failed submit surfaces every form's
+ * errors at once, not just the active step's. Entries originate from
+ * per-form validation, activation failures (`atta:activation-failed`),
+ * and a submit callback that left errors on a processed step (the
  * `setErrors(...); return` server-rejection path). Sync or async; the
  * returned promise gates `wizard.submitting`.
  */
@@ -344,8 +350,19 @@ export type StaticallyNonEmpty<S> = S extends readonly []
 /** Active step's key, narrowed to `string` when `S` is statically safe. */
 export type CurrentStepOf<S> = StaticallyNonEmpty<S> extends true ? FormKey : FormKey | undefined
 
-/** Active step's form handle, narrowed to `AnyForm` when `S` is statically safe. */
-export type ActiveFormOf<S> = StaticallyNonEmpty<S> extends true ? AnyForm : AnyForm | undefined
+/**
+ * Active step's form handle, schema-erased to `UseFormReturnType<GenericForm>`
+ * and narrowed to non-`undefined` when `S` is statically safe. The runtime
+ * value is a live facade over the active step, so reads (`.values`, `.meta`,
+ * `.history`) and `.handleSubmit` always target the current step. Values are
+ * loose here because the active step's schema is not statically known; reach
+ * for the original form ref or `ctx.get(ref)` when you need typed per-step
+ * values.
+ */
+export type ActiveFormOf<S> =
+  StaticallyNonEmpty<S> extends true
+    ? UseFormReturnType<GenericForm>
+    : UseFormReturnType<GenericForm> | undefined
 
 /**
  * Recursive tuple walk that builds the static portion of
@@ -412,9 +429,15 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    slots). Otherwise reads as `string | undefined`
  *                    so the degenerate case (empty list at runtime)
  *                    surfaces honestly.
- *  - `activeForm`  — the active step's form handle. Same narrowing as
- *                    `currentStep`. Noop forms cover string slots in
- *                    the normal path.
+ *  - `activeForm`  — a LIVE view of the active step's form. Operating
+ *                    through it always targets the current step, so a
+ *                    handler captured once at setup
+ *                    (`wizard.activeForm.handleSubmit(() =>
+ *                    wizard.next())`) retargets as the wizard advances.
+ *                    No longer `===` the raw per-step handle; reach for
+ *                    `wizard.forms[key]` when you need raw identity.
+ *                    Same `undefined` narrowing as `currentStep`. Noop
+ *                    forms cover string slots in the normal path.
  *  - `activeIndex` — 0-based position of the active step.
  *  - `isFinalStep` — `true` when `currentStep === steps[count - 1].key`.
  *  - `steps`       — ordered list of compiled `{ key, form }` slots.
@@ -440,13 +463,13 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    Forward-looking; reactive to current form
  *                    validity. Gates "Finish button enable" style UI.
  *  - `done`        — monotonic latch: flips `true` the first time a
- *                    final-step `handleSubmit` resolves without throwing
- *                    AND leaves no errors set on any step, and stays
- *                    `true` through subsequent edits or invalidations. A
- *                    callback that calls `setErrors` and returns (the
- *                    documented server-rejection path) is a failed submit,
- *                    so it does not flip `done`. Only `reset()` flips it
- *                    back. Gates "show success card" style UI that should
+ *                    `handleSubmit` resolves without throwing AND leaves
+ *                    no errors set on any step, and stays `true` through
+ *                    subsequent edits or invalidations. A callback that
+ *                    calls `setErrors` and returns (the documented
+ *                    server-rejection path) is a failed submit, so it
+ *                    does not flip `done`. Only `reset()` flips it back.
+ *                    Gates "show success card" style UI that should
  *                    reflect submission history rather than current
  *                    validity.
  *  - `submitting`  — `true` while a `wizard.handleSubmit` call is in
@@ -470,11 +493,23 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    `back()` does not pop; the trail is the audit
  *                    log, not the back-stack.
  *  - `next/back/goTo` — pure navigation. Refuses while `submitting`.
- *  - `handleSubmit(onSubmit, onError?)` — universal across all steps.
- *                    Intermediate calls validate the active form and
- *                    advance; final calls validate every form. Returns
- *                    an event handler suitable for `<form @submit>` or
- *                    imperative use.
+ *  - `tryNext()`   — validate the active step, then advance iff it
+ *                    passed; invalid input keeps the pin put under the
+ *                    form's standard error reveal (first error focused,
+ *                    display state advanced). The inline-bindable
+ *                    shorthand for `activeForm.handleSubmit(() =>
+ *                    next())`. Resolves to whether the pin moved. No-ops
+ *                    to `false` on a degenerate or final-step wizard
+ *                    (finish via `handleSubmit`).
+ *  - `handleSubmit(onSubmit, onError?)` — always validates the entire
+ *                    step list, from any step, and never advances the
+ *                    pin: on success it latches `done`; on any error it
+ *                    focuses the first failing step and fires `onError`
+ *                    with errors spanning every step. To gate advancing
+ *                    a step on its own validity, compose with the active
+ *                    form's submit: `activeForm.handleSubmit(() =>
+ *                    wizard.next())`. Returns an event handler suitable
+ *                    for `<form @submit>` or imperative use.
  *  - `reset()`     — zeros wizard lifecycle (`submissionAttempts`,
  *                    `visited`), resets every form, returns
  *                    `currentStep` to `steps[0].key`, and invokes
@@ -504,6 +539,7 @@ export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArra
   readonly next: () => Promise<void>
   readonly back: () => void
   readonly goTo: (key: string) => void
+  readonly tryNext: () => Promise<boolean>
   readonly handleSubmit: (
     onSubmit: WizardOnSubmit,
     onError?: WizardOnError

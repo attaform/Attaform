@@ -1,6 +1,6 @@
 ---
 title: useWizard
-description: useWizard takes an ordered list of step slots and produces a reactive wizard. Forms gather data, bare string keys mark affordance steps (intros, terms, review surfaces), function slots branch on live values, and lazy() memoizes heavy slots by their own tracked reactive reads. Universal handleSubmit, namespaced aggregates, automatic URL sync.
+description: useWizard takes an ordered list of step slots and produces a reactive wizard. Forms gather data, bare string keys mark affordance steps (intros, terms, review surfaces), function slots branch on live values, and lazy() memoizes heavy slots by their own tracked reactive reads. Whole-wizard handleSubmit, namespaced aggregates, automatic URL sync.
 metaRows:
   - label: Category
     value: Composable
@@ -17,12 +17,12 @@ metaRows:
 
 # useWizard
 
-> Compose a reactive wizard from an ordered list of step slots. Each slot holds a form, an affordance key for a screen with no data collection, or a function that picks one or the other at runtime. Attaform threads the same handle through navigation, status aggregation, URL sync, and a universal `handleSubmit` that validates the right scope on every call.
+> Compose a reactive wizard from an ordered list of step slots. Each slot holds a form, an affordance key for a screen with no data collection, or a function that picks one or the other at runtime. Attaform threads the same handle through navigation, status aggregation, URL sync, and a `handleSubmit` that validates the whole wizard on every call.
 
 ::docs-meta-table
 ::
 
-A linear three-step wizard. Each step keeps its own `useForm` call, its own schema, and its own reactive surface. The rail highlights `wizard.currentStep`, the progress bar reflects `wizard.progress`, and `wizard.handleSubmit` fires on the final step.
+A linear three-step wizard. Each step keeps its own `useForm` call, its own schema, and its own reactive surface. The rail highlights `wizard.currentStep`, the progress bar reflects `wizard.progress`, each Next calls `wizard.tryNext()` to gate advance on the active step, and Finish runs `wizard.handleSubmit` over the whole wizard.
 
 ::docs-demo{slug="use-wizard" label="Wizard Demo"}
 ::
@@ -89,53 +89,53 @@ See [Step slots](/docs/multistep/step-slots) for the full slot reference, includ
 
 `useWizard` takes one options bag. `steps` is required; the rest default sensibly for the common URL-synchronized wizard case.
 
-| Option            | Type                                                               | Default             | What it does                                                                                                                                                               |
-| ----------------- | ------------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `steps`           | `Array<StepSlot>`                                                  | required            | Ordered list of slots that compile into the wizard's step list. See [Step slots](/docs/multistep/step-slots).                                                              |
-| `key`             | `string`                                                           | synthetic           | Identifier registered in the per-app registry for [`injectWizard`](/docs/multistep/inject-wizard). Anonymous wizards get a synthetic SSR-stable key under the hood.        |
-| `defaultStatuses` | `Record<key, FormStatus>` &#124; sync factory &#124; async factory | unset               | Seed payload used while a form's defaults are still resolving. See [Statuses](/docs/multistep/statuses).                                                                   |
-| `progress`        | `(steps) => number`                                                | valid-step fraction | Override the default `progress` computation. The override is invoked inside a `computed`, so read reactive sources only.                                                   |
-| `focusFirstError` | `boolean`                                                          | `true`              | On final-step submission failure, jump to the first failing form and run its `applyInvalidSubmitPolicy()` (focus / scroll per the form's `onInvalidSubmit` configuration). |
-| `restore`         | `() => { step? }` &#124; `false`                                   | URL `?step=<key>`   | Source of truth for the active step. Watched reactively; re-applies on URL changes. See [URL sync](/docs/multistep/url-sync).                                              |
-| `persist`         | `({ step }) => void` &#124; `false`                                | URL `?step=<key>`   | Destination for the active step. Invoked when `currentStep` changes (diffed to break the restore-persist loop). See [URL sync](/docs/multistep/url-sync).                  |
+| Option            | Type                                                               | Default             | What it does                                                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `steps`           | `Array<StepSlot>`                                                  | required            | Ordered list of slots that compile into the wizard's step list. See [Step slots](/docs/multistep/step-slots).                                                       |
+| `key`             | `string`                                                           | synthetic           | Identifier registered in the per-app registry for [`injectWizard`](/docs/multistep/inject-wizard). Anonymous wizards get a synthetic SSR-stable key under the hood. |
+| `defaultStatuses` | `Record<key, FormStatus>` &#124; sync factory &#124; async factory | unset               | Seed payload used while a form's defaults are still resolving. See [Statuses](/docs/multistep/statuses).                                                            |
+| `progress`        | `(steps) => number`                                                | valid-step fraction | Override the default `progress` computation. The override is invoked inside a `computed`, so read reactive sources only.                                            |
+| `focusFirstError` | `boolean`                                                          | `true`              | On submission failure, jump to the first failing form and run its `applyInvalidSubmitPolicy()` (focus / scroll per the form's `onInvalidSubmit` configuration).     |
+| `restore`         | `() => { step? }` &#124; `false`                                   | URL `?step=<key>`   | Source of truth for the active step. Watched reactively; re-applies on URL changes. See [URL sync](/docs/multistep/url-sync).                                       |
+| `persist`         | `({ step }) => void` &#124; `false`                                | URL `?step=<key>`   | Destination for the active step. Invoked when `currentStep` changes (diffed to break the restore-persist loop). See [URL sync](/docs/multistep/url-sync).           |
 
 ## The wizard handle
 
 `useWizard` returns a reactive handle. Every reactive read is a plain getter, no `.value`. Use the rail of links below to reach the page that covers each surface in depth.
 
-| Member               | What it is                                                                                                                                    |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `key`                | The wizard's identifier (explicit or synthetic).                                                                                              |
-| `currentStep`        | The active step's key. Typed `string` when the slot tuple is statically non-empty; `string` &#124; `undefined` when a function slot can drop. |
-| `activeForm`         | The active step's form handle, identity-equal to `wizard.forms[currentStep]`. Narrows in lockstep with `currentStep`.                         |
-| `activeIndex`        | Zero-based position of the active step.                                                                                                       |
-| `isFinalStep`        | `true` when `activeIndex === count - 1`. Gates the Next-vs-Finish split in templates.                                                         |
-| `count`              | `steps.length`. Includes affordance positions.                                                                                                |
-| `steps`              | Ordered list of compiled `{ key, form }` slots. See [Step slots](/docs/multistep/step-slots).                                                 |
-| `forms`              | Record indexable by step key. See [Aggregates](/docs/multistep/aggregates).                                                                   |
-| `canAdvance`         | `true` when a next step exists. Pure positional check.                                                                                        |
-| `canGoBack`          | `true` when a prior step exists.                                                                                                              |
-| `complete`           | Forward-looking: `isFinalStep && every-form-valid`. See [Statuses](/docs/multistep/statuses).                                                 |
-| `done`               | Monotonic: `true` once `handleSubmit` lands on the final step; only `reset()` flips it back. See [Statuses](/docs/multistep/statuses).        |
-| `submitting`         | `true` while a `wizard.handleSubmit` call is in flight. Global re-entrance guard.                                                             |
-| `submissionAttempts` | Count of `wizard.handleSubmit` invocations.                                                                                                   |
-| `visited`            | Append-only breadcrumb of navigated step keys.                                                                                                |
-| `progress`           | Fraction in `[0, 1]`. Defaults to valid-step ratio.                                                                                           |
-| `statuses`           | Per-key `FormStatus` proxy. See [Statuses](/docs/multistep/statuses).                                                                         |
-| `allValues`          | Namespaced record of each step's values. See [Aggregates](/docs/multistep/aggregates).                                                        |
-| `allErrors`          | Namespaced record of each step's validation errors. See [Aggregates](/docs/multistep/aggregates).                                             |
-| `next` / `back`      | Positional navigation. Refuses while `submitting`.                                                                                            |
-| `goTo`               | Jump to a specific step by key. Dev-warn on unknown keys.                                                                                     |
-| `handleSubmit`       | Universal submission handler. See [handleSubmit](/docs/multistep/handle-submit).                                                              |
-| `reset`              | Zeros wizard lifecycle, resets every form, returns to `steps[0]`, clears the persisted step, flips `done` back.                               |
+| Member               | What it is                                                                                                                                                                                                                  |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                | The wizard's identifier (explicit or synthetic).                                                                                                                                                                            |
+| `currentStep`        | The active step's key. Typed `string` when the slot tuple is statically non-empty; `string` &#124; `undefined` when a function slot can drop.                                                                               |
+| `activeForm`         | A live view of the active step's form; operating through it always targets the current step. No longer identity-equal to `wizard.forms[currentStep]` (use that for the raw handle). Narrows in lockstep with `currentStep`. |
+| `activeIndex`        | Zero-based position of the active step.                                                                                                                                                                                     |
+| `isFinalStep`        | `true` when `activeIndex === count - 1`. Gates the Next-vs-Finish split in templates.                                                                                                                                       |
+| `count`              | `steps.length`. Includes affordance positions.                                                                                                                                                                              |
+| `steps`              | Ordered list of compiled `{ key, form }` slots. See [Step slots](/docs/multistep/step-slots).                                                                                                                               |
+| `forms`              | Record indexable by step key. See [Aggregates](/docs/multistep/aggregates).                                                                                                                                                 |
+| `canAdvance`         | `true` when a next step exists. Pure positional check.                                                                                                                                                                      |
+| `canGoBack`          | `true` when a prior step exists.                                                                                                                                                                                            |
+| `complete`           | Forward-looking: `isFinalStep && every-form-valid`. See [Statuses](/docs/multistep/statuses).                                                                                                                               |
+| `done`               | Monotonic: `true` once a `handleSubmit` succeeds; only `reset()` flips it back. See [Statuses](/docs/multistep/statuses).                                                                                                   |
+| `submitting`         | `true` while a `wizard.handleSubmit` call is in flight. Global re-entrance guard.                                                                                                                                           |
+| `submissionAttempts` | Count of `wizard.handleSubmit` invocations.                                                                                                                                                                                 |
+| `visited`            | Append-only breadcrumb of navigated step keys.                                                                                                                                                                              |
+| `progress`           | Fraction in `[0, 1]`. Defaults to valid-step ratio.                                                                                                                                                                         |
+| `statuses`           | Per-key `FormStatus` proxy. See [Statuses](/docs/multistep/statuses).                                                                                                                                                       |
+| `allValues`          | Namespaced record of each step's values. See [Aggregates](/docs/multistep/aggregates).                                                                                                                                      |
+| `allErrors`          | Namespaced record of each step's validation errors. See [Aggregates](/docs/multistep/aggregates).                                                                                                                           |
+| `next` / `back`      | Positional navigation. Refuses while `submitting`.                                                                                                                                                                          |
+| `goTo`               | Jump to a specific step by key. Dev-warn on unknown keys.                                                                                                                                                                   |
+| `tryNext`            | Validate the active step, advance iff valid; resolves to whether the pin moved. The inline-bindable gated Next. See [handleSubmit](/docs/multistep/handle-submit#gating-advance-per-step).                                  |
+| `handleSubmit`       | Whole-wizard submission handler; never advances. See [handleSubmit](/docs/multistep/handle-submit).                                                                                                                         |
+| `reset`              | Zeros wizard lifecycle, resets every form, returns to `steps[0]`, clears the persisted step, flips `done` back.                                                                                                             |
 
 ## Submission, in one place
 
-`wizard.handleSubmit(onSubmit, onError?)` returns one event handler that fits every step. Intermediate calls validate the active form and advance; the final call validates every form and stays put. The same handler binds to every Next-and-Finish button.
+`wizard.handleSubmit(onSubmit, onError?)` returns one event handler that validates the entire step list, from any step, and calls `onSubmit` once with every step's values. It never advances; bind it to your Finish button.
 
 ```ts
-const onSubmit = wizard.handleSubmit(async (ctx) => {
-  if (!ctx.isFinal) return
+const onFinish = wizard.handleSubmit(async (ctx) => {
   await api.checkout({
     shipping: ctx.get(shipping),
     payment: ctx.get(payment),
@@ -143,7 +143,15 @@ const onSubmit = wizard.handleSubmit(async (ctx) => {
 })
 ```
 
-See [handleSubmit](/docs/multistep/handle-submit) for the universal handler depth, including `focusFirstError`, re-entrance, error aggregation, and the `ctx` shape.
+To gate a Next button on the active step's validity, reach for `wizard.tryNext()`:
+
+```ts
+await wizard.tryNext() // validate the active step, advance only on a clean pass
+```
+
+`wizard.tryNext()` binds straight to a control (`@click="wizard.tryNext()"`) and resolves to whether the pin moved. For custom valid or invalid handling, compose the active form's submit with `next()` instead: `wizard.activeForm.handleSubmit(() => wizard.next())`.
+
+See [handleSubmit](/docs/multistep/handle-submit) for the whole-wizard handler in depth, including the gated-advance composition, `focusFirstError`, re-entrance, error aggregation, and the `ctx` shape.
 
 ## Navigation
 
@@ -153,7 +161,7 @@ wizard.back() // retreat one position
 wizard.goTo('shipping-review') // jump to a specific step by key
 ```
 
-`next` / `back` / `goTo` are pure positional navigation. None of them validate; that's `handleSubmit`'s job. Out-of-bounds calls dev-warn and no-op; mid-submission navigation is blocked until `wizard.submitting` clears. A wizard wired into a checkout or signup never throws on navigation.
+`next` / `back` / `goTo` are pure positional navigation. None of them validate. To gate an advance on the active step, use `wizard.tryNext()` (or compose `wizard.activeForm.handleSubmit(() => wizard.next())` when you need custom valid or invalid handling). Out-of-bounds calls dev-warn and no-op; mid-submission navigation is blocked until `wizard.submitting` clears. A wizard wired into a checkout or signup never throws on navigation.
 
 ## URL sync, on by default
 

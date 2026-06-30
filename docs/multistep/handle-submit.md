@@ -1,6 +1,6 @@
 ---
 title: handleSubmit
-description: wizard.handleSubmit(onSubmit, onError?) returns one event handler that fits every step. Intermediate calls validate the active form and advance; the final call validates every form in parallel and stays put. Same context shape on every step, with isFinal as the only differentiator.
+description: wizard.handleSubmit(onSubmit, onError?) returns one event handler that validates the entire wizard from any step and calls onSubmit once with every step's values. It never advances; gate advancing a step on its validity with a one-line composition.
 metaRows:
   - label: Category
     value: Submission
@@ -17,14 +17,14 @@ metaRows:
 
 # `handleSubmit`
 
-> `wizard.handleSubmit(onSubmit, onError?)` returns one event handler that fits every Next-and-Finish button in the wizard. Intermediate calls validate the active form and advance on success; the final call validates every form in parallel, calls `onSubmit` once, and stays on the terminal step. `isFinal` on the context is the only difference the consumer needs to switch on.
+> `wizard.handleSubmit(onSubmit, onError?)` returns one event handler that validates the entire step list, no matter which step is active, and calls `onSubmit` once with every step's parsed values. It never advances the wizard. Gating a Next button on the active step's validity is a one-line composition, so submission and navigation stay separate verbs.
 
 ::docs-meta-table
 ::
 
-## The same handler binds to every button
+## `handleSubmit` submits the whole wizard
 
-`wizard.handleSubmit` returns an event handler. Bind it once and reuse it for every Next button, every Finish button, and any submit-via-keyboard path:
+`wizard.handleSubmit` returns an event handler. It validates every step in parallel, and on a clean pass calls `onSubmit` once with the full values map. Bind it to your Finish button, or any submit-everything action:
 
 ```vue
 <script setup lang="ts">
@@ -32,8 +32,7 @@ metaRows:
 
   const wizard = useWizard({ steps: [shipping, payment, review] })
 
-  const onSubmit = wizard.handleSubmit(async (ctx) => {
-    if (!ctx.isFinal) return
+  const onFinish = wizard.handleSubmit(async (ctx) => {
     await api.checkout({
       shipping: ctx.get(shipping),
       payment: ctx.get(payment),
@@ -42,16 +41,14 @@ metaRows:
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form @submit.prevent="onFinish">
     <!-- step body -->
-    <button :disabled="wizard.submitting" type="submit">
-      {{ wizard.isFinalStep ? 'Finish' : 'Next' }}
-    </button>
+    <button :disabled="wizard.submitting" type="submit">Finish</button>
   </form>
 </template>
 ```
 
-The handler accepts an optional `Event` argument and calls `preventDefault()` when one is passed, so `@submit` and `@click` both work. Bare imperative calls (`onSubmit()` with no event) are also fine; the handler just skips the prevent step.
+Because it validates the whole wizard from any step, you can call it the moment every step is filled, whether or not the user has walked to the last one. The handler accepts an optional `Event` and calls `preventDefault()` when one is passed, so `@submit` and `@click` both work. Bare imperative calls (`onFinish()` with no event) are fine too; the handler just skips the prevent step.
 
 ## The submit context
 
@@ -66,20 +63,13 @@ type WizardSubmitContext = {
 }
 ```
 
-- `ctx.values` is the namespaced parsed payload, keyed by step key. Mirrors `wizard.allValues` for forms that validated successfully on this call. Affordance steps contribute an empty record.
-- `ctx.get(formRef)` is the typed accessor: pass a form ref, get back the parsed output narrowed to that form's schema. The handy shape when you've already closed over the form refs at construction.
+- `ctx.values` is the namespaced parsed payload, keyed by step key, carrying every step (since `handleSubmit` validates them all). Affordance steps contribute an empty record.
+- `ctx.get(formRef)` is the typed accessor: pass a form ref, get back the parsed output narrowed to that form's schema. The handy shape when you have already closed over the form refs at construction.
 - `ctx.currentKey` is the key of the step that fired this submission.
-- `ctx.isFinal` is `true` when `currentKey` is the last position in `wizard.steps`. Use it to fork between "advance to the next step" (nothing to do here) and "actually call the API."
+- `ctx.isFinal` is `true` when `currentKey` is the last position in `wizard.steps`. It is positional information only: it tells you where the submit fired, never what got validated. A user who steps back, edits, and submits from the middle sees `isFinal === false`, and the whole wizard is still processed.
 
 ```ts
-const onSubmit = wizard.handleSubmit(async (ctx) => {
-  if (!ctx.isFinal) {
-    // Intermediate steps: validation passed. Track a step-complete event;
-    // the wizard advances once this callback returns without setting errors.
-    analytics.track('wizard_step_complete', { step: ctx.currentKey })
-    return
-  }
-  // Final step: validate-everything passed, run the actual mutation.
+const onFinish = wizard.handleSubmit(async (ctx) => {
   const order = await api.checkout({
     shipping: ctx.get(shipping),
     payment: ctx.get(payment),
@@ -88,23 +78,27 @@ const onSubmit = wizard.handleSubmit(async (ctx) => {
 })
 ```
 
-## Intermediate vs final
+## Gating advance per step
 
-The two calls do different work:
+`wizard.handleSubmit` submits; navigation is a separate verb. `wizard.next()`, `wizard.back()`, and `wizard.goTo()` move the pin and never validate. To advance a step only when it is valid, compose the active step's own submit with `next()`:
 
-- **Intermediate call** (`ctx.isFinal === false`). Validates the active form only. On a clean pass, `onSubmit` runs from the current step and the wizard then advances to the next compiled step. The advance is gated on the result: if validation fails, or if the callback hands a server rejection to `setErrors` and returns, the wizard stays put and `onError` fires.
-- **Final call** (`ctx.isFinal === true`). Validates every form in parallel. On success, `onSubmit` runs once and `wizard.done` flips to `true` (monotonic, only `reset()` flips it back). `done` flips only when the callback also leaves no errors set, so a `setErrors`-and-return server rejection keeps it `false`. On a validation failure, the wizard stays on the terminal step and `onError` fires.
+```ts
+const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
+```
 
-The two paths share one handler and one context shape, so the consumer never has to choose between "fire the mutation now" and "fire it later" until the `if (!ctx.isFinal) return` guard at the top of the callback.
+`wizard.activeForm` is a live view of the current step, so this one `const`, captured once, is correct on every step: it validates whichever step is active when the button is clicked and advances only on a clean pass. To advance unconditionally (an autosave-style flow that defers the error waterfall to the final submit), call `wizard.next()` directly.
+
+The choice of verb is the blocking policy: `activeForm.handleSubmit(() => wizard.next())` for a blocking Next, `wizard.next()` for a non-blocking one. There is no mode flag and no `{ validate }` option to remember.
+
+> `wizard.handleSubmit` and `wizard.activeForm.handleSubmit` are the same verb at two scopes: the first submits every step, the second submits just the active step. Reach for the wizard's when you want the whole thing, the active form's when you want to gate one step.
 
 ## Error aggregation with `onError`
 
-The optional `onError` callback receives every error the submission produced, flat:
+The optional `onError` callback receives every error the submission produced, flat, across every step:
 
 ```ts
-const onSubmit = wizard.handleSubmit(
+const onFinish = wizard.handleSubmit(
   async (ctx) => {
-    if (!ctx.isFinal) return
     await api.checkout(ctx.values)
   },
   (errors) => {
@@ -115,7 +109,7 @@ const onSubmit = wizard.handleSubmit(
 )
 ```
 
-Each error carries `formKey`, `path`, `message`, and an optional `code`. The list combines validation errors from every form processed on this call, any errors the callback set with `setErrors`, and any activation failures (e.g., a form whose async `defaultValues` rejected). For wizard-wide error summaries that persist between submissions, drive them off [`wizard.allErrors`](/docs/multistep/aggregates#allerrors-for-wizard-wide-summaries) instead.
+Each error carries `formKey`, `path`, `message`, and an optional `code`. Because `handleSubmit` validates the whole wizard, the list spans every failing step at once, not just the active one, plus any errors the callback set with `setErrors` and any activation failures (e.g., a form whose async `defaultValues` rejected). For wizard-wide error summaries that persist between submissions, drive them off [`wizard.allErrors`](/docs/multistep/aggregates#allerrors-for-wizard-wide-summaries) instead.
 
 ## `focusFirstError`
 
@@ -128,7 +122,7 @@ const wizard = useWizard({
 })
 ```
 
-With the focus jump disabled, the wizard stays on the terminal step and leaves navigation to the consumer's `onError` callback. Useful when you've built a custom error-summary panel that owns the click-to-jump behavior.
+With the focus jump disabled, the wizard stays where it is and leaves navigation to the consumer's `onError` callback. Useful when you have built a custom error-summary panel that owns the click-to-jump behavior.
 
 ## `wizard.submitting` for re-entrance
 
@@ -148,11 +142,11 @@ Disabling the button is belt-and-braces; the wizard refuses re-entry on its own.
 
 - **Empty steps list.** `handleSubmit` dev-warns and resolves no-op. `onSubmit` and `onError` are never invoked.
 - **Re-entrant submission.** The second call dev-warns and resolves no-op; the first call continues to settle.
-- **No `Event` argument.** Imperative calls (`onSubmit()` with no event) work the same as `<form @submit.prevent>`; the `preventDefault` step is skipped.
+- **No `Event` argument.** Imperative calls (`onFinish()` with no event) work the same as `<form @submit.prevent>`; the `preventDefault` step is skipped.
 
 ## Where to next
 
 - [`useWizard`](/docs/multistep/use-wizard) for the construction signature and the full wizard handle.
 - [Aggregates](/docs/multistep/aggregates) for `wizard.allValues` and `wizard.allErrors`, which mirror the data `ctx.values` carries.
 - [Statuses](/docs/multistep/statuses) for the per-step `FormStatus` rollup that flips `submitted: true` when the callback succeeds.
-- [Patterns](/docs/multistep/patterns) for branching flows that lean on `wizard.handleSubmit` for the final-step validation sweep.
+- [Patterns](/docs/multistep/patterns) for branching flows and the gated-advance composition in context.

@@ -49,7 +49,12 @@ import type {
   WizardRestoreState,
   WizardSubmitContext,
 } from '../types/types-wizard'
-import type { FormKey, UseFormReturnType, ValidationResponse } from '../types/types-api'
+import type {
+  FormKey,
+  HandleSubmit,
+  UseFormReturnType,
+  ValidationResponse,
+} from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 
 /** Default URL search param when the consumer doesn't supply a custom
@@ -108,6 +113,12 @@ function asStatusSource(form: AnyForm): StatusSourceForm {
 }
 function asSubmissionSource(form: AnyForm): SubmissionSourceForm {
   return form as unknown as SubmissionSourceForm
+}
+// Centers the `AnyForm → handleSubmit` coercion for the live `activeForm`
+// facade. The slot type omits `handleSubmit`; at runtime every
+// participating form carries it.
+function asHandleSubmitSource(form: AnyForm): Pick<UseFormReturnType<GenericForm>, 'handleSubmit'> {
+  return form as unknown as Pick<UseFormReturnType<GenericForm>, 'handleSubmit'>
 }
 
 /**
@@ -438,6 +449,57 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
     const first = list[0]
     return first === undefined ? undefined : first.form
+  })
+
+  // `wizard.activeForm` returns this single facade (when the wizard is
+  // non-degenerate) on every read, so a handler captured once at setup
+  // time stays correct as the wizard advances:
+  //
+  //   const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
+  //
+  // `handleSubmit` is late-bound: the returned submit handler resolves
+  // the active form when it RUNS, not when `.handleSubmit(...)` was
+  // called, so `onNext` validates whichever step is current at click
+  // time instead of pinning to step one. Every other access forwards to
+  // the current form. Reach for `wizard.forms[key]` when you need a
+  // specific step's raw handle. The Proxy target is inert: all behavior
+  // comes from the traps, which read the reactive `activeForm` computed
+  // at access time (so reactivity tracks through the stable identity)
+  // and no-op safely when the wizard has no steps.
+  const activeFormFacade = new Proxy({} as UseFormReturnType<GenericForm>, {
+    get(_target, prop) {
+      const form = activeForm.value
+      if (form === undefined) return undefined
+      if (prop === 'handleSubmit') {
+        const lateBound: HandleSubmit<GenericForm> = (onValid, onInvalid) => {
+          return (event?: Event): Promise<void> => {
+            const current = activeForm.value
+            if (current === undefined) return Promise.resolve()
+            return asHandleSubmitSource(current).handleSubmit(onValid, onInvalid)(event)
+          }
+        }
+        return lateBound
+      }
+      return Reflect.get(form, prop, form)
+    },
+    has(_target, prop) {
+      const form = activeForm.value
+      return form === undefined ? false : Reflect.has(form, prop)
+    },
+    ownKeys(_target) {
+      const form = activeForm.value
+      return form === undefined ? [] : Reflect.ownKeys(form)
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      const form = activeForm.value
+      if (form === undefined) return undefined
+      const descriptor = Reflect.getOwnPropertyDescriptor(form, prop)
+      if (descriptor === undefined) return undefined
+      // Force `configurable: true` so the Proxy invariant (a descriptor
+      // reported for a key absent from the inert target must be
+      // configurable) holds regardless of how the handle defines the key.
+      return { ...descriptor, configurable: true }
+    },
   })
 
   const isFinalStep = computed<boolean>(() => {
@@ -1342,7 +1404,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return currentStep.value as CurrentStepOf<S>
     },
     get activeForm(): ActiveFormOf<S> {
-      return activeForm.value as ActiveFormOf<S>
+      // Live facade (built once above) so a handler captured at setup
+      // time retargets the current step on every call. `undefined`
+      // preserved for the degenerate (no-steps) wizard.
+      return (activeForm.value === undefined ? undefined : activeFormFacade) as ActiveFormOf<S>
     },
     get activeIndex(): number {
       return activeIndex.value

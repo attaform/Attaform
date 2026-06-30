@@ -15,7 +15,8 @@
  * refs and through `wizard.handleSubmit`'s `ctx.get(formRef)` accessor.
  */
 
-import type { FormKey } from './types-api'
+import type { FormKey, UseFormReturnType } from './types-api'
+import type { GenericForm } from './types-core'
 
 /**
  * Minimum structural shape the wizard requires from a participating
@@ -344,8 +345,19 @@ export type StaticallyNonEmpty<S> = S extends readonly []
 /** Active step's key, narrowed to `string` when `S` is statically safe. */
 export type CurrentStepOf<S> = StaticallyNonEmpty<S> extends true ? FormKey : FormKey | undefined
 
-/** Active step's form handle, narrowed to `AnyForm` when `S` is statically safe. */
-export type ActiveFormOf<S> = StaticallyNonEmpty<S> extends true ? AnyForm : AnyForm | undefined
+/**
+ * Active step's form handle, schema-erased to `UseFormReturnType<GenericForm>`
+ * and narrowed to non-`undefined` when `S` is statically safe. The runtime
+ * value is a live facade over the active step, so reads (`.values`, `.meta`,
+ * `.history`) and `.handleSubmit` always target the current step. Values are
+ * loose here because the active step's schema is not statically known; reach
+ * for the original form ref or `ctx.get(ref)` when you need typed per-step
+ * values.
+ */
+export type ActiveFormOf<S> =
+  StaticallyNonEmpty<S> extends true
+    ? UseFormReturnType<GenericForm>
+    : UseFormReturnType<GenericForm> | undefined
 
 /**
  * Recursive tuple walk that builds the static portion of
@@ -412,9 +424,15 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    slots). Otherwise reads as `string | undefined`
  *                    so the degenerate case (empty list at runtime)
  *                    surfaces honestly.
- *  - `activeForm`  — the active step's form handle. Same narrowing as
- *                    `currentStep`. Noop forms cover string slots in
- *                    the normal path.
+ *  - `activeForm`  — a LIVE view of the active step's form. Operating
+ *                    through it always targets the current step, so a
+ *                    handler captured once at setup
+ *                    (`wizard.activeForm.handleSubmit(() =>
+ *                    wizard.next())`) retargets as the wizard advances.
+ *                    No longer `===` the raw per-step handle; reach for
+ *                    `wizard.forms[key]` when you need raw identity.
+ *                    Same `undefined` narrowing as `currentStep`. Noop
+ *                    forms cover string slots in the normal path.
  *  - `activeIndex` — 0-based position of the active step.
  *  - `isFinalStep` — `true` when `currentStep === steps[count - 1].key`.
  *  - `steps`       — ordered list of compiled `{ key, form }` slots.

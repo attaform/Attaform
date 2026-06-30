@@ -82,7 +82,10 @@ describe('wizard.steps + wizard.forms — positional introspection', () => {
     })
     apps.push(app)
     expect(result.steps.map((s) => s.key)).toEqual(['f-4-only'])
-    expect(result.forms['f-4-only']).toBe(result.activeForm)
+    // `activeForm` is a live facade keyed to the active step; the raw
+    // per-step handle stays reachable via `forms[key]`.
+    expect(result.activeForm?.key).toBe('f-4-only')
+    expect(result.forms['f-4-only']).toBe(result.steps[0]?.form)
   })
 })
 

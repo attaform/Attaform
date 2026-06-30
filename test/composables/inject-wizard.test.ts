@@ -276,6 +276,9 @@ describe('injectWizard — miss modes (keyed warns, ambient silent)', () => {
     expect(warns.length).toBeGreaterThan(0)
     expect(String(warns[0]?.[0] ?? '')).toMatch(/no wizard registered/)
     expect(String(warns[0]?.[0] ?? '')).toMatch(/miss-1-wiz/)
+    expect(String(warns[0]?.[0] ?? '')).toMatch(
+      /not registered until that component's own setup runs/
+    )
   })
 
   it('returns null silently when called with no ancestor wizard', () => {

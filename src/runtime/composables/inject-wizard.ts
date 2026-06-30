@@ -45,8 +45,10 @@ export type InjectWizardInput = {
  * constructed with `useWizard({ steps, key })` to be reachable.
  *
  * Returns `null` when no matching wizard exists (no ambient ancestor,
- * or the named key isn't registered). A dev-mode warning points at the
- * call site to help diagnose typos. Always narrow before using:
+ * or the named key isn't registered yet). A dev-mode warning points at
+ * the call site, lists the registered keys, and flags the mount-timing
+ * case (a wizard created by a child or sibling isn't registered until
+ * its own setup runs). Always narrow before using:
  *
  * ```ts
  * const wizard = injectWizard('signup')
@@ -117,6 +119,11 @@ function warnMiss(detail: string, ssr: boolean, hint?: string): void {
   const frame = captureUserCallSite()
   const parts = [`[attaform] injectWizard: ${detail}. Returning null.`]
   if (hint !== undefined) parts.push(hint)
+  parts.push(
+    `A wizard created by a child or sibling component is not registered until that ` +
+      `component's own setup runs, which happens after this point. Lift its ` +
+      `useWizard({ key }) call to a common ancestor, or read the wizard after mount.`
+  )
   if (frame !== undefined) parts.push(frame)
   console.warn(parts.join(' '))
 }

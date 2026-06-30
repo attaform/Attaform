@@ -8,6 +8,7 @@ import {
 } from 'vue'
 import { buildFormApi } from '../core/build-form-api'
 import type { FormStore } from '../core/create-form-store'
+import { RESERVED_KEY_PREFIX } from '../core/defaults'
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
 import type { HistoryModule } from '../core/history'
@@ -81,8 +82,10 @@ export type InjectFormInput = {
  * independent of component-tree position.
  *
  * Returns `null` when no matching form exists (no ambient ancestor, or
- * the named key isn't registered). A dev-mode warning points at the
- * call site to help diagnose typos. Always narrow before using:
+ * the named key isn't registered yet). A dev-mode warning points at the
+ * call site, lists the registered keys, and flags the mount-timing case
+ * (a form created by a child or sibling isn't registered until its own
+ * setup runs). Always narrow before using:
  *
  * ```ts
  * const form = injectForm<Shape>('signup')
@@ -181,10 +184,12 @@ export function injectForm<Form extends GenericForm, GetValueFormType extends Ge
  * when no key was passed). Returns `null` on miss; the caller propagates
  * that null straight out to the consumer.
  *
- * Keyed misses log a dev-mode warning carrying the user's call-site frame
- * so a typo reads as "[attaform] injectForm: no form registered for key
- * 'userz'. Returning null. (pages/profile.vue:42)". Ambient misses stay
- * silent: ambient lookup is opportunistic (a component library built on
+ * Keyed misses log a dev-mode warning carrying three diagnostic parts:
+ * the registry's addressable keys (so a typo reads against the real
+ * list), a mount-timing note (a child or sibling form is not registered
+ * until its own setup runs, so it is not yet resolvable from an earlier
+ * caller), and the user's call-site frame. Ambient misses stay silent:
+ * ambient lookup is opportunistic (a component library built on
  * `injectForm()` shouldn't spam consumers' consoles when no parent has
  * provided one), so descendants narrow on `null` and degrade.
  */
@@ -195,7 +200,7 @@ function resolveState<Form extends GenericForm>(
   if (key !== undefined) {
     const stored = registry.forms.get(key) as FormStore<Form> | undefined
     if (stored === undefined) {
-      warnMiss(`no form registered for key '${key}'`, registry.ssr)
+      warnMiss(`no form registered for key '${key}'`, registry.ssr, registry.forms)
       return null
     }
     return stored
@@ -207,19 +212,48 @@ function resolveState<Form extends GenericForm>(
 }
 
 /**
+ * Formats the registry's addressable form keys for a keyed-miss warning,
+ * so the miss distinguishes a typo (the intended key sits right there in
+ * the list) from a form that simply has not registered yet. Synthetic
+ * keys (anonymous forms under the reserved `__atta:` prefix) are filtered
+ * out: they are not addressable by `injectForm(key)`, so surfacing them
+ * would only add noise. Returns `undefined` when nothing addressable is
+ * registered, which drops the hint from the message entirely.
+ */
+function availableKeysHint(forms: Map<FormKey, FormStore<GenericForm>>): string | undefined {
+  const addressable = [...forms.keys()].filter((key) => !key.startsWith(RESERVED_KEY_PREFIX))
+  if (addressable.length === 0) return undefined
+  return `Registered keys: ${addressable.map((key) => `'${key}'`).join(', ')}.`
+}
+
+/**
  * Skipped on SSR — Nuxt's `dev:ssr-logs` hook forwards server warns to
  * the browser console alongside the client-side warn that fires from
  * the hydration setup, so the same miss would surface twice per page
  * load. The signal is identical on both passes (registry state is
  * deterministic across SSR/client), so emitting only on the client is
  * lossless and halves dev-mode noise. Production stays silent on both.
+ *
+ * Assembles the headline plus three diagnostic parts: the addressable
+ * keys (typo signal), the mount-timing note (a child or sibling form is
+ * not registered until its own setup runs, so it is not yet resolvable
+ * from an earlier caller), and the user's call-site frame. The hint
+ * computation lives inside the `__DEV__` guard so it, and the literals
+ * it carries, tree-shake out of production.
  */
-function warnMiss(detail: string, ssr: boolean): void {
+function warnMiss(detail: string, ssr: boolean, forms: Map<FormKey, FormStore<GenericForm>>): void {
   if (!__DEV__ || ssr) return
   const frame = captureUserCallSite()
-  console.warn(
-    `[attaform] injectForm: ${detail}. Returning null.` + (frame !== undefined ? ` ${frame}` : '')
+  const parts = [`[attaform] injectForm: ${detail}. Returning null.`]
+  const keys = availableKeysHint(forms)
+  if (keys !== undefined) parts.push(keys)
+  parts.push(
+    `A form created by a child or sibling component is not registered until that ` +
+      `component's own setup runs, which happens after this point. Lift its ` +
+      `useForm({ key }) call to a common ancestor, or read the form after mount.`
   )
+  if (frame !== undefined) parts.push(frame)
+  console.warn(parts.join(' '))
 }
 
 /**

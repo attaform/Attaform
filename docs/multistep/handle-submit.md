@@ -1,6 +1,6 @@
 ---
 title: handleSubmit
-description: wizard.handleSubmit(onSubmit, onError?) returns one event handler that validates the entire wizard from any step and calls onSubmit once with every step's values. It never advances; gate advancing a step on its validity with a one-line composition.
+description: wizard.handleSubmit(onSubmit, onError?) returns one event handler that validates the entire wizard from any step and calls onSubmit once with every step's values. It never advances; gate advancing a step on its validity with wizard.tryNext().
 metaRows:
   - label: Category
     value: Submission
@@ -80,17 +80,41 @@ const onFinish = wizard.handleSubmit(async (ctx) => {
 
 ## Gating advance per step
 
-`wizard.handleSubmit` submits; navigation is a separate verb. `wizard.next()`, `wizard.back()`, and `wizard.goTo()` move the pin and never validate. To advance a step only when it is valid, compose the active step's own submit with `next()`:
+`wizard.handleSubmit` submits; navigation is a separate verb. `wizard.next()`, `wizard.back()`, and `wizard.goTo()` move the pin and never validate. To advance a step only when it is valid, reach for `wizard.tryNext()`:
 
-```ts
-const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
+```vue
+<template>
+  <button type="button" @click="wizard.tryNext()">Next</button>
+</template>
 ```
 
-`wizard.activeForm` is a live view of the current step, so this one `const`, captured once, is correct on every step: it validates whichever step is active when the button is clicked and advances only on a clean pass. To advance unconditionally (an autosave-style flow that defers the error waterfall to the final submit), call `wizard.next()` directly.
+`wizard.tryNext()` validates the active step, advances only on a clean pass, and reveals the step's errors in place when it fails. No captured handler and no setup `const`: it binds straight to the button. To advance unconditionally (an autosave-style flow that defers the error waterfall to the final submit), call `wizard.next()` directly.
 
-The choice of verb is the blocking policy: `activeForm.handleSubmit(() => wizard.next())` for a blocking Next, `wizard.next()` for a non-blocking one. There is no mode flag and no `{ validate }` option to remember.
+The choice of verb is the blocking policy: `wizard.tryNext()` for a blocking Next, `wizard.next()` for a non-blocking one. There is no mode flag and no `{ validate }` option to remember.
 
-> `wizard.handleSubmit` and `wizard.activeForm.handleSubmit` are the same verb at two scopes: the first submits every step, the second submits just the active step. Reach for the wizard's when you want the whole thing, the active form's when you want to gate one step.
+`tryNext()` resolves to whether the pin moved, so it doubles as the seam for post-advance work. Moving focus to the new step is the common one: the pin flips synchronously, but the new step's DOM lands a tick later, so await `nextTick()` before reaching for the element (and give a heading or container focus target `tabindex="-1"`, since those are not focusable on their own).
+
+```ts
+if (await wizard.tryNext()) {
+  await nextTick()
+  heading.value?.focus()
+}
+```
+
+### Custom valid or invalid handling
+
+`tryNext()` is the shorthand for composing the active step's own submit with `next()`. When you want custom valid or invalid callbacks (a toast, an analytics ping, a different advance target), compose them directly:
+
+```ts
+const onNext = wizard.activeForm.handleSubmit(
+  () => wizard.next(),
+  (errors) => toast.error(`${errors.length} to fix before continuing.`)
+)
+```
+
+`wizard.activeForm` is a live view of the current step, so this one `const`, captured once, is correct on every step: it validates whichever step is active when invoked and advances only on a clean pass.
+
+> `wizard.handleSubmit`, `wizard.activeForm.handleSubmit`, and `wizard.tryNext()` are one verb at three reaches: submit every step, submit the active step, or submit-and-advance the active step. Reach for the wizard's when you want the whole thing, the active form's (or `tryNext`) when you want to gate one step.
 
 ## Error aggregation with `onError`
 

@@ -39,8 +39,6 @@
       toast.error('Submit blocked, check the errors above.', { description: errors })
     }
   )
-
-  const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
 </script>
 
 <template>
@@ -124,7 +122,7 @@
         type="button"
         class="primary"
         :disabled="wizard.submitting"
-        @click="onNext"
+        @click="wizard.tryNext()"
       >
         Next →
       </button>

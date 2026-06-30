@@ -15,8 +15,9 @@
  *     per-form), `currentKey`, `isFinal`.
  *   - Namespaced aggregation: `wizard.allValues`, `wizard.allErrors`,
  *     `wizard.forms.<key>`.
- *   - Navigation handles: `next` / `back` / `goTo` / `reset` —
- *     including the `(key: string) => void` signature on `goTo`.
+ *   - Navigation handles: `next` / `back` / `goTo` / `tryNext` / `reset`
+ *     — including the `(key: string) => void` signature on `goTo` and the
+ *     `() => Promise<boolean>` gated advance on `tryNext`.
  *   - Other v2 fields: `currentStep`, `activeForm`, `activeIndex`,
  *     `isFinalStep`, `steps`, `count`, `canAdvance`, `canGoBack`,
  *     `complete`, `submitting`, `submissionAttempts`, `visited`,
@@ -126,6 +127,10 @@ function _neverInvoked() {
   void wizard.back
   void wizard.reset
   wizard.goTo('welcome')
+  // `tryNext()` validates the active step and advances iff valid,
+  // resolving to whether the pin moved.
+  const advanced: Promise<boolean> = wizard.tryNext()
+  void advanced
 
   // Other v2 surface fields.
   const at: string | undefined = wizard.currentStep

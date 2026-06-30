@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- **`wizard.tryNext()`: validate the active step, then advance only if it
+  passes.** Bind it straight to a Next button (`@click="wizard.tryNext()"`) with
+  no captured handler: it runs the active step's validation, advances on a clean
+  pass, and reveals the step's errors in place when it fails. It resolves to
+  whether the pin moved, so `if (await wizard.tryNext())` can run follow-up work
+  like moving focus to the new step. It is the inline-friendly shorthand for the
+  `wizard.activeForm.handleSubmit(() => wizard.next())` composition; reach for the
+  composition directly when you want custom valid or invalid callbacks. Pure
+  navigation stays `wizard.next()`; the whole-wizard submit stays
+  `wizard.handleSubmit`. (#471)
+
 ### Changed
 
 - **`wizard.handleSubmit` now submits the whole wizard from any step, and

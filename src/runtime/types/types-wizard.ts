@@ -493,6 +493,14 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    `back()` does not pop; the trail is the audit
  *                    log, not the back-stack.
  *  - `next/back/goTo` — pure navigation. Refuses while `submitting`.
+ *  - `tryNext()`   — validate the active step, then advance iff it
+ *                    passed; invalid input keeps the pin put under the
+ *                    form's standard error reveal (first error focused,
+ *                    display state advanced). The inline-bindable
+ *                    shorthand for `activeForm.handleSubmit(() =>
+ *                    next())`. Resolves to whether the pin moved. No-ops
+ *                    to `false` on a degenerate or final-step wizard
+ *                    (finish via `handleSubmit`).
  *  - `handleSubmit(onSubmit, onError?)` — always validates the entire
  *                    step list, from any step, and never advances the
  *                    pin: on success it latches `done`; on any error it
@@ -531,6 +539,7 @@ export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArra
   readonly next: () => Promise<void>
   readonly back: () => void
   readonly goTo: (key: string) => void
+  readonly tryNext: () => Promise<boolean>
   readonly handleSubmit: (
     onSubmit: WizardOnSubmit,
     onError?: WizardOnError

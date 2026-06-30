@@ -22,7 +22,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-A linear three-step wizard. Each step keeps its own `useForm` call, its own schema, and its own reactive surface. The rail highlights `wizard.currentStep`, the progress bar reflects `wizard.progress`, each Next gates advance on the active step, and Finish runs `wizard.handleSubmit` over the whole wizard.
+A linear three-step wizard. Each step keeps its own `useForm` call, its own schema, and its own reactive surface. The rail highlights `wizard.currentStep`, the progress bar reflects `wizard.progress`, each Next calls `wizard.tryNext()` to gate advance on the active step, and Finish runs `wizard.handleSubmit` over the whole wizard.
 
 ::docs-demo{slug="use-wizard" label="Wizard Demo"}
 ::
@@ -126,6 +126,7 @@ See [Step slots](/docs/multistep/step-slots) for the full slot reference, includ
 | `allErrors`          | Namespaced record of each step's validation errors. See [Aggregates](/docs/multistep/aggregates).                                                                                                                           |
 | `next` / `back`      | Positional navigation. Refuses while `submitting`.                                                                                                                                                                          |
 | `goTo`               | Jump to a specific step by key. Dev-warn on unknown keys.                                                                                                                                                                   |
+| `tryNext`            | Validate the active step, advance iff valid; resolves to whether the pin moved. The inline-bindable gated Next. See [handleSubmit](/docs/multistep/handle-submit#gating-advance-per-step).                                  |
 | `handleSubmit`       | Whole-wizard submission handler; never advances. See [handleSubmit](/docs/multistep/handle-submit).                                                                                                                         |
 | `reset`              | Zeros wizard lifecycle, resets every form, returns to `steps[0]`, clears the persisted step, flips `done` back.                                                                                                             |
 
@@ -142,11 +143,13 @@ const onFinish = wizard.handleSubmit(async (ctx) => {
 })
 ```
 
-To gate a Next button on the active step's validity, compose the active form's submit with `next()`:
+To gate a Next button on the active step's validity, reach for `wizard.tryNext()`:
 
 ```ts
-const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
+await wizard.tryNext() // validate the active step, advance only on a clean pass
 ```
+
+`wizard.tryNext()` binds straight to a control (`@click="wizard.tryNext()"`) and resolves to whether the pin moved. For custom valid or invalid handling, compose the active form's submit with `next()` instead: `wizard.activeForm.handleSubmit(() => wizard.next())`.
 
 See [handleSubmit](/docs/multistep/handle-submit) for the whole-wizard handler in depth, including the gated-advance composition, `focusFirstError`, re-entrance, error aggregation, and the `ctx` shape.
 
@@ -158,7 +161,7 @@ wizard.back() // retreat one position
 wizard.goTo('shipping-review') // jump to a specific step by key
 ```
 
-`next` / `back` / `goTo` are pure positional navigation. None of them validate. To gate an advance on the active step, compose `wizard.activeForm.handleSubmit(() => wizard.next())`. Out-of-bounds calls dev-warn and no-op; mid-submission navigation is blocked until `wizard.submitting` clears. A wizard wired into a checkout or signup never throws on navigation.
+`next` / `back` / `goTo` are pure positional navigation. None of them validate. To gate an advance on the active step, use `wizard.tryNext()` (or compose `wizard.activeForm.handleSubmit(() => wizard.next())` when you need custom valid or invalid handling). Out-of-bounds calls dev-warn and no-op; mid-submission navigation is blocked until `wizard.submitting` clears. A wizard wired into a checkout or signup never throws on navigation.
 
 ## URL sync, on by default
 

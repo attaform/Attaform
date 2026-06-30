@@ -1061,6 +1061,50 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     moveTo(target.key)
   }
 
+  // Validate the active step, then advance iff it passed. The inline-
+  // bindable shorthand for the gated-advance composition
+  // `activeForm.handleSubmit(() => next())`: wire it straight to a
+  // control (`@click="wizard.tryNext()"`) with no captured handler.
+  // Invalid input keeps the pin put under the form's own reveal (first
+  // error focused, display state advanced); a clean step advances.
+  // Resolves to whether the pin moved, so `if (await wizard.tryNext())`
+  // can branch on the outcome. Pure navigation stays `next()`; the
+  // whole-wizard submit stays `handleSubmit`. No-ops to `false` on a
+  // degenerate or final-step wizard, mirroring `next()`.
+  async function tryNext(): Promise<boolean> {
+    if (submitting.value) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.tryNext(): blocked while a submit is in flight.`)
+      }
+      return false
+    }
+    const list = compiledSteps.value
+    if (list.length === 0) {
+      if (__DEV__) {
+        console.warn(`[attaform] wizard.tryNext(): wizard has no compiled steps; no-op.`)
+      }
+      return false
+    }
+    const idx = activeIndex.value
+    if (idx < 0 || idx >= list.length - 1) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] wizard.tryNext(): already on the final step ("${activeKey.value}"). Use wizard.handleSubmit() to submit.`
+        )
+      }
+      return false
+    }
+    const form = activeForm.value
+    if (form === undefined) return false
+    let advanced = false
+    await asHandleSubmitSource(form).handleSubmit(() => {
+      const before = activeKey.value
+      next()
+      advanced = activeKey.value !== before
+    })()
+    return advanced
+  }
+
   function back(): void {
     if (submitting.value) {
       if (__DEV__) {
@@ -1383,6 +1427,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     next,
     back,
     goTo,
+    tryNext,
     handleSubmit,
     reset,
     get currentStep(): CurrentStepOf<S> {

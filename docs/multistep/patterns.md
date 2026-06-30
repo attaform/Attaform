@@ -40,14 +40,16 @@ const review = useForm({ schema: reviewSchema, key: 'signup-review' })
 const wizard = useWizard({ steps: [account, profile, review] })
 ```
 
-To advance only when the active step is valid, compose its submit with `next()`. `wizard.activeForm` is a live view of the current step, so one `const` captured here stays correct on every step:
+To advance only when the active step is valid, reach for `wizard.tryNext()`. It validates the active step and advances on a clean pass, binding straight to the button:
+
+```vue
+<button v-if="wizard.canAdvance" @click="wizard.tryNext()">Next</button>
+```
+
+For custom valid or invalid handling, compose the active step's submit with `next()` instead. `wizard.activeForm` is a live view of the current step, so one `const` captured here stays correct on every step:
 
 ```ts
 const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
-```
-
-```vue
-<button v-if="wizard.canAdvance" @click="onNext()">Next</button>
 ```
 
 For a non-blocking flow (autosave, deferring the error waterfall to the final submit), wire the button to plain `wizard.next()` instead.

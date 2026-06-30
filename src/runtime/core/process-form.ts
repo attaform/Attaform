@@ -675,11 +675,18 @@ export function applyInvalidSubmitPolicy<F extends GenericForm>(
     return
   }
   if (policy === 'focus-first-error') {
-    target.element.focus()
+    // `focusVisible: true` asks the UA to paint a focus ring as if
+    // `:focus-visible` matched. Without it, focus moved by script right
+    // after a pointer-driven submit doesn't satisfy the heuristic for
+    // non-text controls (radio / checkbox / custom widgets), so the
+    // field is focused but ringless and the user can't see where focus
+    // landed. Honored where supported, silently ignored elsewhere.
+    target.element.focus({ focusVisible: true })
     return
   }
   // 'both' — scroll first, then focus with preventScroll so the
-  // browser doesn't undo the explicit scroll.
+  // browser doesn't undo the explicit scroll. `focusVisible` paints the
+  // ring on the moved-to field even for non-text controls.
   target.element.scrollIntoView()
-  target.element.focus({ preventScroll: true })
+  target.element.focus({ preventScroll: true, focusVisible: true })
 }

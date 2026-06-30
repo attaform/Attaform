@@ -957,7 +957,12 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const focusFirstError = (options?: { preventScroll?: boolean }): boolean => {
     const target = state.getFirstErrorElement(formInstanceId)
     if (target === null) return false
-    target.element.focus(options)
+    // `focusVisible: true` requests the focus ring even though the move
+    // is programmatic — so non-text controls (radio / checkbox / custom
+    // widgets) focused right after a pointer submit still show where
+    // focus landed. Honored where supported, ignored elsewhere; the
+    // caller's `options` (e.g. `preventScroll`) layer over it.
+    target.element.focus({ focusVisible: true, ...options })
     return true
   }
 

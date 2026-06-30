@@ -156,7 +156,7 @@ describe('wizard.handleSubmit — a rejecting callback does not re-throw', () =>
     expect(result.submitting).toBe(false)
   })
 
-  it('an intermediate-step onSubmit throw parks the error and does not advance', async () => {
+  it('an onSubmit throw from an intermediate step parks the error without advancing or latching done', async () => {
     const { app, result } = mountHarness(() => validWizard('intermediate'))
     apps.push(app)
     expect(result.currentStep).toBe('wnr-intermediate-account')
@@ -164,8 +164,9 @@ describe('wizard.handleSubmit — a rejecting callback does not re-throw', () =>
       throw new Error('intermediate boom')
     })(new Event('submit'))
     expect(result.submitError).toBeInstanceOf(Error)
-    // The throw aborts the advance — still on the first step.
+    // The whole-wizard submit threw in the callback: pin unmoved, no done.
     expect(result.currentStep).toBe('wnr-intermediate-account')
+    expect(result.done).toBe(false)
     expect(result.submitting).toBe(false)
   })
 

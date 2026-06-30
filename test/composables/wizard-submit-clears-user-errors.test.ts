@@ -11,11 +11,8 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  * Parity with `form.handleSubmit` (submit-clears-user-errors.test.ts):
  * `wizard.handleSubmit` clears user-set errors on the forms it PROCESSES
  * at entry, so a fresh attempt starts each from a clean user-error slate.
- *
- *   - A final-step submit validates every form → clears every form's
- *     user errors.
- *   - An intermediate submit validates only the active form → clears only
- *     the active form's user errors; the other steps are untouched.
+ * `handleSubmit` always validates the whole step list, so the entry-clear
+ * spans every form regardless of which step fired the submit.
  *
  * Errors set DURING the callback survive (the clear runs before the
  * callback), and the clear fires even when validation fails.
@@ -80,7 +77,7 @@ describe('wizard.handleSubmit clears user-set errors on processed forms at entry
     expect(formLevel(result.review.meta.errors)).toHaveLength(0)
   })
 
-  it('an intermediate submit clears only the active form’s user errors', async () => {
+  it('every submit clears user errors on every form, even from an intermediate step', async () => {
     const { app, result } = mountHarness(() => {
       const account = useForm({
         schema: accountSchema,
@@ -105,16 +102,16 @@ describe('wizard.handleSubmit clears user-set errors on processed forms at entry
       return { wizard, account, profile, review }
     })
     apps.push(app)
-    // On the first (active) step; set errors on the active form and a
-    // later, unprocessed one.
+    // On the first step; set user errors on the active form and a later one.
     result.account.setErrors([{ message: 'acct err' }])
     result.profile.setErrors([{ message: 'profile err' }])
     expect(result.wizard.currentStep).toBe('wc-mid-account')
 
     await result.wizard.handleSubmit(() => {})(new Event('submit'))
-    // Active form's user errors cleared; the untouched step keeps its own.
+    // handleSubmit validates the whole wizard, so the entry-clear spans
+    // every form, not just the active step's.
     expect(formLevel(result.account.meta.errors)).toHaveLength(0)
-    expect(formLevel(result.profile.meta.errors)).toHaveLength(1)
+    expect(formLevel(result.profile.meta.errors)).toHaveLength(0)
   })
 
   it('clears even when a final-step validation fails', async () => {

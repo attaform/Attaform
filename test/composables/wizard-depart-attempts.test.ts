@@ -167,7 +167,7 @@ describe('departAttempts and submissionAttempts stay accounting-distinct', () =>
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('failed intermediate handleSubmit bumps submissionAttempts but NOT departAttempts', async () => {
+  it('a failed handleSubmit bumps submissionAttempts on every form but departAttempts on none', async () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({ schema: strictSchema, key: 'acc-1-a' })
       const b = useForm({ schema: strictSchema, key: 'acc-1-b' })
@@ -177,9 +177,11 @@ describe('departAttempts and submissionAttempts stay accounting-distinct', () =>
     apps.push(app)
     const onSubmit = result.wizard.handleSubmit(async () => {})
     await onSubmit()
+    // handleSubmit validates the whole wizard, so every form counts the
+    // attempt; nothing departed, so departAttempts stay 0. The pin never moves.
     expect(result.wizard.currentStep).toBe('acc-1-a')
-    expect(result.a.meta.submissionAttempts).toBeGreaterThan(0)
-    expect(result.b.meta.submissionAttempts).toBe(0)
+    expect(result.a.meta.submissionAttempts).toBe(1)
+    expect(result.b.meta.submissionAttempts).toBe(1)
     expect(result.a.meta.departAttempts).toBe(0)
     expect(result.b.meta.departAttempts).toBe(0)
   })

@@ -131,9 +131,10 @@ function asHandleSubmitSource(form: AnyForm): Pick<UseFormReturnType<GenericForm
  *
  * The wizard's surface is read-only from the consumer's side:
  * navigation (`next` / `back` / `goTo`) walks positional indices,
- * `handleSubmit` validates the active form on intermediate steps and
- * the whole wizard on the final step, and URL synchronization rides on
- * `restore` / `persist` callbacks that default to `?step=<key>`.
+ * `handleSubmit` validates the whole step list from any step and never
+ * advances (gate advance with `activeForm.handleSubmit(() =>
+ * wizard.next())`), and URL synchronization rides on `restore` /
+ * `persist` callbacks that default to `?step=<key>`.
  */
 export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   options: WizardOptions & { readonly steps: S }
@@ -992,10 +993,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // of re-thrown, so binding the handler to `@submit.prevent` never
   // manufactures a `window` unhandledrejection.
   const submitError = ref<Error | null>(null)
-  // Monotonic latch: flips true the first time a final-step
-  // `handleSubmit` resolves without throwing, and stays true through
-  // subsequent edits or invalidations. Only `reset()` flips it back
-  // (a new run starts a new history). Distinct accounting from
+  // Monotonic latch: flips true the first time a `handleSubmit` resolves
+  // without throwing (and leaves no errors on any step), and stays true
+  // through subsequent edits or invalidations. Only `reset()` flips it
+  // back (a new run starts a new history). Distinct accounting from
   // `complete`, which is forward-looking and reactive to current form
   // validity.
   const done = ref(false)
@@ -1163,9 +1164,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // aggregate shape. The post-callback mirror of `collectErrors` (#438):
   // after a clean validation pass, a callback that called `setErrors` on
   // a step left those errors here. Scoped to the keys the submit actually
-  // processed (final = every step, intermediate = the active one),
-  // matching the entry-clear scope, so a stale error on an unprocessed
-  // step never fails the submit.
+  // processed (every step, since `handleSubmit` is whole-wizard), matching
+  // the entry-clear scope.
   function collectCallbackErrors(keys: Iterable<FormKey>): WizardAggregateError[] {
     const out: WizardAggregateError[] = []
     for (const key of keys) {
@@ -1222,36 +1222,29 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       submitError.value = null
       try {
         const currentKey = activeKey.value
+        // Positional only: surfaced as `ctx.isFinal`. Nothing branches on
+        // it — `handleSubmit` processes the whole wizard from any step.
         const final = isFinalStep.value
         const list = compiledSteps.value
         const results = new Map<FormKey, ValidationResponse<unknown>>()
 
-        if (final) {
-          // Final-step submission: validate every step. Run in parallel
-          // so latency is bounded by the slowest form rather than the
-          // sum of all forms.
-          await Promise.all(
-            list.map(async (step) => {
-              // Entry-clear user-set errors before validating, mirroring
-              // form.handleSubmit: a fresh attempt starts each PROCESSED
-              // form from a clean user-error slate. A final submit
-              // re-validates every step, so every step is cleared.
-              registry.forms.get(step.key)?.clearUserErrors()
-              const result = await processOne(step.form)
-              results.set(step.key, result)
-            })
-          )
-        } else {
-          // Intermediate submission: validate the active form only and
-          // advance on success. The empty-list short-circuit above
-          // guarantees `activeForm.value` is defined here. Only the active
-          // form is processed, so only its user errors are cleared — other
-          // steps keep theirs.
-          const active = activeForm.value as AnyForm
-          registry.forms.get(active.key)?.clearUserErrors()
-          const result = await processOne(active)
-          results.set(active.key, result)
-        }
+        // Validate every step, regardless of which step fired the submit:
+        // `wizard.handleSubmit` always submits the whole wizard. Gating
+        // advance on a single step's validity is the composition
+        // `activeForm.handleSubmit(() => wizard.next())`, which runs on the
+        // form side. Run in parallel so latency is bounded by the slowest
+        // form rather than the sum of all forms.
+        await Promise.all(
+          list.map(async (step) => {
+            // Entry-clear user-set errors before validating, mirroring
+            // form.handleSubmit: a fresh attempt starts each form from a
+            // clean user-error slate. Every step is processed, so every
+            // step is cleared.
+            registry.forms.get(step.key)?.clearUserErrors()
+            const result = await processOne(step.form)
+            results.set(step.key, result)
+          })
+        )
 
         // Bump per-form submissionAttempts for every form we just
         // processed (noops included — accounting-distinct counters per
@@ -1290,8 +1283,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           // server-rejection path) has NOT succeeded. The entry-clear above
           // means any user error present now was set by this callback. Route
           // it through the same failure path as a validation failure: focus
-          // the first error, fire onError, and return WITHOUT completing
-          // (final) or advancing past the rejected step (intermediate).
+          // the first error, fire onError, and return WITHOUT latching `done`.
           const callbackErrors = collectCallbackErrors(results.keys())
           if (callbackErrors.length > 0) {
             await focusFirstWizardError(callbackErrors)
@@ -1304,17 +1296,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
             }
             return
           }
-          if (final) {
-            done.value = true
-          } else {
-            // Intermediate success → record departure + advance to next
-            // step. Mirrors the navigation arm so the URL and visited
-            // trail stay coherent.
-            recordDeparture(currentKey)
-            const idx = activeIndex.value
-            const target = list[idx + 1]
-            if (target !== undefined) moveTo(target.key)
-          }
+          // Whole-wizard success: every step validated and the callback
+          // left no errors. Latch `done`; never move the pin. Advancing a
+          // step lives in the gated-advance composition, not here.
+          done.value = true
         } else {
           // Apply the invalid-submit focus policy BEFORE onError, mirroring
           // form.handleSubmit: the consumer's onError can override the

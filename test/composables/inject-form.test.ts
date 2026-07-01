@@ -160,6 +160,59 @@ describe('injectForm — ambient provide/inject', () => {
       const message = String(calls[0]?.[0] ?? '')
       expect(message).toMatch(/no form registered/)
       expect(message).toContain("'never-registered'")
+      expect(message).toMatch(/not registered until that component's own setup runs/)
+      expect(message).toMatch(/common ancestor/)
+      app.unmount()
+    })
+
+    it("keyed miss lists the registry's addressable keys as a typo signal", () => {
+      let captured: ReturnType<typeof injectForm<Form>> | undefined
+      const Child = defineComponent({
+        setup() {
+          captured = injectForm<Form>('emial')
+          return () => h('div')
+        },
+      })
+      const Parent = defineComponent({
+        setup() {
+          useForm<Form>({ schema: fakeSchema(defaults), key: 'email' })
+          useForm<Form>({ schema: fakeSchema(defaults), key: 'profile' })
+          return () => h(Child)
+        },
+      })
+      const app = createApp(Parent).use(createAttaform())
+      app.mount(document.createElement('div'))
+      expect(captured).toBeNull()
+      const message = String(matchingWarnCalls()[0]?.[0] ?? '')
+      expect(message).toMatch(/Registered keys:/)
+      expect(message).toContain("'email'")
+      expect(message).toContain("'profile'")
+      app.unmount()
+    })
+
+    it('omits the registered-keys hint when only synthetic anonymous forms exist', () => {
+      // Anonymous forms live under the reserved `__atta:` prefix and are
+      // not addressable by `injectForm(key)`, so the hint filters them
+      // out rather than dangling an un-typeable key in front of the user.
+      let captured: ReturnType<typeof injectForm<Form>> | undefined
+      const Child = defineComponent({
+        setup() {
+          captured = injectForm<Form>('cart')
+          return () => h('div')
+        },
+      })
+      const Parent = defineComponent({
+        setup() {
+          useForm<Form>({ schema: fakeSchema(defaults) })
+          return () => h(Child)
+        },
+      })
+      const app = createApp(Parent).use(createAttaform())
+      app.mount(document.createElement('div'))
+      expect(captured).toBeNull()
+      const message = String(matchingWarnCalls()[0]?.[0] ?? '')
+      expect(message).toMatch(/no form registered/)
+      expect(message).not.toMatch(/Registered keys:/)
       app.unmount()
     })
 

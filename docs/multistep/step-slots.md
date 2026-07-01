@@ -11,7 +11,7 @@ metaRows:
     value: '{ key, form }'
     kind: code
   - label: Drop behavior
-    value: 'function slot returns undefined => drop'
+    value: 'null / undefined slot => drop'
     kind: code
 ---
 
@@ -91,9 +91,25 @@ useWizard({ steps: ['welcome', shipping, 'welcome'] }) // duplicate 'welcome'
 
 First occurrence wins. The second dev-warns and drops. The wizard still navigates without crashing.
 
+## Conditional steps
+
+Any position in the array can be `null` or `undefined`, and the wizard drops it from the compiled list. That lets a step appear or disappear on a condition written inline, with no imperative pre-filtering of the array:
+
+```ts
+const wizard = useWizard({
+  steps: [account, needsShipping ? shipping : null, payment, isGuest ? null : 'account-review'],
+})
+```
+
+A literal `null` element evaluates once, when the array is built, so it fits a condition that is fixed for the wizard's life: a plan tier, a feature flag. For a condition that changes as the user works, reach for a [function slot](#function-slots) that returns `null`, so the step's presence tracks the value reactively.
+
+`null` and `undefined` are interchangeable here; both mean "no step." The idiom is `cond ? form : null`, not `cond && form`: a bare `&&` yields `false`, and `false` is not a step (nor is there a step a `true` could stand for), so the wizard accepts only the nullish forms.
+
+A form kept behind a conditional stays fully typed: with `steps: [account, show ? shipping : null]`, `wizard.forms.shipping` still resolves to the concrete `shipping` handle. When every position in the array can drop, `wizard.currentStep` reads as `FormKey | undefined`, since the compiled list might be empty.
+
 ## Function slots
 
-A function that picks one of the three slot kinds at runtime: `(ctx) => Form | string | undefined`. The wizard re-invokes function slots reactively whenever the reads inside them change, so branching logic stays in sync with live form values.
+A function that picks one of the three slot kinds at runtime: `(ctx) => Form | string | null | undefined`. The wizard re-invokes function slots reactively whenever the reads inside them change, so branching logic stays in sync with live form values.
 
 ```ts
 const account = useForm({ schema: accountSchema, key: 'account' })
@@ -113,11 +129,11 @@ When the user picks `'business'` on the account step, the branching slot resolve
 
 ### Return values
 
-| Return           | Result                                                                                                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An `AnyForm` ref | The slot compiles to `{ key: form.key, form }`.                                                                                                                                              |
-| A `string` key   | The slot resolves to a noop affordance step under that key. New keys are built on the fly; the same key returned twice reuses the same noop. No pre-declaration needed elsewhere in `steps`. |
-| `undefined`      | The slot is dropped from the compiled list. Useful for "this branch isn't relevant right now"; the step rail shortens accordingly.                                                           |
+| Return               | Result                                                                                                                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An `AnyForm` ref     | The slot compiles to `{ key: form.key, form }`.                                                                                                                                              |
+| A `string` key       | The slot resolves to a noop affordance step under that key. New keys are built on the fly; the same key returned twice reuses the same noop. No pre-declaration needed elsewhere in `steps`. |
+| `null` / `undefined` | The slot is dropped from the compiled list. Useful for "this branch isn't relevant right now"; the step rail shortens accordingly.                                                           |
 
 ### Reactive re-evaluation
 
@@ -135,7 +151,7 @@ const wizard = useWizard({
 })
 ```
 
-When the user toggles `needsId` off, the middle slot drops. `wizard.count` falls from 3 to 2; `wizard.activeIndex` and `wizard.currentStep` re-anchor; navigation buttons reflect the new positions.
+When the user toggles `needsId` off, the middle slot drops. `wizard.count` falls from 3 to 2, and navigation buttons reflect the new positions. If the wizard was sitting on the dropped step, the pin slides forward to the step that took its slot, clamping to the new last step when the dropped one was last, so `wizard.currentStep` and `wizard.activeForm` stay on a live step instead of snapping back to the first.
 
 ## Lazy slots (`lazy()`)
 
@@ -183,11 +199,11 @@ lazy(() => buildShippingFormForRegion(initialRegion))
 
 ### Resolution semantics
 
-| Return           | Behavior                                                                                                                                                |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An `AnyForm` ref | The form caches at that position. Subsequent reads reuse it until a tracked dep changes or `reset()` invalidates the cache.                             |
-| A `string` key   | Resolves to a noop affordance step under that key, building one on the fly if needed. Result caches under the same dep-tracking rules as a form return. |
-| `undefined`      | The slot drops from the compiled list. The drop caches; a tracked dep change or `reset()` re-fires the resolver.                                        |
+| Return               | Behavior                                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An `AnyForm` ref     | The form caches at that position. Subsequent reads reuse it until a tracked dep changes or `reset()` invalidates the cache.                             |
+| A `string` key       | Resolves to a noop affordance step under that key, building one on the fly if needed. Result caches under the same dep-tracking rules as a form return. |
+| `null` / `undefined` | The slot drops from the compiled list. The drop caches; a tracked dep change or `reset()` re-fires the resolver.                                        |
 
 Use `lazy()` when the resolution is expensive enough that thrash matters. For everyday branching on live values, plain function slots are simpler. They re-evaluate freely with the compiled list, and the wizard pays no cache-bookkeeping cost.
 
@@ -248,10 +264,11 @@ for (const step of wizard.steps) {
 A few rules govern how the source slot list compiles down to the final step list:
 
 - **Duplicate keys.** Two slots producing the same step key (string slot vs form ref, or two functions returning the same form): first occurrence wins. Later duplicates dev-warn and drop. Keeps `wizard.steps` linearly addressable.
-- **`undefined` from a function slot.** The slot drops; subsequent reads of `wizard.steps` reflect the shortened list. Re-running the slot (a reactive read changed) can reintroduce the position.
-- **`undefined` from a `lazy()` slot.** The slot drops. The drop caches; a tracked-dep change or `reset()` re-fires the resolver, and if it returns `undefined` again, the slot drops again.
+- **Literal `null` / `undefined` element.** Dropped when the array compiles, so a `cond ? form : null` conditional needs no pre-filtering. See [Conditional steps](#conditional-steps).
+- **`null` / `undefined` from a function slot.** The slot drops; subsequent reads of `wizard.steps` reflect the shortened list. Re-running the slot (a reactive read changed) can reintroduce the position. If the dropped slot was the active step, the pin slides forward to the step that took its place.
+- **`null` / `undefined` from a `lazy()` slot.** The slot drops. The drop caches; a tracked-dep change or `reset()` re-fires the resolver, and if it returns nullish again, the slot drops again.
 - **Function or `lazy()` slot returns a new string key.** The wizard builds a noop affordance step on the fly under that key and threads it into the compiled list, the statuses surface, and the rail. The same key returned by a later slot reuses the same noop (first-build wins). No pre-declaration anywhere in `steps` is required.
-- **Empty compiled list.** If every slot drops at runtime, `wizard.currentStep` reads as `undefined`, navigation refuses with a dev-warn, and the surrounding app keeps rendering. See [Degenerate inputs](/docs/multistep/use-wizard#degenerate-inputs).
+- **Empty compiled list.** If every slot drops (including an array that is entirely nullish), `wizard.currentStep` reads as `undefined`, navigation refuses with a dev-warn, and the surrounding app keeps rendering. See [Degenerate inputs](/docs/multistep/use-wizard#degenerate-inputs).
 
 ## Where to next
 

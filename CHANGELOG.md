@@ -4,6 +4,14 @@
 
 ### Added
 
+- **`useWizard({ steps })` accepts `null` and `undefined` as absent steps.** A
+  step slot that is `null` or `undefined`, whether a literal array element or the
+  return of a function or `lazy()` slot, drops out of the compiled list, so a
+  conditional step can read inline as `cond ? form : null` without pre-filtering
+  the array. A form kept behind such a conditional still maps to its key on
+  `wizard.forms`, and a tuple whose steps can all drop keeps `wizard.currentStep`
+  honestly `| undefined`. (#467)
+
 - **`wizard.tryNext()`: validate the active step, then advance only if it
   passes.** Bind it straight to a Next button (`@click="wizard.tryNext()"`) with
   no captured handler: it runs the active step's validation, advances on a clean
@@ -16,6 +24,13 @@
   `wizard.handleSubmit`. (#471)
 
 ### Changed
+
+- **When the active step drops out of a wizard mid-flight, the pin slides forward
+  instead of snapping to the first step.** A function or `lazy()` slot that stops
+  yielding the active step now re-points the wizard at the step that took its
+  place (clamping to the new last step when the dropped one was last), so
+  `wizard.currentStep`, `wizard.activeForm`, and index navigation stay consistent
+  from the new position. (#467)
 
 - **`wizard.handleSubmit` now submits the whole wizard from any step, and
   navigation is its own verb.** One call validates every step's form in

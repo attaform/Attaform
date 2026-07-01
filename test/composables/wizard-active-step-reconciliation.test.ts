@@ -7,15 +7,15 @@ import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * COMP-W5 / W-BRITTLE-1: when the active step's slot becomes
- * un-resolvable mid-flight (a function slot that previously returned
- * a form now returns `undefined`), `wizard.currentStep` and
- * `wizard.activeForm` must agree on the same step. Pre-fix they
- * could disagree — `currentStep` trusted `activeKey` verbatim and
- * returned the dropped form's key, while `activeForm` fell back to
- * the first compiled step. The fix routes `currentStep` through
- * the same `activeIndex`-aware fallback so both reads stay in
- * lockstep.
+ * COMP-W5 / forward-continuity: when the active step's slot becomes
+ * un-resolvable mid-flight (a function or lazy slot that previously
+ * returned a form now returns nullish), the wizard re-points the pin at
+ * the step that took the dropped slot's place rather than snapping back
+ * to the first step, and `wizard.currentStep` / `wizard.activeForm` stay
+ * in lockstep. Earlier the reads fell back to the first compiled step
+ * (the "W-BRITTLE-1" behavior); the pin is now re-anchored at its source
+ * via a watch on the compiled list, so index-based navigation stays
+ * consistent from the new position too.
  */
 
 const schema = z.object({ email: z.string().optional() })
@@ -35,13 +35,13 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — currentStep / activeForm reconciliation (W-BRITTLE-1)', () => {
+describe('useWizard — active-step forward-continuity when a slot drops', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('agrees on the fallback step when the active slot drops mid-flight', async () => {
+  it('slides the pin forward to the step that took the dropped slot', async () => {
     const showMiddle = ref(true)
     const { app, result } = mountHarness(() => {
       const entry = useForm({ schema, key: 'w-brittle-entry' })
@@ -70,12 +70,12 @@ describe('useWizard — currentStep / activeForm reconciliation (W-BRITTLE-1)', 
     await nextTick()
 
     // The compiled list contracts to [entry, final]. The active key
-    // ('w-brittle-middle') is no longer in the list, so both reads
-    // must agree on the fallback (the first compiled step).
+    // ('w-brittle-middle') is gone, so the pin slides forward to the
+    // step that took its slot ('w-brittle-final') rather than snapping
+    // back to the first step. currentStep and activeForm stay in lockstep.
     expect(result.steps.map((s) => s.key)).toEqual(['w-brittle-entry', 'w-brittle-final'])
-    expect(result.activeForm?.key).toBe('w-brittle-entry')
-    // Pre-fix: returned 'w-brittle-middle' (stale activeKey).
-    // Post-fix: returns 'w-brittle-entry' (matches activeForm).
+    expect(result.activeForm?.key).toBe('w-brittle-final')
+    expect(result.currentStep).toBe('w-brittle-final')
     expect(result.currentStep).toBe(result.activeForm?.key)
   })
 

@@ -253,7 +253,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // The map is keyed by slot index in `rawSteps`; population happens
   // eagerly below so cross-test mounts get fresh per-index closures.
   const lazyEpoch = ref(0)
-  type LazyResult = AnyForm | string | undefined
+  type LazyResult = AnyForm | string | null | undefined
   const lazyComputeds = new Map<number, ComputedRef<LazyResult>>()
 
   // `activeKey` is the canonical source of truth for the active step.
@@ -322,6 +322,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
    * function so the steps computed stays readable.
    */
   function resolveSlot(slot: StepSlot, index: number, ctx: WizardCtx): AnyForm | undefined {
+    // A `null` / `undefined` slot (a literal absence in the steps array,
+    // e.g. `cond ? form : null`) drops out of the compiled list.
+    if (slot === undefined || slot === null) return undefined
     if (typeof slot === 'string') {
       // Top-level string slots are pre-built into `noopForms` at
       // construction. The lazy builder hits the cache; the unified
@@ -340,15 +343,15 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return c === undefined ? undefined : resolveSlotResult(c.value)
     }
     if (typeof slot === 'function') {
-      const result = (slot as (ctx: WizardCtx) => AnyForm | string | undefined)(ctx)
+      const result = (slot as (ctx: WizardCtx) => AnyForm | string | null | undefined)(ctx)
       return resolveSlotResult(result)
     }
     if (isAnyForm(slot)) return slot
     return undefined
   }
 
-  function resolveSlotResult(result: AnyForm | string | undefined): AnyForm | undefined {
-    if (result === undefined) return undefined
+  function resolveSlotResult(result: AnyForm | string | null | undefined): AnyForm | undefined {
+    if (result === undefined || result === null) return undefined
     if (typeof result === 'string') {
       // Function and lazy slot string returns build a noop on first
       // reference. Subsequent returns of the same string hit the
@@ -425,13 +428,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // `currentStep` and `activeForm` resolve through the same
   // `activeIndex`-aware lookup so they can never disagree on which
-  // step the wizard is on. A function slot that previously
-  // resolved to the active form and now returns `undefined` drops
-  // the matching index to `-1`; both reads then fall back to the
-  // first compiled step uniformly (W-BRITTLE-1). Pre-fix
-  // `currentStep` trusted `activeKey` verbatim and could return the
-  // dropped form's key while `activeForm` fell back to the first
-  // compiled step.
+  // step the wizard is on. The forward-continuity watch below keeps
+  // `activeKey` pointed at a live step, so in steady state
+  // `activeIndex` is in range; the `list[0]` fallback here only covers
+  // the sub-tick before that watch flushes, and the degenerate
+  // empty-key case.
   const currentStep = computed<FormKey | undefined>(() => {
     const list = compiledSteps.value
     const idx = activeIndex.value
@@ -450,6 +451,28 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
     const first = list[0]
     return first === undefined ? undefined : first.form
+  })
+
+  // Forward-continuity guard. When the active step drops out of the
+  // compiled list (a function or lazy slot that used to yield the active
+  // form now returns nullish), re-point `activeKey` at the step that took
+  // its place so the flow continues from there rather than snapping back
+  // to the first step. Clamp to the new last when the dropped step was
+  // last; an emptied wizard falls back to the degenerate empty key.
+  // Re-pinning at the source keeps `activeIndex` / `currentStep` /
+  // `activeForm` and index-based navigation consistent, instead of
+  // leaving `activeKey` stranded on a dead key.
+  watch(compiledSteps, (list, prevList) => {
+    const key = activeKey.value
+    if (key === '') return
+    if (list.some((step) => step.key === key)) return
+    if (list.length === 0) {
+      activeKey.value = ''
+      return
+    }
+    const oldIndex = prevList.findIndex((step) => step.key === key)
+    const slid = list[oldIndex < 0 ? 0 : Math.min(oldIndex, list.length - 1)]
+    if (slid !== undefined) activeKey.value = slid.key
   })
 
   // `wizard.activeForm` returns this single facade (when the wizard is

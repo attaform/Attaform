@@ -789,7 +789,15 @@ export default [
     // registerValue strip + RegisterValue host delegates + markHostConnected +
     // the directly-bound-container field-state fold). zod-v3.mjs, the tightest
     // adapter bundle, crossed 54. Measured at 54.62 KB.
-    limit: '55 KB',
+    //
+    // Raised 55 → 56 KB on the wizard nullish-steps branch (#467):
+    // use-wizard.ts gains the forward-continuity watch that re-points
+    // activeKey when the active step drops out of the compiled list, plus
+    // the null / undefined slot guards in resolveSlot / resolveSlotResult.
+    // Ships in the shared core reached by every wizard-bearing entry;
+    // zod-v3.mjs, the tightest adapter bundle, crossed 55 first (the other
+    // full entries hold 0.25-0.33 KB headroom). Measured at 55.04 KB.
+    limit: '56 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

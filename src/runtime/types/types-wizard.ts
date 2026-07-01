@@ -148,27 +148,33 @@ declare const _lazyBrand: unique symbol
  */
 export type LazyMarker<Ctx = WizardCtx> = {
   readonly [_lazyBrand]: true
-  readonly resolve: (ctx: Ctx) => AnyForm | string | undefined
+  readonly resolve: (ctx: Ctx) => AnyForm | string | null | undefined
 }
 
 /**
  * One position in the source `useWizard({ steps })` array. Each slot
- * resolves to a compiled `{ key, form }` step:
+ * resolves to a compiled `{ key, form }` step, or drops out:
  *
  *  - `AnyForm`         — a form declared via `useForm`. Surfaced as-is.
  *  - `string`          — bare key. The wizard generates a noop form
  *                        under the hood so the external surface stays
  *                        uniform across affordance positions (intro,
  *                        terms, congratulations, review surfaces).
+ *  - `null` / `undefined` — a literal absence, dropped from the compiled
+ *                        list. Lets a conditional step read inline as
+ *                        `cond ? form : null` without pre-filtering the
+ *                        array.
  *  - function          — eager slot, re-evaluates reactively. Returns
- *                        one of the above, or `undefined` to drop the
- *                        slot from the compiled list.
+ *                        one of the above, or `null` / `undefined` to
+ *                        drop the slot from the compiled list.
  *  - `LazyMarker`      — memoized function slot (see `lazy`).
  */
 export type StepSlot<Ctx = WizardCtx> =
   | AnyForm
   | string
-  | ((ctx: Ctx) => AnyForm | string | undefined)
+  | null
+  | undefined
+  | ((ctx: Ctx) => AnyForm | string | null | undefined)
   | LazyMarker<Ctx>
 
 /**
@@ -327,25 +333,41 @@ export type WizardOptions = {
 }
 
 /**
+ * True when a single slot is guaranteed to contribute exactly one
+ * compiled step: a bare form or affordance string that is neither
+ * nullish nor a (maybe-absent) function / `lazy()` slot. One of these
+ * anywhere in the tuple proves the compiled list is non-empty.
+ */
+type IsGuaranteedStep<T> = [null] extends [T]
+  ? false
+  : [undefined] extends [T]
+    ? false
+    : T extends LazyMarker | ((...args: unknown[]) => unknown)
+      ? false
+      : T extends string
+        ? true
+        : T extends { readonly key: string }
+          ? true
+          : false
+
+/**
  * Predicate: is the steps tuple statically guaranteed to compile to a
- * non-empty list? A tuple passes when (a) it's not the empty array
- * literal and (b) it carries no function or `lazy()` slot — those
- * slot kinds can resolve to `undefined` at runtime and drop the
- * compiled position. Form slots and bare-string affordance slots
- * always preserve their position; a tuple made of only those kinds is
- * statically safe.
+ * non-empty list? True when at least one element is a guaranteed step
+ * (see `IsGuaranteedStep`). Function / `lazy()` slots may resolve to
+ * nothing, and `null` / `undefined` (a literal absence or a
+ * `cond ? form : null` union) is an explicit drop, so none of those
+ * prove non-emptiness; a tuple of only maybe-absent slots stays
+ * honestly `| undefined`.
  *
  * Used to narrow `currentStep` / `activeForm` to their non-`undefined`
  * shapes in the common-case wizard, while keeping the honest union
  * everywhere a runtime drop is reachable.
  */
-export type StaticallyNonEmpty<S> = S extends readonly []
-  ? false
-  : S extends readonly (infer Item)[]
-    ? Item extends LazyMarker | ((...args: unknown[]) => unknown)
-      ? false
-      : true
-    : false
+export type StaticallyNonEmpty<S> = S extends readonly [infer First, ...infer Rest]
+  ? IsGuaranteedStep<First> extends true
+    ? true
+    : StaticallyNonEmpty<Rest>
+  : false
 
 /** Active step's key, narrowed to `string` when `S` is statically safe. */
 export type CurrentStepOf<S> = StaticallyNonEmpty<S> extends true ? FormKey : FormKey | undefined
@@ -365,6 +387,21 @@ export type ActiveFormOf<S> =
     : UseFormReturnType<GenericForm> | undefined
 
 /**
+ * Per-slot contribution to {@link FormsRecordOf}. Strips a `null` /
+ * `undefined` (a literal absence or a `cond ? form : null` union) off the
+ * slot first, so a conditionally-present form still maps to its key and
+ * stays concretely typed on `wizard.forms`; a purely nullish slot
+ * contributes nothing.
+ */
+type SlotRecord<First, F = Exclude<First, null | undefined>> = [F] extends [never]
+  ? unknown
+  : F extends string
+    ? { readonly [P in F]: AnyForm }
+    : F extends { readonly key: infer K extends string }
+      ? { readonly [P in K]: F }
+      : unknown
+
+/**
  * Recursive tuple walk that builds the static portion of
  * `wizard.forms`. Each step slot contributes to the record:
  *
@@ -375,7 +412,9 @@ export type ActiveFormOf<S> =
  *    the form's own `key` becomes the record key, and the value is
  *    the concrete form handle type — so drilling
  *    `wizard.forms.shipping.values.address` carries the schema-derived
- *    field types through.
+ *    field types through. A form kept behind a `cond ? form : null`
+ *    conditional still maps to its key.
+ *  - **`null` / `undefined` slot**: contributes nothing.
  *  - **Function / `lazy()` slot**: contributes nothing to the static
  *    map. Runtime-resolved forms are still reachable via the
  *    catch-all index signature on `WizardForms` (typed as `AnyForm`).
@@ -387,12 +426,7 @@ export type FormsRecordOf<S> = S extends readonly [
   infer First,
   ...infer Rest extends ReadonlyArray<StepSlot>,
 ]
-  ? (First extends string
-      ? { readonly [P in First]: AnyForm }
-      : First extends { readonly key: infer K extends string }
-        ? { readonly [P in K]: First }
-        : unknown) &
-      FormsRecordOf<Rest>
+  ? SlotRecord<First> & FormsRecordOf<Rest>
   : unknown
 
 /**

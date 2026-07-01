@@ -41,14 +41,14 @@ const LAZY_BRAND = Symbol.for('attaform/wizard-lazy')
  *    this one.
  *  - `wizard.reset()` clears every lazy slot's cache so a reboot truly
  *    resolves from scratch.
- *  - Resolving to `undefined` drops the slot from the compiled list
- *    until the resolver next re-fires.
+ *  - Resolving to `null` or `undefined` drops the slot from the compiled
+ *    list until the resolver next re-fires.
  *
  * The runtime brand returned by `lazy()` is opaque. Use
  * {@link isLazyMarker} to detect it.
  */
 export function lazy<Ctx = WizardCtx>(
-  resolve: (ctx: Ctx) => AnyForm | string | undefined
+  resolve: (ctx: Ctx) => AnyForm | string | null | undefined
 ): LazyMarker<Ctx> {
   return { [LAZY_BRAND]: true, resolve } as unknown as LazyMarker<Ctx>
 }

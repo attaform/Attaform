@@ -150,3 +150,42 @@ function _neverInvoked() {
   void [steps, active]
 }
 void _neverInvoked
+
+// Issue #467: null / undefined step slots (literal, and function / lazy
+// returns) are accepted and filtered. A form kept behind a
+// `cond ? form : null` conditional still maps to its concrete key on
+// `wizard.forms`; a tuple whose sole slot can drop keeps `currentStep`
+// honestly `| undefined`.
+function _neverInvokedNullishSteps() {
+  const login = useForm({ schema: loginSchema, key: 'login' as const })
+  const profile = useForm({ schema: profileSchema, key: 'profile' as const })
+  const confirm = useForm({ schema: confirmSchema, key: 'confirm' as const })
+  const gate = true as boolean
+
+  const wizard = useWizard({
+    steps: [
+      'welcome',
+      login,
+      gate ? profile : null,
+      null,
+      undefined,
+      (ctx) => (ctx.currentKey === 'login' ? confirm : null),
+      lazy(() => (gate ? confirm : undefined)),
+    ],
+  })
+
+  // The conditionally-present form still carries its concrete key + type.
+  const profileHandle = wizard.forms.profile
+  const bio: string = profileHandle.values.bio
+  void [profileHandle, bio]
+
+  // A tuple whose only slot can drop keeps `currentStep` honestly
+  // `FormKey | undefined`, not narrowed to a bare key.
+  const maybeEmpty = useWizard({ steps: [gate ? login : null] })
+  const maybeAt: string | undefined = maybeEmpty.currentStep
+  // @ts-expect-error currentStep is `FormKey | undefined` here, so it is
+  // not assignable to a bare `string`.
+  const mustBeString: string = maybeEmpty.currentStep
+  void [maybeAt, mustBeString]
+}
+void _neverInvokedNullishSteps

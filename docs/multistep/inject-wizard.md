@@ -115,6 +115,12 @@ Pass the same `key` the parent passed to `useWizard({ key: 'checkout-wizard' })`
 
 `injectWizard` accepts an object form too: `injectWizard({ key: 'checkout-wizard' })`. The positional and object forms are equivalent; pick whichever spreads better into the surrounding setup.
 
+## How a key resolves
+
+`injectWizard('checkout-wizard')` resolves through the same registry that backs `injectForm`, with the same two properties. It is **position-independent** (the handle lives in Attaform's app-level registry, so any component reaches it regardless of branch or depth) and **time-dependent** (the entry appears once the wizard's own `useWizard({ key })` setup has run, and not before). The [How a key resolves](/docs/cross-cutting-state/inject-form#how-a-key-resolves) section on `injectForm` walks the shared mechanism and the resolve-downward rule in full.
+
+One corollary is specific to wizards. The form steps you pass to `useWizard({ steps })` are `useForm` handles, so they follow the same ordering: they have to exist when the wizard's setup runs. A form created inside a step's own child component does not exist yet at that point, which is why the checkout example above creates `shipping` and `payment` in the same component as the `useWizard` call. Create the step forms alongside the wizard, or above it, and the wizard has them the moment it is built.
+
 ## Do I need to pass a `key` to `useWizard`?
 
 The two resolution modes are cleanly split:
@@ -154,7 +160,7 @@ Mixing modes is fine. Keyed wizards don't interfere with an ambient sibling. A p
 `injectWizard` returns `null` rather than throwing, so descendants are robust to mount-order quirks (a sidebar widget that renders before the wizard's parent setup runs, a conditional wizard ancestor, dynamic imports). Two cases produce `null`:
 
 - **No ambient wizard.** `injectWizard()` called from a tree with no ancestor `useWizard` and no key. Returns `null` silently. Ambient lookup is opportunistic, so a floating widget reading the ambient slot stays quiet in trees that don't have a wizard rather than spamming consumers' consoles.
-- **Key not registered.** `injectWizard('checkout-wizard')` called when nothing is registered under that key. Dev mode logs the unresolved key alongside any keys that ARE registered, so a typo surfaces at a glance.
+- **Key not registered.** `injectWizard('checkout-wizard')` called when nothing is registered under that key. Dev mode logs the unresolved key alongside any keys that ARE registered, so a typo surfaces at a glance. If the wizard is created lower in the tree, it registers after this call runs; see [How a key resolves](#how-a-key-resolves).
 
 Guard the return so the consumer disappears cleanly when the wizard isn't mounted:
 

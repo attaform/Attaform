@@ -90,6 +90,30 @@ Floating save buttons, sidebar status widgets, anything in a different branch of
 
 Pass the same `key` you passed to `useForm({ key: 'signup' })`. If no form is registered under that key when the component mounts, `injectForm` returns `null` and dev mode logs the unresolved key at the call site. Reach for the form with `?.` at every consumption site so a missing form degrades to no-ops instead of crashing. See [When resolution fails](#when-resolution-fails) below.
 
+## How a key resolves
+
+A key is a name, not a location. What `injectForm('signup')` resolves to is fixed by two properties, and it helps to hold both at once.
+
+**It is position-independent.** A keyed form lives in Attaform's app-level registry, not in the component tree. `injectForm('signup')` reaches it from any component in the app: a sibling branch, a floating toolbar, a modal teleported to the document body. Extracting a wrapper or changing how deep a component sits never changes what a key resolves to.
+
+**It is time-dependent.** The registry entry appears when the form's own `useForm({ key: 'signup' })` runs its setup, and not a moment before. So the one thing a key cannot do is hand back a form that has not been created yet.
+
+Together they give a single rule: **resolve downward.** Vue runs a parent's setup before its children's, so:
+
+- A descendant reaching an ancestor's keyed form always resolves. The ancestor's `useForm` ran first, so the entry is already there.
+- An ancestor reaching a descendant's form gets `null`. At the ancestor's setup the descendant has not run, so nothing is registered under that key yet.
+
+Create a form where it is owned, and reach for it at or below that point. If you catch yourself reaching upward, or sideways for a form a sibling creates, that is the cue to lift the `useForm({ key })` up to a common ancestor so the form exists before anyone asks for it.
+
+| Resolution       | Keyed: `injectForm('signup')`                          | Ambient: `injectForm()`                         |
+| ---------------- | ------------------------------------------------------ | ----------------------------------------------- |
+| Resolves through | Attaform's app-level registry                          | Vue `provide` / `inject`                        |
+| Reaches          | any component in the app                               | descendants of the owning `useForm`             |
+| Ready            | once the owner's `useForm({ key })` setup has run      | always, from a descendant (the owner ran first) |
+| On a miss        | `null`, plus a dev warning listing the registered keys | `null`, silently                                |
+
+The dev warning on a keyed miss names this timing case directly and points at the call site, so a form that simply registered late reads differently from a typo.
+
 ## Do I need to pass a `key` to `useForm`?
 
 The two resolution modes are cleanly split:
@@ -146,7 +170,7 @@ Both resolution modes ref-count on the form's registry entry. In practice:
 `injectForm` returns `T | null` rather than throwing, so descendants are robust to mount-order quirks (children rendered before the parent's `useForm` runs, conditional ancestors, dynamic imports). Two cases produce `null`:
 
 - **No ambient form**: `injectForm()` with no ancestor `useForm` and no key. Returns `null` silently. Ambient lookup is opportunistic, so a downstream component library reading the ambient slot stays quiet in trees that don't have a form rather than spamming consumers' consoles.
-- **Key not registered**: `injectForm('key-name')` but nothing is registered under that key. Dev mode logs the unresolved key at the call site.
+- **Key not registered**: `injectForm('key-name')` but nothing is registered under that key. Dev mode logs the unresolved key at the call site. If the form is created lower in the tree, it registers after this call runs; see [How a key resolves](#how-a-key-resolves).
 
 Keep the return as `T | null` and reach for it with `?.` at the consumption sites. The directive accepts `undefined` peacefully, optional chains short-circuit cleanly through reactive reads, and the child still works the moment the form becomes available:
 

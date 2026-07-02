@@ -1,5 +1,24 @@
 # Releases
 
+## v0.25.0 — 2026-07-02
+
+## What's Changed
+* fix(demos): isolate per-demo CSS and playground source across SPA navigation by @ozzyfromspace in https://github.com/attaform/Attaform/pull/461
+* fix(focus): request focusVisible when moving focus to the first error by @ozzyfromspace in https://github.com/attaform/Attaform/pull/477
+* feat(wizard): whole-wizard handleSubmit, live activeForm, and tryNext (#471) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/478
+* feat(inject): sharpen injectForm/injectWizard miss diagnostics by @ozzyfromspace in https://github.com/attaform/Attaform/pull/479
+* docs(inject): document the key resolution contract by @ozzyfromspace in https://github.com/attaform/Attaform/pull/480
+* feat(wizard): accept null/undefined step slots and slide the pin forward on drop by @ozzyfromspace in https://github.com/attaform/Attaform/pull/481
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/482
+* feat(demos): persist playground edits on-device with reset + clear-all by @ozzyfromspace in https://github.com/attaform/Attaform/pull/483
+* fix(focus): target blank required fields on invalid submit by @ozzyfromspace in https://github.com/attaform/Attaform/pull/484
+* feat(v-register): warn on a redundant binding beside v-register (#464) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/485
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.24.4...v0.25.0
+
+---
+
 ## v0.24.4 — 2026-06-20
 
 ## What's Changed

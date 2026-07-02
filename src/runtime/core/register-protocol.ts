@@ -47,6 +47,27 @@ export const REGISTER_OWNER_MARKER: unique symbol = Symbol.for('attaform:registe
 export const SSR_COMPONENT_HOST_MODIFIER = 'attaformComponentHost'
 
 /**
+ * Directive modifier the `redundantBindingWarnTransform` stamps onto
+ * every `v-register` it processes. It is the compile-time -> runtime
+ * signal that Attaform's template transforms are active, and it lets the
+ * runtime redundant-binding diagnostic (in the directive's `created`
+ * hook) stand down.
+ *
+ * The hand-off matters because `inputTextAreaNodeTransform` strips the
+ * author's `value` / `checked` and injects its own. Once that has run,
+ * `vnode.props` no longer reflects what the author wrote, so a runtime
+ * check would flag every field. With this marker present the compile
+ * layer owns detection (it reads the authored props BEFORE injection);
+ * with it absent (no bundler plugin) the runtime layer reads the
+ * untouched `vnode.props` directly. Exactly one layer fires per
+ * consumer, never both.
+ *
+ * Namespaced to avoid collision with any author-written modifier, like
+ * `SSR_COMPONENT_HOST_MODIFIER` above.
+ */
+export const V_REGISTER_COMPILED_MODIFIER = 'attaformCompiled'
+
+/**
  * Type guard for a `RegisterValue`. Returns `true` when `val` looks
  * like the object returned from `form.register(path)`.
  *

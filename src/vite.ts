@@ -37,6 +37,7 @@ import type { Plugin } from 'vite'
 import { resolveZodAliasTarget, ZOD_UNIFIED_SPECIFIER } from './core/detect-zod-major'
 import { componentBridgeTransform } from './runtime/lib/core/transforms/component-bridge-transform'
 import { inputTextAreaNodeTransform } from './runtime/lib/core/transforms/input-text-area-transform'
+import { redundantBindingWarnTransform } from './runtime/lib/core/transforms/redundant-binding-warn-transform'
 import { vRegisterHintTransform } from './runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from './runtime/lib/core/transforms/v-register-preamble-transform'
 import { transformSsrAccessed } from './runtime/lib/core/transforms/ssr-accessed-transform'
@@ -133,14 +134,23 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
       // sentinel via reference equality; user-supplied transforms with
       // the same name don't collide.
       if (!existing.includes(vRegisterPreambleTransform as unknown)) {
-        // vRegisterPreambleTransform MUST come before vRegisterHintTransform
-        // — the preamble's pre-order captures each `v-register` expression
-        // in its raw (un-wrapped) form, and the hint then mutates the same
-        // directive's `exp` to wrap it. Reversing the order would have the
-        // preamble pick up an already-wrapped IIFE, double-wrapping it
-        // when injected at the root.
+        // Two ordering constraints:
+        //   1. redundantBindingWarnTransform MUST come before
+        //      componentBridgeTransform and inputTextAreaNodeTransform. It
+        //      reads the author's props to warn about a redundant :value /
+        //      :checked / :selected beside v-register; those two transforms
+        //      strip and re-inject that channel, so anything after them sees
+        //      the injected props, not what the author wrote.
+        //   2. vRegisterPreambleTransform MUST come before
+        //      vRegisterHintTransform — the preamble's pre-order captures each
+        //      `v-register` expression in its raw (un-wrapped) form, and the
+        //      hint then mutates the same directive's `exp` to wrap it.
+        //      Reversing the order would have the preamble pick up an
+        //      already-wrapped IIFE, double-wrapping it when injected at the
+        //      root.
         api.options.template.compilerOptions.nodeTransforms = [
           ...existing,
+          redundantBindingWarnTransform,
           componentBridgeTransform,
           inputTextAreaNodeTransform,
           vRegisterPreambleTransform,

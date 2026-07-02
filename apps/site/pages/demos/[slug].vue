@@ -142,8 +142,9 @@
             <h1 class="mt-3 text-display-md font-semibold text-fg">{{ title }}</h1>
             <p class="mt-4 text-sm text-fg-muted">
               Editing <UiInlineCode>apps/site/docs-demos/{{ sourceLabel }}</UiInlineCode
-              >. The playground is a self-contained sandbox: source edits and form state stay local
-              to this tab so you can experiment freely.
+              >. The playground runs in your browser and saves your source edits on this device, so
+              a refresh or a stray back-swipe won't lose your work. Use Reset below the editor to
+              restore the original.
             </p>
           </div>
           <div class="flex items-center gap-3 text-sm">
@@ -164,7 +165,12 @@
           </div>
         </div>
 
-        <DemoRepl height="calc(100vh - 16rem)" :initial-files="replFiles" :scope-slug="slug" />
+        <DemoRepl
+          height="calc(100vh - 16rem)"
+          :initial-files="replFiles"
+          :scope-slug="slug"
+          :persist-key="`demo:${slug}`"
+        />
       </div>
     </UiContainer>
   </div>

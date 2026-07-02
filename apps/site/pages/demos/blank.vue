@@ -49,7 +49,11 @@
             <NuxtLink to="/demos" class="text-accent hover:underline">all demos</NuxtLink>.
           </p>
         </div>
-        <DemoRepl height="calc(100vh - 20rem)" :initial-source="blankStarterSource" />
+        <DemoRepl
+          height="calc(100vh - 20rem)"
+          :initial-source="blankStarterSource"
+          persist-key="blank"
+        />
       </div>
     </UiContainer>
   </div>

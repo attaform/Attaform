@@ -50,7 +50,11 @@
             <NuxtLink to="/demos" class="text-accent hover:underline">all demos</NuxtLink>.
           </p>
         </div>
-        <DemoRepl height="calc(100vh - 20rem)" :initial-source="shipmentDemoSource" />
+        <DemoRepl
+          height="calc(100vh - 20rem)"
+          :initial-source="shipmentDemoSource"
+          persist-key="shipment"
+        />
       </div>
     </UiContainer>
   </div>

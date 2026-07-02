@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
+import { z } from 'zod'
 import { useForm } from '../../src'
+import { unset, useForm as useZodForm, type UseFormReturn } from '../../src/zod'
 import { injectForm } from '../../src/runtime/composables/use-form-context'
+import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
 import type { Path } from '../../src/runtime/core/paths'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { fakeSchema } from '../utils/fake-schema'
@@ -17,10 +20,12 @@ const defaults: Form = { email: '', password: '', nickname: '' }
 /**
  * The focus/scroll helpers operate on the DOM elements registered via
  * v-register. This suite mounts a real tree against jsdom so
- * registerElement sees actual HTMLElements; the helpers walk
- * schemaErrors → userErrors → state.elements to pick the first visible,
- * connected target. Schema errors take focus priority over user errors
- * at the same path (matches the merged-read iteration order).
+ * registerElement sees actual HTMLElements; the helpers walk every
+ * registered element in DOM order and pick the first visible, connected
+ * one whose merged error set is non-empty. "Merged" spans all three error
+ * channels via `getErrorsForPath` (schema refinement + blank-required +
+ * user), so a field that fails only because it's blank and required is as
+ * valid a target as a refinement failure — see the #468 block at the end.
  */
 
 function mountWith(options: {
@@ -836,6 +841,203 @@ describe('focusFirstError — instanceId inheritance through injectForm', () => 
     expect(handles.grandparent!.focusFirstError()).toBe(false)
     expect(focusSpy).not.toHaveBeenCalled()
 
+    app.unmount()
+  })
+})
+
+// --- Blank-required fields are focus / scroll targets (issue #468) ---
+//
+// The blank-required error class (a required leaf left absent / `unset`)
+// lives ONLY in `derivedBlankErrors`, never `schemaErrors` or `userErrors`.
+// `getFirstErrorElement` used to consult just the schema / user stores, so
+// it silently skipped blank required fields — the first empty field on a
+// submit never received focus. These cases use a real Zod schema because
+// the blank class is schema-driven (`isRequiredAtPath` + numeric
+// auto-mark), mirroring the issue repro where `age: z.number()` is
+// submitted blank.
+
+function mountApp(component: Parameters<typeof createApp>[0]): {
+  app: ReturnType<typeof createApp>
+  root: HTMLDivElement
+} {
+  const app = createApp(component).use(createAttaform())
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app.mount(root)
+  return { app, root }
+}
+
+// An <input> wired to a RegisterValue through the same manual
+// registerElement path v-register drives, tagged with a data-field so
+// assertions can name the focused / scrolled element.
+function registeredInput(
+  reg: { registerElement: (el: HTMLElement) => void } | undefined,
+  field: string,
+  hide = false
+): ReturnType<typeof h> {
+  return h('input', {
+    'data-field': field,
+    style: hide ? 'display:none' : '',
+    ref: (el: unknown) => {
+      if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+    },
+  })
+}
+
+describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
+  let focusSpy: ReturnType<typeof vi.spyOn>
+  let scrollSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
+      HTMLElement.prototype.scrollIntoView = function scrollIntoView() {
+        return undefined
+      }
+    }
+    focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+    scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.style.display === 'none' ? null : this.parentNode
+      },
+    })
+  })
+
+  afterEach(() => {
+    focusSpy.mockRestore()
+    scrollSpy.mockRestore()
+  })
+
+  it('focus-first-error focuses a required field whose only error is blank', async () => {
+    // `age: z.number()` auto-marks blank at mount (storage 0 vs empty DOM
+    // string diverge) → a derived blank-required error, no schema error.
+    const schema = z.object({ age: z.number() })
+    const handle: { api?: UseFormReturn<typeof schema> } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useZodForm({ schema, key: 'blank-focus-age' })
+        return () => h('form', [registeredInput(handle.api?.register('age'), 'age')])
+      },
+    })
+    const { app } = mountApp(App)
+
+    // Guard: this really is the blank-required class, not a schema error.
+    expect(handle.api?.errors.age?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
+
+    await handle.api!.handleSubmit(async () => {})()
+    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
+    const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
+    expect(focused?.getAttribute('data-field')).toBe('age')
+    app.unmount()
+  })
+
+  it('imperative focusFirstError() targets the blank field (derived at mount, no submit)', () => {
+    const schema = z.object({ age: z.number() })
+    const handle: { api?: UseFormReturn<typeof schema> } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useZodForm({ schema, key: 'blank-imperative-focus' })
+        return () => h('form', [registeredInput(handle.api?.register('age'), 'age')])
+      },
+    })
+    const { app } = mountApp(App)
+
+    // No submit — the blank error is a pure function of state, present the
+    // moment the form mounts.
+    expect(handle.api!.focusFirstError()).toBe(true)
+    const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
+    expect(focused?.getAttribute('data-field')).toBe('age')
+    app.unmount()
+  })
+
+  it('imperative scrollToFirstError() targets the blank field', () => {
+    const schema = z.object({ age: z.number() })
+    const handle: { api?: UseFormReturn<typeof schema> } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useZodForm({ schema, key: 'blank-imperative-scroll' })
+        return () => h('form', [registeredInput(handle.api?.register('age'), 'age')])
+      },
+    })
+    const { app } = mountApp(App)
+
+    expect(handle.api!.scrollToFirstError()).toBe(true)
+    const scrolled = scrollSpy.mock.instances.at(-1) as HTMLInputElement | undefined
+    expect(scrolled?.getAttribute('data-field')).toBe('age')
+    app.unmount()
+  })
+
+  it("policy 'both' scrolls then focuses the blank field", async () => {
+    const schema = z.object({ age: z.number() })
+    const handle: { api?: UseFormReturn<typeof schema> } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useZodForm({ schema, key: 'blank-both', onInvalidSubmit: 'both' })
+        return () => h('form', [registeredInput(handle.api?.register('age'), 'age')])
+      },
+    })
+    const { app } = mountApp(App)
+
+    await handle.api!.handleSubmit(async () => {})()
+    expect(scrollSpy).toHaveBeenCalled()
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true, focusVisible: true })
+    const scrolled = scrollSpy.mock.instances.at(-1) as HTMLInputElement | undefined
+    const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
+    expect(scrolled?.getAttribute('data-field')).toBe('age')
+    expect(focused?.getAttribute('data-field')).toBe('age')
+    app.unmount()
+  })
+
+  it('a blank field preceding a schema-errored field wins by DOM order', async () => {
+    // `age` (blank-required, derived) renders first; `name` (schema
+    // refinement `.min(1)` on '') second. Pre-fix the picker skipped the
+    // blank `age` and mistakenly focused `name`; post-fix DOM order wins.
+    const schema = z.object({ age: z.number(), name: z.string().min(1, 'required') })
+    const handle: { api?: UseFormReturn<typeof schema> } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useZodForm({ schema, key: 'blank-dom-order' })
+        return () =>
+          h('form', [
+            registeredInput(handle.api?.register('age'), 'age'),
+            registeredInput(handle.api?.register('name'), 'name'),
+          ])
+      },
+    })
+    const { app } = mountApp(App)
+
+    // Both channels are populated: derived blank on `age`, schema on `name`.
+    expect(handle.api?.errors.age?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
+    expect(handle.api?.errors.name?.[0]?.message).toBe('required')
+
+    await handle.api!.handleSubmit(async () => {})()
+    const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
+    expect(focused?.getAttribute('data-field')).toBe('age')
+    app.unmount()
+  })
+
+  it('generalizes past numerics: an explicit `unset` string field is a target', async () => {
+    // Proves the fix is not tied to numeric auto-mark: any blank + required
+    // leaf qualifies. A string opts into blank via `unset`.
+    const schema = z.object({ note: z.string() })
+    const handle: { api?: UseFormReturn<typeof schema> } = {}
+    const App = defineComponent({
+      setup() {
+        handle.api = useZodForm({
+          schema,
+          key: 'blank-unset-string',
+          defaultValues: { note: unset },
+        })
+        return () => h('form', [registeredInput(handle.api?.register('note'), 'note')])
+      },
+    })
+    const { app } = mountApp(App)
+
+    expect(handle.api?.errors.note?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
+    await handle.api!.handleSubmit(async () => {})()
+    const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
+    expect(focused?.getAttribute('data-field')).toBe('note')
     app.unmount()
   })
 })

@@ -61,6 +61,19 @@ The fix: call `useRegister()` in the child's setup and re-bind `v-register` onto
 
 The dev-mode console warning `v-register on <div> is a no-op …` points here.
 
+## "Console warns that a `:value` / `:checked` is redundant beside v-register"
+
+`v-register` already drives the field's value, so a co-located `:value` / `v-model` (text or `<select>`), `:checked` (checkbox or radio), or `:selected` (`<option>`) is redundant, and the two can fight over the DOM. Drop the extra binding and keep `v-register` alone:
+
+```vue
+<!-- Before -->
+<input v-register="form.register('email')" :value="form.values.email" />
+<!-- After -->
+<input v-register="form.register('email')" />
+```
+
+A `:value` that gives a radio or an `<option>` its identity is expected and never flagged. The warning fires in the dev console for every app, and at build time (including CI) when you run Attaform's [Vite or Nuxt plugin](/docs/server-and-ssr/ssr-bare-vue). See [Let v-register own the value](/docs/binding-inputs/v-register#let-v-register-own-the-value) for the full rundown.
+
 ## "Submit fails with 'No value supplied' on a field the user can leave blank"
 
 The path is in the form's `blankPaths` set and bound to a required schema. Three resolutions:

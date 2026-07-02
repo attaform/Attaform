@@ -37,6 +37,34 @@ The directive runs four pieces of plumbing for you:
 3. **Coerces** the DOM string to the schema's leaf type: `type="number"` inputs land in storage as a number, checkboxes as a boolean, radio groups pick the option `value`.
 4. **Tracks** field state (`touched`, `focused`, `blurred`, `blank`) and surfaces it through `form.fields.<path>`.
 
+## Let `v-register` own the value
+
+Because the directive already reads and writes the field's value, a second binding for the same value is redundant, and the two can end up fighting over the DOM. Leave off `:value` or `v-model` on a text input or `<select>`, `:checked` on a checkbox or radio, and `:selected` on an `<option>`:
+
+```vue
+<!-- Redundant: v-register already drives the value -->
+<input v-register="form.register('email')" :value="form.values.email" />
+
+<!-- Correct: v-register owns it -->
+<input v-register="form.register('email')" />
+```
+
+The one `:value` that stays is an identity rather than state: the value a radio or an `<option>` stands for. Attaform reads that to decide which option is selected, so keep it.
+
+```vue
+<label v-for="flavor in flavors" :key="flavor">
+  <input type="radio" v-register="form.register('flavor')" :value="flavor" />
+  {{ flavor }}
+</label>
+```
+
+Two guards keep this right without you thinking about it:
+
+- A dev-console warning in every app, the moment the field mounts.
+- A build-time warning when you run Attaform's [Vite or Nuxt plugin](/docs/server-and-ssr/ssr-bare-vue), on every compile, so CI catches it too.
+
+Each names the offending attribute and leaves the radio and `<option>` identity `:value` alone.
+
 ## Auto-installed
 
 `createAttaform()` registers the directive globally, in bare Vue and in Nuxt. You don't import it.

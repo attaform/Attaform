@@ -4,6 +4,15 @@
 
 ### Added
 
+- **A redundant state binding beside `v-register` now warns.** `v-register` already
+  drives a field's value, so a co-located `:value` / `v-model` (on a text input or
+  `<select>`), `:checked` (on a checkbox or radio), or `:selected` (on an `<option>`) is
+  redundant, and the two can fight over the DOM. Attaform now flags it in two places: a
+  dev-console warning in every app, and a build-time warning on every compile, including
+  CI, when you run the Vite or Nuxt plugin, so a bespoke lint for it can retire. The
+  `:value` that gives a radio or an `<option>` its identity is expected and stays silent.
+  Warnings only, never a failed build; zero new dependencies. (#464)
+
 - **`useWizard({ steps })` accepts `null` and `undefined` as absent steps.** A
   step slot that is `null` or `undefined`, whether a literal array element or the
   return of a function or `lazy()` slot, drops out of the compiled list, so a

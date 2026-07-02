@@ -23,6 +23,7 @@ import {
   isTransforming,
   REGISTER_OWNER_MARKER,
   SSR_COMPONENT_HOST_MODIFIER,
+  V_REGISTER_COMPILED_MODIFIER,
   V_REGISTER_MARKER,
 } from './register-protocol'
 import { __DEV__ } from './dev'
@@ -1040,6 +1041,18 @@ const warnedUnsupportedElements: WeakSet<HTMLElement> | null = __DEV__
   ? new WeakSet<HTMLElement>()
   : null
 
+// Dev-warn dedupe for a redundant state binding (:value / :checked /
+// v-model) co-located with v-register. Keyed by a coarse misuse
+// SIGNATURE (`tag:type:binding`, e.g. `input:checkbox::checked`) rather
+// than element identity, on purpose: the same redundant binding
+// repeated across a v-for'd field-array row is the common case, and an
+// element-keyed set would print one warning per row. The signature
+// space is tiny and bounded (a handful of tag / type / binding
+// combinations), so a plain Set never grows without limit. The precise,
+// per-element coverage is the compile layer's job (it runs once per
+// element per build); the runtime only needs to surface the pattern once.
+const warnedRedundantBindings: Set<string> | null = __DEV__ ? new Set<string>() : null
+
 // Per-host-root record of the component-host branch's outcome, read back at
 // `beforeUnmount` to tear down symmetrically. Maps a host root element to the
 // inner control it latched, or `null` when it took the no-latch (markHost
@@ -1259,6 +1272,13 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // the gated display state for async ticks. No-op when the binding
     // disabled aria or carries no display-state accessor.
     if (isRegisterValue(binding.value)) setupAria(el as AriaCarrier, binding.value, vnode)
+
+    // Dev diagnostic: flag a redundant `:value` / `:checked` / `v-model`
+    // co-located with v-register. No-op in production, and stands down
+    // when the compile-time transforms already own detection (see
+    // warnRedundantStateBinding). Runs last so the binding is fully set
+    // up first — a diagnostic never affects the field's behaviour.
+    if (__DEV__) warnRedundantStateBinding(el, binding, vnode)
   },
   mounted(el, binding, vnode) {
     callModelHook(el, binding, vnode, null, 'mounted')
@@ -1479,6 +1499,68 @@ function resolveDynamicModel(tagName: string, type: unknown) {
   if (type === 'checkbox') return vRegisterCheckbox
   if (type === 'radio') return vRegisterRadio
   return vRegisterText
+}
+
+/**
+ * Dev diagnostic (#464): warn when a redundant STATE binding sits
+ * beside `v-register` on a native control. `v-register` already owns
+ * value / checked, so a co-located `:value` / `:checked` / `v-model`
+ * is redundant at best and a dual-binding bug at worst.
+ *
+ * Runs ONLY when Attaform's compile-time transforms did NOT process
+ * this directive (`V_REGISTER_COMPILED_MODIFIER` absent). With the
+ * bundler plugin, `inputTextAreaNodeTransform` has stripped the
+ * author's value / checked and injected its own, so `vnode.props`
+ * reflects the injection, not what the author wrote — reading it would
+ * flag every field. There the compile layer owns detection. Without the
+ * plugin (CSR-only, the common case) nothing rewrites the props, so
+ * `vnode.props` IS what the author wrote and is authoritative.
+ *
+ * Carve-out: a radio's `:value` (`<input type="radio" :value="opt">`)
+ * and a checkbox's `:value` (array / Set member) are the IDENTITY
+ * channel `v-register` reads, never flagged — only the state attr for
+ * each kind warns. `<option :selected>` is a child of the `<select>`,
+ * not the bound element, so it's left to the compile layer.
+ */
+function warnRedundantStateBinding(el: HTMLElement, binding: DirectiveBinding, vnode: VNode): void {
+  if (warnedRedundantBindings === null) return // production
+  if (!INTERACTIVE_TAG_NAMES.has(el.tagName)) return // native controls only
+  // Compile layer active: it owns detection, and vnode.props is
+  // post-injection (not what the author wrote), so stand down.
+  if (binding.modifiers[V_REGISTER_COMPILED_MODIFIER] === true) return
+
+  const props = vnode.props
+  if (props == null) return
+
+  const variant = resolveDynamicModel(el.tagName, props['type'])
+  if (variant === vRegisterFile) return // out of scope: browser rejects `value`
+
+  // Native v-model desugars to an `onUpdate:modelValue` prop. The
+  // transforms never emit that key, so its presence is an author-only
+  // signal for every variant (text / select / checkbox / radio).
+  const hasVModel = 'onUpdate:modelValue' in props
+  // Radio / checkbox: `:value` is the option identity; only `:checked`
+  // is redundant state. Everything else is value-driven.
+  const stateAttr =
+    variant === vRegisterCheckbox || variant === vRegisterRadio ? 'checked' : 'value'
+  const hasStateAttr = stateAttr in props
+
+  if (!hasVModel && !hasStateAttr) return
+
+  const tag = el.tagName.toLowerCase()
+  const redundant = hasVModel ? 'v-model' : `:${stateAttr}`
+  // The resolved `type` is part of the key so a redundant `:checked` on
+  // a checkbox and on a radio are counted apart (their messages read the
+  // same, but they're distinct misuses).
+  const signature = `${tag}:${String(props['type'] ?? '')}:${redundant}`
+  if (warnedRedundantBindings.has(signature)) return
+  warnedRedundantBindings.add(signature)
+  warn(
+    `[attaform] \`${redundant}\` is redundant beside v-register on ` +
+      `<${tag}>. v-register already drives this field's value, ` +
+      `so keep v-register alone and drop \`${redundant}\`. (An identity \`:value\` on a ` +
+      `radio or <option> is expected and stays silent.)`
+  )
 }
 
 /**

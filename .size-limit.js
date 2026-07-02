@@ -282,7 +282,11 @@ export default [
     // create-form-store's markHostConnected, the RegisterValue host delegates,
     // and the directly-bound-container own-record field-state fold all ship in
     // the shared eager core. Measured at 44.28 KB.
-    limit: '45 KB',
+    //
+    // Raised 45 -> 46 KB tracking the #464 redundant-binding guard: the
+    // directive's eager `warnRedundantStateBinding` dev-warn lands in the
+    // shared core this bundle ships. Measured at 44.94 KB.
+    limit: '46 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -459,7 +463,10 @@ export default [
     // registerValue strip + RegisterValue host delegates + markHostConnected +
     // the directly-bound-container field-state fold). The unified entry bundles
     // both adapters, so it absorbs the full delta. Measured at 59.31 KB.
-    limit: '60 KB',
+    //
+    // Raised 60 -> 61 KB tracking the #464 redundant-binding guard's eager
+    // dev-warn in the shared core. Measured at 59.97 KB.
+    limit: '61 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -591,7 +598,10 @@ export default [
     // bump (same shared core chunk: directive component-host branch +
     // registerValue strip + RegisterValue host delegates + markHostConnected +
     // the directly-bound-container field-state fold). Measured at 53.26 KB.
-    limit: '54 KB',
+    //
+    // Raised 54 -> 55 KB tracking the #464 redundant-binding guard's eager
+    // dev-warn in the shared core. Measured at 53.92 KB.
+    limit: '55 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -976,7 +986,18 @@ export default [
     // not a tree-shake leak. zod-v3.mjs is the tightest { useForm } tripwire,
     // so it bound first; v4's still has ~0.5 KB headroom (46.46 KB) and the
     // full entries are under cap. Measured at 48.01 KB.
-    limit: '49 KB',
+    //
+    // Raised 49 -> 50 KB tracking the #464 redundant-binding guard: the
+    // directive's `created` hook gains `warnRedundantStateBinding` (the
+    // dev-only runtime warn that flags a redundant `:value` / `:checked` /
+    // `v-model` beside v-register), its module-level dedupe Set, and the
+    // `V_REGISTER_COMPILED_MODIFIER` read. All `__DEV__`-gated, so a
+    // consumer's production build folds it out; this tripwire defines no
+    // `process.env.NODE_ENV`, so it measures the raw dist and moves in
+    // lockstep like the branch above -- a legitimate feature addition, not a
+    // tree-shake leak. zod-v3.mjs stays the tightest { useForm } tripwire, so
+    // it bound first. Measured at 49.03 KB.
+    limit: '50 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -993,7 +1014,11 @@ export default [
     // Raised 23 → 24 KB tracking the v-register third-party-component branch:
     // the directive's component-host branch + the registerValue strip ship in
     // the shared core that injectForm reaches too. Measured at 23.51 KB.
-    limit: '24 KB',
+    //
+    // Raised 24 -> 25 KB tracking the #464 redundant-binding guard: the
+    // eager dev-warn ships in the shared core injectForm reaches too.
+    // Measured at 23.98 KB.
+    limit: '25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

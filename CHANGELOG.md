@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.25.0
 ### Added
 
 - **A redundant state binding beside `v-register` now warns.** `v-register` already

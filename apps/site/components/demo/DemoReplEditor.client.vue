@@ -34,6 +34,10 @@
     vRegisterHintTransform,
   } from 'attaform/transforms'
 
+  // On-device persistence for the reader's edits (#469). A refresh or an
+  // accidental swipe-back would otherwise discard whatever they'd typed.
+  import { getDemoFiles, setDemoFiles, deleteDemoFiles } from '~/utils/playgroundStorage'
+
   const props = withDefaults(
     defineProps<{
       initialSource?: string
@@ -45,9 +49,19 @@
       // root with `demo-<slug>` so the demo's wrapper-scoped stylesheet applies
       // (see scopeClassCode below). Undefined for the self-styled default.
       scopeSlug?: string
+      // Stable key this playground persists its edits under (#469). When
+      // set, the editor restores saved files from IndexedDB on mount and
+      // auto-saves on edit; when absent, the playground stays seed-once and
+      // ephemeral (the original behaviour).
+      persistKey?: string
     }>(),
     { initialSource: () => shipmentDemoSource }
   )
+
+  // Announce whether the live buffer diverges from the shipped seed. The
+  // parent `<DemoRepl>` shell uses it to show the "saved on this device"
+  // strip and gate the Reset control.
+  const emit = defineEmits<{ 'update:dirty': [boolean] }>()
 
   // Sizing + lifecycle (SSR skeleton, deferred mount, route-leave
   // guard) live on the parent `<DemoRepl>` shell. This component is
@@ -779,6 +793,53 @@ declare module '@primeuix/themes/aura';
     }
   }
 
+  // Two key namespaces are in play, and conflating them is a bug.
+  // @vue/repl stores files under `src/`-prefixed names internally
+  // (`store.files`, and the maps we hand to `setFiles` / `reseedFiles`),
+  // but `store.getFiles()` returns them with the `src/` prefix STRIPPED
+  // (`src/App.vue` → `App.vue`, `src/playground-globals.d.ts` →
+  // `playground-globals.d.ts`). `tsconfig.json` / `import-map.json` carry
+  // no prefix in either space. So the persistence layer, which reads and
+  // compares through `getFiles()`, must work in the stripped space, while
+  // `reseedFiles` (which mutates `store.files`) works in the internal one.
+  //
+  // Files @vue/repl needs but the reader never edits: the hidden globals
+  // declaration, the Volar tsconfig, and @vue/repl's own import-map file.
+  // They seed fresh on every mount, so they're excluded from persistence
+  // (see playgroundStorage.ts), from the dirty comparison, and from Reset.
+  function stripSrcPrefix(name: string): string {
+    return name.replace(/^src\//, '')
+  }
+  const PROTECTED_INTERNAL: ReadonlySet<string> = new Set([
+    'src/playground-globals.d.ts',
+    'tsconfig.json',
+    'import-map.json',
+  ])
+  // The same set as `getFiles()` names them (derived, so it can't drift).
+  const PROTECTED_STRIPPED: ReadonlySet<string> = new Set(
+    Array.from(PROTECTED_INTERNAL, stripSrcPrefix)
+  )
+  // Return the subset of a filename→code map whose names pass `keep`.
+  function filterFiles(
+    files: Record<string, string>,
+    keep: (name: string) => boolean
+  ): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const [name, code] of Object.entries(files)) {
+      if (keep(name)) out[name] = code
+    }
+    return out
+  }
+  // Shallow value-equality of two filename→code maps.
+  function filesShallowEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+    const aKeys = Object.keys(a)
+    if (aKeys.length !== Object.keys(b).length) return false
+    for (const key of aKeys) {
+      if (a[key] !== b[key]) return false
+    }
+    return true
+  }
+
   // Seed the store. `initialFiles` (a multi-file map) wins over
   // `initialSource` (the single-file shorthand). Both routes always
   // augment with `src/playground-globals.d.ts` (the toast + `*.css`
@@ -790,16 +851,110 @@ declare module '@primeuix/themes/aura';
     'src/playground-globals.d.ts': TOAST_AMBIENT_DTS + ASSET_AMBIENT_DTS + THIRD_PARTY_AMBIENT_DTS,
     'tsconfig.json': JSON.stringify(replTsConfig, null, 2),
   }
+  // The shipped seed's editable files in STRIPPED space, so it compares
+  // byte-for-byte against `currentUserFiles()` (also stripped). `File`
+  // stores `code` verbatim, so stripping the seed's keys reproduces
+  // exactly what `getFiles()` reports for an untouched seed: at rest the
+  // two are equal, so nothing is ever persisted for a demo just viewed.
+  const seedUserFiles = filterFiles(
+    Object.fromEntries(
+      Object.entries(seedFiles).map(([name, code]) => [stripSrcPrefix(name), code])
+    ),
+    (name) => !PROTECTED_STRIPPED.has(name)
+  )
+  // The protected seed files in INTERNAL space, merged fresh on restore.
+  const protectedSeedFiles = filterFiles(seedFiles, (name) => PROTECTED_INTERNAL.has(name))
+
+  // The reader-editable files as `getFiles()` reports them (stripped),
+  // protected files removed.
+  function currentUserFiles(): Record<string, string> {
+    return filterFiles(store.getFiles(), (name) => !PROTECTED_STRIPPED.has(name))
+  }
+  // True while the live buffer diverges from the shipped seed. Emitted up
+  // to the shell, which shows the "saved on this device" strip + Reset.
+  const dirty = ref(false)
+  watch(dirty, (value) => emit('update:dirty', value))
+  function syncDirtyState() {
+    dirty.value = !filesShallowEqual(currentUserFiles(), seedUserFiles)
+  }
+
   // Flips true once the initial async setFiles has landed. Guards the
-  // dev-only re-seed below from racing the bootstrap (the comment near
-  // TOAST_AMBIENT_DTS above documents how interleaved mutations get
-  // discarded by an in-flight setFiles overwrite).
+  // persistence + dev re-seed watchers from racing the bootstrap (the
+  // comment near TOAST_AMBIENT_DTS above documents how interleaved
+  // mutations get discarded by an in-flight setFiles overwrite).
   const initialSeedReady = ref(false)
-  void store.setFiles(seedFiles, 'src/App.vue').then(() => {
+  // Bootstrap. When this mount owns a persistence key and IndexedDB holds
+  // saved edits for it, hydrate with those instead of the shipped source
+  // (protected files still come fresh); otherwise seed the original.
+  // Either path is a single setFiles, so the editor compiles once with no
+  // restore flash. Saved edits win over a changed seed by design: the
+  // point is to never lose the reader's work, and Reset returns them to
+  // whatever the current shipped source is.
+  async function bootstrap() {
+    let filesToSeed = seedFiles
+    if (props.persistKey) {
+      const saved = await getDemoFiles(props.persistKey)
+      if (saved) {
+        // `saved` is stripped-space user files. Drop any protected name
+        // defensively (a stale entry can't smuggle globals back in), then
+        // merge the fresh protected seed; setFiles re-adds the `src/`
+        // prefix to the stripped user keys.
+        const savedUser = filterFiles(saved, (name) => !PROTECTED_STRIPPED.has(name))
+        filesToSeed = { ...savedUser, ...protectedSeedFiles }
+      }
+    }
+    await store.setFiles(filesToSeed, 'src/App.vue')
     const dts = store.files['src/playground-globals.d.ts']
     if (dts) dts.hidden = true
+    syncDirtyState()
     initialSeedReady.value = true
+  }
+  void bootstrap()
+
+  // Auto-save. On every edit past the seed, recompute dirty state and,
+  // debounced, persist the editable files. When the buffer matches the
+  // shipped seed again (a hand-revert, or Reset), drop the entry so a
+  // clean demo leaves the "clear all" tally.
+  const PERSIST_DEBOUNCE_MS = 400
+  let persistTimer: ReturnType<typeof setTimeout> | null = null
+  function flushPersist() {
+    const key = props.persistKey
+    if (!key) return
+    const userFiles = currentUserFiles()
+    if (filesShallowEqual(userFiles, seedUserFiles)) void deleteDemoFiles(key)
+    else void setDemoFiles(key, userFiles)
+  }
+  watch(
+    () => store.files,
+    () => {
+      syncDirtyState()
+      if (!initialSeedReady.value || !props.persistKey) return
+      if (persistTimer) clearTimeout(persistTimer)
+      persistTimer = setTimeout(() => {
+        persistTimer = null
+        flushPersist()
+      }, PERSIST_DEBOUNCE_MS)
+    },
+    { deep: true }
+  )
+  onBeforeUnmount(() => {
+    // Flush a pending debounce so edits from the last few hundred ms
+    // before a navigation aren't lost.
+    if (persistTimer === null) return
+    clearTimeout(persistTimer)
+    persistTimer = null
+    flushPersist()
   })
+
+  // Reset the editor to the shipped source and forget the saved copy.
+  // Routes through reseedFiles (the same in-place diff HMR uses) so
+  // Monaco keeps cursor / scroll / undo instead of flashing a remount.
+  function reset() {
+    reseedFiles(store, seedFiles, PROTECTED_INTERNAL)
+    if (props.persistKey) void deleteDemoFiles(props.persistKey)
+    syncDirtyState()
+  }
+  defineExpose({ reset })
 
   // Dev-only HMR-driven re-seed.
   //
@@ -817,11 +972,6 @@ declare module '@primeuix/themes/aura';
   // future runtime prop change (e.g. a route-param-driven slug) wipe a
   // reader's in-REPL edits. Production behaviour stays seed-once.
   if (import.meta.dev) {
-    const PROTECTED_FILENAMES: ReadonlySet<string> = new Set([
-      'src/playground-globals.d.ts',
-      'tsconfig.json',
-      'import-map.json',
-    ])
     watch(
       () => {
         if (props.initialFiles !== undefined) return props.initialFiles
@@ -830,7 +980,7 @@ declare module '@primeuix/themes/aura';
       },
       (next) => {
         if (!initialSeedReady.value || next === undefined) return
-        reseedFiles(store, next, PROTECTED_FILENAMES)
+        reseedFiles(store, next, PROTECTED_INTERNAL)
       },
       { deep: true }
     )
@@ -860,12 +1010,13 @@ declare module '@primeuix/themes/aura';
   const pendingDelete = ref<string | null>(null)
   // Whether the user has opted out of the confirmation prompt by
   // checking "Don't ask again" on a previous deletion. Persisted in
-  // sessionStorage rather than localStorage on purpose: the
-  // playground itself is ephemeral (files live in @vue/repl's
-  // in-memory store; close the tab and they're gone), so the opt-out
-  // preference shouldn't outlive the data it gates. Closing the tab
-  // resets to "always ask" — the natural opt-back-in path. Matches
-  // the checkbox label ("for the rest of this session") literally.
+  // sessionStorage, not localStorage, on purpose: the "stop asking me"
+  // consent is a lightweight per-visit convenience, not a durable
+  // preference, so it resets to "always ask" when the tab closes (the
+  // natural opt-back-in path). It's independent of the source buffer,
+  // which DOES persist across visits on the reader's device (see
+  // playgroundStorage.ts). Matches the checkbox label ("for the rest of
+  // this session") literally.
   const SKIP_CONFIRM_KEY = 'attaform-playground-skip-delete-confirm'
   function hasSkipConsent(): boolean {
     try {
@@ -1094,8 +1245,8 @@ declare module '@primeuix/themes/aura';
         <div class="m-4 w-full max-w-sm rounded-lg border border-border bg-bg p-6 shadow-lg">
           <h2 id="repl-delete-title" class="text-lg font-semibold text-fg"> Delete file? </h2>
           <p class="mt-3 text-sm text-fg-muted">
-            <UiInlineCode>{{ pendingDelete }}</UiInlineCode> will be removed from this playground
-            session. The deletion is local to your tab and won't affect anything else.
+            <UiInlineCode>{{ pendingDelete }}</UiInlineCode> will be removed from this playground.
+            Your edits save on this device, so use Reset to bring the original files back.
           </p>
           <label
             class="mt-5 flex cursor-pointer items-center gap-2 text-sm text-fg-muted select-none"

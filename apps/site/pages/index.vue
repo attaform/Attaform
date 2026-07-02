@@ -536,7 +536,7 @@
               <ExternalLink class="h-3.5 w-3.5" :stroke-width="2" />
             </NuxtLink>
           </div>
-          <DemoRepl height="37.5rem" />
+          <DemoRepl height="37.5rem" persist-key="home" />
         </div>
       </UiContainer>
     </section>

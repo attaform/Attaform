@@ -7,8 +7,10 @@
   // Discovery is glob-driven, so authoring a new SFC under
   // `docs-demos/` automatically surfaces it here on the next build —
   // no per-demo wiring required.
-  import { computed, ref, watch } from 'vue'
-  import { ArrowRight, FlaskConical, Rocket, Search, X } from 'lucide-vue-next'
+  import { computed, onMounted, ref, watch } from 'vue'
+  import { ArrowRight, Eraser, FlaskConical, HardDrive, Rocket, Search, X } from 'lucide-vue-next'
+  import { toast } from 'vue-sonner'
+  import { clearAllDemoFiles, listDemoKeys } from '~/utils/playgroundStorage'
 
   // Inherits the docs shell (sidebar + header + footer) so a reader
   // browsing playgrounds isn't stranded in a sidebar-less layout. The
@@ -98,6 +100,29 @@
     if (n < 1 || n > totalPages.value) return
     currentPage.value = n
   }
+
+  // Saved-code manager (#469). Every editable playground keeps a reader's
+  // edits on their own device (IndexedDB, via playgroundStorage.ts), so a
+  // refresh or a stray back-swipe never loses their work. This page is
+  // the one place to wipe them all at once. `savedCount` reads the live
+  // tally on mount; the clear runs behind a two-step confirm so a stray
+  // click can't erase everything.
+  const savedCount = ref(0)
+  const confirming = ref(false)
+  onMounted(async () => {
+    savedCount.value = (await listDemoKeys()).length
+  })
+  async function clearAllSaved() {
+    const cleared = savedCount.value
+    await clearAllDemoFiles()
+    savedCount.value = 0
+    confirming.value = false
+    toast.success(
+      cleared === 1
+        ? 'Cleared saved code from 1 demo.'
+        : `Cleared saved code from ${cleared} demos.`
+    )
+  }
 </script>
 
 <template>
@@ -140,6 +165,59 @@
         :stroke-width="2.25"
       />
     </NuxtLink>
+
+    <!-- Saved-code manager (#469). Explains the on-device storage model
+         and, when anything is saved, offers the one global "clear all"
+         across every playground. The destructive clear hides behind a
+         two-step confirm, matching the editor's own delete flow. -->
+    <div
+      class="mb-8 flex flex-col gap-3 rounded-xl border border-border bg-surface/30 p-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p class="flex items-start gap-2 text-sm text-fg-muted">
+        <HardDrive
+          class="mt-0.5 h-4 w-4 shrink-0 text-fg-subtle"
+          :stroke-width="2"
+          aria-hidden="true"
+        />
+        <span>
+          Every playground saves your edits in this browser via
+          <UiInlineCode>IndexedDB</UiInlineCode>, so a refresh or a stray back-swipe never loses
+          your work.
+          <template v-if="savedCount > 0">
+            {{ savedCount }} demo{{ savedCount === 1 ? '' : 's' }} on this device
+            {{ savedCount === 1 ? 'has' : 'have' }} saved changes.
+          </template>
+        </span>
+      </p>
+      <div v-if="savedCount > 0" class="flex shrink-0 items-center gap-2">
+        <button
+          v-if="!confirming"
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg px-3 py-1.5 text-sm font-medium text-fg shadow-xs transition-[background-color] hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg-subtle"
+          @click="confirming = true"
+        >
+          <Eraser class="h-3.5 w-3.5" :stroke-width="2" aria-hidden="true" />
+          Clear saved code
+        </button>
+        <template v-else>
+          <span class="text-sm text-fg-muted">Clear all {{ savedCount }}?</span>
+          <button
+            type="button"
+            class="rounded-md border border-border-strong bg-bg px-3 py-1.5 text-sm font-medium text-fg shadow-xs transition-[background-color] hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg-subtle"
+            @click="confirming = false"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-white shadow-xs transition-[background-color] hover:bg-error-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg-subtle"
+            @click="clearAllSaved"
+          >
+            Clear
+          </button>
+        </template>
+      </div>
+    </div>
 
     <!-- Search + per-page controls. Stacked on mobile, two-up on sm+.
          Sticky just under AppHeader (which is h-16) so the filter stays

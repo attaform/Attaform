@@ -1,4 +1,6 @@
 <script setup lang="ts">
+  import { HardDrive, RotateCcw } from 'lucide-vue-next'
+
   // SSR-safe shell for the homepage + /demos interactive REPL.
   //
   // Two responsibilities:
@@ -39,9 +41,26 @@
       // (scoped to that wrapper, see scripts/demo-styles/codegen.mjs) applies.
       // Undefined for the default shipment demo, which is self-styled.
       scopeSlug?: string
+      // Stable key this playground persists edits under (#469). Forwarded
+      // to `<DemoReplEditor>`; when set, the editor restores saved files
+      // on mount, auto-saves on edit, and this shell shows the
+      // "saved on this device" strip + Reset control below the editor.
+      persistKey?: string
     }>(),
     { height: '37.5rem' }
   )
+
+  // Whether the editor's buffer diverges from the shipped seed. Driven by
+  // the editor's `update:dirty`; gates the Reset control in the strip.
+  const dirty = ref(false)
+  // Handle on the client-only editor so the strip's Reset button can call
+  // its exposed `reset()`. Populated once the editor mounts, which is
+  // strictly before `dirty` can turn true, so it's never null when Reset
+  // is visible.
+  const editor = useTemplateRef<{ reset: () => void }>('editor')
+  function handleReset() {
+    editor.value?.reset()
+  }
 
   const showEditor = ref(false)
   onMounted(async () => {
@@ -126,10 +145,46 @@
            hydration, so its Sandbox iframe installs into a settled DOM. -->
       <DemoReplEditor
         v-if="showEditor"
+        ref="editor"
         :initial-source="props.initialSource"
         :initial-files="props.initialFiles"
         :scope-slug="props.scopeSlug"
+        :persist-key="props.persistKey"
+        @update:dirty="dirty = $event"
       />
+    </div>
+
+    <!-- Persistence strip (#469). A sibling of the top hint so it's
+         SSR-rendered at a fixed height: no layout shift when the editor
+         swaps in, nor when its dirty state flips. Present only when this
+         playground persists (has a `persistKey`). Spells out that edits
+         are kept on the reader's own device, offers a Reset back to the
+         shipped source, and points at the Demos page to clear them all. -->
+    <div
+      v-if="props.persistKey"
+      class="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface/60 px-3 py-1.5 text-xs text-fg-subtle"
+    >
+      <p class="flex min-w-0 items-center gap-1.5">
+        <HardDrive class="h-3.5 w-3.5 shrink-0" :stroke-width="2" aria-hidden="true" />
+        <span v-if="dirty" class="truncate">
+          Saved on this device. Clear everything from the
+          <NuxtLink
+            to="/demos"
+            class="text-fg-muted underline decoration-border-strong underline-offset-2 transition-colors hover:text-fg"
+            >Demos page</NuxtLink
+          >.
+        </span>
+        <span v-else class="truncate">Your edits save on this device as you type.</span>
+      </p>
+      <button
+        v-if="dirty"
+        type="button"
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 font-medium text-fg-muted transition-colors duration-(--duration-fast) hover:bg-surface hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg-subtle"
+        @click="handleReset"
+      >
+        <RotateCcw class="h-3.5 w-3.5" :stroke-width="2" aria-hidden="true" />
+        Reset demo
+      </button>
     </div>
   </div>
 </template>

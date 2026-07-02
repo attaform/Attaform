@@ -53,6 +53,19 @@
   statically known. It is no longer identity-equal to the raw per-step handle;
   reach for `wizard.forms[key]` when you need that exact object. (#471)
 
+### Fixed
+
+- **A required field left blank now takes focus on an invalid submit, the same
+  as any field with a schema error.** Attaform's focus-and-scroll-to-error walk
+  (the `onInvalidSubmit` policy, plus `form.focusFirstError()` and
+  `form.scrollToFirstError()`) consulted only the schema and user error
+  channels, so a required field failing purely because it was left blank was
+  passed over: a form submitted empty moved focus nowhere, and a blank field
+  sitting above an invalid one was skipped. The walk now routes through the same
+  merged error read that `form.errors` and `field.errors` already use, so the
+  first field a reader needs to fill, in document order, is exactly where focus
+  and scroll land. Both zod v3 and zod v4. (#468)
+
 ## v0.24.4
 ### Added
 

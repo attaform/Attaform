@@ -3944,10 +3944,15 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       if (!entry.element.isConnected) continue
       if (entry.element.offsetParent === null) continue
 
-      const { key } = canonicalizePath(entry.path)
-      const hasSchemaErr = (schemaErrors.get(key)?.length ?? 0) > 0
-      const hasUserErr = (userErrors.get(key)?.length ?? 0) > 0
-      if (!hasSchemaErr && !hasUserErr) continue
+      // Route through the canonical merged read so focus / scroll target
+      // exactly the paths that surface an error in `form.errors` /
+      // `field.errors`. The blank-required class lives only in
+      // `derivedBlankErrors` (never `schemaErrors`), so consulting the
+      // schema / user stores alone silently skipped the first empty
+      // required field — the very class this policy exists to jump to
+      // (#468). `getErrorsForPath` folds in all three channels, keeping the
+      // focus target and the visible error set from ever drifting apart.
+      if (getErrorsForPath(entry.path).length === 0) continue
 
       return { path: entry.path, element: entry.element }
     }

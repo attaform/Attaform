@@ -162,10 +162,10 @@ describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', (
     expect(probe[SENTINEL]).toBeUndefined()
   })
 
-  it('setErrors lands in the global bucket, read via errors([])', () => {
+  it('setErrors lands in the global bucket, read via meta.ownErrors', () => {
     const { api, app } = mount()
     api.setErrors([{ message: 'root-level error' }])
-    const global = api.errors([])
+    const global = api.meta.ownErrors
     app.unmount()
     expect(global).toEqual(
       expect.arrayContaining([expect.objectContaining({ message: 'root-level error' })])

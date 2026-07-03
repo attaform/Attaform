@@ -18,7 +18,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * separate slots in the materialised `JSON.stringify(form.errors)` dump:
  *
  *   - a literal `''` field error  ->  `tree['']`   +  `errors('')`
- *   - a global / root-level error ->  `tree['[]']`  +  `errors([])`
+ *   - a global / root-level error ->  `tree['[]']`  +  `meta.ownErrors`
  *
  * Neither ever leaks into the other's channel, in either direction.
  * These tests pin that boundary on both zod adapters, for both
@@ -28,7 +28,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 interface ConflationForm {
   readonly key: string
   readonly errors: unknown
-  readonly meta: { readonly validating: boolean }
+  readonly meta: {
+    readonly validating: boolean
+    readonly ownErrors: readonly { message: string }[]
+  }
   handleSubmit: (onValid: () => void, onInvalid: () => void) => (event?: Event) => Promise<unknown>
   setErrors: (
     errors: ReadonlyArray<{
@@ -94,6 +97,11 @@ function read(form: ConflationForm, path?: string | readonly (string | number)[]
   const result = path === undefined ? fn() : fn(path)
   return (result ?? []).map((e) => e.message)
 }
+// The root [] bucket alone, read through the dedicated own-bucket accessor
+// (the successor to the old errors([]) carve-out).
+function own(form: ConflationForm): string[] {
+  return (form.meta.ownErrors ?? []).map((e) => e.message)
+}
 
 function schemaConflationTests(makeInvalidForm: () => ConflationForm): void {
   it('schema errors: literal "" field and root [] refine sit in distinct slots, no bleed', async () => {
@@ -114,14 +122,19 @@ function schemaConflationTests(makeInvalidForm: () => ConflationForm): void {
     expect(slot(form, '')).not.toContain('must differ')
     expect(slot(form, '[]')).not.toContain('empty-key required')
 
-    // Reads agree with the slots.
+    // Reads agree with the slots. errors('') reads the literal '' field;
+    // the root [] bucket alone is meta.ownErrors; the hard boundary holds
+    // between the two accessors, both directions.
     expect(read(form, '')).toEqual(['empty-key required'])
-    expect(read(form, [])).toEqual(['must differ'])
+    expect(own(form)).toEqual(['must differ'])
     expect(read(form, '')).not.toContain('must differ')
-    expect(read(form, [])).not.toContain('empty-key required')
+    expect(own(form)).not.toContain('empty-key required')
 
+    // errors([]) is now uniform with the no-arg errors(): the full
+    // aggregate, no root carve-out.
+    expect(read(form, []).sort()).toEqual(read(form).sort())
     // The whole-form dump still carries everything the flat aggregate
-    // does — global included, just under '[]' rather than ''.
+    // does, global included, just under '[]' rather than ''.
     expect(read(form).sort()).toEqual(['empty-key required', 'must differ', 'name required'].sort())
   })
 }
@@ -146,7 +159,9 @@ function imperativeConflationTests(makeValidForm: () => ConflationForm): void {
     expect(slot(form, '[]')).not.toContain('field boom')
 
     expect(read(form, '')).toEqual(['field boom'])
-    expect(read(form, [])).toEqual(['global boom'])
+    expect(own(form)).toEqual(['global boom'])
+    // errors([]) is the full aggregate: both entries, no carve-out.
+    expect(read(form, []).sort()).toEqual(['field boom', 'global boom'].sort())
   })
 
   it('a global error alone never conjures a "" field slot', async () => {

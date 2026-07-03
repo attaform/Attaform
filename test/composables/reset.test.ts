@@ -196,7 +196,7 @@ describe('useForm — resetField(path)', () => {
     form.setValue('email', 'kept@example.com')
     form.setErrors([{ message: 'capacity exceeded', code: 'api:capacity' }])
 
-    expect(form.errors([])).toHaveLength(1)
+    expect(form.meta.ownErrors).toHaveLength(1)
 
     // @ts-expect-error - `''` is not a FlatPath of this schema; the
     // runtime accepts it as the literal empty-key field path (a no-op
@@ -205,12 +205,12 @@ describe('useForm — resetField(path)', () => {
 
     // The global bucket and the named field are both untouched — `''`
     // is neither's home.
-    expect(form.errors([])).toHaveLength(1)
+    expect(form.meta.ownErrors).toHaveLength(1)
     expect(form.values.email).toBe('kept@example.com')
 
     // clearErrors([]) is the tool for the global bucket.
     form.clearErrors([])
-    expect(form.errors([])).toEqual([])
+    expect(form.meta.ownErrors).toEqual([])
   })
 })
 

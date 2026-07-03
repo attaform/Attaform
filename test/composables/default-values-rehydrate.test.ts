@@ -129,7 +129,7 @@ describe('form.rehydrate', () => {
 
   it('preserves the prior hydrateError while the retry is in flight (SWR)', async () => {
     // Stale-while-revalidate: the previous attempt's error stays
-    // visible through `form.hydrateError` and `form.errors([])` until
+    // visible through `form.hydrateError` and `form.meta.ownErrors` until
     // the new attempt settles. Mirrors the field-validation contract
     // (`field.validating === true` keeps the error in the store; the
     // UX gate decides whether to surface it). Without SWR, pressing

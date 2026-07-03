@@ -128,11 +128,14 @@ export type SurfaceOptions<TLeaf> = {
    * `resolveCallTarget([])`; dotted/array args and every non-root node
    * are unaffected.
    *
-   * The errors surface uses it for the global carve-out: `errors()`
-   * returns the FULL aggregate (every field error plus the global
-   * bucket, matching `meta.errors`) while `errors([])` returns ONLY the
-   * global `[]` bucket. Surfaces that want `proxy()` and `proxy([])` to
-   * coincide (`fields`, `values`) omit it.
+   * The errors surface uses it so the no-arg `errors()` resolves the
+   * whole-form aggregate (every field error plus the root bucket,
+   * matching `meta.errors`). Since the `errors([])` carve-out was
+   * regularized, `errors([])` resolves the same aggregate through
+   * `resolveCallTarget([])`, so the two now coincide; the hook is kept to
+   * state the no-arg intent explicitly. The root `[]` bucket alone is
+   * read through `meta.ownErrors`. Surfaces that never diverge `proxy()`
+   * from `proxy([])` (`fields`, `values`) omit it.
    */
   readonly resolveRootCall?: () => unknown
   /**

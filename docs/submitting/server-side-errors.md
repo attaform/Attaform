@@ -96,7 +96,7 @@ Reading `data` where you render the error is how the lockout banner in the demo 
 
 ```ts
 const lockout = computed(() => {
-  const locked = (form.errors([]) ?? []).find((e) => e.code === 'auth:locked')
+  const locked = form.meta.ownErrors.find((e) => e.code === 'auth:locked')
   const data = locked?.data as { unlocksAt?: string } | null | undefined
   return data?.unlocksAt ? new Date(data.unlocksAt) : null
 })
@@ -121,7 +121,7 @@ Once set, server errors are indistinguishable from schema errors at every read:
 
 - `form.errors.email` returns the `ValidationError[]` at that path, server or schema, same shape.
 - `form.fields.email.firstError` returns the first one, and `form.fields.email.showErrors` gates its display through the [display-state](/docs/validation/showing-errors) predicate.
-- `form.errors([])` returns the form-level errors on their own, ideal for a top-of-form banner.
+- `form.meta.ownErrors` returns the form-level errors on their own, and `form.meta.firstOwnError` is the first, ideal for a top-of-form banner.
 - `form.focusFirstError()` pulls focus to the first server error exactly as it would a schema one.
 
 No "this one came from the server" branch in your template. The render code reads `form.fields.<path>.firstError?.message` the same way for both.

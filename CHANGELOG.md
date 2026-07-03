@@ -45,6 +45,15 @@ _No unreleased changes yet._
 
 ### Changed
 
+- **`form.errors([])` now returns the whole-form aggregate, the same as
+  `form.errors()` and `form.meta.errors`.** Previously the explicit root path was
+  a carve-out returning only the root bucket. With `ownErrors` / `firstOwnError`
+  now providing exact-path access at every node, `form.errors(path)` is uniform
+  at every depth, the root included. Read the root bucket alone (a root
+  `.refine()`, a path-less `setErrors`) via `form.meta.ownErrors` /
+  `form.meta.firstOwnError`. The `''`-field vs root-`[]` boundary is unchanged:
+  `form.errors['']` still reads a literal empty-key field. (#489)
+
 - **When the active step drops out of a wizard mid-flight, the pin slides forward
   instead of snapping to the first step.** A function or `lazy()` slot that stops
   yielding the active step now re-points the wizard at the step that took its

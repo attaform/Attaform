@@ -81,10 +81,10 @@
       <section>
         <h4>Form-level errors</h4>
         <p class="hint"
-          ><code>form.errors([])</code> returns only the global, root-level errors (the form-wide
-          refine), separate from every field. They never touch the <code>''</code> key.</p
+          ><code>form.meta.ownErrors</code> returns only the global, root-level errors (the
+          form-wide refine), separate from every field. They never touch the <code>''</code> key.</p
         >
-        <pre>{{ JSON.stringify(form.errors([]), null, 2) }}</pre>
+        <pre>{{ JSON.stringify(form.meta.ownErrors, null, 2) }}</pre>
       </section>
 
       <section>

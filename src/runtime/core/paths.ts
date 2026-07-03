@@ -293,8 +293,8 @@ export function coerceToPathKey(input: string): PathKey {
  * `Path` to address the form value as a whole, and the home for
  * form-level (global) errors: root `.refine()` messages, hydration
  * failures, and `setErrors` entries with no path all live at `[]`. Aggregate
- * reads (`errors()`, `meta.errors`) surface them alongside field
- * errors; `errors([])` returns the global bucket alone.
+ * reads (`errors()`, `errors([])`, `meta.errors`) surface them alongside
+ * field errors; `meta.ownErrors` returns the root bucket alone.
  *
  * The empty SEGMENT tuple `[]` is structurally unconstructible as a
  * field path, so it can never collide with a schema key, unlike the

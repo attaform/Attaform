@@ -3264,11 +3264,13 @@ export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
   ): readonly ValidationError[]
   (segments: ReadonlyArray<string | number>): readonly ValidationError[]
   /**
-   * No-arg call returns the whole-form error aggregate — same as
-   * `form.meta.errors`: every field error plus the global bucket.
-   * Distinct from `form.errors([])`, which returns ONLY the global
-   * (root) bucket. Always a readonly array; empty when the form has no
-   * errors.
+   * No-arg call returns the whole-form error aggregate, the same as
+   * `form.meta.errors` and `form.errors([])`: every field error plus
+   * the root bucket. `form.errors(path)` is uniform at every depth,
+   * including `[]`, so the root is no exception. For the root bucket
+   * alone (a root `.refine()`, a path-less `setErrors`), read
+   * `form.meta.ownErrors`. Always a readonly array; empty when the form
+   * has no errors.
    */
   (): readonly ValidationError[]
 }

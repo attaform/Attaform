@@ -1,5 +1,7 @@
 import { getCurrentScope, onScopeDispose, ref, watchEffect, type Ref } from 'vue'
 import type {
+  ErrorInput,
+  FormKey,
   HandleSubmit,
   OnError,
   OnInvalidSubmitPolicy,
@@ -14,7 +16,7 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { AttaformErrorCode } from './error-codes'
-import { SubmitErrorHandlerError, toError } from './errors'
+import { normalizeErrorInput, SubmitErrorHandlerError, toError } from './errors'
 import { canonicalizePath, segmentsForPathKey, type Path, type Segment } from './paths'
 
 /**
@@ -28,6 +30,60 @@ import { canonicalizePath, segmentsForPathKey, type Path, type Segment } from '.
 const warnedNoScopeStores: WeakSet<FormStore<GenericForm>> | null = __DEV__
   ? new WeakSet<FormStore<GenericForm>>()
   : null
+
+/**
+ * Does `value` look like a well-constructed `ErrorInput` — something the
+ * shared normalizer can turn into a meaningful `ValidationError`? A real
+ * `Error` qualifies; so does a plain object carrying a non-empty string
+ * `message` and/or an array `path` (a thrown `{ path, message, code? }`).
+ * Everything else (a bare primitive, `null`, `undefined`, a shapeless
+ * object) is garbage that would normalize to an empty "Unknown error", so
+ * the submit-throw path treats it separately.
+ */
+function isErrorInputLike(value: unknown): value is ErrorInput {
+  if (value instanceof Error) return true
+  if (typeof value !== 'object' || value === null) return false
+  const shape = value as { message?: unknown; path?: unknown }
+  return (
+    (typeof shape.message === 'string' && shape.message.length > 0) || Array.isArray(shape.path)
+  )
+}
+
+/**
+ * Turn whatever a `handleSubmit` `onSubmit` callback threw into the
+ * `ValidationError[]` to pipe into the user-error layer, all under the
+ * `atta:submit-error` code. A well-constructed throw (or array of them)
+ * is normalized honoring its own `path` / `code`, so a dev who threw
+ * `{ path: ['email'], message }` gets a field-scoped error and a bare
+ * `Error` lands form-level (`[]`). A garbage throw still injects one
+ * form-level entry carrying `toError`'s diagnostic message, and reports
+ * `messageless` so the caller can nudge the dev in development.
+ */
+function deriveSubmitErrors(
+  err: unknown,
+  formKey: FormKey
+): { entries: ValidationError[]; messageless: boolean } {
+  if (Array.isArray(err) && err.length > 0 && err.every(isErrorInputLike)) {
+    return {
+      entries: err.map((item) =>
+        normalizeErrorInput(item, undefined, formKey, AttaformErrorCode.SubmitError)
+      ),
+      messageless: false,
+    }
+  }
+  if (isErrorInputLike(err)) {
+    return {
+      entries: [normalizeErrorInput(err, undefined, formKey, AttaformErrorCode.SubmitError)],
+      messageless: false,
+    }
+  }
+  return {
+    entries: [
+      { message: toError(err).message, path: [], formKey, code: AttaformErrorCode.SubmitError },
+    ],
+    messageless: true,
+  }
+}
 
 /**
  * validate + handleSubmit, both built against a FormStore<F>. Replaces
@@ -367,7 +423,12 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    *     question, independent of whether anything awaited.
    *   - `submitError` clears at entry and captures anything thrown from
    *     the user callback (or the wrapped error-handler error), coerced to
-   *     a real `Error` via `toError`. The handler does NOT re-throw: a
+   *     a real `Error` via `toError`. A throw out of `onSubmit` is ALSO
+   *     piped into the user-error layer under `atta:submit-error`, so it
+   *     surfaces on `form.errors` / `meta.ownErrors` / `firstOwnError`
+   *     (path-scoped when the throw was well-constructed, form-level `[]`
+   *     otherwise); a wrapped `SubmitErrorHandlerError` is the exception
+   *     and stays `submitError`-only. The handler does NOT re-throw: a
    *     rejecting `onSubmit` bound to `@submit.prevent` would otherwise
    *     surface as a `window` unhandledrejection (a phantom crash for an
    *     already-handled server failure). Both template and imperative
@@ -563,6 +624,49 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // submit never strands the button.
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitError.value = toError(err)
+          // `submitError` alone is a raw-`Error` inspection channel most
+          // templates never render, so a thrown submit would otherwise be
+          // invisible in the UI. Pipe the throw into the user-error layer
+          // too (the same normalizer `setErrors` uses) so it surfaces on
+          // `form.errors` / `meta.ownErrors` / `firstOwnError` where the
+          // form already reads: path-scoped when the dev threw a
+          // well-constructed `{ path, message }`, form-level (`[]`)
+          // otherwise. `submitError` keeps the raw Error; this is the
+          // rendered projection of the same failure, not a duplicate.
+          //
+          // Excludes `SubmitErrorHandlerError`: that wraps a crash in the
+          // dev's *validation* `onError` handler, not a failed submit, so
+          // it stays a pure `submitError` diagnostic and is never shown as
+          // a form error.
+          if (!(err instanceof SubmitErrorHandlerError)) {
+            const { entries, messageless } = deriveSubmitErrors(err, state.formKey)
+            // Group by path so a thrown array spanning several fields writes
+            // one bucket per path. Per-path writes MERGE: a bucket the
+            // callback set at another path via `setErrors` before it threw
+            // survives, while a bucket at a colliding path is replaced (the
+            // throw is the newer verdict).
+            const byPath = new Map<string, { segments: Path; entries: ValidationError[] }>()
+            for (const entry of entries) {
+              const { key } = canonicalizePath(entry.path)
+              const bucket = byPath.get(key)
+              if (bucket === undefined) byPath.set(key, { segments: entry.path, entries: [entry] })
+              else bucket.entries.push(entry)
+            }
+            for (const { segments, entries: bucket } of byPath.values()) {
+              state.setUserErrorsForPath(segments, bucket)
+            }
+            // Focus the first error, mirroring the validation-failure and
+            // leftover-errors branches. A form-level `[]` error owns no
+            // element, so this is a no-op in that case.
+            applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
+            if (__DEV__ && messageless) {
+              console.warn(
+                '[attaform] handleSubmit callback threw a non-Error value; throw an ' +
+                  'Error or a ValidationError ({ message, path? }) so the failure ' +
+                  'surfaces with a usable message.'
+              )
+            }
+          }
         }
       } finally {
         // If validation threw before we decremented, drop the counter now

@@ -43,6 +43,17 @@ _No unreleased changes yet._
   the one-line banner accessor for a form-level error from a root `.refine()`
   or a path-less `setErrors`. (#489)
 
+- **A throw or rejection out of an `onSubmit` callback now surfaces as a form
+  error, not just on `form.meta.submitError`.** `handleSubmit` still parks the
+  raw `Error` on `submitError` for inspection, and now also pipes a normalized
+  copy into the error layer, so a failed submit shows on `form.errors`,
+  `form.meta.ownErrors`, and `form.meta.firstOwnError` where your UI already
+  reads, with no `try` / `catch` of your own. A bare `throw new Error(...)`
+  lands form-level (the root `[]` bucket); throw a `{ path, message, code? }`,
+  or an array of them, to land it on a specific field under your own code. A
+  non-Error throw still surfaces, carrying a diagnostic message, and warns in
+  development.
+
 ### Changed
 
 - **`form.errors([])` now returns the whole-form aggregate, the same as

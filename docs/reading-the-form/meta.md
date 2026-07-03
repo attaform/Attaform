@@ -107,11 +107,13 @@ The form-summary pattern reads three:
 
 ## submitError lifecycle
 
-`submitError` mirrors what the callback threw or rejected with. `handleSubmit` catches the throw, routes it through `onError`, and writes it to `form.meta.submitError` for reactive read-out.
+`submitError` mirrors what the callback threw or rejected with, coerced to a real `Error` (a non-`Error` throw keeps its origin on `.cause`). `handleSubmit` catches the throw rather than re-raising it, so a rejected `onSubmit` never escapes as an unhandled rejection.
 
 - `null` at form mount, between attempts, and on success.
 - Set to the thrown / rejected value on callback failure.
 - Cleared at the start of the next submit attempt.
+
+A thrown callback surfaces twice. `submitError` is the raw-`Error` inspection channel above; the same failure is also piped into the error layer as a `ValidationError`. A bare `throw new Error(...)` lands form-level (the root `[]` bucket), where [`form.meta.firstOwnError`](#templates) and `form.meta.ownErrors` read it for a banner; throw a `{ path, message, code? }` (or an array of them) to land it on a specific field, where it joins `form.errors.<path>` under your own `code`. Either way it also rolls into `form.meta.errors`. This is separate from the `setErrors` path, which never touches `submitError`.
 
 Reach for it when an inline failure banner needs to react to submit errors without your own `try { await onSubmit() }` wrapper:
 

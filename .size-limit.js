@@ -286,8 +286,19 @@ export default [
     // Raised 45 -> 46 KB tracking the #464 redundant-binding guard: the
     // directive's eager `warnRedundantStateBinding` dev-warn lands in the
     // shared core this bundle ships. Measured at 44.94 KB.
-    limit: '46 KB',
+    //
+    // Raised 46 → 62 KB on the schema-entry re-partition (barrel flip):
+    // src/index.ts is now `export *` from _shared-exports + _zod-binding,
+    // structurally identical to dist/zod.mjs. This entry is no longer the
+    // abstract barrel (~45 KB, which now lives at dist/abstract.mjs); it is
+    // the Zod-default dispatcher + core. Measured at 60.97 KB — byte-for-byte
+    // the same as zod.mjs. The `{ useForm }` tripwire below held at 54 KB, so
+    // a real single-import consumer pays nothing for the whole-entry growth.
+    limit: '62 KB',
     gzip: true,
+    // `zod` is a peer dep, external in the measurement exactly as for
+    // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
+    ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
   },
   {
@@ -466,7 +477,14 @@ export default [
     //
     // Raised 60 -> 61 KB tracking the #464 redundant-binding guard's eager
     // dev-warn in the shared core. Measured at 59.97 KB.
-    limit: '61 KB',
+    //
+    // Raised 61 → 62 KB on the schema-entry re-partition: core (createAttaform,
+    // serialize, directive, paths, devtools, display) moved into
+    // _shared-exports, so this entry now re-exports it as named exports too —
+    // additive, ~1 KB to the whole-entry surface. Real consumers tree-shake it
+    // (the `{ useForm }` / `{ injectForm }` / `{ useRegister }` tripwires below
+    // held). Measured at 60.97 KB.
+    limit: '62 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -601,7 +619,12 @@ export default [
     //
     // Raised 54 -> 55 KB tracking the #464 redundant-binding guard's eager
     // dev-warn in the shared core. Measured at 53.92 KB.
-    limit: '55 KB',
+    //
+    // Raised 55 → 56 KB on the schema-entry re-partition: same additive core
+    // (createAttaform / serialize / directive / paths / devtools / display)
+    // now re-exported from every entry via _shared-exports. Whole-entry only;
+    // the `{ useForm }` tripwire held. Measured at 54.89 KB.
+    limit: '56 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -807,9 +830,25 @@ export default [
     // Ships in the shared core reached by every wizard-bearing entry;
     // zod-v3.mjs, the tightest adapter bundle, crossed 55 first (the other
     // full entries hold 0.25-0.33 KB headroom). Measured at 55.04 KB.
-    limit: '56 KB',
+    //
+    // Raised 56 → 57 KB on the schema-entry re-partition: same additive core
+    // now re-exported from every entry via _shared-exports. Whole-entry only;
+    // the `{ useForm }` tripwire held. Measured at 56.24 KB.
+    limit: '57 KB',
     gzip: true,
     ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    path: 'dist/abstract.mjs',
+    // The schema-agnostic escape hatch (attaform/abstract): useAbstractForm
+    // + the shared core, with NO Zod adapter. Structurally what
+    // dist/index.mjs was before the barrel flip — the abstract form used to
+    // be the barrel's default export. Lighter than the Zod entries because
+    // it ships neither adapter: no v3/v4 dispatch, no fingerprint / walker /
+    // slim-primitive machinery. Measured at 45.33 KB.
+    limit: '46 KB',
+    gzip: true,
     modifyEsbuildConfig: asEsm,
   },
   {
@@ -1043,6 +1082,47 @@ export default [
     limit: '11 KB',
     gzip: true,
     ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    name: 'attaform: { useForm } only (barrel == zod)',
+    path: 'dist/index.mjs',
+    import: '{ useForm }',
+    // The barrel's dispatching useForm. Byte-identical to the
+    // `zod: { useForm }` tripwire above — index.mjs ≡ zod.mjs after the
+    // re-partition — so this cap is the standing proof the barrel never
+    // diverges from the explicit Zod entry. Measured at 54.05 KB.
+    limit: '55 KB',
+    gzip: true,
+    ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    name: 'attaform: { createAttaform } only',
+    path: 'dist/index.mjs',
+    import: '{ createAttaform }',
+    // The leanest core import: the plugin + registry, none of the form /
+    // adapter / wizard surface. The proof that pulling one core symbol
+    // from the barrel tree-shakes away the dispatcher AND both Zod
+    // adapters — the payoff of moving core into _shared-exports. A
+    // regression that ropes the adapters into createAttaform's graph
+    // trips here. Measured at 8.98 KB.
+    limit: '10 KB',
+    gzip: true,
+    ignore: ['zod'],
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    name: 'abstract: { useAbstractForm } only',
+    path: 'dist/abstract.mjs',
+    import: '{ useAbstractForm }',
+    // The abstract form with neither Zod adapter — ~15 KB leaner than the
+    // Zod dispatcher's `{ useForm }` (no v3/v4 dispatch, fingerprint,
+    // walker, or slim-primitive machinery). A regression that pulls a Zod
+    // adapter into the abstract path would balloon this. Measured at
+    // 38.56 KB.
+    limit: '40 KB',
+    gzip: true,
     modifyEsbuildConfig: asEsm,
   },
 ]

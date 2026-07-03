@@ -343,6 +343,7 @@ export default defineNuxtConfig({
   // identity and matching the runtime aliases below.
   alias: {
     attaform: resolve(monorepoRoot, 'src/index.ts'),
+    'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
     'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
     'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
     'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),
@@ -728,6 +729,7 @@ export default defineNuxtConfig({
     // matcher requires `/` or end-of-string after the key.
     alias: {
       attaform: resolve(monorepoRoot, 'src/index.ts'),
+      'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
       'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
       'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
       'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),
@@ -899,6 +901,7 @@ export default defineNuxtConfig({
     resolve: {
       alias: [
         { find: /^attaform$/, replacement: resolve(monorepoRoot, 'src/index.ts') },
+        { find: /^attaform\/abstract$/, replacement: resolve(monorepoRoot, 'src/abstract.ts') },
         { find: /^attaform\/zod$/, replacement: resolve(monorepoRoot, 'src/zod.ts') },
         { find: /^attaform\/zod-v3$/, replacement: resolve(monorepoRoot, 'src/zod-v3.ts') },
         { find: /^attaform\/zod-v4$/, replacement: resolve(monorepoRoot, 'src/zod-v4.ts') },

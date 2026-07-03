@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
-import { useForm } from '../../src'
+import { useAbstractForm as useForm } from '../../src/abstract'
 import { injectForm } from '../../src/runtime/composables/use-form-context'
 import { ANONYMOUS_FORM_KEY_PREFIX } from '../../src/runtime/core/defaults'
 import { createAttaform } from '../../src/runtime/core/plugin'

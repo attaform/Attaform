@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
-import { useForm } from '../../src'
+import { useAbstractForm as useForm } from '../../src/abstract'
 import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/registry'
 import { fakeSchema } from '../utils/fake-schema'
 

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 import { z } from 'zod'
-import { useForm } from '../../src'
+import { useAbstractForm as useForm } from '../../src/abstract'
 import { unset, useForm as useZodForm, type UseFormReturn } from '../../src/zod'
 import { injectForm } from '../../src/runtime/composables/use-form-context'
 import { AttaformErrorCode } from '../../src/runtime/core/error-codes'

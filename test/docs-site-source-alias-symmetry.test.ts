@@ -53,6 +53,7 @@ describe('docs-site config: source-alias symmetry between Vite and Nitro', () =>
     'src/zod.ts',
     'src/zod-v3.ts',
     'src/zod-v4.ts',
+    'src/abstract.ts',
     'src/vite.ts',
     'src/transforms.ts',
   ] as const
@@ -88,6 +89,7 @@ describe('docs-site config: source-alias symmetry between Vite and Nitro', () =>
       "'attaform/zod'",
       "'attaform/zod-v3'",
       "'attaform/zod-v4'",
+      "'attaform/abstract'",
       "'attaform/vite'",
       "'attaform/transforms'",
     ] as const

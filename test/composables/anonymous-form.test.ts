@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, createSSRApp, defineComponent, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
-import { useForm, injectForm } from '../../src'
+import { useAbstractForm as useForm, injectForm } from '../../src/abstract'
 import { ANONYMOUS_FORM_KEY_PREFIX, RESERVED_KEY_PREFIX } from '../../src/runtime/core/defaults'
 import { ReservedFormKeyError } from '../../src/runtime/core/errors'
 import { createAttaform } from '../../src/runtime/core/plugin'

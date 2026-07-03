@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { createApp, defineComponent, h } from 'vue'
 import { z } from 'zod'
 import { useForm as useZodForm } from '../../src/zod'
-import { useForm } from '../../src'
+import { useAbstractForm as useForm } from '../../src/abstract'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { fakeSchema } from '../utils/fake-schema'
 

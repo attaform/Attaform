@@ -1,40 +1,34 @@
 /**
- * `attaform` — framework-agnostic core entry.
- *
- * Consumers under bare Vue 3:
+ * `attaform` — the default entry. Re-exports the schema-agnostic core
+ * plus the unified Zod binding, so it is structurally identical to
+ * `attaform/zod`: `useForm` auto-detects the installed Zod major (v3 or
+ * v4) and routes to the matching adapter.
  *
  *   import { createApp } from 'vue'
  *   import { createAttaform, useForm } from 'attaform'
- *   import { attaform as attaformVite } from 'attaform/vite'
+ *   import { z } from 'zod'
  *
  *   createApp(App).use(createAttaform()).mount('#app')
  *
- * Consumers under Nuxt don't touch this file — the Nuxt module (`./nuxt`
- * subpath) installs everything automatically.
+ *   const form = useForm({ schema: z.object({ … }), key: 'signup' })
  *
- * For schema-library integrations (Zod v3 today; Valibot / ArkType /
- * custom later), import from the matching subpath:
+ * Under Nuxt, the module (`attaform/nuxt`) installs the plugin and
+ * auto-imports this surface, so consumers don't touch this file.
  *
- *   import { useForm, zodAdapter } from 'attaform/zod-v3'
+ * Explicit pins live at sibling subpaths:
+ * - `attaform/zod` — the same unified Zod entry, named explicitly.
+ * - `attaform/zod-v3`, `attaform/zod-v4` — pin one adapter, no runtime
+ *   dispatch.
+ * - `attaform/abstract` — the schema-agnostic `useAbstractForm`, for
+ *   custom or non-Zod adapters.
  */
 
-// The abstract useForm — works against any AbstractSchema implementation.
-// Zod-typed wrappers live at `/zod` (v4) and `/zod-v3`; this entry is the
-// schema-agnostic core.
-export { useAbstractForm as useForm } from './runtime/composables/use-abstract-form'
-
-// Schema-agnostic surface + framework-agnostic core (plugin, registry,
-// serialize, directive, coercion, paths, devtools, errors, display, and
-// all core types) — single source under `runtime/_shared-exports.ts`,
-// re-exported verbatim from every entry.
+// Schema-agnostic core (plugin, registry, serialize, directive,
+// coercion, paths, devtools, errors, display, wizard / register /
+// inject / error-code / unset, and all core types).
 export * from './runtime/_shared-exports'
-
-// Abstract-only public type: the multi-schema-lib contract a custom
-// adapter implements. The zod entries reference it internally but don't
-// re-export it — it's exclusive to the abstract surface.
-export type { AbstractSchema } from './runtime/types/types-api'
-
-// `FieldMetaPayload` rides alongside the per-entry `fieldMeta` /
-// `withMeta`; re-exported here so consumers augmenting field metadata
-// have the interface available from the barrel.
-export type { FieldMetaPayload } from './runtime/types/types-api'
+// The unified Zod binding (dispatching `useForm`, `fieldMeta` /
+// `withMeta`, the `useForm` projection types, `PathInput` /
+// `PathOutput`) — this is what makes the barrel identical to
+// `attaform/zod`.
+export * from './runtime/_zod-binding'

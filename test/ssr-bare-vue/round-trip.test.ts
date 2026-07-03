@@ -1,7 +1,7 @@
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, defineComponent, h } from 'vue'
-import { useForm } from '../../src'
+import { useAbstractForm as useForm } from '../../src/abstract'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { getRegistryFromApp } from '../../src/runtime/core/registry'
 import { hydrateAttaformState, renderAttaformState } from '../../src/runtime/core/serialize'

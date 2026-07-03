@@ -27,8 +27,10 @@
       "@runtime/*": ["./src/runtime/*"],
       "attaform": ["./src/index.ts"],
       "attaform/types": ["./src/runtime/types/types-api.ts"],
+      "attaform/abstract": ["./src/abstract.ts"],
       "attaform/zod": ["./src/zod.ts"],
-      "attaform/zod-v3": ["./src/zod-v3.ts"]
+      "attaform/zod-v3": ["./src/zod-v3.ts"],
+      "attaform/zod-v4": ["./src/zod-v4.ts"]
     },
     "removeComments": false,
     "strictBuiltinIteratorReturn": true,

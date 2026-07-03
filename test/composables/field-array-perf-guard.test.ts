@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
 import { computed, createApp, defineComponent, h, type App } from 'vue'
-import { useForm } from '../../src'
+import { useAbstractForm as useForm } from '../../src/abstract'
 import { EMPTY_RESOLVED_FIELD_META } from '../../src/runtime/core/field-meta'
 import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/registry'
 import type { Path } from '../../src/runtime/core/paths'

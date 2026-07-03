@@ -18,152 +18,23 @@
  *   import { useForm, zodAdapter } from 'attaform/zod-v3'
  */
 
-// The plugin, registry, serialization helpers
-export { createAttaform } from './runtime/core/plugin'
-export type { AttaformPluginOptions } from './runtime/core/plugin'
-export {
-  createRegistry,
-  getRegistryFromApp,
-  kAttaformRegistry,
-  useRegistry,
-} from './runtime/core/registry'
-export type { AttaformRegistry, SerializedFormData } from './runtime/core/registry'
-export { hydrateAttaformState, renderAttaformState } from './runtime/core/serialize'
-export type { SerializedAttaformState } from './runtime/core/serialize'
-export { escapeForInlineScript } from './runtime/core/serialize-script'
-
 // The abstract useForm — works against any AbstractSchema implementation.
 // Zod-typed wrappers live at `/zod` (v4) and `/zod-v3`; this entry is the
 // schema-agnostic core.
 export { useAbstractForm as useForm } from './runtime/composables/use-abstract-form'
 
-// Shared wizard / register / error-code / unset / injectForm surface —
-// single source under `runtime/_shared-exports.ts`, re-exported
-// verbatim from every entry.
+// Schema-agnostic surface + framework-agnostic core (plugin, registry,
+// serialize, directive, coercion, paths, devtools, errors, display, and
+// all core types) — single source under `runtime/_shared-exports.ts`,
+// re-exported verbatim from every entry.
 export * from './runtime/_shared-exports'
 
-// The v-register directive (registered automatically by createAttaform,
-// but exported for advanced consumers who install directives themselves).
-export { vRegister, assignKey } from './runtime/core/directive'
-export { isRegisterValue } from './runtime/core/register-protocol'
-export { defaultCoercionRules, defineCoercion } from './runtime/core/schema-coerce'
+// Abstract-only public type: the multi-schema-lib contract a custom
+// adapter implements. The zod entries reference it internally but don't
+// re-export it — it's exclusive to the abstract surface.
+export type { AbstractSchema } from './runtime/types/types-api'
 
-// Public types
-export type {
-  AbstractSchema,
-  AttaformDefaults,
-  CoercionEntry,
-  CoercionRegistry,
-  CoercionResult,
-  CustomDirectiveRegisterAssignerFn,
-  DefaultValuesResponse,
-  DisplayCtx,
-  DisplayMachine,
-  DisplayState,
-  ErrorInput,
-  ErrorsProxyShape,
-  FieldMetaPayload,
-  FieldState,
-  FieldStateMap,
-  FieldStateMapEntry,
-  FormErrorRecord,
-  FormErrorsSurface,
-  FormKey,
-  FormMeta,
-  GetDisplayState,
-  HandleSubmit,
-  HistoryConfig,
-  Json,
-  MetaTrackerValue,
-  OnError,
-  OnInvalidSubmitPolicy,
-  OnSubmit,
-  PendingValidationStatus,
-  ReactiveValidationStatus,
-  RegisterDirective,
-  RegisterFlatPath,
-  RegisterOptions,
-  RegisterSelectModifier,
-  RegisterTextModifier,
-  RegisterTransform,
-  RegisterValue,
-  SetValueCallback,
-  SetValuePayload,
-  SettledValidationStatus,
-  SlimPrimitiveKind,
-  SlimRuntimeOf,
-  SubmitHandler,
-  ValidateOn,
-  ValidateOnConfig,
-  UseFormReturnType,
-  UseFormConfiguration,
-  ValidationError,
-  ValidationResponse,
-  ValidationResponseWithoutValue,
-  WriteMeta,
-} from './runtime/types/types-api'
-
-export type {
-  ArrayItem,
-  ArrayPath,
-  DeepPartial,
-  DefaultValuesInput,
-  DefaultValuesShape,
-  FlatPath,
-  GenericForm,
-  IsTuple,
-  IsUnion,
-  JoinSegments,
-  KeyofUnion,
-  LiftedValueShape,
-  NestedReadType,
-  NestedType,
-  PartialFlatPath,
-  Primitive,
-  ValueOfUnion,
-  WriteShape,
-} from './runtime/types/types-core'
-
-// Path primitives — exposed for consumers writing custom adapters that
-// need to canonicalise user-provided paths.
-export {
-  canonicalizePath,
-  isPathPrefix,
-  parseDottedPath,
-  ROOT_PATH,
-  ROOT_PATH_KEY,
-} from './runtime/core/paths'
-export type { Path, PathKey, Segment } from './runtime/core/paths'
-
-// DevTools window-bridge contract the Nuxt overlay panel + iframe page
-// consume at runtime. Exposed so the panel components (shipped as `.vue`
-// files under `dist/runtime/`) can `import { … } from 'attaform'`
-// without brittle relative paths into the bundled chunk layout.
-export { DEVTOOLS_WINDOW_KEY } from './runtime/core/devtools-shared'
-export type { AttaformDevtoolsBridge } from './runtime/core/devtools-shared'
-
-// Error classes — every library-emitted error extends `AttaformError`, so
-// consumers can write a single polymorphic catch (`catch (e) { if (e
-// instanceof AttaformError) ... }`) instead of OR-chaining instanceof
-// checks for each subclass.
-export {
-  AttaformError,
-  InvalidPathError,
-  InvalidUseFormConfigError,
-  OutsideSetupError,
-  RegistryNotInstalledError,
-  ReservedFormKeyError,
-  SubmitErrorHandlerError,
-} from './runtime/core/errors'
-
-// Library-default reducer for `getDisplayState`. Public so adopter
-// reducers can compose with it (a layered reducer that defers to the
-// library default for the unhandled cases). `makeDefaultDisplayState`
-// rebuilds it with custom anti-flash timing; `DEFAULT_TIMINGS` is the
-// shipped `{ showDelay, minVisible }`.
-export {
-  DEFAULT_TIMINGS,
-  defaultDisplayState,
-  makeDefaultDisplayState,
-} from './runtime/core/display-state'
-export type { DisplayTimings } from './runtime/core/display-state'
+// `FieldMetaPayload` rides alongside the per-entry `fieldMeta` /
+// `withMeta`; re-exported here so consumers augmenting field metadata
+// have the interface available from the barrel.
+export type { FieldMetaPayload } from './runtime/types/types-api'

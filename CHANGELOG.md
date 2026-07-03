@@ -51,8 +51,8 @@ _No unreleased changes yet._
   reads, with no `try` / `catch` of your own. A bare `throw new Error(...)`
   lands form-level (the root `[]` bucket); throw a `{ path, message, code? }`,
   or an array of them, to land it on a specific field under your own code. A
-  non-Error throw still surfaces, carrying a diagnostic message, and warns in
-  development.
+  non-Error throw still surfaces as an `Unknown error` (consistent with
+  `setErrors`) and warns in development.
 
 ### Changed
 

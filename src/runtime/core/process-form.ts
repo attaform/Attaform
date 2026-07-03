@@ -56,8 +56,9 @@ function isErrorInputLike(value: unknown): value is ErrorInput {
  * is normalized honoring its own `path` / `code`, so a dev who threw
  * `{ path: ['email'], message }` gets a field-scoped error and a bare
  * `Error` lands form-level (`[]`). A garbage throw still injects one
- * form-level entry carrying `toError`'s diagnostic message, and reports
- * `messageless` so the caller can nudge the dev in development.
+ * form-level entry with the normalizer's canonical `Unknown error`
+ * fallback (consistent with `setErrors`), and reports `messageless` so
+ * the caller can nudge the dev in development.
  */
 function deriveSubmitErrors(
   err: unknown,
@@ -77,10 +78,13 @@ function deriveSubmitErrors(
       messageless: false,
     }
   }
+  // Garbage: a primitive, null, undefined, a shapeless object, or an array
+  // with a non-ErrorInput element. Run an empty ErrorInput through the SAME
+  // normalizer `setErrors` uses so the rendered message is its canonical
+  // `Unknown error` fallback, not a bespoke submit string. `toError`'s raw
+  // diagnostic still lands on `submitError`; this is the consistent projection.
   return {
-    entries: [
-      { message: toError(err).message, path: [], formKey, code: AttaformErrorCode.SubmitError },
-    ],
+    entries: [normalizeErrorInput({}, undefined, formKey, AttaformErrorCode.SubmitError)],
     messageless: true,
   }
 }

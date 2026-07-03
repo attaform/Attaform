@@ -142,7 +142,7 @@ describe.each(adapters)('handleSubmit throw surfacing — $name', ({ useForm, z 
     expect(emailOwn[0]?.code).toBe(AttaformErrorCode.SubmitError)
   })
 
-  it('injects a diagnostic entry and warns in dev on a non-Error throw', async () => {
+  it('injects an Unknown error entry and warns in dev on a non-Error throw', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const api = mountForm(valid)
     const handler = api.handleSubmit(async () => {
@@ -153,10 +153,14 @@ describe.each(adapters)('handleSubmit throw surfacing — $name', ({ useForm, z 
 
     expect(api.meta.ownErrors).toHaveLength(1)
     const entry: ValidationError = api.meta.ownErrors[0]
-    expect(entry.message).toBe('Submit callback threw a non-Error value (undefined)')
+    // Consistent with setErrors([{}]): the rendered message is the shared
+    // `Unknown error` fallback, not a bespoke submit diagnostic.
+    expect(entry.message).toBe('Unknown error')
     expect(entry.code).toBe(AttaformErrorCode.SubmitError)
-    // submitError is coerced to a real Error carrying the diagnostic.
+    // submitError keeps toError's raw diagnostic on the inspection channel
+    // (raw vs rendered): the two channels intentionally differ here.
     expect(api.meta.submitError).toBeInstanceOf(Error)
+    expect(String(api.meta.submitError?.message)).toContain('non-Error value')
     // Dev-mode nudge to throw a real Error / ValidationError next time.
     expect(warnSpy).toHaveBeenCalledTimes(1)
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('non-Error value')

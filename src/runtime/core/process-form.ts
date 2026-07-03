@@ -407,9 +407,13 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * handleSubmit(onSubmit, onError?) builds a submit handler. On success:
-   * clear errors, call onSubmit. On failure: populate errors via
-   * setAllErrors, then call onError if provided.
+   * handleSubmit(onSubmit, onError?) builds a submit handler. The two
+   * callbacks dispatch on Attaform's validation verdict: when pre-dispatch
+   * validation fails, populate the schema-error store and call `onError`
+   * (never `onSubmit`); when it passes, call `onSubmit` with the parsed
+   * data. `onError` fires iff validation rejected the submit — a throw, a
+   * `setErrors`, or a clean return out of `onSubmit` is the dev's own
+   * outcome and never routes back through `onError`.
    *
    * If the user's onError throws/rejects, the thrown value is wrapped in
    * SubmitErrorHandlerError so inspection can tell "my error handler
@@ -572,26 +576,23 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           state.clearSchemaErrors()
         }
         await onSubmit(merged.data)
-        // #438: a callback that left errors in the user-error layer did not
-        // succeed. The entry-clear above means any user error present now was
-        // set by this callback (the documented setErrors-and-return
-        // server-rejection path). Route it through the same failure path as a
-        // client validation failure rather than flipping `submitted`: focus
-        // the first error (generation-gated, like the validation-failure
-        // branch) and run `onError` with what the callback left behind. On the
-        // success-then-setErrors path schema errors were just cleared and
-        // validation passed, so `userErrors` is the complete current error set
-        // and doubles as the `onError` payload.
+        // A callback that left errors in the user-error layer did not
+        // succeed (the documented `setErrors(...); return` server-rejection
+        // path — the entry-clear at submit start means any user error
+        // present now was set by this callback). Focus the first error
+        // (generation-gated, like the validation-failure branch) and leave
+        // `submitted` false.
+        //
+        // `onError` is deliberately NOT called here. The two `handleSubmit`
+        // callbacks are a dispatch on Attaform's *validation* verdict:
+        // `onError` fires iff pre-dispatch validation rejected the submit
+        // (so `onSubmit` never ran). Once `onSubmit` has run, Attaform
+        // already ruled the submit valid; the dev's own `setErrors` is a
+        // state write, not a re-verdict, so it must not route back through
+        // the `onError` arm.
         if (state.userErrors.size > 0) {
           if (state.submissionGeneration.value === genAtEntry) {
             applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
-          }
-          if (onError !== undefined) {
-            try {
-              await onError(Array.from(state.userErrors.values()).flat())
-            } catch (cause) {
-              throw new SubmitErrorHandlerError('User-provided onError threw', { cause })
-            }
           }
           return
         }

@@ -93,6 +93,15 @@ _No unreleased changes yet._
   statically known. It is no longer identity-equal to the raw per-step handle;
   reach for `wizard.forms[key]` when you need that exact object. (#471)
 
+- **`onError` fires only when validation rejects a submit.** The two
+  `handleSubmit` callbacks dispatch on Attaform's validation verdict: `onSubmit`
+  runs when validation passes, `onError` when it fails. A `setErrors` (or a
+  throw) inside a callback that has already run is your own outcome, not a second
+  verdict, so it no longer routes back through `onError`. It still marks the
+  submit unsuccessful (`form.meta.submitted` stays `false`) and pulls focus to
+  the first error. If you were relying on `onError` firing after a `setErrors`,
+  move that handling into the `onSubmit` callback itself.
+
 ### Fixed
 
 - **A required field left blank now takes focus on an invalid submit, the same

@@ -48,9 +48,9 @@ When the returned handler fires:
 3. Async refinements are awaited.
 4. If every refinement passes, `onSubmit(values)` is called with the **parsed** Zod output: `.transform`-aware, fully typed.
 5. The submit counts as a success, flipping `form.meta.submitted` to `true`, only when `onSubmit` resolves without throwing and leaves no errors set. A callback that hands a server rejection to `setErrors` and returns is a failed submit (see [server-side errors](/docs/submitting/server-side-errors)).
-6. On any failure, whether a validation error, a thrown callback, or errors the callback set with `setErrors`, focus pulls to the first invalid field and `onError(errors)` fires (when supplied).
+6. Every failure pulls focus to the first invalid field. They differ in one respect: a **validation** failure (step 4 rejected, so `onSubmit` never ran) also calls `onError(errors)` when supplied. A failure your callback produces after it runs, a throw or a `setErrors` and return, does not. `onError` is the verdict on Attaform's own validation, and by then that had already passed. A thrown callback additionally lands on `form.meta.submitError` and surfaces on `form.errors`.
 
-While step 4 is awaiting your `onSubmit` callback, `form.meta.submitting` is `true`. It flips back when the callback resolves or rejects (`handleSubmit` catches and surfaces errors through `onError`).
+While step 4 is awaiting your `onSubmit` callback, `form.meta.submitting` is `true`. It flips back when the callback resolves or rejects. A rejection is caught, not re-thrown, so it never escapes as an unhandled rejection: the raw error lands on `form.meta.submitError`, and a normalized copy joins `form.errors` (form-level, or path-scoped when you throw a `{ path, message }`), so a banner reading [`form.meta.firstOwnError`](/docs/reading-the-form/meta) catches it.
 
 ## Without onError
 

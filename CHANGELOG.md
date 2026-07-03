@@ -43,6 +43,17 @@ _No unreleased changes yet._
   the one-line banner accessor for a form-level error from a root `.refine()`
   or a path-less `setErrors`. (#489)
 
+- **A throw or rejection out of an `onSubmit` callback now surfaces as a form
+  error, not just on `form.meta.submitError`.** `handleSubmit` still parks the
+  raw `Error` on `submitError` for inspection, and now also pipes a normalized
+  copy into the error layer, so a failed submit shows on `form.errors`,
+  `form.meta.ownErrors`, and `form.meta.firstOwnError` where your UI already
+  reads, with no `try` / `catch` of your own. A bare `throw new Error(...)`
+  lands form-level (the root `[]` bucket); throw a `{ path, message, code? }`,
+  or an array of them, to land it on a specific field under your own code. A
+  non-Error throw still surfaces as an `Unknown error` (consistent with
+  `setErrors`) and warns in development. (#490)
+
 ### Changed
 
 - **`form.errors([])` now returns the whole-form aggregate, the same as
@@ -81,6 +92,15 @@ _No unreleased changes yet._
   `handleSubmit`), schema-erased because the active step's schema is not
   statically known. It is no longer identity-equal to the raw per-step handle;
   reach for `wizard.forms[key]` when you need that exact object. (#471)
+
+- **`onError` fires only when validation rejects a submit.** The two
+  `handleSubmit` callbacks dispatch on Attaform's validation verdict: `onSubmit`
+  runs when validation passes, `onError` when it fails. A `setErrors` (or a
+  throw) inside a callback that has already run is your own outcome, not a second
+  verdict, so it no longer routes back through `onError`. It still marks the
+  submit unsuccessful (`form.meta.submitted` stays `false`) and pulls focus to
+  the first error. If you were relying on `onError` firing after a `setErrors`,
+  move that handling into the `onSubmit` callback itself. (#490)
 
 ### Fixed
 

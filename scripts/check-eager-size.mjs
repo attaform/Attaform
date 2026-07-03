@@ -264,7 +264,17 @@ export async function measureEager(define = PROD_DEFINE) {
 // complete and lands eager at ~45_080 bytes, ~0.41 kB under this budget -- about the
 // conventional drift headroom, so the phase-wide estimate held and the budget stays
 // at 45_500. Never loosen further without a recorded reason.
-const BUDGET_GZ = 45_500
+//
+// Submit-throw surfacing: a thrown / rejected `onSubmit` callback is now piped
+// into the user-error layer as a `ValidationError` (alongside the raw
+// `submitError`), so it shows on `form.errors` / `meta.ownErrors` /
+// `firstOwnError`. The eager cost is process-form's catch-block inject path
+// (deriveSubmitErrors + isErrorInputLike + the per-path grouping write +
+// focus-first-error + a dev-only messageless-throw warn); it reuses the hoisted
+// `normalizeErrorInput`, so the net add is ~242 bytes gz, landing the eager set
+// at ~45_742 bytes. Budget raised 45_500 → 46_500 to restore ~0.5 kB headroom
+// for minifier drift.
+const BUDGET_GZ = 46_500
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

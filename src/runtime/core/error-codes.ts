@@ -66,6 +66,17 @@ export const AttaformErrorCode = {
    * Override it per error by passing your own `code` (`api:…`, `auth:…`).
    */
   UserError: 'atta:user-error',
+  /**
+   * Stamped on a `ValidationError` synthesized from a throw or rejection
+   * out of a `handleSubmit` `onSubmit` callback. The raw error also lands
+   * on `form.meta.submitError` (a raw-`Error` inspection channel); this
+   * code marks the copy piped into the user-error layer so the failure
+   * also surfaces on `form.errors` / `meta.ownErrors` / `firstOwnError`
+   * where the UI already reads. A throw carrying its own `path` / `code`
+   * keeps them; a bare `Error` or a non-Error throw defaults here at the
+   * form-level path `[]`.
+   */
+  SubmitError: 'atta:submit-error',
 } as const
 
 export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof AttaformErrorCode]

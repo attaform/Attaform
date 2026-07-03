@@ -946,7 +946,11 @@ export default [
     // component-host branch + registerValue strip + host delegates +
     // markHostConnected + the directly-bound-container field-state fold).
     // Measured at 53.45 KB.
-    limit: '54 KB',
+    //
+    // Raised 54 → 55 KB for submit-throw surfacing (process-form's catch-block
+    // inject piping a thrown onSubmit into the user-error layer). Measured at
+    // 54.04 KB.
+    limit: '55 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

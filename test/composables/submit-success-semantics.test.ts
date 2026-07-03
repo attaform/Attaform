@@ -15,7 +15,11 @@ import { waitUntil } from '../utils/form-harness'
  * errors in the user-error layer has NOT submitted successfully:
  *
  *   - `meta.submitted` must stay `false`.
- *   - `onError` must fire with the errors that were set.
+ *   - `onError` must NOT fire: it is the validation-verdict handler
+ *     (fires iff validation rejects the submit and `onSubmit` never
+ *     runs). Once `onSubmit` has run, a `setErrors` inside it is the
+ *     dev's own state write, not a re-verdict, so it does not route back
+ *     through `onError`.
  *
  * A clean return that leaves no errors behind is the only success
  * (the positive control guards against over-correction). Validation
@@ -81,7 +85,7 @@ describe('handleSubmit success semantics (#438)', () => {
     expect(api.meta.submitted).toBe(false)
   })
 
-  it('fires onError with the errors the callback left behind', async () => {
+  it('does NOT call onError when the callback sets errors and returns', async () => {
     const { app, api } = mountForm(schema, { email: 'user@example.com' })
     apps.push(app)
     const onError = vi.fn()
@@ -90,10 +94,15 @@ describe('handleSubmit success semantics (#438)', () => {
     }, onError)
     await handler(new Event('submit'))
     await waitUntil(() => api.meta.submissionAttempts === 1)
-    expect(onError).toHaveBeenCalledTimes(1)
-    const errors = onError.mock.calls[0]?.[0] ?? []
+    // onError is the validation-verdict handler. Validation passed here,
+    // so onSubmit ran; the setErrors inside it is the dev's own state
+    // write, not a re-verdict, and must not route back through onError.
+    expect(onError).not.toHaveBeenCalled()
+    // The error the callback set is still recorded — submitted stays false
+    // and it shows in the user-error layer — it just doesn't fire onError.
+    expect(api.meta.submitted).toBe(false)
     expect(
-      errors.some(
+      api.meta.errors.some(
         (e: { message: string }) => e.message === 'Service unavailable, try again shortly.'
       )
     ).toBe(true)

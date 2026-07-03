@@ -240,6 +240,11 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     elements: elementsArr,
     updatedAt: record?.updatedAt ?? null,
     errors,
+    // A leaf has no descendants, so its own-bucket errors ARE its subtree
+    // errors. Reuse the same array reference: referential `ownErrors ===
+    // errors`, and no second read of the whole-form `derivedBlankErrors`
+    // map (preserves the P3 blank-reactivity optimization above).
+    ownErrors: errors,
     validating,
     valid,
     transforming,
@@ -598,6 +603,12 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       elements: EMPTY_ELEMENTS,
       updatedAt,
       errors,
+      // The container's OWN bucket only (this exact path), excluding every
+      // descendant that `errors` rolls up: a cross-field `.refine()` here,
+      // or `setErrors` pinned at this node. The same raw union the leaf
+      // builds from the three stores; the container already depends on all
+      // three via `aggregateErrorsAt`, so there's no new reactivity cost.
+      ownErrors: state.getErrorsForPath(segments),
       validating,
       valid,
       transforming,
@@ -684,6 +695,9 @@ function decorateWithDerivedProps<F extends GenericForm>(
   getDisplayState?: GetDisplayState
 ): FieldState<unknown> {
   const firstError = base.errors[0]
+  // Exact-path counterpart to `firstError`: the first error in this node's
+  // OWN bucket. At a leaf `base.ownErrors === base.errors`, so the two agree.
+  const firstOwnError = base.ownErrors[0]
   const predicate = getDisplayState ?? state.getDisplayState
   const formMeta = getFormMetaBase()
   const ctx: DisplayCtx = {
@@ -742,6 +756,7 @@ function decorateWithDerivedProps<F extends GenericForm>(
     showSuccess: displayState === 'success',
     showIdle: displayState === 'idle',
     firstError,
+    firstOwnError,
   }
 }
 

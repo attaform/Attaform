@@ -222,6 +222,9 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       get errors() {
         return rootBase().errors
       },
+      get ownErrors() {
+        return rootBase().ownErrors
+      },
       get validating() {
         return rootBase().validating
       },
@@ -787,6 +790,17 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // keep the explicit form-level computation for the gate.
       valid,
       errors: metaErrors,
+      // The root `[]` bucket alone: form-level errors from a root
+      // `.refine()` or a path-less `setErrors`, excluding every field error
+      // that `errors` (the whole-form aggregate) rolls up. This is the
+      // banner accessor. Mirrors `rootFieldState` rather than taking a
+      // dedicated computed: `getFieldState([])` routes a container root
+      // through `getErrorsForPath([])` and a primitive root through its own
+      // bucket, and both equal the root bucket, so the root field state is
+      // already the single source of truth.
+      get ownErrors() {
+        return rootFieldState.value.ownErrors
+      },
       // Whole-form transforming mirrors the global `activeTransforms`
       // counter ORed with any per-leaf transform in flight (the root
       // rollup), exactly as `validating` composes its lifecycle and
@@ -828,6 +842,11 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       },
       get firstError() {
         return rootFieldState.value.firstError
+      },
+      // `ownErrors[0]`: the form's first top-level error. Pair it with
+      // `ownErrors` for the form-level banner.
+      get firstOwnError() {
+        return rootFieldState.value.firstOwnError
       },
       get path() {
         return rootFieldState.value.path

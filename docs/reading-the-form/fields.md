@@ -10,13 +10,13 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Read shape per leaf
-    value: FieldState (31 properties)
+    value: FieldState (33 properties)
     kind: code
 ---
 
 # `fields`
 
-> A reactive Proxy keyed by schema paths. Every leaf surfaces a 31-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
+> A reactive Proxy keyed by schema paths. Every leaf surfaces a 33-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
 
 ::docs-meta-table
 ::
@@ -76,7 +76,7 @@ form.fields('links').transformError
 
 ## What FieldState carries
 
-Each leaf exposes a 31-property `FieldState` object. The properties fall into five jobs:
+Each leaf exposes a 33-property `FieldState` object. The properties fall into five jobs:
 
 ### State bits
 

@@ -2,6 +2,7 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { addImports, addPlugin, addVitePlugin, createResolver, defineNuxtModule } from '@nuxt/kit'
+import { attaformAutoImports } from './runtime/auto-imports'
 import type { AttaformDefaults } from './runtime/types/types-api'
 import { attaform as attaformVitePlugin } from './vite'
 
@@ -42,6 +43,19 @@ export interface AttaformModuleOptions {
    * the rewrite and ship the runtime-dispatch unified entry instead.
    */
   resolveZodAlias?: boolean
+  /**
+   * Auto-import Attaform's form composables (`useForm`, `useWizard`,
+   * `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`) so
+   * components can call them without an explicit `import`. Default
+   * `true`. The set is declared in Attaform's auto-import manifest and
+   * resolves from `attaform/zod`, so the build-time adapter rewrite
+   * still ships a single Zod major. Set to `false` to suppress the
+   * names entirely and import the composables yourself. Note a Nuxt
+   * auto-import already loses to an explicit or local binding of the
+   * same name, so opting out is only needed to keep the names out of
+   * global scope altogether.
+   */
+  autoImports?: boolean
 }
 
 /**
@@ -164,22 +178,31 @@ export default defineNuxtModule<AttaformModuleOptions>({
 
     const resolver = createResolver(import.meta.url)
 
-    // Auto-import `useForm` — the framework-agnostic core composable (same
-    // binding as `attaform`'s top-level `useForm` export, which
-    // is the abstract form composable). Consumers who want the zod-typed
-    // wrapper must import from `attaform/zod` or `/zod-v3`
-    // explicitly.
+    // Auto-import the Zod-default form composables so a component can
+    // reach for `useForm` / `useWizard` / `injectForm` / `injectWizard` /
+    // `fieldMeta` / `withMeta` / `lazy` with no import line. The manifest
+    // in `./runtime/auto-imports` is the single source of truth, shared
+    // with the `attaform/vite` preset re-export.
     //
-    // We point at the public package entry rather than a relative
-    // `./runtime/…` path on purpose: in the published package the
-    // `src/runtime/composables/use-abstract-form` path has no matching
-    // `dist/runtime/…` file (build.config's entries don't include it),
-    // so a `resolver.resolve(...)` would raise ENOENT at Nuxt's auto-
-    // import step. Importing from `attaform` resolves through
-    // the shared chunk, identical to what `attaform/zod`
-    // consumers bundle — single registry instance across both import
-    // surfaces.
-    addImports([{ name: 'useForm', from: 'attaform' }])
+    // Each entry resolves from `attaform/zod`, not the bare `attaform`
+    // barrel: the Vite/bundler plugin rewrites the exact `attaform/zod`
+    // specifier to the one installed Zod major at build time, so a Nuxt
+    // consumer's bundle ships a single adapter instead of the runtime
+    // dispatcher. After the schema-entry re-partition the two surfaces
+    // are byte-identical (`attaform` re-exports exactly what
+    // `attaform/zod` does), so pointing at `/zod` costs nothing and buys
+    // the lean bundle for free. Resolving a public subpath rather than a
+    // relative `./runtime/…` path also keeps the published package honest
+    // — `attaform/zod` maps to a real `dist/zod.mjs`, so Nuxt's
+    // auto-import step never chases a source path with no built artifact.
+    //
+    // A Nuxt auto-import always loses to an explicit or local binding, so
+    // registering these never shadows a consumer's own `useForm`. The
+    // `autoImports: false` option suppresses the whole set for consumers
+    // who prefer explicit imports everywhere.
+    if (_options.autoImports !== false) {
+      addImports(attaformAutoImports)
+    }
 
     // Plugin that installs `createAttaform()` on the Vue app and
     // wires the payload serialize/hydrate bridge. Uses a physical

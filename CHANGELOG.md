@@ -4,6 +4,9 @@
 
 _No unreleased changes yet._
 
+## v0.26.0
+_No unreleased changes yet._
+
 ## v0.25.0
 ### Added
 

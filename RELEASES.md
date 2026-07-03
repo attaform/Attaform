@@ -1,5 +1,16 @@
 # Releases
 
+## v0.26.0 — 2026-07-03
+
+## What's Changed
+* Add ownErrors / firstOwnError exact-path error accessors; regularize errors([]) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/491
+* Surface a thrown onSubmit as a form error; make onError validation-only by @ozzyfromspace in https://github.com/attaform/Attaform/pull/490
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.25.0...v0.26.0
+
+---
+
 ## v0.25.0 — 2026-07-02
 
 ## What's Changed

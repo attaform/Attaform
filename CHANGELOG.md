@@ -52,7 +52,7 @@ _No unreleased changes yet._
   lands form-level (the root `[]` bucket); throw a `{ path, message, code? }`,
   or an array of them, to land it on a specific field under your own code. A
   non-Error throw still surfaces as an `Unknown error` (consistent with
-  `setErrors`) and warns in development.
+  `setErrors`) and warns in development. (#490)
 
 ### Changed
 
@@ -100,7 +100,7 @@ _No unreleased changes yet._
   verdict, so it no longer routes back through `onError`. It still marks the
   submit unsuccessful (`form.meta.submitted` stays `false`) and pulls focus to
   the first error. If you were relying on `onError` firing after a `setErrors`,
-  move that handling into the `onSubmit` callback itself.
+  move that handling into the `onSubmit` callback itself. (#490)
 
 ### Fixed
 

@@ -1474,12 +1474,13 @@ export type DisplayState = 'idle' | 'pending' | 'error' | 'success'
 
 /**
  * Keys on `FieldState` layered on FROM the display-state predicate
- * (plus `firstError`, computed alongside them). `Omit`'d from the
- * predicate's arguments so a predicate cannot read its own output and
- * form a cycle — enforced at the type level AND at runtime: the base
- * objects passed in literally lack these keys, so an `as` cast in TS
- * or a vanilla-JS caller still can't reach them. `FieldStateBase` /
- * `FormMetaBase` (field-state-api.ts) omit the same set in lockstep.
+ * (plus `firstError` / `firstOwnError`, computed alongside them).
+ * `Omit`'d from the predicate's arguments so a predicate cannot read
+ * its own output and form a cycle — enforced at the type level AND at
+ * runtime: the base objects passed in literally lack these keys, so an
+ * `as` cast in TS or a vanilla-JS caller still can't reach them.
+ * `FieldStateBase` / `FormMetaBase` (field-state-api.ts) omit the same
+ * set in lockstep.
  */
 export type FieldStateDerivedKey =
   | 'displayState'
@@ -1488,6 +1489,7 @@ export type FieldStateDerivedKey =
   | 'showSuccess'
   | 'showIdle'
   | 'firstError'
+  | 'firstOwnError'
 
 /**
  * One step of the display state machine: the verdict the field should
@@ -2660,7 +2662,40 @@ export type FieldState<Value = unknown> = {
    */
   readonly elements: readonly HTMLElement[]
   readonly updatedAt: string | null
+  /**
+   * Every `ValidationError` in this path's SUBTREE: the node's own
+   * bucket plus every descendant's, sorted by schema-declaration order.
+   * On a leaf (no descendants) this equals `ownErrors`. On a container
+   * it rolls up the whole fieldset, so a parent's `errors` is non-empty
+   * whenever any child is invalid.
+   *
+   * For the errors pinned at THIS path alone (a container's own
+   * cross-field `.refine()`, or `setErrors` at this path), read
+   * `ownErrors`.
+   */
   readonly errors: readonly ValidationError[]
+  /**
+   * Every `ValidationError` at THIS exact path's own bucket, excluding
+   * descendants: schema errors, blank-required errors, and `setErrors`
+   * pinned here, in `schema`, `blank`, `user` order. The exact-path
+   * counterpart to the subtree-scoped `errors`.
+   *
+   * On a leaf this is the same array as `errors` (a leaf has no
+   * descendants). On a container it holds only the container's OWN
+   * errors, a cross-field `.refine()` on the fieldset or a path-less
+   * `setErrors` at this node, without dragging in any child error:
+   *
+   * ```vue
+   * <p v-if="form.fields.address.firstOwnError">
+   *   {{ form.fields.address.firstOwnError.message }}
+   * </p>
+   * ```
+   *
+   * On `form.meta` this is the root `[]` bucket: form-level errors from
+   * a root `.refine()` or a path-less `setErrors`. `form.meta.ownErrors`
+   * (with `firstOwnError`) is the banner accessor for those.
+   */
+  readonly ownErrors: readonly ValidationError[]
   /**
    * `true` while a per-field validation run is in flight at this path.
    * Reflects field-level debounced runs (`validate-on-change`) and
@@ -2781,9 +2816,28 @@ export type FieldState<Value = unknown> = {
    * decides when to render it.
    *
    * On container paths, the first error in the aggregated subtree
-   * (descendants sorted by `pathOrdinal`).
+   * (descendants sorted by `pathOrdinal`). For the container's OWN
+   * first error only, read `firstOwnError`.
    */
   readonly firstError: ValidationError | undefined
+  /**
+   * The first `ValidationError` in `ownErrors` (this exact path's own
+   * bucket), or `undefined` when that bucket is empty. Equivalent to
+   * `ownErrors[0]`, the exact-path counterpart to `firstError`.
+   *
+   * On a leaf this equals `firstError`. On a container it is the
+   * container's own cross-field error (a fieldset `.refine()`), never a
+   * child's. `form.meta.firstOwnError` is the form-level banner: the
+   * first root `[]` error from a root `.refine()` or a path-less
+   * `setErrors`:
+   *
+   * ```vue
+   * <p v-if="form.meta.firstOwnError" role="alert">
+   *   {{ form.meta.firstOwnError.message }}
+   * </p>
+   * ```
+   */
+  readonly firstOwnError: ValidationError | undefined
   readonly path: ReadonlyArray<string | number>
   /**
    * Stable, SSR-safe DOM id for this field, unique across every mount
@@ -3210,11 +3264,13 @@ export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
   ): readonly ValidationError[]
   (segments: ReadonlyArray<string | number>): readonly ValidationError[]
   /**
-   * No-arg call returns the whole-form error aggregate — same as
-   * `form.meta.errors`: every field error plus the global bucket.
-   * Distinct from `form.errors([])`, which returns ONLY the global
-   * (root) bucket. Always a readonly array; empty when the form has no
-   * errors.
+   * No-arg call returns the whole-form error aggregate, the same as
+   * `form.meta.errors` and `form.errors([])`: every field error plus
+   * the root bucket. `form.errors(path)` is uniform at every depth,
+   * including `[]`, so the root is no exception. For the root bucket
+   * alone (a root `.refine()`, a path-less `setErrors`), read
+   * `form.meta.ownErrors`. Always a readonly array; empty when the form
+   * has no errors.
    */
   (): readonly ValidationError[]
 }

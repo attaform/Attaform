@@ -114,19 +114,19 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       expect((parsed.email as Array<{ message: string }>)[0]?.message).toBe('taken')
 
       // Global errors at the root [] are NOT a child key, so they don't
-      // serialise into the tree. Read them via errors([]) / meta.errors.
+      // serialise into the tree. Read them via meta.ownErrors.
       expect(parsed['']).toBeUndefined()
-      expect(form.errors([])[0]?.message).toBe('oh snap!')
+      expect(form.meta.ownErrors[0]?.message).toBe('oh snap!')
     })
 
-    it('JSON.stringify(form.errors) excludes global errors (read via errors([]))', async () => {
+    it('JSON.stringify(form.errors) excludes global errors (read via meta.ownErrors)', async () => {
       const form = mountSimple()
       form.setErrors([{ message: 'capacity exceeded' }])
       await nextTick()
 
       const tree = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>
       expect(tree['']).toBeUndefined()
-      expect(form.errors([])[0]?.message).toBe('capacity exceeded')
+      expect(form.meta.ownErrors[0]?.message).toBe('capacity exceeded')
     })
 
     it('JSON.stringify(form.errors) includes user errors at paths NOT in the schema', async () => {
@@ -214,7 +214,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       // Field error gone.
       expect(form.errors.email).toEqual([])
       // Global survives — a path-scoped clear leaves other buckets alone.
-      expect(form.errors([])[0]?.message).toBe('capacity exceeded')
+      expect(form.meta.ownErrors[0]?.message).toBe('capacity exceeded')
     })
 
     it('clearErrors() with no path clears everything, global included', async () => {
@@ -239,7 +239,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       await nextTick()
 
       expect(form.errors.email?.[0]?.message).toBe('taken')
-      expect(form.errors([])[0]?.message).toBe('capacity exceeded')
+      expect(form.meta.ownErrors[0]?.message).toBe('capacity exceeded')
       const flat = form.meta.errors
       expect(flat.find((e) => e.message === 'taken')).toBeDefined()
       expect(flat.find((e) => e.message === 'capacity exceeded')).toBeDefined()
@@ -255,7 +255,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
 
       expect(form.errors.email?.[0]?.message).toBe('taken')
       // Global was dropped by the whole-layer replace.
-      expect(form.errors([])).toEqual([])
+      expect(form.meta.ownErrors).toEqual([])
     })
   })
 

@@ -15,8 +15,9 @@
  *
  * Global errors at the root `[]` (`setErrors`, root `.refine()`)
  * are NOT a child key, so they never enumerate here and never appear
- * in the serialised tree; every surface agrees, and they're read via
- * `form.errors([])` / `form.meta.errors`.
+ * in the serialised tree; every surface agrees. Read them via
+ * `form.meta.ownErrors` (the root bucket alone), or as part of the
+ * whole-form aggregate `form.meta.errors` / `form.errors([])`.
  */
 import { describe, expect, it } from 'vitest'
 import { z as zV4 } from 'zod'
@@ -84,11 +85,14 @@ describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
     expect(keys).toContain('ghost')
   })
 
-  // Sanity: the call-form for the global bucket. Ghost-path access via
-  // the call-form is intentionally not pinned here: `aggregateErrorsAt`'s
-  // active-path filter drops user errors at unreachable paths (a
-  // separate finding, not in scope for enumeration parity).
-  it('form.errors([]) returns the merged global errors', () => {
+  // Sanity: the call-form at the root. Post-regularization `errors([])`
+  // is the whole-form aggregate (== `errors()`); the root bucket alone is
+  // `meta.ownErrors`. Here the only error IS the global, so the aggregate
+  // carries it. Ghost-path access via the call-form is intentionally not
+  // pinned here: `aggregateErrorsAt`'s active-path filter drops user
+  // errors at unreachable paths (a separate finding, not in scope for
+  // enumeration parity).
+  it('form.errors([]) returns the whole-form aggregate (global included)', () => {
     const { api, app } = mount()
     api.setErrors([{ message: 'top-level' }])
     const global = api.errors([]) as unknown[]

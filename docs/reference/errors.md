@@ -131,7 +131,7 @@ type ValidationError = {
 }
 ```
 
-- `path`: the canonical segment tuple (`['profile', 'email']`). Field errors carry their field's path; global, form-level errors (a root `.refine()`, a path-less `setErrors` call) carry the empty root path `[]` and read through `form.errors([])`.
+- `path`: the canonical segment tuple (`['profile', 'email']`). Field errors carry their field's path; global, form-level errors (a root `.refine()`, a path-less `setErrors` call) carry the empty root path `[]` and read through `form.meta.ownErrors`.
 - `message`: the human-readable error text.
 - `code`: stable identifier (`atta:no-value-supplied`, `zod:invalid_type`, `api:duplicate-email`, etc.).
 - `formKey`: which form emitted the error. Useful for cross-form aggregation in wizards.

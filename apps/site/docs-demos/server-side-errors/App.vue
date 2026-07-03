@@ -38,7 +38,7 @@
   }
 
   const lockout = computed(() => {
-    const locked = (form.errors([]) ?? []).find((e) => e.code === 'auth:locked')
+    const locked = form.meta.ownErrors.find((e) => e.code === 'auth:locked')
     if (!locked) return null
     const data = locked.data as { unlocksAt?: string } | null | undefined
     const unlocksAt = data?.unlocksAt ? new Date(data.unlocksAt).toLocaleTimeString() : null

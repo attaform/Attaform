@@ -26,7 +26,8 @@ import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
  *   form.errors('address.city')        // function-call (dynamic / programmatic)
  *   form.errors(['address', 'city'])   // path-array form
  *   form.errors()                      // whole-form aggregate (== meta.errors)
- *   form.errors([])                    // global bucket only (root .refine() / setErrors)
+ *   form.errors([])                    // same whole-form aggregate (== errors())
+ *                                      // root bucket alone: meta.ownErrors
  *
  * Specialises `buildSurfaceProxy` (see surface-proxy.ts) with:
  * - `resolveLeaf`: merges schemaErrors + derivedBlankErrors + userErrors
@@ -73,7 +74,7 @@ export function buildErrorsProxy<F extends GenericForm>(
       // collision). A bare `['']` (length 1) is NOT a sentinel — it's
       // the literal root `''` field, read straight from its own
       // `'[""]'` bucket below. Global errors live at the root `[]` and
-      // are reached via the call-form (`errors([])`), never a leaf.
+      // are reached via `meta.ownErrors`, never a leaf.
       const isContainerSelfAccess = path.length > 1 && path[path.length - 1] === ''
 
       const collectAtKey = (key: PathKey, active: boolean, into: ValidationError[]): void => {
@@ -124,18 +125,15 @@ export function buildErrorsProxy<F extends GenericForm>(
     // shared `aggregateErrorsAt` helper that `form.meta.errors` and
     // `form.fields(path).errors` also use, so the surfaces never drift.
     //
-    // The root is the one carve-out. An EXPLICIT root path
-    // (`errors([])`) returns ONLY the global `[]` bucket (root
-    // `.refine()`, hydration failures, `setErrors`) via
-    // `getErrorsForPath`, giving consumers a dedicated channel for
-    // global messages undiluted by field errors. The no-arg `errors()`
-    // instead resolves the FULL aggregate through `resolveRootCall`
-    // below (identical to `meta.errors`).
-    resolveCallTarget: (path) =>
-      path.length === 0 ? state.getErrorsForPath([]) : aggregateErrorsAt(state, path),
+    // The root is uniform with every other path: `errors([])` is the
+    // subtree aggregate at `[]`, which is the whole form, identical to
+    // the no-arg `errors()` and to `meta.errors`. The root `[]` bucket
+    // alone (root `.refine()`, hydration failures, path-less
+    // `setErrors`) is read through `meta.ownErrors` / `meta.firstOwnError`,
+    // the dedicated own-bucket accessor, not a call-form carve-out.
+    resolveCallTarget: (path) => aggregateErrorsAt(state, path),
     // No-arg `errors()` = the whole-form aggregate, matching
-    // `meta.errors`. Distinct from `errors([])` (global bucket only);
-    // see `resolveCallTarget`.
+    // `meta.errors` and `errors([])`. All three are the same aggregate.
     resolveRootCall: () => aggregateErrorsAt(state, []),
     // Enumeration unions the live form-data keys at this path with the
     // first-child segments drawn from every error store. Without the

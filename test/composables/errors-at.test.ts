@@ -137,7 +137,7 @@ describe('form.errors(path) — aggregation at any depth', () => {
     expect(segments).toEqual(dotted)
   })
 
-  it('no-arg errors() is the full aggregate; errors([]) is the global bucket only', () => {
+  it('no-arg errors() is the full aggregate; errors([]) equals it; meta.ownErrors is the root bucket', () => {
     const { app, api } = mount()
     apps.push(app)
     seedAllErrors(api)
@@ -147,9 +147,13 @@ describe('form.errors(path) — aggregation at any depth', () => {
       ['airline bad', 'capacity full', 'cargo invalid', 'items invalid', 'sku bad'].sort()
     )
 
-    // errors([]) is the dedicated global channel: ONLY the root bucket
-    // (here the single form-level 'capacity full'), not every field.
-    const global = (callErrors(api)([]) ?? []).map((e) => e.message)
+    // errors([]) is uniform with every other path: the subtree aggregate
+    // at the root, identical to the no-arg errors().
+    expect(callErrors(api)([])).toEqual(callErrors(api)())
+
+    // The root bucket alone (the single form-level 'capacity full') is
+    // read through meta.ownErrors, not a call-form carve-out.
+    const global = api.meta.ownErrors.map((e) => e.message)
     expect(global).toEqual(['capacity full'])
   })
 
@@ -160,7 +164,7 @@ describe('form.errors(path) — aggregation at any depth', () => {
 
     // `''` is one segment (the literal empty-string key), distinct from
     // root `[]`. This schema has no `''` field, so the read is empty;
-    // the global bucket ('capacity full') is reached via errors([]).
+    // the global bucket ('capacity full') is reached via meta.ownErrors.
     const literal = (callErrors(api)('') ?? []).map((e) => e.message)
     expect(literal).toEqual([])
   })

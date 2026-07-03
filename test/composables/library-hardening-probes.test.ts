@@ -3262,7 +3262,7 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     await nextTick()
 
     expect(api.values.name).toBe('Ada')
-    expect(api.errors([])).toHaveLength(1)
+    expect(api.meta.ownErrors).toHaveLength(1)
 
     // Cast loose: the typed signature only accepts known schema paths.
     // For a schema with no `''` field this is a no-op on values.
@@ -3272,11 +3272,11 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     // Named field and the global bucket are both untouched — `''` is
     // neither's home.
     expect(api.values.name).toBe('Ada')
-    expect(api.errors([])).toHaveLength(1)
+    expect(api.meta.ownErrors).toHaveLength(1)
 
     // clearErrors([]) is the tool for the global bucket.
     api.clearErrors([])
-    expect(api.errors([])).toEqual([])
+    expect(api.meta.ownErrors).toEqual([])
   })
 
   it('resetField on a container path broadcasts the reset to descendants', async () => {

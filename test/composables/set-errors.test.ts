@@ -26,7 +26,10 @@ type ErrorsRead = (
 interface TestForm {
   readonly key: string
   readonly errors: ErrorsRead & Record<string, readonly ValidationError[] | undefined>
-  readonly meta: { readonly errors: readonly ValidationError[] }
+  readonly meta: {
+    readonly errors: readonly ValidationError[]
+    readonly ownErrors: readonly ValidationError[]
+  }
   setErrors: {
     (update: (prev: ValidationError[]) => ErrorInput | ErrorInput[]): void
     (errors: ErrorInput | ErrorInput[]): void
@@ -62,7 +65,10 @@ function mountWithApp(setup: () => TestForm): TestForm {
   return handle.captured
 }
 
-const globals = (form: TestForm): readonly ValidationError[] => form.errors([]) ?? []
+// The root [] bucket alone: path-less form-level entries. Read through
+// meta.ownErrors (the errors([]) carve-out was regularized to the full
+// aggregate; the root-bucket role moved to the own-bucket accessor).
+const globals = (form: TestForm): readonly ValidationError[] => form.meta.ownErrors ?? []
 const field = (form: TestForm, name: string): readonly ValidationError[] => form.errors[name] ?? []
 const msgs = (errors: readonly ValidationError[]): string[] => errors.map((e) => e.message)
 

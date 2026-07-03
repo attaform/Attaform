@@ -14,9 +14,10 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  * global errors alike. Global entries are visible across these reads:
  *
  *   - `form.meta.errors` — the flat aggregate, unfiltered.
- *   - `form.errors([])` — the dedicated global read (root bucket only).
- *   - `form.errors()` — the full aggregate (every field error plus the
- *     global bucket).
+ *   - `form.meta.ownErrors` — the root `[]` bucket alone (the dedicated
+ *     global read).
+ *   - `form.errors()` / `form.errors([])` — the full aggregate (every
+ *     field error plus the root bucket; the two coincide).
  *
  * They are NOT a child key of the errors proxy: `JSON.stringify(form.
  * errors)` and proxy iteration don't surface them under `''` (the root
@@ -137,19 +138,21 @@ describe('setErrors — global / form-level errors at []', () => {
     expect(entries[1]?.code).toBe('atta:user-error')
   })
 
-  it('global errors surface via errors([]) and meta.errors, not the proxy tree', () => {
+  it('global errors surface via meta.ownErrors and meta.errors, not the proxy tree', () => {
     const { app, api } = mount()
     apps.push(app)
 
     api.setErrors([{ message: 'Capacity exceeded' }])
 
     // Global errors live at the root `[]`, reached via the dedicated
-    // `errors([])` channel and the flat `meta.errors` aggregate. They
-    // are NOT a child key, so the serialised proxy tree has no `''`
-    // slot for them and `errors('')` reads the unrelated literal `''`
-    // field (empty here).
-    expect(api.errors([])).toMatchObject([{ message: 'Capacity exceeded' }])
+    // `meta.ownErrors` accessor and the flat `meta.errors` aggregate. They
+    // are NOT a child key, so the serialised proxy tree has no `''` slot
+    // for them and `errors('')` reads the unrelated literal `''` field
+    // (empty here).
+    expect(api.meta.ownErrors).toMatchObject([{ message: 'Capacity exceeded' }])
     expect(api.meta.errors).toHaveLength(1)
+    // errors([]) is uniform with the no-arg errors(): the full aggregate.
+    expect(api.errors([])).toEqual(api.errors())
     const tree = JSON.parse(JSON.stringify(api.errors)) as Record<string, unknown>
     expect(tree['']).toBeUndefined()
     expect(api.errors('')).toEqual([])

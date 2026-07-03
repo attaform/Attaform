@@ -189,20 +189,17 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
     expect(selfSlot?.some((e) => matchesRefine(e as ValidationError))).toBe(true)
   })
 
-  it('form-level errors live at the root [] (errors([])), not the "" slot', async () => {
+  it('form-level errors live at the root [] (meta.ownErrors), not the "" slot', async () => {
     // The root `[]` is the form-level bucket (hydration failures, root
-    // `.refine()` results, `setErrors` entries). Read it via the
-    // dedicated `errors([])` call form — it returns
-    // `readonly ValidationError[]` directly. The `''` slot is the
-    // unrelated literal empty-key field.
+    // `.refine()` results, path-less `setErrors` entries). Read it via
+    // the dedicated `meta.ownErrors` accessor, the own bucket at the
+    // root. The `''` slot is the unrelated literal empty-key field.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
     api.setErrors([{ message: 'manual form-level error', code: 'consumer:test' }])
     await nextTick()
 
-    const global = (
-      api.errors as unknown as (p: readonly (string | number)[]) => readonly ValidationError[]
-    )([])
+    const global = api.meta.ownErrors
     expect(Array.isArray(global)).toBe(true)
     expect(global.some((e) => e.message === 'manual form-level error')).toBe(true)
     expect(global[0]?.path).toEqual([])

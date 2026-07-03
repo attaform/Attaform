@@ -35,7 +35,24 @@ _No unreleased changes yet._
   navigation stays `wizard.next()`; the whole-wizard submit stays
   `wizard.handleSubmit`. (#471)
 
+- **Every field and `form.meta` now expose `ownErrors` / `firstOwnError`, the
+  errors at that exact path.** They are the own-bucket counterpart to the
+  subtree-scoped `errors` / `firstError`: on a container they surface its own
+  cross-field `.refine()` alone, without the child errors that `errors` rolls
+  up, and on a leaf they are the very same array. `form.meta.firstOwnError` is
+  the one-line banner accessor for a form-level error from a root `.refine()`
+  or a path-less `setErrors`. (#489)
+
 ### Changed
+
+- **`form.errors([])` now returns the whole-form aggregate, the same as
+  `form.errors()` and `form.meta.errors`.** Previously the explicit root path was
+  a carve-out returning only the root bucket. With `ownErrors` / `firstOwnError`
+  now providing exact-path access at every node, `form.errors(path)` is uniform
+  at every depth, the root included. Read the root bucket alone (a root
+  `.refine()`, a path-less `setErrors`) via `form.meta.ownErrors` /
+  `form.meta.firstOwnError`. The `''`-field vs root-`[]` boundary is unchanged:
+  `form.errors['']` still reads a literal empty-key field. (#489)
 
 - **When the active step drops out of a wizard mid-flight, the pin slides forward
   instead of snapping to the first step.** A function or `lazy()` slot that stops

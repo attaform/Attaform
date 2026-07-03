@@ -14,8 +14,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * contract:
  *
  *   - `errors()` → all errors (full aggregate, == `meta.errors`)
- *   - `errors([])` → ONLY the global bucket (root `.refine()`,
- *     `setErrors`); a dedicated channel undiluted by field errors
+ *   - `errors([])` → the same full aggregate (== `errors()`); the root
+ *     is uniform with every other path, no carve-out
+ *   - `meta.ownErrors` → ONLY the root `[]` bucket (root `.refine()`,
+ *     path-less `setErrors`); the dedicated channel undiluted by fields
  *   - `errors('')` → the literal `''` field (empty for a normal schema
  *     with no `''` key), never the global bucket
  *   - `errors('field')` → unchanged subtree-at-field
@@ -107,15 +109,18 @@ describe('empty-string path semantics — zod-v3 adapter', () => {
     expect(all).toEqual(['Required', 'Required', 'must differ'].sort())
   })
 
-  it('errors([]) returns ONLY the global (root .refine) bucket', async () => {
+  it('meta.ownErrors returns ONLY the root [] bucket; errors([]) is the full aggregate', async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
-    const global = (callErrors(form)([]) ?? []).map((e) => e.message)
+    // The root bucket alone: the single root .refine() error.
+    const global = form.meta.ownErrors.map((e) => e.message)
     expect(global).toEqual(['must differ'])
+    // errors([]) is now uniform with every path: the full aggregate.
+    expect(callErrors(form)([])).toEqual(callErrors(form)())
   })
 
   it("errors('') reads the literal '' field (empty here), never the global bucket", async () => {
@@ -189,15 +194,18 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
     expect(all).toEqual(['Required', 'Required', 'must differ'].sort())
   })
 
-  it('errors([]) returns ONLY the global (root .refine) bucket', async () => {
+  it('meta.ownErrors returns ONLY the root [] bucket; errors([]) is the full aggregate', async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
-    const global = (callErrors(form)([]) ?? []).map((e) => e.message)
+    // The root bucket alone: the single root .refine() error.
+    const global = form.meta.ownErrors.map((e) => e.message)
     expect(global).toEqual(['must differ'])
+    // errors([]) is now uniform with every path: the full aggregate.
+    expect(callErrors(form)([])).toEqual(callErrors(form)())
   })
 
   it("errors('') reads the literal '' field (empty here), never the global bucket", async () => {
@@ -230,7 +238,8 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
 
 // -----------------------------------------------------------------------------
 // Literal root '' field — proves '' is free of form-level duty. errors('')
-// reads THIS field; errors([]) still returns the global bucket alone.
+// reads THIS field; meta.ownErrors returns the root [] bucket alone, and
+// errors([]) is the full aggregate like errors().
 // -----------------------------------------------------------------------------
 
 describe("literal root '' field — zod-v3 adapter", () => {
@@ -255,15 +264,21 @@ describe("literal root '' field — zod-v3 adapter", () => {
     )
   }
 
-  it("errors('') reads the '' field, errors([]) the global bucket, errors() both", async () => {
+  it("errors('') reads the '' field, meta.ownErrors the root bucket, errors([]) === errors() both", async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
+    // errors('') reads the literal '' field, distinct from the root [].
     expect((callErrors(form)('') ?? []).map((e) => e.message)).toEqual(['empty-key required'])
-    expect((callErrors(form)([]) ?? []).map((e) => e.message)).toEqual(['must differ'])
+    // meta.ownErrors reads the root [] bucket alone: the root .refine().
+    expect(form.meta.ownErrors.map((e) => e.message)).toEqual(['must differ'])
+    // errors([]) is uniform with the no-arg errors(): the full aggregate.
+    expect((callErrors(form)([]) ?? []).map((e) => e.message).sort()).toEqual(
+      ['empty-key required', 'name required', 'must differ'].sort()
+    )
     expect((callErrors(form)() ?? []).map((e) => e.message).sort()).toEqual(
       ['empty-key required', 'name required', 'must differ'].sort()
     )
@@ -289,15 +304,21 @@ describe("literal root '' field — zod-v4 adapter", () => {
     )
   }
 
-  it("errors('') reads the '' field, errors([]) the global bucket, errors() both", async () => {
+  it("errors('') reads the '' field, meta.ownErrors the root bucket, errors([]) === errors() both", async () => {
     const form = makeForm()
     await form.handleSubmit(
       () => {},
       () => {}
     )()
     await flushValidations(form)
+    // errors('') reads the literal '' field, distinct from the root [].
     expect((callErrors(form)('') ?? []).map((e) => e.message)).toEqual(['empty-key required'])
-    expect((callErrors(form)([]) ?? []).map((e) => e.message)).toEqual(['must differ'])
+    // meta.ownErrors reads the root [] bucket alone: the root .refine().
+    expect(form.meta.ownErrors.map((e) => e.message)).toEqual(['must differ'])
+    // errors([]) is uniform with the no-arg errors(): the full aggregate.
+    expect((callErrors(form)([]) ?? []).map((e) => e.message).sort()).toEqual(
+      ['empty-key required', 'name required', 'must differ'].sort()
+    )
     expect((callErrors(form)() ?? []).map((e) => e.message).sort()).toEqual(
       ['empty-key required', 'name required', 'must differ'].sort()
     )

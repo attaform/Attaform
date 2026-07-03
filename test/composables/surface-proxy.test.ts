@@ -1104,11 +1104,11 @@ describe('surface materialisation — predictable representations + complex erro
     expect(afterSwitch.notify?.address).toBeUndefined()
   })
 
-  it('form-level errors (path: []) surface via errors([]) and meta.errors, not the proxy tree', () => {
+  it('form-level errors (path: []) surface via meta.ownErrors and meta.errors, not the proxy tree', () => {
     // Form-level user entries (set via `setErrors`, or arriving
     // through `setErrors([{ path: [] }])`) live at the root `[]`.
     // They are NOT a child key, so the serialised `form.errors` tree has
-    // no slot for them — read them via `form.errors([])` and the flat
+    // no slot for them — read them via `form.meta.ownErrors` and the flat
     // `form.meta.errors`. Field errors still serialise normally.
     const schema = z.object({ name: z.string() })
     const form = mount(schema, { name: '' })
@@ -1121,11 +1121,13 @@ describe('surface materialisation — predictable representations + complex erro
     expect(errorsTree['name']).toMatchObject([{ message: 'name bad' }])
     expect(errorsTree['']).toBeUndefined()
 
-    // Dedicated global read; errors('') reads the (empty) literal '' field.
-    expect(form.errors([])).toMatchObject([{ message: 'whole-form invalid' }])
+    // Dedicated root-bucket read; errors('') reads the (empty) literal '' field.
+    expect(form.meta.ownErrors).toMatchObject([{ message: 'whole-form invalid' }])
     expect(form.errors('')).toEqual([])
 
-    // Flat aggregate captures both entries.
+    // errors([]) is uniform with the no-arg errors(): the full aggregate,
+    // both entries.
+    expect(form.errors([])).toEqual(form.errors())
     expect(form.meta.errors).toHaveLength(2)
   })
 })

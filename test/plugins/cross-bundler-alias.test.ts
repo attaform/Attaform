@@ -6,7 +6,16 @@ import { attaform as rollupAttaform } from '../../src/rollup'
 import { attaform as esbuildAttaform } from '../../src/esbuild'
 import { attaform as webpackAttaform } from '../../src/webpack'
 import { attaform as rspackAttaform } from '../../src/rspack'
-import { detectZodMajor, resolveZodAliasTarget } from '../../src/core/detect-zod-major'
+import {
+  detectZodMajor,
+  isRewritableZodSpecifier,
+  resolveZodAliasTarget,
+  REWRITABLE_ZOD_SPECIFIER_FILTER,
+  ZOD_BARREL_SPECIFIER,
+  ZOD_UNIFIED_SPECIFIER,
+  ZOD_V3_SPECIFIER,
+  ZOD_V4_SPECIFIER,
+} from '../../src/core/detect-zod-major'
 
 /**
  * Cross-bundler `attaform/zod` adapter-rewrite plugins (Block E).
@@ -16,9 +25,9 @@ import { detectZodMajor, resolveZodAliasTarget } from '../../src/core/detect-zod
  * bundler devDeps (webpack / rspack aren't installed, per the zero-dep
  * rule; esbuild is only transitively present). The stubs mirror the
  * minimal hook surface each plugin touches and assert the one thing the
- * plugin owns: rewriting the bare `attaform/zod` specifier to the matching
- * adapter subpath. Whether the bundler actually invokes the hook is the
- * bundler's contract, not attaform's.
+ * plugin owns: rewriting the `attaform` and `attaform/zod` specifiers to
+ * the matching adapter subpath. Whether the bundler actually invokes the
+ * hook is the bundler's contract, not attaform's.
  *
  * Per-test fixture roots carry a synthetic `node_modules/zod/package.json`
  * so detection resolves a controlled Zod version without touching the real
@@ -105,6 +114,63 @@ describe('shared zod-major detection', () => {
   })
 })
 
+describe('rewritable-specifier matcher', () => {
+  // The single place the plugins decide WHICH specifiers collapse to one
+  // adapter. `REWRITABLE_ZOD_SPECIFIER_FILTER` doubles as esbuild's Go RE2
+  // `onResolve` filter and, via `.test()`, as `isRewritableZodSpecifier` —
+  // the string check the other plugins call. This table pins the
+  // exact-match discipline: rewrite the bare barrel + `attaform/zod`, never
+  // swallow a pinned adapter (`attaform/zod-v3|v4`) or a build-tool subpath
+  // (`attaform/nuxt`, `attaform/vite`, ...).
+  const rewritable = [ZOD_BARREL_SPECIFIER, ZOD_UNIFIED_SPECIFIER] // 'attaform', 'attaform/zod'
+  const passThrough = [
+    ZOD_V3_SPECIFIER,
+    ZOD_V4_SPECIFIER,
+    'attaform/abstract',
+    'attaform/nuxt',
+    'attaform/vite',
+    'attaform/rollup',
+    'attaform/esbuild',
+    'attaform/webpack',
+    'attaform/rspack',
+    'attaform/transforms',
+    'attaform/devtools-panel',
+    'attaform/types',
+    // near-misses the anchors must reject
+    'attaformx',
+    'xattaform',
+    'attaform/zodx',
+    'attaform/zod-v5',
+    'attaform/zod/deep',
+    'zod',
+    'vue',
+    '',
+  ]
+
+  it('matches exactly the bare barrel and the unified entry', () => {
+    for (const source of rewritable) {
+      expect(isRewritableZodSpecifier(source), source).toBe(true)
+    }
+  })
+
+  it('never matches a pinned adapter, a build-tool subpath, or a near-miss', () => {
+    for (const source of passThrough) {
+      expect(isRewritableZodSpecifier(source), source).toBe(false)
+    }
+  })
+
+  it('keeps the esbuild filter regex and the string predicate in lockstep', () => {
+    // Drift here means esbuild's onResolve fires on a different set than
+    // the other plugins' string check — one bundler would rewrite an
+    // import another leaves alone.
+    for (const source of [...rewritable, ...passThrough]) {
+      expect(REWRITABLE_ZOD_SPECIFIER_FILTER.test(source), source).toBe(
+        isRewritableZodSpecifier(source)
+      )
+    }
+  })
+})
+
 // ── Rollup ──────────────────────────────────────────────────────────
 interface RollupResolveCtx {
   resolve(
@@ -134,10 +200,23 @@ describe('attaform/rollup — resolveId rewrite', () => {
     expect(resolved?.id).toBe('attaform/zod-v3')
   })
 
-  it('passes through explicit subpaths and the root entry unchanged', async () => {
+  it('rewrites the bare attaform barrel to the detected adapter', async () => {
+    const v4 = rollupAttaform({ root: zodV4Root })
+    v4.buildStart()
+    expect((await v4.resolveId.call(rollupCtx(), 'attaform', undefined))?.id).toBe(
+      'attaform/zod-v4'
+    )
+    const v3 = rollupAttaform({ root: zodV3Root })
+    v3.buildStart()
+    expect((await v3.resolveId.call(rollupCtx(), 'attaform', undefined))?.id).toBe(
+      'attaform/zod-v3'
+    )
+  })
+
+  it('passes through pinned adapter subpaths unchanged', async () => {
     const plugin = rollupAttaform({ root: zodV4Root })
     plugin.buildStart()
-    for (const source of ['attaform/zod-v3', 'attaform/zod-v4', 'attaform']) {
+    for (const source of ['attaform/zod-v3', 'attaform/zod-v4']) {
       expect(await plugin.resolveId.call(rollupCtx(), source, undefined)).toBeNull()
     }
   })
@@ -166,11 +245,14 @@ type EsbuildOnResolveCb = (args: {
 function makeEsbuildBuild(): {
   build: Parameters<ReturnType<typeof esbuildAttaform>['setup']>[0]
   getCallback: () => EsbuildOnResolveCb | undefined
+  getFilter: () => RegExp | undefined
 } {
   let cb: EsbuildOnResolveCb | undefined
+  let filter: RegExp | undefined
   const build: Parameters<ReturnType<typeof esbuildAttaform>['setup']>[0] = {
     initialOptions: {},
-    onResolve: (_options, callback) => {
+    onResolve: (options, callback) => {
+      filter = options.filter
       cb = callback
     },
     // Echo the re-resolved specifier so the test reads which subpath the
@@ -182,7 +264,7 @@ function makeEsbuildBuild(): {
       errors: [],
     }),
   }
-  return { build, getCallback: () => cb }
+  return { build, getCallback: () => cb, getFilter: () => filter }
 }
 
 describe('attaform/esbuild — onResolve rewrite', () => {
@@ -198,6 +280,30 @@ describe('attaform/esbuild — onResolve rewrite', () => {
       kind: 'import-statement',
     })
     expect(result.path).toBe('/resolved/attaform/zod-v4')
+  })
+
+  it('registers exactly the shared rewritable-specifier filter (admits the bare barrel)', () => {
+    // esbuild gates which imports reach the callback via the `filter`
+    // regex, not a per-call string check, so the plugin must hand it the
+    // same tested matcher the other plugins use — otherwise bare `attaform`
+    // never reaches the rewrite here.
+    const { build, getFilter } = makeEsbuildBuild()
+    esbuildAttaform({ root: zodV4Root }).setup(build)
+    expect(getFilter()).toBe(REWRITABLE_ZOD_SPECIFIER_FILTER)
+  })
+
+  it('re-resolves the bare attaform barrel through the detected adapter', async () => {
+    const { build, getCallback } = makeEsbuildBuild()
+    esbuildAttaform({ root: zodV3Root }).setup(build)
+    const cb = getCallback()
+    if (cb === undefined) throw new Error('onResolve was not registered')
+    const result = await cb({
+      path: 'attaform',
+      importer: 'app.ts',
+      resolveDir: '/app',
+      kind: 'import-statement',
+    })
+    expect(result.path).toBe('/resolved/attaform/zod-v3')
   })
 
   it('throws at setup when zod is not installed', () => {
@@ -261,12 +367,22 @@ describe.each(webpackFamily)('%s — beforeResolve rewrite', (tag, factory) => {
     expect(data.request).toBe('attaform/zod-v4')
   })
 
-  it('leaves explicit subpaths and unrelated requests unchanged', () => {
+  it('rewrites the bare attaform barrel request to the detected adapter', () => {
+    const { compiler, getBeforeResolve } = makeWebpackCompiler(zodV4Root)
+    factory({ root: zodV4Root }).apply(compiler)
+    const beforeResolve = getBeforeResolve()
+    if (beforeResolve === undefined) throw new Error('beforeResolve was not tapped')
+    const data = { request: 'attaform' }
+    beforeResolve(data)
+    expect(data.request).toBe('attaform/zod-v4')
+  })
+
+  it('leaves pinned subpaths and unrelated requests unchanged', () => {
     const { compiler, getBeforeResolve } = makeWebpackCompiler(zodV3Root)
     factory({ root: zodV3Root }).apply(compiler)
     const beforeResolve = getBeforeResolve()
     if (beforeResolve === undefined) throw new Error('beforeResolve was not tapped')
-    for (const request of ['attaform/zod-v3', 'attaform/zod-v4', 'attaform', 'vue']) {
+    for (const request of ['attaform/zod-v3', 'attaform/zod-v4', 'attaform/nuxt', 'vue']) {
       const data = { request }
       beforeResolve(data)
       expect(data.request).toBe(request)

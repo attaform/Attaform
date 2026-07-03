@@ -1,9 +1,9 @@
 /**
  * `attaform/vite` — Vite plugin that wires the compile-time node
- * transforms with @vitejs/plugin-vue AND rewrites `attaform/zod`
- * imports to either `attaform/zod-v3` or `attaform/zod-v4` at build
- * time, based on the consumer's installed Zod major. The result is
- * one Zod adapter shipped per bundle, with no manual subpath choice.
+ * transforms with @vitejs/plugin-vue AND rewrites `attaform` and
+ * `attaform/zod` imports to either `attaform/zod-v3` or `attaform/zod-v4`
+ * at build time, based on the consumer's installed Zod major. The result
+ * is one Zod adapter shipped per bundle, with no manual subpath choice.
  *
  * Usage (bare Vue 3 consumers):
  *
@@ -22,10 +22,10 @@
  * visibly wrong initial HTML.
  *
  * The `resolveZodAlias` option (default `true`) controls the build-time
- * `attaform/zod` rewrite. Set to `false` if your project intentionally
- * mixes Zod versions or has a non-standard Zod resolution; the unified
- * `attaform/zod` entry's runtime dispatch covers that case at the cost
- * of bundling both adapters.
+ * rewrite of `attaform` / `attaform/zod`. Set to `false` if your project
+ * intentionally mixes Zod versions or has a non-standard Zod resolution;
+ * the unified entry's runtime dispatch covers that case at the cost of
+ * bundling both adapters.
  *
  * Implementation note: this plugin mutates @vitejs/plugin-vue's options
  * via the documented but somewhat informal `api.options` surface used
@@ -34,7 +34,7 @@
  * and wire them yourself.
  */
 import type { Plugin } from 'vite'
-import { resolveZodAliasTarget, ZOD_UNIFIED_SPECIFIER } from './core/detect-zod-major'
+import { isRewritableZodSpecifier, resolveZodAliasTarget } from './core/detect-zod-major'
 import { componentBridgeTransform } from './runtime/lib/core/transforms/component-bridge-transform'
 import { inputTextAreaNodeTransform } from './runtime/lib/core/transforms/input-text-area-transform'
 import { redundantBindingWarnTransform } from './runtime/lib/core/transforms/redundant-binding-warn-transform'
@@ -45,10 +45,10 @@ import { transformSsrAccessed } from './runtime/lib/core/transforms/ssr-accessed
 /** Options for `attaform()`. */
 export interface AttaformVitePluginOptions {
   /**
-   * Rewrite `attaform/zod` imports at build time to either
-   * `attaform/zod-v3` or `attaform/zod-v4`, based on the consumer's
-   * installed Zod major. Default `true` — produces a leaner bundle
-   * for the common case of one Zod version per project.
+   * Rewrite `attaform` and `attaform/zod` imports at build time to
+   * either `attaform/zod-v3` or `attaform/zod-v4`, based on the
+   * consumer's installed Zod major. Default `true` — produces a leaner
+   * bundle for the common case of one Zod version per project.
    *
    * Set to `false` to fall through to the unified entry's runtime
    * dispatch. Useful when:
@@ -74,9 +74,9 @@ interface VitePluginVueApi {
 
 /**
  * Vite plugin that wires the form library's compile-time template
- * transforms into `@vitejs/plugin-vue` and rewrites the unified
- * `attaform/zod` import to the matching adapter subpath. Required
- * for SSR and for hydration accuracy under bare Vue 3.
+ * transforms into `@vitejs/plugin-vue` and rewrites the bare `attaform`
+ * barrel and the unified `attaform/zod` import to the matching adapter
+ * subpath. Required for SSR and for hydration accuracy under bare Vue 3.
  *
  * ```ts
  * // vite.config.ts
@@ -293,13 +293,15 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
       )
     },
     async resolveId(source, importer) {
-      // Intercept ONLY the exact unified specifier. Explicit subpaths
-      // (`attaform/zod-v3`, `attaform/zod-v4`) and the root entry
-      // (`attaform`) pass through unchanged — that's the documented
-      // escape hatch for power users.
+      // Intercept the bare `attaform` barrel AND the explicit
+      // `attaform/zod` — both carry the runtime dispatcher, so both
+      // collapse to the one detected adapter. The pinned subpaths
+      // (`attaform/zod-v3`, `attaform/zod-v4`) pass through unchanged:
+      // that's the documented escape hatch for power users who want a
+      // specific adapter regardless of what's installed.
       if (!resolveZodAlias) return null
       if (aliasTarget === null) return null
-      if (source !== ZOD_UNIFIED_SPECIFIER) return null
+      if (!isRewritableZodSpecifier(source)) return null
       // Returning the bare specifier directly would freeze it as the
       // resolved id — Vite then ships `/@id/attaform/zod-v4` to the
       // browser and 404s because no plugin loads that virtual URL.

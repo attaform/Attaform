@@ -22,6 +22,7 @@ import type { DeepPartial, DefaultValuesInput, GenericForm } from '../types/type
 import type { FormStore } from './create-form-store'
 import { structuralSnapshot } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
+import { normalizeErrorInputs } from './errors'
 import { buildErrorsProxy } from './errors-proxy'
 import { buildFieldArrayApi } from './field-arrays'
 import {
@@ -543,39 +544,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     | ErrorInput[]
     | ((prev: ValidationError[]) => ErrorInput | ErrorInput[])
 
-  function normalizeErrorInput(item: ErrorInput, scope: Path | undefined): ValidationError {
-    if (item instanceof Error) {
-      return {
-        message: item.message.length > 0 ? item.message : 'Unknown error',
-        path: scope !== undefined ? [...scope] : [],
-        formKey: state.formKey,
-        code: AttaformErrorCode.UserError,
-      }
-    }
-    const entry: ValidationError = {
-      message:
-        typeof item.message === 'string' && item.message.length > 0
-          ? item.message
-          : 'Unknown error',
-      path: scope !== undefined ? [...scope] : Array.isArray(item.path) ? [...item.path] : [],
-      formKey: state.formKey,
-      code:
-        typeof item.code === 'string' && item.code.length > 0
-          ? item.code
-          : AttaformErrorCode.UserError,
-    }
-    if (item.data !== undefined) entry.data = item.data
-    return entry
-  }
-
-  function normalizeErrorInputs(
-    input: ErrorInput | ErrorInput[],
-    scope: Path | undefined
-  ): ValidationError[] {
-    const items = Array.isArray(input) ? input : [input]
-    return items.map((item) => normalizeErrorInput(item, scope))
-  }
-
   function flattenUserErrors(): ValidationError[] {
     const all: ValidationError[] = []
     for (const errs of state.userErrors.values()) all.push(...errs)
@@ -595,12 +563,17 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       const input = arg2 as SetErrorsArg
       const resolved =
         typeof input === 'function' ? input((state.userErrors.get(key) ?? []).slice()) : input
-      state.setUserErrorsForPath(segments, normalizeErrorInputs(resolved, segments))
+      state.setUserErrorsForPath(
+        segments,
+        normalizeErrorInputs(resolved, segments, state.formKey, AttaformErrorCode.UserError)
+      )
       return
     }
     const input = arg1 as SetErrorsArg
     const resolved = typeof input === 'function' ? input(flattenUserErrors()) : input
-    state.setAllUserErrors(normalizeErrorInputs(resolved, undefined))
+    state.setAllUserErrors(
+      normalizeErrorInputs(resolved, undefined, state.formKey, AttaformErrorCode.UserError)
+    )
   }
 
   function clearErrors(path?: string | (string | number)[]): void {

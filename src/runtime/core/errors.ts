@@ -10,6 +10,9 @@
  * keeps working.
  */
 
+import type { ErrorInput, FormKey, ValidationError } from '../types/types-api'
+import type { Path } from './paths'
+
 /**
  * Base for every error class thrown by `attaform`. Sets
  * `this.name` from the constructor's `new.target.name`, so subclasses
@@ -85,6 +88,61 @@ export function toError(value: unknown): Error {
       ? value
       : `Submit callback threw a non-Error value (${typeof value})`
   return new Error(message, { cause: value })
+}
+
+/**
+ * Coerce one lenient `ErrorInput` (a real `Error`, or a partial
+ * `{ message?, path?, code?, data? }`) into a firm `ValidationError`.
+ * The form always stamps its own `formKey`; a missing or empty `message`
+ * coerces to `"Unknown error"` and a missing or empty `code` to
+ * `defaultCode`, so the result is always well-formed — library code
+ * never throws into the consumer app over a malformed error input.
+ *
+ * `scope` pins the path: pass the canonical segments for a path-scoped
+ * write (`setErrors(path, …)`), or `undefined` to honor the input's own
+ * `path` (which defaults to the form-level `[]`).
+ *
+ * Shared by `form.setErrors` (default code `atta:user-error`) and the
+ * `handleSubmit` throw-surfacing path (default code `atta:submit-error`).
+ */
+export function normalizeErrorInput(
+  item: ErrorInput,
+  scope: Path | undefined,
+  formKey: FormKey,
+  defaultCode: string
+): ValidationError {
+  if (item instanceof Error) {
+    return {
+      message: item.message.length > 0 ? item.message : 'Unknown error',
+      path: scope !== undefined ? [...scope] : [],
+      formKey,
+      code: defaultCode,
+    }
+  }
+  const entry: ValidationError = {
+    message:
+      typeof item.message === 'string' && item.message.length > 0 ? item.message : 'Unknown error',
+    path: scope !== undefined ? [...scope] : Array.isArray(item.path) ? [...item.path] : [],
+    formKey,
+    code: typeof item.code === 'string' && item.code.length > 0 ? item.code : defaultCode,
+  }
+  if (item.data !== undefined) entry.data = item.data
+  return entry
+}
+
+/**
+ * Normalize a single `ErrorInput` or an array of them into a
+ * `ValidationError[]`, applying `normalizeErrorInput` to each. See it for
+ * the `scope` / `formKey` / `defaultCode` semantics.
+ */
+export function normalizeErrorInputs(
+  input: ErrorInput | ErrorInput[],
+  scope: Path | undefined,
+  formKey: FormKey,
+  defaultCode: string
+): ValidationError[] {
+  const items = Array.isArray(input) ? input : [input]
+  return items.map((item) => normalizeErrorInput(item, scope, formKey, defaultCode))
 }
 
 /**

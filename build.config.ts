@@ -3,8 +3,10 @@ import { defineBuildConfig } from 'unbuild'
 
 export default defineBuildConfig({
   // Multiple published entry points. `module` is the Nuxt module (used via
-  // `attaform/nuxt`); `index` is the framework-agnostic core used by bare
-  // Vue consumers; the rest are narrow-purpose subpaths.
+  // `attaform/nuxt`); `index` is the barrel — the Zod-default surface,
+  // structurally identical to `src/zod`; `src/abstract` is the
+  // schema-agnostic `useAbstractForm` escape hatch; the rest are
+  // narrow-purpose subpaths.
   //
   // `src/runtime/plugins/attaform` is a Nuxt-only plugin file that
   // `src/nuxt.ts` registers via `addPlugin({ src: resolver.resolve(...) })`.
@@ -26,6 +28,7 @@ export default defineBuildConfig({
     'src/zod',
     'src/zod-v3',
     'src/zod-v4',
+    'src/abstract',
     'src/runtime/plugins/attaform',
     // `.vue` files for the Nuxt DevTools overlay panel. Rollup builds
     // .ts entries; the consumer's Vite + @vitejs/plugin-vue compiles

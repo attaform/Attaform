@@ -105,6 +105,10 @@
       "types": "./dist/zod-v4.d.mts",
       "import": "./dist/zod-v4.mjs"
     },
+    "./abstract": {
+      "types": "./dist/abstract.d.mts",
+      "import": "./dist/abstract.mjs"
+    },
     "./types": {
       "types": "./dist/index.d.mts"
     }

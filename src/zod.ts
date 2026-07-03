@@ -45,18 +45,13 @@
  *   `kindOf`, `ZodKind` — diverge between v3 and v4.
  */
 
-export { useForm } from './runtime/adapters/unified/use-form'
-export type {
-  UseFormConfig,
-  UseFormConfigV3,
-  UseFormConfigV4,
-  UseFormReturn,
-  UseFormReturnV3,
-  UseFormReturnV4,
-} from './runtime/adapters/unified/types-unified'
-export type { PathInput, PathOutput } from './runtime/adapters/zod-v4'
-// Shared wizard / register / error-code / unset surface — common to
-// every entry, single source under `runtime/_shared-exports.ts`.
+// Schema-agnostic core (plugin, registry, serialize, directive,
+// coercion, paths, devtools, errors, display, wizard / register /
+// inject / error-code / unset, and all core types) — single source
+// under `runtime/_shared-exports.ts`.
 export * from './runtime/_shared-exports'
-export { fieldMeta, withMeta } from './runtime/adapters/unified/field-meta'
-export type { FieldMetaPayload } from './runtime/core/field-meta'
+// The unified Zod binding (dispatching `useForm`, `fieldMeta` /
+// `withMeta`, the `useForm` projection types, `PathInput` / `PathOutput`)
+// — single source under `runtime/_zod-binding.ts`, shared verbatim with
+// the bare `attaform` barrel.
+export * from './runtime/_zod-binding'

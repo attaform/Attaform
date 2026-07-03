@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, createSSRApp, defineComponent, h, nextTick, ref } from 'vue'
 import { renderToString } from '@vue/server-renderer'
-import { useForm } from '../../src'
+import { useAbstractForm as useForm } from '../../src/abstract'
 import { ANONYMOUS_FORM_KEY_PREFIX } from '../../src/runtime/core/defaults'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { injectForm } from '../../src/runtime/composables/use-form-context'

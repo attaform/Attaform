@@ -1038,7 +1038,7 @@ const entries: SmokeEntry[] = [
   {
     // Sign in as the locked account; the simulated server returns a
     // form-level error whose `data` payload carries the unlock time,
-    // surfaced through form.errors([]) in the banner.
+    // surfaced through form.meta.ownErrors in the banner.
     slug: 'server-side-errors',
     gesture: async (root) => {
       const inputs = root.querySelectorAll<HTMLInputElement>('input')
@@ -1060,6 +1060,31 @@ const entries: SmokeEntry[] = [
       // The lockout lands at the global [] bucket and renders in the
       // banner; its data payload adds the unlock time.
       expect(text.toLowerCase()).toMatch(/locked|too many|try again/)
+    },
+  },
+  {
+    // Submit two mismatched passwords: the root `.refine()` lands its
+    // error at the form root (path []), and `form.meta.firstOwnError`
+    // surfaces it in the `.banner.error` alert. The password fields
+    // carry no length constraint, so the base object always parses and
+    // the refine always runs (a field failure would short-circuit it).
+    slug: 'root-errors',
+    gesture: async (root) => {
+      const inputs = root.querySelectorAll<HTMLInputElement>('input[type="password"]')
+      const password = inputs.item(0)
+      const confirm = inputs.item(1)
+      if (password === null || confirm === null)
+        throw new Error('root-errors: password inputs not found')
+      await dispatchInput(password, 'alpha12345')
+      await dispatchInput(confirm, 'beta67890')
+      const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')
+      if (!submit) throw new Error('root-errors: submit button not found')
+      submit.click()
+      await waitUntil(() => root.querySelector('.banner.error') ?? null, 2000)
+    },
+    assert: async (root) => {
+      const banner = root.querySelector('.banner.error')
+      expect(banner?.textContent ?? '').toContain('Passwords must match')
     },
   },
   {

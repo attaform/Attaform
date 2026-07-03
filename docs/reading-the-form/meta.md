@@ -84,6 +84,11 @@ The form-level error banner reads `firstOwnError`, the form's own top-level erro
 </p>
 ```
 
+The demo pairs two passwords with a root `.refine()`. Submit a mismatch and the refine's error lands at the form root, where `form.meta.firstOwnError` reads it for the banner and `form.meta.ownErrors` holds the whole root bucket:
+
+::docs-demo{slug="root-errors" label="Root Error Banner"}
+::
+
 The "post-success confirmation" pattern reads `submitted` instead, so the banner only renders after the callback actually succeeded. A callback that hands a server rejection to `setErrors` and returns counts as a failed submit, so the banner stays hidden:
 
 ```vue

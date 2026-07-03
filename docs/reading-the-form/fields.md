@@ -108,17 +108,21 @@ The data sitting at this path right now, and what it was at hydration.
 
 The error surface at this path: raw, ergonomic, and gated.
 
-| Property       | Type                                          | Meaning                                                                                             |
-| -------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `errors`       | `readonly ValidationError[]`                  | Every error at this path, schema-declaration order.                                                 |
-| `firstError`   | `ValidationError \| undefined`                | Sugar for `errors[0]`.                                                                              |
-| `valid`        | `boolean`                                     | `errors.length === 0 && !validating`.                                                               |
-| `validating`   | `boolean`                                     | `true` while a per-field validation run is in flight.                                               |
-| `displayState` | `'idle' \| 'pending' \| 'error' \| 'success'` | The single display-state verdict, resolved by [`getDisplayState`](/docs/validation/showing-errors). |
-| `showErrors`   | `boolean`                                     | `displayState === 'error'`. The display-time error gate.                                            |
-| `showPending`  | `boolean`                                     | `displayState === 'pending'`. A check has run long enough to earn a spinner.                        |
-| `showSuccess`  | `boolean`                                     | `displayState === 'success'`. The field has passed.                                                 |
-| `showIdle`     | `boolean`                                     | `displayState === 'idle'`. Nothing to surface yet.                                                  |
+| Property        | Type                                          | Meaning                                                                                              |
+| --------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `errors`        | `readonly ValidationError[]`                  | Every error in this path's subtree (this node plus descendants), schema-declaration order.           |
+| `firstError`    | `ValidationError \| undefined`                | Sugar for `errors[0]`.                                                                               |
+| `ownErrors`     | `readonly ValidationError[]`                  | Every error at this path's own bucket only, excluding descendants. On a leaf, identical to `errors`. |
+| `firstOwnError` | `ValidationError \| undefined`                | Sugar for `ownErrors[0]`.                                                                            |
+| `valid`         | `boolean`                                     | `errors.length === 0 && !validating`.                                                                |
+| `validating`    | `boolean`                                     | `true` while a per-field validation run is in flight.                                                |
+| `displayState`  | `'idle' \| 'pending' \| 'error' \| 'success'` | The single display-state verdict, resolved by [`getDisplayState`](/docs/validation/showing-errors).  |
+| `showErrors`    | `boolean`                                     | `displayState === 'error'`. The display-time error gate.                                             |
+| `showPending`   | `boolean`                                     | `displayState === 'pending'`. A check has run long enough to earn a spinner.                         |
+| `showSuccess`   | `boolean`                                     | `displayState === 'success'`. The field has passed.                                                  |
+| `showIdle`      | `boolean`                                     | `displayState === 'idle'`. Nothing to surface yet.                                                   |
+
+Two error scopes sit side by side. `errors` and `firstError` roll up the **subtree**: a container's `errors` is non-empty whenever any descendant is invalid. `ownErrors` and `firstOwnError` read the **own bucket** at this exact path, so a container's own cross-field `.refine()` surfaces on its own without dragging in child errors. On a leaf the two scopes coincide (a leaf has no descendants), and `ownErrors` is the very same array as `errors`.
 
 ### DOM reads
 

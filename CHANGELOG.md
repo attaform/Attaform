@@ -35,6 +35,14 @@ _No unreleased changes yet._
   navigation stays `wizard.next()`; the whole-wizard submit stays
   `wizard.handleSubmit`. (#471)
 
+- **Every field and `form.meta` now expose `ownErrors` / `firstOwnError`, the
+  errors at that exact path.** They are the own-bucket counterpart to the
+  subtree-scoped `errors` / `firstError`: on a container they surface its own
+  cross-field `.refine()` alone, without the child errors that `errors` rolls
+  up, and on a leaf they are the very same array. `form.meta.firstOwnError` is
+  the one-line banner accessor for a form-level error from a root `.refine()`
+  or a path-less `setErrors`. (#489)
+
 ### Changed
 
 - **When the active step drops out of a wizard mid-flight, the pin slides forward

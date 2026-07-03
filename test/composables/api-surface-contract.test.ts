@@ -4,7 +4,11 @@ import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { DisplayState, UseFormReturnType } from '../../src/runtime/types/types-api'
+import type {
+  DisplayState,
+  UseFormReturnType,
+  ValidationError,
+} from '../../src/runtime/types/types-api'
 
 /**
  * Pins the public surface of `useForm()`'s return value against
@@ -144,6 +148,12 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.meta.showSuccess).toBe('boolean')
     expect(typeof api.meta.showIdle).toBe('boolean')
     expect(['undefined', 'object']).toContain(typeof api.meta.firstError)
+    // Own-bucket accessors: the exact-path counterpart to errors /
+    // firstError. On meta these read the root [] bucket (the banner).
+    expect(Array.isArray(api.meta.ownErrors)).toBe(true)
+    expect(['undefined', 'object']).toContain(typeof api.meta.firstOwnError)
+    expectTypeOf(api.meta.ownErrors).toEqualTypeOf<readonly ValidationError[]>()
+    expectTypeOf(api.meta.firstOwnError).toEqualTypeOf<ValidationError | undefined>()
     expect(typeof api.meta.id).toBe('string')
     expect(api.meta.aria.errorId).toBe(`${api.meta.id}-error`)
     // The root is not an array element, so its identity key is empty.
@@ -195,6 +205,15 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof emailField.showSuccess).toBe('boolean')
     expect(typeof emailField.showIdle).toBe('boolean')
 
+    // Error accessors: subtree (errors / firstError) and exact-path
+    // (ownErrors / firstOwnError). A leaf has no descendants, so its own
+    // bucket IS its subtree — the same array reference.
+    expect(Array.isArray(emailField.errors)).toBe(true)
+    expect(Array.isArray(emailField.ownErrors)).toBe(true)
+    expect(['undefined', 'object']).toContain(typeof emailField.firstError)
+    expect(['undefined', 'object']).toContain(typeof emailField.firstOwnError)
+    expect(emailField.ownErrors).toBe(emailField.errors)
+
     // Stable id + aria satellites for accessibility wiring.
     expect(typeof emailField.id).toBe('string')
     expect(emailField.id.length).toBeGreaterThan(0)
@@ -213,6 +232,8 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expectTypeOf(emailField.showPending).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.showSuccess).toEqualTypeOf<boolean>()
     expectTypeOf(emailField.showIdle).toEqualTypeOf<boolean>()
+    expectTypeOf(emailField.ownErrors).toEqualTypeOf<readonly ValidationError[]>()
+    expectTypeOf(emailField.firstOwnError).toEqualTypeOf<ValidationError | undefined>()
     expectTypeOf(emailField.id).toEqualTypeOf<string>()
     expectTypeOf(emailField.key).toEqualTypeOf<string>()
   })

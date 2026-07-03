@@ -27,9 +27,9 @@ Submit the demo without changing the simulate-failure toggle to watch `submittin
 
 ## Two halves
 
-`form.meta` extends `FieldState` with seven form-only properties. That means `meta` has 36 reads total:
+`form.meta` extends `FieldState` with seven form-only properties. That means `meta` has 38 reads total:
 
-- 29 properties inherited from FieldState, aggregated across every leaf in the form.
+- 31 properties inherited from FieldState, aggregated across every leaf in the form.
 - 7 form-only properties that describe the submit cycle and the wizard-departure counter.
 
 The inherited bits are documented once on the [`fields` page](/docs/reading-the-form/fields): same property names, same types, same reactivity. The only difference is the aggregation:
@@ -37,9 +37,12 @@ The inherited bits are documented once on the [`fields` page](/docs/reading-the-
 ```ts
 form.fields.email.dirty // this one field
 form.meta.dirty // any field in the form
-form.meta.errors // every error across every path
+form.meta.errors // every error across every path (the whole-form aggregate)
+form.meta.ownErrors // the root [] bucket alone: the form's own top-level errors
 form.meta.value // the full form values object
 ```
+
+`meta.errors` rolls up every path. `meta.ownErrors` is the exception to the aggregation rule: it reads the root's own bucket only, the form-level errors a root `.refine()` or a path-less `setErrors` pins at `[]`, with no field errors folded in. It is the banner accessor.
 
 ## Form-only properties
 
@@ -70,6 +73,14 @@ The "show errors after first submit attempt" pattern reads the counter so failed
 ```vue
 <p v-if="form.meta.submissionAttempts > 0 && form.meta.errorCount > 0">
   {{ form.meta.errorCount }} field(s) need attention.
+</p>
+```
+
+The form-level error banner reads `firstOwnError`, the form's own top-level error (a root `.refine()`, a path-less `setErrors`), with no field error mixed in:
+
+```vue
+<p v-if="form.meta.firstOwnError" role="alert">
+  {{ form.meta.firstOwnError.message }}
 </p>
 ```
 

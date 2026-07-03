@@ -95,6 +95,16 @@ A `.refine` on the outer object attaches its error to whatever `path` you specif
 
 For cross-field validations (password confirmation, address-postal-code matching, conditional-required dependencies), the `.refine` + `path: ['leafName']` pattern is the canonical move.
 
+When a no-path refine lands on a nested object's own bucket, isolate it from the fieldset's child errors with the own-bucket accessor on its FieldState:
+
+```vue
+<em v-if="form.fields.profile.firstOwnError">
+  {{ form.fields.profile.firstOwnError.message }}
+</em>
+```
+
+`form.fields.profile.errors` rolls up the whole subtree (the object's own error plus every child's); `form.fields.profile.ownErrors` is the object's own bucket alone. See [reading FieldState](/docs/reading-the-form/fields) for the full own-versus-subtree axis.
+
 ## Per-nested defaults
 
 Each nested object can have its own `.default()`:

@@ -26,6 +26,33 @@ overrides:
   # /sitemap.xml 500. Scoped to devframe so @nuxt/test-utils keeps its own
   # h3 v2 (the h3-next alias) for the e2e suite.
   'devframe>h3': 1.15.11
+  # Security floors for dev-only transitive dependencies. Attaform ships
+  # zero runtime dependencies (package.json `dependencies` is empty), so
+  # none of these reach a consumer install; they harden the build / test /
+  # docs toolchain for contributors. Each floor is the first patched
+  # version for its advisory, held to the current major so the bump stays a
+  # patch/minor rather than a breaking jump. Revisit when the source dep
+  # floats past the range on its own and the override becomes a no-op.
+  #
+  #   undici  ^7.28.0  clears GHSA-hm92-r4w5-c3mj and -vmh5-mc38-953g
+  #                    (both high, SOCKS5 ProxyAgent), -p88m-4jfj-68fv,
+  #                    -pr7r-676h-xcf6, -g8m3-5g58-fq7m, -35p6-xmwp-9g52,
+  #                    and the auto-dismissed WebSocket-DoS -vxpw-j846-p89q
+  #                    (high). Pulled by jsdom / cheerio (test harness).
+  #   ws      ^8.21.0  clears GHSA-96hv-2xvq-fx4p (high, memory-exhaustion
+  #                    DoS from tiny fragments), auto-dismissed. Pulled by
+  #                    socket.io-client > @nuxt/content (docs site).
+  #   js-yaml ^4.2.0   clears GHSA-h67p-54hq-rp68 (quadratic-complexity DoS
+  #                    in merge-key handling).
+  #   esbuild ^0.28.1  clears GHSA-g7r4-m6w7-qqqr (arbitrary file read via
+  #                    the dev server on Windows — real for a Windows
+  #                    maintainer, not just a theoretical). Also pins the
+  #                    minifier's minor so the eager-bundle bytes stay
+  #                    predictable across installs.
+  undici: ^7.28.0
+  ws: ^8.21.0
+  js-yaml: ^4.2.0
+  esbuild: ^0.28.1
 
 # Install-script allowlist. Any package NOT listed here has its
 # install / postinstall / preinstall scripts skipped at install

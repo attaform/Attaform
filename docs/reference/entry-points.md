@@ -4,13 +4,13 @@ description: Every package subpath Attaform exposes and what ships from each. Im
 metaRows:
   - label: Category
     value: Reference
-  - label: Subpaths
-    value: 9
+  - label: Entry points
+    value: 14
   - label: Recommended entry
-    value: attaform/zod
-    kind: code
-  - label: Framework-agnostic
     value: attaform
+    kind: code
+  - label: Bring your own adapter
+    value: attaform/abstract
     kind: code
 ---
 
@@ -21,57 +21,81 @@ metaRows:
 ::docs-meta-table
 ::
 
-Nine subpaths. New projects pick `attaform/zod`; the others cover Zod v3 holdouts, framework-agnostic core, Nuxt / Vite integrations, compiler internals, the DevTools panel, and the type-only types subpath.
+New projects pick `attaform`. The other subpaths cover explicit Zod pins, the bring-your-own-adapter escape hatch, the Nuxt and Vite integrations, the compiler internals, the DevTools panel, and the type-only surface.
 
-## `attaform/zod`: the recommended entry
+## `attaform`: the recommended entry
 
-Zod v4 adapter. The canonical entry for new projects.
+The default entry, and the one new projects reach for. `useForm` here takes a Zod schema and infers every field type from it. It auto-detects the installed Zod major (v3 or v4) and routes to the matching adapter: under the `attaform/vite` plugin (or `attaform/nuxt`, which installs it) that resolution happens at build time so the bundle ships one adapter, and without a plugin the entry dispatches at runtime instead.
 
 ```ts
-import { useForm, withMeta, zodAdapter, fieldMeta } from 'attaform/zod'
+import { createAttaform, useForm } from 'attaform'
 ```
 
-Ships:
+The Zod-default form surface:
 
-- `useForm`: the typed-Zod wrapper around the framework-agnostic `useForm`.
-- `useWizard`, `injectForm`, `useRegister`: same composables, re-exported.
-- `zodAdapter`: explicit adapter constructor (most consumers don't need this; `useForm({ schema })` wraps automatically).
-- `fieldMeta` / `withMeta`: schema-attached field metadata (label, description, placeholder).
-- `kindOf`, `ZodKind`, `assertZodVersion`: runtime Zod-introspection helpers.
-- `FieldMetaPayload`: the metadata shape.
+- `useForm`: the Zod wrapper that infers field types from your schema.
+- `useWizard`, `lazy`: the multistep orchestrator and its lazy-step helper.
+- `injectForm`, `injectWizard`: reach a provided form or wizard from a descendant component.
+- `useRegister`: the composable behind `v-register`, for building custom input components.
+- `fieldMeta`, `withMeta`: schema-attached field metadata (label, description, placeholder), backed by a cross-adapter store.
 - `unset`, `isUnset`: the blank-anywhere sentinel and its type guard.
+
+On top of that surface, `attaform` re-exports the framework-agnostic toolkit (the plugin, the directive layer, the SSR bridge, the error classes, the path primitives) that every entry carries. It's listed in full under [The framework-agnostic toolkit](#the-framework-agnostic-toolkit).
+
+What `attaform` does NOT ship: the version-specific Zod internals (`zodAdapter`, `kindOf`, `ZodKind`, `assertZodVersion`, `UnsupportedSchemaError`). Those diverge between v3 and v4, so they live only on the pinned `attaform/zod-v3` and `attaform/zod-v4` subpaths.
+
+## `attaform/zod`: the explicit Zod pin
+
+The same surface as `attaform`, named explicitly. It is byte-identical: `attaform` is defined as `attaform/zod` re-exported. Reach for it when you want the import line to name Zod out loud, or when a codebase already standardized on it. New projects don't need the extra characters, and existing `attaform/zod` code keeps working with no change.
+
+```ts
+import { useForm } from 'attaform/zod'
+```
 
 ## `attaform/zod-v3`
 
-Zod v3 adapter for projects still on v3. New projects should use `attaform/zod`.
+The Zod v3 adapter, pinned with no runtime dispatch, for projects still on v3.
 
 ```ts
 import { useForm, withMeta } from 'attaform/zod-v3'
 ```
 
-Surface matches `attaform/zod` one-for-one: `useForm`, `injectForm`, `useRegister`, `useWizard`, `withMeta`, `fieldMeta`, `unset`. The runtime introspection is leaner (`isZodSchemaType` only); see [`AbstractSchema`](/docs/schemas/abstract-schema#zod-v3-vs-zod-v4-an-introspection-asymmetry) for the discussion.
+Ships the same form surface as `attaform`, plus the v3 `zodAdapter` and the `isZodSchemaType` guard. Its runtime introspection is leaner than v4's; see [`AbstractSchema`](/docs/schemas/abstract-schema#zod-v3-vs-zod-v4-an-introspection-asymmetry) for the discussion.
 
 ## `attaform/zod-v4`
 
-Explicit Zod v4 entry. Currently identical to `attaform/zod`; kept for forward-compat naming. New code should import from `attaform/zod`.
+The Zod v4 adapter, pinned explicitly. It's the same adapter `attaform` selects when it detects zod@4, committed at the import instead of by detection.
 
-## `attaform`: framework-agnostic core
+```ts
+import { useForm } from 'attaform/zod-v4'
+```
 
-The schema-agnostic entry. Drop here when:
+Ships the richer v4 introspection set on top of the shared form surface: `zodAdapter`, `kindOf`, `ZodKind`, `assertZodVersion`, `UnsupportedSchemaError`, and the `PathInput` / `PathOutput` type helpers.
 
-- You're wiring a custom schema library via [`AbstractSchema`](/docs/schemas/abstract-schema).
-- You need directive-layer symbols (`vRegister`, `assignKey`, `RegisterTransform`) not re-exported by the typed entries.
-- You're writing SSR bootstrap code (`renderAttaformState`, `hydrateAttaformState`, `escapeForInlineScript`).
+## `attaform/abstract`: bring your own adapter
+
+The schema-agnostic escape hatch. `useAbstractForm` works against any object implementing [`AbstractSchema`](/docs/schemas/abstract-schema): a custom adapter, a non-Zod validation library, or a hand-rolled shape. The Zod entries wrap their schema for you; this entry hands you the unwrapped composable and expects an adapter.
+
+```ts
+import { useAbstractForm } from 'attaform/abstract'
+```
+
+Ships `useAbstractForm`, the `AbstractSchema` contract type, `FieldMetaPayload`, and the same framework-agnostic toolkit every entry carries. There is deliberately no `useForm` alias here: a same-named wrong-variant export fails deep at the first schema call instead of at the import site, and removing that footgun is the whole reason the escape hatch is its own entry. This is a lower-level surface than the Zod entries; reach for it only when you're integrating a schema library Attaform doesn't ship an adapter for.
+
+## The framework-agnostic toolkit
+
+Every entry re-exports the same schema-agnostic core, so this set is identical whether you import it from `attaform`, `attaform/zod`, or `attaform/abstract`. Pick the entry by which form composable you want; the toolkit rides along.
 
 ```ts
 import {
   // Plugin + registry
   createAttaform,
   useRegistry,
-  // Schema-agnostic composables
-  useForm,
-  injectForm,
+  // Multistep, injection, custom inputs
   useWizard,
+  lazy,
+  injectForm,
+  injectWizard,
   useRegister,
   // Directive layer
   vRegister,
@@ -112,7 +136,7 @@ Also re-exports every public type from `runtime/types/types-api` and `runtime/ty
 
 ## `attaform/nuxt`
 
-The Nuxt module. Auto-installs the plugin, auto-imports `useForm`, wires the DevTools panel.
+The Nuxt module. Auto-installs the plugin, auto-imports the form composables, and wires the DevTools panel.
 
 ```ts
 // nuxt.config.ts
@@ -124,11 +148,11 @@ export default defineNuxtConfig({
 })
 ```
 
-After installing, `useForm` is a global auto-import. Import `injectForm`, `useWizard`, `useRegister`, and the rest of the surface explicitly from `attaform/zod` (or `attaform` for the framework-agnostic flavor). See [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt) for the full setup.
+After installing, `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, and `lazy` are all global auto-imports (toggle with the module's `autoImports` option). `useAbstractForm`, `createAttaform`, and `useRegister` stay explicit imports by design. See [Installation](/docs/getting-started/installation#auto-imports) for the full setup and [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt) for the server wiring.
 
 ## `attaform/vite`
 
-The Vite plugin. Required under bare Vue + Vite for SSR-correct `v-register` bindings.
+The Vite plugin. Required under bare Vue + Vite for SSR-correct `v-register` bindings, and the piece that rewrites `attaform` / `attaform/zod` to a single Zod adapter at build time.
 
 ```ts
 // vite.config.ts
@@ -141,7 +165,7 @@ export default defineConfig({
 })
 ```
 
-See [SSR hydration: bare Vue](/docs/server-and-ssr/ssr-bare-vue) for the matching server / client wiring.
+The same plugin ships for other bundlers at `attaform/rollup`, `attaform/esbuild`, `attaform/webpack`, and `attaform/rspack`. See [SSR hydration: bare Vue](/docs/server-and-ssr/ssr-bare-vue) for the matching server and client wiring.
 
 ## `attaform/transforms`
 
@@ -157,7 +181,7 @@ The DevTools panel internals. The [Attaform DevTools panel](/docs/devtools-and-d
 
 ## `attaform/types`
 
-Type-only subpath. Re-exports every type from the runtime; useful when you want types in a `.d.ts` consumer file without pulling in the runtime barrel:
+Type-only subpath. Re-exports every type from the runtime, useful when you want types in a `.d.ts` consumer file without pulling in the runtime barrel:
 
 ```ts
 import type { UseFormReturnType, FieldState, ValidationError } from 'attaform/types'
@@ -167,25 +191,26 @@ For runtime imports under typical app code, import directly from `attaform`; the
 
 ## Which subpath for which job?
 
-| You want to…                                          | Import from       |
-| ----------------------------------------------------- | ----------------- |
-| Build a form in a Vue 3 / Nuxt app on Zod v4          | `attaform/zod`    |
-| Build a form in an app stuck on Zod v3                | `attaform/zod-v3` |
-| Wire a custom schema library (Valibot, ArkType, …)    | `attaform`        |
-| Install the Nuxt module                               | `attaform/nuxt`   |
-| Install the Vite plugin under bare Vue + Vite         | `attaform/vite`   |
-| Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`        |
-| Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`        |
-| Catch an Attaform-thrown error by class               | `attaform`        |
-| Type-only imports in a `.d.ts` file                   | `attaform/types`  |
+| You want to…                                          | Import from         |
+| ----------------------------------------------------- | ------------------- |
+| Build a form in a Vue 3 / Nuxt app (Zod v3 or v4)     | `attaform`          |
+| Pin the Zod v3 adapter explicitly                     | `attaform/zod-v3`   |
+| Pin the Zod v4 adapter explicitly                     | `attaform/zod-v4`   |
+| Wire a custom or non-Zod schema library               | `attaform/abstract` |
+| Install the Nuxt module                               | `attaform/nuxt`     |
+| Install the Vite plugin under bare Vue + Vite         | `attaform/vite`     |
+| Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`          |
+| Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`          |
+| Catch an Attaform-thrown error by class               | `attaform`          |
+| Type-only imports in a `.d.ts` file                   | `attaform/types`    |
 
-## The framework-agnostic story
+## The Zod-default story
 
-`attaform` (the bare entry) doesn't import Zod. Everything you see in `attaform/zod` is a typed wrapper around `attaform`'s exports: same composables, same return shapes, with Zod-specific inference layered on top. If you ever need to bypass the Zod typing (writing a generic helper that should work across schema libraries), import from `attaform` directly and supply the `Form` generic yourself.
+`attaform` and `attaform/zod` are the same surface: the barrel re-exports the unified Zod binding, so `useForm` infers your field types from a Zod schema out of the box. The abstraction underneath stays schema-agnostic. `attaform/abstract` exposes it directly through `useAbstractForm`, which takes an `AbstractSchema` adapter instead of a Zod schema, and every Zod entry is a thin typed wrapper over that same core. If you're integrating a schema library Attaform doesn't ship an adapter for, [`AbstractSchema`](/docs/schemas/abstract-schema) is the contract to implement.
 
 ## Where to next
 
-- [The schema contract](/docs/schemas/contract): the bridge between the typed entries and the framework-agnostic core.
+- [The schema contract](/docs/schemas/contract): the bridge between the typed entries and the schema-agnostic core.
 - [Types reference](/docs/reference/types): every type, grouped by purpose.
 - [Errors reference](/docs/reference/errors): every Attaform-thrown error class.
 - [`AbstractSchema`](/docs/schemas/abstract-schema): the contract for non-Zod schema libraries.

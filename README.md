@@ -24,35 +24,43 @@ A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod 
 npm install attaform zod
 ```
 
+<!-- @generated-start:quick-start -->
+
 ```vue
 <script setup lang="ts">
+  import { useForm } from 'attaform'
   import { z } from 'zod'
-  import { useForm } from 'attaform' // auto-detects your Zod major
 
   const schema = z.object({
-    username: z.string().min(2, 'At least 2 characters'),
+    email: z.email('Enter a valid email'),
     password: z.string().min(8, 'At least 8 characters'),
   })
 
   const form = useForm({ schema })
 
   const onSubmit = form.handleSubmit(async (values) => {
-    await fetch('/api/signup', { method: 'POST', body: JSON.stringify(values) })
+    await fetch('/api/sign-in', { method: 'POST', body: JSON.stringify(values) })
   })
 </script>
 
 <template>
   <form @submit.prevent="onSubmit">
-    <input v-register="form.register('username')" placeholder="Username" />
-    <small v-if="form.errors.username?.[0]">{{ form.errors.username[0].message }}</small>
-
-    <input v-register="form.register('password')" type="password" placeholder="Password" />
-    <small v-if="form.errors.password?.[0]">{{ form.errors.password[0].message }}</small>
-
-    <button :disabled="form.meta.submitting">Sign up</button>
+    <label>
+      Email
+      <input v-register="form.register('email')" autocomplete="email" />
+      <em v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}</em>
+    </label>
+    <label>
+      Password
+      <input type="password" v-register="form.register('password')" autocomplete="off" />
+      <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
+    </label>
+    <button :disabled="form.meta.submitting" type="submit">Sign in</button>
   </form>
 </template>
 ```
+
+<!-- @generated-end:quick-start -->
 
 Hand the schema to `useForm`, bind each input with `v-register`, and Attaform owns the values, the coercion, the live errors, and the typed submit payload. That is the whole loop.
 

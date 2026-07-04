@@ -1,5 +1,27 @@
 # Releases
 
+## v0.27.0 — 2026-07-04
+
+## What's Changed
+* chore(deps): pin security floors for dev-only transitive deps by @ozzyfromspace in https://github.com/attaform/Attaform/pull/493
+* chore(deps-dev): bump the dev-dependencies group across 1 directory with 23 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/494
+* refactor(exports)!: make attaform the Zod-default barrel; add /abstract by @ozzyfromspace in https://github.com/attaform/Attaform/pull/495
+* feat(auto-imports): Nuxt auto-imports + zero-dep Vite preset by @ozzyfromspace in https://github.com/attaform/Attaform/pull/496
+* feat(plugins)!: rewrite the bare `attaform` barrel to a single adapter under bundler plugins by @ozzyfromspace in https://github.com/attaform/Attaform/pull/497
+* docs: sweep demos + docs to the bare `attaform` surface (Phase 4) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/498
+* Generate llms.txt / llms-full.txt from the docs + single-source the quick-start headline (Phase 5) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/499
+* Type-check doc snippets against the built surface (Phase 6) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/500
+* Ship an Attaform Agent Skill + AI agents docs page (Phase 7) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/501
+* Make the Agent Skill web-native + copy-as-markdown across the docs (Phase 7.1) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/502
+* Ship the `npx attaform skill` installer and surface the AI tooling (Phase 8) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/503
+* Force chokidar polling so @nuxt/content sees docs changes in Docker dev by @ozzyfromspace in https://github.com/attaform/Attaform/pull/504
+* docs(changelog): document the schema-entry arc; backfill v0.26.0 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/505
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.26.0...v0.27.0
+
+---
+
 ## v0.26.0 — 2026-07-03
 
 ## What's Changed

@@ -5,8 +5,12 @@
   "types": "./dist/index.d.mts",
   "files": [
     "dist",
-    "skills"
+    "skills",
+    "bin"
   ],
+  "bin": {
+    "attaform": "./bin/attaform.mjs"
+  },
   "sideEffects": false,
   "engines": {
     "node": ">=22.0.0"

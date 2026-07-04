@@ -2,10 +2,96 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Breaking
+
+- **`attaform` is now the recommended Zod-default entry, and the
+  schema-agnostic core moved to `attaform/abstract`.** Importing `useForm`
+  from the bare `attaform` specifier used to hand back the abstract,
+  adapter-taking form (an alias for `useAbstractForm`); it now hands back
+  the Zod form that infers every field type from your `z.object({ ... })`
+  schema, byte-identical to `attaform/zod`. Bring-your-own-adapter code
+  moves one subpath over to the new `attaform/abstract` entry:
+  `import { useAbstractForm } from 'attaform/abstract'`. The explicit pins
+  are untouched, so code already importing from `attaform/zod`,
+  `attaform/zod-v3`, or `attaform/zod-v4` keeps working with no change.
+  Under a bundler plugin (`attaform/vite`, `attaform/nuxt`, or the rollup
+  / esbuild / webpack / rspack builds), the bare `attaform` import now
+  collapses to the one installed Zod major at build time, so the
+  recommended entry ships a single adapter instead of the runtime
+  dispatcher, as lean as pinning the adapter by hand. (#495, #497)
+
+### Added
+
+- **Attaform now ships an Agent Skill, installable with one command.** The
+  package carries a first-class Agent Skill under `skills/attaform/` that
+  teaches an AI assistant to build a form the idiomatic way: import from
+  `attaform`, bind with `v-register`, read errors through `showErrors` /
+  `firstError`, route server errors through `setErrors`, and compose
+  wizards with `tryNext` / `handleSubmit`. Install it into a project with
+  `npx attaform skill`, which drops the skill into
+  `.claude/skills/attaform/` (aim it at another assistant's folder with a
+  trailing path, for example `npx attaform skill .cursor/skills`); re-run
+  it after upgrading Attaform to refresh the copy in place. The skill is
+  split into a lean main file plus on-demand `references/` for wizards,
+  errors, custom components, SSR, and validation, and every import inside
+  it is type-checked against the built package on every CI run, so it
+  cannot drift from the real surface. Beyond the package, the docs site
+  now publishes an `llms.txt` index and a copy-as-markdown control on
+  every page, so an assistant can navigate Attaform without installing
+  anything first. (#499, #500, #501, #502, #503)
+
+- **The form composables auto-import under Nuxt, and plain Vite can pull
+  the same set.** With `attaform/nuxt` installed, `useForm`, `useWizard`,
+  `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, and `lazy` are
+  available in any `<script setup>` with no import line; toggle the whole
+  set with the module's `autoImports` option (on by default). The
+  setup-level and escape-hatch names (`createAttaform`, `useRegister`,
+  `useAbstractForm`) stay explicit by design, so they never land in
+  global scope. For bare Vue + Vite, `attaform/vite` now re-exports
+  `attaformAutoImportsMap`; drop it into `unplugin-auto-import`'s
+  `imports` array for the same ergonomics. (#496)
 
 ## v0.26.0
-_No unreleased changes yet._
+### Added
+
+- **Every field and `form.meta` now expose `ownErrors` / `firstOwnError`, the
+  errors at that exact path.** They are the own-bucket counterpart to the
+  subtree-scoped `errors` / `firstError`: on a container they surface its own
+  cross-field `.refine()` alone, without the child errors that `errors` rolls
+  up, and on a leaf they are the very same array. `form.meta.firstOwnError` is
+  the one-line banner accessor for a form-level error from a root `.refine()`
+  or a path-less `setErrors`. (#489)
+
+- **A throw or rejection out of an `onSubmit` callback now surfaces as a form
+  error, not just on `form.meta.submitError`.** `handleSubmit` still parks the
+  raw `Error` on `submitError` for inspection, and now also pipes a normalized
+  copy into the error layer, so a failed submit shows on `form.errors`,
+  `form.meta.ownErrors`, and `form.meta.firstOwnError` where your UI already
+  reads, with no `try` / `catch` of your own. A bare `throw new Error(...)`
+  lands form-level (the root `[]` bucket); throw a `{ path, message, code? }`,
+  or an array of them, to land it on a specific field under your own code. A
+  non-Error throw still surfaces as an `Unknown error` (consistent with
+  `setErrors`) and warns in development. (#490)
+
+### Changed
+
+- **`form.errors([])` now returns the whole-form aggregate, the same as
+  `form.errors()` and `form.meta.errors`.** Previously the explicit root path was
+  a carve-out returning only the root bucket. With `ownErrors` / `firstOwnError`
+  now providing exact-path access at every node, `form.errors(path)` is uniform
+  at every depth, the root included. Read the root bucket alone (a root
+  `.refine()`, a path-less `setErrors`) via `form.meta.ownErrors` /
+  `form.meta.firstOwnError`. The `''`-field vs root-`[]` boundary is unchanged:
+  `form.errors['']` still reads a literal empty-key field. (#489)
+
+- **`onError` fires only when validation rejects a submit.** The two
+  `handleSubmit` callbacks dispatch on Attaform's validation verdict: `onSubmit`
+  runs when validation passes, `onError` when it fails. A `setErrors` (or a
+  throw) inside a callback that has already run is your own outcome, not a second
+  verdict, so it no longer routes back through `onError`. It still marks the
+  submit unsuccessful (`form.meta.submitted` stays `false`) and pulls focus to
+  the first error. If you were relying on `onError` firing after a `setErrors`,
+  move that handling into the `onSubmit` callback itself. (#490)
 
 ## v0.25.0
 ### Added
@@ -38,35 +124,7 @@ _No unreleased changes yet._
   navigation stays `wizard.next()`; the whole-wizard submit stays
   `wizard.handleSubmit`. (#471)
 
-- **Every field and `form.meta` now expose `ownErrors` / `firstOwnError`, the
-  errors at that exact path.** They are the own-bucket counterpart to the
-  subtree-scoped `errors` / `firstError`: on a container they surface its own
-  cross-field `.refine()` alone, without the child errors that `errors` rolls
-  up, and on a leaf they are the very same array. `form.meta.firstOwnError` is
-  the one-line banner accessor for a form-level error from a root `.refine()`
-  or a path-less `setErrors`. (#489)
-
-- **A throw or rejection out of an `onSubmit` callback now surfaces as a form
-  error, not just on `form.meta.submitError`.** `handleSubmit` still parks the
-  raw `Error` on `submitError` for inspection, and now also pipes a normalized
-  copy into the error layer, so a failed submit shows on `form.errors`,
-  `form.meta.ownErrors`, and `form.meta.firstOwnError` where your UI already
-  reads, with no `try` / `catch` of your own. A bare `throw new Error(...)`
-  lands form-level (the root `[]` bucket); throw a `{ path, message, code? }`,
-  or an array of them, to land it on a specific field under your own code. A
-  non-Error throw still surfaces as an `Unknown error` (consistent with
-  `setErrors`) and warns in development. (#490)
-
 ### Changed
-
-- **`form.errors([])` now returns the whole-form aggregate, the same as
-  `form.errors()` and `form.meta.errors`.** Previously the explicit root path was
-  a carve-out returning only the root bucket. With `ownErrors` / `firstOwnError`
-  now providing exact-path access at every node, `form.errors(path)` is uniform
-  at every depth, the root included. Read the root bucket alone (a root
-  `.refine()`, a path-less `setErrors`) via `form.meta.ownErrors` /
-  `form.meta.firstOwnError`. The `''`-field vs root-`[]` boundary is unchanged:
-  `form.errors['']` still reads a literal empty-key field. (#489)
 
 - **When the active step drops out of a wizard mid-flight, the pin slides forward
   instead of snapping to the first step.** A function or `lazy()` slot that stops
@@ -95,15 +153,6 @@ _No unreleased changes yet._
   `handleSubmit`), schema-erased because the active step's schema is not
   statically known. It is no longer identity-equal to the raw per-step handle;
   reach for `wizard.forms[key]` when you need that exact object. (#471)
-
-- **`onError` fires only when validation rejects a submit.** The two
-  `handleSubmit` callbacks dispatch on Attaform's validation verdict: `onSubmit`
-  runs when validation passes, `onError` when it fails. A `setErrors` (or a
-  throw) inside a callback that has already run is your own outcome, not a second
-  verdict, so it no longer routes back through `onError`. It still marks the
-  submit unsuccessful (`form.meta.submitted` stays `false`) and pulls focus to
-  the first error. If you were relying on `onError` firing after a `setErrors`,
-  move that handling into the `onSubmit` callback itself. (#490)
 
 ### Fixed
 

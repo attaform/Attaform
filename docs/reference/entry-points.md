@@ -158,7 +158,7 @@ The Vite plugin. Required under bare Vue + Vite for SSR-correct `v-register` bin
 // vite.config.ts
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import attaform from 'attaform/vite'
+import { attaform } from 'attaform/vite'
 
 export default defineConfig({
   plugins: [vue(), attaform()],
@@ -172,7 +172,7 @@ The same plugin ships for other bundlers at `attaform/rollup`, `attaform/esbuild
 Raw Vue compiler-core node transforms. Use only when wiring a custom bundler pipeline; the Vite plugin already wraps these for the common case.
 
 ```ts
-import { vRegisterTransform } from 'attaform/transforms'
+import { vRegisterHintTransform, vRegisterPreambleTransform } from 'attaform/transforms'
 ```
 
 ## `attaform/devtools-panel`

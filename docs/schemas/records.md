@@ -80,7 +80,7 @@ form.setValue('prefs', { ...form.values.prefs, [userId]: true }) // whole-record
 To flag a record entry blank, reach for `unset`:
 
 ```ts
-import { unset } from 'attaform/zod'
+import { unset } from 'attaform'
 form.setValue(`prefs.${userId}`, unset)
 ```
 

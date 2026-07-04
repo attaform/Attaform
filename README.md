@@ -27,7 +27,7 @@ npm install attaform zod
 ```vue
 <script setup lang="ts">
   import { z } from 'zod'
-  import { useForm } from 'attaform/zod' // auto-detects your Zod major
+  import { useForm } from 'attaform' // auto-detects your Zod major
 
   const schema = z.object({
     username: z.string().min(2, 'At least 2 characters'),

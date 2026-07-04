@@ -26,7 +26,7 @@ metaRows:
 The default shape: a list of forms in reading order. `wizard.next()` advances and `wizard.back()` retreats; neither validates (navigation and submission are separate verbs). Out-of-bounds calls dev-warn and no-op.
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 import { z } from 'zod'
 
 const accountSchema = z.object({ email: z.email() })
@@ -69,7 +69,7 @@ See [Step slots](/docs/multistep/step-slots) for the affordance-slot story.
 When the next step depends on a live value on an earlier form, use a function slot. The slot is a `(ctx) => Form | string | undefined` callback that re-evaluates reactively as its tracked reads change:
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 import { z } from 'zod'
 
 const accountSchema = z.object({ kind: z.enum(['user', 'organization']) })

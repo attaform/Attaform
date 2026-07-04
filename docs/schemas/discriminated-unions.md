@@ -28,7 +28,7 @@ Pick a notify channel (Email, SMS, or Push) and watch the field below the radios
 ## The schema
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const schema = z.object({

@@ -34,7 +34,7 @@ Parent owns the form (no `key`):
 ```vue
 <!-- SignupForm.vue -->
 <script setup lang="ts">
-  import { useForm } from 'attaform/zod'
+  import { useForm } from 'attaform'
 
   const form = useForm<Form>({ schema })
   const onSubmit = form.handleSubmit(async (values) => {
@@ -56,7 +56,7 @@ Any descendant grabs the same form:
 ```vue
 <!-- EmailRow.vue -->
 <script setup lang="ts">
-  import { injectForm } from 'attaform/zod'
+  import { injectForm } from 'attaform'
 
   const form = injectForm<Form>()
 </script>
@@ -77,7 +77,7 @@ Floating save buttons, sidebar status widgets, anything in a different branch of
 ```vue
 <!-- FloatingSaveButton.vue (anywhere in the app) -->
 <script setup lang="ts">
-  import { injectForm } from 'attaform/zod'
+  import { injectForm } from 'attaform'
 
   const form = injectForm<Form>('signup')
   const onSave = () => form?.handleSubmit(async (values) => api.post('/signup', values))()

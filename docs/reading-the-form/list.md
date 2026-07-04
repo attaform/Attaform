@@ -29,7 +29,7 @@ Reach for `list` wherever you render a repeating field. Pair it with the array i
 
 ```vue
 <script setup lang="ts">
-  import { useForm } from 'attaform/zod'
+  import { useForm } from 'attaform'
   import { z } from 'zod'
 
   const schema = z.object({

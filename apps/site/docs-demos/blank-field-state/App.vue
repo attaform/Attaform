@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { unset, useForm } from 'attaform/zod'
+  import { unset, useForm } from 'attaform'
   import { z } from 'zod'
   import './styles.css'
 

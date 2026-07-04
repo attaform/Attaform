@@ -27,7 +27,7 @@ metaRows:
 `useWizard` does URL sync out of the box. Construct a wizard with nothing but `steps`, and the wizard reads `?step=<key>` from the URL at construction and mirrors `currentStep` back to it on every navigation:
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 
 const wizard = useWizard({
   steps: ['welcome', shipping, payment, 'final-review'],
@@ -98,7 +98,7 @@ The restore callback is invoked at construction and re-evaluated reactively (its
 The default `?step=<key>` works fine until two wizards land on the same page. Then the second wizard's writes overwrite the first's. Give each wizard its own param via custom callbacks:
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 
 const checkout = useWizard({
   steps: [shipping, payment, review],

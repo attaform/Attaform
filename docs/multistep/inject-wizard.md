@@ -31,7 +31,7 @@ The parent owns the wizard (no `key`):
 ```vue
 <!-- CheckoutWizard.vue -->
 <script setup lang="ts">
-  import { useForm, useWizard } from 'attaform/zod'
+  import { useForm, useWizard } from 'attaform'
   import { z } from 'zod'
 
   const shippingSchema = z.object({ address: z.string(), city: z.string() })
@@ -57,7 +57,7 @@ Any descendant grabs the same wizard:
 ```vue
 <!-- ProgressRail.vue -->
 <script setup lang="ts">
-  import { injectWizard } from 'attaform/zod'
+  import { injectWizard } from 'attaform'
 
   const wizard = injectWizard()
 </script>
@@ -97,7 +97,7 @@ Sticky finish buttons, sidebar status widgets, or any component in a different b
 ```vue
 <!-- FloatingFinishButton.vue (anywhere in the app) -->
 <script setup lang="ts">
-  import { injectWizard } from 'attaform/zod'
+  import { injectWizard } from 'attaform'
 
   const wizard = injectWizard('checkout-wizard')
 
@@ -166,7 +166,7 @@ Guard the return so the consumer disappears cleanly when the wizard isn't mounte
 
 ```vue
 <script setup lang="ts">
-  import { injectWizard } from 'attaform/zod'
+  import { injectWizard } from 'attaform'
 
   const wizard = injectWizard('checkout-wizard')
 </script>

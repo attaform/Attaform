@@ -25,7 +25,7 @@ The demo binds five native inputs (a text input for `fullName`, a numeric `age`,
 `useForm` is the entry point. Hand it a Zod schema; it returns a reactive form carrying every binding helper this page uses. Save the return value and reach for the pieces by name:
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const schema = z.object({

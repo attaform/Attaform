@@ -156,7 +156,7 @@ Schema-registered presentational hints, the path that produced this FieldState, 
 Register schema metadata with `withMeta` (works on Zod 3 and Zod 4) or the native `schema.register(fieldMeta, {...})` chain (Zod 4):
 
 ```ts
-import { withMeta } from 'attaform/zod'
+import { withMeta } from 'attaform'
 
 const schema = z.object({
   email: withMeta(z.email(), {

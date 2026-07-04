@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { useForm } from 'attaform/zod'
+  import { useForm } from 'attaform'
   import { z } from 'zod'
   import './styles.css'
 

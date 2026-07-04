@@ -32,7 +32,7 @@
   const signupSnippet = [
     `${LT}script setup lang="ts">`,
     "  import { z } from 'zod'",
-    "  import { useForm } from 'attaform/zod'",
+    "  import { useForm } from 'attaform'",
     '',
     '  const schema = z.object({',
     '    email: z.string().email(),',

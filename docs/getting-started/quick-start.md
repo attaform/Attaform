@@ -25,7 +25,7 @@ Try the form below: clear the password and submit to watch focus pull to the bro
 Hand `useForm` a Zod schema and the reactive form comes back ready. This page reaches for three properties on the returned form: `register` for the input binding, `handleSubmit` for the submit gate, and `fields` for per-field error reads.
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const schema = z.object({

@@ -20,7 +20,7 @@ Three independent causes:
 The schema generic couldn't be inferred. Two likely causes:
 
 - Your schema is typed as bare `ZodObject` without its concrete shape. Use the literal (`z.object({ email: z.string() })`) or give the variable a precise type.
-- You imported `useForm` from `attaform` (the schema-agnostic core entry) but passed a Zod schema directly. Import from `attaform/zod`, `attaform/zod-v3`, or `attaform/zod-v4` instead.
+- You imported `useAbstractForm` from `attaform/abstract` and passed a Zod schema without wrapping it in an adapter. `useAbstractForm` expects an `AbstractSchema`; for a Zod schema, import `useForm` from `attaform` (or `attaform/zod`), which wraps it for you.
 
 ## "`handleSubmit` doesn't run when I submit the form"
 

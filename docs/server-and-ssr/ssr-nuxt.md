@@ -54,7 +54,7 @@ The client-side form is identical to the server one; no second round of validati
 
 ## Auto-imports
 
-The Nuxt module auto-imports `useForm` from the unified entry point. No `import` statement needed in `<script setup>`:
+The Nuxt module auto-imports the form composables you reach for inside `<script setup>`: `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, and `lazy`. No `import` statement needed:
 
 ```vue
 <script setup lang="ts">
@@ -62,14 +62,15 @@ The Nuxt module auto-imports `useForm` from the unified entry point. No `import`
 </script>
 ```
 
-For the Zod-typed wrapper (`useForm` from `attaform/zod`), or for any other helper (`injectForm`, `useWizard`, `useRegister`, `unset`, `defaultDisplayState`), import explicitly:
+Everything else stays an explicit import from `attaform`: the plugin (`createAttaform`), the custom-input composable (`useRegister`), the `unset` sentinel, and the `defaultDisplayState` reducer.
 
 ```vue
 <script setup lang="ts">
-  import { injectForm, useWizard } from 'attaform/zod'
-  import { defaultDisplayState, unset } from 'attaform'
+  import { defaultDisplayState, unset, useRegister } from 'attaform'
 </script>
 ```
+
+Toggle the whole set with the module's `autoImports` option (default on); see [Installation](/docs/getting-started/installation#auto-imports) for the full list.
 
 ## App-wide defaults under Nuxt
 

@@ -30,7 +30,7 @@ The demo is a checkout payment method. A payment is exactly one of card, bank tr
 A variant form declares a `z.discriminatedUnion` schema as the root, not nested under a key. One discriminator (`method`) picks the variant; each variant is a regular Zod schema:
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const schema = z.discriminatedUnion('method', [

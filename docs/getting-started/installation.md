@@ -25,7 +25,7 @@ export default defineNuxtConfig({
 })
 ```
 
-What this gets you: `useForm` / `useWizard` / `injectForm` / `useRegister` as auto-imports, the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
+What this gets you: the form composables as auto-imports (`useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`; see [Auto-imports](#auto-imports)), the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
 
 ## Optional: Vue 3 plugin
 
@@ -58,6 +58,38 @@ export default defineConfig({
 ```
 
 What this gets you: SSR-rendered `v-register` bindings that match the client-rendered output on initial HTML (no flicker between server paint and hydration), and a leaner production bundle (one Zod adapter shipped instead of both).
+
+## Auto-imports
+
+Both the Nuxt module and the Vite plugin can register Attaform's form composables as auto-imports, so a component reaches for them inside `<script setup>` with no `import` line. The set is the same either way: `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, and `lazy`.
+
+Under Nuxt, the module registers them for you. Toggle the whole set with the `autoImports` option:
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['attaform/nuxt'],
+  attaform: {
+    autoImports: true, // default; set false to import the composables yourself
+  },
+})
+```
+
+On bare Vue 3 + Vite, feed the same manifest to `unplugin-auto-import`. `attaform/vite` re-exports it as `attaformAutoImportsMap`, ready to drop into the plugin's `imports` array:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import AutoImport from 'unplugin-auto-import/vite'
+import vue from '@vitejs/plugin-vue'
+import { attaform, attaformAutoImportsMap } from 'attaform/vite'
+
+export default defineConfig({
+  plugins: [AutoImport({ imports: ['vue', attaformAutoImportsMap] }), vue(), attaform()],
+})
+```
+
+Everything outside that set stays an explicit import: the plugin (`createAttaform`), the custom-input composable (`useRegister`), and the bring-your-own-adapter `useAbstractForm` from `attaform/abstract`. A registered auto-import always loses to an explicit or local binding of the same name, so opting out is only needed when you'd rather keep the names out of global scope entirely.
 
 ## Where to next
 

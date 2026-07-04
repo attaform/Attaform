@@ -32,7 +32,7 @@ The demo below stitches all four kinds into one flow: a `'welcome'` string, a si
 ## The four kinds at a glance
 
 ```ts
-import { useForm, useWizard, lazy } from 'attaform/zod'
+import { useForm, useWizard, lazy } from 'attaform'
 
 const shipping = useForm({ schema: shippingSchema, key: 'shipping' })
 const business = useForm({ schema: businessSchema, key: 'business' })
@@ -177,7 +177,7 @@ lazy((ctx) => buildPricingFor(ctx.forms.account.values.region))
 ### How it works
 
 ```ts
-import { useForm, useWizard, lazy } from 'attaform/zod'
+import { useForm, useWizard, lazy } from 'attaform'
 
 const wizard = useWizard({
   steps: [

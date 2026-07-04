@@ -14,7 +14,7 @@
 
   import { computed, nextTick, ref, watch } from 'vue'
   import { z } from 'zod'
-  import { fieldMeta, useForm, useWizard, unset, withMeta } from 'attaform/zod'
+  import { fieldMeta, useForm, useWizard, unset, withMeta } from 'attaform'
   import type { FieldState } from 'attaform'
 
   // ─── Mock async services ─────────────────────────────────────────

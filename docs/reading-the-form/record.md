@@ -29,7 +29,7 @@ Declare the record on your schema, then iterate `form.record` by its key. The ke
 
 ```vue
 <script setup lang="ts">
-  import { useForm } from 'attaform/zod'
+  import { useForm } from 'attaform'
   import { z } from 'zod'
 
   const schema = z.object({

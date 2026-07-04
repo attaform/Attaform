@@ -139,7 +139,7 @@ The errors flow from the schema; the modifiers shape what counts as empty. A req
 `.optional()` and `.nullable()` are schema-level; they declare that the empty case is type-valid. Sometimes you want a leaf that's _type-required_ but starts in a deliberate "no value yet" state without changing the schema. That's `unset`:
 
 ```ts
-import { unset } from 'attaform/zod'
+import { unset } from 'attaform'
 
 const schema = z.object({ pickup: z.string().min(1, 'Required') })
 const form = useForm({ schema, defaultValues: { pickup: unset } })

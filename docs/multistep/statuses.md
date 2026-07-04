@@ -39,7 +39,7 @@ Each field tracks the per-step form's `meta`. A step's status flips when its met
 `wizard.statuses` is both a drillable record and a callable accessor. Same data, three call shapes:
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 import { z } from 'zod'
 
 const accountSchema = z.object({ email: z.email() })
@@ -65,7 +65,7 @@ The classic use case is a step indicator: one dot per form, painted with its cur
 
 ```vue
 <script setup lang="ts">
-  import { useForm, useWizard } from 'attaform/zod'
+  import { useForm, useWizard } from 'attaform'
 
   const wizard = useWizard({ steps: [account, profile, review] })
 </script>
@@ -139,7 +139,7 @@ Unknown keys in the seed object dev-warn at construction; the wizard ignores the
 
 ```ts
 import { watch } from 'vue'
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 
 const wizard = useWizard({ steps: [account, profile, review] })
 

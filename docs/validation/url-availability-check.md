@@ -39,7 +39,7 @@ Preprocess and async refine map onto that work cleanly. Preprocess **prepares** 
 Hoist the schema next to the form so the type flows through `useForm` cleanly. Two sentinels (`EMPTY_URL` and `INVALID_URL`) bridge the two layers; both are strings so the inner `z.string()` accepts them, and refine recognizes them by exact equality.
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const EMPTY_URL = '__atta:empty-url__'

@@ -13,6 +13,7 @@
     ArrowRight,
     ExternalLink,
   } from 'lucide-vue-next'
+  import type { Component } from 'vue'
 
   // Feature cards on the homepage. Same single-color icon-chip
   // discipline as the docs landing: every chip on this page uses
@@ -131,7 +132,7 @@
     }),
   ])
 
-  const features = [
+  const features: Array<{ icon: Component; title: string; body: string; wide?: boolean }> = [
     {
       icon: ShieldCheck,
       title: 'Schema-driven types',
@@ -176,6 +177,7 @@
       icon: Bot,
       title: 'Built for AI agents',
       body: 'An `llms.txt` index, a full-text docs dump, and an installable Agent Skill ship with the package, so your coding assistant writes idiomatic Attaform the first time. `npx attaform skill`.',
+      wide: true,
     },
   ]
 </script>
@@ -459,7 +461,12 @@
         </div>
 
         <div class="mt-16 grid gap-x-12 gap-y-10 md:grid-cols-2">
-          <div v-for="feature in features" :key="feature.title" class="flex gap-4">
+          <div
+            v-for="feature in features"
+            :key="feature.title"
+            class="flex gap-4"
+            :class="{ 'md:col-span-2': feature.wide }"
+          >
             <div
               class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-fg"
             >

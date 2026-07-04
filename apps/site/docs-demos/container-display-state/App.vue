@@ -43,7 +43,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <div class="readout banner" :class="form.meta.displayState">
       <span class="badge" :class="form.meta.displayState">{{ form.meta.displayState }}</span>
       <span>{{ bannerText[form.meta.displayState] }}</span>

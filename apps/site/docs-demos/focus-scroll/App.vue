@@ -20,7 +20,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <p class="hint">
       Submit with empty form.fields to see focus + scroll pull to the first invalid path. Click the
       buttons to dispatch each helper imperatively.

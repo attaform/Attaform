@@ -1013,7 +1013,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // The error thrown or rejected by the most recent `wizard.handleSubmit`
   // callback (or its `onError`), coerced to a real `Error`. Mirrors
   // `form.meta.submitError`: cleared at submit entry, parked here instead
-  // of re-thrown, so binding the handler to `@submit.prevent` never
+  // of re-thrown, so binding the handler to `@submit` never
   // manufactures a `window` unhandledrejection.
   const submitError = ref<Error | null>(null)
   // Monotonic latch: flips true the first time a `handleSubmit` resolves
@@ -1383,7 +1383,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         }
       } catch (err) {
         // Park the throw on `submitError`, coerced to a real Error; never
-        // re-throw. The handler is bound to DOM events (`@submit.prevent`),
+        // re-throw. The handler is bound to DOM events (`@submit`),
         // so a rejected promise would surface as a `window`
         // unhandledrejection — a phantom crash for an already-handled
         // failure. The `finally` still resets `submitting`, so navigation

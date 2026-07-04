@@ -22,7 +22,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <p v-if="form.meta.firstOwnError" class="banner error" role="alert">
       {{ form.meta.firstOwnError.message }}
     </p>

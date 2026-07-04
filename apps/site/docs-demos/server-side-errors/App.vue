@@ -60,7 +60,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <p class="hint">
       Enter the wrong password (the demo accepts <code>hunter2</code>) to land a field error, or
       sign in as <code>locked@example.com</code> to see a form-level lockout whose

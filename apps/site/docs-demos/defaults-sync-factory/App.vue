@@ -40,7 +40,7 @@
 
 <template>
   <div class="demo layout split">
-    <form class="card" @submit.prevent="onSubmit">
+    <form class="card" @submit="onSubmit">
       <header>
         <h4>Report session</h4>
         <button type="button" class="ghost" @click="onNewSession">New session</button>

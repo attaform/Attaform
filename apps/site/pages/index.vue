@@ -46,7 +46,7 @@
     `${LT}/script>`,
     '',
     `${LT}template>`,
-    `  ${LT}form @submit.prevent="onSubmit">`,
+    `  ${LT}form @submit="onSubmit">`,
     `    ${LT}input v-register="form.register('email')" />`,
     `    ${LT}p v-if="form.fields.email.showErrors">{{ form.fields.email.firstError?.message }}${LT}/p>`,
     '',

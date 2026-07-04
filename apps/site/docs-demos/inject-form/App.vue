@@ -16,7 +16,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <label>
       Email (in the parent component)
       <input v-register="form.register('email')" autocomplete="email" />

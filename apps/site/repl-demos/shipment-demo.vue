@@ -643,7 +643,7 @@
 
 <template>
   <div class="page">
-    <form class="form" @submit.prevent="onSubmit">
+    <form class="form" @submit="onSubmit">
       <header class="form-header">
         <h1>Cargo shipment booking</h1>
         <p>4 steps · your manifest waits at the dock</p>

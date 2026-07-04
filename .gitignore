@@ -32,6 +32,12 @@ apps/site/public/_pagefind
 # dev/build time; source of truth is registry.mjs + each demo's styles.json)
 apps/site/docs-demos/*/styles.css
 
+# Generated AI-agent index + full-text dump (composed from the docs, the nav,
+# and the canonical snippet by scripts/generate-llms.mjs on dev/build; source of
+# truth is llms.template.md + docs/**/*.md + docs-demos/quick-start/snippet.vue)
+apps/site/public/llms.txt
+apps/site/public/llms-full.txt
+
 # esbuild metafile dumps from the bundle-size analysis tooling
 analysis/meta
 

@@ -19,9 +19,8 @@ The reason is the transform above. A plain Vitest render (bare `vue()`, no Attaf
 - **Do not hand-wire `attaform/vite` into `vitest.config.ts`** to force a green. That fakes a third compile pipeline that matches neither production nor a clean unit test, and it hides the real reason a bare test cannot see the value.
 - A faithful SSR test goes through the real build: a Nuxt-level test with `@nuxt/test-utils`. The one lower-level exception is a test that itself invokes `@vue/compiler-sfc`'s `compileTemplate` with Attaform's real node transforms, which reproduces the compiled path honestly.
 
-## Two concerns that stay in your app
+## One concern that stays in your app
 
-These come up around SSR forms but are the app's responsibility, not something Attaform wires for you:
+Attaform handles the SSR-adjacent details itself: the value injection above, and error-focus (which requests `focusVisible: true`, so the ring paints even when focus moves programmatically to a radio or checkbox). One SSR pattern is still the app's responsibility:
 
 - **Seeding a page-owned form from async data races SSR.** If an ancestor lifts a form (so it can be injected downward) and seeds it from an async query through an immediate `watch`, the server's watch runs before the query resolves and does not re-fire, so the server renders empty while the client hydrates filled: a hydration mismatch. Seed **both legs**: a client immediate `watch` and a server `onServerPrefetch` that awaits the query, then seeds. A form created lazily behind a resolved gate never hits this.
-- **Programmatic error-focus does not paint a focus ring on non-text controls.** `focusFirstError` calls a plain `.focus()`. After a pointer-triggered submit, focus lands on a radio or checkbox (a test asserting focus passes) but paints no `:focus-visible` ring. Put the indicator on a wrapper with `focus-within:` so it shows for programmatic focus, and confirm focus _visibility_ in the real app, not just an assertion that focus moved.

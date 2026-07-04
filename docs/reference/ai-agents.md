@@ -11,7 +11,7 @@ metaRows:
     value: /llms-full.txt
     kind: code
   - label: Skill
-    value: skills/attaform
+    value: /skill.md
     kind: code
 ---
 
@@ -36,7 +36,16 @@ It is a build artifact, regenerated from the live documentation on every deploy.
 
 ## The Attaform skill
 
-Attaform ships an Agent Skill: a `SKILL.md` that teaches an assistant how to actually build a form, distilled from real Attaform apps into a short list of recipes and rules. It covers the import surface, the build-a-form shape, reading validation state, routing server errors, and wizards. Where `llms.txt` is a reference an agent reads, the skill is guidance an agent follows while it writes.
+Attaform ships an Agent Skill: a `SKILL.md` that teaches an assistant how to actually build a form, distilled from real Attaform apps into a short list of recipes and rules. Where `llms.txt` is a reference an agent reads, the skill is guidance an agent follows while it writes.
+
+It is built for progressive disclosure. The main file covers the common case end to end: the import surface, the build-a-form shape, the core rules, and short wizard and SSR summaries. It links five reference files an agent loads only when the task reaches their area, served alongside it under `references/`: wizards, errors, custom components, SSR, and validation. The lean main keeps the everyday case cheap, and the depth is one hop away when a form needs it.
+
+::skill-viewer
+::
+
+Read or copy it above, or fetch it directly at [attaform.dev/skill.md](/skill.md).
+
+### Install it into your project
 
 The skill travels inside the package. After installing Attaform, it sits at:
 
@@ -44,7 +53,7 @@ The skill travels inside the package. After installing Attaform, it sits at:
 node_modules/attaform/skills/attaform/SKILL.md
 ```
 
-To make it available to a skill-aware assistant, copy the skill folder into your project's skills directory:
+Copy the whole skill folder, the main file and its `references/`, into your project's skills directory:
 
 ```sh
 cp -r node_modules/attaform/skills/attaform .claude/skills/

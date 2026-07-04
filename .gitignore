@@ -38,6 +38,11 @@ apps/site/docs-demos/*/styles.css
 apps/site/public/llms.txt
 apps/site/public/llms-full.txt
 
+# Doc-snippet type-check fixtures, extracted from docs/**/*.md + the llms
+# template by scripts/check-doc-snippets.mjs on every run (source of truth is
+# the markdown; these are regenerated, never committed)
+tests/fixtures/doc-snippets/.generated
+
 # esbuild metafile dumps from the bundle-size analysis tooling
 analysis/meta
 

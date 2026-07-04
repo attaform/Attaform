@@ -284,6 +284,13 @@ jobs:
       - name: Check bundled types
         run: pnpm check:bundled-types
 
+      # Extracts every `attaform`-importing `ts`/`vue` snippet from the docs
+      # and type-checks it against the same bundled `.d.ts`. Fails only on
+      # surface drift (a doc importing a symbol/subpath the build no longer
+      # exposes); tolerates narrative gaps. Reuses the `dist/` prepack above.
+      - name: Check doc snippets
+        run: pnpm check:doc-snippets
+
   bench:
     name: Performance benchmarks
     runs-on: ubuntu-latest

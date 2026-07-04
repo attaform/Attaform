@@ -91,7 +91,18 @@ export default defineConfig({
 
 Everything outside that set stays an explicit import: the plugin (`createAttaform`), the custom-input composable (`useRegister`), and the bring-your-own-adapter `useAbstractForm` from `attaform/abstract`. A registered auto-import always loses to an explicit or local binding of the same name, so opting out is only needed when you'd rather keep the names out of global scope entirely.
 
+## Optional: Agent skill
+
+Building with an AI coding assistant? Attaform ships an [Agent Skill](/docs/reference/ai-agents) that teaches it to write idiomatic Attaform: reach for `useForm`, bind with `v-register`, submit through `handleSubmit`. One command drops it into your project:
+
+```sh
+npx attaform skill
+```
+
+The skill travels inside the package, so it stays in lockstep with the version you have installed. That same page also covers the machine-readable [`llms.txt`](/llms.txt) index and the full-text [`llms-full.txt`](/llms-full.txt) dump you can hand an agent directly.
+
 ## Where to next
 
 - [Quick start](/docs/getting-started/quick-start): your first form, end-to-end.
 - [Your first schema](/docs/getting-started/your-first-schema): what Attaform reads from a Zod definition.
+- [AI agents](/docs/reference/ai-agents): the skill, `llms.txt`, and the full-text docs dump for coding assistants.

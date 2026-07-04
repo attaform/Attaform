@@ -83,7 +83,7 @@
 
 <template>
   <div class="demo layout split">
-    <form class="stack" @submit.prevent="onSubmit">
+    <form class="stack" @submit="onSubmit">
       <label>
         Your site URL
         <input

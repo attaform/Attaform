@@ -37,7 +37,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <label>
       <span>{{ form.fields.email.label }}</span>
       <input

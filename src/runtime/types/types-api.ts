@@ -1575,12 +1575,13 @@ export type GetDisplayState = (prev: DisplayMachine, ctx: DisplayCtx) => Display
  * it to a `<form>`:
  *
  * ```vue
- * <form @submit.prevent="onSubmit">…</form>
+ * <form @submit="onSubmit">…</form>
  * ```
  *
- * It optionally accepts the originating `Event` so it can sit on
- * `@submit` directly (without `.prevent` if you want to call
- * `event.preventDefault()` yourself).
+ * It accepts the originating `Event` and calls `event.preventDefault()`
+ * itself, so bind it with `@submit`, not `@submit.prevent` (the
+ * modifier would only prevent the default a second time). Called
+ * imperatively with no event, the `preventDefault` step is skipped.
  */
 export type SubmitHandler = (event?: Event) => Promise<void>
 
@@ -3403,7 +3404,7 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * of each new submission attempt; stays `null` on success.
    *
    * The submit handler does NOT re-throw — its returned promise always
-   * resolves, so binding it to `@submit.prevent` never manufactures a
+   * resolves, so binding it to `@submit` never manufactures a
    * `window` unhandledrejection. This is the channel for an UNEXPECTED
    * submit failure (a thrown exception or rejected promise), read the
    * same way in templates and after an imperative `await submit()`. An
@@ -3580,10 +3581,11 @@ export type UseFormReturnType<
    * Wraps your submit logic with validation and error routing.
    *
    * ```ts
-   * <form @submit.prevent="form.handleSubmit(
+   * const onSubmit = form.handleSubmit(
    *   (data) => api.signup(data),
    *   (errors) => console.log(errors),
-   * )">
+   * )
+   * // Bind the returned handler: <form @submit="onSubmit">
    * ```
    *
    * `data` is the strictly-typed parsed value — refinements have

@@ -457,6 +457,10 @@ export default [
       'apps/bench-arena/scripts/**',
       '.prettierrc.cjs',
       'scripts/**',
+      // Published Node CLI (`attaform skill`) — a standalone zero-dep
+      // script run through `npx`, not part of the library's typed source.
+      // Same rationale as the repo-root `scripts/**` tooling above.
+      'bin/**',
       // Bundled-types regression fixture imports from `dist/*` to
       // typecheck the published `.d.ts` shape; intentionally sits
       // outside the source tsconfig, so eslint's typed-rule pipeline

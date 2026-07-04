@@ -154,7 +154,7 @@ Cleared by `form.reset()` alongside the submission counters.
 `instanceId` distinguishes two mounts of the same shared form. Two `useForm({ key: 'signup' })` calls return the same FormStore (so writes in one reflect in the other), but `form.meta.instanceId` differs. Useful when devtools, telemetry, or e2e selectors need to disambiguate which mount triggered an event.
 
 ```vue
-<form :data-form-id="form.meta.instanceId" @submit.prevent="onSubmit">
+<form :data-form-id="form.meta.instanceId" @submit="onSubmit">
   …
 </form>
 ```

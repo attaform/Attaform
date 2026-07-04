@@ -37,7 +37,7 @@ const submit = form.handleSubmit(
 )
 ```
 
-The return value is a function ready for `<form @submit.prevent>`. Call signature: `(event?: Event) => Promise<void>`.
+The return value is a function ready for `<form @submit>`. Call signature: `(event?: Event) => Promise<void>`. It calls `event.preventDefault()` for you when it receives the submit event, so bind it with `@submit`, not `@submit.prevent`: the `.prevent` modifier would only prevent the default a second time.
 
 ## The dispatch contract
 

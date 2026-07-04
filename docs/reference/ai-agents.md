@@ -47,19 +47,21 @@ Read or copy it above, or fetch it directly at [attaform.dev/skill.md](/skill.md
 
 ### Install it into your project
 
-The skill travels inside the package. After installing Attaform, it sits at:
+The skill travels inside the package, so one command copies it into place. From your project root:
 
-```
-node_modules/attaform/skills/attaform/SKILL.md
+```sh
+npx attaform skill
 ```
 
-Copy the whole skill folder, the main file and its `references/`, into your project's skills directory:
+That drops the whole skill, the main file and its `references/`, into `.claude/skills/attaform/`. Run it again after you upgrade Attaform to refresh the skill in place: because it ships inside the package, running it in a project that has Attaform installed copies that exact version's skill. Aiming at another assistant's skills folder is a trailing path away, for example `npx attaform skill .cursor/skills`.
+
+Prefer to place it by hand? The skill sits at `node_modules/attaform/skills/attaform/`, so you can copy the folder yourself:
 
 ```sh
 cp -r node_modules/attaform/skills/attaform .claude/skills/
 ```
 
-The assistant then loads the Attaform skill whenever it works on a form in your repo. Because the skill ships with the package, it moves in lockstep with the version you have installed.
+Either way, the assistant then loads the Attaform skill whenever it works on a form in your repo.
 
 ## Pointing an agent at Attaform
 

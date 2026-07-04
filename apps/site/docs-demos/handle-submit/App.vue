@@ -23,7 +23,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <label>
       Email
       <input v-register="form.register('email')" autocomplete="email" />

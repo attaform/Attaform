@@ -9,6 +9,7 @@
     Workflow,
     TerminalSquare,
     Webhook,
+    Bot,
     ArrowRight,
     ExternalLink,
   } from 'lucide-vue-next'
@@ -170,6 +171,11 @@
       icon: Webhook,
       title: 'Server-side errors',
       body: '`form.setErrors(response.errors)` mounts server-sent `ValidationError[]` into the same reactive surface your template already reads, each error carrying an optional `data` payload.',
+    },
+    {
+      icon: Bot,
+      title: 'Built for AI agents',
+      body: 'An `llms.txt` index, a full-text docs dump, and an installable Agent Skill ship with the package, so your coding assistant writes idiomatic Attaform the first time. `npx attaform skill`.',
     },
   ]
 </script>

@@ -174,6 +174,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Types reference', to: '/docs/reference/types' },
       { title: 'Errors reference', to: '/docs/reference/errors' },
       { title: 'Entry-point reference', to: '/docs/reference/entry-points' },
+      { title: 'AI agents', to: '/docs/reference/ai-agents' },
     ],
   },
 ]

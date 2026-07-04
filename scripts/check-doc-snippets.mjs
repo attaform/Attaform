@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Doc-snippet staleness gate. Extracts every fenced `ts` / `vue` code
- * block that imports from `attaform` out of the docs (and the curated
- * llms.txt template), then type-checks each against the *built*
+ * block that imports from `attaform` out of the docs, the published
+ * Agent Skill, and the curated llms.txt template, then type-checks each
+ * against the *built*
  * `dist/*.d.mts` — the exact surface a consumer sees. A docs example
  * that imports a symbol the library no longer exports (the drift that
  * prompted the schema-entry refactor) fails here instead of silently
@@ -47,6 +48,11 @@ const generatedDir = resolve(fixtureRoot, '.generated')
 const tsconfigPath = resolve(fixtureRoot, 'tsconfig.json')
 
 const docsDir = resolve(repoRoot, 'docs')
+// The published Agent Skill (skills/attaform/SKILL.md) teaches the same
+// `attaform` imports it documents; scanning it here type-checks the
+// skill's code against the built surface, so it can't ship a stale
+// import any more than a docs page can.
+const skillsDir = resolve(repoRoot, 'skills')
 // The curated llms.txt template carries hand-written `ts` blocks (the
 // wizard "API at a glance", the Quick reference cheat-sheet) that live
 // nowhere in docs/ — including it type-checks that curated code too.
@@ -134,6 +140,7 @@ rmSync(generatedDir, { recursive: true, force: true })
 mkdirSync(generatedDir, { recursive: true })
 
 const sources = collectMarkdown(docsDir)
+if (existsSync(skillsDir)) sources.push(...collectMarkdown(skillsDir))
 if (existsSync(llmsTemplate)) sources.push(llmsTemplate)
 
 const fixtures = []

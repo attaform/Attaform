@@ -6,7 +6,7 @@
 
 Attaform's core idea is that the schema IS the form. One Zod schema declares the shape, the defaults, the validation, the per-field errors, and the input/output types. Attaform builds the reactive surface around it.
 
-The single entry point `attaform/zod` dispatches between Zod v3 and v4 per call, so projects on either version (or a mix) share one import. The Nuxt module auto-wires the plugin, the `v-register` directive, the SSR plumbing, and the DevTools panel. Bare Vue + Vite works through the Vite plugin without Nuxt.
+The default entry `attaform` dispatches between Zod v3 and v4 per call, so projects on either version (or a mix) share one import; `attaform/zod` is the same surface, named explicitly. The Nuxt module auto-wires the plugin, the `v-register` directive, the SSR plumbing, and the DevTools panel. Bare Vue + Vite works through the Vite plugin without Nuxt.
 
 Forms are bound to native inputs through the `v-register` directive, which also keeps each field's aria attributes in sync with its validation state. Submission goes through `form.handleSubmit(onSubmit)`. Multistep flows compose multiple `useForm` instances under `useWizard`. Undo/redo, server-error routing, and a Nuxt DevTools panel are all opt-in.
 
@@ -15,7 +15,7 @@ Forms are bound to native inputs through the `v-register` directive, which also 
 ```ts
 // script setup
 import { z } from 'zod'
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 
 const schema = z.object({
   email: z.email(),
@@ -57,7 +57,7 @@ The form handle exposes reactive reads (`form.values`, `form.errors`, `form.fiel
 Multistep flows compose forms under `useWizard`:
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 
 const account = useForm({ schema: accountSchema, key: 'account' })
 const profile = useForm({ schema: profileSchema, key: 'profile' })
@@ -204,7 +204,7 @@ Patterns that keep Attaform code clean.
 
 ## Reference
 
-- [Entry points](https://attaform.dev/docs/reference/entry-points): every package subpath (`attaform`, `attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`, `attaform/vite`, `attaform/nuxt`, `attaform/devtools-panel`).
+- [Entry points](https://attaform.dev/docs/reference/entry-points): every package subpath (`attaform`, `attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`, `attaform/abstract`, `attaform/vite`, `attaform/nuxt`, `attaform/devtools-panel`).
 - [Errors](https://attaform.dev/docs/reference/errors): `AttaformErrorCode` table and the error class hierarchy.
 - [Types](https://attaform.dev/docs/reference/types): every exported type.
 - [Custom adapters](https://attaform.dev/docs/reference/custom-adapters): building a non-Zod schema adapter.

@@ -67,7 +67,7 @@ useForm({ coerce: [...defaultCoercionRules, defineCoercion({ ... })] })
 Spread `defaultCoercionRules` to extend; pass a bare array to **replace** entirely. Adding a string → Date rule for ISO timestamps:
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { defaultCoercionRules, defineCoercion } from 'attaform'
 
 useForm({
@@ -93,7 +93,7 @@ Now `<input type="text" v-register="form.register('publishedAt')" />` against a 
 Set coercion at the plugin level so every form picks up the same custom rule without per-form opt-in:
 
 ```ts
-import { createAttaform } from 'attaform/zod'
+import { createAttaform } from 'attaform'
 import { defaultCoercionRules, defineCoercion } from 'attaform'
 
 createAttaform({

@@ -76,7 +76,7 @@ This is the right place for environment-specific defaults: a "remember me" toggl
 ## Three patterns for `defaultValues`
 
 ```ts
-import { unset } from 'attaform/zod'
+import { unset } from 'attaform'
 
 // 1. Plain values: explicit defaults flow into storage
 useForm({ schema, defaultValues: { email: 'me@example.com', count: 10 } })

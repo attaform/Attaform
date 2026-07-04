@@ -41,7 +41,7 @@ Reads through `form.values.<path>` always see the slim value. Storage never hold
 The sentinel works at every position the consumer can address:
 
 ```ts
-import { unset, useForm } from 'attaform/zod'
+import { unset, useForm } from 'attaform'
 
 const schema = z.object({
   email: z.string(),
@@ -119,7 +119,7 @@ form.fields('income').blank // true
 `unset` and `isUnset` ship from every entry point: `attaform`, `attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`. The `Unset` type is exported alongside for explicit type annotations:
 
 ```ts
-import { unset, isUnset, type Unset } from 'attaform/zod'
+import { unset, isUnset, type Unset } from 'attaform'
 
 function maybeBlank(v: string | Unset): string | undefined {
   return isUnset(v) ? undefined : v

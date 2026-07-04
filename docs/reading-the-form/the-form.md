@@ -64,7 +64,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 ## Per-field writes
 
 ```ts
-import { unset } from 'attaform/zod'
+import { unset } from 'attaform'
 
 form.setValue('email', 'new@example.com')
 form.setValue('age', unset) // flag any path blank by passing the sentinel

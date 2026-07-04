@@ -28,7 +28,7 @@ metaRows:
 
 ```vue
 <script setup lang="ts">
-  import { useForm, useWizard } from 'attaform/zod'
+  import { useForm, useWizard } from 'attaform'
 
   const wizard = useWizard({ steps: [shipping, payment, review] })
 

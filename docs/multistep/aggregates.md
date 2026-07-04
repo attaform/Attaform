@@ -27,7 +27,7 @@ metaRows:
 The final step of a wizard often shows everything the user entered, gated behind a confirm-and-submit button. `wizard.allValues` is the cross-step read surface, keyed by step key:
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 import { z } from 'zod'
 
 const accountSchema = z.object({ email: z.email(), name: z.string().min(1) })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { useForm } from 'attaform/zod'
+  import { useForm } from 'attaform'
   import { z } from 'zod'
   import InputText from 'primevue/inputtext'
   import Password from 'primevue/password'

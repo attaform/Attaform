@@ -31,7 +31,7 @@ The demo is a team roster keyed by member id. The ids are data you only learn at
 A dictionary form declares a `z.record` schema as the root, not nested under a key. The key schema constrains what counts as a valid key; the value schema validates each entry:
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const schema = z.record(

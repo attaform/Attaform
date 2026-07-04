@@ -97,7 +97,7 @@ If the schema is `z.string().min(1)` instead, the lifecycle is the same on `blan
 Sometimes you do want a string or boolean leaf to start blank: a "please choose" indicator on a checkbox, a deferred-fill text field. That's an explicit consumer signal, not runtime inference. Use the `unset` sentinel:
 
 ```ts
-import { unset, useForm } from 'attaform/zod'
+import { unset, useForm } from 'attaform'
 
 useForm({
   schema: z.object({ agreed: z.boolean(), note: z.string() }),

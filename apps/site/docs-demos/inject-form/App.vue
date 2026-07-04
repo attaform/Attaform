@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { useForm } from 'attaform/zod'
+  import { useForm } from 'attaform'
   import { schema } from './schema'
   import ProfileFieldset from './ProfileFieldset.vue'
   import StatusPill from './StatusPill.vue'

@@ -74,7 +74,7 @@ The one difference: `setValue` writes are **never coerced**. Coercion is for use
 To flag a path as displayed-empty, pass the `unset` sentinel. The runtime writes the schema's slim value at that path and joins the path to `form.blankPaths` so the bound input renders empty.
 
 ```ts
-import { unset } from 'attaform/zod'
+import { unset } from 'attaform'
 
 form.setValue('middleName', unset) // storage holds '', form.blankPaths has 'middleName'
 form.setValue('profile', unset) // recursive, marks every primitive descendant

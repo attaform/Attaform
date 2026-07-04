@@ -35,7 +35,7 @@ reka-ui ships headless primitives, so each control above is unstyled markup the 
 
 ```vue
 <script setup lang="ts">
-  import { useForm } from 'attaform/zod'
+  import { useForm } from 'attaform'
   import { z } from 'zod'
   // A text field from the component library you already use:
   import { TextField } from 'your-ui-kit'

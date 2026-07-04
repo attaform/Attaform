@@ -129,7 +129,7 @@ Global defaults shape options like `strict` and `validateOn`. Per-form initial v
 Three patterns:
 
 ```ts
-import { unset } from 'attaform/zod'
+import { unset } from 'attaform'
 
 // 1. Plain values: explicit defaults flow into storage and the form
 //    is not blank for those leaves.
@@ -159,7 +159,7 @@ If you need defaults but don't want to touch the plugin (third-party component l
 
 ```ts
 // composables/useAppForm.ts
-import { useForm as attaformUseForm } from 'attaform/zod'
+import { useForm as attaformUseForm } from 'attaform'
 import type { z } from 'zod'
 
 export function useAppForm<S extends z.ZodObject>(opts: Parameters<typeof attaformUseForm<S>>[0]) {

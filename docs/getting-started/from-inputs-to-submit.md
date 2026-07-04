@@ -25,7 +25,7 @@ The demo binds two inputs (an `email` and a `newsletter` checkbox) and wires a s
 This page focuses on two helpers off the form: `handleSubmit` (the submit-wrapping factory) and `meta` (the form's reactive status board). Hoist the schema and save the form:
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const schema = z.object({

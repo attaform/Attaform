@@ -39,7 +39,7 @@ Attaform separates two concepts that often get conflated in multistep code:
 A wizard's `steps` list mixes the two freely. The shape of a typical onboarding flow:
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 import { z } from 'zod'
 
 const shippingSchema = z.object({ address: z.string(), city: z.string() })
@@ -66,7 +66,7 @@ Affordance steps are a first-class building block, not an edge case. Onboarding 
 Each entry in `steps` is a **slot**. Four slot kinds compose the list:
 
 ```ts
-import { useForm, useWizard, lazy } from 'attaform/zod'
+import { useForm, useWizard, lazy } from 'attaform'
 
 const wizard = useWizard({
   steps: [
@@ -168,7 +168,7 @@ wizard.goTo('shipping-review') // jump to a specific step by key
 A wizard with no extra options reads its starting step from `?step=<key>` on the URL and writes the active step back as the user navigates. Reloads land on the same step, the browser back / forward buttons walk the flow, and the URL is shareable. On the server, the wizard reads the incoming request's `?step` so deep-links render the right step on the first byte.
 
 ```ts
-import { useForm, useWizard } from 'attaform/zod'
+import { useForm, useWizard } from 'attaform'
 
 const wizard = useWizard({
   steps: ['welcome', shipping, payment, 'final-review'],

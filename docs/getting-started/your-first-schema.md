@@ -25,7 +25,7 @@ Type into any of the demo's four inputs (`email`, `password`, `displayName`, `ag
 `useForm` is Attaform's entry point. Hand it a Zod schema and it returns a reactive form carrying every helper a template needs: a per-input binding factory, a per-field state map, and the live parsed values. Save the return value and reach for the pieces by name:
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 import { z } from 'zod'
 
 const schema = z.object({

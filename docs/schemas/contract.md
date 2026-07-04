@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Conceptual
   - label: Default adapter
-    value: attaform/zod (Zod v4)
+    value: attaform (Zod v4)
     kind: code
   - label: Also shipped
     value: attaform/zod-v3
@@ -105,7 +105,7 @@ Both fire at parse time (`handleSubmit`, `validate`, `validateAsync`); storage h
 Labels, descriptions, placeholders, and free-form annotations live on the schema itself. `withMeta` attaches them at any node.
 
 ```ts
-import { withMeta } from 'attaform/zod'
+import { withMeta } from 'attaform'
 
 const schema = z.object({
   email: withMeta(z.email(), {
@@ -133,17 +133,17 @@ const schema = z.object({
 
 ## Zod adapters
 
-`attaform/zod` wraps Zod v4 and is the canonical import for new projects. It walks the schema once at construction, caches structural metadata, and implements `AbstractSchema` against Zod's runtime.
+`attaform` is the canonical import for new projects. `useForm` here takes a Zod schema, walks it once at construction, caches structural metadata, and implements `AbstractSchema` against Zod's runtime. It auto-detects the installed Zod major (v4 by default, v3 when that's what's installed) and routes to the matching adapter.
 
 ```ts
-import { useForm } from 'attaform/zod'
+import { useForm } from 'attaform'
 ```
 
-For projects still on Zod v3, swap the import: `attaform/zod-v3`. The consumer-facing surface is identical; the parsing engine and metadata walker differ to match v3's internals.
+`attaform/zod` is the same surface named explicitly, and `attaform/zod-v3` / `attaform/zod-v4` pin one adapter with no detection. For projects still on Zod v3, `attaform/zod-v3` is the pin. The consumer-facing surface is identical across all four; the parsing engine and metadata walker differ to match each major's internals.
 
 ## Schema-agnostic core
 
-The core package (`attaform`) doesn't import Zod. It consumes any object that implements `AbstractSchema`, a small contract covering identity, defaults, shape introspection, and validation. The Zod adapters cover the bulk of real-world schemas; reach for [`AbstractSchema`](/docs/schemas/abstract-schema) directly when you're wiring Valibot, ArkType, Effect Schema, or a hand-rolled validator.
+Underneath the Zod entries, the core doesn't know about Zod at all. It consumes any object that implements `AbstractSchema`, a small contract covering identity, defaults, shape introspection, and validation. `attaform/abstract` exposes that core directly through `useAbstractForm`, which takes an `AbstractSchema` adapter instead of a Zod schema. The Zod adapters cover the bulk of real-world schemas; reach for [`AbstractSchema`](/docs/schemas/abstract-schema) and `attaform/abstract` when you're wiring Valibot, ArkType, Effect Schema, or a hand-rolled validator.
 
 ## Refinements vs. transforms
 

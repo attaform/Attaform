@@ -367,6 +367,30 @@ function writeSkillArtifacts() {
   log(`wrote public/skill.md + public/skills/attaform/** (${refs.length} reference file(s))`)
 }
 
+// ─── Per-page Markdown endpoints ─────────────────────────────────────
+//
+// Emit a cleaned Markdown copy of every docs page at
+// `public/docs/<path>.md`, so each page has a fetchable raw-Markdown
+// endpoint (attaform.dev/docs/<path>.md) beside its HTML and the in-page
+// "copy as Markdown" control has one source to read. The same MDC
+// stripper used for llms-full.txt runs so component blocks (live demos,
+// meta strips) do not leak into the text; the page's own `# H1` stays as
+// the title. Excluded dirs (via allDocRels) are skipped, matching the
+// index and full-text dump.
+function writePerPageMarkdown() {
+  const outRoot = resolve(siteRoot, 'public/docs')
+  let count = 0
+  for (const rel of allDocRels()) {
+    const doc = readDoc(rel)
+    if (!doc) continue
+    const outPath = join(outRoot, rel)
+    mkdirSync(dirname(outPath), { recursive: true })
+    writeFileSync(outPath, `${stripMdc(doc.body).trim()}\n`)
+    count++
+  }
+  log(`wrote public/docs/**/*.md (${count} page(s))`)
+}
+
 // ─── Run ─────────────────────────────────────────────────────────────
 const snippet = loadSnippet()
 const nav = loadDocsNavigation()
@@ -390,6 +414,7 @@ writeFileSync(resolve(siteRoot, 'public/llms-full.txt'), buildFullText(nav))
 log('wrote public/llms.txt + public/llms-full.txt')
 
 writeSkillArtifacts()
+writePerPageMarkdown()
 
 const drifted = syncCommitted(snippet)
 if (drifted.length) {

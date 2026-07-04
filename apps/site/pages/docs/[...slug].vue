@@ -166,6 +166,14 @@
     <article class="min-w-0 max-w-3xl flex-1">
       <DocsBreadcrumb class="mb-8" />
       <template v-if="page">
+        <!-- Page-level "copy as markdown" pair, sitting top-right just
+             above the H1 (which renders inside ContentRenderer). Copies
+             the page's cleaned .md endpoint or opens it; both resolve to
+             `${route.path}.md`. Inside v-if="page" so a 404 never shows a
+             control for a page with no underlying .md. -->
+        <div class="mb-4 flex justify-end">
+          <DocsCopyMarkdown :path="route.path" />
+        </div>
         <div class="docs-article-enter docs-prose prose prose-neutral max-w-none dark:prose-invert">
           <ContentRenderer :value="page" />
         </div>

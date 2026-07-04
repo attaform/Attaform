@@ -34,12 +34,14 @@ apps/site/docs-demos/*/styles.css
 
 # Generated AI-agent surface (composed by scripts/generate-llms.mjs on
 # dev/build; sources of truth are llms.template.md + docs/**/*.md +
-# docs-demos/quick-start/snippet.vue for the text files, and skills/attaform/**
-# for the served skill mirror + alias)
+# docs-demos/quick-start/snippet.vue for the text files, skills/attaform/**
+# for the served skill mirror + alias, and docs/**/*.md for the per-page
+# cleaned Markdown endpoints)
 apps/site/public/llms.txt
 apps/site/public/llms-full.txt
 apps/site/public/skill.md
 apps/site/public/skills/
+apps/site/public/docs/
 
 # Doc-snippet type-check fixtures, extracted from docs/**/*.md + the llms
 # template by scripts/check-doc-snippets.mjs on every run (source of truth is

@@ -446,6 +446,13 @@ export default defineNuxtConfig({
   linkChecker: {
     failOnError: true,
     strictNuxtContentPaths: true,
+    // The per-page raw-Markdown endpoints (public/docs/**/*.md, emitted by
+    // generate-llms.mjs) are static build artifacts, not Nuxt Content
+    // routes, so strictNuxtContentPaths would read the in-page "copy as
+    // markdown" links as broken content paths. Exclude the .md endpoints
+    // from inspection; the generator guarantees they exist. Merged with
+    // (not replacing) the module's default excludeLinks regexes.
+    excludeLinks: [/^\/docs\/.*\.md$/],
   },
   // @nuxt/content's Shiki integration. Pinning the themes and lang
   // set here is intentional — the default theme set is broad and

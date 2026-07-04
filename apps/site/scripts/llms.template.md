@@ -35,7 +35,7 @@ const onComplete = wizard.handleSubmit(async (ctx) => {
 })
 ```
 
-Steps can be `useForm` references, bare strings (affordance-only positions), eager function slots, or `lazy(ctx => ...)` markers. `wizard.handleSubmit` validates the active form and advances on intermediate steps, then validates every form in parallel on the final step.
+Steps can be `useForm` references, bare strings (affordance-only positions), `null` / `undefined` (filtered out), eager function slots, or `lazy(ctx => ...)` markers. `wizard.handleSubmit` validates every step from any position and calls `onSubmit` once with all values; it never advances. `wizard.tryNext()` is the gated Next: it validates the active step and advances only on a clean pass.
 
 ## Quick reference
 
@@ -59,8 +59,8 @@ The form handle returned by `useForm({ schema })`:
 The wizard handle returned by `useWizard({ steps })`:
 
 - `wizard.currentStep`, `wizard.activeForm`, `wizard.activeIndex`, `wizard.count`, `wizard.isFinalStep` position.
-- `wizard.next()`, `wizard.back()`, `wizard.goTo(key)`, `wizard.reset()` navigation.
-- `wizard.handleSubmit(onSubmit, onError?)` universal submit. Intermediate steps validate the active form and advance; the final step validates every form in parallel.
+- `wizard.next()`, `wizard.back()`, `wizard.goTo(key)`, `wizard.tryNext()`, `wizard.reset()` navigation. `tryNext()` validates the active step and advances only if it passes; the others move the pin without validating.
+- `wizard.handleSubmit(onSubmit, onError?)` whole-wizard submit. Validates every step from any position and calls `onSubmit` once with all values; it never advances (compose with `tryNext` / `next` to move between steps).
 - `wizard.forms.<key>` typed map of step forms.
 - `wizard.allValues`, `wizard.allErrors`, `wizard.statuses` namespaced aggregates.
 - `wizard.progress`, `wizard.canAdvance`, `wizard.canGoBack`, `wizard.complete`, `wizard.done` derived signals.

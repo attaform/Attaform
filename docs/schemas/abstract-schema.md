@@ -146,11 +146,11 @@ Assume your library exposes:
 import type {
   AbstractSchema,
   DefaultValuesResponse,
+  GenericForm,
   SlimPrimitiveKind,
   ValidationError,
   ValidationResponse,
-} from 'attaform'
-import type { GenericForm } from 'attaform'
+} from 'attaform/abstract'
 
 const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
   'string',
@@ -226,13 +226,13 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
 }
 ```
 
-Wire your adapter through the schema-agnostic `useForm`:
+Wire your adapter through `useAbstractForm`:
 
 ```ts
-import { useForm } from 'attaform'
+import { useAbstractForm } from 'attaform/abstract'
 import { myLibAdapter } from './my-adapter'
 
-const form = useForm({ schema: myLibAdapter(mySchema) })
+const form = useAbstractForm({ schema: myLibAdapter(mySchema) })
 ```
 
 ## Zod-v3 vs. Zod-v4: an introspection asymmetry
@@ -243,4 +243,4 @@ Worth knowing if you're studying the reference implementations: the v4 adapter e
 
 - [The schema contract](/docs/schemas/contract): the high-level mental model `AbstractSchema` implements.
 - [Types reference](/docs/reference/types): every type the contract references.
-- [Entry-point reference](/docs/reference/entry-points): which subpath ships `AbstractSchema` (the framework-agnostic `attaform`).
+- [Entry-point reference](/docs/reference/entry-points): which subpath ships `AbstractSchema` (`attaform/abstract`).

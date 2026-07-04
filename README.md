@@ -44,7 +44,7 @@ npm install attaform zod
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form @submit="onSubmit">
     <label>
       Email
       <input v-register="form.register('email')" autocomplete="email" />
@@ -52,7 +52,7 @@ npm install attaform zod
     </label>
     <label>
       Password
-      <input type="password" v-register="form.register('password')" autocomplete="off" />
+      <input v-register="form.register('password')" type="password" autocomplete="off" />
       <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
     </label>
     <button :disabled="form.meta.submitting" type="submit">Sign in</button>
@@ -73,6 +73,7 @@ Hand the schema to `useForm`, bind each input with `v-register`, and Attaform ow
 - **`useWizard` for multistep.** Compose forms into a flow with shared navigation, per-step validation, state retained across steps, and deep-link restore. [useWizard →](https://attaform.dev/docs/multistep/use-wizard)
 - **SSR-native.** Server-rendered HTML matches the hydrated client with no flash. Auto-wired in Nuxt, one Vite plugin for bare Vue. [SSR in Nuxt →](https://attaform.dev/docs/server-and-ssr/ssr-nuxt)
 - **DevTools built in.** Inspect every form on the page, walk its history, and edit values live. No probes to install. [DevTools panel →](https://attaform.dev/docs/devtools-and-debugging/devtools-panel)
+- **Built for AI-assisted coding.** Ships an `llms.txt` index, a full-text docs dump, and an installable Agent Skill (`npx attaform skill`), so your coding assistant writes idiomatic Attaform the first time. [AI agents →](https://attaform.dev/docs/reference/ai-agents)
 - **Secure by construction.** Zero runtime dependencies (no supply-chain surface), prototype-pollution-safe deep writes, and Attaform never throws into your app. [Security policy →](./SECURITY.md)
 
 ## Documentation
@@ -84,6 +85,7 @@ Full docs live at **[attaform.dev](https://attaform.dev)**.
 - [Entry points](https://attaform.dev/docs/reference/entry-points): every public export, grouped by subpath.
 - [Performance](https://attaform.dev/docs/server-and-ssr/performance): how it scales, when to worry.
 - [Troubleshooting](https://attaform.dev/docs/devtools-and-debugging/troubleshooting): common gotchas and fixes.
+- [AI agents](https://attaform.dev/docs/reference/ai-agents): `llms.txt`, the full-text docs dump, and an installable skill for coding assistants.
 - [Changelog](./CHANGELOG.md): full release history.
 
 ## Status

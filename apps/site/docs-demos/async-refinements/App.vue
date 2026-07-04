@@ -32,7 +32,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <label>
       <span>Username (taken: ada, champ, athlete)</span>
       <input v-register="form.register('username')" />

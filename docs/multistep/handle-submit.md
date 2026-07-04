@@ -41,7 +41,7 @@ metaRows:
 </script>
 
 <template>
-  <form @submit.prevent="onFinish">
+  <form @submit="onFinish">
     <!-- step body -->
     <button :disabled="wizard.submitting" type="submit">Finish</button>
   </form>
@@ -166,7 +166,7 @@ Disabling the button is belt-and-braces; the wizard refuses re-entry on its own.
 
 - **Empty steps list.** `handleSubmit` dev-warns and resolves no-op. `onSubmit` and `onError` are never invoked.
 - **Re-entrant submission.** The second call dev-warns and resolves no-op; the first call continues to settle.
-- **No `Event` argument.** Imperative calls (`onFinish()` with no event) work the same as `<form @submit.prevent>`; the `preventDefault` step is skipped.
+- **No `Event` argument.** Imperative calls (`onFinish()` with no event) work the same as `<form @submit>`; the `preventDefault` step is skipped.
 
 ## Where to next
 

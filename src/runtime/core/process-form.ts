@@ -437,7 +437,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    *     (path-scoped when the throw was well-constructed, form-level `[]`
    *     otherwise); a wrapped `SubmitErrorHandlerError` is the exception
    *     and stays `submitError`-only. The handler does NOT re-throw: a
-   *     rejecting `onSubmit` bound to `@submit.prevent` would otherwise
+   *     rejecting `onSubmit` bound to `@submit` would otherwise
    *     surface as a `window` unhandledrejection (a phantom crash for an
    *     already-handled server failure). Both template and imperative
    *     callers read the outcome from `submitError` / `submitted`; the
@@ -621,7 +621,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // origin on `.cause`).
         //
         // Deliberately NOT re-thrown: the handler is bound to DOM events
-        // (`@submit.prevent` / `@click`), so a rejected promise here would
+        // (`@submit` / `@click`), so a rejected promise here would
         // surface as a `window` unhandledrejection — a phantom crash for
         // what is usually an already-handled server failure. The error is
         // recorded on `submitError` for both template and imperative

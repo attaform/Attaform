@@ -35,7 +35,7 @@ The schema generic couldn't be inferred. Two likely causes:
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">...</form>
+  <form @submit="onSubmit">...</form>
 </template>
 ```
 

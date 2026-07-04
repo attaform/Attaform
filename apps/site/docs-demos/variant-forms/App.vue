@@ -32,7 +32,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <label>
       Payment method
       <select v-register="form.register('method')">

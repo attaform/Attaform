@@ -54,7 +54,7 @@ Three moves: hoist the schema, hand it to `useForm`, bind each input with `v-reg
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form @submit="onSubmit">
     <label>
       Email
       <input v-register="form.register('email')" autocomplete="email" />
@@ -76,7 +76,7 @@ Prefer an explicit `key` (`useForm({ schema, key: 'sign-in' })`): it makes the f
 
 - **Use the form handle. Don't destructure.** Keep `const form = useForm(...)` and reach for `form.register(...)`, `form.setValue(...)`, `form.meta`. Destructuring loses the reactive bindings.
 - **Bind with `v-register`; never write through `form.values`.** `form.values` is a read view and a callable proxy (`typeof form.values === 'function'`), so `schema.safeParse(form.values)` compiles but fails at runtime. Read `form.meta.valid` for validity; call `form.values()` for a plain snapshot (`form.values('a.b')` for a subtree).
-- **Let `handleSubmit` do the work.** It validates, calls `onSubmit` with the parsed values, and focuses the first offending field on an invalid submit. No manual focus and no `novalidate` ceremony.
+- **Let `handleSubmit` do the work.** It validates, calls `onSubmit` with the parsed values, and focuses the first offending field on an invalid submit. No manual focus and no `novalidate` ceremony. Bind it with `@submit`, not `@submit.prevent`: the handler calls `event.preventDefault()` for you, so `.prevent` only prevents twice.
 - **Never disable the submit button on validity.** Let the user click; the failed submit focuses the first error and reveals it. Gate only on `form.meta.submitting` or `!form.meta.dirty`. If a field's only guard was the disabled button, move the requirement into the schema (`.min(1)`, `.refine(...)`). See `references/validation.md`.
 - **Read errors through `field.showErrors` and `field.firstError?.message`.** The visibility heuristic lives in `showErrors`; reaching into `field.errors[0]` bypasses it. The async "checking" indicator is `field.showPending`.
 - **Route server errors through `form.setErrors(...)` inside the callback.** `setErrors` replaces the whole user-error layer, so call `form.clearErrors()` at the top of the submit for a fresh attempt. See `references/errors.md`.

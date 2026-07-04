@@ -43,7 +43,7 @@ Parent owns the form (no `key`):
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
+  <form @submit="onSubmit">
     <EmailRow />
     <ProfileGroup />
     <button>Sign up</button>

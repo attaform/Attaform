@@ -32,7 +32,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <fieldset>
       <legend>Notify me by</legend>
       <label class="row">

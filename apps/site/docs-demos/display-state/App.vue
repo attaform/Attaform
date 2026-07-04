@@ -29,7 +29,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <div class="stack">
       <label>
         <span>Username (taken: ada, champ, athlete)</span>

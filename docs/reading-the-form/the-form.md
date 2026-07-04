@@ -59,7 +59,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 })
 ```
 
-`handleSubmit` gates dispatch on validation. Returns a handler ready for `<form @submit.prevent>`.
+`handleSubmit` gates dispatch on validation. Returns a handler ready for `<form @submit>` (it calls `preventDefault` for you, so `.prevent` is redundant).
 
 ## Per-field writes
 

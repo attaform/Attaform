@@ -65,7 +65,7 @@
 </script>
 
 <template>
-  <form class="demo" @submit.prevent="onSubmit">
+  <form class="demo" @submit="onSubmit">
     <p class="hint">
       Pick one or more plain <code>.txt</code> files with one entry per line. Attaform reads them,
       turns each line into a tidy URL, drops anything that is not a web address, then lowercases the

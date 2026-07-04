@@ -68,7 +68,7 @@
           <p class="hint">{{ item.caption }}</p>
         </section>
 
-        <form class="stack" @submit.prevent="item.onSubmit">
+        <form class="stack" @submit="item.onSubmit">
           <label>
             Handle
             <input

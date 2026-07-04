@@ -869,6 +869,13 @@ export default [
     //     shared core chunk
     //   - SSR active-step seeding via getServerActiveStep
     // Measured at 12.56 KB.
+    //
+    // Held at 14 KB through the auto-import work: the module now registers
+    // the full auto-import manifest (src/runtime/auto-imports) behind the
+    // `autoImports` toggle instead of a single useForm entry, but the
+    // manifest is a tiny static array and the persist / onchange /
+    // multi-tab removals since #221 freed ~5 KB of headroom. Measured at
+    // 8.39 KB.
     limit: '14 KB',
     gzip: true,
     ignore: ['@nuxt/kit', 'nuxt/app'],
@@ -900,6 +907,11 @@ export default [
     //   - wizard SSR / hydration handshake helpers visible to the
     //     transform side
     // Measured at 12.05 KB.
+    //
+    // Held at 13 KB when attaform/vite began re-exporting the auto-import
+    // manifest + imports-map (src/runtime/auto-imports) for the
+    // unplugin-auto-import preset — a small static data re-export, no
+    // runtime weight. Measured at 7.89 KB.
     limit: '13 KB',
     gzip: true,
     ignore: ['vite'],

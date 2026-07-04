@@ -321,3 +321,35 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
     },
   }
 }
+
+/**
+ * Attaform's auto-import manifest, re-exported for plain-Vite projects
+ * that drive auto-imports with `unplugin-auto-import`. A Vite consumer
+ * already reaches for `attaform/vite` to register this plugin, so the
+ * preset rides along on the same entry, with no second Attaform import
+ * path to remember.
+ *
+ * `unplugin-auto-import`'s `imports` array takes an imports-map keyed by
+ * module, which is exactly `attaformAutoImportsMap`:
+ *
+ * ```ts
+ * // vite.config.ts
+ * import AutoImport from 'unplugin-auto-import/vite'
+ * import vue from '@vitejs/plugin-vue'
+ * import { attaform, attaformAutoImportsMap } from 'attaform/vite'
+ *
+ * export default defineConfig({
+ *   plugins: [
+ *     AutoImport({ imports: ['vue', attaformAutoImportsMap] }),
+ *     vue(),
+ *     attaform(),
+ *   ],
+ * })
+ * ```
+ *
+ * The flat `attaformAutoImports` (`{ name, from }[]`) is exported too for
+ * tooling that wants the raw list, e.g. Nuxt's `addImports` shape. Nuxt
+ * users need neither: `attaform/nuxt` registers the same manifest.
+ */
+export { attaformAutoImports, attaformAutoImportsMap } from './runtime/auto-imports'
+export type { AttaformAutoImport } from './runtime/auto-imports'

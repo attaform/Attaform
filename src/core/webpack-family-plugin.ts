@@ -5,24 +5,24 @@
  * differs.
  *
  * The plugin taps `normalModuleFactory.beforeResolve` and rewrites the
- * `attaform/zod` request to the matching adapter subpath, the same effect
- * as webpack's own `NormalModuleReplacementPlugin` but tapping the hook
- * directly so the plugin imports nothing from webpack/rspack (keeping
- * attaform dependency-free). The bundler injects the hook API at the
- * consumer's build, so the minimal structural types below are all the
+ * `attaform` / `attaform/zod` request to the matching adapter subpath, the
+ * same effect as webpack's own `NormalModuleReplacementPlugin` but tapping
+ * the hook directly so the plugin imports nothing from webpack/rspack
+ * (keeping attaform dependency-free). The bundler injects the hook API at
+ * the consumer's build, so the minimal structural types below are all the
  * plugin needs to compile.
  *
  * Build-time only: never part of a consumer's browser bundle.
  */
-import { resolveZodAliasTarget, ZOD_UNIFIED_SPECIFIER } from './detect-zod-major'
+import { isRewritableZodSpecifier, resolveZodAliasTarget } from './detect-zod-major'
 
 export interface WebpackFamilyPluginOptions {
   /**
-   * Rewrite `attaform/zod` imports at build time to the matching adapter
-   * subpath, based on the consumer's installed Zod major. Default `true`.
-   * Set to `false` to keep the runtime-dispatch unified entry (ships both
-   * adapters) when a project intentionally mixes Zod versions or resolves
-   * Zod in a non-standard way.
+   * Rewrite `attaform` and `attaform/zod` imports at build time to the
+   * matching adapter subpath, based on the consumer's installed Zod major.
+   * Default `true`. Set to `false` to keep the runtime-dispatch unified
+   * entry (ships both adapters) when a project intentionally mixes Zod
+   * versions or resolves Zod in a non-standard way.
    */
   resolveZodAlias?: boolean
   /**
@@ -69,7 +69,10 @@ export function createWebpackFamilyPlugin(
       if (target === null) return
       compiler.hooks.normalModuleFactory.tap(TAP_NAME, (factory) => {
         factory.hooks.beforeResolve.tap(TAP_NAME, (data) => {
-          if (data.request === ZOD_UNIFIED_SPECIFIER) {
+          // Rewrite both the bare `attaform` barrel and the explicit
+          // `attaform/zod` (both carry the runtime dispatcher) to the one
+          // detected adapter; pinned subpaths pass through untouched.
+          if (isRewritableZodSpecifier(data.request)) {
             data.request = target
           }
         })

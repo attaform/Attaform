@@ -37,9 +37,9 @@ export interface AttaformModuleOptions {
   defaults?: AttaformDefaults
   /**
    * Forwarded to `attaform/vite`'s `resolveZodAlias` option.
-   * Default `true` — `attaform/zod` imports are rewritten at build
-   * time to either `attaform/zod-v3` or `attaform/zod-v4`, based on
-   * the consumer's installed Zod major. Set to `false` to bypass
+   * Default `true` — `attaform` and `attaform/zod` imports are rewritten
+   * at build time to either `attaform/zod-v3` or `attaform/zod-v4`, based
+   * on the consumer's installed Zod major. Set to `false` to bypass
    * the rewrite and ship the runtime-dispatch unified entry instead.
    */
   resolveZodAlias?: boolean

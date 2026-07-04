@@ -1,9 +1,9 @@
 /**
- * `attaform/rollup` — Rollup plugin that rewrites `attaform/zod` imports
- * to the single matching adapter subpath (`attaform/zod-v3` or
- * `attaform/zod-v4`) at build time, based on the consumer's installed Zod
- * major. Without it, Rollup ships both adapters because the unified
- * `attaform/zod` entry imports both for runtime dispatch.
+ * `attaform/rollup` — Rollup plugin that rewrites `attaform` and
+ * `attaform/zod` imports to the single matching adapter subpath
+ * (`attaform/zod-v3` or `attaform/zod-v4`) at build time, based on the
+ * consumer's installed Zod major. Without it, Rollup ships both adapters
+ * because those entries import both for runtime dispatch.
  *
  * Usage:
  *
@@ -24,14 +24,14 @@
  * its plugin context at the consumer's build); the structural types below
  * are all it needs to compile.
  */
-import { resolveZodAliasTarget, ZOD_UNIFIED_SPECIFIER } from './core/detect-zod-major'
+import { isRewritableZodSpecifier, resolveZodAliasTarget } from './core/detect-zod-major'
 
 /** Options for the Rollup `attaform()` plugin. */
 export interface AttaformRollupPluginOptions {
   /**
-   * Rewrite `attaform/zod` imports at build time to the matching adapter
-   * subpath. Default `true`. Set to `false` to keep the runtime-dispatch
-   * unified entry (ships both adapters).
+   * Rewrite `attaform` and `attaform/zod` imports at build time to the
+   * matching adapter subpath. Default `true`. Set to `false` to keep the
+   * runtime-dispatch unified entry (ships both adapters).
    */
   resolveZodAlias?: boolean
   /**
@@ -77,11 +77,14 @@ export function attaform(options: AttaformRollupPluginOptions = {}): AttaformRol
     },
     resolveId(source, importer) {
       if (aliasTarget === null) return null
-      if (source !== ZOD_UNIFIED_SPECIFIER) return null
+      // Both the bare `attaform` barrel and the explicit `attaform/zod`
+      // carry the runtime dispatcher, so both collapse to the one detected
+      // adapter; the pinned subpaths pass through untouched.
+      if (!isRewritableZodSpecifier(source)) return null
       // Re-run the rewritten specifier through the resolver chain so the
       // matching subpath export lands as a real module. `skipSelf` keeps
       // the hook reentrant (our source check rejects the rewritten target
-      // anyway, since it is no longer the bare unified specifier).
+      // anyway, since it is no longer a rewritable specifier).
       return this.resolve(aliasTarget, importer, { skipSelf: true })
     },
   }

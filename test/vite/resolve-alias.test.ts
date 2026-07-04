@@ -153,18 +153,28 @@ describe('attaform/vite — resolveId alias for `attaform/zod`', () => {
     expect(resolved).toBeNull()
   })
 
-  it('passes through `attaform` (root) unchanged', async () => {
+  it('rewrites `attaform` (root barrel) to `attaform/zod-v4` when zod@4 is installed', async () => {
+    // The bare barrel re-exports the same runtime-dispatching surface as
+    // `attaform/zod`, so it collapses to the same single adapter.
     const config = await resolveWithRoot([vue(), attaform()], zodV4Root)
     const plugin = findAttaformPlugin(config)
-    const resolved = await callResolveId(plugin, 'attaform', undefined)
-    expect(resolved).toBeNull()
+    const resolved = (await callResolveId(plugin, 'attaform', undefined)) as { id: string } | null
+    expect(resolved?.id).toBe('attaform/zod-v4')
   })
 
-  it('does not rewrite when `resolveZodAlias: false` is passed', async () => {
+  it('rewrites `attaform` (root barrel) to `attaform/zod-v3` when zod@3 is installed', async () => {
+    const config = await resolveWithRoot([vue(), attaform()], zodV3Root)
+    const plugin = findAttaformPlugin(config)
+    const resolved = (await callResolveId(plugin, 'attaform', undefined)) as { id: string } | null
+    expect(resolved?.id).toBe('attaform/zod-v3')
+  })
+
+  it('does not rewrite `attaform/zod` or the bare `attaform` barrel when `resolveZodAlias: false`', async () => {
     const config = await resolveWithRoot([vue(), attaform({ resolveZodAlias: false })], zodV4Root)
     const plugin = findAttaformPlugin(config)
-    const resolved = await callResolveId(plugin, 'attaform/zod', undefined)
-    expect(resolved).toBeNull()
+    for (const source of ['attaform/zod', 'attaform']) {
+      expect(await callResolveId(plugin, source, undefined)).toBeNull()
+    }
   })
 
   it('does not throw on missing zod when `resolveZodAlias: false` is passed', async () => {

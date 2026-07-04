@@ -1,11 +1,13 @@
 /**
- * Shared build-time Zod-major detection and `attaform/zod` alias
- * resolution for the bundler plugins (`attaform/vite`, `attaform/rollup`,
+ * Shared build-time Zod-major detection and adapter-alias resolution for
+ * the bundler plugins (`attaform/vite`, `attaform/rollup`,
  * `attaform/esbuild`, `attaform/webpack`, `attaform/rspack`).
  *
- * The unified `attaform/zod` entry runtime-dispatches between the v3 and
+ * The unified `attaform/zod` entry — and the bare `attaform` barrel, which
+ * re-exports the identical surface — runtime-dispatches between the v3 and
  * v4 adapters, so a bundler that does not rewrite the import ships BOTH.
- * Each plugin rewrites `attaform/zod` to the single matching adapter
+ * Each plugin rewrites those two specifiers (see
+ * {@link REWRITABLE_ZOD_SPECIFIER_FILTER}) to the single matching adapter
  * subpath (`attaform/zod-v3` or `attaform/zod-v4`) based on the Zod major
  * resolved from the consumer's project, so the consumer bundle carries
  * one adapter instead of two. This module holds the detection (pure Node,
@@ -22,6 +24,44 @@ import { join } from 'node:path'
 export const ZOD_UNIFIED_SPECIFIER = 'attaform/zod'
 export const ZOD_V3_SPECIFIER = 'attaform/zod-v3'
 export const ZOD_V4_SPECIFIER = 'attaform/zod-v4'
+export const ZOD_BARREL_SPECIFIER = 'attaform'
+
+/**
+ * The two specifiers a plugin collapses to a single adapter: the explicit
+ * unified `attaform/zod` entry AND the bare `attaform` barrel. Both are
+ * structurally identical (the barrel re-exports the same
+ * `_shared-exports` + `_zod-binding` surface as `attaform/zod`), so both
+ * carry the runtime-dispatching `useForm` that pulls in BOTH adapters —
+ * and both rewrite to the same single adapter when one Zod major is
+ * detected.
+ *
+ * The rewrite is value-safe: every runtime binding the barrel exports
+ * (`useForm`, `fieldMeta`, `withMeta`, plus everything in
+ * `_shared-exports`) is also exported by `attaform/zod-v3` and
+ * `attaform/zod-v4`, so redirecting bare `attaform` to a pinned adapter
+ * can never strand a runtime import. (Type-only exports are erased before
+ * this resolve hook runs and are type-checked against the un-rewritten
+ * `attaform` specifier, so their per-adapter asymmetry is irrelevant.)
+ *
+ * The pattern is anchored (`^...$`) so it matches ONLY those two
+ * specifiers: the pinned adapters (`attaform/zod-v3`, `attaform/zod-v4`)
+ * and every build-tool / other subpath (`attaform/nuxt`, `attaform/vite`,
+ * `attaform/abstract`, `attaform/transforms`, ...) pass through untouched.
+ * It serves double duty — as esbuild's `onResolve` `filter` (a Go RE2
+ * regexp) and, via `.test()`, as the string-match predicate the other
+ * plugins call — so the two representations can never diverge.
+ */
+export const REWRITABLE_ZOD_SPECIFIER_FILTER = /^attaform(?:\/zod)?$/
+
+/**
+ * True when `source` is a specifier the plugins rewrite to a single Zod
+ * adapter: the bare `attaform` barrel or the explicit `attaform/zod`.
+ * Backed by {@link REWRITABLE_ZOD_SPECIFIER_FILTER} so it stays in lockstep
+ * with esbuild's filter.
+ */
+export function isRewritableZodSpecifier(source: string): boolean {
+  return REWRITABLE_ZOD_SPECIFIER_FILTER.test(source)
+}
 
 export type ZodMajorDetection =
   | { major: 3 }

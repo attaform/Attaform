@@ -45,7 +45,7 @@ The parent binds with `v-register`; the wrapper re-forwards that same instance a
 
 For a **compound** component that binds _multiple_ paths (a date range exposing start and end, an address subform), skip `useRegister` (it assumes a single binding) and reach for `injectForm<Form>()`, then call `form.register(path)` for each field.
 
-## Let the library own display and ARIA
+## Let Attaform own display and ARIA
 
 - Read the display signals straight in the template: `field.showErrors` gates the error row, `field.showPending` gates an async "checking" indicator (it is anti-flash timed), `field.firstError?.message` is the text.
 - `v-register`'s `autoAria` (on by default) keeps `aria-invalid`, `aria-busy`, and `aria-required` in sync. It wires the _error_ id, and only while the field is in its error state, so author `aria-describedby` yourself if a _static_ hint should stay associated too.
@@ -69,4 +69,4 @@ const form = formKey ? injectForm(formKey) : injectForm()
 
 ## Extend the surface, do not shrink it
 
-A wrapper composable should expose the library's full surface and add derived accessors on top, not return a hand-picked subset that strands state the library already computed. Spreading the raw handle plus your derived fields keeps everything reachable.
+A wrapper composable should expose Attaform's full surface and add derived accessors on top, not return a hand-picked subset that strands state Attaform already computed. Spreading the raw handle plus your derived fields keeps everything reachable.

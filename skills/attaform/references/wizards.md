@@ -44,10 +44,10 @@ The `onSubmit` callback receives a context, not a bare values object:
 
 ```ts
 const onComplete = wizard.handleSubmit(async (ctx) => {
-  // ctx.values     — aggregate keyed by form key (mirrors wizard.allValues)
-  // ctx.get(form)  — typed parsed output for one form ref
-  // ctx.currentKey — the step that fired the submit
-  // ctx.isFinal    — positional: is currentKey the last step?
+  // ctx.values is the aggregate keyed by form key (mirrors wizard.allValues)
+  // ctx.get(form) returns one form's typed parsed output
+  // ctx.currentKey is the step that fired the submit
+  // ctx.isFinal is positional: whether currentKey is the last step
   await fetch('/onboarding', { method: 'POST', body: JSON.stringify(ctx.values) })
 })
 ```
@@ -58,10 +58,10 @@ const onComplete = wizard.handleSubmit(async (ctx) => {
 
 The wizard handle exposes the flow's rolled-up state, all reactive:
 
-- `wizard.forms[key]` — the live form handle for a step (a facade typed as a form).
-- `wizard.allValues` / `wizard.allErrors` — every form's values / aggregate errors, keyed.
-- `wizard.activeForm` — the currently active step's form facade.
-- `wizard.statuses` — per-form status; `wizard.progress`, `wizard.canAdvance`, `wizard.canGoBack`, `wizard.isFinalStep`, `wizard.visited`.
+- `wizard.forms[key]`: the live form handle for a step (a facade typed as a form).
+- `wizard.allValues` / `wizard.allErrors`: every form's values / aggregate errors, keyed.
+- `wizard.activeForm`: the currently active step's form facade.
+- `wizard.statuses`: per-form status. Plus `wizard.progress`, `wizard.canAdvance`, `wizard.canGoBack`, `wizard.isFinalStep`, `wizard.visited`.
 
 ## A declarative step registry
 

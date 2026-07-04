@@ -114,11 +114,11 @@ SSR is automatic under the Nuxt module or the Vite plugin: field values, `checke
 
 Load one when the task reaches its area:
 
-- **`references/wizards.md`** — multistep flows: the declarative step registry, `tryNext` vs `handleSubmit`, using a wizard as a flat multi-form coordinator, and how keyed `injectForm` / `injectWizard` resolve.
-- **`references/errors.md`** — routing server and API errors: the `ValidationError` envelope, `setErrors` / `clearErrors`, the own-vs-subtree error axis, banners, and the one-normalizer pattern.
-- **`references/custom-components.md`** — wrapping an input or binding a third-party component: `useRegister`, the three orthogonal primitives, attribute fallthrough, and the optional `form-key` prop.
-- **`references/ssr.md`** — debugging SSR and hydration: why the value injection is a build-time transform, how to confirm it faithfully, and the test traps to avoid.
-- **`references/validation.md`** — designing the schema: client-is-UX / server-is-truth, keeping closed sets in sync, and why a clearable edit field is a required string.
+- **`references/wizards.md`**: multistep flows. The declarative step registry, `tryNext` vs `handleSubmit`, using a wizard as a flat multi-form coordinator, and how keyed `injectForm` / `injectWizard` resolve.
+- **`references/errors.md`**: routing server and API errors. The `ValidationError` envelope, `setErrors` / `clearErrors`, the own-vs-subtree error axis, banners, and the one-normalizer pattern.
+- **`references/custom-components.md`**: wrapping an input or binding a third-party component. `useRegister`, the three orthogonal primitives, attribute fallthrough, and the optional `form-key` prop.
+- **`references/ssr.md`**: debugging SSR and hydration. Why the value injection is a build-time transform, how to confirm it faithfully, and the test traps to avoid.
+- **`references/validation.md`**: designing the schema. Client-is-UX / server-is-truth, keeping closed sets in sync, and why a clearable edit field is a required string.
 
 ## Going deeper
 

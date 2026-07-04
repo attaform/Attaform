@@ -294,6 +294,16 @@ export default [
     // the Zod-default dispatcher + core. Measured at 60.97 KB — byte-for-byte
     // the same as zod.mjs. The `{ useForm }` tripwire below held at 54 KB, so
     // a real single-import consumer pays nothing for the whole-entry growth.
+    //
+    // Under a bundler plugin (attaform/vite|rollup|esbuild|webpack|rspack)
+    // with a single Zod major detected, bare `attaform` is rewritten to the
+    // pinned adapter (Phase 3 — the same rewrite `attaform/zod` already got),
+    // so a plugin-using consumer ships the dist/zod-v4.mjs / dist/zod-v3.mjs
+    // single-adapter weight (see those entries: 56 / 57 KB) rather than this
+    // dispatcher measurement — the recommended `attaform` import is as lean as
+    // the explicit pin. This 62 KB cap is the no-plugin (runtime-dispatch)
+    // ceiling; there is no separate under-plugin measurement because the
+    // rewrite lands the consumer on the zod-v3/v4 entries already capped below.
     limit: '62 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for

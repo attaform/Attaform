@@ -50,3 +50,26 @@ describe('docs-site config: Vite watcher polling for Docker bind-mount reliabili
     expect(source).toMatch(/binaryInterval:\s*\d+/)
   })
 })
+
+/**
+ * @nuxt/content runs its OWN chokidar source watcher over `docs/`, separate
+ * from Vite's above. It passes no `usePolling` and exposes no config knob, so
+ * across the Docker bind mount it misses docs/ adds + edits and keeps serving
+ * a stale SQLite DB until the dev server restarts (a new page 404s, an edit
+ * doesn't hot-reload). chokidar 5 reads `CHOKIDAR_USEPOLLING` as a global
+ * override that reaches content's watcher regardless of dependency depth; the
+ * docs-dev container sets it plus a matching interval. This pins both so a
+ * contributor dropping them fails before reintroducing the staleness window.
+ */
+describe('docs-site config: @nuxt/content watcher polling for Docker bind-mount reliability', () => {
+  const composePath = fileURLToPath(new URL('../docker-compose.yml', import.meta.url))
+  const compose = readFileSync(composePath, 'utf8')
+
+  it('the dev container forces chokidar polling', () => {
+    expect(compose).toMatch(/CHOKIDAR_USEPOLLING:\s*'?(?:true|1)'?/)
+  })
+
+  it('the dev container sets a chokidar poll interval', () => {
+    expect(compose).toMatch(/CHOKIDAR_INTERVAL:\s*'?\d+'?/)
+  })
+})

@@ -40,6 +40,18 @@ services:
       # gives every Node process the headroom it needs without pressuring
       # the host.
       NODE_OPTIONS: --max-old-space-size=8192
+      # Force chokidar to poll for file changes. @nuxt/content runs its own
+      # chokidar source watcher over `docs/` (separate from Vite's, which
+      # already polls via nuxt.config's `vite.server.watch`). macOS fsevents
+      # don't propagate through the Docker bind mount, so content misses
+      # docs adds + edits and keeps serving a stale SQLite DB until the dev
+      # server restarts (a new .md page 404s, an edit doesn't hot-reload).
+      # Content's `chokidar.watch()` sets no `usePolling` and exposes no knob
+      # for it, but chokidar 5 reads CHOKIDAR_USEPOLLING as a global override
+      # that reaches every instance regardless of dependency depth. 300ms
+      # matches the Vite watch interval next door.
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '300'
     # Long-running idle container; use `make up` (boots dev server) or `make shell` to interact
     command: ['sh', '-c', 'tail -f /dev/null']
 

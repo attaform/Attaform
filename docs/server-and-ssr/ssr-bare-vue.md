@@ -128,7 +128,7 @@ For bare Vue + Vite, install `attaform/vite` to ensure `v-register` bindings com
 // vite.config.ts
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import attaform from 'attaform/vite'
+import { attaform } from 'attaform/vite'
 
 export default defineConfig({
   plugins: [vue(), attaform()],

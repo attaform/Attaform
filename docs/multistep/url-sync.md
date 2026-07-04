@@ -53,9 +53,9 @@ Pass `false` to either side to opt out of the default. The two switches are inde
 
 ```ts
 const wizard = useWizard({
-  steps: [...],
-  restore: false,  // don't read the URL at construction
-  persist: false,  // don't write the URL on navigation
+  steps: [shipping, payment, review],
+  restore: false, // don't read the URL at construction
+  persist: false, // don't write the URL on navigation
 })
 ```
 
@@ -119,7 +119,7 @@ const checkout = useWizard({
 })
 
 const support = useWizard({
-  steps: [...],
+  steps: [shipping, payment, review],
   restore: () => {
     const url = new URL(window.location.href)
     const step = url.searchParams.get('support-step')

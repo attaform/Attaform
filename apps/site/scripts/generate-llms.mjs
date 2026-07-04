@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Generate the AI-agent index and full-text dump for the docs site, and keep
+ * Generate the AI-agent surface for the docs site (the llms.txt index, the
+ * llms-full.txt dump, and a web-fetchable copy of the Agent Skill), and keep
  * the README + quick-start page's headline code single-sourced from one tested
  * snippet. Zero dependencies (Node built-ins only), so it can run in any build
  * environment without touching the dependency graph.
@@ -24,7 +25,7 @@
  * Inputs: the canonical snippet SFC, the docs navigation (the sidebar's own
  * source of truth), every `docs/**` page's frontmatter, and package.json.
  */
-import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, mkdirSync } from 'node:fs'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -340,6 +341,32 @@ function syncCommitted(snippet) {
   return drifted
 }
 
+// ─── Served Agent Skill ──────────────────────────────────────────────
+//
+// Mirror the package's Agent Skill (`skills/attaform/**`) into `public/`
+// so an agent can be pointed at a URL without installing the package and
+// digging through node_modules. The skill's `references/` links are
+// relative, so the mirror keeps the same directory shape and they
+// resolve on the web exactly as they do on disk. `public/skill.md` is a
+// memorable top-level alias for the main file. All build artifacts,
+// single-sourced from the git skill, so they cannot drift.
+function writeSkillArtifacts() {
+  const srcDir = resolve(repoRoot, 'skills/attaform')
+  const outDir = resolve(siteRoot, 'public/skills/attaform')
+  mkdirSync(join(outDir, 'references'), { recursive: true })
+
+  const main = readFileSync(join(srcDir, 'SKILL.md'), 'utf8')
+  writeFileSync(join(outDir, 'SKILL.md'), main)
+  writeFileSync(resolve(siteRoot, 'public/skill.md'), main)
+
+  const refsDir = join(srcDir, 'references')
+  const refs = existsSync(refsDir) ? readdirSync(refsDir).filter((f) => f.endsWith('.md')) : []
+  for (const f of refs) {
+    writeFileSync(join(outDir, 'references', f), readFileSync(join(refsDir, f), 'utf8'))
+  }
+  log(`wrote public/skill.md + public/skills/attaform/** (${refs.length} reference file(s))`)
+}
+
 // ─── Run ─────────────────────────────────────────────────────────────
 const snippet = loadSnippet()
 const nav = loadDocsNavigation()
@@ -361,6 +388,8 @@ if (leftover) throw new Error(`generate-llms: unreplaced template placeholder ${
 writeFileSync(resolve(siteRoot, 'public/llms.txt'), `${llms.trim()}\n`)
 writeFileSync(resolve(siteRoot, 'public/llms-full.txt'), buildFullText(nav))
 log('wrote public/llms.txt + public/llms-full.txt')
+
+writeSkillArtifacts()
 
 const drifted = syncCommitted(snippet)
 if (drifted.length) {

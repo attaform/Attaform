@@ -9,7 +9,7 @@
   // markdown to drop into a .claude/skills folder.
   const { data: skill } = useAsyncData(
     'attaform-skill-md',
-    () => $fetch<string>('/skills/attaform/SKILL.md', { responseType: 'text' }),
+    () => fetch('/skills/attaform/SKILL.md').then((r) => (r.ok ? r.text() : null)),
     { server: false }
   )
 </script>

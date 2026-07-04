@@ -62,7 +62,7 @@ Three moves: hoist the schema, hand it to `useForm`, bind each input with `v-reg
     </label>
     <label>
       Password
-      <input type="password" v-register="form.register('password')" autocomplete="off" />
+      <input v-register="form.register('password')" type="password" autocomplete="off" />
       <em v-if="form.fields.password.showErrors">{{ form.fields.password.firstError?.message }}</em>
     </label>
     <button :disabled="form.meta.submitting" type="submit">Sign in</button>

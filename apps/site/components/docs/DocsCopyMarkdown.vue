@@ -21,8 +21,9 @@
   async function copyMarkdown() {
     if (!import.meta.client) return
     try {
-      const md = await $fetch<string>(mdHref.value, { responseType: 'text' })
-      await navigator.clipboard.writeText(md)
+      const res = await fetch(mdHref.value)
+      if (!res.ok) return
+      await navigator.clipboard.writeText(await res.text())
       copied.value = true
       if (resetTimer) clearTimeout(resetTimer)
       resetTimer = setTimeout(() => (copied.value = false), 1500)

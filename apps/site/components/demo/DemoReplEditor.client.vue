@@ -422,7 +422,7 @@
   // resolver at runtime (e.g. on a "load my own types" toggle). We
   // never reassign it, but the type still demands a Ref wrapper.
   const resourceLinks = ref({
-    pkgFileTextUrl: (pkgName: string, _pkgVersion: string | undefined, pkgPath: string) => {
+    pkgFileTextUrl: (pkgName: string, pkgVersion: string | undefined, pkgPath: string) => {
       if (
         pkgName === 'attaform' ||
         pkgName === 'vue' ||
@@ -431,7 +431,14 @@
       ) {
         return `/lib/types/${pkgName}/${pkgPath}`
       }
-      return `https://cdn.jsdelivr.net/npm/${pkgName}/${pkgPath}`
+      // Pin every CDN-resolved package to the exact version the worker resolved
+      // instead of letting jsdelivr serve `latest`. This covers TypeScript's own
+      // standard lib (`lib.es*.d.ts`, fetched as the `typescript` package) plus
+      // any transitive type-only dep. Dropping the version here is what left the
+      // standard lib floating on `latest`, so the TypeScript 7.0 native-port
+      // rollover knocked out `JSON` / `Promise` / `Math`; the pinned
+      // `typescriptVersion` flows through as `pkgVersion` for `typescript`.
+      return `https://cdn.jsdelivr.net/npm/${pkgName}${pkgVersion ? `@${pkgVersion}` : ''}/${pkgPath}`
     },
     pkgDirUrl: (pkgName: string, _pkgVersion: string | undefined, _pkgPath: string) => {
       if (
@@ -471,6 +478,19 @@
   // here to forget about when the lib promotes from -rc.x to stable.
   const { replDependencyVersion } = useRuntimeConfig().public
   const dependencyVersion = ref(replDependencyVersion)
+
+  // Pin the TypeScript the in-browser Volar worker loads. @vue/repl fetches
+  // the compiler from `cdn.jsdelivr.net/npm/typescript@<version>/lib/typescript.js`
+  // and defaults the version to `latest`. That dist-tag now resolves to the
+  // TypeScript 7.0 native port (7.0.2 at the time of writing), whose package
+  // layout and `typescript.js` shape @vue/repl 4.7.x doesn't understand: the
+  // worker no longer resolves the standard lib, so every ES global (`JSON`,
+  // `Promise`, `Math`, ...) reports TS2304 / TS2697 and the heavier generics
+  // trip TS2589. Pinning to the 5.9.x line @vue/repl targets (its own
+  // `typescript` devDep is `^5.9.2`) restores the embedded-lib behaviour the
+  // worker expects. Bump this deliberately once @vue/repl ships TS 7 support,
+  // never back to a floating tag.
+  const typescriptVersion = ref('5.9.3')
 
   // Monaco theme follows the site's color mode via the `<Repl>`
   // component's reactive `theme` prop ('light' | 'dark'). The
@@ -528,6 +548,7 @@
     builtinImportMap: ref(importMap),
     resourceLinks,
     dependencyVersion,
+    typescriptVersion,
     sfcOptions: ref({
       template: {
         compilerOptions: {

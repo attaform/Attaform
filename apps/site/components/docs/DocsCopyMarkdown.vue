@@ -6,9 +6,10 @@
   // Copy fetches the page's cleaned .md endpoint (written into public/ by
   // generate-llms.mjs) and writes it to the clipboard; the .md link opens
   // that same file. Both point at `${route.path}.md`, e.g.
-  // /docs/reference/ai-agents.md. Clipboard access is client-gated and
-  // wrapped in try/catch — it can throw in private mode or an insecure
-  // context — so a failed copy silently no-ops and the .md link remains.
+  // /docs/ai-tooling/agent-skill.md. Clipboard access is client-gated
+  // and wrapped in try/catch (it can throw in private mode or an
+  // insecure context), so a failed copy silently no-ops and the .md
+  // link remains.
   const props = defineProps<{ path: string }>()
 
   // Strip a trailing slash before appending .md so a trailing-slash route

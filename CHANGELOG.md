@@ -1,8 +1,18 @@
 # Changelog
 
 ## Unreleased
+### Changed
 
-_No unreleased changes yet._
+- **`npx attaform skill` now installs beside whichever AI assistant a
+  project uses instead of assuming Claude Code.** With no target
+  directory, the CLI detects the assistant folders already present
+  (`.claude/`, `.cursor/`, `.codex/`, `.agents/`) and copies the skill
+  next to each, falling back to the vendor-neutral `.agents/skills/` when
+  it finds none, and prints where every copy landed. `SKILL.md` is one
+  portable format read natively across assistants, so a single copy
+  serves them all with no per-assistant conversion. Passing an explicit
+  path is unchanged (`npx attaform skill .cursor/skills`), and the CLI
+  stays dependency-free. (#515)
 
 ## v0.27.0
 ### Breaking

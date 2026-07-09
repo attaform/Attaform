@@ -47,6 +47,18 @@ export const docsNavigation: DocsSection[] = [
     heading: 'Comparison',
     links: [{ title: 'Benchmarks', to: '/docs/comparison/benchmarks' }],
   },
+  // AI tooling rides high for the same reason Comparison does: "can my
+  // coding assistant use this well?" is a first-visit question, not a
+  // footnote at the bottom of the sidebar. Three focused pages, headline
+  // first: the installable skill, then the two machine-readable exports.
+  {
+    heading: 'AI tooling',
+    links: [
+      { title: 'Agent Skill', to: '/docs/ai-tooling/agent-skill' },
+      { title: 'llms.txt', to: '/docs/ai-tooling/llms-txt' },
+      { title: 'llms-full.txt', to: '/docs/ai-tooling/llms-full-txt' },
+    ],
+  },
   // Phase 1 fills in the remaining categories below as each page
   // lands. Empty `links` arrays render the heading as a disabled
   // sidebar group — visually placeholding the IA without surfacing
@@ -174,7 +186,6 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Types reference', to: '/docs/reference/types' },
       { title: 'Errors reference', to: '/docs/reference/errors' },
       { title: 'Entry-point reference', to: '/docs/reference/entry-points' },
-      { title: 'AI agents', to: '/docs/reference/ai-agents' },
     ],
   },
 ]

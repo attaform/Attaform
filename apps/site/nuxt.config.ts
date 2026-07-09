@@ -574,6 +574,12 @@ export default defineNuxtConfig({
   // catch-alls at the bottom catch anything missed and land it on
   // the docs spine rather than 404.
   routeRules: {
+    // The AI tooling section split the single `ai-agents` page into
+    // focused pages (skill + the two machine-readable exports); the old
+    // URL lands on the skill page, the section's headline.
+    '/docs/reference/ai-agents': {
+      redirect: { to: '/docs/ai-tooling/agent-skill', statusCode: 301 },
+    },
     // Top-level pre-rebuild slugs.
     '/docs/why': {
       redirect: { to: '/docs/getting-started/why-attaform', statusCode: 301 },

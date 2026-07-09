@@ -17,4 +17,4 @@ The sidebar walks top to bottom as a learning narrative: install, schema, bind, 
 
 If you're new, start with the [Quick start](/docs/getting-started/quick-start). If you want our philosophy first, read [Why Attaform](/docs/getting-started/why-attaform); if you want the receipts, [Benchmarks](/docs/comparison/benchmarks) measures Attaform against the Vue form-library field in a real browser. If you're hunting a specific surface, the sidebar's last category, **Reference**, is alphabetical and indexed.
 
-Reading with a coding assistant? These docs are machine-readable too. Point it at [`llms.txt`](/llms.txt) for the whole index, or install the [Agent Skill](/docs/reference/ai-agents) so it writes idiomatic Attaform from the first try. The [AI agents](/docs/reference/ai-agents) page lays out every option.
+Reading with a coding assistant? These docs are machine-readable too. Point it at [`llms.txt`](/llms.txt) for the whole index, or install the [Agent Skill](/docs/ai-tooling/agent-skill) so it writes idiomatic Attaform from the first try. The [AI tooling](/docs/ai-tooling/agent-skill) pages lay out every option.

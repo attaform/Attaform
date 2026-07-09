@@ -93,7 +93,7 @@ Everything outside that set stays an explicit import: the plugin (`createAttafor
 
 ## Optional: Agent skill
 
-Building with an AI coding assistant? Attaform ships an [Agent Skill](/docs/reference/ai-agents) that teaches it to write idiomatic Attaform: reach for `useForm`, bind with `v-register`, submit through `handleSubmit`. One command drops it into your project:
+Building with an AI coding assistant? Attaform ships an [Agent Skill](/docs/ai-tooling/agent-skill) that teaches it to write idiomatic Attaform: reach for `useForm`, bind with `v-register`, submit through `handleSubmit`. One command drops it into your project:
 
 ```sh
 npx attaform skill
@@ -105,4 +105,4 @@ The skill travels inside the package, so it stays in lockstep with the version y
 
 - [Quick start](/docs/getting-started/quick-start): your first form, end-to-end.
 - [Your first schema](/docs/getting-started/your-first-schema): what Attaform reads from a Zod definition.
-- [AI agents](/docs/reference/ai-agents): the skill, `llms.txt`, and the full-text docs dump for coding assistants.
+- [AI tooling](/docs/ai-tooling/agent-skill): the skill, `llms.txt`, and the full-text docs dump for coding assistants.

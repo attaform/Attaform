@@ -1,5 +1,17 @@
 # Releases
 
+## v0.27.1 — 2026-07-08
+
+## What's Changed
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/509
+* fix(playground): pin the REPL TypeScript off the drifting latest tag by @ozzyfromspace in https://github.com/attaform/Attaform/pull/514
+* DX: de-Claude the skill installer + give AI tooling its own docs section by @ozzyfromspace in https://github.com/attaform/Attaform/pull/515
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.27.0...v0.27.1
+
+---
+
 ## v0.27.0 — 2026-07-04
 
 ## What's Changed

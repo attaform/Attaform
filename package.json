@@ -117,7 +117,8 @@
     },
     "./types": {
       "types": "./dist/index.d.mts"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "keywords": [
     "vue",

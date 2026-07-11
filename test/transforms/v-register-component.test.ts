@@ -131,24 +131,24 @@ describe('v-register on Vue components — AST behaviour', () => {
   })
 
   describe('componentBridgeTransform — fires on EVERY component with v-register (value channel: v-model for plain hosts, :value for select-like)', () => {
-    it('injects the v-model pair (modelValue/innerRef + onUpdate:modelValue/setValueFromHost) + registerValue on a plain component host', () => {
+    it('injects the v-model pair (modelValue/hostModelValue + onUpdate:modelValue/setValueFromHost) + registerValue on a plain component host', () => {
       // The transform's branch `node.tagType === ElementTypes.COMPONENT`
       // makes ANY component with v-register a transform target — even
       // ones whose name has nothing to do with selecting (`<MyInput>`,
       // `<MyTextField>`, `<MyDatePicker>`). A plain input host (no projected
       // <option>s) speaks the standard Vue v-model contract: the transform
-      // injects `modelValue` (reading innerRef — the typed model value) and
-      // `onUpdate:modelValue` (routing through setValueFromHost, which writes
-      // the value and marks interacted), plus the `registerValue` bridge a
-      // wrapper's useRegister reads. It does NOT inject the select-style
-      // `:value`/displayValue bind — that's reserved for select-like hosts
-      // (see the slotted-<option> test below).
+      // injects `modelValue` (reading hostModelValue — the typed model value,
+      // undefined for a blank path) and `onUpdate:modelValue` (routing through
+      // setValueFromHost, which writes the value and marks interacted), plus
+      // the `registerValue` bridge a wrapper's useRegister reads. It does NOT
+      // inject the select-style `:value`/displayValue bind — that's reserved
+      // for select-like hosts (see the slotted-<option> test below).
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         componentBridgeTransform,
       ])
-      expect(code).toContain('innerRef')
+      expect(code).toContain('hostModelValue')
       expect(code).toContain('setValueFromHost')
-      expect(code).toMatch(/modelValue:\s*\(.*\)\?\.innerRef\?\.value/)
+      expect(code).toMatch(/modelValue:\s*\(.*\)\?\.hostModelValue\?\.value/)
       expect(code).toContain('"onUpdate:modelValue":')
       expect(code).toContain('registerValue:')
       // A plain host gets v-model, never the select-style displayValue bind.
@@ -205,7 +205,7 @@ describe('v-register on Vue components — AST behaviour', () => {
         componentBridgeTransform,
       ])
       for (const code of [pascal, explicitClose]) {
-        expect(code).toContain('innerRef')
+        expect(code).toContain('hostModelValue')
         expect(code).toContain('"onUpdate:modelValue":')
         expect(code).toContain('registerValue:')
       }
@@ -224,7 +224,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // attributes — the documented assignKey escape hatch covers
       // that case.
       const code = compileWith(`<my-input v-register="reg" />`, [componentBridgeTransform])
-      expect(code).toContain('innerRef')
+      expect(code).toContain('hostModelValue')
       expect(code).toContain('"onUpdate:modelValue":')
       expect(code).toContain('registerValue:')
       expect(code).toContain('_directive_register')
@@ -266,7 +266,7 @@ describe('v-register on Vue components — AST behaviour', () => {
          </div>`
       )
       // componentBridgeTransform contributed the v-model pair + registerValue:
-      expect(code).toContain('innerRef')
+      expect(code).toContain('hostModelValue')
       expect(code).toContain('setValueFromHost')
       expect(code).toContain('registerValue:')
       // vRegisterHintTransform wrapped the directive expression.
@@ -282,14 +282,15 @@ describe('v-register on Vue components — AST behaviour', () => {
            <input v-register="form.register('name')" />
          </div>`
       )
-      // The component host now takes the v-model path: modelValue reads
-      // innerRef and onUpdate:modelValue routes through setValueFromHost. The
-      // native <input> takes inputTextAreaNodeTransform's path: a value bind
-      // reading displayValue plus innerRef references in its checkbox/radio
-      // membership ternary. So innerRef shows on both sides; displayValue only
-      // on the native side (the component no longer emits it).
+      // The component host takes the v-model path: modelValue reads
+      // hostModelValue and onUpdate:modelValue routes through setValueFromHost.
+      // The native <input> takes inputTextAreaNodeTransform's path, which
+      // still references innerRef (the value bind reads displayValue, and the
+      // change-listener force-sync reads innerRef). So innerRef now shows only
+      // on the native side, hostModelValue only on the component side.
       const innerRefHits = code.match(/innerRef/g)?.length ?? 0
-      expect(innerRefHits).toBeGreaterThanOrEqual(2)
+      expect(innerRefHits).toBeGreaterThanOrEqual(1)
+      expect(code).toContain('hostModelValue')
       const displayHits = code.match(/displayValue/g)?.length ?? 0
       expect(displayHits).toBeGreaterThanOrEqual(1)
       // The component's v-model update handler is unique to its branch.
@@ -308,7 +309,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // transform doesn't introspect the expression — it forwards as-is.
       const code = compileFull('<MyInput v-register="form.register(`${prefix}.email`)" />')
       expect(code).toContain('markConnectedOptimistically')
-      expect(code).toContain('innerRef')
+      expect(code).toContain('hostModelValue')
       expect(code).toContain('setValueFromHost')
       // The template literal survives through identifier prefixing.
       expect(code).toContain('${_ctx.prefix}')
@@ -346,7 +347,8 @@ describe('v-register on Vue components — AST behaviour', () => {
         componentBridgeTransform,
         componentBridgeTransform,
       ])
-      const modelValueHits = code.match(/modelValue:\s*\(.*\)\?\.innerRef\?\.value/g)?.length ?? 0
+      const modelValueHits =
+        code.match(/modelValue:\s*\(.*\)\?\.hostModelValue\?\.value/g)?.length ?? 0
       const setterHits = code.match(/setValueFromHost/g)?.length ?? 0
       const regValueHits = code.match(/registerValue:/g)?.length ?? 0
       expect(modelValueHits).toBe(1)

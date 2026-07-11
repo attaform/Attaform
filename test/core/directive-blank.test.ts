@@ -40,6 +40,7 @@ function makeRegisterValue<T>(initial: T): {
   // (directive-private; off the public RegisterValue type).
   const value: InternalRegisterValue<T> = {
     innerRef: innerRef as InternalRegisterValue<T>['innerRef'],
+    hostModelValue: innerRef as InternalRegisterValue<T>['hostModelValue'],
     displayValue: ref('') as Readonly<Ref<string>>,
     markBlank,
     markInteracted: () => undefined,

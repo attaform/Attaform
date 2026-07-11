@@ -33,6 +33,7 @@ function makeRegisterValue<T>(initial: T): MutableMockRv<T> {
   const innerRef = ref(initial)
   return {
     innerRef: innerRef as InternalRegisterValue<T>['innerRef'],
+    hostModelValue: innerRef as InternalRegisterValue<T>['hostModelValue'],
     displayValue: computed(() => {
       const v = innerRef.value
       return v == null ? '' : String(v)

@@ -40,6 +40,7 @@ function makeRegisterValue<T>(
   const path = overrides.path ?? ('mock' as PathKey)
   const value: InternalRegisterValue<T> = {
     innerRef: ref(initial) as InternalRegisterValue<T>['innerRef'],
+    hostModelValue: ref(initial) as InternalRegisterValue<T>['hostModelValue'],
     displayValue: ref('') as Readonly<Ref<string>>,
     markBlank: () => true,
     markInteracted: () => undefined,

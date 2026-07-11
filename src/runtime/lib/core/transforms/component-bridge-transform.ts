@@ -491,8 +491,10 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       // drops a prior injection of our own `modelValue` / `onUpdate:modelValue`
       // so a doubly-registered transform pipeline re-injects exactly once
       // (the same strip-then-reinject idempotency the :value path above uses).
-      // :modelValue reads innerRef -- the typed model value (Date / number /
-      // array), not the stringified displayValue a <select> uses.
+      // :modelValue reads hostModelValue -- the typed model value (Date /
+      // number / array), or undefined for a blank path so a cleared numeric
+      // reads empty in the component, not the stringified displayValue a
+      // <select> uses.
       // onUpdate:modelValue routes through setValueFromHost, which writes the
       // value AND flips the sticky `interacted` bit (a v-model host has no DOM
       // input listener to do it), so blur-validation and the reward-early
@@ -511,7 +513,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       const modelInitExpression = createCompoundExpression([
         '(',
         ...modelValuePropExpArray,
-        ')?.innerRef?.value',
+        ')?.hostModelValue?.value',
       ])
       const modelSimpleExpression = createSimpleExpression(
         flattenExpression(modelInitExpression),

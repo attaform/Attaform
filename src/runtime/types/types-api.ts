@@ -2047,6 +2047,17 @@ export type RegisterValue<Value = unknown> = Readonly<{
    */
   displayValue: Readonly<Ref<string>>
   /**
+   * Blank-aware model presentation for a `v-register` component host's
+   * `:modelValue`. Returns `undefined` when the path is in the form's
+   * `blankPaths` set (the typed-model analog of `displayValue`'s `''`),
+   * otherwise the raw typed storage. Lets a cleared numeric field read
+   * empty in a v-model-bound component the way it does in a native
+   * input. Read only by the compile-time component-bridge transform's
+   * `:modelValue` injection.
+   * @internal
+   */
+  hostModelValue: Readonly<Ref<Value | undefined>>
+  /**
    * Add this field's path to the form's `blankPaths` set,
    * writing the slim default to storage. Returns the `setValueAtPath`
    * boolean (`true` accepted, `false` rejected by the slim-primitive

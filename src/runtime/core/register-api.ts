@@ -234,6 +234,19 @@ export function buildRegister<F extends GenericForm>(
       }
     }) as Readonly<Ref<string>>
 
+    // Blank-aware model presentation for a `v-register` component host's
+    // `:modelValue`. The native `:value` path reads `displayValue`, which
+    // returns `''` for a blank path so a cleared numeric input renders
+    // empty while storage still holds the slim `0`. A component's model is
+    // typed, so it can't carry that `''`; instead a blank path presents as
+    // `undefined` -- the typed-model analog of "displayed empty." A naive
+    // numeric component renders `undefined ?? '' === ''`, so a cleared
+    // numeric field reads empty in a v-model-bound component exactly as it
+    // does in a native input. Filled paths present the raw typed storage.
+    const hostModelValue = computed(() =>
+      state.blankPaths.has(pathKey) ? undefined : innerRef.value
+    ) as Readonly<Ref<unknown>>
+
     // Slim default precomputed at register-time. The schema is fixed
     // for the form's lifetime, so this is safe to cache; downstream
     // `markBlank` calls reuse it without re-walking the
@@ -296,6 +309,18 @@ export function buildRegister<F extends GenericForm>(
         ? (computed(() => getDisplayStateAt(segments)) as Readonly<Ref<DisplayState>>)
         : undefined
 
+    // Shared blank-marking op: write the schema's slim default and stage
+    // the blank meta so submit-time validation surfaces "No value
+    // supplied". The slim default keeps storage well-typed
+    // (getDefaultAtPath returns 0 for z.number(), '' for z.string(),
+    // false for z.boolean()). Hoisted out of the object literal so both
+    // the `markBlank` binding (the directive's numeric-clear listener)
+    // and `setValueFromHost` (the component-host analog) route through
+    // one place, and a cleared numeric leaf lands on the same state
+    // whether it came from a native `<input>` or a v-model component.
+    const markBlank = (): boolean =>
+      state.setValueAtPath(segments, slimDefault, withInstanceMeta({ blank: true }))
+
     // `shallowReadonly` is what makes `rv.path`, `rv.formKey`, and the
     // other top-level string fields feel like reactive state in
     // wrapper components: property reads track in computeds /
@@ -306,21 +331,10 @@ export function buildRegister<F extends GenericForm>(
     const internalRv: InternalRegisterValue = {
       innerRef,
       displayValue,
+      hostModelValue,
       lastTypedForm,
 
-      markBlank: (): boolean => {
-        // Write the schema's slim default and stage the blank meta so
-        // submit-time validation surfaces "No value supplied". The slim
-        // default keeps storage well-typed (getDefaultAtPath returns 0
-        // for z.number(), '' for z.string(), false for z.boolean()).
-        return state.setValueAtPath(
-          segments,
-          slimDefault,
-          withInstanceMeta({
-            blank: true,
-          })
-        )
-      },
+      markBlank,
 
       markInteracted: (): void => {
         state.markInteracted(segments)
@@ -359,12 +373,29 @@ export function buildRegister<F extends GenericForm>(
         // markInteracted -- exactly as the native input listener pairs the
         // assigner write with noteInteraction. Without the markInteracted,
         // blur-validation and the reward-early display state would never arm
-        // for a v-model-bound component. The value is authoritative (the
+        // for a v-model-bound component. A real value is authoritative (the
         // component's resolved model type), so it routes through the same
         // no-coercion funnel as setValueWithInternalPath. Mark interacted
         // before the write so any validation the write triggers sees the bit.
         state.markInteracted(segments)
-        const accepted = state.setValueAtPath(segments, value, withInstanceMeta(undefined))
+        // Empty-signal normalization, mirroring the native input listener's
+        // DOM-clear handling (directive.ts). A component clearing a
+        // numeric-only leaf emits an empty signal ('' / null / undefined)
+        // that the slim-primitive gate would reject, freezing form state at
+        // the old value while the component's DOM shows empty. When the
+        // emitted value is one of those signals AND the leaf's slim set does
+        // not admit it, route to markBlank -- storage lands on the slim
+        // default with the blank flag, the same state a native
+        // `<input v-register>` reaches on clear. The slim-set gate keeps a
+        // `.nullable()` / `.optional()` (or `z.file()`) leaf accepting null /
+        // undefined as a genuine value rather than reading it as blank.
+        const isBlankSignal =
+          (value === '' && !acceptsString) ||
+          (value === null && !slimTypes.has('null')) ||
+          (value === undefined && !acceptsUndefined)
+        const accepted = isBlankSignal
+          ? markBlank()
+          : state.setValueAtPath(segments, value, withInstanceMeta(undefined))
         // Dev diagnostic: a host value update flowed in, but nothing was ever
         // wired for this path (no registered element, connected never set). The
         // transform's v-model props ride a component's props / emits, which Vue

@@ -1,4 +1,4 @@
-import type { ComputedRef, ObjectDirective, Ref } from 'vue'
+import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
 
@@ -1123,6 +1123,29 @@ export type UseFormConfiguration<
    * the policy silently no-ops.
    */
   onInvalidSubmit?: OnInvalidSubmitPolicy
+  /**
+   * Freeze the form's data. When this resolves truthy every value write
+   * no-ops at the store's write chokepoint (programmatic `setValue`, the
+   * `v-register` directive, and host-model events alike), native
+   * registered inputs render the HTML `disabled` attribute, component
+   * hosts receive a `disabled` flag on their register value, and every
+   * field's `displayState` drops to `'idle'` so error, pending, and
+   * success signals stand down. The first blocked write logs a one-time
+   * dev warning; writes never throw.
+   *
+   * `reset()` and `defaultValues` hydration still apply while frozen, so
+   * a disabled form can be populated or cleared programmatically. This is
+   * a data freeze only: a disabled form stays navigable, which is what a
+   * read-only review page wants.
+   *
+   * Accepts a boolean, a ref, a computed, or a getter, read live so the
+   * freeze tracks a reactive source. `undefined` resolves to `false`.
+   * Falls back to `AttaformDefaults.disabled`.
+   *
+   * A shared FormStore resolves `disabled` from its first `useForm({ key })`
+   * call; a later caller passing a different value is ignored.
+   */
+  disabled?: MaybeRefOrGetter<boolean | undefined>
 
   /**
    * When per-field VALIDATION runs (the directive's listener controls
@@ -1311,6 +1334,8 @@ export type AttaformDefaults = {
   history?: HistoryConfig
   /** Default for `useForm({ rememberVariants })`. */
   rememberVariants?: boolean
+  /** Default for `useForm({ disabled })` — freeze the form's data. */
+  disabled?: MaybeRefOrGetter<boolean | undefined>
   /**
    * Default for `useForm({ coerce })`. Schema-driven coercion of
    * user-typed DOM values at the v-register directive layer.
@@ -2057,6 +2082,15 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   hostModelValue: Readonly<Ref<Value | undefined>>
+  /**
+   * Live `true` when this binding's form is frozen via
+   * `useForm({ disabled })`. The compile-time transforms bind it to the
+   * host's `:disabled`, so a native `<input v-register>` renders the
+   * HTML `disabled` attribute (SSR and client) and a component host
+   * receives a `disabled` prop. Read it directly from a custom
+   * `useRegister` integration to drive your own disabled affordance.
+   */
+  disabled: Readonly<Ref<boolean>>
   /**
    * Add this field's path to the form's `blankPaths` set,
    * writing the slim default to storage. Returns the `setValueAtPath`
@@ -2899,6 +2933,15 @@ export type FieldState<Value = unknown> = {
    */
   readonly key: string
   readonly blank: boolean
+  /**
+   * `true` when this field's form is frozen via `useForm({ disabled })`.
+   * While disabled, value writes no-op and this field's `displayState`
+   * is forced to `'idle'` so error, pending, and success signals stand
+   * down. A form-level flag: every field of a disabled form reads
+   * `true`, and the form root exposes it as `form.meta.disabled`. Bind
+   * read-only or styling affordances off this.
+   */
+  readonly disabled: boolean
   /**
    * Presentational label for this field. Resolves through the
    * shared cross-adapter field-meta store — written via

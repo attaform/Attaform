@@ -332,6 +332,11 @@ export function buildRegister<F extends GenericForm>(
       innerRef,
       displayValue,
       hostModelValue,
+      // Live form-freeze flag for the compile-time transforms' `:disabled`
+      // bind (native attribute + component-host prop) and custom
+      // `useRegister` integrations. Reads the form-level effective freeze,
+      // so every binding on a disabled form reports `true`.
+      disabled: computed(() => state.effectiveDisabled.value),
       lastTypedForm,
 
       markBlank,

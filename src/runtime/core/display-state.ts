@@ -41,6 +41,11 @@ function isGateOpen(field: DisplayCtx['field'], formMeta: DisplayCtx['formMeta']
 }
 
 function computeVerdict(field: DisplayCtx['field'], formMeta: DisplayCtx['formMeta']): Verdict {
+  // A disabled field is inert: no error / success verdict, so the
+  // default heuristic settles to `'idle'`. `decorateWithDerivedProps`
+  // also forces idle at the output for custom reducers; this keeps the
+  // exported `defaultDisplayState` honest for consumers composing it.
+  if (field.disabled === true) return 'idle'
   if (!isGateOpen(field, formMeta)) return 'idle'
   const hasOwnError = field.errors.some(
     (e) => e.path.length === field.path.length && e.path.every((s, i) => s === field.path[i])

@@ -237,3 +237,31 @@ describe('componentBridgeTransform — slotted options on a component host (#394
     expect(countSelectedBindings(code)).toBe(1)
   })
 })
+
+describe('componentBridgeTransform — :disabled freeze bind', () => {
+  it('injects :disabled on a plain component host', () => {
+    const code = compileWithTransform(`<MyInput v-register="form.register('email')" />`)
+    expect(code).toContain('disabled?.value')
+  })
+
+  it('injects :disabled on a native <select>', () => {
+    const code = compileWithTransform(
+      `<select v-register="form.register('fruit')"><option value="apple">Apple</option></select>`
+    )
+    expect(code).toContain('disabled?.value')
+  })
+
+  it('injects :disabled on a select-like component host with slotted options', () => {
+    const code = compileWithTransform(
+      `<MySelect v-register="form.register('fruit')"><option value="apple">Apple</option></MySelect>`
+    )
+    expect(code).toContain('disabled?.value')
+  })
+
+  it('does NOT inject its own :disabled when the author bound :disabled', () => {
+    const code = compileWithTransform(
+      `<MyInput v-register="form.register('email')" :disabled="locked" />`
+    )
+    expect(code).not.toContain('disabled?.value')
+  })
+})

@@ -256,6 +256,9 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       get blank() {
         return rootBase().blank
       },
+      get disabled() {
+        return rootBase().disabled
+      },
       get label() {
         return rootBase().label
       },
@@ -835,6 +838,9 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       },
       get blank() {
         return rootFieldState.value.blank
+      },
+      get disabled() {
+        return rootFieldState.value.disabled
       },
       get label() {
         return rootFieldState.value.label

@@ -254,6 +254,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     ...computeFieldIdentity(formInstanceId, state.formKey, key),
     key: state.arrayElementKey(segments),
     blank: state.blankPaths.has(key),
+    disabled: state.effectiveDisabled.value,
     label,
     description: resolved.description,
     placeholder: resolved.placeholder,
@@ -621,6 +622,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       ...computeFieldIdentity(formInstanceId, state.formKey, key),
       key: state.arrayElementKey(segments),
       blank,
+      disabled: state.effectiveDisabled.value,
       label,
       description: resolved.description,
       placeholder: resolved.placeholder,
@@ -742,12 +744,18 @@ function decorateWithDerivedProps<F extends GenericForm>(
   // tracks validation, not submission.
   const submitValidating =
     rollupApplies && isRoot && state.submitting.value && state.activeValidations.value > 0
-  const displayState: DisplayState =
+  const resolvedDisplayState: DisplayState =
     machine.display === 'pending' || submitValidating
       ? 'pending'
       : rollupApplies && revealedDescendantError
         ? 'error'
         : machine.display
+  // A disabled form shows no field verdict: value writes no-op and the
+  // field is inert, so error / pending / success all stand down to
+  // `'idle'` regardless of the (possibly custom) reducer's output. The
+  // engine still ran above, so its per-path machine state stays coherent
+  // for when the form is re-enabled.
+  const displayState: DisplayState = base.disabled === true ? 'idle' : resolvedDisplayState
   return {
     ...base,
     displayState,

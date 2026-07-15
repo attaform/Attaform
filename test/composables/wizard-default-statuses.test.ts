@@ -6,7 +6,7 @@ import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
-import type { FormStatus } from '../../src/runtime/types/types-wizard'
+import type { FormStatusSeed } from '../../src/runtime/types/types-wizard'
 
 /**
  * `defaultStatuses` seeds `wizard.statuses[key]` BEFORE each form's
@@ -46,14 +46,14 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-const validSeed: FormStatus = {
+const validSeed: FormStatusSeed = {
   valid: true,
   dirty: false,
   submitted: false,
   errorCount: 0,
 }
 
-const dirtySeed: FormStatus = {
+const dirtySeed: FormStatusSeed = {
   valid: false,
   dirty: true,
   submitted: false,
@@ -121,7 +121,10 @@ describe('useWizard — defaultStatuses', () => {
   })
 
   it('accepts an async function seed that lands later', async () => {
-    let resolveSeed!: (value: { 'ds-async-a': FormStatus; 'ds-async-b': FormStatus }) => void
+    let resolveSeed!: (value: {
+      'ds-async-a': FormStatusSeed
+      'ds-async-b': FormStatusSeed
+    }) => void
     let resolveA!: (value: { a: string }) => void
     const { app, result } = mountHarness(() => {
       const a = useForm({
@@ -173,6 +176,7 @@ describe('useWizard — defaultStatuses', () => {
       dirty: result.a.meta.dirty,
       submitted: result.a.meta.submitted,
       errorCount: result.a.meta.errorCount,
+      locked: false,
     })
   })
 

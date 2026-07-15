@@ -18,12 +18,13 @@ import type {
  */
 
 describe('wizard status types', () => {
-  it('FormStatus has valid / dirty / submitted / errorCount fields', () => {
+  it('FormStatus has valid / dirty / submitted / errorCount / locked fields', () => {
     expectTypeOf<FormStatus>().toEqualTypeOf<{
       readonly valid: boolean
       readonly dirty: boolean
       readonly submitted: boolean
       readonly errorCount: number
+      readonly locked: boolean
     }>()
   })
 

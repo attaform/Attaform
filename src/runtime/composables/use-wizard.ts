@@ -10,6 +10,7 @@ import {
   ref,
   useId,
   watch,
+  watchEffect,
   type ComputedRef,
 } from 'vue'
 import { __DEV__ } from '../core/dev'
@@ -35,12 +36,15 @@ import type {
   CompiledStep,
   CurrentStepOf,
   FormStatus,
+  FormStatusSeed,
   LazyMarker,
   StepSlot,
   UseWizardReturnType,
   WizardCtx,
   WizardCtxForm,
   WizardForms,
+  WizardLockCtx,
+  WizardLockCtxForm,
   WizardOnError,
   WizardOnSubmit,
   WizardOptions,
@@ -68,6 +72,7 @@ const PENDING_STATUS: FormStatus = {
   dirty: false,
   submitted: false,
   errorCount: 0,
+  locked: false,
 }
 
 /** Status surfaced for noop forms (string-slot affordance steps). Noops
@@ -79,7 +84,12 @@ const NOOP_VALID_STATUS: FormStatus = {
   dirty: false,
   submitted: false,
   errorCount: 0,
+  locked: false,
 }
+
+/** Shared empty lock set for wizards that declare no `locked` policy, so
+ *  the no-policy path allocates nothing and reads as "nothing locked." */
+const EMPTY_LOCK_SET: ReadonlySet<FormKey> = new Set()
 
 /**
  * Subset of the form's surface the wizard reads for status + values.
@@ -467,12 +477,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (key === '') return
     if (list.some((step) => step.key === key)) return
     if (list.length === 0) {
-      activeKey.value = ''
+      commitActiveKey('')
       return
     }
     const oldIndex = prevList.findIndex((step) => step.key === key)
     const slid = list[oldIndex < 0 ? 0 : Math.min(oldIndex, list.length - 1)]
-    if (slid !== undefined) activeKey.value = slid.key
+    if (slid !== undefined) commitActiveKey(slid.key)
   })
 
   // `wizard.activeForm` returns this single facade (when the wizard is
@@ -668,9 +678,207 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     },
   }) as Readonly<Record<FormKey, readonly WizardAggregateError[]>>
 
+  // --- Lock policy (drives the member-form freeze) ----------------------
+  //
+  // `locked(ctx)` names the steps to gate. Each named step's member form
+  // is frozen through Part 1's `externalLock` channel (create-form-store),
+  // so its value writes no-op at the data layer. That freeze is
+  // bypass-proof: unlike a navigation guard, a deep link or back/forward
+  // cannot reach around it. `lockedSet` re-derives whenever the policy's
+  // reactive reads move (a gate form's `submitted` flips, say) and fails
+  // closed if the policy throws.
+  const lockPolicy = options.locked
+
+  // Widened per-form view for the lock ctx: the slot ctx's `values` plus
+  // the lifecycle flags a gate predicate reads. Getters keep every read
+  // live, so `lockedSet` tracks the exact form fields the policy touches.
+  // Cached per key (mirrors statusCache / valuesCache) for stable
+  // identity across policy re-evaluations.
+  const lockFormViews = new Map<FormKey, WizardLockCtxForm>()
+  function lockCtxFormFor(form: AnyForm): WizardLockCtxForm {
+    const cached = lockFormViews.get(form.key)
+    if (cached !== undefined) return cached
+    // `values` reads through the same `WizardCtxForm` lens the slot ctx
+    // uses (plain record projection); `valid` / `submitted` / `dirty`
+    // come off the form's meta via the centered status coercion.
+    const ctxForm = form as WizardCtxForm
+    const source = asStatusSource(form)
+    const view: WizardLockCtxForm = {
+      key: form.key,
+      get values() {
+        return ctxForm.values
+      },
+      get valid() {
+        return source.meta?.valid ?? false
+      },
+      get submitted() {
+        return source.meta?.submitted ?? false
+      },
+      get dirty() {
+        return source.meta?.dirty ?? false
+      },
+    }
+    lockFormViews.set(form.key, view)
+    return view
+  }
+
+  const lockForms = new Proxy({} as Record<FormKey, WizardLockCtxForm>, {
+    get(_, key: string | symbol): WizardLockCtxForm | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsAccumulator.get(key)
+      return form === undefined ? undefined : lockCtxFormFor(form)
+    },
+    has(_, key: string | symbol): boolean {
+      if (typeof key !== 'string') return false
+      return formsAccumulator.has(key)
+    },
+    ownKeys(): ArrayLike<string | symbol> {
+      return [...formsAccumulator.keys()]
+    },
+    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+      if (typeof key !== 'string') return undefined
+      const form = formsAccumulator.get(key)
+      if (form === undefined) return undefined
+      return { configurable: true, enumerable: true, writable: false, value: lockCtxFormFor(form) }
+    },
+  })
+
+  // Dedicated lock ctx (not the slot `ctx`): `keys` / `after` are getters
+  // so reading them subscribes `lockedSet` to `compiledSteps` only when
+  // the policy actually uses them. Deriving from a separate object keeps
+  // the slot-compile pass free of the lock's dep set.
+  const lockCtx: WizardLockCtx = {
+    forms: lockForms,
+    get keys(): readonly FormKey[] {
+      return compiledSteps.value.map((step) => step.key)
+    },
+    after(key: FormKey): readonly FormKey[] {
+      const list = compiledSteps.value
+      const idx = list.findIndex((step) => step.key === key)
+      if (idx < 0) return []
+      return list.slice(idx + 1).map((step) => step.key)
+    },
+  }
+
+  // Fail-closed wrapper. A throwing policy must never silently unlock a
+  // gated step, so on error we lock every step but the active one (the
+  // user keeps their current page but cannot advance past the gate) and
+  // surface the throw once in dev.
+  let warnedLockThrow = false
+  function safeLocked(policy: NonNullable<WizardOptions['locked']>): readonly FormKey[] {
+    try {
+      return policy(lockCtx)
+    } catch (err) {
+      if (__DEV__ && !warnedLockThrow) {
+        warnedLockThrow = true
+        const site = captureUserCallSite()
+        console.error(
+          `[attaform] useWizard({ locked }) threw; failing closed (every step but the active one is locked). Fix the policy to clear this.${
+            site !== undefined ? ` ${site}` : ''
+          }`,
+          toError(err)
+        )
+      }
+      const active = activeKey.value
+      return compiledSteps.value.map((step) => step.key).filter((key) => key !== active)
+    }
+  }
+
+  // Currently-locked step keys. Empty + inert when no policy is
+  // configured; otherwise re-derived (fail-closed) on every reactive move
+  // the policy makes. `statusFor` and the freeze drive both read this.
+  const lockedSet = computed<ReadonlySet<FormKey>>(() => {
+    if (lockPolicy === undefined) return EMPTY_LOCK_SET
+    return new Set(safeLocked(lockPolicy))
+  })
+
+  // The furthest step reachable from the start without crossing a lock:
+  // walk positionally and stop at the first locked step. A locked target
+  // redirects here, so a deep link into a gated step lands on the gate.
+  // `undefined` only when the very first step is locked (a pathological
+  // policy); callers then leave the pin where it is.
+  function lastReachableKey(): FormKey | undefined {
+    const list = compiledSteps.value
+    const locked = lockedSet.value
+    let last: FormKey | undefined
+    for (const step of list) {
+      if (locked.has(step.key)) break
+      last = step.key
+    }
+    return last
+  }
+
+  // Resolve where a navigation to `target` actually lands. An unlocked
+  // target lands as-is. A locked target redirects to the gate
+  // (`lastReachableKey`), but only once that gate has resolved its
+  // defaults: bouncing onto a still-hydrating gate would flicker if it
+  // settles to "unlocked" a tick later, so while the gate is pending the
+  // pin stays on the (frozen, therefore safe) target and the lock
+  // corrector performs the bounce once readiness settles.
+  function resolveLandingKey(target: FormKey): FormKey {
+    if (!lockedSet.value.has(target)) return target
+    const redirect = lastReachableKey()
+    if (redirect === undefined) return target
+    if (!isFormReady(redirect)) return target
+    return redirect
+  }
+
+  // Sole writer of `activeKey.value`. Every navigation path routes its
+  // target through here so a locked step can never silently become the
+  // active step (subject to the readiness defer in `resolveLandingKey`).
+  // Side-effect-minimal by design: callers keep their own `visited` /
+  // activation bookkeeping and use the returned landing key, so they
+  // record where navigation actually ended up rather than where it was
+  // aimed. The empty-string clear (degenerate wizard) passes through.
+  // A hoisted declaration so the forward-continuity watch above can route
+  // through it; every caller invokes it after `lockedSet` is live.
+  function commitActiveKey(target: FormKey): FormKey {
+    const landing = target === '' ? '' : resolveLandingKey(target)
+    if (activeKey.value !== landing) activeKey.value = landing
+    return landing
+  }
+
+  // Drive Part 1's `externalLock` on each member store from `lockedSet`.
+  // A key entering the set freezes its form; a key leaving the set (the
+  // policy unlocked it, or the step dropped out of the compiled list)
+  // releases it. `previouslyLocked` tracks what we froze last pass so a
+  // departed key is actively reset rather than left stuck frozen. Only a
+  // configured policy runs the effect; the no-policy path stays a pure
+  // empty read.
+  if (lockPolicy !== undefined) {
+    let previouslyLocked: FormKey[] = []
+    watchEffect(() => {
+      const locked = lockedSet.value
+      for (const key of previouslyLocked) {
+        if (!locked.has(key)) {
+          const store = registry.forms.get(key)
+          if (store !== undefined) store.externalLock.value = false
+        }
+      }
+      for (const key of locked) {
+        // `registry.forms` is reactive, so a member store registered after
+        // this first runs re-triggers the effect and picks up its lock.
+        const store = registry.forms.get(key)
+        if (store !== undefined) store.externalLock.value = true
+      }
+      previouslyLocked = [...locked]
+    })
+    if (getCurrentScope() !== undefined) {
+      onScopeDispose(() => {
+        // Release every still-frozen member on teardown so a form that
+        // outlives the wizard (shared key, KeepAlive) is not stranded
+        // frozen. A store already evicted from the registry is skipped.
+        for (const key of previouslyLocked) {
+          const store = registry.forms.get(key)
+          if (store !== undefined) store.externalLock.value = false
+        }
+      })
+    }
+  }
+
   // --- Statuses proxy + seed --------------------------------------------
 
-  const seedRef = ref<Record<string, FormStatus> | undefined>(undefined)
+  const seedRef = ref<Record<string, FormStatusSeed> | undefined>(undefined)
   const seedInput = options.defaultStatuses
   if (seedInput !== undefined) {
     const resolved = resolveTrichotomy(seedInput)
@@ -698,6 +906,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (cached !== undefined) return cached
     const source = asStatusSource(form)
     const computedStatus = computed<FormStatus>(() => {
+      // `locked` is orthogonal to the readiness trichotomy below: it is
+      // overlaid on whatever base status this form resolves to, so a
+      // locked step reads `locked: true` whether it is ready, pending, a
+      // noop, or seeded. Constants pass through untouched on the common
+      // unlocked path so their identity survives.
+      const locked = lockedSet.value.has(form.key)
       if (isFormReady(form.key)) {
         const meta = source.meta
         if (meta !== undefined && meta !== null) {
@@ -706,6 +920,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
             dirty: meta.dirty,
             submitted: meta.submitted,
             errorCount: meta.errorCount,
+            locked,
           }
         }
       }
@@ -713,12 +928,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       // schema settle has registered — noop schemas resolve synchronously
       // so this branch is mostly defensive, but it keeps the
       // status surface stable for string-slot keys at t=0.
-      if (noopForms.has(form.key)) return NOOP_VALID_STATUS
-      const seedMap = seedRef.value
-      if (seedMap !== undefined && Object.hasOwn(seedMap, form.key)) {
-        return seedMap[form.key] as FormStatus
+      if (noopForms.has(form.key)) {
+        return locked ? { ...NOOP_VALID_STATUS, locked: true } : NOOP_VALID_STATUS
       }
-      return PENDING_STATUS
+      const seed = seedRef.value?.[form.key]
+      if (seed !== undefined) return { ...seed, locked }
+      return locked ? { ...PENDING_STATUS, locked: true } : PENDING_STATUS
     })
     statusCache.set(form.key, computedStatus)
     return computedStatus
@@ -909,8 +1124,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     initialKey = firstKey()
   }
   if (initialKey !== undefined) {
-    activeKey.value = initialKey
-    visited.value = [initialKey]
+    // Route the initial pin through the funnel so a deep link straight
+    // into a gated step lands on the gate (or defers to the corrector
+    // while the gate hydrates) instead of opening a locked step.
+    const landing = commitActiveKey(initialKey)
+    visited.value = [landing]
   }
   // Degenerate path (`initialKey === undefined`): activeKey stays `''`,
   // visited stays `[]`, and downstream getters surface `undefined`
@@ -971,8 +1189,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           return
         }
         if (step === activeKey.value) return
-        activeKey.value = step
-        if (!visited.value.includes(step)) visited.value.push(step)
+        const landing = commitActiveKey(step)
+        if (!visited.value.includes(landing)) visited.value.push(landing)
       }
     )
   }
@@ -1035,14 +1253,14 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   function moveTo(key: FormKey, options?: { silent?: boolean }): void {
     if (activeKey.value === key) return
-    activeKey.value = key
-    if (!visited.value.includes(key)) visited.value.push(key)
+    const landing = commitActiveKey(key)
+    if (!visited.value.includes(landing)) visited.value.push(landing)
     if (options?.silent === true) {
-      lastPersisted = key
+      lastPersisted = landing
     }
     const list = compiledSteps.value
     for (const step of list) {
-      if (step.key === key) {
+      if (step.key === landing) {
         activateForm(step.form)
         return
       }
@@ -1084,16 +1302,17 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     moveTo(target.key)
   }
 
-  // Validate the active step, then advance iff it passed. The inline-
-  // bindable shorthand for the gated-advance composition
-  // `activeForm.handleSubmit(() => next())`: wire it straight to a
-  // control (`@click="wizard.tryNext()"`) with no captured handler.
-  // Invalid input keeps the pin put under the form's own reveal (first
-  // error focused, display state advanced); a clean step advances.
-  // Resolves to whether the pin moved, so `if (await wizard.tryNext())`
-  // can branch on the outcome. Pure navigation stays `next()`; the
-  // whole-wizard submit stays `handleSubmit`. No-ops to `false` on a
-  // degenerate or final-step wizard, mirroring `next()`.
+  // Submit the active step, and once that submit resolves clean, advance.
+  // Wire it straight to a control (`@click="wizard.tryNext()"`) with no
+  // captured handler. Invalid input keeps the pin put under the form's own
+  // reveal (first error focused, display state advanced); a clean submit
+  // advances. The advance runs AFTER the submit settles, not inside its
+  // callback, so a lock keyed on the active step (see `useWizard({ locked
+  // })`) has released by the time the pin moves, and the gate clears in a
+  // single call. Resolves to whether the pin moved, so `if (await
+  // wizard.tryNext())` can branch on the outcome. Pure navigation stays
+  // `next()`; the whole-wizard submit stays `handleSubmit`. No-ops to
+  // `false` on a degenerate or final-step wizard, mirroring `next()`.
   async function tryNext(): Promise<boolean> {
     if (submitting.value) {
       if (__DEV__) {
@@ -1119,13 +1338,18 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
     const form = activeForm.value
     if (form === undefined) return false
-    let advanced = false
+    // Confirm the submit ran clean, THEN advance. The form's `submitted`
+    // (and any lock keyed on it) only flips after the submit callback
+    // resolves, so advancing from inside the callback would read pre-submit
+    // lock state and refuse. Marking success in the callback and advancing
+    // afterward lets a step gate on its own completion.
+    const before = activeKey.value
+    let ranClean = false
     await asHandleSubmitSource(form).handleSubmit(() => {
-      const before = activeKey.value
-      next()
-      advanced = activeKey.value !== before
+      ranClean = true
     })()
-    return advanced
+    if (ranClean) next()
+    return activeKey.value !== before
   }
 
   function back(): void {
@@ -1166,6 +1390,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         console.warn(`[attaform] wizard.goTo("${key}"): unknown step key. Known keys: ${known}.`)
       }
       return
+    }
+    if (__DEV__ && lockedSet.value.has(key)) {
+      console.warn(
+        `[attaform] wizard.goTo("${key}"): that step is locked by the wizard's \`locked\` policy; the navigation was refused. Clear the gate before navigating here.`
+      )
     }
     if (key !== activeKey.value) recordDeparture(activeKey.value)
     moveTo(key)
@@ -1413,13 +1642,30 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
     const firstStep = compiledSteps.value[0]
     if (firstStep !== undefined) {
-      activeKey.value = firstStep.key
-      visited.value = [firstStep.key]
+      const landing = commitActiveKey(firstStep.key)
+      visited.value = [landing]
       if (persistCallback !== undefined) {
-        lastPersisted = firstStep.key
-        persistCallback({ step: firstStep.key })
+        lastPersisted = landing
+        persistCallback({ step: landing })
       }
     }
+  }
+
+  // Lock corrector. `commitActiveKey` refuses a locked target at the
+  // write site, but the active step can still end up locked: its gate was
+  // mid-hydration at commit time (the readiness defer kept the pin on
+  // it), a policy dep changed under it, or a forward-continuity slide
+  // landed on it. Whenever the active step is locked and its gate has
+  // settled, bounce to the gate. Placed after `moveTo` / `visited` so the
+  // bounce records its landing like any other navigation.
+  if (lockPolicy !== undefined) {
+    watchEffect(() => {
+      const key = activeKey.value
+      if (key === '' || !lockedSet.value.has(key)) return
+      const redirect = lastReachableKey()
+      if (redirect === undefined || redirect === key || !isFormReady(redirect)) return
+      moveTo(redirect)
+    })
   }
 
   // --- Lifecycle hooks --------------------------------------------------

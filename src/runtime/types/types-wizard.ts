@@ -47,16 +47,30 @@ export type AnyForm = {
  *    `submissionAttempts > 0` is the "user has tried" signal.
  *  - `errorCount` — `form.meta.errorCount`. Count of active validation
  *    errors (zero when valid).
+ *  - `locked`: `true` when the wizard's `locked` policy names this step
+ *    (see `useWizard({ locked })`). Its member form is frozen (data
+ *    writes no-op) and navigation to it is refused, so a stepper can
+ *    render it as an unreachable gate. `false` when no `locked` policy
+ *    is set.
  *
  * Noop forms generated for string slots surface as default-valid
- * (`{ valid: true, dirty: false, submitted: false, errorCount: 0 }`).
+ * (`{ valid: true, dirty: false, submitted: false, errorCount: 0, locked: false }`).
  */
 export type FormStatus = {
   readonly valid: boolean
   readonly dirty: boolean
   readonly submitted: boolean
   readonly errorCount: number
+  readonly locked: boolean
 }
+
+/**
+ * Seed shape accepted by `useWizard({ defaultStatuses })`. Mirrors
+ * `FormStatus` minus `locked`: the lock flag is computed live from the
+ * wizard's `locked` policy and overlaid on every status read, so a seed
+ * never carries it (a seeded value would be ignored).
+ */
+export type FormStatusSeed = Omit<FormStatus, 'locked'>
 
 /**
  * Flat error shape returned per form by `wizard.allErrors[key]`. Each
@@ -124,6 +138,45 @@ export type WizardCtxForm = AnyForm & {
 export type WizardCtx = {
   readonly forms: Readonly<Record<FormKey, WizardCtxForm>>
   readonly currentKey: FormKey | undefined
+}
+
+/**
+ * A participating form as seen from inside the `locked` policy's
+ * `ctx.forms[key]` lookup. Widens `WizardCtxForm` (which carries
+ * `values`) with the lifecycle flags a gate predicate reads: `valid`,
+ * `submitted`, and `dirty`, each mirroring the form's `meta`. Read
+ * `submitted` for a gate that stays open once cleared within a session;
+ * read a seeded `values` field for a gate that re-derives from the
+ * member form's `defaultValues` on a full reload.
+ */
+export type WizardLockCtxForm = WizardCtxForm & {
+  readonly valid: boolean
+  readonly submitted: boolean
+  readonly dirty: boolean
+}
+
+/**
+ * Context passed to the `useWizard({ locked })` policy. The policy
+ * returns the keys of the steps to lock; a locked step has its member
+ * form frozen (data writes no-op) and navigation to it refused.
+ *
+ *  - `forms`: per-key lifecycle view (`values` / `valid` / `submitted`
+ *    / `dirty`) for every statically-known step, mirroring `ctx.forms`
+ *    in a function slot but widened for gate decisions.
+ *  - `keys`: the compiled step keys in positional order.
+ *  - `after(key)`: the keys positioned strictly after `key`, the
+ *    ergonomic "everything downstream of the gate" helper.
+ *
+ * Intentionally position-independent (no `currentKey`): which steps are
+ * locked follows form state and structure, not where the user currently
+ * stands. Keeping the current step out of the policy avoids a
+ * navigation-to-lock feedback loop, and the wizard's own funnel handles
+ * keeping the user off a locked step.
+ */
+export type WizardLockCtx = {
+  readonly forms: Readonly<Record<FormKey, WizardLockCtxForm>>
+  readonly keys: readonly FormKey[]
+  readonly after: (key: FormKey) => readonly FormKey[]
 }
 
 /**
@@ -288,13 +341,17 @@ export type WizardOptions = {
    *   3. else seed value for this key → frozen seed
    *   4. else → pending sentinel
    *
+   * The `locked` flag is never seeded: it is computed live from the
+   * `locked` policy and overlaid on every status read, so the seed
+   * shape is `FormStatus` minus `locked`.
+   *
    * Unknown keys in the seed object dev-warn so a stale resume payload
    * surfaces at construction.
    */
   readonly defaultStatuses?:
-    | Record<string, FormStatus>
-    | (() => Record<string, FormStatus>)
-    | (() => Promise<Record<string, FormStatus>>)
+    | Record<string, FormStatusSeed>
+    | (() => Record<string, FormStatusSeed>)
+    | (() => Promise<Record<string, FormStatusSeed>>)
   /**
    * Optional progress override. When omitted, the wizard exposes
    * `progress` as `valid_step_count / count` (normalised to `[0, 1]`).
@@ -330,6 +387,40 @@ export type WizardOptions = {
    * to scope the param name or write to alternate storage.
    */
   readonly persist?: WizardPersistFn | false
+  /**
+   * Visitation policy for hard-prerequisite steps. Given the wizard's
+   * lock context, return the keys of the steps to LOCK. A locked step's
+   * member form is frozen (every value write no-ops at the data layer,
+   * bypass-proof against deep links and back/forward) and navigation to
+   * it is refused, redirecting to the last step reachable without
+   * crossing the lock.
+   *
+   * The canonical shape gates everything after a step until it clears:
+   *
+   *   const schema = z.object({ accepted: z.literal(true) })
+   *   const terms = useForm({ key: 'terms', schema })
+   *   const wizard = useWizard({
+   *     steps: [terms, shipping, payment],
+   *     locked: (ctx) =>
+   *       ctx.forms.terms.values.accepted === true ? [] : ctx.after('terms'),
+   *   })
+   *
+   * Key the gate on a LEADING signal that answers "is the prerequisite
+   * satisfied?" at advance time: a `values` field (shown above, and
+   * reload-durable since it re-hydrates from `defaultValues`) or `valid`.
+   * Both release the gate reactively, so the step clears in one
+   * interaction. `submitted` also works but only flips after the gate's
+   * own submit resolves, so clear a submit-gate with `tryNext` (it
+   * confirms the submit, then advances) rather than a hand-rolled
+   * `handleSubmit(() => next())`.
+   *
+   * Runs inside a `computed`, so it must be synchronous and may only
+   * read reactive sources. It fails CLOSED: if the policy throws, every
+   * step but the active one is treated as locked (and a dev warning
+   * surfaces the throw), so a buggy predicate can never accidentally
+   * unlock a gated step.
+   */
+  readonly locked?: (ctx: WizardLockCtx) => ReadonlyArray<FormKey>
 }
 
 /**
@@ -527,14 +618,16 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    `back()` does not pop; the trail is the audit
  *                    log, not the back-stack.
  *  - `next/back/goTo` — pure navigation. Refuses while `submitting`.
- *  - `tryNext()`   — validate the active step, then advance iff it
- *                    passed; invalid input keeps the pin put under the
- *                    form's standard error reveal (first error focused,
- *                    display state advanced). The inline-bindable
- *                    shorthand for `activeForm.handleSubmit(() =>
- *                    next())`. Resolves to whether the pin moved. No-ops
- *                    to `false` on a degenerate or final-step wizard
- *                    (finish via `handleSubmit`).
+ *  - `tryNext()`   — submit the active step, and once that submit
+ *                    resolves clean, advance; invalid input keeps the pin
+ *                    put under the form's standard error reveal (first
+ *                    error focused, display state advanced). The advance
+ *                    runs after the submit settles, so a lock keyed on the
+ *                    active step (see `useWizard({ locked })`) clears in a
+ *                    single call. Inline-bindable
+ *                    (`@click="wizard.tryNext()"`); resolves to whether
+ *                    the pin moved. No-ops to `false` on a degenerate or
+ *                    final-step wizard (finish via `handleSubmit`).
  *  - `handleSubmit(onSubmit, onError?)` — always validates the entire
  *                    step list, from any step, and never advances the
  *                    pin: on success it latches `done`; on any error it

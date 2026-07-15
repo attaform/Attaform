@@ -1,4 +1,4 @@
-import type { AnyForm, LazyMarker, WizardCtx } from '../types/types-wizard'
+import type { LazyMarker, SlotResolution, WizardCtx } from '../types/types-wizard'
 
 /**
  * Runtime brand for `LazyMarker` instances. Backed by `Symbol.for` so
@@ -43,13 +43,14 @@ const LAZY_BRAND = Symbol.for('attaform/wizard-lazy')
  *    resolves from scratch.
  *  - Resolving to `null` or `undefined` drops the slot from the compiled
  *    list until the resolver next re-fires.
+ *  - The resolver may return a `gate()` wrapper, so a lazy slot can gate
+ *    what it resolves to; `lazy((ctx) => gate(s))` and `gate(lazy(s))`
+ *    resolve identically.
  *
  * The runtime brand returned by `lazy()` is opaque. Use
  * {@link isLazyMarker} to detect it.
  */
-export function lazy<Ctx = WizardCtx>(
-  resolve: (ctx: Ctx) => AnyForm | string | null | undefined
-): LazyMarker<Ctx> {
+export function lazy<Ctx = WizardCtx>(resolve: (ctx: Ctx) => SlotResolution<Ctx>): LazyMarker<Ctx> {
   return { [LAZY_BRAND]: true, resolve } as unknown as LazyMarker<Ctx>
 }
 

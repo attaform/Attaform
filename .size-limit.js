@@ -311,9 +311,9 @@ export default [
     // setValueAtPath write gate + warn-once, field.disabled /
     // form.meta.disabled, the displayState idle branch, RegisterValue.disabled,
     // and the native + component-host :disabled binds (SSR + client). On top,
-    // useWizard({ locked }) adds the lock policy, the activation funnel, and the
-    // reactive corrector in use-wizard.ts. This whole entry absorbs both.
-    // Measured at 62.14 KB.
+    // gate() adds the slot marker, the submission-triggered cleared latch, the
+    // nav-lock / freeze derived sets, and the reactive corrector in
+    // use-wizard.ts. This whole entry absorbs both. Measured at 62.49 KB.
     limit: '63 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
@@ -507,8 +507,8 @@ export default [
     //
     // Raised 62 → 63 KB tracking index.mjs's gating bump (feat/form-disabled,
     // #523): the same useForm({ disabled }) data freeze in the shared eager
-    // core plus useWizard({ locked }) in use-wizard.ts. Byte-for-byte identical
-    // to index.mjs. Measured at 62.14 KB.
+    // core plus gate() in use-wizard.ts. Byte-for-byte identical to index.mjs.
+    // Measured at 62.49 KB.
     limit: '63 KB',
     gzip: true,
     ignore: ['zod'],
@@ -652,7 +652,7 @@ export default [
     //
     // Raised 56 → 57 KB tracking index.mjs's gating bump (feat/form-disabled,
     // #523): the same disabled data freeze in the shared eager core plus the
-    // wizard locked policy. Measured at 56.02 KB.
+    // wizard gate() surface. Measured at 56.37 KB.
     limit: '57 KB',
     gzip: true,
     ignore: ['zod'],
@@ -865,9 +865,9 @@ export default [
     // the `{ useForm }` tripwire held. Measured at 56.24 KB.
     //
     // Raised 57 → 58 KB tracking index.mjs's gating bump (feat/form-disabled,
-    // #523): same shared eager core (useForm({ disabled })) plus useWizard({
-    // locked }). zod-v3.mjs, the tightest full adapter entry, crossed by
-    // 0.39 KB. Measured at 57.39 KB.
+    // #523): same shared eager core (useForm({ disabled })) plus gate().
+    // zod-v3.mjs, the tightest full adapter entry, crossed by 0.39 KB.
+    // Measured at 57.74 KB.
     limit: '58 KB',
     gzip: true,
     ignore: ['zod'],
@@ -884,8 +884,8 @@ export default [
     //
     // Raised 46 → 47 KB on the gating branch (feat/form-disabled, #523): the
     // disabled data freeze in the shared core (threaded through useAbstractForm)
-    // plus useWizard({ locked }). No Zod adapter here, but the core and wizard
-    // surface both grow. Measured at 46.49 KB.
+    // plus gate(). No Zod adapter here, but the core and wizard surface both
+    // grow. Measured at 46.85 KB.
     limit: '47 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
@@ -1060,10 +1060,10 @@ export default [
     // Raised 48 → 49 KB tracking the gating branch (feat/form-disabled, #523).
     // useForm({ disabled }) adds the data freeze to the always-on useForm
     // closure (effectiveDisabled + write gate + field.disabled + displayState
-    // idle + the :disabled binds). useWizard({ locked }) tree-shakes out of a
-    // { useForm }-only import, so this grew +1.18 KB in lockstep with the full
-    // zod-v4.mjs entry's core growth (+1.13 KB), legitimate feature weight and
-    // not a wizard leak. Measured at 48.45 KB.
+    // idle + the :disabled binds). gate() tree-shakes out of a { useForm }-only
+    // import, so this grew +1.18 KB in lockstep with the full zod-v4.mjs entry's
+    // core growth (+1.13 KB), legitimate feature weight and not a wizard leak.
+    // Measured at 48.47 KB.
     limit: '49 KB',
     gzip: true,
     ignore: ['zod'],

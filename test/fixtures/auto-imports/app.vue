@@ -26,6 +26,7 @@
     fieldMeta,
     withMeta,
     lazy,
+    gate,
   }
   const missing = Object.keys(surface).filter((k) => surface[k] === undefined)
   const allResolved = missing.length === 0

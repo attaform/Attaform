@@ -1,11 +1,11 @@
 <script setup lang="ts">
-  import { useForm, useWizard } from 'attaform'
+  import { useForm, useWizard, gate } from 'attaform'
   import { z } from 'zod'
   import './styles.css'
 
   const consent = useForm({
     schema: z.object({
-      accepted: z.boolean().refine((value) => value, 'Accept the terms to continue'),
+      accepted: z.literal(true, 'Accept the terms to continue'),
     }),
     defaultValues: { accepted: false },
     key: 'gate-consent',
@@ -27,8 +27,7 @@
   })
 
   const wizard = useWizard({
-    steps: [consent, shipping, payment],
-    locked: (ctx) => (consent.values.accepted ? [] : ctx.after('gate-consent')),
+    steps: [gate(consent), shipping, payment],
   })
 
   const onFinish = wizard.handleSubmit(async (ctx) => {
@@ -71,7 +70,7 @@
     <form v-if="wizard.currentStep === 'gate-consent'" class="stack" @submit.prevent>
       <p class="terms">
         By continuing you agree to the terms of service and privacy policy. Every step after this
-        one stays locked until you accept.
+        one stays locked until you accept and press Next.
       </p>
       <label class="row">
         <input v-register="consent.register('accepted')" type="checkbox" />
@@ -137,9 +136,9 @@
     </div>
 
     <p class="hint">
-      One <code>locked</code> policy gates the whole flow:
-      <code>consent.values.accepted ? [] : ctx.after('gate-consent')</code>. Until the box is
-      checked every later step is frozen and unreachable, even by a direct link.
+      One word gates the whole flow: <code>gate(consent)</code>. Checking the box is not enough: the
+      rail stays sealed until you confirm by pressing Next. Every later step is then frozen and
+      unreachable until the gate clears, even by a direct link.
     </p>
   </div>
 </template>

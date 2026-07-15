@@ -158,6 +158,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'useWizard', to: '/docs/multistep/use-wizard' },
       { title: 'injectWizard', to: '/docs/multistep/inject-wizard' },
       { title: 'Step slots', to: '/docs/multistep/step-slots' },
+      { title: 'gate', to: '/docs/multistep/gate' },
       { title: 'Statuses', to: '/docs/multistep/statuses' },
       { title: 'Aggregates', to: '/docs/multistep/aggregates' },
       { title: 'handleSubmit', to: '/docs/multistep/handle-submit' },

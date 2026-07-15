@@ -59,4 +59,4 @@ The resolved state reads back on `form.meta.disabled` and `field.disabled`, both
 
 ## Gating a wizard step
 
-`useWizard({ locked })` drives this same freeze for a gated step: a locked step's form is frozen through `disabled`, so a hard prerequisite is un-fillable as well as unreachable. See [Hard prerequisites](/docs/multistep/patterns#hard-prerequisites).
+[`gate(step)`](/docs/multistep/gate) drives this same freeze for a hard prerequisite: every step after an uncleared gate is frozen through `disabled`, so it is un-fillable as well as unreachable, and a cleared gate's own form freezes too. See [`gate`](/docs/multistep/gate) for the full model.

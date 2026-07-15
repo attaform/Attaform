@@ -142,29 +142,23 @@ For heavier branching (a slot whose resolver is expensive enough that re-evaluat
 
 ## Hard prerequisites
 
-Some steps are not just data to gather, they are a gate: a terms acceptance, an eligibility check, a consent the later steps depend on. `useWizard({ locked })` turns a step into a hard prerequisite. Its policy names the steps to freeze, and Attaform keeps them both un-fillable and unreachable until the gate clears.
+Some steps are not just data to gather, they are a gate: a terms acceptance, an eligibility check, a consent every later step depends on. Wrap the step in [`gate()`](/docs/multistep/gate) and Attaform seals everything after it until the gate clears.
 
 ::docs-demo{slug="consent-gate" label="Consent gate"}
 ::
 
-The policy reads the wizard's live state and returns the keys to lock. Here one line freezes every step after `consent` until the acceptance box is checked:
-
 ```ts
+const consentSchema = z.object({ accepted: z.literal(true) })
 const consent = useForm({
   schema: consentSchema,
   defaultValues: { accepted: false },
   key: 'consent',
 })
 
-const wizard = useWizard({
-  steps: [consent, shipping, payment],
-  locked: (ctx) => (consent.values.accepted ? [] : ctx.after('consent')),
-})
+const wizard = useWizard({ steps: [gate(consent), shipping, payment] })
 ```
 
-`ctx.after('consent')` returns every step key past `consent`, so that single line gates the whole tail of the flow. A locked step freezes its own form through the [`disabled`](/docs/cross-cutting-state/disabled) data freeze, so its fields no-op at the data layer, and the wizard refuses to land on it: a deep link, the browser back button, or a stray `goTo` all redirect to the gate. The guarantee lives in the data, not in a navigation guard, so nothing routes around it.
-
-Render the state per step through `wizard.statuses[key].locked`. Key the gate on a leading signal, a `values` field or `valid`, so it answers the moment the user acts and survives a reload. `tryNext` confirms the active step's submit ran clean before it advances, so a gate keyed on the active step clears in a single call.
+A gate clears on the wrapped form's clean submit, never the moment a value goes valid, so checking the consent box does not open the rail: confirming it does. Until then every downstream step is frozen through the [`disabled`](/docs/cross-cutting-state/disabled) data freeze and unreachable, so a deep link, the browser back button, or a stray `goTo` all redirect to the gate. The guarantee lives in the data, not in a navigation guard, so nothing routes around it. See [`gate`](/docs/multistep/gate) for the full model: conditional gates, affordance gates, and the seeded-valid reload path.
 
 ## Persisting the active step
 

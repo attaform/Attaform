@@ -19,23 +19,29 @@
   idle so no error, pending, or success signal shows. The resolved flag
   reads back on `field.disabled` and `form.meta.disabled`. (#523)
 
-- **`useWizard({ locked })` makes a step a hard prerequisite: its
-  downstream steps stay un-fillable and unreachable until it clears.** The
-  policy is a function `(ctx) => FormKey[]` naming the steps to gate,
-  evaluated reactively so it re-answers the moment its inputs change. A
-  locked step freezes its own form through the same `disabled` data freeze,
-  so its fields no-op at the data layer and no navigation trick reaches
-  around them. The wizard also refuses to land on a locked step: every
-  navigation origin (a deep link, a URL restore, `goTo`, `next`, `reset`)
-  funnels through one guard that redirects a locked target to the last step
-  reachable without crossing the gate. The redirect waits while a gating
-  step is still hydrating, so a reload-durable acceptance re-settles without
-  a flicker, and the policy fails closed: a throw locks every step but the
-  active one. The stepper reads `locked` on `wizard.statuses[key]`. Key the
-  gate on a signal that is answerable at advance time and survives a reload
-  (a `values` field, or `valid`); `tryNext` now confirms the active step's
-  submit ran clean before advancing, so a submit-keyed gate clears in a
-  single call. (#523)
+- **`gate(step)` makes a wizard step a hard prerequisite, safe by
+  construction: every step after it stays un-fillable and unreachable until
+  the gate clears.** Wrap any slot, `gate(consent)`, `gate('terms')`,
+  `gate(lazy(fn))`, and place it before what it guards. A gate clears on
+  its member form's clean submit (the confirmation), never the instant a
+  value goes valid (the intent), so a checked-but-unsubmitted consent
+  cannot open the rail and let a downstream step collect data ahead of the
+  commitment. Downstream steps freeze through the same `disabled` data
+  layer, so their writes no-op at every origin, and the wizard refuses to
+  seat the active step past an uncleared gate: a deep link, a URL restore,
+  `goTo`, and `next` all funnel through one guard that redirects to the
+  gate. A bare `next()` on a gate behaves like `tryNext()` (it cannot skip
+  the confirmation), and `handleSubmit` refuses to complete while any gate
+  is uncleared. Once cleared, a gate's own form freezes too, so a
+  back-navigation is a read-only review with no withdrawal path. A form
+  gate whose member form rehydrates already valid is treated as pre-cleared
+  at mount, so a seeded consent renders the flow open on reload; an
+  affordance-string gate re-prompts each session. `gate()` and `lazy()`
+  compose in either order (`gate(lazy(s))` and `lazy(ctx => gate(s))`
+  resolve identically), and a conditional gate falls out of a function slot
+  (`() => amount > 10_000 ? gate(kyc) : kyc`). The stepper reads `locked`
+  on `wizard.statuses[key]`. `gate` is exported from every entry and
+  auto-imported alongside `lazy`. (#523)
 
 - **`attaform/package.json` now resolves through the package exports map.**
   Tooling that reads the resolved version can

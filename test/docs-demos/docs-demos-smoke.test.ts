@@ -1243,6 +1243,48 @@ const entries: SmokeEntry[] = [
       expect(root.querySelector('.status.saved')).not.toBeNull()
     },
   },
+
+  // ─── GATING: disabled + locked ────────────────────────────────
+  {
+    // Accept the terms and click Next; the consent gate clears and the
+    // shipping step mounts (the Address label lives only past the gate).
+    // Proves useWizard({ locked }) releases the downstream steps the
+    // moment consent.values.accepted flips true.
+    slug: 'consent-gate',
+    gesture: async (root) => {
+      const accept = root.querySelector<HTMLInputElement>('input[type="checkbox"]')
+      if (!accept) throw new Error('consent checkbox not found')
+      await clickChecked(accept)
+      const next = Array.from(root.querySelectorAll<HTMLButtonElement>('button.primary')).find(
+        (b) => b.textContent?.includes('Next') === true
+      )
+      if (!next) throw new Error('next button not found')
+      next.click()
+      await waitUntil(() => (root.textContent?.includes('Address') === true ? true : null))
+    },
+    assert: async (root) => {
+      expect(root.textContent ?? '').toContain('Address')
+    },
+  },
+  {
+    // Freeze the form, then type into the (now disabled) name input.
+    // useForm({ disabled }) no-ops the write at the data layer, so the
+    // values readout keeps the seeded name — the bypass-proof freeze,
+    // independent of the native disabled attribute.
+    slug: 'disabled-form',
+    gesture: async (root) => {
+      const freeze = root.querySelector<HTMLInputElement>('input[type="checkbox"]')
+      if (!freeze) throw new Error('freeze toggle not found')
+      await clickChecked(freeze)
+      const name = root.querySelector<HTMLInputElement>('input[autocomplete="name"]')
+      if (!name) throw new Error('name input not found')
+      await dispatchInput(name, 'Someone Else')
+    },
+    assert: async (root) => {
+      expect(pre(root).textContent ?? '').toContain('Ada Lovelace')
+      expect(pre(root).textContent ?? '').not.toContain('Someone Else')
+    },
+  },
 ]
 
 /**

@@ -140,6 +140,32 @@ For heavier branching (a slot whose resolver is expensive enough that re-evaluat
 
 `wizard.handleSubmit` catches the upstream validation gaps that `goTo` lets through. Clicking Finish on a step the user jumped to without filling earlier forms validates everything, surfaces every error, and (with `focusFirstError: true`, the default) jumps the wizard back to the first failing step.
 
+## Hard prerequisites
+
+Some steps are not just data to gather, they are a gate: a terms acceptance, an eligibility check, a consent the later steps depend on. `useWizard({ locked })` turns a step into a hard prerequisite. Its policy names the steps to freeze, and Attaform keeps them both un-fillable and unreachable until the gate clears.
+
+::docs-demo{slug="consent-gate" label="Consent gate"}
+::
+
+The policy reads the wizard's live state and returns the keys to lock. Here one line freezes every step after `consent` until the acceptance box is checked:
+
+```ts
+const consent = useForm({
+  schema: consentSchema,
+  defaultValues: { accepted: false },
+  key: 'consent',
+})
+
+const wizard = useWizard({
+  steps: [consent, shipping, payment],
+  locked: (ctx) => (consent.values.accepted ? [] : ctx.after('consent')),
+})
+```
+
+`ctx.after('consent')` returns every step key past `consent`, so that single line gates the whole tail of the flow. A locked step freezes its own form through the [`disabled`](/docs/cross-cutting-state/disabled) data freeze, so its fields no-op at the data layer, and the wizard refuses to land on it: a deep link, the browser back button, or a stray `goTo` all redirect to the gate. The guarantee lives in the data, not in a navigation guard, so nothing routes around it.
+
+Render the state per step through `wizard.statuses[key].locked`. Key the gate on a leading signal, a `values` field or `valid`, so it answers the moment the user acts and survives a reload. `tryNext` confirms the active step's submit ran clean before it advances, so a gate keyed on the active step clears in a single call.
+
 ## Persisting the active step
 
 What the wizard persists is the active step, via `?step=<key>` on the URL by default (see [URL sync](/docs/multistep/url-sync)). A refresh lands the user back on the step they were on, with the navigation cursor intact.

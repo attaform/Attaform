@@ -1,6 +1,6 @@
 ---
 title: Patterns
-description: Idiomatic wizard patterns. Linear flows, branching with function slots, dynamic terminals, active-step persistence, per-step undo. Small primitives composed through the steps array without library-side magic.
+description: Idiomatic wizard patterns. Linear flows, branching function slots, dynamic terminals, active-step persistence, per-step undo. Small primitives composed through the steps array, no library-side magic.
 metaRows:
   - label: Category
     value: Patterns

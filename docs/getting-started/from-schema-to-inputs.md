@@ -1,6 +1,6 @@
 ---
 title: From schema to inputs
-description: The register + v-register pair turns a schema path into a typed two-way binding for any native input element: text, number, select, checkbox, textarea.
+description: 'The register + v-register pair turns a schema path into a typed two-way binding for any native input element: text, number, select, checkbox, textarea.'
 metaRows:
   - label: Read time
     value: ~4 minutes

@@ -1,6 +1,6 @@
 ---
 title: URL sync
-description: Wizards round-trip the active step through the URL by default. ?step=<key> writes on every navigation, reloads land on the same step, and deep links render the right step on the first byte under SSR. Opt out with restore false / persist false, or swap in custom callbacks for non-URL storage.
+description: Wizards round-trip the active step through the URL. ?step=<key> writes on navigation, reloads land on the same step, deep links SSR-render. Opt out with restore/persist false or custom callbacks.
 metaRows:
   - label: Category
     value: 'Restore / persist'

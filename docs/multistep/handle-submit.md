@@ -1,6 +1,6 @@
 ---
 title: handleSubmit
-description: wizard.handleSubmit(onSubmit, onError?) returns one event handler that validates the entire wizard from any step and calls onSubmit once with every step's values. It never advances; gate advancing a step on its validity with wizard.tryNext().
+description: wizard.handleSubmit(onSubmit, onError?) returns one handler that validates the whole wizard and calls onSubmit once with every step's values. It never advances; gate a step with wizard.tryNext().
 metaRows:
   - label: Category
     value: Submission

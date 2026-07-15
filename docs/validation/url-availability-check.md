@@ -1,6 +1,6 @@
 ---
 title: URL availability check (preprocess + async refine)
-description: Preprocess prepares the value, async refine validates it. A small sentinel handoff lets refine skip the API call when preprocess already knows the input is empty or malformed, and a cache keeps repeat checks free.
+description: Preprocess prepares the value, async refine validates it. A sentinel handoff lets refine skip the API call when preprocess knows the input is empty or malformed, and a cache keeps repeat checks free.
 metaRows:
   - label: Category
     value: Recipe

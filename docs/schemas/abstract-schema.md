@@ -1,6 +1,6 @@
 ---
 title: AbstractSchema
-description: The schema-agnostic contract the core consumes (12 required methods plus 2 optional hooks) covering identity, defaults, shape introspection, and validation. Implement it to wire any schema library into Attaform.
+description: The schema-agnostic contract the core consumes, 12 required methods plus 2 optional hooks covering identity, defaults, shape, and validation. Implement it to wire any schema library into Attaform.
 metaRows:
   - label: Category
     value: Reference

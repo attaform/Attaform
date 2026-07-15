@@ -1,6 +1,6 @@
 ---
 title: How values are stored
-description: form.values exposes the storage shape, the consumer's raw input with defaults resolved. Schema-side normalizers (preprocess, coerce, transforms) run at parse, not at the write boundary. handleSubmit gets the post-parse output.
+description: form.values exposes the storage shape, raw input with defaults resolved. Schema normalizers (preprocess, coerce, transforms) run at parse, not the write boundary. handleSubmit gets the parsed output.
 metaRows:
   - label: Category
     value: Conceptual

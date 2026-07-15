@@ -1,6 +1,6 @@
 ---
 title: Records & maps
-description: z.record() is a string-keyed dictionary with uniform value types; z.map() is the Map<K, V> primitive. Both bind through dynamic-key paths: register(`prefs.${userId}`), errors.scores[name].
+description: 'z.record() is a string-keyed dictionary with uniform value types; z.map() is the Map<K, V> primitive. Both bind through dynamic-key paths: register(`prefs.${userId}`), errors.scores[name].'
 metaRows:
   - label: Category
     value: Schema feature

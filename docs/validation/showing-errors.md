@@ -1,6 +1,6 @@
 ---
 title: Display state and showing errors
-description: getDisplayState resolves every path to one verdict (idle, pending, error, or success). The default holds errors back until a field is edited and blurred or the form is submitted, surfaces a spinner while async checks run, and confirms a clean field with an earned success, never duplicating errors a more-specific descendant already renders.
+description: getDisplayState resolves every path to one verdict (idle, pending, error, success). It holds errors until a blurred edit or a submit, spins during async checks, and never repeats a descendant's error.
 metaRows:
   - label: Category
     value: Option

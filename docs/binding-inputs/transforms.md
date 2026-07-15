@@ -1,11 +1,11 @@
 ---
 title: Register transforms
-description: A per-field transforms array on register() composes write-time transformations left-to-right. Trim and dashify in the same tick, or return a Promise to normalize asynchronously while the field reads busy.
+description: A per-field transforms array on register() composes write-time transformations left to right. Trim and dashify in one tick, or return a Promise to normalize asynchronously while the field reads busy.
 metaRows:
   - label: Category
     value: Register option
   - label: Signature
-    value: register(path, { transforms: RegisterTransform[] })
+    value: 'register(path, { transforms: RegisterTransform[] })'
     kind: code
   - label: Composition
     value: left-to-right

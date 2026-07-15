@@ -1,6 +1,6 @@
 ---
 title: disabled
-description: 'useForm({ disabled }) freezes a form so its data cannot be edited: a bypass-proof, data-layer freeze for read-only review screens and gated wizard steps. Native inputs render the disabled attribute, every field drops to idle, and reset / defaultValues still hydrate.'
+description: 'useForm({ disabled }) freezes a form so its data cannot be edited: a bypass-proof, data-layer freeze for read-only review screens and gated wizard steps, with every native input auto-disabled.'
 metaRows:
   - label: Category
     value: Form option

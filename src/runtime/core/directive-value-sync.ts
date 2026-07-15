@@ -1,4 +1,4 @@
-import { effectScope, watch, type WatchSource } from 'vue'
+import { effectScope, watch, type Ref, type WatchSource } from 'vue'
 
 /**
  * Per-element teardown slot for the value-sync watch. `Symbol.for(...)`
@@ -88,4 +88,50 @@ export function teardownValueSync(el: HTMLElement): void {
   if (stop === undefined) return
   stop()
   delete carrier[valueSyncScopeKey]
+}
+
+/**
+ * Per-element teardown slot for the disabled-sync watch. Distinct from
+ * the value-sync slot so the two lifecycles are independent.
+ */
+const disabledSyncScopeKey: unique symbol = Symbol.for('attaform:disabled-sync-scope')
+type DisabledSyncCarrier = HTMLElement & {
+  [disabledSyncScopeKey]?: () => void
+}
+
+/**
+ * Reactively mirror a register binding's effective freeze onto the DOM
+ * control's `disabled` property — the same no-host-re-render case
+ * `setupValueSync` covers, for `useForm({ disabled })` flipping while the
+ * bound component's template reads no field state. Compiled fields also
+ * carry the transform's `:disabled` bind, which tracks the same source in
+ * the render function; this watch is the belt for render-function and
+ * bare-Vue bindings that have no compiled bind, and its immediate apply
+ * makes a client-only first paint correct. Runs in its own effect scope,
+ * torn down by `teardownDisabledSync` from the dispatcher's `beforeUnmount`.
+ */
+export function setupDisabledSync(el: HTMLElement, source: Readonly<Ref<boolean>>): void {
+  const control = el as HTMLElement & { disabled: boolean }
+  const apply = (): void => {
+    const next = source.value === true
+    if (control.disabled !== next) control.disabled = next
+  }
+  apply()
+  const scope = effectScope(true)
+  scope.run(() => {
+    watch(source, apply, { flush: 'post' })
+  })
+  ;(el as DisabledSyncCarrier)[disabledSyncScopeKey] = (): void => scope.stop()
+}
+
+/**
+ * Stop the disabled-sync watch. Gated on an active scope so an element
+ * that never set one up is a no-op.
+ */
+export function teardownDisabledSync(el: HTMLElement): void {
+  const carrier = el as DisabledSyncCarrier
+  const stop = carrier[disabledSyncScopeKey]
+  if (stop === undefined) return
+  stop()
+  delete carrier[disabledSyncScopeKey]
 }

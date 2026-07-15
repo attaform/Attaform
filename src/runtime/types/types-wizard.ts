@@ -47,16 +47,29 @@ export type AnyForm = {
  *    `submissionAttempts > 0` is the "user has tried" signal.
  *  - `errorCount` — `form.meta.errorCount`. Count of active validation
  *    errors (zero when valid).
+ *  - `locked`: `true` when this step sits after an uncleared `gate()`
+ *    (see `gate`). Its member form is frozen (data writes no-op) and
+ *    navigation to it is refused, so a stepper can render it as an
+ *    unreachable gate. `false` when no gate seals it.
  *
  * Noop forms generated for string slots surface as default-valid
- * (`{ valid: true, dirty: false, submitted: false, errorCount: 0 }`).
+ * (`{ valid: true, dirty: false, submitted: false, errorCount: 0, locked: false }`).
  */
 export type FormStatus = {
   readonly valid: boolean
   readonly dirty: boolean
   readonly submitted: boolean
   readonly errorCount: number
+  readonly locked: boolean
 }
+
+/**
+ * Seed shape accepted by `useWizard({ defaultStatuses })`. Mirrors
+ * `FormStatus` minus `locked`: the lock flag is computed live from the
+ * wizard's gates and overlaid on every status read, so a seed never
+ * carries it (a seeded value would be ignored).
+ */
+export type FormStatusSeed = Omit<FormStatus, 'locked'>
 
 /**
  * Flat error shape returned per form by `wizard.allErrors[key]`. Each
@@ -127,6 +140,20 @@ export type WizardCtx = {
 }
 
 /**
+ * What a function slot or a `lazy()` / `gate()` resolver may yield: a
+ * participating form, a bare affordance key, a nested `lazy()` / `gate()`
+ * wrapper (so the two compose in either order), or `null` / `undefined`
+ * to drop the position from the compiled list.
+ */
+export type SlotResolution<Ctx = WizardCtx> =
+  | AnyForm
+  | string
+  | null
+  | undefined
+  | LazyMarker<Ctx>
+  | GateMarker
+
+/**
  * Internal phantom brand for `LazyMarker`. The runtime brand symbol
  * lives in `core/wizard-lazy.ts`; this declaration keeps the marker
  * type unforgeable without circular module imports.
@@ -148,8 +175,49 @@ declare const _lazyBrand: unique symbol
  */
 export type LazyMarker<Ctx = WizardCtx> = {
   readonly [_lazyBrand]: true
-  readonly resolve: (ctx: Ctx) => AnyForm | string | null | undefined
+  readonly resolve: (ctx: Ctx) => SlotResolution<Ctx>
 }
+
+/**
+ * Internal phantom brand for `GateMarker`. The runtime brand symbol
+ * lives in `core/wizard-gate.ts`; this declaration keeps the marker
+ * type unforgeable without circular module imports.
+ */
+declare const _gateBrand: unique symbol
+
+/**
+ * Brand-typed marker returned by `gate(step)`. Wrapping a slot in
+ * `gate()` makes it a hard prerequisite: an uncleared gate seals every
+ * step positioned after it, and the gate's own form is the only way
+ * past. A gate clears on a member form's clean submit (confirmation),
+ * never on a value merely going valid (intent), and its form freezes
+ * once cleared so a back-navigation is a read-only review.
+ *
+ * `Inner` carries the wrapped slot's static type so `gate` stays
+ * transparent to the type machinery: `gate(form)` still contributes the
+ * form's key to `wizard.forms` and still counts as a guaranteed step,
+ * while `gate(lazy(fn))` stays maybe-absent exactly like the lazy slot
+ * it wraps. See {@link UnwrapGate}.
+ *
+ * Construct via the `gate()` helper exported from the same entry as
+ * `useWizard`. The marker is opaque at the type level; consumers do not
+ * assemble it directly.
+ */
+export type GateMarker<Inner = unknown> = {
+  readonly [_gateBrand]: true
+  readonly inner: Inner
+}
+
+/**
+ * Strip every `gate()` wrapper off a slot type, exposing the inner
+ * slot's static shape. A gate is identity-on-shape — it changes runtime
+ * reachability, never the compiled type — so the forms map and the
+ * non-empty-tuple predicate both unwrap it before inspecting a slot.
+ * Recursive, so a doubly-wrapped `gate(gate(form))` still resolves to
+ * `form`. This is what makes `gate(lazy(s))` and `lazy((ctx) => gate(s))`
+ * agree at the type level as well as at runtime.
+ */
+export type UnwrapGate<T> = T extends GateMarker<infer Inner> ? UnwrapGate<Inner> : T
 
 /**
  * One position in the source `useWizard({ steps })` array. Each slot
@@ -164,18 +232,22 @@ export type LazyMarker<Ctx = WizardCtx> = {
  *                        list. Lets a conditional step read inline as
  *                        `cond ? form : null` without pre-filtering the
  *                        array.
- *  - function          — eager slot, re-evaluates reactively. Returns
- *                        one of the above, or `null` / `undefined` to
+ *  - function          — eager slot, re-evaluates reactively. Returns a
+ *                        `SlotResolution`, or `null` / `undefined` to
  *                        drop the slot from the compiled list.
  *  - `LazyMarker`      — memoized function slot (see `lazy`).
+ *  - `GateMarker`      — hard-prerequisite wrapper (see `gate`). Wraps
+ *                        any of the above; transparent to the compiled
+ *                        step's type, opaque to reachability.
  */
 export type StepSlot<Ctx = WizardCtx> =
   | AnyForm
   | string
   | null
   | undefined
-  | ((ctx: Ctx) => AnyForm | string | null | undefined)
+  | ((ctx: Ctx) => SlotResolution<Ctx>)
   | LazyMarker<Ctx>
+  | GateMarker
 
 /**
  * Shape returned by the `restore` callback. Carries the active step's
@@ -288,13 +360,17 @@ export type WizardOptions = {
    *   3. else seed value for this key → frozen seed
    *   4. else → pending sentinel
    *
+   * The `locked` flag is never seeded: it is computed live from the
+   * wizard's gates and overlaid on every status read, so the seed shape
+   * is `FormStatus` minus `locked`.
+   *
    * Unknown keys in the seed object dev-warn so a stale resume payload
    * surfaces at construction.
    */
   readonly defaultStatuses?:
-    | Record<string, FormStatus>
-    | (() => Record<string, FormStatus>)
-    | (() => Promise<Record<string, FormStatus>>)
+    | Record<string, FormStatusSeed>
+    | (() => Record<string, FormStatusSeed>)
+    | (() => Promise<Record<string, FormStatusSeed>>)
   /**
    * Optional progress override. When omitted, the wizard exposes
    * `progress` as `valid_step_count / count` (normalised to `[0, 1]`).
@@ -338,15 +414,15 @@ export type WizardOptions = {
  * nullish nor a (maybe-absent) function / `lazy()` slot. One of these
  * anywhere in the tuple proves the compiled list is non-empty.
  */
-type IsGuaranteedStep<T> = [null] extends [T]
+type IsGuaranteedStep<T, U = UnwrapGate<T>> = [null] extends [U]
   ? false
-  : [undefined] extends [T]
+  : [undefined] extends [U]
     ? false
-    : T extends LazyMarker | ((...args: unknown[]) => unknown)
+    : U extends LazyMarker | ((...args: unknown[]) => unknown)
       ? false
-      : T extends string
+      : U extends string
         ? true
-        : T extends { readonly key: string }
+        : U extends { readonly key: string }
           ? true
           : false
 
@@ -387,13 +463,16 @@ export type ActiveFormOf<S> =
     : UseFormReturnType<GenericForm> | undefined
 
 /**
- * Per-slot contribution to {@link FormsRecordOf}. Strips a `null` /
+ * Per-slot contribution to {@link FormsRecordOf}. Unwraps a `gate()`
+ * wrapper (transparent to the compiled type) and strips a `null` /
  * `undefined` (a literal absence or a `cond ? form : null` union) off the
- * slot first, so a conditionally-present form still maps to its key and
- * stays concretely typed on `wizard.forms`; a purely nullish slot
- * contributes nothing.
+ * slot first, so both a conditionally-present form and a `gate(form)`
+ * still map to their key and stay concretely typed on `wizard.forms`; a
+ * purely nullish slot contributes nothing.
  */
-type SlotRecord<First, F = Exclude<First, null | undefined>> = [F] extends [never]
+type SlotRecord<First, U = UnwrapGate<First>, F = Exclude<U, null | undefined>> = [F] extends [
+  never,
+]
   ? unknown
   : F extends string
     ? { readonly [P in F]: AnyForm }
@@ -418,6 +497,9 @@ type SlotRecord<First, F = Exclude<First, null | undefined>> = [F] extends [neve
  *  - **Function / `lazy()` slot**: contributes nothing to the static
  *    map. Runtime-resolved forms are still reachable via the
  *    catch-all index signature on `WizardForms` (typed as `AnyForm`).
+ *  - **`gate()` slot**: transparent — unwrapped to the slot it wraps, so
+ *    `gate(form)` contributes the form's key and `gate(lazy(fn))`
+ *    contributes nothing, exactly like the wrapped slot on its own.
  *
  * Recursion is bounded by the tuple length; real-world wizards land
  * well below the TS instantiation budget.
@@ -527,14 +609,15 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    `back()` does not pop; the trail is the audit
  *                    log, not the back-stack.
  *  - `next/back/goTo` — pure navigation. Refuses while `submitting`.
- *  - `tryNext()`   — validate the active step, then advance iff it
- *                    passed; invalid input keeps the pin put under the
- *                    form's standard error reveal (first error focused,
- *                    display state advanced). The inline-bindable
- *                    shorthand for `activeForm.handleSubmit(() =>
- *                    next())`. Resolves to whether the pin moved. No-ops
- *                    to `false` on a degenerate or final-step wizard
- *                    (finish via `handleSubmit`).
+ *  - `tryNext()`   — submit the active step, and once that submit
+ *                    resolves clean, advance; invalid input keeps the pin
+ *                    put under the form's standard error reveal (first
+ *                    error focused, display state advanced). The advance
+ *                    runs after the submit settles, so a `gate()` on the
+ *                    active step clears in a single call. Inline-bindable
+ *                    (`@click="wizard.tryNext()"`); resolves to whether
+ *                    the pin moved. No-ops to `false` on a degenerate or
+ *                    final-step wizard (finish via `handleSubmit`).
  *  - `handleSubmit(onSubmit, onError?)` — always validates the entire
  *                    step list, from any step, and never advances the
  *                    pin: on success it latches `done`; on any error it

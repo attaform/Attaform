@@ -15,7 +15,9 @@ const distDir = join(repoRoot, 'dist')
 const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf-8')) as {
   main: string
   types: string
-  exports: Record<string, { types?: string; import?: string; require?: string }>
+  // An export maps a subpath to either a direct target string
+  // (e.g. "./package.json") or a conditions map (condition -> target path).
+  exports: Record<string, string | Record<string, string>>
 }
 
 /**
@@ -71,10 +73,16 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
 
   for (const [subpath, entry] of Object.entries(pkg.exports)) {
     it(`subpath "${subpath}" — every declared artifact exists`, () => {
+      // A direct string target (e.g. "./package.json": "./package.json")
+      // resolves as-is. Guard it explicitly: `Object.entries` on a string
+      // walks its characters, which would check `existsSync('p')` and fail.
+      if (typeof entry === 'string') {
+        expect(existsSync(join(repoRoot, entry)), `${subpath} -> ${entry}`).toBe(true)
+        return
+      }
+      // Otherwise a conditions map (types / import / require / default),
+      // whose values are the target paths.
       for (const [kind, relativePath] of Object.entries(entry)) {
-        // `entry` is typed as having optional fields, but at runtime we only
-        // iterate defined entries. The values are always strings in
-        // package.json; treat them as such.
         expect(
           existsSync(join(repoRoot, relativePath)),
           `${subpath}.${kind} -> ${relativePath}`

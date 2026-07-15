@@ -52,6 +52,7 @@ export const attaformAutoImports: AttaformAutoImport[] = [
   { name: 'fieldMeta', from: 'attaform/zod' },
   { name: 'withMeta', from: 'attaform/zod' },
   { name: 'lazy', from: 'attaform/zod' },
+  { name: 'gate', from: 'attaform/zod' },
 ]
 
 /**

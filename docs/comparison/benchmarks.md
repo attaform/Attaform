@@ -1,6 +1,6 @@
 ---
 title: Benchmarks
-description: How Attaform compares across the Vue form-library field: bundle size, supply-chain scores, and per-scenario runtime measured in a real browser, every number traced to the run that produced it.
+description: 'How Attaform compares across the Vue form-library field: bundle size, supply-chain scores, and per-scenario runtime measured in a real browser, every number traced to the run that produced it.'
 metaRows:
   - label: Category
     value: Comparison

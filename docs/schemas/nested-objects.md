@@ -1,11 +1,11 @@
 ---
 title: Nested objects
-description: z.object({ a: z.object({ b: z.string() }) }) composes through dot-path access: register('a.b'), errors.a.b, fields.a.b. Every nested object gets its own slim default at every level.
+description: "z.object({ a: z.object({ b: z.string() }) }) composes through dot-path access: register('a.b'), errors.a.b, fields.a.b. Every nested object gets its own slim default at every level."
 metaRows:
   - label: Category
     value: Schema feature
   - label: Composition
-    value: z.object({ profile: z.object({...}) })
+    value: 'z.object({ profile: z.object({...}) })'
     kind: code
   - label: Path access
     value: register('profile.name')

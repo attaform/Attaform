@@ -147,6 +147,7 @@ export const docsNavigation: DocsSection[] = [
     links: [
       { title: 'Undo & redo', to: '/docs/cross-cutting-state/undo-redo' },
       { title: 'Autosave', to: '/docs/cross-cutting-state/autosave' },
+      { title: 'disabled', to: '/docs/cross-cutting-state/disabled' },
       { title: 'injectForm', to: '/docs/cross-cutting-state/inject-form' },
       { title: 'App-wide defaults', to: '/docs/cross-cutting-state/app-defaults' },
     ],
@@ -157,6 +158,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'useWizard', to: '/docs/multistep/use-wizard' },
       { title: 'injectWizard', to: '/docs/multistep/inject-wizard' },
       { title: 'Step slots', to: '/docs/multistep/step-slots' },
+      { title: 'gate', to: '/docs/multistep/gate' },
       { title: 'Statuses', to: '/docs/multistep/statuses' },
       { title: 'Aggregates', to: '/docs/multistep/aggregates' },
       { title: 'handleSubmit', to: '/docs/multistep/handle-submit' },

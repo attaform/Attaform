@@ -5,7 +5,7 @@ import type {
   PlainElementNode,
   SourceLocation,
 } from '@vue/compiler-core'
-import { createCompoundExpression, NodeTypes } from '@vue/compiler-core'
+import { createCompoundExpression, createSimpleExpression, NodeTypes } from '@vue/compiler-core'
 import {
   getSummarizedProps,
   isExactKey,
@@ -335,6 +335,31 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       }
 
       props.push(valueOrCheckedProp)
+
+      // Sibling `:disabled` bind: renders the HTML `disabled` attribute on
+      // the SSR initial paint and patches it on the client, tracking the
+      // form's effective freeze (`useForm({ disabled })`). Valid on every
+      // input type, so no file-exclusion guard: unlike `value`, `disabled`
+      // is a legal attribute on a file input, and a dynamic `:type` that
+      // resolves to file still disables correctly.
+      //
+      // Skipped when the author already wrote a `disabled` / `:disabled` on
+      // this element: overriding it would force the field enabled whenever
+      // the form is not frozen, clobbering a legitimate author condition.
+      // The data-layer freeze still rejects writes regardless, so nothing
+      // leaks; only the visual affordance defers to the author's binding.
+      const hasAuthorDisabled = elementProps.findIndex((p) => isExactKey(p.key, 'disabled')) !== -1
+      if (!hasAuthorDisabled) {
+        const disabledProp: DirectiveNode = {
+          arg: createSimpleExpression('disabled', true, injectedLoc),
+          exp: createCompoundExpression(['(', ...registerValueArr, ')?.disabled?.value']),
+          name: 'bind',
+          modifiers: [],
+          type: NodeTypes.DIRECTIVE,
+          loc: injectedLoc,
+        }
+        props.push(disabledProp)
+      }
     }
 
     // The outer guards (`node.type === NodeTypes.ELEMENT` + `node.tag

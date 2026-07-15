@@ -1,6 +1,6 @@
 ---
 title: useWizard
-description: useWizard takes an ordered list of step slots and produces a reactive wizard. Forms gather data, bare string keys mark affordance steps (intros, terms, review surfaces), function slots branch on live values, and lazy() memoizes heavy slots by their own tracked reactive reads. Whole-wizard handleSubmit, namespaced aggregates, automatic URL sync.
+description: useWizard turns an ordered list of slots into a reactive wizard. Forms gather data, string keys mark affordance steps, function slots branch, lazy() memoizes. Whole-wizard handleSubmit and URL sync.
 metaRows:
   - label: Category
     value: Composable

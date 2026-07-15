@@ -252,4 +252,33 @@ describe('inputTextAreaNodeTransform', () => {
       expect(code).toContain('?.has("apple")')
     })
   })
+
+  describe('disabled binding', () => {
+    it('injects a :disabled bind reading the register disabled channel', () => {
+      const code = compileWithTransform(`<input v-register="email" />`)
+      // Reads `(register)?.disabled?.value` for SSR + client freeze.
+      expect(code).toContain('disabled?.value')
+    })
+
+    it('injects :disabled for <textarea v-register>', () => {
+      const code = compileWithTransform(`<textarea v-register="note" />`)
+      expect(code).toContain('disabled?.value')
+    })
+
+    it('injects :disabled for a dynamically-typed input (legal on file, unlike value)', () => {
+      const code = compileWithTransform(`<input :type="kind" v-register="x" />`)
+      expect(code).toContain('disabled?.value')
+    })
+
+    it('does NOT inject its own :disabled when the author wrote :disabled', () => {
+      const code = compileWithTransform(`<input v-register="email" :disabled="locked" />`)
+      // The register-driven freeze bind must not clobber an author binding.
+      expect(code).not.toContain('disabled?.value')
+    })
+
+    it('does NOT inject its own :disabled when the author wrote a static disabled', () => {
+      const code = compileWithTransform(`<input v-register="email" disabled />`)
+      expect(code).not.toContain('disabled?.value')
+    })
+  })
 })

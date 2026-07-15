@@ -41,6 +41,7 @@ function makeRegisterValue<T>(initial: T): {
   const value: InternalRegisterValue<T> = {
     innerRef: innerRef as InternalRegisterValue<T>['innerRef'],
     hostModelValue: innerRef as InternalRegisterValue<T>['hostModelValue'],
+    disabled: ref(false) as InternalRegisterValue<T>['disabled'],
     displayValue: ref('') as Readonly<Ref<string>>,
     markBlank,
     markInteracted: () => undefined,

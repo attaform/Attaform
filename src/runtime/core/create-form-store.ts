@@ -4,9 +4,11 @@ import {
   reactive,
   ref,
   toRaw,
+  toValue,
   triggerRef,
   watch,
   type ComputedRef,
+  type MaybeRefOrGetter,
   type Ref,
 } from 'vue'
 import type {
@@ -292,6 +294,21 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   // unambiguous; distinct from `form.validate()`, which is a read-only
   // primitive that never bumps any counter.
   readonly departAttempts: Ref<number>
+
+  /**
+   * Effective data-freeze state: `true` when either the form's own
+   * `disabled` config resolves truthy or `externalLock` is set. Read at
+   * the write chokepoint (`setValueAtPath`), the register value's
+   * `disabled`, and the field display predicate.
+   */
+  readonly effectiveDisabled: ComputedRef<boolean>
+  /**
+   * Wizard-driven freeze channel. `useWizard` sets this `true` for a
+   * locked step's member form; ORed into `effectiveDisabled` so the
+   * wizard lock is authoritative and a member form cannot escape it by
+   * passing `disabled: false`. Default `false`.
+   */
+  readonly externalLock: Ref<boolean>
 
   /**
    * `true` while a function-form `defaultValues` factory is in flight.
@@ -913,6 +930,14 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    */
   readonly rememberVariants?: boolean | undefined
   /**
+   * Raw `disabled` config (boolean / ref / computed / getter /
+   * undefined), unwrapped live via `toValue` into
+   * `FormStore.effectiveDisabled`. Threaded raw (not resolved at merge)
+   * so a reactive source keeps tracking. See
+   * `UseFormConfiguration.disabled` for the full contract.
+   */
+  readonly disabled?: MaybeRefOrGetter<boolean | undefined> | undefined
+  /**
    * Schema-driven coercion config. See
    * `UseFormConfiguration.coerce` for the full contract. Resolved
    * once via `resolveCoercionIndex(options.coerce)` and cached on
@@ -1468,6 +1493,34 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // `reset()` below. Introspection only — the library-default
   // `getDisplayState` reveals via `submissionAttempts`, not this.
   const departAttempts = ref(0)
+  // Data-freeze channel. `externalLock` is written by `useWizard` to
+  // force a locked step's form frozen; the form's own config contributes
+  // via `toValue(options.disabled)`. `effectiveDisabled` ORs the two
+  // toward frozen so a member form can't pass `disabled: false` to
+  // escape a wizard lock. A throwing consumer getter falls back to the
+  // config side reading not-frozen (with a one-time dev warning); the
+  // wizard lock stays authoritative regardless.
+  const externalLock = ref(false)
+  let warnedDisabledThrow = false
+  let warnedDisabledWrite = false
+  const effectiveDisabled = computed<boolean>(() => {
+    let own = false
+    try {
+      own = Boolean(toValue(options.disabled))
+    } catch (err) {
+      // `own` stays `false` (the try reassigns it atomically or throws
+      // before touching it), so the config side reads not-frozen.
+      if (__DEV__ && !warnedDisabledThrow) {
+        warnedDisabledThrow = true
+        console.warn(
+          `[attaform] useForm({ disabled }) getter threw for form "${String(formKey)}"; ` +
+            `treating its config as enabled. Fix the getter to clear this warning.`,
+          err
+        )
+      }
+    }
+    return own || externalLock.value
+  })
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
   // Per-path snapshots of `form.value` keyed by the canonical
@@ -2068,6 +2121,25 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
    * (du-variant-error-flicker).
    */
   function setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean {
+    // Data-freeze gate: when the form is disabled (own `disabled` config
+    // or a wizard lock), every value write no-ops here — the single
+    // chokepoint all three write origins funnel through (programmatic
+    // `setValueImpl`, the directive's `setValueWithInternalPath`, and
+    // `setValueFromHost` including its `markBlank` path). The first
+    // blocked write dev-warns once; thereafter silent, never throws.
+    // `reset()` and hydration bypass this (they route through
+    // `applyFormReplacementWithPath`), so a frozen form can still be
+    // populated or cleared programmatically.
+    if (effectiveDisabled.value) {
+      if (__DEV__ && !warnedDisabledWrite) {
+        warnedDisabledWrite = true
+        console.warn(
+          `[attaform] Ignored a write to a disabled form ("${String(formKey)}"). ` +
+            `Value writes no-op while \`disabled\` resolves truthy. This warning fires once.`
+        )
+      }
+      return false
+    }
     // Drop any Symbol-keyed properties before the value flows through
     // the gate, DU reshape, or storage. Form values are string-keyed
     // by schema design and the consumer-side leak would otherwise
@@ -3250,6 +3322,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     focused: boolean,
     meta?: { readonly instance?: WriteMeta['instance'] }
   ): void {
+    // See `markInteracted`: a frozen form records no focus / blur
+    // lifecycle, so no stale `blurredAfterInteraction` survives a
+    // disable -> enable toggle. A disabled native input can't receive
+    // focus anyway; this covers component hosts and programmatic focus.
+    if (effectiveDisabled.value) return
     const { key } = canonicalizePath(path)
     const current = fields.get(key)
     touchFieldRecord(key, path, {
@@ -3336,6 +3413,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   }
 
   function markInteracted(path: Path): void {
+    // A frozen form records no interaction lifecycle: value writes no-op,
+    // so a stray host emit (`setValueFromHost` marks interacted before
+    // its gated write) or a direct `rv.markInteracted()` must not arm
+    // blur-validation or the reward-early display. Keeps interaction
+    // state clean across a disable -> enable toggle.
+    if (effectiveDisabled.value) return
     const { key } = canonicalizePath(path)
     // Fired per keystroke from the directive's input listeners; skip the
     // reactive write once the bit is set so only the first edit notifies.
@@ -3992,6 +4075,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submitted,
     submitError,
     departAttempts,
+    effectiveDisabled,
+    externalLock,
     hydrating,
     hydrateError,
     defaultValuesFactory,

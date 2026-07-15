@@ -1,6 +1,6 @@
 ---
 title: Step slots
-description: Slots are the entries that fill useWizard's steps array. Four kinds compose the list freely. Form slots gather data, string slots mark affordance screens, function slots branch on live values, and lazy() gives heavy slots their own memoized cache that re-fires only on its tracked reactive reads. Each slot compiles into the same uniform { key, form } shape so navigation, status aggregation, and submission read uniformly across the whole flow.
+description: Slots fill useWizard's steps array. Form slots gather data, string slots mark affordance screens, function slots branch on live values, and lazy() memoizes a heavy slot by its tracked reads.
 metaRows:
   - label: Category
     value: Concept

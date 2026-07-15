@@ -13,7 +13,16 @@ describe('attaformAutoImports manifest', () => {
 
   it('surfaces exactly the intended component-scope composables', () => {
     expect([...names].sort()).toEqual(
-      ['fieldMeta', 'injectForm', 'injectWizard', 'lazy', 'useForm', 'useWizard', 'withMeta'].sort()
+      [
+        'fieldMeta',
+        'gate',
+        'injectForm',
+        'injectWizard',
+        'lazy',
+        'useForm',
+        'useWizard',
+        'withMeta',
+      ].sort()
     )
   })
 

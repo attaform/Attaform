@@ -1,6 +1,6 @@
 ---
 title: Aggregates
-description: wizard.allValues, wizard.allErrors, and wizard.forms expose cross-step state ready for review screens, summary panels, and final-submit aggregation. Each surface is a record keyed by step key, drillable straight into the underlying form.
+description: wizard.allValues, wizard.allErrors, and wizard.forms expose state for review screens, summary panels, and final-submit aggregation. Each is a record keyed by step key, drillable into the form.
 metaRows:
   - label: Category
     value: Reactive surface

@@ -385,6 +385,11 @@ function mergeWithDefaults<
   const onInvalidSubmit = configuration.onInvalidSubmit ?? defaults.onInvalidSubmit
   const history = configuration.history ?? defaults.history
   const rememberVariants = configuration.rememberVariants ?? defaults.rememberVariants
+  // Threaded raw (ref / getter / boolean), never resolved here — the
+  // store unwraps it live via `toValue` so a reactive source keeps
+  // tracking. `??` picks config over default at the reference level; an
+  // explicit `false` still wins over a truthy default.
+  const disabled = configuration.disabled ?? defaults.disabled
   const coerce = configuration.coerce ?? defaults.coerce
   const validateOn = configuration.validateOn ?? defaults.validateOn
   // `debounceMs` is type-narrowed in the public discriminated union to
@@ -402,6 +407,7 @@ function mergeWithDefaults<
     ...(onInvalidSubmit === undefined ? {} : { onInvalidSubmit }),
     ...(history === undefined ? {} : { history }),
     ...(rememberVariants === undefined ? {} : { rememberVariants }),
+    ...(disabled === undefined ? {} : { disabled }),
     ...(coerce === undefined ? {} : { coerce }),
     ...(validateOn === undefined ? {} : { validateOn }),
     ...(debounceMs === undefined ? {} : { debounceMs }),
@@ -487,6 +493,7 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     ...(configuration.rememberVariants !== undefined
       ? { rememberVariants: configuration.rememberVariants }
       : {}),
+    ...(configuration.disabled !== undefined ? { disabled: configuration.disabled } : {}),
     ...(configuration.coerce !== undefined ? { coerce: configuration.coerce } : {}),
     ...(configuration.getDisplayState !== undefined
       ? { getDisplayState: configuration.getDisplayState }

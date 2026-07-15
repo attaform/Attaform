@@ -2,7 +2,67 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Added
+
+- **`useForm({ disabled })` freezes a reactive form so its data cannot be
+  edited, and nothing can write around the freeze.** Pass a boolean, ref,
+  computed, or getter (`MaybeRefOrGetter<boolean>`); while it resolves
+  truthy, every value write no-ops at Attaform's single write chokepoint,
+  so the programmatic, `v-register`, and host-model paths fall inert
+  together. The guarantee lives at the data layer rather than at
+  navigation, so a deep link or back/forward navigation cannot slip a
+  write past it. A frozen form still hydrates: `reset()` and
+  `defaultValues` seed it as usual, so a read-only review page can still be
+  populated or restored. Native inputs render the HTML `disabled` attribute
+  on both the server and the client, component hosts and native selects
+  receive a `:disabled` bind, and every field's display state settles to
+  idle so no error, pending, or success signal shows. The resolved flag
+  reads back on `field.disabled` and `form.meta.disabled`. (#523)
+
+- **`gate(step)` makes a wizard step a hard prerequisite, safe by
+  construction: every step after it stays un-fillable and unreachable until
+  the gate clears.** Wrap any slot, `gate(consent)`, `gate('terms')`,
+  `gate(lazy(fn))`, and place it before what it guards. A gate clears on
+  its member form's clean submit (the confirmation), never the instant a
+  value goes valid (the intent), so a checked-but-unsubmitted consent
+  cannot open the rail and let a downstream step collect data ahead of the
+  commitment. Downstream steps freeze through the same `disabled` data
+  layer, so their writes no-op at every origin, and the wizard refuses to
+  seat the active step past an uncleared gate: a deep link, a URL restore,
+  `goTo`, and `next` all funnel through one guard that redirects to the
+  gate. A bare `next()` on a gate behaves like `tryNext()` (it cannot skip
+  the confirmation), and `handleSubmit` refuses to complete while any gate
+  is uncleared. Once cleared, a gate's own form freezes too, so a
+  back-navigation is a read-only review with no withdrawal path. A form
+  gate whose member form rehydrates already valid is treated as pre-cleared
+  at mount, so a seeded consent renders the flow open on reload; an
+  affordance-string gate re-prompts each session. `gate()` and `lazy()`
+  compose in either order (`gate(lazy(s))` and `lazy(ctx => gate(s))`
+  resolve identically), and a conditional gate falls out of a function slot
+  (`() => amount > 10_000 ? gate(kyc) : kyc`). The stepper reads `locked`
+  on `wizard.statuses[key]`. `gate` is exported from every entry and
+  auto-imported alongside `lazy`. (#523)
+
+- **`attaform/package.json` now resolves through the package exports map.**
+  Tooling that reads the resolved version can
+  `require('attaform/package.json')` or `import.meta.resolve` it directly,
+  instead of hitting `ERR_PACKAGE_PATH_NOT_EXPORTED` and reaching into
+  `node_modules` by hand. The file already ships in the published tarball,
+  so the entry is a no-cost convenience. (#520)
+
+### Fixed
+
+- **A numeric field wrapped in a `v-model` component now clears to blank in
+  lockstep with its form state.** Clearing such a field used to desync: the
+  component showed empty while form state stayed pinned at the old number,
+  because the emitted `''` on a `z.number()` path was rejected at the write
+  gate. The host now gets the same blank round-trip a native
+  `<input v-register>` already had. An emitted empty signal (`''`, `null`,
+  or `undefined`) routes through `markBlank`, so storage lands on the slim
+  default with the blank flag set, and a new blank-aware model channel
+  presents `undefined` back to the component so a plain numeric input
+  renders empty. A `.nullable()` or `.optional()` leaf still accepts `null`
+  or `undefined` as a genuine value. (#519)
 
 ## v0.27.1
 ### Changed

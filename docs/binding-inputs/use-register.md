@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Composable
   - label: Signature
-    value: useRegister<V>(): UseRegisterReturn<V> | undefined
+    value: 'useRegister<V>(): UseRegisterReturn<V> | undefined'
     kind: code
   - label: Returns
     value: hybrid Ref + RegisterValue Proxy

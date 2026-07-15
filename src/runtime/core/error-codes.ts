@@ -77,6 +77,16 @@ export const AttaformErrorCode = {
    * form-level path `[]`.
    */
   SubmitError: 'atta:submit-error',
+  /**
+   * Synthesized by `wizard.handleSubmit` when the whole-wizard submit
+   * would otherwise succeed but a `gate()` step is still uncleared. A
+   * gate clears only on its member form's clean submit (confirmation), so
+   * a downstream step that happens to be valid-by-default must not let the
+   * wizard finish past an unconfirmed prerequisite. Emitted at the gate
+   * form's key (path `[]`) so the aggregate error pipeline routes focus to
+   * the gate, and `done` never latches.
+   */
+  GateNotCleared: 'atta:gate-not-cleared',
 } as const
 
 export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof AttaformErrorCode]

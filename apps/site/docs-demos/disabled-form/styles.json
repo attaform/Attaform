@@ -1,0 +1,3 @@
+{
+  "with": ["stack", "label", "input", "select", "row", "badge", "hint", "code", "pre"]
+}

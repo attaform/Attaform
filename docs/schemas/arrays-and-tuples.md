@@ -1,6 +1,6 @@
 ---
 title: Arrays & tuples
-description: z.array() is variable-length, z.tuple() is fixed-length. Both bind through numeric path segments: register('items.0.name'), errors.tags[2], fields.items[3].title.
+description: "z.array() is variable-length, z.tuple() is fixed-length. Both bind through numeric path segments: register('items.0.name'), errors.tags[2], fields.items[3].title."
 metaRows:
   - label: Category
     value: Schema feature

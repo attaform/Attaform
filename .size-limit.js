@@ -304,7 +304,17 @@ export default [
     // the explicit pin. This 62 KB cap is the no-plugin (runtime-dispatch)
     // ceiling; there is no separate under-plugin measurement because the
     // rewrite lands the consumer on the zod-v3/v4 entries already capped below.
-    limit: '62 KB',
+    //
+    // Raised 62 → 63 KB on the gating branch (feat/form-disabled, #523).
+    // useForm({ disabled }) lands the bypass-proof data freeze in the shared
+    // eager core: the effectiveDisabled computed + externalLock ref, the
+    // setValueAtPath write gate + warn-once, field.disabled /
+    // form.meta.disabled, the displayState idle branch, RegisterValue.disabled,
+    // and the native + component-host :disabled binds (SSR + client). On top,
+    // gate() adds the slot marker, the submission-triggered cleared latch, the
+    // nav-lock / freeze derived sets, and the reactive corrector in
+    // use-wizard.ts. This whole entry absorbs both. Measured at 62.49 KB.
+    limit: '63 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -494,7 +504,12 @@ export default [
     // additive, ~1 KB to the whole-entry surface. Real consumers tree-shake it
     // (the `{ useForm }` / `{ injectForm }` / `{ useRegister }` tripwires below
     // held). Measured at 60.97 KB.
-    limit: '62 KB',
+    //
+    // Raised 62 → 63 KB tracking index.mjs's gating bump (feat/form-disabled,
+    // #523): the same useForm({ disabled }) data freeze in the shared eager
+    // core plus gate() in use-wizard.ts. Byte-for-byte identical to index.mjs.
+    // Measured at 62.49 KB.
+    limit: '63 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -634,7 +649,11 @@ export default [
     // (createAttaform / serialize / directive / paths / devtools / display)
     // now re-exported from every entry via _shared-exports. Whole-entry only;
     // the `{ useForm }` tripwire held. Measured at 54.89 KB.
-    limit: '56 KB',
+    //
+    // Raised 56 → 57 KB tracking index.mjs's gating bump (feat/form-disabled,
+    // #523): the same disabled data freeze in the shared eager core plus the
+    // wizard gate() surface. Measured at 56.37 KB.
+    limit: '57 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -844,7 +863,12 @@ export default [
     // Raised 56 → 57 KB on the schema-entry re-partition: same additive core
     // now re-exported from every entry via _shared-exports. Whole-entry only;
     // the `{ useForm }` tripwire held. Measured at 56.24 KB.
-    limit: '57 KB',
+    //
+    // Raised 57 → 58 KB tracking index.mjs's gating bump (feat/form-disabled,
+    // #523): same shared eager core (useForm({ disabled })) plus gate().
+    // zod-v3.mjs, the tightest full adapter entry, crossed by 0.39 KB.
+    // Measured at 57.74 KB.
+    limit: '58 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -857,7 +881,12 @@ export default [
     // be the barrel's default export. Lighter than the Zod entries because
     // it ships neither adapter: no v3/v4 dispatch, no fingerprint / walker /
     // slim-primitive machinery. Measured at 45.33 KB.
-    limit: '46 KB',
+    //
+    // Raised 46 → 47 KB on the gating branch (feat/form-disabled, #523): the
+    // disabled data freeze in the shared core (threaded through useAbstractForm)
+    // plus gate(). No Zod adapter here, but the core and wizard surface both
+    // grow. Measured at 46.85 KB.
+    limit: '47 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1027,7 +1056,15 @@ export default [
     // (same shared eager core: directive component-host branch + registerValue
     // strip + host delegates + markHostConnected + the directly-bound-container
     // field-state fold). Measured at 47.27 KB.
-    limit: '48 KB',
+    //
+    // Raised 48 → 49 KB tracking the gating branch (feat/form-disabled, #523).
+    // useForm({ disabled }) adds the data freeze to the always-on useForm
+    // closure (effectiveDisabled + write gate + field.disabled + displayState
+    // idle + the :disabled binds). gate() tree-shakes out of a { useForm }-only
+    // import, so this grew +1.18 KB in lockstep with the full zod-v4.mjs entry's
+    // core growth (+1.13 KB), legitimate feature weight and not a wizard leak.
+    // Measured at 48.47 KB.
+    limit: '49 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

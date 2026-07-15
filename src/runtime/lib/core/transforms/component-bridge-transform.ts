@@ -579,6 +579,56 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       node.props.push(updateModelValueProp)
     }
 
+    // Bridge the form's effective freeze to a `:disabled` bind, covering
+    // every host this transform owns: a native `<select>`, a select-like
+    // component host (slotted options), and a plain v-model host. A
+    // `useRegister`-based component also reads `registerValue.disabled`
+    // from the bridge prop below; the two agree. Skipped when the author
+    // already bound `disabled` / `:disabled`: overriding it would force the
+    // control enabled whenever the form is not frozen. The data-layer
+    // freeze rejects writes regardless, so only the visual affordance
+    // defers to the author. Idempotent: a re-run sees its own prior
+    // injection as an author binding and no-ops.
+    const registerExprArray = Array.isArray(registerSummarizedProp?.value)
+      ? registerSummarizedProp.value
+      : [registerSummarizedProp?.value ?? 'undefined']
+    const hasAuthorDisabled =
+      selectSummarizedProps.findIndex((p) => isExactKey(p.key, 'disabled')) !== -1
+    if (!hasAuthorDisabled) {
+      const disabledInitExpression = createCompoundExpression([
+        '(',
+        ...registerExprArray,
+        ')?.disabled?.value',
+      ])
+      const disabledSimpleExpression = createSimpleExpression(
+        flattenExpression(disabledInitExpression),
+        false
+      )
+      let disabledOutputExp: ExpressionNode
+      try {
+        disabledOutputExp = processExpression(disabledSimpleExpression, {
+          ...context,
+          prefixIdentifiers: false,
+        })
+      } catch (err) {
+        console.error(
+          '[attaform] component-bridge transform: processExpression failed for :disabled; falling back to the unprocessed expression.',
+          err
+        )
+        disabledOutputExp = disabledSimpleExpression
+      }
+      const disabledProp: DirectiveNode = {
+        rawName: ':disabled',
+        arg: createSimpleExpression('disabled', true),
+        exp: disabledOutputExp,
+        name: 'bind',
+        modifiers: [],
+        type: NodeTypes.DIRECTIVE,
+        loc: selectLoc,
+      }
+      node.props.push(disabledProp)
+    }
+
     if (isSelect) {
       // Native <select> is fully handled by the option walk above plus the
       // :value injection; component hosts fall through to the bridge prop.

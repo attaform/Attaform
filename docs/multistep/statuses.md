@@ -1,6 +1,6 @@
 ---
 title: Statuses
-description: wizard.statuses surfaces a per-step FormStatus rollup (valid, dirty, submitted, errorCount) ready for progress rails, navigation gates, and submit summaries. Read it drillably, call it for a snapshot, or seed it up-front with defaultStatuses for resumable flows.
+description: wizard.statuses surfaces a per-step FormStatus rollup (valid, dirty, submitted, errorCount) for progress rails, gates, and summaries. Read it drillably, snapshot it, or seed it with defaultStatuses.
 metaRows:
   - label: Category
     value: Reactive surface

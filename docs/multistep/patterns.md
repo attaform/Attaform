@@ -1,6 +1,6 @@
 ---
 title: Patterns
-description: Idiomatic wizard patterns. Linear flows, branching with function slots, dynamic terminals, active-step persistence, per-step undo. Small primitives composed through the steps array without library-side magic.
+description: Idiomatic wizard patterns. Linear flows, branching function slots, dynamic terminals, active-step persistence, per-step undo. Small primitives composed through the steps array, no library-side magic.
 metaRows:
   - label: Category
     value: Patterns
@@ -139,6 +139,26 @@ For heavier branching (a slot whose resolver is expensive enough that re-evaluat
 ```
 
 `wizard.handleSubmit` catches the upstream validation gaps that `goTo` lets through. Clicking Finish on a step the user jumped to without filling earlier forms validates everything, surfaces every error, and (with `focusFirstError: true`, the default) jumps the wizard back to the first failing step.
+
+## Hard prerequisites
+
+Some steps are not just data to gather, they are a gate: a terms acceptance, an eligibility check, a consent every later step depends on. Wrap the step in [`gate()`](/docs/multistep/gate) and Attaform seals everything after it until the gate clears.
+
+::docs-demo{slug="consent-gate" label="Consent gate"}
+::
+
+```ts
+const consentSchema = z.object({ accepted: z.literal(true) })
+const consent = useForm({
+  schema: consentSchema,
+  defaultValues: { accepted: false },
+  key: 'consent',
+})
+
+const wizard = useWizard({ steps: [gate(consent), shipping, payment] })
+```
+
+A gate clears on the wrapped form's clean submit, never the moment a value goes valid, so checking the consent box does not open the rail: confirming it does. Until then every downstream step is frozen through the [`disabled`](/docs/cross-cutting-state/disabled) data freeze and unreachable, so a deep link, the browser back button, or a stray `goTo` all redirect to the gate. The guarantee lives in the data, not in a navigation guard, so nothing routes around it. See [`gate`](/docs/multistep/gate) for the full model: conditional gates, affordance gates, and the seeded-valid reload path.
 
 ## Persisting the active step
 

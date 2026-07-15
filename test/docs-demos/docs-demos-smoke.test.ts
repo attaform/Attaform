@@ -1243,6 +1243,82 @@ const entries: SmokeEntry[] = [
       expect(root.querySelector('.status.saved')).not.toBeNull()
     },
   },
+
+  // ─── GATING: disabled + gate() ────────────────────────────────
+  {
+    // Accept the terms and click Next; the gate() clears on the consent
+    // form's clean submit and the shipping step mounts (the Address label
+    // lives only past the gate). Checking the box alone must NOT open the
+    // rail. Pressing Next is the confirmation that clears gate(consent).
+    slug: 'consent-gate',
+    gesture: async (root) => {
+      const accept = root.querySelector<HTMLInputElement>('input[type="checkbox"]')
+      if (!accept) throw new Error('consent checkbox not found')
+      await clickChecked(accept)
+      // Intent alone (box checked, no submit) leaves the gate sealed.
+      expect(root.textContent ?? '').not.toContain('Address')
+      const next = Array.from(root.querySelectorAll<HTMLButtonElement>('button.primary')).find(
+        (b) => b.textContent?.includes('Next') === true
+      )
+      if (!next) throw new Error('next button not found')
+      next.click()
+      await waitUntil(() => (root.textContent?.includes('Address') === true ? true : null))
+    },
+    assert: async (root) => {
+      expect(root.textContent ?? '').toContain('Address')
+    },
+  },
+  {
+    // A conditional gate from one function slot: a $25,000 transfer crosses
+    // the KYC threshold, so the middle slot resolves to gate(kyc) and the
+    // review step seals behind it. Fill + submit the KYC form and the gate
+    // clears, letting the flow reach review. Proves gate() composes with a
+    // function slot (and its dynamic-terminal drop below the threshold).
+    slug: 'kyc-gate',
+    gesture: async (root) => {
+      const amount = root.querySelector<HTMLInputElement>('input[type="number"]')
+      if (!amount) throw new Error('amount input not found')
+      await dispatchInput(amount, '25000')
+      const clickNext = () => {
+        const next = Array.from(root.querySelectorAll<HTMLButtonElement>('button.primary')).find(
+          (b) => b.textContent?.includes('Next') === true
+        )
+        if (!next) throw new Error('next button not found')
+        next.click()
+      }
+      clickNext()
+      await waitUntil(() => (root.textContent?.includes('Government ID') === true ? true : null))
+      const id = root.querySelector<HTMLInputElement>('input[autocomplete="off"]')
+      if (!id) throw new Error('KYC id input not found')
+      await dispatchInput(id, 'AB1234567')
+      clickNext()
+      await waitUntil(() =>
+        root.textContent?.includes('identity verified') === true ? true : null
+      )
+    },
+    assert: async (root) => {
+      expect(root.textContent ?? '').toContain('identity verified')
+    },
+  },
+  {
+    // Freeze the form, then type into the (now disabled) name input.
+    // useForm({ disabled }) no-ops the write at the data layer, so the
+    // values readout keeps the seeded name — the bypass-proof freeze,
+    // independent of the native disabled attribute.
+    slug: 'disabled-form',
+    gesture: async (root) => {
+      const freeze = root.querySelector<HTMLInputElement>('input[type="checkbox"]')
+      if (!freeze) throw new Error('freeze toggle not found')
+      await clickChecked(freeze)
+      const name = root.querySelector<HTMLInputElement>('input[autocomplete="name"]')
+      if (!name) throw new Error('name input not found')
+      await dispatchInput(name, 'Someone Else')
+    },
+    assert: async (root) => {
+      expect(pre(root).textContent ?? '').toContain('Ada Lovelace')
+      expect(pre(root).textContent ?? '').not.toContain('Someone Else')
+    },
+  },
 ]
 
 /**

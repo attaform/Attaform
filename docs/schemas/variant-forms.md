@@ -1,6 +1,6 @@
 ---
 title: Variant forms
-description: A z.discriminatedUnion schema can be the form root, not just a field. form.values reads the active variant at the top level, register binds variant fields by their own key, and a bare root defaults to the first variant.
+description: A z.discriminatedUnion schema can be the form root, not only a field. form.values reads the active variant at top level, register binds fields by key, and a bare root defaults to the first variant.
 metaRows:
   - label: Category
     value: Schema feature

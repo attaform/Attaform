@@ -1,6 +1,6 @@
 ---
 title: injectWizard
-description: Reach a useWizard handle from any descendant component. Ambient resolution for the parent's own wizard, keyed resolution for distant ones. Returns the same reactive wizard that useWizard exposes; mutations on one are observable on the other.
+description: Reach a useWizard handle from any descendant. Ambient resolution for the parent's own wizard, keyed resolution for distant ones. Returns the same reactive wizard; mutations flow both ways.
 metaRows:
   - label: Category
     value: Composable

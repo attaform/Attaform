@@ -39,7 +39,12 @@ import {
 import { vRegisterFile } from './directive-file'
 import { syncElementRegistration } from './directive-lifecycle'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
-import { setupValueSync, teardownValueSync } from './directive-value-sync'
+import {
+  setupDisabledSync,
+  setupValueSync,
+  teardownDisabledSync,
+  teardownValueSync,
+} from './directive-value-sync'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import type {
   InternalRegisterValue,
@@ -1283,6 +1288,25 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   mounted(el, binding, vnode) {
     callModelHook(el, binding, vnode, null, 'mounted')
 
+    // Reactive `disabled` sync for a render-function native control: mirror
+    // the form's effective freeze onto `el.disabled` and its client-only
+    // first paint. Gated on the vnode carrying NO `disabled` prop, so it
+    // runs only where nothing else binds the attribute — a bare
+    // `withDirectives(h('input'), ...)` field. A compiled field already
+    // carries the transform's `:disabled` bind (or the author's own), which
+    // tracks the same source through the render function; managing
+    // `el.disabled` imperatively there would fight that bind. Native
+    // controls only — a component host's freeze rides its `:disabled` prop
+    // through the bridge transform, never the host root element.
+    if (
+      isRegisterValue(binding.value) &&
+      INTERACTIVE_TAG_NAMES.has(el.tagName) &&
+      binding.modifiers[SSR_COMPONENT_HOST_MODIFIER] !== true &&
+      vnode.props?.['disabled'] === undefined
+    ) {
+      setupDisabledSync(el, binding.value.disabled)
+    }
+
     // Component-host element discovery. The transform stamps
     // SSR_COMPONENT_HOST_MODIFIER on a v-register that lands on a component
     // host; here the directive discovers the inner control and registers it
@@ -1381,6 +1405,10 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // Stop the reactive value-sync watch (text / textarea bindings). A
     // no-op for variants that never set one up.
     teardownValueSync(el)
+
+    // Stop the reactive disabled-sync watch. A no-op for a host root or
+    // any element that never set one up.
+    teardownDisabledSync(el)
 
     if (!isRegisterValue(value)) return
 
@@ -1621,17 +1649,28 @@ function getSSRFormStateProps(rv: RegisterValue, vnode: VNode): Record<string, s
   const props = (vnode.props as Record<string, unknown> | null) ?? null
   const variant = resolveDynamicModel(vnode.type.toUpperCase(), props?.['type'])
 
-  if (variant === vRegisterFile || variant === vRegisterSelect) return undefined
-  if (variant === vRegisterCheckbox) return ssrCheckboxProps(rv, props)
+  // A frozen form (`useForm({ disabled })`) renders the HTML `disabled`
+  // attribute on every control, mirroring the compiled transform's
+  // `:disabled` bind. Overlaid onto whatever value / checked state the
+  // variant resolves, and rendered even when the variant contributes no
+  // other attribute (an empty text field, an unselected radio, a file or
+  // select input) so the render-function SSR path matches the compiled one.
+  const withDisabled = (
+    base: Record<string, string> | undefined
+  ): Record<string, string> | undefined =>
+    rv.disabled.value === true ? { ...(base ?? {}), disabled: '' } : base
+
+  if (variant === vRegisterFile || variant === vRegisterSelect) return withDisabled(undefined)
+  if (variant === vRegisterCheckbox) return withDisabled(ssrCheckboxProps(rv, props))
   if (variant === vRegisterRadio) {
     const matches = looseEqual(rv.innerRef.value, applyCoerce(props?.['value'], rv))
-    return matches ? { checked: '' } : undefined
+    return withDisabled(matches ? { checked: '' } : undefined)
   }
   // text / textarea / number / email — mirror `el.value = displayValue`.
   // `displayValue` already folds blank/unset to `''`; omit the attribute
   // for an empty field so SSR matches the no-value initial paint.
   const value = rv.displayValue.value
-  return value === '' ? undefined : { value }
+  return withDisabled(value === '' ? undefined : { value })
 }
 
 function callModelHook(

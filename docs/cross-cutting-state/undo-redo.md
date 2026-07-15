@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Module
   - label: Opt in
-    value: useForm({ history: true })
+    value: 'useForm({ history: true })'
     kind: code
   - label: Default depth
     value: 128 positions

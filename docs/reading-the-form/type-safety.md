@@ -1,6 +1,6 @@
 ---
 title: Type safety
-description: Types follow the form through every state. In-flight reads are wide enough to hold whatever the user is actually typing; handleSubmit hands you the schema's validated output with literals narrowed, refinements honored, and discriminated unions discriminating.
+description: Types follow the form through every state. In-flight reads hold whatever the user types; handleSubmit hands you the schema's validated output, literals narrowed and unions discriminating.
 metaRows:
   - label: Category
     value: Concept

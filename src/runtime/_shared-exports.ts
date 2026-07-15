@@ -67,11 +67,14 @@ export { useWizard } from './composables/use-wizard'
 export { injectWizard } from './composables/inject-wizard'
 export type { InjectWizardInput } from './composables/inject-wizard'
 export { lazy } from './core/wizard-lazy'
+export { gate } from './core/wizard-gate'
 export type {
   WizardAggregateError,
   AnyForm,
   CompiledStep,
   FormStatus,
+  FormStatusSeed,
+  GateMarker,
   LazyMarker,
   StepSlot,
   UseWizardReturnType,

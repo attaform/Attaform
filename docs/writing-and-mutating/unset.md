@@ -1,6 +1,6 @@
 ---
 title: unset (the blank-anywhere sentinel)
-description: Pass the unset sentinel at any path in defaultValues, setValue, or reset. The runtime writes the schema's slim value (recursively for containers) and joins every primitive descendant to form.blankPaths, so the bound input renders empty.
+description: Pass the unset sentinel in defaultValues, setValue, or reset. The runtime writes the schema's slim value (recursively for containers) and adds each primitive to form.blankPaths, so inputs go empty.
 metaRows:
   - label: Category
     value: Export

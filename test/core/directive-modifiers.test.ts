@@ -57,6 +57,7 @@ function makeRegisterValue<T>(initial: T): {
   const value: MutableMockRv<T> = {
     innerRef: innerRef as InternalRegisterValue<T>['innerRef'],
     hostModelValue: innerRef as InternalRegisterValue<T>['hostModelValue'],
+    disabled: ref(false) as InternalRegisterValue<T>['disabled'],
     // Derive displayValue from innerRef so the mock matches the real
     // RegisterValue's contract (the directive's beforeUpdate reads
     // through displayValue). Doesn't model the blank/unset rule or

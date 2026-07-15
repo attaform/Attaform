@@ -1,3 +1,7 @@
+---
+description: The answer key behind Attaform's OpenSSF Best Practices Passing badge, listing every criterion's answer and the repo path or URL that backs it. Submission happens via the bestpractices.dev form.
+---
+
 # OpenSSF Best Practices answers for Attaform
 
 Answer key for the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/new) Passing-level criteria. Submitted to earn the badge that closes the `CII-Best-Practices` check on the project's [OpenSSF Scorecard report](https://securityscorecards.dev/viewer/?uri=github.com/attaform/Attaform).

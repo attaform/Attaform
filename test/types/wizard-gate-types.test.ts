@@ -8,7 +8,7 @@ import type { AnyForm } from '../../src'
  * Type-level contract for `gate(step)`: a gate is transparent to the
  * compiled step's type. It changes runtime reachability, never the static
  * shape, so `wizard.forms` and the `currentStep` non-empty narrowing must
- * both see through it. The payoff is commutativity — `gate(lazy(s))` and
+ * both see through it. The payoff is commutativity: `gate(lazy(s))` and
  * `lazy((ctx) => gate(s))` type identically, mirroring the runtime.
  *
  * `_neverInvoked` wrappers exercise call-site inference without a Vue app

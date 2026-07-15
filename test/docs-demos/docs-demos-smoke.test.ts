@@ -1244,17 +1244,19 @@ const entries: SmokeEntry[] = [
     },
   },
 
-  // ─── GATING: disabled + locked ────────────────────────────────
+  // ─── GATING: disabled + gate() ────────────────────────────────
   {
-    // Accept the terms and click Next; the consent gate clears and the
-    // shipping step mounts (the Address label lives only past the gate).
-    // Proves useWizard({ locked }) releases the downstream steps the
-    // moment consent.values.accepted flips true.
+    // Accept the terms and click Next; the gate() clears on the consent
+    // form's clean submit and the shipping step mounts (the Address label
+    // lives only past the gate). Checking the box alone must NOT open the
+    // rail. Pressing Next is the confirmation that clears gate(consent).
     slug: 'consent-gate',
     gesture: async (root) => {
       const accept = root.querySelector<HTMLInputElement>('input[type="checkbox"]')
       if (!accept) throw new Error('consent checkbox not found')
       await clickChecked(accept)
+      // Intent alone (box checked, no submit) leaves the gate sealed.
+      expect(root.textContent ?? '').not.toContain('Address')
       const next = Array.from(root.querySelectorAll<HTMLButtonElement>('button.primary')).find(
         (b) => b.textContent?.includes('Next') === true
       )
@@ -1264,6 +1266,38 @@ const entries: SmokeEntry[] = [
     },
     assert: async (root) => {
       expect(root.textContent ?? '').toContain('Address')
+    },
+  },
+  {
+    // A conditional gate from one function slot: a $25,000 transfer crosses
+    // the KYC threshold, so the middle slot resolves to gate(kyc) and the
+    // review step seals behind it. Fill + submit the KYC form and the gate
+    // clears, letting the flow reach review. Proves gate() composes with a
+    // function slot (and its dynamic-terminal drop below the threshold).
+    slug: 'kyc-gate',
+    gesture: async (root) => {
+      const amount = root.querySelector<HTMLInputElement>('input[type="number"]')
+      if (!amount) throw new Error('amount input not found')
+      await dispatchInput(amount, '25000')
+      const clickNext = () => {
+        const next = Array.from(root.querySelectorAll<HTMLButtonElement>('button.primary')).find(
+          (b) => b.textContent?.includes('Next') === true
+        )
+        if (!next) throw new Error('next button not found')
+        next.click()
+      }
+      clickNext()
+      await waitUntil(() => (root.textContent?.includes('Government ID') === true ? true : null))
+      const id = root.querySelector<HTMLInputElement>('input[autocomplete="off"]')
+      if (!id) throw new Error('KYC id input not found')
+      await dispatchInput(id, 'AB1234567')
+      clickNext()
+      await waitUntil(() =>
+        root.textContent?.includes('identity verified') === true ? true : null
+      )
+    },
+    assert: async (root) => {
+      expect(root.textContent ?? '').toContain('identity verified')
     },
   },
   {

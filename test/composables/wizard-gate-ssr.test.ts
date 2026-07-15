@@ -15,8 +15,8 @@ import {
  *
  * The landing funnel (`commitActiveKey` → `resolveLandingKey`) is the
  * same code the client uses, so a server-side deep link past an uncleared
- * gate must redirect to the gate before the first byte ships — the freeze
- * can't be a client-only afterthought. A seeded-valid form gate, by
+ * gate must redirect to the gate before the first byte ships, so the
+ * freeze can't be a client-only afterthought. A seeded-valid form gate, by
  * contrast, is pre-cleared synchronously at construction, so its SSR
  * render lands on the deep-linked downstream step.
  */

@@ -19,7 +19,7 @@ const GATE_BRAND = Symbol.for('attaform/wizard-gate')
  *  - **Confirmation, not intent.** The gate clears only when a member
  *    form submits clean, never when a value merely goes valid. Checking
  *    the box does nothing; submitting the consent step is what opens the
- *    rail. This is the whole reason `gate()` exists — a leading value
+ *    rail. This is the whole reason `gate()` exists: a leading value
  *    signal lets a downstream step collect data before the prerequisite
  *    is confirmed.
  *  - **Linear-forward.** An uncleared gate seals every step after it.
@@ -39,7 +39,7 @@ const GATE_BRAND = Symbol.for('attaform/wizard-gate')
  * clean, and is treated as pre-cleared on reload when its member form
  * rehydrates already valid (a persisted consent), so a seeded-valid gate
  * SSR-renders open. A bare-string **affordance** gate (`gate('terms')`)
- * clears on acknowledgment — advancing past it — and re-prompts each
+ * clears on acknowledgment (advancing past it), and re-prompts each
  * session because that acknowledgment is ephemeral.
  *
  * Conditional gates come from composition, not an options bag:

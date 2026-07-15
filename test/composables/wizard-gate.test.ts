@@ -14,12 +14,12 @@ import { awaitSettle } from '../utils/form-harness'
 import type { AnyForm, StepSlot, WizardRestoreFn } from '../../src/runtime/types/types-wizard'
 
 /**
- * `gate(step)` — the safe-by-construction hard prerequisite.
+ * `gate(step)`: the safe-by-construction hard prerequisite.
  *
  * A gate seals every step positioned AFTER it until the gate CLEARS, and
  * clearance is submission-triggered: a member form's clean submit
  * (confirmation) or a seeded-valid form gate at mount, never a live value
- * edit (intent). That split is the whole point — the retired `locked(ctx)`
+ * edit (intent). That split is the whole point: the retired `locked(ctx)`
  * policy let a consumer key the gate on a leading `values` signal, so a
  * checked-but-unsubmitted consent opened the rail and a downstream step
  * could collect data before the prerequisite was confirmed. `gate()`
@@ -146,7 +146,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     expect(wizard.statuses.shipping.locked).toBe(true)
 
     // The attack: check the box, never submit. Under the old leading-signal
-    // policy the rail opened here — now it stays sealed. The value lands
+    // policy the rail opened here; now it stays sealed. The value lands
     // (the gate form is not frozen), but the gate is unconfirmed.
     terms.setValue('accepted', true)
     await awaitSettle()
@@ -250,7 +250,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     await awaitSettle()
 
     // Rehydrated consent: the gate is already cleared, so downstream is
-    // open from t=0 — and the gate form is frozen (freeze-after-clear).
+    // open from t=0, and the gate form is frozen (freeze-after-clear).
     expect(wizard.statuses.shipping.locked).toBe(false)
     expect(wizard.statuses.payment.locked).toBe(false)
     terms.setValue('accepted', false)
@@ -381,7 +381,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
         shipping,
         payment,
       ],
-      // lazy wrapping gate — the commutative twin
+      // lazy wrapping gate, the commutative twin
       ({ terms, shipping, payment }: Forms): StepSlot[] => [
         lazy(() => gate(terms as AnyForm)),
         shipping,

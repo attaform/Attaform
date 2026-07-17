@@ -105,6 +105,28 @@ Every gated step reports `wizard.statuses[key].locked === true`, so a progress r
 
 The whole-wizard [`wizard.handleSubmit`](/docs/multistep/use-wizard) honors the same guarantee: it refuses to complete while any gate is uncleared, even if every form happens to validate, and routes the attempt to the gate through its `onError` callback.
 
+## Reading the gate role
+
+Alongside `locked`, each step's status carries `wizard.statuses[key].gate`, the step's own role as a prerequisite:
+
+- `null` when the step is not a `gate()`.
+- `'uncleared'` while its member form is unconfirmed, so it seals every later step.
+- `'cleared'` once confirmed by a clean member submit, or by a seeded-valid form gate at mount.
+
+`gate` and `locked` are independent axes. `gate` says whether this step is a prerequisite and whether it is met; `locked` says whether the step is sealed behind an earlier uncleared gate. The first uncleared gate reads `gate: 'uncleared'` with `locked: false` (you have to reach it to clear it), while a later gate stacked behind it reads `gate: 'uncleared'` with `locked: true`.
+
+Because `gate` reflects the wizard's live state, it is the signal to persist. A server can record which prerequisites a session has met:
+
+```ts
+for (const step of wizard.steps) {
+  if (wizard.statuses[step.key]?.gate === 'cleared') {
+    markPrerequisiteMet(step.key)
+  }
+}
+```
+
+To restore that expectation in a later session, seed each satisfied gate's member form with the confirmed values as its `defaultValues`. A form gate whose member form rehydrates already valid is pre-cleared at mount, so the flow renders open from the first byte on the server. The restore path is the member form's `defaultValues`; `gate` itself is read-only.
+
 ## Where to next
 
 - [Step slots](/docs/multistep/step-slots) for the four slot kinds `gate()` wraps.

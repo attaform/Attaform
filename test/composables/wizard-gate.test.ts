@@ -446,18 +446,95 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     apps.push(app)
     await awaitSettle()
 
-    // Below threshold: kyc is an ordinary step, `confirm` is reachable.
+    // Below threshold: kyc is an ordinary step, `confirm` is reachable,
+    // and kyc carries no gate role.
     expect(handle.wizard.statuses.confirm.locked).toBe(false)
+    expect(handle.wizard.statuses.kyc.gate).toBe(null)
 
     // Cross the threshold: the same slot resolves to gate(kyc) → `confirm`
-    // seals until kyc submits.
+    // seals until kyc submits, and kyc now reads as an uncleared gate.
     handle.transfer.setValue('amount', 25_000)
     await awaitSettle()
     expect(handle.wizard.statuses.confirm.locked).toBe(true)
+    expect(handle.wizard.statuses.kyc.gate).toBe('uncleared')
 
-    // Back under the threshold: the gate drops, `confirm` reopens.
+    // Back under the threshold: the gate drops, `confirm` reopens, and
+    // kyc's gate role reverts to null.
     handle.transfer.setValue('amount', 100)
     await awaitSettle()
     expect(handle.wizard.statuses.confirm.locked).toBe(false)
+    expect(handle.wizard.statuses.kyc.gate).toBe(null)
+  })
+
+  // --- the .gate status field (readable gate role) ----------------------
+
+  it('exposes a step gate role: null for plain, uncleared then cleared for a gate', async () => {
+    const { wizard, terms } = mountWizard()
+    await awaitSettle()
+
+    // A gate reports its own role; plain downstream steps report null. The
+    // callable single-key form and the drilled form agree.
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+    expect(wizard.statuses('terms').gate).toBe('uncleared')
+    expect(wizard.statuses.shipping.gate).toBe(null)
+    expect(wizard.statuses.payment.gate).toBe(null)
+
+    // Checking the box (intent) does NOT clear it: still 'uncleared'.
+    terms.setValue('accepted', true)
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+
+    // A clean submit (confirmation) flips it to 'cleared'.
+    await terms.handleSubmit(() => {})()
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('cleared')
+
+    // reset re-arms the gate.
+    wizard.reset()
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+  })
+
+  it('reads gate and locked as independent axes (a later gate is both uncleared and locked)', async () => {
+    // welcome (affordance) gates first; terms (form) is itself a gate AND
+    // sits behind the uncleared welcome, so it reads uncleared + locked.
+    const { wizard } = mountWizard(({ terms, shipping, payment }) => [
+      gate('welcome'),
+      gate(terms),
+      shipping,
+      payment,
+    ])
+    await awaitSettle()
+
+    // The first uncleared gate is reachable; a later gate is sealed behind
+    // it yet still reports its own uncleared role.
+    expect(wizard.statuses.welcome.gate).toBe('uncleared')
+    expect(wizard.statuses.welcome.locked).toBe(false)
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+    expect(wizard.statuses.terms.locked).toBe(true)
+    expect(wizard.statuses.shipping.gate).toBe(null)
+    expect(wizard.statuses.shipping.locked).toBe(true)
+
+    // Acknowledge welcome: it clears, terms becomes the reachable gate but
+    // is still its own uncleared prerequisite.
+    await wizard.next()
+    await awaitSettle()
+    expect(wizard.statuses.welcome.gate).toBe('cleared')
+    expect(wizard.statuses.welcome.locked).toBe(false)
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+    expect(wizard.statuses.terms.locked).toBe(false)
+  })
+
+  it('reads a seeded-valid form gate as cleared from mount', async () => {
+    const { wizard } = mountWizard(
+      ({ terms, shipping, payment }) => [gate(terms), shipping, payment],
+      { termsDefaults: { accepted: true } }
+    )
+    await awaitSettle()
+
+    // Rehydrated consent is pre-cleared, so its gate role reads 'cleared'
+    // synchronously (the timing the SSR landing relies on).
+    expect(wizard.statuses.terms.gate).toBe('cleared')
+    expect(wizard.statuses.shipping.gate).toBe(null)
   })
 })

@@ -177,6 +177,7 @@ describe('useWizard — defaultStatuses', () => {
       submitted: result.a.meta.submitted,
       errorCount: result.a.meta.errorCount,
       locked: false,
+      gate: null,
     })
   })
 

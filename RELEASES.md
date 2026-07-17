@@ -1,5 +1,15 @@
 # Releases
 
+## v0.27.3 — 2026-07-17
+
+## What's Changed
+* feat(use-wizard): expose gate role on wizard.statuses[key].gate by @ozzyfromspace in https://github.com/attaform/Attaform/pull/532
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.27.2...v0.27.3
+
+---
+
 ## v0.27.2 — 2026-07-16
 
 ## What's Changed

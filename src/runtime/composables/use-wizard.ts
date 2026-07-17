@@ -74,6 +74,7 @@ const PENDING_STATUS: FormStatus = {
   submitted: false,
   errorCount: 0,
   locked: false,
+  gate: null,
 }
 
 /** Status surfaced for noop forms (string-slot affordance steps). Noops
@@ -86,6 +87,7 @@ const NOOP_VALID_STATUS: FormStatus = {
   submitted: false,
   errorCount: 0,
   locked: false,
+  gate: null,
 }
 
 /** Shared empty lock set for wizards that declare no `locked` policy, so
@@ -962,12 +964,17 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (cached !== undefined) return cached
     const source = asStatusSource(form)
     const computedStatus = computed<FormStatus>(() => {
-      // `locked` is orthogonal to the readiness trichotomy below: it is
-      // overlaid on whatever base status this form resolves to, so a
-      // locked step reads `locked: true` whether it is ready, pending, a
-      // noop, or seeded. Constants pass through untouched on the common
-      // unlocked path so their identity survives.
+      // `locked` and `gate` are orthogonal to the readiness trichotomy
+      // below: both overlay whatever base status this form resolves to.
+      // `locked` = sealed behind an earlier uncleared gate; `gate` = this
+      // step's OWN prerequisite role (null unless it compiles to a
+      // `gate()`). Constants pass through untouched on the common
+      // unlocked + ungated path so their identity survives.
       const locked = navLockSet.value.has(form.key)
+      let gate: FormStatus['gate'] = null
+      if (gatePositions.value.includes(form.key)) {
+        gate = clearedGates.has(form.key) ? 'cleared' : 'uncleared'
+      }
       if (isFormReady(form.key)) {
         const meta = source.meta
         if (meta !== undefined && meta !== null) {
@@ -977,19 +984,22 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
             submitted: meta.submitted,
             errorCount: meta.errorCount,
             locked,
+            gate,
           }
         }
       }
       // Noop forms surface as always-valid even before their (trivial)
       // schema settle has registered — noop schemas resolve synchronously
-      // so this branch is mostly defensive, but it keeps the
-      // status surface stable for string-slot keys at t=0.
+      // so this branch is mostly defensive, but it keeps the status
+      // surface stable for string-slot keys at t=0. A string slot can
+      // itself be a gate (`gate('terms')`), so the gate overlay applies
+      // here too.
       if (noopForms.has(form.key)) {
-        return locked ? { ...NOOP_VALID_STATUS, locked: true } : NOOP_VALID_STATUS
+        return locked || gate !== null ? { ...NOOP_VALID_STATUS, locked, gate } : NOOP_VALID_STATUS
       }
       const seed = seedRef.value?.[form.key]
-      if (seed !== undefined) return { ...seed, locked }
-      return locked ? { ...PENDING_STATUS, locked: true } : PENDING_STATUS
+      if (seed !== undefined) return { ...seed, locked, gate }
+      return locked || gate !== null ? { ...PENDING_STATUS, locked, gate } : PENDING_STATUS
     })
     statusCache.set(form.key, computedStatus)
     return computedStatus

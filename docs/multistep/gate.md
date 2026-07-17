@@ -40,6 +40,8 @@ const wizard = useWizard({ steps: [gate(consent), shipping, payment] })
 
 `gate(consent)` seals `shipping` and `payment` until `consent` is confirmed. Ordering places the gate: put it immediately before what it guards, and everything to its right is gated.
 
+`gate()` is first-class wherever a step goes: drop it straight into `steps` as shown here, or return it from a [function or `lazy()` slot](/docs/multistep/step-slots). A bare `gate(consent)` and a `() => gate(consent)` resolve to the same gated step.
+
 ## Confirmation, not intent
 
 A gate clears on a member form's **clean submit**, not the moment a value passes validation. Checking the consent box makes `consent` valid, but the rail stays sealed. Pressing Next (or calling `wizard.tryNext()`) submits the form, and that submit is the confirmation that opens the gate.

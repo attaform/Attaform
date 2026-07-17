@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Concept
   - label: Clears on
-    value: a member form's clean submit
+    value: a clean submit, or a defaultStatuses seed
   - label: Downstream
     value: frozen + unreachable
   - label: Composes
@@ -62,11 +62,24 @@ A **form gate** (`gate(consent)`) clears when its form submits clean. Wire the s
 
 An **affordance gate** (`gate('terms')`, a bare string) clears when the user acknowledges it by advancing. Because that acknowledgment is ephemeral, an affordance gate re-prompts every session, which is what you want for a "you have read this" screen.
 
-A form gate also recognizes a **seeded-valid** member form. If `consent` rehydrates already valid, say a returning customer whose acceptance you loaded into `defaultValues`, the gate is treated as pre-cleared at mount, so the flow renders open from the first frame and a deep link into a downstream step is honored. Seeding a gate's form valid is an explicit assertion that the prerequisite is already satisfied, so reach for a base-schema value (a `z.literal(true)`) rather than a value only a refinement can judge.
+A form gate can also start **cleared** when the server already recorded this prerequisite for the session. Seed it through the wizard rather than the form: `useWizard({ defaultStatuses: { consent: { gate: 'cleared' } } })` latches the gate cleared at mount, so the flow renders open from the first frame and a deep link into a downstream step is honored. The seed is a deliberate assertion, decoupled from whatever the member form's values happen to be. That decoupling is the point: a prerequisite is confirmed or it is not, and "the values validate" is a separate fact that must not stand in for confirmation.
 
 ## Freeze after clear
 
-Once a gate clears, its own form freezes too. Navigating back to a cleared consent step is a read-only review: the checkbox is there, but it cannot be unchecked, so there is no withdrawal path and no re-lock dance to reason about. `wizard.reset()` reboots the flow and re-gates from scratch.
+Once a gate clears, its own form freezes too. Navigating back to a cleared consent step is a read-only review: the checkbox is there, but the user cannot uncheck it, so there is no in-form withdrawal path. `wizard.reset()` reboots the flow and re-gates from scratch, re-applying any `defaultStatuses` seed.
+
+## Withdrawing a gate
+
+A cleared gate stays cleared until you say otherwise, and `wizard.relock(key, commit)` is how you say it. Just as a gate clears when its member form's submit lands clean, a gate re-seals when its `commit` callback resolves clean. Pass the server-side revoke as `commit`; `relock` awaits it and re-seals the gate, re-freezing everything downstream, only if it succeeds:
+
+```ts
+// Revoke this session's consent on the server, then re-seal the flow.
+const sealed = await wizard.relock('consent', () => api.revokeConsent())
+```
+
+The re-seal is contingent, so in both directions the gate reflects server-confirmed truth. If `commit` throws, the revoke did not land, so the gate stays cleared and `relock` resolves `false`; if it resolves, the gate seals and `relock` resolves `true`. The callback is required, which is deliberate friction: a re-seal with no server round-trip would let the client's gate state drift from the server's. For a genuinely client-only re-seal, pass an empty `() => {}` so that choice is explicit.
+
+`relock` only ever seals. There is no imperative counterpart that opens a gate: clearance stays the exclusive result of a clean submit or a `defaultStatuses` seed, so no stray signal can spring one open. Reach for it on a server-side revoke or an optimistic rollback. A call on a key that is not a live gate resolves `false` with a dev-time warning.
 
 ## Conditional gates
 
@@ -113,7 +126,7 @@ Alongside `locked`, each step's status carries `wizard.statuses[key].gate`, the 
 
 - `null` when the step is not a `gate()`.
 - `'uncleared'` while its member form is unconfirmed, so it seals every later step.
-- `'cleared'` once confirmed by a clean member submit, or by a seeded-valid form gate at mount.
+- `'cleared'` once confirmed by a clean member submit, or seeded cleared via `defaultStatuses` at mount.
 
 `gate` and `locked` are independent axes. `gate` says whether this step is a prerequisite and whether it is met; `locked` says whether the step is sealed behind an earlier uncleared gate. The first uncleared gate reads `gate: 'uncleared'` with `locked: false` (you have to reach it to clear it), while a later gate stacked behind it reads `gate: 'uncleared'` with `locked: true`.
 
@@ -127,7 +140,7 @@ for (const step of wizard.steps) {
 }
 ```
 
-To restore that expectation in a later session, seed each satisfied gate's member form with the confirmed values as its `defaultValues`. A form gate whose member form rehydrates already valid is pre-cleared at mount, so the flow renders open from the first byte on the server. The restore path is the member form's `defaultValues`; `gate` itself is read-only.
+To restore that expectation in a later session, seed the wizard with the roles you recorded: `useWizard({ defaultStatuses: { consent: { gate: 'cleared' } } })`. The read and the write share one vocabulary, so a session round-trips through the same `'cleared'` string it reported, and the seed is independent of whatever the member form's values rehydrate to. For a flow that must render open on the first server byte, resolve the seed synchronously in the page's `setup` and pass a plain object; the async factory form of `defaultStatuses` resolves after hydration, so a gate seeded through it opens once the client takes over. For the whole-session round-trip that stores the step, values, and gates from one row, see [Resumable wizards](/docs/multistep/resumable-wizards).
 
 ## Where to next
 
@@ -135,3 +148,4 @@ To restore that expectation in a later session, seed each satisfied gate's membe
 - [Patterns](/docs/multistep/patterns) for the hard-prerequisite pattern in context.
 - [`disabled`](/docs/cross-cutting-state/disabled) for the data-freeze channel the gate drives.
 - [`useWizard`](/docs/multistep/use-wizard) for navigation, `tryNext`, and `handleSubmit`.
+- [Resumable wizards](/docs/multistep/resumable-wizards) for persisting the gate role across sessions with no extra tables.

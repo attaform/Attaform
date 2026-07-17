@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
-import { useForm } from '../../src/zod'
+import { useForm, gate } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
@@ -259,5 +259,68 @@ describe('useWizard — defaultStatuses', () => {
     expect(result.wizard?.statuses['ds-unk-a']!.valid).toBe(true)
     warnSpy.mockRestore()
     expect(warnings.some((w) => w.includes('ds-unk-typo'))).toBe(true)
+  })
+
+  // `gate` in a seed is a WRITE-only latch signal, not a status field echoed
+  // on read: `{ gate: 'cleared' }` clears the gate at (plain/sync) construction
+  // or (async) resolution; the live `gate` overlay owns the read.
+  it('gate seed (plain object) clears the gate at construction', () => {
+    const { app, result } = mountHarness(() => {
+      const consent = useForm({ schema: z.object({ ok: z.literal(true) }), key: 'ds-gate-plain' })
+      const data = useForm({ schema: schemaA, key: 'ds-gate-plain-data', defaultValues: { a: '' } })
+      return useWizard({
+        steps: [gate(consent), data],
+        defaultStatuses: { 'ds-gate-plain': { gate: 'cleared' } },
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    expect(result.statuses['ds-gate-plain']!.gate).toBe('cleared')
+    expect(result.statuses['ds-gate-plain-data']!.locked).toBe(false)
+  })
+
+  it('gate seed (sync function) clears the gate at construction', () => {
+    const { app, result } = mountHarness(() => {
+      const consent = useForm({ schema: z.object({ ok: z.literal(true) }), key: 'ds-gate-fn' })
+      const data = useForm({ schema: schemaA, key: 'ds-gate-fn-data', defaultValues: { a: '' } })
+      return useWizard({
+        steps: [gate(consent), data],
+        defaultStatuses: () => ({ 'ds-gate-fn': { gate: 'cleared' } }),
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    expect(result.statuses['ds-gate-fn']!.gate).toBe('cleared')
+    expect(result.statuses['ds-gate-fn-data']!.locked).toBe(false)
+  })
+
+  it('gate seed (async function) clears only after the promise resolves (client-only)', async () => {
+    let resolveSeed!: (value: Record<string, FormStatusSeed>) => void
+    const { app, result } = mountHarness(() => {
+      const consent = useForm({ schema: z.object({ ok: z.literal(true) }), key: 'ds-gate-async' })
+      const data = useForm({ schema: schemaA, key: 'ds-gate-async-data', defaultValues: { a: '' } })
+      return useWizard({
+        steps: [gate(consent), data],
+        defaultStatuses: () =>
+          new Promise<Record<string, FormStatusSeed>>((r) => {
+            resolveSeed = r
+          }),
+        restore: false,
+        persist: false,
+      })
+    })
+    apps.push(app)
+    // The async factory is fire-and-forget: uncleared until it resolves, so it
+    // is NOT available for a first-byte SSR render (the sync/plain form is
+    // required there).
+    expect(result.statuses['ds-gate-async']!.gate).toBe('uncleared')
+    expect(result.statuses['ds-gate-async-data']!.locked).toBe(true)
+
+    resolveSeed({ 'ds-gate-async': { gate: 'cleared' } })
+    await waitUntil(() => (result.statuses['ds-gate-async']!.gate === 'cleared' ? true : null))
+    expect(result.statuses['ds-gate-async']!.gate).toBe('cleared')
+    expect(result.statuses['ds-gate-async-data']!.locked).toBe(false)
   })
 })

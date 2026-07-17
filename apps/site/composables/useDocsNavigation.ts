@@ -163,6 +163,7 @@ export const docsNavigation: DocsSection[] = [
       { title: 'Aggregates', to: '/docs/multistep/aggregates' },
       { title: 'handleSubmit', to: '/docs/multistep/handle-submit' },
       { title: 'URL sync', to: '/docs/multistep/url-sync' },
+      { title: 'Resumable wizards', to: '/docs/multistep/resumable-wizards' },
       { title: 'Patterns', to: '/docs/multistep/patterns' },
     ],
   },

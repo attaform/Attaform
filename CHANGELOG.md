@@ -1,20 +1,36 @@
 # Changelog
 
 ## Unreleased
-### Fixed
+### Changed
 
-- **A `gate()` step now clears only from a genuine confirmation: a clean
-  member submit, or a seed the consumer asserted through `defaultValues`.**
-  Previously the mount-time seed check read the member form's live
-  validity, so a gate could clear the instant its value went valid (for
-  example the moment a consent box was checked, with no submit), and a
-  fresh `z.literal(true)` consent with no `defaultValues` pre-cleared on
-  its own because the schema fills the literal as a structural default. The
-  check now reads the form's frozen default seed, gated on a
-  consumer-provided `defaultValues`, so a live edit never confirms a gate
-  and a bare consent stays sealed until it is submitted. Restoring a
-  persisted prerequisite is unchanged: seed the member form valid through
-  `defaultValues` and it renders open from the first frame. (#534)
+- **A `gate()` step no longer pre-clears by inferring confirmation from its
+  member form's values.** The mount-time inference read the form's default
+  validity, so a gate could open on a value that merely validated: a fresh
+  `z.literal(true)` consent pre-cleared on its structural default, and a
+  `z.boolean()` consent seeded `{ accepted: false }` pre-cleared even though
+  `false` withholds consent. "The values validate" and "the prerequisite is
+  confirmed" are separate facts, so the inference is gone. A gate now starts
+  sealed and clears only on a clean member submit or an explicit seed (see
+  Added). Restoring a persisted prerequisite moves from seeding the member
+  form's `defaultValues` to seeding the gate directly. (#528, #529)
+
+### Added
+
+- **`useWizard({ defaultStatuses: { [key]: { gate: 'cleared' } } })` seeds a
+  gate's initial clearance from server truth.** It latches the gate cleared
+  at construction, decoupled from the member form's values, so a restored
+  session renders open from the first frame (synchronously on the server for
+  the plain / sync-factory forms; the async factory seeds after hydration).
+  It is the write mirror of the `wizard.statuses[key].gate` read, sharing the
+  same `'cleared'` vocabulary. (#529)
+- **`wizard.relock(key, commit)` re-seals a cleared gate, contingent on a
+  required `commit` callback.** It awaits `commit` (your server-side revoke)
+  and re-seals, re-freezing everything downstream, only if it resolves clean,
+  so the gate reflects server-confirmed truth the same way a clearing submit
+  does; a thrown `commit` leaves the gate cleared. It resolves whether the
+  gate ended up sealed and never rejects. It only ever seals: there is no
+  imperative counterpart that opens a gate, so clearance stays the exclusive
+  result of a submit or a seed. (#529)
 
 ## v0.27.3
 ### Added

@@ -163,5 +163,6 @@ The matching restore (the default one) already listens to `popstate` and re-read
 ## Where to next
 
 - [`useWizard`](/docs/multistep/use-wizard) for the construction signature and the wizard handle.
+- [Resumable wizards](/docs/multistep/resumable-wizards) for the full session round-trip: the active step plus each form's values and gate clearance.
 - [Patterns](/docs/multistep/patterns) for the per-form `persist` option that keeps each step's field values across reloads.
 - [`injectWizard`](/docs/multistep/inject-wizard) for cross-component access to a wizard with a named `key` (a separate identifier from `?step=`).

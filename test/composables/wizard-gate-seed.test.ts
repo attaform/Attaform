@@ -11,24 +11,21 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { awaitSettle } from '../utils/form-harness'
 
 /**
- * Seed-clearing provenance (#528).
+ * Seed-clearing provenance (#528, #529).
  *
- * A form gate pre-clears at mount ONLY from a seed the consumer asserted:
- * `useForm({ defaultValues })` that rehydrates the member form valid (the
- * SSR-restore path). It must never pre-clear from
- *   - a live in-session edit that happens to make the form valid, or
- *   - the schema's own structural default (a bare `z.literal(true)` fills
- *     `true` as its sole inhabitant, so a fresh consent with no
- *     `defaultValues` would otherwise read "seed-valid").
+ * A form gate's initial clearance is established two ways, and inference is
+ * NOT one of them:
+ *   - a member form's clean SUBMIT (confirmation), or
+ *   - an explicit `useWizard({ defaultStatuses: { [key]: { gate: 'cleared' } } })`
+ *     seed (an SSR restore of a prerequisite the server already recorded).
  *
- * The regression: `gate()` originally keyed the seed sample on the member
- * form's LIVE validity, sampled at the first settled verdict. For a gate
- * whose defaults do not settle valid at mount (no `defaultValues`, async
- * defaults, a deferred first pass), that first sample lands AFTER the value
- * has been edited, so it cleared off the edit, reopening the leading-signal
- * hole `gate()` exists to close. The clear now reads the store's latched
- * `defaultsValid`, which freezes the instant a write moves the form off its
- * seed. Exercised against both Zod adapters.
+ * What used to clear a gate and no longer does: the member form's values
+ * happening to validate at mount. "Value valid" and "prerequisite confirmed"
+ * are separate facts (#529). Keying clearance on validity opened the gate on
+ * a value that is the opposite of consent — a bare `z.boolean` seeded
+ * `{ accepted: false }` reads valid, yet `false` withholds consent (#528). So
+ * a valid-but-unconfirmed seed keeps the rail sealed; only a submit or an
+ * explicit seed opens it. Exercised against both Zod adapters.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,11 +42,19 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
     document.body.innerHTML = ''
   })
 
-  // `consentDefaults` omitted entirely models a fresh consent (the #528
-  // shape). `fnSlots` toggles function-wrapped steps, which resolve the
-  // gate lazily and were the case the leading-signal hole first surfaced
-  // through. A downstream `data` step reads the freeze/lock.
-  function mount(opts: { fnSlots?: boolean; consentDefaults?: { accepted: boolean } }): {
+  // `consentDefaults` omitted models a fresh consent; present-but-valid models
+  // the rehydrated form that used to auto-clear (now must not). `fnSlots`
+  // toggles function-wrapped steps, which resolve the gate lazily and were
+  // the case the leading-signal hole first surfaced through. `defaultStatuses`
+  // is the new explicit seed channel. A downstream `data` step reads the
+  // freeze/lock.
+  function mount(opts: {
+    fnSlots?: boolean
+    consentDefaults?: Record<string, unknown>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    consentSchema?: any
+    defaultStatuses?: Record<string, { valid?: boolean; gate?: 'cleared' | 'uncleared' }>
+  }): {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     consent: any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,7 +66,7 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
       setup() {
         const consent = useForm({
           key: 'consent',
-          schema: z.object({ accepted: z.literal(true) }),
+          schema: opts.consentSchema ?? z.object({ accepted: z.literal(true) }),
           ...(opts.consentDefaults !== undefined ? { defaultValues: opts.consentDefaults } : {}),
         })
         const data = useForm({
@@ -71,7 +76,11 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
         })
         const steps = opts.fnSlots ? [() => gate(consent), () => data] : [gate(consent), data]
         handle.consent = consent
-        handle.wizard = useWizard({ steps, persist: false })
+        handle.wizard = useWizard({
+          steps,
+          persist: false,
+          ...(opts.defaultStatuses !== undefined ? { defaultStatuses: opts.defaultStatuses } : {}),
+        })
         return () => h('div')
       },
     })
@@ -82,14 +91,14 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
     return handle
   }
 
-  it('does NOT seed-clear a fresh consent (no defaultValues) when the box is checked', async () => {
+  it('does NOT clear a fresh consent (no defaultValues) when the box is checked', async () => {
     const { consent, wizard } = mount({ fnSlots: false })
     await awaitSettle()
     expect(wizard.statuses.consent.gate).toBe('uncleared')
 
     // Check the box, never submit. The schema fills `accepted: true` as its
-    // sole-inhabitant default, so the LIVE verdict is valid here, but the
-    // consumer never asserted a seed, so the gate stays sealed.
+    // sole-inhabitant default, so the LIVE verdict is valid here, but a value
+    // going valid is not confirmation, so the gate stays sealed.
     consent.setValue(['accepted'], true)
     await awaitSettle()
     expect(wizard.statuses.consent.gate).toBe('uncleared')
@@ -97,7 +106,7 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
     expect(wizard.statuses.data.locked).toBe(true)
   })
 
-  it('does NOT seed-clear through a lazily-resolved (function) gate slot either', async () => {
+  it('does NOT clear through a lazily-resolved (function) gate slot either', async () => {
     const { consent, wizard } = mount({ fnSlots: true })
     await awaitSettle()
 
@@ -107,7 +116,7 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
     expect(wizard.statuses.data.locked).toBe(true)
   })
 
-  it('does NOT clear when the onSubmit callback throws (the #528 repro)', async () => {
+  it('does NOT clear when the onSubmit callback throws', async () => {
     const { consent, wizard } = mount({ fnSlots: true })
     await awaitSettle()
 
@@ -129,9 +138,9 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
     expect(wizard.statuses.data.locked).toBe(true)
   })
 
-  it('does NOT clear on a throwing submit even with invalid seeded defaults', async () => {
-    // Defaults present but invalid isolates the SUBMIT path from the
-    // seed path: a throwing onSubmit must not confirm the gate.
+  it('does NOT clear on a throwing submit even with seeded defaults', async () => {
+    // Defaults present isolates the SUBMIT path: a throwing onSubmit must
+    // not confirm the gate regardless of the seeded values.
     const { consent, wizard } = mount({ fnSlots: true, consentDefaults: { accepted: false } })
     await awaitSettle()
 
@@ -164,10 +173,14 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
     expect(wizard.statuses.data.locked).toBe(false)
   })
 
-  it('DOES seed-clear from a consumer-asserted valid seed at mount (SSR restore)', async () => {
-    // The server re-seeds a persisted consent as `defaultValues`; the gate
-    // renders open from t=0 with no submit this session.
-    const { consent, wizard } = mount({ fnSlots: false, consentDefaults: { accepted: true } })
+  it('DOES seed-clear a gate from defaultStatuses at mount (server-truth restore)', async () => {
+    // The server records that this session already met the prerequisite and
+    // seeds it directly; the gate renders open from t=0 with no submit and no
+    // reliance on the member form's values validating.
+    const { consent, wizard } = mount({
+      fnSlots: false,
+      defaultStatuses: { consent: { gate: 'cleared' } },
+    })
     await awaitSettle()
 
     expect(consent.meta.submitted).toBe(false)
@@ -175,9 +188,48 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
     expect(wizard.statuses.data.locked).toBe(false)
   })
 
-  it('does NOT seed-clear from an invalid consumer seed', async () => {
-    const { wizard } = mount({ fnSlots: false, consentDefaults: { accepted: false } })
+  it('DOES seed-clear through a lazily-resolved (function) gate slot', async () => {
+    const { wizard } = mount({
+      fnSlots: true,
+      defaultStatuses: { consent: { gate: 'cleared' } },
+    })
     await awaitSettle()
+    expect(wizard.statuses.consent.gate).toBe('cleared')
+    expect(wizard.statuses.data.locked).toBe(false)
+  })
+
+  it('treats a gate: "uncleared" seed as a no-op (the default)', async () => {
+    const { wizard } = mount({
+      fnSlots: false,
+      defaultStatuses: { consent: { gate: 'uncleared' } },
+    })
+    await awaitSettle()
+    expect(wizard.statuses.consent.gate).toBe('uncleared')
+    expect(wizard.statuses.data.locked).toBe(true)
+  })
+
+  it('does NOT pre-clear from a valid consumer seed (inference retired)', async () => {
+    // A rehydrated-valid member form used to auto-clear the gate at mount.
+    // That inference is gone: valid values are not confirmation, so the gate
+    // stays sealed until a submit or an explicit `defaultStatuses` seed.
+    const { consent, wizard } = mount({ fnSlots: false, consentDefaults: { accepted: true } })
+    await awaitSettle()
+    expect(consent.meta.valid).toBe(true)
+    expect(wizard.statuses.consent.gate).toBe('uncleared')
+    expect(wizard.statuses.data.locked).toBe(true)
+  })
+
+  it('does NOT pre-clear the z.boolean + { accepted: false } trap', async () => {
+    // #528/#529: `false` is a VALID boolean, so the old inference opened the
+    // gate on a value that is the opposite of consent. Retiring it closes the
+    // class — a valid-but-unconfirmed seed keeps the rail sealed.
+    const { consent, wizard } = mount({
+      fnSlots: false,
+      consentSchema: z.object({ accepted: z.boolean() }),
+      consentDefaults: { accepted: false },
+    })
+    await awaitSettle()
+    expect(consent.meta.valid).toBe(true)
     expect(wizard.statuses.consent.gate).toBe('uncleared')
     expect(wizard.statuses.data.locked).toBe(true)
   })

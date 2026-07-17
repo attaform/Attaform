@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
-import type { ValidationError, ValidationResponse } from '../../src/runtime/types/types-api'
+import type { ValidationError } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 
 type SignupForm = {
@@ -394,90 +394,6 @@ describe('createFormStore', () => {
       )
       expect(state.getErrorsForPath(['profile.name'])).toHaveLength(1)
       expect(state.getErrorsForPath(['profile', 'name'])).toHaveLength(0)
-    })
-  })
-
-  // `defaultsValid()` answers "would a gate keyed on this form pre-clear
-  // from its own seed alone." It is TRUE only when the consumer explicitly
-  // seeded the form (`defaultValues`) AND that seed validates clean. It
-  // parses the default snapshot frozen at construction, not the live
-  // values, so a session write can never launder itself into a seed-clear
-  // (#528). The async path (fail-closed) is exercised end-to-end against
-  // both Zod adapters in test/composables/wizard-gate-seed.test.ts; here we
-  // lock the sync contract deterministically through the fake adapter.
-  describe('defaultsValid (seed-clear provenance, #528)', () => {
-    // Valid iff `email` is non-empty. The schema default `email` is a
-    // NON-empty string, so the untouched schema defaults validate clean
-    // (the analog of `z.literal(true)` filling `accepted: true`). Only the
-    // consumer-seeded gate should still gate on that.
-    const seedDefaults: SignupForm = {
-      email: 'schema-default@x',
-      password: '',
-      profile: { name: '', age: 0 },
-    }
-    function emailNonEmpty(data: unknown): ValidationResponse<SignupForm> {
-      const ok = ((data as SignupForm | undefined)?.email ?? '').length > 0
-      if (ok) {
-        return { data: data as SignupForm, errors: undefined, success: true, formKey: '' }
-      }
-      return {
-        data: data as SignupForm,
-        errors: [{ message: 'email required', path: ['email'], formKey: '', code: 'atta:test' }],
-        success: false,
-        formKey: '',
-      }
-    }
-    function seedState(defaultValues?: Partial<SignupForm>) {
-      return createFormStore<SignupForm>({
-        formKey: 'seed',
-        schema: fakeSchema<SignupForm>(seedDefaults, emailNonEmpty),
-        defaultValues,
-      })
-    }
-
-    it('is false without consumer defaultValues, even when the schema defaults are valid', () => {
-      const state = seedState()
-      expect(state.form.value.email).toBe('schema-default@x') // schema default IS valid
-      expect(state.defaultsValid()).toBe(false) // but no consumer seed → no pre-clear
-    })
-
-    it('is true when the consumer seeds a valid form', () => {
-      const state = seedState({ email: 'seeded@x' })
-      expect(state.defaultsValid()).toBe(true)
-    })
-
-    it('is false when the consumer seeds an invalid form', () => {
-      const state = seedState({ email: '' })
-      expect(state.defaultsValid()).toBe(false)
-    })
-
-    it('stays false when a live write makes an invalid seed valid (frozen off the seed)', () => {
-      const state = seedState({ email: '' })
-      expect(state.defaultsValid()).toBe(false)
-      state.setValueAtPath(['email'], 'typed-in@x')
-      expect(state.form.value.email).toBe('typed-in@x') // the write landed
-      expect(state.defaultsValid()).toBe(false) // but the seed verdict is frozen
-    })
-
-    it('stays true when a live write makes a valid seed invalid (frozen off the seed)', () => {
-      const state = seedState({ email: 'seeded@x' })
-      expect(state.defaultsValid()).toBe(true)
-      state.setValueAtPath(['email'], '')
-      expect(state.defaultsValid()).toBe(true)
-    })
-
-    it('re-arms against fresh defaults on reset', () => {
-      const state = seedState({ email: '' })
-      state.setValueAtPath(['email'], 'typed-in@x')
-      expect(state.defaultsValid()).toBe(false)
-
-      // Reset to a valid consumer seed → re-armed true.
-      state.reset({ email: 'reset-seed@x' })
-      expect(state.defaultsValid()).toBe(true)
-
-      // Reset again to an invalid seed → re-armed false.
-      state.reset({ email: '' })
-      expect(state.defaultsValid()).toBe(false)
     })
   })
 })

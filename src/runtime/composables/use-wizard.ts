@@ -721,61 +721,17 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // Cleared gates, latched. A reactive Set (mirroring create-form-store's
   // reactive collections) so `navLockSet` / `freezeSet` recompute on an
-  // add. Only mount-time seeding, a member form's clean submit, and
-  // `reset()` ever move it.
+  // add. Only a `defaultStatuses` gate seed, a member form's clean submit,
+  // `relock()`, and `reset()` ever move it — never a value going valid, so
+  // a checkbox toggle can't open the rail.
   const clearedGates = reactive(new Set<FormKey>())
 
-  // One-shot guard: a form gate's seeded-valid state is sampled once, the
-  // first time its verdict settles, never re-sampled on a later live
-  // edit — re-sampling would reintroduce the leading-signal foot-gun.
-  const seededSampled = new Set<FormKey>()
-
-  // A gate form's verdict is trustworthy once its defaults are resolved,
-  // its first validation pass has completed, and nothing is in flight.
-  // The common sync base-schema consent satisfies this synchronously at
-  // construction; an async-validated gate settles a tick later and the
-  // reconcile watch re-samples then.
-  function isGateVerdictSettled(key: FormKey): boolean {
-    const store = registry.forms.get(key)
-    if (store === undefined) return false
-    return (
-      store.defaultsResolved.value === true &&
-      store.firstValidationDone.value === true &&
-      store.activeValidations.value === 0
-    )
-  }
-
-  // Did the gate form's own SEED (its untouched defaults) validate clean?
-  // Reads the store's latched `defaultsValid`, NOT the live `meta.valid`:
-  // the live verdict cannot tell a rehydrated-valid seed apart from a value
-  // the user just edited to valid, so keying the seed-clear on it let a
-  // gate whose first validation settled after an edit clear off that edit
-  // (#528). `defaultsValid` freezes the instant a write moves the form off
-  // its seed, so it answers "would this gate render pre-cleared from its
-  // seed alone."
-  function areGateDefaultsValid(key: FormKey): boolean {
-    return registry.forms.get(key)?.defaultsValid() ?? false
-  }
-
-  // Seed a form gate as pre-cleared when its member form rehydrates
-  // already valid (a persisted consent), so a seeded-valid gate renders
-  // open from t=0. Affordance gates (noop forms, trivially valid) are
-  // skipped — their clearance is an ephemeral acknowledgment, so they
-  // re-prompt each session. Called only from `reconcileGates` (a watch
-  // callback / init pass), so the read never sits in a reactive scope and a
-  // live value edit can never trigger it.
-  function sampleSeededGate(key: FormKey): void {
-    if (seededSampled.has(key)) return
-    if (noopForms.has(key)) return
-    if (!isGateVerdictSettled(key)) return
-    seededSampled.add(key)
-    if (areGateDefaultsValid(key)) clearedGates.add(key)
-  }
-
-  // Subscribe each gate form to its clean-submit signal (the
-  // authoritative confirmation), sample any newly-settled form gate, and
-  // drop subscriptions for gates that left the compiled list. Idempotent;
-  // driven by the reconcile watch below plus one init pass.
+  // Subscribe each gate form to its clean-submit signal (the authoritative
+  // confirmation) and drop subscriptions for gates that left the compiled
+  // list. Idempotent; driven by the reconcile watch below plus one init
+  // pass. Clearance is established here (clean submit) or via the
+  // `defaultStatuses` seed — never inferred from a form's live validity, so
+  // a value going valid can never open a gate.
   const gateSubs = new Map<FormKey, () => void>()
   function reconcileGates(): void {
     const gateKeys = new Set<FormKey>()
@@ -792,7 +748,6 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           )
         }
       }
-      sampleSeededGate(key)
     }
     for (const [key, unsub] of gateSubs) {
       if (!gateKeys.has(key)) {
@@ -879,21 +834,17 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   }
 
   if (mightGate) {
-    // Reconcile gate subscriptions + seeded-valid sampling. The signature
-    // fires when the gate set changes, a gate's store registers, or a
-    // gate form's verdict settles — exactly the moments to (re)subscribe
-    // and (re)sample. Validity is read only inside `reconcileGates` (a
-    // watch callback, a non-reactive scope), so a live value edit on a
-    // gate form never clears it. `immediate` runs the init pass so a
-    // sync seeded-valid gate is cleared before the initial landing below.
+    // Reconcile gate subscriptions. The signature fires when the gate set
+    // changes or a gate's store registers — exactly the moments to
+    // (re)subscribe. `immediate` runs the init pass so subscriptions are
+    // live before the initial landing below.
     watch(
       () => {
         const parts: string[] = []
         for (const step of compiledSteps.value) {
           if (!step.isGate) continue
           const store = registry.forms.get(step.key)
-          const settled = store !== undefined && isGateVerdictSettled(step.key)
-          parts.push(`${step.key}:${store !== undefined ? 1 : 0}:${settled ? 1 : 0}`)
+          parts.push(`${step.key}:${store !== undefined ? 1 : 0}`)
         }
         return parts.join('|')
       },
@@ -942,20 +893,37 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Statuses proxy + seed --------------------------------------------
 
+  // Apply a resolved `defaultStatuses` map's gate seeds to the cleared
+  // latch: any key seeded `gate: 'cleared'` that compiles to a live gate is
+  // latched cleared. This is the ONLY seed path to clearance (there is no
+  // validity inference), one-shot and explicit, so it never opens a gate on
+  // an in-session signal. A seed for a non-gate key is ignored here (the
+  // unknown-key dev-warn below still flags a key that matches no step).
+  function applyGateSeed(map: Record<string, FormStatusSeed> | undefined): void {
+    if (map === undefined || !mightGate) return
+    const gates = gatePositions.value
+    for (const key of Object.keys(map)) {
+      if (map[key]?.gate === 'cleared' && gates.includes(key)) clearedGates.add(key)
+    }
+  }
+
   const seedRef = ref<Record<string, FormStatusSeed> | undefined>(undefined)
   const seedInput = options.defaultStatuses
   if (seedInput !== undefined) {
     const resolved = resolveTrichotomy(seedInput)
     if (resolved.kind === 'sync') {
       seedRef.value = resolved.value
+      applyGateSeed(resolved.value)
     } else {
       const eager = resolved.factory()
       if (eager instanceof Promise) {
         void eager.then((value) => {
           seedRef.value = value
+          applyGateSeed(value)
         })
       } else {
         seedRef.value = eager
+        applyGateSeed(eager)
       }
     }
   }
@@ -1004,7 +972,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         return locked || gate !== null ? { ...NOOP_VALID_STATUS, locked, gate } : NOOP_VALID_STATUS
       }
       const seed = seedRef.value?.[form.key]
-      if (seed !== undefined) return { ...seed, locked, gate }
+      if (seed !== undefined) return { ...PENDING_STATUS, ...seed, locked, gate }
       return locked || gate !== null ? { ...PENDING_STATUS, locked, gate } : PENDING_STATUS
     })
     statusCache.set(form.key, computedStatus)
@@ -1752,12 +1720,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     submissionAttempts.value = 0
     done.value = false
     submitError.value = null
-    // Clear the gate latch so a reboot re-gates from scratch. A gate whose
-    // reset defaults land valid re-clears through `reconcileGates` below,
-    // once the per-form reset has restored + re-validated those defaults.
+    // Clear the gate latch, then (after the per-form resets below) re-apply
+    // the `defaultStatuses` seed so a seeded-cleared gate returns to its
+    // seeded initial clearance, mirroring how those resets restore each
+    // form's `defaultValues`. Clearance is never re-inferred from form
+    // validity — only the explicit seed and a fresh clean submit move it.
     if (mightGate) {
       clearedGates.clear()
-      seededSampled.clear()
     }
     // Bump the lazy epoch so every `lazy()` slot's memoized computed
     // re-fires on the next compile pass. Without this, expensive
@@ -1769,7 +1738,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       const full = asSubmissionSource(step.form)
       if (typeof full.reset === 'function') full.reset()
     }
-    if (mightGate) reconcileGates()
+    if (mightGate) {
+      reconcileGates()
+      applyGateSeed(seedRef.value)
+    }
     const firstStep = compiledSteps.value[0]
     if (firstStep !== undefined) {
       const landing = commitActiveKey(firstStep.key)
@@ -1779,6 +1751,42 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         persistCallback({ step: landing })
       }
     }
+  }
+
+  // Re-seal a cleared gate by key, contingent on `commit`. Like a gate's
+  // clearing submit, the state transition is the server's to confirm: await
+  // `commit` (your server-side revoke) and re-seal only if it resolves clean,
+  // so the gate reflects server-confirmed truth in BOTH directions. A thrown
+  // `commit` leaves the gate as it was (cleared) and resolves `false`.
+  // Seal-only: `clearedGates.delete` re-locks downstream through `navLockSet`
+  // / `freezeSet`, and there is no imperative CLEAR counterpart, so `relock`
+  // can't be turned into the leading-signal foot-gun `gate()` exists to
+  // prevent. `commit` is required (pass `() => {}` for a deliberate
+  // client-only re-seal). Never rejects, so a fire-and-forget relock can't
+  // surface an unhandledrejection. Resolves `false` (dev-warn), and skips
+  // `commit`, on a key that is not a live gate.
+  async function relock(key: FormKey, commit: () => void | Promise<void>): Promise<boolean> {
+    if (!mightGate || !gatePositions.value.includes(key)) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] useWizard.relock(${JSON.stringify(key)}): no gate at that key; nothing to re-lock.`
+        )
+      }
+      return false
+    }
+    try {
+      await commit()
+    } catch (err) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] useWizard.relock(${JSON.stringify(key)}): commit threw, so the gate was not re-sealed.`,
+          err
+        )
+      }
+      return false
+    }
+    clearedGates.delete(key)
+    return true
   }
 
   // Gate corrector. `commitActiveKey` refuses a nav-locked target at the
@@ -1829,6 +1837,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     tryNext,
     handleSubmit,
     reset,
+    relock,
     get currentStep(): CurrentStepOf<S> {
       return currentStep.value as CurrentStepOf<S>
     },

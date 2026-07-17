@@ -16,9 +16,11 @@ import {
  * The landing funnel (`commitActiveKey` → `resolveLandingKey`) is the
  * same code the client uses, so a server-side deep link past an uncleared
  * gate must redirect to the gate before the first byte ships, so the
- * freeze can't be a client-only afterthought. A seeded-valid form gate, by
- * contrast, is pre-cleared synchronously at construction, so its SSR
- * render lands on the deep-linked downstream step.
+ * freeze can't be a client-only afterthought. A gate seeded cleared via a
+ * sync/plain `defaultStatuses`, by contrast, latches cleared synchronously
+ * at construction, so its SSR render lands on the deep-linked downstream
+ * step. (The async factory form seeds only after hydration, so first-byte
+ * SSR seeding requires the sync/plain form.)
  */
 
 const consentSchema = z.object({ accepted: z.literal(true) })
@@ -69,15 +71,19 @@ describe('gate() SSR enforcement', () => {
     expect(handle.wizard.statuses['ssr-payment'].gate).toBe(null)
   })
 
-  it('lets a seeded-valid gate honor a server deep link into a downstream step', async () => {
+  it('lets a defaultStatuses-seeded gate honor a server deep link into a downstream step', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle: any = {}
     const App = defineComponent({
       setup() {
+        // The member form's values are deliberately INVALID for the schema
+        // (`accepted: false` vs `z.literal(true)`): the seed clears the gate
+        // independent of value validity, which is the whole point of the
+        // decoupled seed channel.
         const consent = useForm({
           schema: consentSchema,
           key: 'ssr2-consent',
-          defaultValues: { accepted: true },
+          defaultValues: { accepted: false },
         })
         const shipping = useForm({
           schema: shippingSchema,
@@ -89,7 +95,10 @@ describe('gate() SSR enforcement', () => {
           key: 'ssr2-payment',
           defaultValues: { card: 'c' },
         })
-        handle.wizard = useWizard({ steps: [gate(consent), shipping, payment] })
+        handle.wizard = useWizard({
+          steps: [gate(consent), shipping, payment],
+          defaultStatuses: { 'ssr2-consent': { gate: 'cleared' } },
+        })
         return () => h('div', handle.wizard.currentStep)
       },
     })
@@ -97,10 +106,11 @@ describe('gate() SSR enforcement', () => {
     ssrApp.provide(kAttaformWizardActiveStepResolver, deepLink('ssr2-payment'))
     await renderToString(ssrApp)
 
-    // Rehydrated consent → gate pre-cleared at construction → downstream open.
+    // Server-truth seed → gate latched cleared at construction → the deep
+    // link into a downstream step is honored on the first byte.
     expect(handle.wizard.currentStep).toBe('ssr2-payment')
     expect(handle.wizard.statuses['ssr2-payment'].locked).toBe(false)
-    // The seeded-valid gate reads 'cleared' in the very first server render.
+    // The seeded gate reads 'cleared' in the very first server render.
     expect(handle.wizard.statuses['ssr2-consent'].gate).toBe('cleared')
   })
 })

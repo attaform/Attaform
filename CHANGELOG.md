@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.27.4
 ### Changed
 
 - **A `gate()` step no longer pre-clears by inferring confirmation from its

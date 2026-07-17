@@ -140,7 +140,7 @@ for (const step of wizard.steps) {
 }
 ```
 
-To restore that expectation in a later session, seed the wizard with the roles you recorded: `useWizard({ defaultStatuses: { consent: { gate: 'cleared' } } })`. The read and the write share one vocabulary, so a session round-trips through the same `'cleared'` string it reported, and the seed is independent of whatever the member form's values rehydrate to. For a flow that must render open on the first server byte, resolve the seed synchronously in the page's `setup` and pass a plain object; the async factory form of `defaultStatuses` resolves after hydration, so a gate seeded through it opens once the client takes over.
+To restore that expectation in a later session, seed the wizard with the roles you recorded: `useWizard({ defaultStatuses: { consent: { gate: 'cleared' } } })`. The read and the write share one vocabulary, so a session round-trips through the same `'cleared'` string it reported, and the seed is independent of whatever the member form's values rehydrate to. For a flow that must render open on the first server byte, resolve the seed synchronously in the page's `setup` and pass a plain object; the async factory form of `defaultStatuses` resolves after hydration, so a gate seeded through it opens once the client takes over. For the whole-session round-trip that stores the step, values, and gates from one row, see [Resumable wizards](/docs/multistep/resumable-wizards).
 
 ## Where to next
 
@@ -148,3 +148,4 @@ To restore that expectation in a later session, seed the wizard with the roles y
 - [Patterns](/docs/multistep/patterns) for the hard-prerequisite pattern in context.
 - [`disabled`](/docs/cross-cutting-state/disabled) for the data-freeze channel the gate drives.
 - [`useWizard`](/docs/multistep/use-wizard) for navigation, `tryNext`, and `handleSubmit`.
+- [Resumable wizards](/docs/multistep/resumable-wizards) for persisting the gate role across sessions with no extra tables.

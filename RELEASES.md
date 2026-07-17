@@ -1,5 +1,18 @@
 # Releases
 
+## v0.27.4 — 2026-07-17
+
+## What's Changed
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/527
+* fix(use-wizard): gate seed-clears only from a consumer-asserted seed (#528) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/534
+* test(use-wizard): guard bare gate(form) as a first-class step (#530) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/535
+* feat(wizard): server-truth gate clearance via defaultStatuses + relock by @ozzyfromspace in https://github.com/attaform/Attaform/pull/536
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.27.3...v0.27.4
+
+---
+
 ## v0.27.3 — 2026-07-17
 
 ## What's Changed

@@ -668,12 +668,16 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    `persist` with the cleared state. Re-applies the
  *                    `defaultStatuses` gate seed, so a reboot returns to
  *                    the seeded initial clearance, not fully sealed.
- *  - `relock(key)` — re-seal a cleared gate by key, reversing a prior
- *                    clear (a server-side revoke, an optimistic rollback).
- *                    Seal-only: it re-locks downstream but never opens a
- *                    gate, so it cannot become the leading-signal foot-gun
- *                    `gate()` exists to prevent. No-op on a key that is not
- *                    a live gate.
+ *  - `relock(key, commit)` — re-seal a cleared gate, contingent on
+ *                    `commit`. Awaits `commit` (a server-side revoke) and
+ *                    re-seals only if it resolves clean, so the gate reflects
+ *                    server-confirmed truth the same way a clearing submit
+ *                    does; a thrown `commit` leaves it as-is. Seal-only (never
+ *                    opens a gate), so it cannot become the leading-signal
+ *                    foot-gun `gate()` exists to prevent. `commit` is required
+ *                    (pass `() => {}` for a deliberate client-only re-seal).
+ *                    Resolves whether the gate ended up sealed; never rejects.
+ *                    Resolves `false` (dev-warn) on a non-gate key.
  */
 export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArray<StepSlot>> = {
   readonly key: string
@@ -705,5 +709,5 @@ export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArra
     onError?: WizardOnError
   ) => (event?: Event) => Promise<void>
   readonly reset: () => void
-  readonly relock: (key: FormKey) => void
+  readonly relock: (key: FormKey, commit: () => void | Promise<void>) => Promise<boolean>
 }

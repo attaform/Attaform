@@ -618,7 +618,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
 
   // --- relock (re-seal a cleared gate) ----------------------------------
 
-  it('relock re-seals a cleared gate and re-freezes downstream', async () => {
+  it('relock re-seals a cleared gate once commit resolves, re-freezing downstream', async () => {
     const { wizard, terms, shipping } = mountWizard()
     await awaitSettle()
 
@@ -629,15 +629,45 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     expect(wizard.statuses.terms.gate).toBe('cleared')
     expect(wizard.statuses.shipping.locked).toBe(false)
 
-    // A server-side revoke: relock re-seals downstream through the same
-    // nav-lock / freeze channels.
-    wizard.relock('terms')
+    // A server-side revoke: relock awaits commit, then re-seals downstream
+    // through the same nav-lock / freeze channels.
+    const commit = vi.fn(async () => {})
+    const sealed = await wizard.relock('terms', commit)
     await awaitSettle()
+    expect(commit).toHaveBeenCalledTimes(1)
+    expect(sealed).toBe(true)
     expect(wizard.statuses.terms.gate).toBe('uncleared')
     expect(wizard.statuses.shipping.locked).toBe(true)
     shipping.setValue('addr', 'after-relock')
     await awaitSettle()
     expect(shipping.values.addr).toBe('init-addr') // re-frozen
+  })
+
+  it('relock leaves the gate cleared and resolves false when commit throws', async () => {
+    const warnings: string[] = []
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation((...args: unknown[]) =>
+        warnings.push(args.map((a) => String(a)).join(' '))
+      )
+    const { wizard, terms } = mountWizard()
+    await awaitSettle()
+    terms.setValue('accepted', true)
+    await terms.handleSubmit(() => {})()
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('cleared')
+
+    // The revoke fails: the gate reflects server truth and stays cleared.
+    const sealed = await wizard.relock('terms', async () => {
+      throw new Error('server rejected the revoke')
+    })
+    await awaitSettle()
+    expect(sealed).toBe(false)
+    expect(wizard.statuses.terms.gate).toBe('cleared')
+    expect(wizard.statuses.shipping.locked).toBe(false)
+    expect(warnings.some((w) => w.includes('relock') && w.includes('commit'))).toBe(true)
+
+    warnSpy.mockRestore()
   })
 
   it('relock never opens a gate; a fresh clean submit re-clears', async () => {
@@ -647,7 +677,9 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     terms.setValue('accepted', true)
     await terms.handleSubmit(() => {})()
     await awaitSettle()
-    wizard.relock('terms')
+    // A synchronous commit is accepted too (mirrors handleSubmit's onSubmit),
+    // and relock still resolves a boolean.
+    expect(await wizard.relock('terms', () => {})).toBe(true)
     await awaitSettle()
     expect(wizard.statuses.terms.gate).toBe('uncleared')
 
@@ -658,7 +690,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     expect(wizard.statuses.shipping.locked).toBe(false)
   })
 
-  it('relock on a non-gate or unknown key is a safe dev-warn no-op', async () => {
+  it('relock on a non-gate or unknown key is a safe dev-warn no-op that skips commit', async () => {
     const warnings: string[] = []
     const warnSpy = vi
       .spyOn(console, 'warn')
@@ -669,10 +701,12 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     await awaitSettle()
 
     // `shipping` is a plain downstream step, `nope` matches no step. Neither
-    // throws; both dev-warn and leave the gate state untouched.
-    wizard.relock('shipping')
-    wizard.relock('nope')
+    // runs commit (nothing to revoke); both resolve false with a dev-warn.
+    const commit = vi.fn(async () => {})
+    expect(await wizard.relock('shipping', commit)).toBe(false)
+    expect(await wizard.relock('nope', commit)).toBe(false)
     await awaitSettle()
+    expect(commit).not.toHaveBeenCalled()
     expect(wizard.statuses.terms.gate).toBe('uncleared')
     expect(warnings.some((w) => w.includes('relock') && w.includes('shipping'))).toBe(true)
     expect(warnings.some((w) => w.includes('relock') && w.includes('nope'))).toBe(true)

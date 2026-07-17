@@ -1753,22 +1753,40 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
   }
 
-  // Re-seal a cleared gate by key. Seal-only: `clearedGates.delete` re-locks
-  // downstream through `navLockSet` / `freezeSet`, but there is no imperative
-  // CLEAR counterpart — opening a gate stays the sole province of a clean
-  // member submit (or the construction seed), so `relock` can't be turned
-  // into the leading-signal foot-gun `gate()` exists to prevent. No-op
-  // (dev-warn) on a key that is not a live gate.
-  function relock(key: FormKey): void {
+  // Re-seal a cleared gate by key, contingent on `commit`. Like a gate's
+  // clearing submit, the state transition is the server's to confirm: await
+  // `commit` (your server-side revoke) and re-seal only if it resolves clean,
+  // so the gate reflects server-confirmed truth in BOTH directions. A thrown
+  // `commit` leaves the gate as it was (cleared) and resolves `false`.
+  // Seal-only: `clearedGates.delete` re-locks downstream through `navLockSet`
+  // / `freezeSet`, and there is no imperative CLEAR counterpart, so `relock`
+  // can't be turned into the leading-signal foot-gun `gate()` exists to
+  // prevent. `commit` is required (pass `() => {}` for a deliberate
+  // client-only re-seal). Never rejects, so a fire-and-forget relock can't
+  // surface an unhandledrejection. Resolves `false` (dev-warn), and skips
+  // `commit`, on a key that is not a live gate.
+  async function relock(key: FormKey, commit: () => void | Promise<void>): Promise<boolean> {
     if (!mightGate || !gatePositions.value.includes(key)) {
       if (__DEV__) {
         console.warn(
           `[attaform] useWizard.relock(${JSON.stringify(key)}): no gate at that key; nothing to re-lock.`
         )
       }
-      return
+      return false
+    }
+    try {
+      await commit()
+    } catch (err) {
+      if (__DEV__) {
+        console.warn(
+          `[attaform] useWizard.relock(${JSON.stringify(key)}): commit threw, so the gate was not re-sealed.`,
+          err
+        )
+      }
+      return false
     }
     clearedGates.delete(key)
+    return true
   }
 
   // Gate corrector. `commitActiveKey` refuses a nav-locked target at the

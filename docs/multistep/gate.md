@@ -70,14 +70,16 @@ Once a gate clears, its own form freezes too. Navigating back to a cleared conse
 
 ## Withdrawing a gate
 
-A cleared gate stays cleared until you say otherwise, and `wizard.relock(key)` is how you say it. It re-seals the gate and re-freezes everything downstream, reversing a clear at the data layer, the same place the freeze lives:
+A cleared gate stays cleared until you say otherwise, and `wizard.relock(key, commit)` is how you say it. Just as a gate clears when its member form's submit lands clean, a gate re-seals when its `commit` callback resolves clean. Pass the server-side revoke as `commit`; `relock` awaits it and re-seals the gate, re-freezing everything downstream, only if it succeeds:
 
 ```ts
-// The server revoked this session's consent, so re-seal the flow.
-wizard.relock('consent')
+// Revoke this session's consent on the server, then re-seal the flow.
+const sealed = await wizard.relock('consent', () => api.revokeConsent())
 ```
 
-`relock` only ever seals. There is deliberately no imperative counterpart that opens a gate: clearance stays the exclusive result of a clean submit or a `defaultStatuses` seed, so no stray signal can spring one open. Reach for it on a server-side revoke or an optimistic rollback. A call on a key that is not a live gate is a no-op.
+The re-seal is contingent, so in both directions the gate reflects server-confirmed truth. If `commit` throws, the revoke did not land, so the gate stays cleared and `relock` resolves `false`; if it resolves, the gate seals and `relock` resolves `true`. The callback is required, which is deliberate friction: a re-seal with no server round-trip would let the client's gate state drift from the server's. For a genuinely client-only re-seal, pass an empty `() => {}` so that choice is explicit.
+
+`relock` only ever seals. There is no imperative counterpart that opens a gate: clearance stays the exclusive result of a clean submit or a `defaultStatuses` seed, so no stray signal can spring one open. Reach for it on a server-side revoke or an optimistic rollback. A call on a key that is not a live gate resolves `false` with a dev-time warning.
 
 ## Conditional gates
 

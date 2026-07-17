@@ -23,12 +23,14 @@
   the plain / sync-factory forms; the async factory seeds after hydration).
   It is the write mirror of the `wizard.statuses[key].gate` read, sharing the
   same `'cleared'` vocabulary. (#529)
-- **`wizard.relock(key)` re-seals a cleared gate.** It re-locks and
-  re-freezes everything downstream, reversing a clear at the data layer, for
-  a server-side revoke or an optimistic rollback. It only ever seals: there
-  is no imperative counterpart that opens a gate, so clearance stays the
-  exclusive result of a submit or a seed. A call on a key that is not a live
-  gate is a no-op. (#529)
+- **`wizard.relock(key, commit)` re-seals a cleared gate, contingent on a
+  required `commit` callback.** It awaits `commit` (your server-side revoke)
+  and re-seals, re-freezing everything downstream, only if it resolves clean,
+  so the gate reflects server-confirmed truth the same way a clearing submit
+  does; a thrown `commit` leaves the gate cleared. It resolves whether the
+  gate ended up sealed and never rejects. It only ever seals: there is no
+  imperative counterpart that opens a gate, so clearance stays the exclusive
+  result of a submit or a seed. (#529)
 
 ## v0.27.3
 ### Added

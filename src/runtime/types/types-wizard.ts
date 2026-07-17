@@ -47,13 +47,24 @@ export type AnyForm = {
  *    `submissionAttempts > 0` is the "user has tried" signal.
  *  - `errorCount` — `form.meta.errorCount`. Count of active validation
  *    errors (zero when valid).
- *  - `locked`: `true` when this step sits after an uncleared `gate()`
- *    (see `gate`). Its member form is frozen (data writes no-op) and
- *    navigation to it is refused, so a stepper can render it as an
- *    unreachable gate. `false` when no gate seals it.
+ *  - `locked`: `true` when this step sits after an uncleared gate. Its
+ *    member form is frozen (data writes no-op) and navigation to it is
+ *    refused, so a stepper can render it as an unreachable step. `false`
+ *    when no gate seals it. Orthogonal to `gate`: the first uncleared
+ *    gate reads `locked: false` (you must reach it to clear it), while a
+ *    later gate sealed behind it reads both `gate: 'uncleared'` and
+ *    `locked: true`.
+ *  - `gate`: this step's own role as a hard prerequisite. `null` when the
+ *    step is not a `gate()`; `'uncleared'` while its member form is
+ *    unconfirmed (so it seals every later step); `'cleared'` once
+ *    confirmed by a clean member submit or a seeded-valid form gate at
+ *    mount. Reflects the live compiled shape, so a conditional `gate()`
+ *    that a function slot drops resolves to `null`.
  *
  * Noop forms generated for string slots surface as default-valid
- * (`{ valid: true, dirty: false, submitted: false, errorCount: 0, locked: false }`).
+ * (`{ valid: true, dirty: false, submitted: false, errorCount: 0, locked: false, gate: null }`),
+ * unless the string slot is a `gate('...')`, whose `gate` tracks the
+ * in-session acknowledgment.
  */
 export type FormStatus = {
   readonly valid: boolean
@@ -61,15 +72,16 @@ export type FormStatus = {
   readonly submitted: boolean
   readonly errorCount: number
   readonly locked: boolean
+  readonly gate: 'cleared' | 'uncleared' | null
 }
 
 /**
  * Seed shape accepted by `useWizard({ defaultStatuses })`. Mirrors
- * `FormStatus` minus `locked`: the lock flag is computed live from the
- * wizard's gates and overlaid on every status read, so a seed never
- * carries it (a seeded value would be ignored).
+ * `FormStatus` minus its two live-computed flags, `locked` and `gate`:
+ * both are derived from the wizard's gates and overlaid on every status
+ * read, so a seed never carries them (a seeded value would be ignored).
  */
-export type FormStatusSeed = Omit<FormStatus, 'locked'>
+export type FormStatusSeed = Omit<FormStatus, 'locked' | 'gate'>
 
 /**
  * Flat error shape returned per form by `wizard.allErrors[key]`. Each

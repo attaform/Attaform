@@ -62,6 +62,11 @@ describe('gate() SSR enforcement', () => {
     expect(handle.wizard.currentStep).toBe('ssr-consent')
     expect(handle.wizard.statuses['ssr-payment'].locked).toBe(true)
     expect(html).toContain('ssr-consent')
+
+    // The gate role serializes on the server, so a consumer can persist it:
+    // the consent reads 'uncleared', the plain payment step reads null.
+    expect(handle.wizard.statuses['ssr-consent'].gate).toBe('uncleared')
+    expect(handle.wizard.statuses['ssr-payment'].gate).toBe(null)
   })
 
   it('lets a seeded-valid gate honor a server deep link into a downstream step', async () => {
@@ -95,5 +100,7 @@ describe('gate() SSR enforcement', () => {
     // Rehydrated consent → gate pre-cleared at construction → downstream open.
     expect(handle.wizard.currentStep).toBe('ssr2-payment')
     expect(handle.wizard.statuses['ssr2-payment'].locked).toBe(false)
+    // The seeded-valid gate reads 'cleared' in the very first server render.
+    expect(handle.wizard.statuses['ssr2-consent'].gate).toBe('cleared')
   })
 })

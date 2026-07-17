@@ -1099,7 +1099,17 @@ export default [
     // lockstep like the branch above -- a legitimate feature addition, not a
     // tree-shake leak. zod-v3.mjs stays the tightest { useForm } tripwire, so
     // it bound first. Measured at 49.03 KB.
-    limit: '50 KB',
+    //
+    // Raised 50 -> 51 KB tracking the #528 gate seed-clear fix: create-form-store
+    // gains the lazy `defaultsValid()` seed verdict (a full parse of the default
+    // snapshot frozen at construction, refreshed on reset), so a `gate()`
+    // pre-clears only from a consumer-asserted valid seed and never from a live
+    // edit or the schema's own structural fills. The method itself lives in the
+    // always-on useForm closure (only its parse is deferred to gate use), so this
+    // tripwire moves in lockstep -- a legitimate correctness-fix addition, not a
+    // tree-shake leak. zod-v3.mjs stays the tightest { useForm } tripwire.
+    // Measured at 50.05 KB.
+    limit: '51 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

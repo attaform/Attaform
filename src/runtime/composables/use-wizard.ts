@@ -745,10 +745,16 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     )
   }
 
-  function isGateFormValid(key: FormKey): boolean {
-    const form = formsRecord.value[key] ?? formsAccumulator.get(key)
-    if (form === undefined) return false
-    return asStatusSource(form).meta?.valid ?? false
+  // Did the gate form's own SEED (its untouched defaults) validate clean?
+  // Reads the store's latched `defaultsValid`, NOT the live `meta.valid`:
+  // the live verdict cannot tell a rehydrated-valid seed apart from a value
+  // the user just edited to valid, so keying the seed-clear on it let a
+  // gate whose first validation settled after an edit clear off that edit
+  // (#528). `defaultsValid` freezes the instant a write moves the form off
+  // its seed, so it answers "would this gate render pre-cleared from its
+  // seed alone."
+  function areGateDefaultsValid(key: FormKey): boolean {
+    return registry.forms.get(key)?.defaultsValid() ?? false
   }
 
   // Seed a form gate as pre-cleared when its member form rehydrates
@@ -756,14 +762,14 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // open from t=0. Affordance gates (noop forms, trivially valid) are
   // skipped — their clearance is an ephemeral acknowledgment, so they
   // re-prompt each session. Called only from `reconcileGates` (a watch
-  // callback / init pass), so the validity read never sits in a reactive
-  // scope and a live value edit can never trigger it.
+  // callback / init pass), so the read never sits in a reactive scope and a
+  // live value edit can never trigger it.
   function sampleSeededGate(key: FormKey): void {
     if (seededSampled.has(key)) return
     if (noopForms.has(key)) return
     if (!isGateVerdictSettled(key)) return
     seededSampled.add(key)
-    if (isGateFormValid(key)) clearedGates.add(key)
+    if (areGateDefaultsValid(key)) clearedGates.add(key)
   }
 
   // Subscribe each gate form to its clean-submit signal (the

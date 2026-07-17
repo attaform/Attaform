@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.27.2
 ### Added
 
 - **`useForm({ disabled })` freezes a reactive form so its data cannot be

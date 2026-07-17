@@ -1,5 +1,18 @@
 # Releases
 
+## v0.27.2 — 2026-07-16
+
+## What's Changed
+* fix(v-register): numeric component host clears to blank (#518) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/519
+* chore(exports): expose ./package.json for tooling resolution by @ozzyfromspace in https://github.com/attaform/Attaform/pull/520
+* feat: add disabled (form) and gate() (wizard) for hard-prerequisite gating by @ozzyfromspace in https://github.com/attaform/Attaform/pull/523
+* ci(release-pr): survive a transient GitHub 5xx in the branch probe by @ozzyfromspace in https://github.com/attaform/Attaform/pull/524
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.27.1...v0.27.2
+
+---
+
 ## v0.27.1 — 2026-07-08
 
 ## What's Changed

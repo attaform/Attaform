@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.27.3
 ### Added
 
 - **`wizard.statuses[key].gate` exposes each step's gate role as a readable

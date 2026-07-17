@@ -472,32 +472,59 @@ jobs:
           # binding instead, which keeps the credential out of the
           # working tree (zizmor `artipacked` rule).
           #
-          # `gh api -i` includes the HTTP status line in stdout. Parse
-          # the status explicitly rather than treating any non-empty
-          # output as "branch exists" — on a 404 the response body is
-          # an error JSON (not an empty string), so an `[ -z "$body" ]`
-          # check would misclassify "absent" as "orphan".
-          set +e
-          RAW=$(gh api -i "repos/$GH_REPOSITORY/branches/$BRANCH" 2>/dev/null)
-          set -e
-          HTTP_STATUS=$(echo "$RAW" | head -n1 | awk '{print $2}')
+          # `gh api -i` prints the HTTP status line + headers + body on
+          # stdout. Classify on the parsed status code, never on "is the
+          # output non-empty": a 404 body is an error JSON (not an empty
+          # string), so an `[ -z "$body" ]` check would misread "absent"
+          # as "orphan".
+          #
+          # The probe is retried on a transient GitHub failure (5xx, 429,
+          # or an empty body from a dropped connection). A release
+          # dispatch has to survive an API blip rather than hard-fail on
+          # it; only a sustained outage exits, and with an actionable
+          # message. The status line is read with a here-string, not
+          # `echo "$RAW" | head`, so a large 5xx error page cannot trip
+          # SIGPIPE under `pipefail` and mask the real status behind a
+          # "Broken pipe".
+          HTTP_STATUS=""
+          RAW=""
+          ATTEMPTS=5
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            set +e
+            RAW=$(gh api -i "repos/$GH_REPOSITORY/branches/$BRANCH" 2>/dev/null)
+            set -e
+            read -r _ HTTP_STATUS _ <<< "$RAW" || true
 
-          case "${HTTP_STATUS:-}" in
-            200)
-              # Branch exists. Continue to PR / orphan classification.
-              BRANCH_BODY=$(echo "$RAW" | awk 'body{print} /^\r?$/{body=1}')
-              ;;
-            404)
-              echo "mode=fresh" >> "$GITHUB_OUTPUT"
-              echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; creating the branch + signed bump commit via createCommitOnBranch and opening the PR."
-              exit 0
-              ;;
-            *)
-              echo "::error::Unexpected HTTP status checking branch existence: ${HTTP_STATUS:-(no response)}"
-              echo "$RAW"
-              exit 1
-              ;;
-          esac
+            case "${HTTP_STATUS:-}" in
+              200)
+                # Branch exists. Continue to PR / orphan classification.
+                # awk consumes all of "$RAW", so there is no early-close
+                # SIGPIPE the way `head` would create.
+                BRANCH_BODY=$(printf '%s\n' "$RAW" | awk 'body{print} /^\r?$/{body=1}')
+                break
+                ;;
+              404)
+                echo "mode=fresh" >> "$GITHUB_OUTPUT"
+                echo "::notice title=Fresh dispatch::$BRANCH does not exist on origin; creating the branch + signed bump commit via createCommitOnBranch and opening the PR."
+                exit 0
+                ;;
+              429 | 5?? | "")
+                if [ "$attempt" -lt "$ATTEMPTS" ]; then
+                  BACKOFF=$((attempt * 5))
+                  echo "::warning title=Retrying branch probe::Attempt $attempt/$ATTEMPTS got status '${HTTP_STATUS:-(no response)}' from the branches API; retrying in ${BACKOFF}s."
+                  sleep "$BACKOFF"
+                  continue
+                fi
+                echo "::error::Branch-existence probe still failing after $ATTEMPTS attempts (last status: ${HTTP_STATUS:-(no response)}). GitHub's API is likely degraded; re-dispatch once it recovers."
+                exit 1
+                ;;
+              *)
+                echo "::error::Unexpected HTTP status checking branch existence: ${HTTP_STATUS:-(no response)}"
+                printf '%s\n' "$RAW"
+                exit 1
+                ;;
+            esac
+          done
 
           PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$PR_NUMBER" ]; then

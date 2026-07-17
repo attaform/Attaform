@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Concept
   - label: Clears on
-    value: a member form's clean submit
+    value: a clean submit, or a defaultStatuses seed
   - label: Downstream
     value: frozen + unreachable
   - label: Composes
@@ -62,11 +62,22 @@ A **form gate** (`gate(consent)`) clears when its form submits clean. Wire the s
 
 An **affordance gate** (`gate('terms')`, a bare string) clears when the user acknowledges it by advancing. Because that acknowledgment is ephemeral, an affordance gate re-prompts every session, which is what you want for a "you have read this" screen.
 
-A form gate also recognizes a **seeded-valid** member form. If `consent` rehydrates already valid, say a returning customer whose acceptance you loaded into `defaultValues`, the gate is treated as pre-cleared at mount, so the flow renders open from the first frame and a deep link into a downstream step is honored. Seeding a gate's form valid is an explicit assertion that the prerequisite is already satisfied, so reach for a base-schema value (a `z.literal(true)`) rather than a value only a refinement can judge.
+A form gate can also start **cleared** when the server already recorded this prerequisite for the session. Seed it through the wizard rather than the form: `useWizard({ defaultStatuses: { consent: { gate: 'cleared' } } })` latches the gate cleared at mount, so the flow renders open from the first frame and a deep link into a downstream step is honored. The seed is a deliberate assertion, decoupled from whatever the member form's values happen to be. That decoupling is the point: a prerequisite is confirmed or it is not, and "the values validate" is a separate fact that must not stand in for confirmation.
 
 ## Freeze after clear
 
-Once a gate clears, its own form freezes too. Navigating back to a cleared consent step is a read-only review: the checkbox is there, but it cannot be unchecked, so there is no withdrawal path and no re-lock dance to reason about. `wizard.reset()` reboots the flow and re-gates from scratch.
+Once a gate clears, its own form freezes too. Navigating back to a cleared consent step is a read-only review: the checkbox is there, but the user cannot uncheck it, so there is no in-form withdrawal path. `wizard.reset()` reboots the flow and re-gates from scratch, re-applying any `defaultStatuses` seed.
+
+## Withdrawing a gate
+
+A cleared gate stays cleared until you say otherwise, and `wizard.relock(key)` is how you say it. It re-seals the gate and re-freezes everything downstream, reversing a clear at the data layer, the same place the freeze lives:
+
+```ts
+// The server revoked this session's consent, so re-seal the flow.
+wizard.relock('consent')
+```
+
+`relock` only ever seals. There is deliberately no imperative counterpart that opens a gate: clearance stays the exclusive result of a clean submit or a `defaultStatuses` seed, so no stray signal can spring one open. Reach for it on a server-side revoke or an optimistic rollback. A call on a key that is not a live gate is a no-op.
 
 ## Conditional gates
 
@@ -113,7 +124,7 @@ Alongside `locked`, each step's status carries `wizard.statuses[key].gate`, the 
 
 - `null` when the step is not a `gate()`.
 - `'uncleared'` while its member form is unconfirmed, so it seals every later step.
-- `'cleared'` once confirmed by a clean member submit, or by a seeded-valid form gate at mount.
+- `'cleared'` once confirmed by a clean member submit, or seeded cleared via `defaultStatuses` at mount.
 
 `gate` and `locked` are independent axes. `gate` says whether this step is a prerequisite and whether it is met; `locked` says whether the step is sealed behind an earlier uncleared gate. The first uncleared gate reads `gate: 'uncleared'` with `locked: false` (you have to reach it to clear it), while a later gate stacked behind it reads `gate: 'uncleared'` with `locked: true`.
 
@@ -127,7 +138,7 @@ for (const step of wizard.steps) {
 }
 ```
 
-To restore that expectation in a later session, seed each satisfied gate's member form with the confirmed values as its `defaultValues`. A form gate whose member form rehydrates already valid is pre-cleared at mount, so the flow renders open from the first byte on the server. The restore path is the member form's `defaultValues`; `gate` itself is read-only.
+To restore that expectation in a later session, seed the wizard with the roles you recorded: `useWizard({ defaultStatuses: { consent: { gate: 'cleared' } } })`. The read and the write share one vocabulary, so a session round-trips through the same `'cleared'` string it reported, and the seed is independent of whatever the member form's values rehydrate to. For a flow that must render open on the first server byte, resolve the seed synchronously in the page's `setup` and pass a plain object; the async factory form of `defaultStatuses` resolves after hydration, so a gate seeded through it opens once the client takes over.
 
 ## Where to next
 

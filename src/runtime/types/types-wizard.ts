@@ -57,9 +57,9 @@ export type AnyForm = {
  *  - `gate`: this step's own role as a hard prerequisite. `null` when the
  *    step is not a `gate()`; `'uncleared'` while its member form is
  *    unconfirmed (so it seals every later step); `'cleared'` once
- *    confirmed by a clean member submit or a seeded-valid form gate at
- *    mount. Reflects the live compiled shape, so a conditional `gate()`
- *    that a function slot drops resolves to `null`.
+ *    confirmed by a clean member submit or seeded cleared via
+ *    `defaultStatuses`. Reflects the live compiled shape, so a conditional
+ *    `gate()` that a function slot drops resolves to `null`.
  *
  * Noop forms generated for string slots surface as default-valid
  * (`{ valid: true, dirty: false, submitted: false, errorCount: 0, locked: false, gate: null }`),
@@ -76,12 +76,27 @@ export type FormStatus = {
 }
 
 /**
- * Seed shape accepted by `useWizard({ defaultStatuses })`. Mirrors
- * `FormStatus` minus its two live-computed flags, `locked` and `gate`:
- * both are derived from the wizard's gates and overlaid on every status
- * read, so a seed never carries them (a seeded value would be ignored).
+ * Seed shape accepted by `useWizard({ defaultStatuses })`. Every field is
+ * optional; an omitted meta field falls back to the pending sentinel on
+ * read.
+ *
+ * `locked` is never accepted: it is purely live-derived (sealed behind an
+ * earlier uncleared gate) and overlaid on every status read, so a seeded
+ * value would be ignored.
+ *
+ * `gate` is a WRITE-only seed, not a status field echoed back on read. A
+ * seed of `'cleared'` latches the gate's cleared state once at construction
+ * (an SSR restore of a confirmed prerequisite); the live `gate` overlay
+ * then owns the read. `'uncleared'` is the default and seeds nothing. Only
+ * a step that compiles to a `gate()` honors it — other keys ignore it.
  */
-export type FormStatusSeed = Omit<FormStatus, 'locked' | 'gate'>
+export type FormStatusSeed = {
+  readonly valid?: boolean
+  readonly dirty?: boolean
+  readonly submitted?: boolean
+  readonly errorCount?: number
+  readonly gate?: 'cleared' | 'uncleared'
+}
 
 /**
  * Flat error shape returned per form by `wizard.allErrors[key]`. Each
@@ -369,12 +384,20 @@ export type WizardOptions = {
    * Status resolution priority per form:
    *   1. `store.defaultsResolved === true` → derive from `form.meta`
    *   2. else noop form → built-in always-valid status
-   *   3. else seed value for this key → frozen seed
+   *   3. else seed value for this key → seed over the pending sentinel
    *   4. else → pending sentinel
    *
-   * The `locked` flag is never seeded: it is computed live from the
-   * wizard's gates and overlaid on every status read, so the seed shape
-   * is `FormStatus` minus `locked`.
+   * `locked` is never seeded: it is computed live from the wizard's gates
+   * and overlaid on every status read. `gate: 'cleared'` IS honored, but as
+   * a one-shot seed of the gate's cleared latch at construction (an SSR
+   * restore of a confirmed prerequisite), not as a status field echoed on
+   * read — the live `gate` overlay owns the read. Only a step that compiles
+   * to a `gate()` honors it. See `FormStatusSeed`.
+   *
+   * SSR note: the async factory resolves after hydration (client-only), so
+   * a gate seeded through it clears post-hydration. For a gate that must
+   * render open on the first server byte, use the plain or sync-factory
+   * form (resolve server truth in the page's `setup` await).
    *
    * Unknown keys in the seed object dev-warn so a stale resume payload
    * surfaces at construction.
@@ -642,7 +665,15 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *  - `reset()`     — zeros wizard lifecycle (`submissionAttempts`,
  *                    `visited`), resets every form, returns
  *                    `currentStep` to `steps[0].key`, and invokes
- *                    `persist` with the cleared state.
+ *                    `persist` with the cleared state. Re-applies the
+ *                    `defaultStatuses` gate seed, so a reboot returns to
+ *                    the seeded initial clearance, not fully sealed.
+ *  - `relock(key)` — re-seal a cleared gate by key, reversing a prior
+ *                    clear (a server-side revoke, an optimistic rollback).
+ *                    Seal-only: it re-locks downstream but never opens a
+ *                    gate, so it cannot become the leading-signal foot-gun
+ *                    `gate()` exists to prevent. No-op on a key that is not
+ *                    a live gate.
  */
 export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArray<StepSlot>> = {
   readonly key: string
@@ -674,4 +705,5 @@ export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArra
     onError?: WizardOnError
   ) => (event?: Event) => Promise<void>
   readonly reset: () => void
+  readonly relock: (key: FormKey) => void
 }

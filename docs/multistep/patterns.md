@@ -158,7 +158,7 @@ const consent = useForm({
 const wizard = useWizard({ steps: [gate(consent), shipping, payment] })
 ```
 
-A gate clears on the wrapped form's clean submit, never the moment a value goes valid, so checking the consent box does not open the rail: confirming it does. Until then every downstream step is frozen through the [`disabled`](/docs/cross-cutting-state/disabled) data freeze and unreachable, so a deep link, the browser back button, or a stray `goTo` all redirect to the gate. The guarantee lives in the data, not in a navigation guard, so nothing routes around it. See [`gate`](/docs/multistep/gate) for the full model: conditional gates, affordance gates, and the seeded-valid reload path.
+A gate clears on the wrapped form's clean submit, never the moment a value goes valid, so checking the consent box does not open the rail: confirming it does. Until then every downstream step is frozen through the [`disabled`](/docs/cross-cutting-state/disabled) data freeze and unreachable, so a deep link, the browser back button, or a stray `goTo` all redirect to the gate. The guarantee lives in the data, not in a navigation guard, so nothing routes around it. See [`gate`](/docs/multistep/gate) for the full model: conditional gates, affordance gates, and restoring a confirmed prerequisite through `defaultStatuses`.
 
 ## Persisting the active step
 

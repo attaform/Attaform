@@ -17,9 +17,9 @@ import type { AnyForm, StepSlot, WizardRestoreFn } from '../../src/runtime/types
  * `gate(step)`: the safe-by-construction hard prerequisite.
  *
  * A gate seals every step positioned AFTER it until the gate CLEARS, and
- * clearance is submission-triggered: a member form's clean submit
- * (confirmation) or a seeded-valid form gate at mount, never a live value
- * edit (intent). That split is the whole point: the retired `locked(ctx)`
+ * clearance is established by confirmation: a member form's clean submit,
+ * or an explicit `defaultStatuses` gate seed, never a live value edit
+ * (intent). That split is the whole point: the retired `locked(ctx)`
  * policy let a consumer key the gate on a leading `values` signal, so a
  * checked-but-unsubmitted consent opened the rail and a downstream step
  * could collect data before the prerequisite was confirmed. `gate()`
@@ -65,6 +65,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       termsSchema?: (zz: typeof zV4) => any
       termsDefaults?: unknown
+      defaultStatuses?: Record<string, { gate?: 'cleared' | 'uncleared' }>
     } = {}
   ) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,6 +96,9 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
           steps: buildSteps({ terms, shipping, payment }),
           restore: extra.restore ?? false,
           persist: false,
+          ...(extra.defaultStatuses !== undefined
+            ? { defaultStatuses: extra.defaultStatuses }
+            : {}),
         })
         return () => h('div')
       },
@@ -240,28 +244,30 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     expect(wizard.currentStep).toBe('shipping')
   })
 
-  // --- seeded-valid form gate (skip-if-seeded) --------------------------
+  // --- defaultStatuses gate seed (server-truth restore) -----------------
 
-  it('treats a seeded-valid form gate as pre-cleared at mount', async () => {
+  it('treats a defaultStatuses-seeded gate as pre-cleared at mount', async () => {
+    // The member form's defaults stay INVALID (`accepted: false`); the seed
+    // clears the gate independent of value validity, so downstream is open
+    // from t=0 and the gate form is frozen (freeze-after-clear).
     const { wizard, terms } = mountWizard(
       ({ terms, shipping, payment }) => [gate(terms), shipping, payment],
-      { termsDefaults: { accepted: true } }
+      { defaultStatuses: { terms: { gate: 'cleared' } } }
     )
     await awaitSettle()
 
-    // Rehydrated consent: the gate is already cleared, so downstream is
-    // open from t=0, and the gate form is frozen (freeze-after-clear).
+    expect(wizard.statuses.terms.gate).toBe('cleared')
     expect(wizard.statuses.shipping.locked).toBe(false)
     expect(wizard.statuses.payment.locked).toBe(false)
-    terms.setValue('accepted', false)
+    terms.setValue('accepted', true)
     await awaitSettle()
-    expect(terms.values.accepted).toBe(true)
+    expect(terms.values.accepted).toBe(false) // frozen after clear
   })
 
-  it('lets a seeded-valid gate accept a deep link into a downstream step', async () => {
+  it('lets a defaultStatuses-seeded gate accept a deep link into a downstream step', async () => {
     const { wizard } = mountWizard(
       ({ terms, shipping, payment }) => [gate(terms), shipping, payment],
-      { termsDefaults: { accepted: true }, restore: () => ({ step: 'payment' }) }
+      { defaultStatuses: { terms: { gate: 'cleared' } }, restore: () => ({ step: 'payment' }) }
     )
     await awaitSettle()
     expect(wizard.currentStep).toBe('payment')
@@ -269,18 +275,34 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
 
   // --- affordance gate (bare string) ------------------------------------
 
-  it('re-prompts an affordance gate each session (never seeded-cleared)', async () => {
+  it('re-prompts an affordance gate each session by default', async () => {
     const { wizard } = mountWizard(({ shipping, payment }) => [gate('welcome'), shipping, payment])
     await awaitSettle()
 
-    // An affordance gate is trivially valid but NOT pre-cleared: acknowledging
-    // it is the clearance, so it seals downstream until the user advances.
+    // An affordance gate is not auto-cleared: acknowledging it is the
+    // clearance, so it seals downstream until the user advances. (Seed it via
+    // defaultStatuses to pre-clear a returning session — see below.)
     expect(wizard.currentStep).toBe('welcome')
     expect(wizard.statuses.shipping.locked).toBe(true)
 
     await wizard.next()
     await awaitSettle()
     expect(wizard.currentStep).toBe('shipping')
+    expect(wizard.statuses.shipping.locked).toBe(false)
+  })
+
+  it('seed-clears an affordance gate via defaultStatuses (honored uniformly)', async () => {
+    // An explicit seed is not accidental, so it clears any gate by key,
+    // affordance gates included — the old skip-noop carve-out is gone with
+    // the inference it existed to tame.
+    const { wizard } = mountWizard(
+      ({ shipping, payment }) => [gate('welcome'), shipping, payment],
+      {
+        defaultStatuses: { welcome: { gate: 'cleared' } },
+      }
+    )
+    await awaitSettle()
+    expect(wizard.statuses.welcome.gate).toBe('cleared')
     expect(wizard.statuses.shipping.locked).toBe(false)
   })
 
@@ -581,16 +603,80 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     expect(wizard.statuses.terms.locked).toBe(false)
   })
 
-  it('reads a seeded-valid form gate as cleared from mount', async () => {
+  it('reads a defaultStatuses-seeded form gate as cleared from mount', async () => {
     const { wizard } = mountWizard(
       ({ terms, shipping, payment }) => [gate(terms), shipping, payment],
-      { termsDefaults: { accepted: true } }
+      { defaultStatuses: { terms: { gate: 'cleared' } } }
     )
     await awaitSettle()
 
-    // Rehydrated consent is pre-cleared, so its gate role reads 'cleared'
-    // synchronously (the timing the SSR landing relies on).
+    // A seeded gate reads 'cleared' synchronously at construction (the timing
+    // the SSR landing relies on), independent of the member form's validity.
     expect(wizard.statuses.terms.gate).toBe('cleared')
     expect(wizard.statuses.shipping.gate).toBe(null)
+  })
+
+  // --- relock (re-seal a cleared gate) ----------------------------------
+
+  it('relock re-seals a cleared gate and re-freezes downstream', async () => {
+    const { wizard, terms, shipping } = mountWizard()
+    await awaitSettle()
+
+    // Clear the gate the honest way: accept + clean submit.
+    terms.setValue('accepted', true)
+    await terms.handleSubmit(() => {})()
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('cleared')
+    expect(wizard.statuses.shipping.locked).toBe(false)
+
+    // A server-side revoke: relock re-seals downstream through the same
+    // nav-lock / freeze channels.
+    wizard.relock('terms')
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+    expect(wizard.statuses.shipping.locked).toBe(true)
+    shipping.setValue('addr', 'after-relock')
+    await awaitSettle()
+    expect(shipping.values.addr).toBe('init-addr') // re-frozen
+  })
+
+  it('relock never opens a gate; a fresh clean submit re-clears', async () => {
+    const { wizard, terms } = mountWizard()
+    await awaitSettle()
+
+    terms.setValue('accepted', true)
+    await terms.handleSubmit(() => {})()
+    await awaitSettle()
+    wizard.relock('terms')
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+
+    // Re-confirm: a fresh clean submit clears it again.
+    await terms.handleSubmit(() => {})()
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('cleared')
+    expect(wizard.statuses.shipping.locked).toBe(false)
+  })
+
+  it('relock on a non-gate or unknown key is a safe dev-warn no-op', async () => {
+    const warnings: string[] = []
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation((...args: unknown[]) =>
+        warnings.push(args.map((a) => String(a)).join(' '))
+      )
+    const { wizard } = mountWizard()
+    await awaitSettle()
+
+    // `shipping` is a plain downstream step, `nope` matches no step. Neither
+    // throws; both dev-warn and leave the gate state untouched.
+    wizard.relock('shipping')
+    wizard.relock('nope')
+    await awaitSettle()
+    expect(wizard.statuses.terms.gate).toBe('uncleared')
+    expect(warnings.some((w) => w.includes('relock') && w.includes('shipping'))).toBe(true)
+    expect(warnings.some((w) => w.includes('relock') && w.includes('nope'))).toBe(true)
+
+    warnSpy.mockRestore()
   })
 })

@@ -423,29 +423,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly firstValidationDone: Ref<boolean>
   /**
-   * Did the form's own SEED (its untouched default values) validate
-   * clean, AND did the consumer assert that seed via `defaultValues`?
-   * Parses the default snapshot frozen at construction (replaced only by
-   * `reset()`), NOT the live values, so a session write can never change
-   * the verdict. Distinct from `meta.valid`, which tracks the LIVE values
-   * and so cannot tell a rehydrated-valid seed apart from a checkbox the
-   * user just ticked.
-   *
-   * Consumed by the wizard's `gate()` seeding: a gate pre-clears ONLY
-   * from a consumer-asserted valid seed (SSR restore of a persisted
-   * consent), never from an in-session edit and never from the schema's
-   * own structural fills. Reading the live verdict instead let a gate
-   * whose first validation settled AFTER an edit clear off that edit,
-   * reopening the leading-signal hole `gate()` exists to close (#528).
-   *
-   * Lazy: evaluated (and cached) on first call, so a form never used as a
-   * gate pays nothing and no validation fires at mount. An async-only
-   * schema can't be read synchronously here and fails closed (a gate on
-   * one never seed-clears). Internal: not on the public `useForm()`
-   * surface.
-   */
-  defaultsValid(): boolean
-  /**
    * `true` when the sub-schema rooted at `path` (or any of its
    * descendants) declares async work — composes
    * `schema.getSchemasAtPath(path)` with each candidate's
@@ -1614,40 +1591,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // returns to 0 from a positive value (i.e. the construction-time
   // queued validation completes).
   const firstValidationDone = ref(!strict || schema.needsAsyncValidation?.() !== true)
-  // Seed-validity, lazily evaluated (see `FormStore.defaultsValid`). Only a
-  // form actually used as a `gate()` ever reads this, so plain forms pay
-  // nothing and NO validation fires at mount (the perf invariant async-leaf
-  // schemas rely on). `seedSnapshot` is the untouched default data, frozen
-  // at construction and only replaced by `reset()`, so the verdict reflects
-  // the SEED regardless of any live value write (#528). `seedAuthored`
-  // gates on a CONSUMER-asserted seed (the SSR-restore path always passes
-  // `defaultValues`): without it `z.literal(true)` fills `accepted: true` as
-  // its sole-inhabitant structural default, so a fresh consent with no
-  // `defaultValues` would read seed-valid and auto-clear.
-  let seedSnapshot: unknown = initialData
-  let seedAuthored = defaultValues !== undefined
-  let seedValidCache: boolean | undefined
-  function defaultsValid(): boolean {
-    if (seedValidCache !== undefined) return seedValidCache
-    let ok = false
-    if (seedAuthored) {
-      try {
-        // Full parse of the frozen seed, NOT `schemaResponse`: the slim
-        // `getDefaultValues` pass ignores refinements and literal equality
-        // (so `{ accepted: false }` vs `z.literal(true)` would read valid).
-        const verdict = schema.validateAtPath(seedSnapshot, undefined, { sync: true })
-        // An async-only verdict can't be read synchronously; a gate on such
-        // a schema fails closed (never seed-clears). Swallow the discarded
-        // promise so it can't surface as an unhandledrejection.
-        if (verdict instanceof Promise) verdict.catch(() => {})
-        else ok = verdict.success
-      } catch {
-        // Adapters are contractually no-throw; a misbehaving one fails closed.
-      }
-    }
-    seedValidCache = ok
-    return ok
-  }
   // `watch(source, cb)` only fires when the source CHANGES (no immediate
   // first-invocation), so `prev` is always the pre-transition value, typed
   // as `number`, never `undefined`.
@@ -3779,14 +3722,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         applySchemaErrorsForSubtree([], syncResult.errors)
       }
     }
-    // Re-arm the lazy seed-validity verdict against the fresh defaults: new
-    // frozen snapshot, refreshed consumer-authored signal, cache dropped so
-    // the next `defaultsValid()` re-parses. `resetSource` is the reset arg
-    // or, absent one, the construction `defaultValues`, carrying the same
-    // consumer-authored signal construction used.
-    seedSnapshot = structuralSnapshot(next)
-    seedAuthored = resetSource !== undefined
-    seedValidCache = undefined
     // Restore the `firstValidationDone` gate to its construction-time
     // value (line ~1233). Async-validating schemas init this flag to
     // `false`, gating container `.valid` until the construction-time
@@ -4154,7 +4089,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submissionGeneration,
     activeValidations,
     firstValidationDone,
-    defaultsValid,
     pathHasAsyncValidation,
     pathHasAsyncValidationByKey,
     fieldValidationCounts,

@@ -128,7 +128,8 @@ See [Step slots](/docs/multistep/step-slots) for the full slot reference, includ
 | `goTo`               | Jump to a specific step by key. Dev-warn on unknown keys.                                                                                                                                                                   |
 | `tryNext`            | Validate the active step, advance iff valid; resolves to whether the pin moved. The inline-bindable gated Next. See [handleSubmit](/docs/multistep/handle-submit#gating-advance-per-step).                                  |
 | `handleSubmit`       | Whole-wizard submission handler; never advances. See [handleSubmit](/docs/multistep/handle-submit).                                                                                                                         |
-| `reset`              | Zeros wizard lifecycle, resets every form, returns to `steps[0]`, clears the persisted step, flips `done` back.                                                                                                             |
+| `reset`              | Zeros wizard lifecycle, resets every form, returns to `steps[0]`, clears the persisted step, flips `done` back, and re-applies the `defaultStatuses` gate seed.                                                             |
+| `relock`             | Re-seal a cleared gate by key: re-locks downstream, never opens a gate. For a server-side revoke or rollback. See [gate](/docs/multistep/gate#withdrawing-a-gate).                                                          |
 
 ## Submission, in one place
 

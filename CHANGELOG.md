@@ -2,7 +2,21 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Added
+
+- **`wizard.statuses[key].gate` exposes each step's gate role as a readable
+  signal, so a consumer (notably a server persisting flow state) can track
+  which prerequisites a session has met.** A `gate()` step reads
+  `'uncleared'` while its member form is unconfirmed and `'cleared'` once
+  confirmed by a clean member submit or a seeded-valid form gate at mount;
+  every step that is not a gate reads `null`. It reflects the wizard's live
+  compiled shape, so a conditional gate that a function slot drops reverts
+  to `null`. It is independent of `locked`, which reports whether a step is
+  sealed behind an earlier uncleared gate: the first uncleared gate reads
+  `gate: 'uncleared'` with `locked: false`, while a later gate stacked
+  behind it reads both `gate: 'uncleared'` and `locked: true`. Restore a met
+  prerequisite in a later session by seeding its member form's
+  `defaultValues` valid; `gate` is read-only. (#532)
 
 ## v0.27.2
 ### Added

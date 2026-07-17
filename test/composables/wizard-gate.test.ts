@@ -410,6 +410,62 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
     }
   })
 
+  it('treats a bare gate(form) top-level step as first-class, identical to a thunk-wrapped gate (#530)', async () => {
+    // A bare `gate(consent)` dropped straight into `steps` must land ON the
+    // gate (index 0) and seal downstream, exactly like `() => gate(consent)`,
+    // never initialize past it. The consent carries NO defaultValues (the
+    // reported shape): `z.literal(true)` fills `accepted: true` as its sole
+    // structural default, so a seed-clear keyed on live validity would wrongly
+    // open the gate at mount. Both slot forms must stay uncleared.
+    const builders: Array<(consent: AnyForm, data: AnyForm) => StepSlot[]> = [
+      (consent, data) => [gate(consent), () => data],
+      (consent, data) => [() => gate(consent), () => data],
+    ]
+    for (const buildSteps of builders) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handle: any = {}
+      const App = defineComponent({
+        setup() {
+          const consent = useForm({
+            key: 'consent',
+            schema: z.object({ accepted: z.literal(true) }),
+          })
+          const data = useForm({
+            key: 'data',
+            schema: z.object({ name: z.string().min(1) }),
+            defaultValues: { name: '' },
+          })
+          const wizard = useWizard({
+            steps: buildSteps(consent, data),
+            restore: false,
+            persist: false,
+          })
+          // The #530 claim is about construction-time landing, so snapshot
+          // the pin the instant construction returns.
+          handle.constructionIndex = wizard.activeIndex
+          handle.wizard = wizard
+          return () => h('div')
+        },
+      })
+      const app = createApp(App).use(createAttaform())
+      app.config.warnHandler = () => {}
+      app.mount(document.createElement('div'))
+      apps.push(app)
+
+      // Lands on the gate at construction, not past it.
+      expect(handle.constructionIndex).toBe(0)
+      await awaitSettle()
+      // Stays there once every watcher has flushed: the gate is its own
+      // uncleared prerequisite and the downstream step is sealed.
+      expect(handle.wizard.activeIndex).toBe(0)
+      expect(handle.wizard.statuses.consent.gate).toBe('uncleared')
+      expect(handle.wizard.statuses.data.locked).toBe(true)
+
+      for (const mounted of apps.splice(0)) mounted.unmount()
+      document.body.innerHTML = ''
+    }
+  })
+
   it('gates conditionally from a function slot (the KYC threshold pattern)', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle: any = {}

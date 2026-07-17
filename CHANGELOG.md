@@ -1,8 +1,20 @@
 # Changelog
 
 ## Unreleased
+### Fixed
 
-_No unreleased changes yet._
+- **A `gate()` step now clears only from a genuine confirmation: a clean
+  member submit, or a seed the consumer asserted through `defaultValues`.**
+  Previously the mount-time seed check read the member form's live
+  validity, so a gate could clear the instant its value went valid (for
+  example the moment a consent box was checked, with no submit), and a
+  fresh `z.literal(true)` consent with no `defaultValues` pre-cleared on
+  its own because the schema fills the literal as a structural default. The
+  check now reads the form's frozen default seed, gated on a
+  consumer-provided `defaultValues`, so a live edit never confirms a gate
+  and a bare consent stays sealed until it is submitted. Restoring a
+  persisted prerequisite is unchanged: seed the member form valid through
+  `defaultValues` and it renders open from the first frame. (#534)
 
 ## v0.27.3
 ### Added

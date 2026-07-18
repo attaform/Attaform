@@ -1,8 +1,20 @@
 # Changelog
 
 ## Unreleased
+### Fixed
 
-_No unreleased changes yet._
+- **Invalid-submit focus and scroll now land on a `v-register` component host
+  that renders no single native control.** `handleSubmit` and `tryNext` focus
+  the first offending field on an invalid submit, but a host wrapping an ARIA
+  composite (`role=radio` / `checkbox` / `listbox` / `slider`), several native
+  controls (a checkbox group, an address subform), or no control at all
+  registered no focus target, so the error was announced with nowhere for a
+  keyboard or screen-reader user to land. Such a host now records its root as
+  the field's focus anchor and resolves it to the first focusable descendant at
+  submit time, weaving into the same document-order "first error" walk as
+  native controls. The guarantee holds for any accessible component library
+  (reka-ui, Radix Vue, Headless UI, Ark, or a hand-rolled widget), since the
+  fix keys on the structural no-control shape, not on any one library. (#538)
 
 ## v0.27.4
 ### Changed

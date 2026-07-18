@@ -1964,9 +1964,16 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * but exposes no single inner control to register -- a composite widget,
    * or none found. The directive calls it on mount / unmount; distinct from
    * the SSR-only `markConnectedOptimistically`.
+   *
+   * `hostEl` is the host root element, recorded on connect as the field's
+   * focus-first-error anchor: a no-latch host registers no control, so it
+   * would otherwise be invisible to `focusFirstError` / `scrollToFirstError`
+   * (which walk the registered-element set). On an invalid submit the error
+   * walk resolves the host root to its first focusable descendant. The
+   * directive passes the same element on both edges.
    * @internal
    */
-  markHostConnected: (connected: boolean) => void
+  markHostConnected: (connected: boolean, hostEl: HTMLElement) => void
   /**
    * Mark this field focused (`true`) or blurred (`false`) for a `v-register`
    * component host with no single latched control -- a composite widget whose

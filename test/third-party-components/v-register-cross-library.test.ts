@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createApp,
   defineComponent,
@@ -31,6 +31,8 @@ import {
   ComboboxRoot,
   ComboboxAnchor,
   ComboboxInput,
+  RadioGroupRoot,
+  RadioGroupItem,
 } from 'reka-ui'
 
 /**
@@ -421,6 +423,80 @@ const MultiRootComponent = defineComponent({
       h('span', 'sibling root node'),
     ]
   },
+})
+
+// ---------------------------------------------------------------------------
+// Invalid-submit focus for no-latch hosts (#538)
+// ---------------------------------------------------------------------------
+
+describe('cross-library matrix: invalid-submit focus (#538)', () => {
+  let focusSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+    // jsdom does no layout, so offsetParent is always null and every element
+    // reads "hidden" to the error walk. Force a truthy value for visible
+    // elements so `getFirstErrorElement` and `resolveHostFocusTarget` behave
+    // as they would in a real browser. (Mirrors the focus-scroll suite.)
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.style.display === 'none' ? null : this.parentNode
+      },
+    })
+  })
+
+  afterEach(() => {
+    focusSpy.mockRestore()
+  })
+
+  it('RadioGroup (ARIA composite, zero native controls): invalid submit focuses the first role=radio', async () => {
+    // The exact reported shape: a v-register host that renders <button
+    // role=radio> options, not a native <input>. It takes the no-latch path,
+    // so before the fix it registered no element and focus-first-error had no
+    // target. Now the host root is the field's anchor and resolves to the
+    // first radio.
+    const m = await mountHost(z.object({ field: z.string().min(1) }), (_rv, vm) =>
+      h(RadioGroupRoot, { ...vm }, () => [
+        h(RadioGroupItem, { value: 'a' }, () => 'A'),
+        h(RadioGroupItem, { value: 'b' }, () => 'B'),
+      ])
+    )
+    expect(m.host()?.getAttribute('role')).toBe('radiogroup')
+    // No native control was latched: the field is connected via the host mark.
+    expect(m.inner('input')).toBeNull()
+    expect(m.api.fields.field.connected).toBe(true)
+
+    // Submit empty -> min(1) fails -> the invalid-submit policy runs.
+    await m.api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    expect(m.api.focusFirstError()).toBe(true)
+    const focused = focusSpy.mock.instances.at(-1)
+    if (!(focused instanceof HTMLElement)) throw new Error('no element focused')
+    expect(focused.getAttribute('role')).toBe('radio')
+  })
+
+  it('Slider (control-less, role=slider): invalid submit focuses the thumb', async () => {
+    // String field for a clean `connected` read (same rationale as the Slider
+    // case above); the empty default fails min(1) so the field errors on
+    // submit, while the Slider renders from the array modelValue fallback.
+    const m = await mountHost(z.object({ field: z.string().min(1) }), (_rv, vm) =>
+      h(
+        SliderRoot,
+        { ...vm, modelValue: Array.isArray(vm['modelValue']) ? vm['modelValue'] : [50] },
+        () => [h(SliderTrack, () => [h(SliderRange)]), h(SliderThumb, { index: 0 })]
+      )
+    )
+    expect(m.inner('input')).toBeNull()
+    expect(m.api.fields.field.connected).toBe(true)
+
+    await m.api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    expect(m.api.focusFirstError()).toBe(true)
+    const focused = focusSpy.mock.instances.at(-1)
+    if (!(focused instanceof HTMLElement)) throw new Error('no element focused')
+    expect(focused.getAttribute('role')).toBe('slider')
+  })
 })
 
 describe('cross-library matrix: value channel + escape path', () => {

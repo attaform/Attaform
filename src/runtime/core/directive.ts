@@ -1155,7 +1155,7 @@ function latchHostControl(el: HTMLElement, rv: RegisterValue, control: HTMLEleme
 // self-heal latch can detach them itself before the control's own focus / blur
 // listeners take over.
 function setupNoLatchHost(el: HTMLElement, rv: RegisterValue): void {
-  rv.markHostConnected(true)
+  rv.markHostConnected(true, el)
   const focusin: EventListener = (event) => {
     const from = (event as FocusEvent).relatedTarget
     if (from instanceof Node && el.contains(from)) return
@@ -1434,7 +1434,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
         // host-root teardownAria above never reached this descendant.
         teardownAria(latchedControl as AriaCarrier)
         value.deregisterElement(latchedControl)
-      } else value.markHostConnected(false)
+      } else value.markHostConnected(false, el)
       componentHostLatch.delete(el)
     }
 

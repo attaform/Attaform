@@ -72,6 +72,46 @@ import { mergeSparseHydration } from './merge-hydration'
  */
 const isContainer = (value: unknown): boolean => Array.isArray(value) || isPlainRecord(value)
 
+// Focusable candidates inside a no-latch component host, in the order the
+// browser would tab through them (document order at query time). A composite
+// widget exposes its entry point as a genuinely focusable element -- a
+// roving-tabindex group's active item (`[tabindex="0"]`), a `role="slider"`
+// thumb, a listbox/combobox trigger `<button>`, or a real `<input>` segment --
+// so match natively focusable elements plus anything given a non-negative
+// tabindex. `type="hidden"` inputs and `tabindex="-1"` mirrors (reka-ui's
+// BubbleInput and the like) are excluded: they can never be the user's focus
+// target. Disabled controls are filtered at resolve time.
+const HOST_FOCUS_TARGET_SELECTOR = [
+  'input:not([type="hidden"])',
+  'select',
+  'textarea',
+  'button',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]',
+].join(', ')
+
+/**
+ * The focus-first-error target for a no-latch `v-register` component host. The
+ * host binds a value but owns no single control, so resolve its root to the
+ * first visible, enabled focusable descendant -- the tab stop a keyboard user
+ * entering the widget lands on (the first radio of a group, a slider thumb, a
+ * listbox trigger, the first pin segment). Falls back to the host root itself
+ * when nothing focusable is found, so `scrollToFirstError` still has a target
+ * even if `focus()` can't land. `offsetParent === null` mirrors
+ * `getFirstErrorElement`'s own visibility gate (skips `display:none` subtrees).
+ */
+function resolveHostFocusTarget(hostRoot: HTMLElement): HTMLElement {
+  const candidates = hostRoot.querySelectorAll<HTMLElement>(HOST_FOCUS_TARGET_SELECTOR)
+  for (const el of candidates) {
+    if (!el.isConnected) continue
+    if (el.offsetParent === null) continue
+    if (el.matches(':disabled')) continue
+    return el
+  }
+  return hostRoot
+}
+
 /**
  * Per-form closure state — the single store owned by each `useForm` call.
  * Bundles the form value, the summary record, element references, field
@@ -643,8 +683,19 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * (a composite widget, or none found). The directive calls it on mount
    * (`true`) and unmount (`false`). Distinct from the SSR-only
    * `markConnectedOptimistically`; idempotent on the leading edge.
+   *
+   * `hostEl` (the host root) is recorded on connect as this path's
+   * focus-first-error anchor, scoped to `formInstanceId` the same way a
+   * registered control is. A no-latch host enters no `elements` record, so
+   * without this it is absent from `getFirstErrorElement`'s walk; the anchor
+   * lets that walk resolve a focus target from the host subtree.
    */
-  markHostConnected(path: Path, connected: boolean): void
+  markHostConnected(
+    path: Path,
+    connected: boolean,
+    hostEl: HTMLElement,
+    formInstanceId: string
+  ): void
 
   // --- derived ---
   /**
@@ -1337,9 +1388,25 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // `key` and both register into the same `elements` Map.
   const elementToFormInstance = new WeakMap<HTMLElement, string>()
 
-  // Lazy DOM-order sort cache. Holds every registered element flattened
-  // across paths, sorted by `compareDocumentPosition` (DOM-tree order).
-  // Invalidated to `null` on any register/deregister; rebuilt on next
+  // Focus-first-error anchors for no-latch `v-register` component hosts
+  // (composite widgets, multi-control or control-less hosts). Such a host
+  // binds a value but registers no single control, so it never enters
+  // `elements` and would be invisible to `getFirstErrorElement`. Keyed by
+  // canonical path key; the host root drives the DOM-order walk and resolves
+  // to a focusable descendant at submit time, and `formInstanceId` scopes it
+  // to the owning `useForm()` instance exactly as `elementToFormInstance`
+  // does for registered controls. A path holds at most one anchor, and never
+  // both an anchor and a registered element — `registerElement` drops the
+  // anchor when a control latches (e.g. a late self-heal supersede).
+  const hostTargets = new Map<
+    PathKey,
+    { path: Path; hostRoot: HTMLElement; formInstanceId: string }
+  >()
+
+  // Lazy DOM-order sort cache. Holds every registered element plus every
+  // no-latch host root flattened across paths, sorted by
+  // `compareDocumentPosition` (DOM-tree order). Invalidated to `null` on any
+  // register/deregister or host connect/disconnect; rebuilt on next
   // `getFirstErrorElement` read. The cache amortises the sort across
   // multiple submit failures between mutations — a 100-field form with
   // 5 failed submits and no DOM changes pays one O(n log n) sort, not
@@ -1352,7 +1419,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // sync layout per comparison and breaks under `display: none`. Tree-
   // order is the right tradeoff for a hot path; the 99% case (semantic
   // source-order rendering) works correctly.
-  let sortedRegistrationsCache: Array<{ path: Path; element: HTMLElement }> | null = null
+  let sortedRegistrationsCache: Array<{
+    path: Path
+    element: HTMLElement
+    host: boolean
+    formInstanceId: string
+  }> | null = null
   // Errors are split by source so each writer touches exactly one slot.
   // Schema validation owns `schemaErrors`; the `setErrors` / `clearErrors`
   // API owns `userErrors`. The two stores merge on read via `getErrorsForPath` and
@@ -3219,6 +3291,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       record.elements.add(raw)
     }
     elementToFormInstance.set(element, formInstanceId)
+    // A real control now owns this path's focus target, so drop any no-latch
+    // host anchor for it: a late self-heal supersede (a single control that
+    // rendered after mount) latches here after `markHostConnected` recorded
+    // the root. The two focus channels are mutually exclusive per path.
+    hostTargets.delete(key)
     sortedRegistrationsCache = null
     // Connect transition. Lift focused/blurred from `null`
     // (no-element-meaningless) to optimistic booleans only when they
@@ -3289,7 +3366,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     })
   }
 
-  function markHostConnected(path: Path, connected: boolean): void {
+  function markHostConnected(
+    path: Path,
+    connected: boolean,
+    hostEl: HTMLElement,
+    formInstanceId: string
+  ): void {
     // Client-side connected marking for a `v-register` component host that
     // binds value through the v-model channel but exposes no single inner
     // control to latch (a composite widget, or none discovered). Distinct
@@ -3300,6 +3382,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     const { key } = canonicalizePath(path)
     const current = fields.get(key)
     if (connected) {
+      // Record the host root as this path's focus-first-error anchor even if
+      // `connected` is already true (a re-mark): the element may have changed.
+      // Skipped when a real control already owns the path (`registerElement`
+      // dropped any anchor and owns the focus target now).
+      if (!elements.has(key)) {
+        hostTargets.set(key, { path, hostRoot: hostEl, formInstanceId })
+        sortedRegistrationsCache = null
+      }
       if (current?.connected === true) return
       // Connect transition, mirroring `registerElement`: lift focused /
       // blurred from null to optimistic booleans only when currently null.
@@ -3309,6 +3399,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         blurred: current?.blurred ?? true,
       })
     } else {
+      // Drop the focus anchor first, unconditionally: the host root is
+      // detaching regardless of whether the field record still reads
+      // connected (a latch supersede may have flipped it via the element Set).
+      if (hostTargets.delete(key)) sortedRegistrationsCache = null
       if (current?.connected !== true) return
       // Disconnect transition, mirroring `deregisterElement`'s empty-Set
       // branch: focused / blurred are DOM-state and meaningless with nothing
@@ -4007,23 +4101,25 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   function getFirstErrorElement(
     formInstanceId: string
   ): { path: Path; element: HTMLElement } | null {
-    // Single-pass DOM-order walk over every registered element. The
-    // sort cache is rebuilt lazily on the first read after a register/
-    // deregister; subsequent calls amortise to O(n) until the next
-    // mutation.
+    // Single-pass DOM-order walk over every registered element plus every
+    // no-latch host root. The sort cache is rebuilt lazily on the first read
+    // after a register/deregister or host connect/disconnect; subsequent
+    // calls amortise to O(n) until the next mutation.
     sortedRegistrationsCache ??= rebuildSortedRegistrations()
 
     for (const entry of sortedRegistrationsCache) {
       // Scope to this form instance — when two `useForm()` calls share
-      // a key, both write into `elements`; this filter keeps each
-      // form's submit from focusing the other's input.
-      if (elementToFormInstance.get(entry.element) !== formInstanceId) continue
+      // a key, both write into `elements` / `hostTargets`; this filter keeps
+      // each form's submit from focusing the other's field. The instance tag
+      // is denormalised onto the entry at rebuild time.
+      if (entry.formInstanceId !== formInstanceId) continue
 
       // `el.isConnected` covers "component was unmounted, element
       // removed from DOM" cases that lag the FieldRecord.connected
       // flag. `el.offsetParent === null` catches `display:none` and
       // its ancestor chain — the browser won't focus or scroll to a
-      // hidden element anyway, so we keep walking.
+      // hidden element anyway, so we keep walking. For a host entry the
+      // element is the host root; a hidden host is skipped the same way.
       if (!entry.element.isConnected) continue
       if (entry.element.offsetParent === null) continue
 
@@ -4037,20 +4133,54 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       // focus target and the visible error set from ever drifting apart.
       if (getErrorsForPath(entry.path).length === 0) continue
 
-      return { path: entry.path, element: entry.element }
+      // A registered control is its own focus target. A no-latch host owns
+      // no single control, so resolve its root to the first focusable
+      // descendant (the tab stop a user entering the widget would land on);
+      // the resolver falls back to the root itself, keeping scroll-to-error
+      // a target even when nothing inside can take focus.
+      const element = entry.host ? resolveHostFocusTarget(entry.element) : entry.element
+      return { path: entry.path, element }
     }
     return null
   }
 
-  function rebuildSortedRegistrations(): Array<{ path: Path; element: HTMLElement }> {
-    const flat: Array<{ path: Path; element: HTMLElement }> = []
+  function rebuildSortedRegistrations(): Array<{
+    path: Path
+    element: HTMLElement
+    host: boolean
+    formInstanceId: string
+  }> {
+    const flat: Array<{ path: Path; element: HTMLElement; host: boolean; formInstanceId: string }> =
+      []
     for (const [, record] of elements) {
-      for (const el of record.elements) flat.push({ path: record.path, element: el })
+      for (const el of record.elements) {
+        flat.push({
+          path: record.path,
+          element: el,
+          host: false,
+          formInstanceId: elementToFormInstance.get(el) ?? '',
+        })
+      }
+    }
+    // No-latch host roots. `registerElement` drops the anchor when a control
+    // latches, so a path is never in both maps; guard anyway so a rebuild
+    // between a latch and the anchor delete never double-lists a path.
+    for (const [key, target] of hostTargets) {
+      if (elements.has(key)) continue
+      flat.push({
+        path: target.path,
+        element: target.hostRoot,
+        host: true,
+        formInstanceId: target.formInstanceId,
+      })
     }
     // `compareDocumentPosition` returns a bitmask. The
     // `DOCUMENT_POSITION_FOLLOWING` bit (0x04) is set when the argument
     // node FOLLOWS the receiver in document order, which means the
-    // receiver comes first → return -1 to keep `a` before `b`.
+    // receiver comes first → return -1 to keep `a` before `b`. A host root
+    // and a control are distinct elements across fields (a no-latch host has
+    // no registered descendant), so the comparison is always a clean
+    // before/after, never a containment tie.
     flat.sort((a, b) =>
       a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
     )

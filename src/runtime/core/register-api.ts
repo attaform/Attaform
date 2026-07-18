@@ -445,8 +445,8 @@ export function buildRegister<F extends GenericForm>(
         state.markConnectedOptimistically(segments)
       },
 
-      markHostConnected: (connected: boolean): void => {
-        state.markHostConnected(segments, connected)
+      markHostConnected: (connected: boolean, hostEl: HTMLElement): void => {
+        state.markHostConnected(segments, connected, hostEl, formInstanceId)
       },
 
       markFocused: (focused: boolean): void => {

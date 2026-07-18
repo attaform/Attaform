@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.27.5
 ### Fixed
 
 - **Invalid-submit focus and scroll now land on a `v-register` component host

@@ -1,5 +1,15 @@
 # Releases
 
+## v0.27.5 — 2026-07-18
+
+## What's Changed
+* fix(v-register): invalid-submit focus lands on no-latch component hosts by @ozzyfromspace in https://github.com/attaform/Attaform/pull/539
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.27.4...v0.27.5
+
+---
+
 ## v0.27.4 — 2026-07-17
 
 ## What's Changed

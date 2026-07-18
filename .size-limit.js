@@ -868,7 +868,15 @@ export default [
     // #523): same shared eager core (useForm({ disabled })) plus gate().
     // zod-v3.mjs, the tightest full adapter entry, crossed by 0.39 KB.
     // Measured at 57.74 KB.
-    limit: '58 KB',
+    //
+    // Raised 58 → 59 KB on the no-latch-host focus branch (#538): the shared
+    // core chunk gains the focus-first-error anchor for no-latch component
+    // hosts. create-form-store adds the hostTargets map, resolveHostFocusTarget,
+    // and the host-root weave into getFirstErrorElement's DOM-order walk, plus
+    // the markHostConnected host-el thread. zod-v3.mjs, the tightest adapter
+    // bundle, crossed 58 first (index / zod hold ~0.1 KB, zod-v4 ~0.2 KB).
+    // Measured at 58.17 KB.
+    limit: '59 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -886,7 +894,12 @@ export default [
     // disabled data freeze in the shared core (threaded through useAbstractForm)
     // plus gate(). No Zod adapter here, but the core and wizard surface both
     // grow. Measured at 46.85 KB.
-    limit: '47 KB',
+    //
+    // Raised 47 → 48 KB on the no-latch-host focus branch (#538): the same
+    // shared-core focus anchor (hostTargets, resolveHostFocusTarget, the
+    // getFirstErrorElement weave) reaches this entry through useAbstractForm.
+    // Measured at 47.23 KB.
+    limit: '48 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

@@ -1041,3 +1041,185 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
     app.unmount()
   })
 })
+
+describe('focusFirstError — no-latch component host (#538)', () => {
+  let focusSpy: ReturnType<typeof vi.spyOn>
+  let scrollSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
+      HTMLElement.prototype.scrollIntoView = function scrollIntoView() {
+        return undefined
+      }
+    }
+    focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+    scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.style.display === 'none' ? null : this.parentNode
+      },
+    })
+  })
+
+  afterEach(() => {
+    focusSpy.mockRestore()
+    scrollSpy.mockRestore()
+  })
+
+  // A `v-register` component host that renders an ARIA composite (a
+  // `role=radiogroup` of `<button role=radio>`, zero native controls) takes
+  // the directive's no-latch path: it binds a value but registers no single
+  // control, so `markHostConnected(true, hostRoot)` is the only wiring. The
+  // store records the host root as the field's focus-first-error anchor, and
+  // resolves it to a focusable descendant at submit time. `email` is a plain
+  // native input; `nickname` is the composite host.
+  function mountHostForm(opts: {
+    errorsFor: (keyof Form)[]
+    order?: ('email' | 'nickname')[]
+    hostHasFocusable?: boolean
+  }) {
+    type Returned = ReturnType<typeof useForm<Form>>
+    const handle: { api?: Returned } = {}
+    const hasFocusable = opts.hostHasFocusable ?? true
+
+    const App = defineComponent({
+      setup() {
+        const validator = (_data: unknown, _path: Path | undefined) => ({
+          data: undefined,
+          errors: opts.errorsFor.map((k) => ({
+            message: `${k} is bad`,
+            path: [k as string],
+            formKey: 'host-focus-form',
+            code: 'atta:test-fixture',
+          })),
+          success: false as const,
+          formKey: 'host-focus-form',
+        })
+        handle.api = useForm<Form>({
+          schema: fakeSchema<Form>(defaults, validator),
+          key: 'host-focus-form',
+        })
+        return () => {
+          const order = opts.order ?? (['nickname'] as ('email' | 'nickname')[])
+          const nodes = order.map((name) => {
+            if (name === 'email') {
+              const reg = handle.api?.register('email')
+              return h('input', {
+                'data-field': 'email',
+                ref: (el: unknown) => {
+                  if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+                },
+              })
+            }
+            // The no-latch host: a role=radiogroup wrapper around ARIA
+            // radio buttons (or non-focusable spans, for the fallback case).
+            const reg = handle.api?.register('nickname')
+            const options = hasFocusable
+              ? [0, 1].map((i) =>
+                  h('button', { type: 'button', role: 'radio', 'data-radio': String(i) }, 'x')
+                )
+              : [0, 1].map((i) => h('span', { 'data-inert': String(i) }, 'x'))
+            return h(
+              'div',
+              {
+                role: 'radiogroup',
+                'data-field': 'nickname',
+                ref: (el: unknown) => {
+                  if (el instanceof HTMLElement && reg) reg.markHostConnected(true, el)
+                },
+              },
+              options
+            )
+          })
+          return h('form', nodes)
+        }
+      },
+    })
+
+    const app = createApp(App).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    return { app, api: handle.api as Returned, root }
+  }
+
+  it('resolves the host root to its first focusable descendant (a role=radio button)', async () => {
+    const { api, app } = mountHostForm({ errorsFor: ['nickname'] })
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    expect(api.focusFirstError()).toBe(true)
+    const focused = focusSpy.mock.instances.at(-1) as HTMLElement | undefined
+    expect(focused?.getAttribute('role')).toBe('radio')
+    expect(focused?.getAttribute('data-radio')).toBe('0')
+    app.unmount()
+  })
+
+  it('scroll-to-first-error scrolls the resolved host target', async () => {
+    const { api, app } = mountHostForm({ errorsFor: ['nickname'] })
+    await api.handleSubmit(async () => {})()
+    scrollSpy.mockClear()
+    expect(api.scrollToFirstError()).toBe(true)
+    const scrolled = scrollSpy.mock.instances.at(-1) as HTMLElement | undefined
+    expect(scrolled?.getAttribute('role')).toBe('radio')
+    app.unmount()
+  })
+
+  it('respects DOM order: a native field before the host wins; the host wins when first', async () => {
+    // Native `email` rendered before the host → the native input wins.
+    const first = mountHostForm({ errorsFor: ['email', 'nickname'], order: ['email', 'nickname'] })
+    await first.api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    expect(first.api.focusFirstError()).toBe(true)
+    const nativeFocused = focusSpy.mock.instances.at(-1) as HTMLElement | undefined
+    expect(nativeFocused?.getAttribute('data-field')).toBe('email')
+    first.app.unmount()
+
+    // Host rendered before the native field → the host's first radio wins,
+    // proving host roots interleave with registered controls in DOM order.
+    const second = mountHostForm({ errorsFor: ['email', 'nickname'], order: ['nickname', 'email'] })
+    await second.api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    expect(second.api.focusFirstError()).toBe(true)
+    const hostFocused = focusSpy.mock.instances.at(-1) as HTMLElement | undefined
+    expect(hostFocused?.getAttribute('role')).toBe('radio')
+    second.app.unmount()
+  })
+
+  it('leaves field.element undefined — the host owns no single control', async () => {
+    const { api, app } = mountHostForm({ errorsFor: ['nickname'] })
+    await nextTick()
+    // The host binds a value channel and reads connected from the host mark,
+    // but it registers no control, so the focus anchor never leaks into the
+    // FieldState element accessor.
+    expect(api.fields.nickname.connected).toBe(true)
+    expect(api.fields.nickname.element).toBeNull()
+    app.unmount()
+  })
+
+  it('falls back to the host root when nothing inside can take focus', async () => {
+    const { api, app } = mountHostForm({ errorsFor: ['nickname'], hostHasFocusable: false })
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    // No focusable descendant, so the target is the host root itself: still a
+    // target (keeps "first error" ordering, gives scroll something to hit),
+    // and `focus()` on an unfocusable root is a graceful no-op.
+    expect(api.focusFirstError()).toBe(true)
+    const focused = focusSpy.mock.instances.at(-1) as HTMLElement | undefined
+    expect(focused?.getAttribute('role')).toBe('radiogroup')
+    app.unmount()
+  })
+
+  it('returns false when the host is hidden (display:none)', async () => {
+    const { api, app, root } = mountHostForm({ errorsFor: ['nickname'] })
+    const host = root.querySelector('[role=radiogroup]') as HTMLElement
+    host.style.display = 'none'
+    await api.handleSubmit(async () => {})()
+    focusSpy.mockClear()
+    // The host root's offsetParent is null, so the walk skips it exactly as
+    // it skips a hidden registered control; no other errored field remains.
+    expect(api.focusFirstError()).toBe(false)
+    expect(focusSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+})

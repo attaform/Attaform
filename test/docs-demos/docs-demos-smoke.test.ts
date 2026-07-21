@@ -800,6 +800,31 @@ const entries: SmokeEntry[] = [
     },
   },
   {
+    // Click the per-row "form.interact(['members', 1])" button. That row's
+    // seeded-invalid email must reveal its error WITHOUT the untouched Team
+    // field revealing anything — the subtree scoping is the whole point.
+    slug: 'interact',
+    gesture: async (root) => {
+      const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button'))
+      const rowTwo = buttons.find((b) => b.textContent?.includes("['members', 1]") === true)
+      if (!rowTwo) throw new Error("interact: row-2 form.interact(['members', 1]) button not found")
+      rowTwo.click()
+      await waitUntil(
+        () => (root.textContent?.includes('Enter a valid email') === true ? true : null),
+        2000
+      )
+    },
+    assert: async (root) => {
+      // Row 2's seeded-invalid leaves revealed.
+      expect(root.textContent ?? '').toContain('Enter a valid email')
+      expect(root.textContent ?? '').toContain('Every member needs a name')
+      // The Team field was never interacted with, so its blank-required
+      // error must stay hidden. This is the assertion that would catch
+      // `interact` regressing to a form-wide reveal.
+      expect(root.textContent ?? '').not.toContain('Name your team')
+    },
+  },
+  {
     // Type a too-short password and blur: the password leaf errors, and the
     // Account *group* badge rolls that up to 'error' (the container rollup).
     slug: 'container-display-state',

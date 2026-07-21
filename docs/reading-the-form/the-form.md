@@ -76,7 +76,10 @@ form.resetField('email')
 ```ts
 form.reset() // re-seed every path from defaultValues
 form.clear() // wipe every path to its falsy-for-type baseline
+form.interact() // simulate a full interaction so seeded values reveal their errors
 ```
+
+`form.interact(path)` takes a path to arm just one subtree, which is how you surface a single field-array row's errors without a form-wide submit. See [showing errors](/docs/validation/showing-errors#reveal-errors-without-a-submit).
 
 Every write path runs the same validation, dirty-tracking, and history pipeline.
 

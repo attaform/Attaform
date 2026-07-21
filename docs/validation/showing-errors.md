@@ -72,8 +72,10 @@ Once the gate is open, the default resolves in order:
 
 1. **Pending (timed).** While a per-field validation runs, the field is heading for a spinner, but Attaform holds the prior verdict for a short window first. A fast check that settles inside that window never shows `'pending'` at all; a slow one flips to the spinner and is then held a minimum so it cannot blink off. This anti-flash timing is tunable, see [Tune the timing](#tune-the-timing).
 2. **Error.** An error at the field resolves to `'error'` (containers roll up their descendants, see below).
-3. **Success.** No error, `field.valid`, and the green check is earned: the field is non-blank and `dirty`, so the user put valid content there themselves. An empty field that happens to pass, a pre-filled field merely tabbed through, and the post-submit flood of every valid field all stay `'idle'` rather than greening for free. `valid` already waits on the form-wide first validation pass for async schemas, so success never fires before the first real verdict lands.
-4. **Idle.** Anything else, including a valid-but-unearned field (blank or unchanged), stays `'idle'`.
+3. **Success.** No error, `field.valid`, and the green check is earned: the field is non-blank and the user engaged with it, meaning `dirty` (the value differs from its baseline) or `interacted` (they edited it, or `form.interact()` declared the field engaged). An empty field that happens to pass, a pre-filled field merely tabbed through (which sets `touched`, never `interacted`), and the post-submit flood of every valid field all stay `'idle'` rather than greening for free. `valid` already waits on the form-wide first validation pass for async schemas, so success never fires before the first real verdict lands.
+4. **Idle.** Anything else, including a valid field nobody has engaged with, stays `'idle'`.
+
+Engagement, not net change, is what the check rewards. A user who types into a field and then puts the original value back has `dirty: false` but `interacted: true`, and still earns the green check, because they did the work.
 
 ### Rollup at containers and the form
 
@@ -104,6 +106,48 @@ This detour is `form.meta`-only: the submit-driven `pending` is applied at the r
 
 ::docs-demo{slug="container-display-state" label="Container rollup demo"}
 ::
+
+## Reveal errors without a submit
+
+The gate is built around a real user gesture, so values that arrive some other way (a server-seeded draft, a pasted import, a row populated by a picker) sit on their errors until the user visits every field or the form is submitted. `form.interact(path)` closes that gap by simulating a complete focus, edit, and blur across every field under `path`:
+
+```ts
+const schema = z.object({
+  members: z.array(z.object({ name: z.string().min(1), email: z.string().email() })),
+})
+
+const form = useForm({ schema })
+
+// Arm just this row's errors, and leave the rest of the page alone.
+await form.interact(['members', 2])
+```
+
+::docs-demo{slug="interact" label="Reveal one subtree's errors"}
+::
+
+It flips the same `blurredAfterInteraction` bit a real blurred edit sets and runs the subtree's validation, so the gate opens through its front door and the errors are in the store ready to surface. Scope is the win: a submit is form-wide and lights up every field on the page, while `form.interact(path)` reveals exactly the subtree you name. Call it with no argument to arm the whole form.
+
+The returned promise resolves once that subtree's validation has committed, so awaiting it means the verdicts are ready to read:
+
+```ts
+await form.interact(['members', 2])
+form.fields(['members', 2, 'email']).showErrors // ready
+```
+
+Ignoring the promise is fine too. The flags land synchronously, so a fire-and-forget call still reveals the errors the moment validation settles.
+
+`interact` walks schema fields rather than mounted inputs, so it reaches a field that is currently `v-if`'d away or was never rendered. The flags are sticky, so a subtree armed while a modal was open stays revealed when that modal reopens. On a form held by [`disabled`](/docs/cross-cutting-state/disabled) it does nothing, matching every other interaction signal.
+
+### `interact` vs `touch`
+
+The two are siblings, and picking the right one matters:
+
+| Call                  | Writes                                             | Opens the default gate |
+| --------------------- | -------------------------------------------------- | ---------------------- |
+| `form.touch(path)`    | `touched`                                          | No                     |
+| `form.interact(path)` | `touched`, `interacted`, `blurredAfterInteraction` | Yes                    |
+
+`touched` is the descriptive "this field was visited" flag, and it flips on a bare tab-through with no edit. That is exactly why the default gate reads the stricter `blurredAfterInteraction` instead, and why `form.touch()` on its own does not reveal anything under the default heuristic. Reach for `touch` when a custom reducer or your analytics reads `touched`; reach for `interact` when you want errors on screen.
 
 ## Override per form
 
@@ -140,7 +184,7 @@ useForm({
 
 The spinner is anti-flash by default. A validation that settles quickly never shows `'pending'` at all, and once a spinner appears it stays up for a minimum so it cannot blink off the instant the check lands. Two timings shape this, both in milliseconds:
 
-- `showDelay` (default `100`): how long a validation may run before its spinner is allowed to show. Anything that settles inside this window stays on its prior verdict, so a synchronous or microtask-fast check never flashes a spinner on every keystroke.
+- `showDelay` (default `120`): how long a validation may run before its spinner is allowed to show. Anything that settles inside this window stays on its prior verdict, so a synchronous or microtask-fast check never flashes a spinner on every keystroke.
 - `minVisible` (default `120`): once shown, the minimum the spinner stays up, so a check that lands just past `showDelay` does not flash it on and immediately off.
 
 The shipped values live in `DEFAULT_TIMINGS`. To retune, build a default with `makeDefaultDisplayState`:

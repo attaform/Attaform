@@ -2,7 +2,63 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Added
+
+- **`form.interact(path?)` simulates a full interaction so seeded and
+  out-of-band values reveal their errors.** The default display gate opens on
+  `submissionAttempts > 0 || blurredAfterInteraction`, and
+  `blurredAfterInteraction` only flips on a blur that *follows* an edit, which
+  is what keeps a clean tab-through quiet. That left no programmatic route to
+  the gate: a value arriving from a server-seeded draft, a paste, or a picker
+  stayed silent until the user visited every field or the form was submitted,
+  and a submit is form-wide when you may want only one field-array row armed.
+  `form.interact(path)` flips the whole interaction ladder (`touched`,
+  `interacted`, `blurredAfterInteraction`) across every field under `path` and
+  runs that subtree's validation, so the gate opens through its front door with
+  no change to `isGateOpen`. It walks schema fields rather than mounted inputs,
+  so it reaches a subtree that is `v-if`'d away, and the flags are sticky, so
+  that subtree stays revealed when it remounts. The returned promise resolves
+  once the subtree's errors are committed and never rejects, so an ignored call
+  is safe. No-op on a disabled form; leaves the DOM-owned `focused` / `blurred`
+  flags untouched. (#544)
+
+### Changed
+
+- **The earned-success check now rewards engagement, not a net value change.**
+  The default display heuristic greened a valid field on `valid && !blank &&
+  dirty`, so success secretly hinged on the value differing from its baseline.
+  That made two cases surprising: `form.interact()` on a valid seeded subtree
+  revealed nothing, and a user who typed into a field and then restored the
+  original value earned no check despite doing the work. The rule is now
+  `valid && !blank && (dirty || interacted)`. `interacted` is set only by a
+  real user edit or by `form.interact()`, never by hydration or a programmatic
+  `setValue`, so the cases the gate deliberately excludes are unchanged: a
+  clean tab-through sets `touched` but never `interacted`, and the post-submit
+  flood of untouched valid fields still stays `'idle'`. (#544)
+
+### Fixed
+
+- **`form.fields([...])` mistyped a container as its child map.** The tuple
+  call-form resolved to the drillable `{ child: FieldState, ... }` map while
+  the equivalent string call-form resolved to the path's `FieldState`, even
+  though both spellings return the same runtime proxy. The type was unsound in
+  both directions: `form.fields(['members', 0]).email` type-checked and then
+  read `undefined` at runtime, while the container's own rolled-up state
+  (`displayState`, `valid`, ...) was untypeable through the tuple form. That is
+  the spelling a `v-for` index forces you into, so a per-row badge could not be
+  typed at all. Both call-forms now resolve to the path's `FieldState`.
+  Descending into a container's children is dot/bracket access
+  (`form.fields.members[i].email`), which is unchanged. (#544)
+- **`form.touch()`'s documentation no longer implies it reveals errors.** Its
+  JSDoc billed `touched` as "the sticky flag the standard 'show errors after
+  interaction' pattern reads" and pointed at it for validating seeded values,
+  but the default reducer does not read `touched` and cannot: a bare focus →
+  blur sets it, so keying the gate on it would regress the tab-through case.
+  The docs now name `touched` as the descriptive "was visited" flag for custom
+  reducers and analytics, and route revealing errors to `form.interact()`.
+  (#544)
+- **The display-timing docs listed the wrong `showDelay` default.** The prose
+  said `100`; `DEFAULT_TIMINGS` has shipped `120`. (#544)
 
 ## v0.27.5
 ### Fixed

@@ -91,7 +91,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [Recent commits](https://github.com/attaform/Attaform/commits/main), [Recent releases](https://github.com/attaform/Attaform/releases)
-**Notes:** Active development with multiple commits per week and weekly-to-bi-weekly releases (current: 0.27.5). Issues responded to within days. Active maintainer signal is the strongest signal Scorecard's `Maintained` check already grades at 10/10.
+**Notes:** Active development with multiple commits per week and weekly-to-bi-weekly releases (current: 0.27.6). Issues responded to within days. Active maintainer signal is the strongest signal Scorecard's `Maintained` check already grades at 10/10.
 
 ## CHANGE_CONTROL
 

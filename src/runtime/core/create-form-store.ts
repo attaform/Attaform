@@ -669,6 +669,16 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   touchAtPath(segments: Path): void
   /**
+   * Walk every active-variant leaf under `segments` and flip the full
+   * interaction ladder (`touched` / `interacted` /
+   * `blurredAfterInteraction`), as though the user had focused,
+   * edited, and left each one. Powers `form.interact(path?)`.
+   * Idempotent; does not mutate value / focused / blurred. Returns
+   * whether any leaf resolved, so the caller can skip validation and
+   * dev-warn on an empty path.
+   */
+  interactAtPath(segments: Path): boolean
+  /**
    * SSR-only optimistic mark: flip `connected: true` on the field
    * record without an actual DOM element. Called by the `vRegisterHint`
    * compile-time transform via `RegisterValue.markConnectedOptimistically()`
@@ -3537,6 +3547,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
    * blurred, or trigger validation — touched is the single sticky
    * flag this helper writes.
    */
+  /**
+   * Shared leaf walk behind `touchAtPath` / `interactAtPath`. Visits
+   * every active-variant leaf at or under `segments` and reports
+   * whether any resolved, so each caller can dev-warn on an empty
+   * path. Enumerates `originals` (the schema's leaf set) rather than
+   * `fields`, so it reaches leaves that were never mounted; inactive
+   * DU-variant leaves are filtered via `hasAtPath` against the live
+   * form value, the same gate the field-state aggregation walk uses.
+   */
+
   function touchAtPath(segments: Path): void {
     const formValue = form.value
     let touchedAny = false
@@ -3555,6 +3575,77 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
           `Check the path matches an existing field or container.`
       )
     }
+  }
+
+  /**
+   * Walk every active-variant leaf under `segments` and flip the whole
+   * interaction ladder — `touched`, `interacted`, and
+   * `blurredAfterInteraction` — as though the user had focused, edited,
+   * and left each one. Powers the public `form.interact(path?)` API,
+   * whose job is to open the default display gate
+   * (`submissionAttempts > 0 || blurredAfterInteraction`) for a subtree
+   * without a form-wide submit.
+   *
+   * `interacted` is the load-bearing bit. Writing only `touched` /
+   * `blurred` reproduces the tab-through no-op the gate deliberately
+   * ignores, since `markFocused` flips `blurredAfterInteraction` solely
+   * on a blur that follows an edit. Setting the ladder outright is what
+   * lets the gate open through its front door, unchanged.
+   *
+   * Deliberately does NOT write `focused` / `blurred`: those are
+   * DOM-owned, and `null` is their documented "no element connected"
+   * value. Fabricating a blur on an unmounted leaf would lie about DOM
+   * history, and forcing `focused: false` on a leaf the user is
+   * currently typing in would desync the store from the live document.
+   * The display gate reads neither, so the simulation loses nothing.
+   *
+   * Walks `originals` rather than `fields`, so it reaches schema leaves
+   * that were never mounted or are currently `v-if`'d away; the flags
+   * are sticky, so such a subtree stays revealed when it remounts.
+   * Inactive DU-variant leaves are filtered via `hasAtPath` against the
+   * live form value, matching `touchAtPath`.
+   *
+   * Returns whether any leaf resolved. Validation is the caller's job:
+   * the store has no awaitable validation handle, and `form.interact()`
+   * resolves only once the subtree's errors are committed.
+   */
+  function interactAtPath(segments: Path): boolean {
+    // A frozen form records no interaction lifecycle — same guard as
+    // `markFocused` / `markInteracted`. Arming the ladder here would
+    // survive a disable -> enable toggle and reveal errors on a subtree
+    // the consumer had deliberately taken out of play.
+    if (effectiveDisabled.value) return false
+    const formValue = form.value
+    let interactedAny = false
+    for (const [, entry] of originals) {
+      if (!isPathPrefix(segments, entry.segments)) continue
+      if (!hasAtPath(formValue, entry.segments)) continue
+      interactedAny = true
+      const leafKey = canonicalizePath(entry.segments).key
+      const current = fields.get(leafKey)
+      // Skip the reactive write once the whole ladder is already set —
+      // records are replaced wholesale, so an unconditional
+      // `fields.set` would notify for nothing.
+      if (
+        current?.touched === true &&
+        current.interacted === true &&
+        current.blurredAfterInteraction === true
+      ) {
+        continue
+      }
+      touchFieldRecord(leafKey, entry.segments, {
+        touched: true,
+        interacted: true,
+        blurredAfterInteraction: true,
+      })
+    }
+    if (!interactedAny && __DEV__) {
+      console.warn(
+        `[attaform] form.interact(): no fields resolved at path ${JSON.stringify(segments)}. ` +
+          `Check the path matches an existing field or container.`
+      )
+    }
+    return interactedAny
   }
 
   // --- Rehydrate ---
@@ -4252,6 +4343,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     markFocused,
     markInteracted,
     touchAtPath,
+    interactAtPath,
     markConnectedOptimistically,
     markHostConnected,
 

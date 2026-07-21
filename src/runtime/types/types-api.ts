@@ -3240,14 +3240,22 @@ export type FieldStateMap<Form extends GenericForm> = LeafWalker<Form, 'field'> 
    */
   <P extends string>(path: P): FieldCallResult<Form, P>
   /**
-   * Tuple-segment form. Returns the typed `FieldStateMapEntry` for
-   * the resolved path when the tuple resolves to a known path.
-   * Equivalent to `form.fields[a][b][...]` but useful when the path
-   * is built from variables.
+   * Tuple-segment form. The segment-array spelling of the string
+   * call-form above, for a path built from variables — the two resolve
+   * to the same proxy, so `form.fields(['users', i, 'email'])` and
+   * `form.fields(\`users.${i}.email\`)` are interchangeable.
+   *
+   * Resolves to that path's `FieldState`, which at a container is its
+   * rolled-up aggregate (`displayState`, `valid`, `dirty`, ... all
+   * exist regardless of the value type), exactly as the string form
+   * does. Note this is the CALL form: it hands back the path's state,
+   * not a drillable sub-proxy. To walk into a container's children use
+   * dot/bracket access (`form.fields.users[i].email`), which is what
+   * descends.
    */
   <const S extends ReadonlyArray<string | number>>(
     segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
-  ): FieldStateMapEntry<NestedType<Form, JoinSegments<S>>>
+  ): FieldState<NestedType<Form, JoinSegments<S>>>
   /**
    * Dynamic-array fallback for callers passing `Path`-typed (runtime)
    * segment arrays — e.g. forwarding `RegisterValue.segments` to
@@ -4274,11 +4282,8 @@ export type UseFormReturnType<
   applyInvalidSubmitPolicy: (policy?: OnInvalidSubmitPolicy) => void
 
   /**
-   * Programmatically mark fields as touched — the sticky flag the
-   * standard "show errors after interaction" pattern reads. Closes
-   * the gap when fields are populated without a DOM gesture (post-
-   * import, paste, autofill, server-seeded values you want to
-   * validate immediately).
+   * Programmatically mark fields as `touched` — the descriptive
+   * "this field was visited" flag.
    *
    * ```ts
    * form.touch('email')                 // one leaf
@@ -4287,12 +4292,58 @@ export type UseFormReturnType<
    * form.touch()                        // every leaf in the form
    * ```
    *
+   * **This does not reveal errors under the default display
+   * heuristic.** `touched` also flips on a bare focus → blur with no
+   * edit, so the library-default gate deliberately ignores it and
+   * reads `blurredAfterInteraction` instead — the stricter bit that
+   * only a blur *following* an edit sets. Reach for `touch()` when a
+   * custom `getDisplayState` reducer or your analytics reads
+   * `touched`; reach for {@link UseFormReturnType.interact} to make
+   * seeded or imported values surface their errors.
+   *
    * Pure flag write — does not mutate value, focused, blurred, or
    * trigger validation. Idempotent: re-calling on an already-touched
    * field is a no-op. Touched is sticky-true; pair with
    * `form.reset()` / `form.resetField()` to clear.
    */
   touch: (path?: FlatPath<Form> | (string | number)[]) => void
+
+  /**
+   * Simulate a complete focus → edit → blur over every leaf under
+   * `path` (the whole form when omitted), so values that arrived
+   * without a DOM gesture reveal their errors under the default
+   * display heuristic.
+   *
+   * ```ts
+   * form.interact('profile')            // arm one subtree
+   * await form.interact(['members', 2]) // errors committed on resolve
+   * form.interact()                     // every leaf in the form
+   * ```
+   *
+   * Flips the full interaction ladder (`touched`, `interacted`, and
+   * `blurredAfterInteraction`) and runs the subtree's validation, so
+   * the default gate — `submissionAttempts > 0 ||
+   * blurredAfterInteraction` — opens through its front door. Use it
+   * to arm one region's errors without a form-wide submit, which
+   * would light up every other field on the page: a field-array row
+   * edited in a modal, a server-seeded section, a pasted import.
+   *
+   * Walks schema leaves, so it reaches fields that are currently
+   * `v-if`'d away or were never mounted; the flags are sticky, so
+   * such a subtree stays revealed when it remounts.
+   *
+   * Flags land synchronously — the returned promise resolves once the
+   * subtree's validation has committed, so an awaiting caller can read
+   * `showErrors` / `errors` immediately after. It never rejects, and
+   * ignoring it is fine.
+   *
+   * No-op on a disabled form, matching every other interaction-
+   * lifecycle write. Does not mutate value, `focused`, or `blurred`:
+   * those are DOM-owned, and the display gate reads none of them.
+   * Sticky like `touched`; pair with `form.reset()` /
+   * `form.resetField()` to clear.
+   */
+  interact: (path?: FlatPath<Form> | (string | number)[]) => Promise<void>
 
   // --- Field arrays ---
 

@@ -130,6 +130,24 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.handleSubmit).toBe('function')
     expect(typeof api.validateAsync).toBe('function')
     expect(typeof api.parse).toBe('function')
+    // The interaction-flag pair. They are siblings on purpose:
+    // `touch` writes the descriptive `touched` flag, `interact`
+    // simulates a full focus -> edit -> blur and drives the default
+    // display gate. Neither may quietly migrate onto `meta`.
+    expect(typeof api.touch).toBe('function')
+    expect(typeof api.interact).toBe('function')
+  })
+
+  it('`interact` returns an awaitable that never rejects', async () => {
+    const { api } = mountForm()
+
+    const returned = api.interact('email')
+    expect(typeof returned.then).toBe('function')
+    await expect(returned).resolves.toBeUndefined()
+    // An unresolvable path must still settle rather than throw. Uses
+    // the segment-array arm, which is deliberately loose — the
+    // `FlatPath` arm rejects a bogus dotted path at compile time.
+    await expect(api.interact(['not', 'a', 'real', 'path'])).resolves.toBeUndefined()
   })
 
   it('form-level reactive flags live on `api.meta` (not `api`)', () => {

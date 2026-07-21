@@ -939,13 +939,41 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   // --- Programmatic touch ---
   // Flip `touched: true` on a leaf, every leaf under a container, or
-  // every leaf in the form (no arg). Closes the post-import / paste /
-  // autofill gap where there's no DOM blur to drive the standard
-  // gesture-based touched flow. Touched is the sticky-true flag the
-  // standard "show errors after interaction" pattern reads.
+  // every leaf in the form (no arg). `touched` is the descriptive
+  // "this field was visited" flag — it records a bare focus -> blur,
+  // so custom heuristics and analytics can read it, but the library
+  // default display gate deliberately does NOT: it reads
+  // `blurredAfterInteraction`, which a tab-through never sets. Reach
+  // for `interact()` when the goal is to reveal errors.
   function touch(pathInput?: string | Path): void {
     const segments = pathInput === undefined ? ROOT_PATH : canonicalizePath(pathInput).segments
     state.touchAtPath(segments)
+  }
+
+  // --- Programmatic interaction ---
+  // Simulate a complete focus -> edit -> blur over every leaf under a
+  // path, so seeded / imported / out-of-band values reveal their
+  // errors under the default display heuristic without a form-wide
+  // submit. Flags land synchronously; the returned promise resolves
+  // once the subtree's validation has committed, so an awaiting caller
+  // can read `showErrors` immediately after.
+  //
+  // Never rejects. A fire-and-forget call (the common case — arm a
+  // modal row's errors, then close it) must not surface an unhandled
+  // rejection in the consumer's app.
+  async function interact(pathInput?: string | Path): Promise<void> {
+    const segments = pathInput === undefined ? ROOT_PATH : canonicalizePath(pathInput).segments
+    // The store owns the dev-warn for an unresolved path, so a frozen
+    // form (which legitimately resolves nothing) stays quiet.
+    if (!state.interactAtPath(segments)) return
+    try {
+      await validateAsyncBuilt(pathInput === undefined ? undefined : segments)
+    } catch {
+      // `validateAsync` reports failure through its return value; a
+      // throw here means the adapter itself blew up. The flags are
+      // already set, so the gate is open either way — swallow rather
+      // than reject into the consumer's app.
+    }
   }
 
   // --- Focus / scroll to first error ---
@@ -1191,6 +1219,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     scrollToFirstError: gated(scrollToFirstError),
     applyInvalidSubmitPolicy: gated(applyInvalidSubmitPolicyPublic),
     touch: gated(touch) as UseFormReturnType<Form, GetValueFormType>['touch'],
+    interact: gated(interact) as UseFormReturnType<Form, GetValueFormType>['interact'],
     get history() {
       void state.activate()
       return formHistory

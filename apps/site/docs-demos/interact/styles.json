@@ -1,0 +1,15 @@
+{
+  "with": [
+    "fieldset",
+    "label",
+    "input",
+    "message",
+    "badge",
+    "button",
+    "actions",
+    "ghost",
+    "primary",
+    "hint",
+    "code"
+  ]
+}

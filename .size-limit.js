@@ -314,7 +314,19 @@ export default [
     // gate() adds the slot marker, the submission-triggered cleared latch, the
     // nav-lock / freeze derived sets, and the reactive corrector in
     // use-wizard.ts. This whole entry absorbs both. Measured at 62.49 KB.
-    limit: '63 KB',
+    //
+    // Raised 63 -> 64 KB on the interact branch (#544). `form.interact(path?)`
+    // adds `interactAtPath` (the ladder-writing leaf walk over `originals`)
+    // plus its `__DEV__` unresolved-path warn in create-form-store, the
+    // `interact` wrapper in build-form-api, and the widened earned-success
+    // term (`dirty || interacted`) in display-state. All of it lives in the
+    // always-on useForm closure, so this tripwire moves in lockstep -- a
+    // legitimate feature addition, not a tree-shake leak (baseline measured at
+    // 62.89 KB on the parent commit, 63.02 KB here). As with the #464 note
+    // above, the dev warn folds out of a consumer's production build; this
+    // tripwire defines no `process.env.NODE_ENV`, so it measures the raw dist.
+    // Measured at 63.02 KB.
+    limit: '64 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -509,7 +521,11 @@ export default [
     // #523): the same useForm({ disabled }) data freeze in the shared eager
     // core plus gate() in use-wizard.ts. Byte-for-byte identical to index.mjs.
     // Measured at 62.49 KB.
-    limit: '63 KB',
+    //
+    // Raised 63 -> 64 KB tracking index.mjs's interact bump (#544):
+    // `form.interact(path?)` plus the widened earned-success term. Byte-for-
+    // byte identical to index.mjs; see that entry's note. Measured at 63.02 KB.
+    limit: '64 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

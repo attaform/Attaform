@@ -24,10 +24,18 @@ type Verdict = 'idle' | 'error' | 'success'
  *    path) resolves to `'error'`. The own-path filter keeps a container
  *    from duplicating an error a more-specific descendant already renders.
  * 3. **Success.** No error, `valid === true`, and the green check is
- *    earned: the field is non-blank and `dirty`. Gating on `dirty && !blank`
- *    keeps the check meaningful — an empty field that happens to pass, a
- *    pre-filled field merely tabbed through, and the post-submit flood of
+ *    earned: the field is non-blank and the value was engaged with, meaning
+ *    `dirty` (it differs from its baseline) OR `interacted` (the user edited
+ *    it, or `form.interact()` simulated that). Gating on
+ *    `(dirty || interacted) && !blank` keeps the check meaningful — an empty
+ *    field that happens to pass, a pre-filled field merely tabbed through
+ *    (which sets `touched`, never `interacted`), and the post-submit flood of
  *    every valid field all stay `'idle'` rather than greening for free.
+ *    Reading `interacted` alongside `dirty` is what keeps engagement, not
+ *    net value change, the thing being rewarded: a user who types and then
+ *    reverts to the original value has still engaged, and `form.interact()`
+ *    means "treat this subtree as engaged" without the caller having to know
+ *    that success secretly hinged on dirtiness.
  * 4. **Idle.** Anything else.
  *
  * `'pending'` (the spinner) is owned by `makeDefaultDisplayState` below,
@@ -51,7 +59,13 @@ function computeVerdict(field: DisplayCtx['field'], formMeta: DisplayCtx['formMe
     (e) => e.path.length === field.path.length && e.path.every((s, i) => s === field.path[i])
   )
   if (hasOwnError) return 'error'
-  if (field.valid === true && field.blank !== true && field.dirty === true) return 'success'
+  if (
+    field.valid === true &&
+    field.blank !== true &&
+    (field.dirty === true || field.interacted === true)
+  ) {
+    return 'success'
+  }
   return 'idle'
 }
 

@@ -1,5 +1,15 @@
 # Releases
 
+## v0.27.6 — 2026-07-21
+
+## What's Changed
+* feat(display): form.interact(path?) to reveal a subtree's errors by @ozzyfromspace in https://github.com/attaform/Attaform/pull/545
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.27.5...v0.27.6
+
+---
+
 ## v0.27.5 — 2026-07-18
 
 ## What's Changed

@@ -1,0 +1,874 @@
+[
+  {
+    "claim": "The deduped program lands minimal-v4 eager at ~23 kB gz (50%); orchestrator rough dedup: unweld 6350 + history 1200 + proxies/api 3920 + walkers 2421 + store 4475 + adapters 2390 + defensive 1910 + validation 1270 + strings/dev-dist ~2900 + misc ~135, minus cross-report double-counting ~1500-2500.",
+    "verdict": "confirmed-with-conditions",
+    "adjusted_savings_gz_bytes": 21400,
+    "conditions": [
+      "The three riskiest rewrites (store kernel+lazy-moves 4475, proxy-zoo replacement 3920, adapter rebuild-deletion 1300) must each land within ~15% of estimate; these carry uncounted replacement costs (hook arrays, stub refs, dynamic-import glue, fields-tree/errors-tree rebuild bytes) and the ~23 kB landing needs all three near-full.",
+      "The directive unweld (measured 6,265 gz, the most solid item) must work for compiled SSR component hosts (open spike flagged in the ssr-plugin report) and the store-DOM move (690) is contingent on it landing.",
+      "Dev/prod dual-dist with a 'development' export condition must ship, and its 2,554 gz measured win must be re-measured AFTER the unweld/lazy moves (400-500 gz of the leak sits in code other findings already remove).",
+      "Do not additionally bank the dev-strings 950 gz error-code finding or the 110 gz symbol diet without first removing the errors.ts prose claims from validation (350) and defensive (480) — the same ~950 chars are claimed by three reports.",
+      "Budget ~700-1000 gz for gzip superadditivity: per-file gz-attributed savings sum higher than realized deletion (verified by probe: two 30-key getter forests cost only ~480 gz combined minified+gz because gzip already dedupes the second copy, vs the 650 gz claimed for their removal).",
+      "Author sign-offs required on the behavior-changing pieces the totals depend on: history as subpath import, form.field(path) replacing form.fields(path), prod error messages becoming code+URL, adapter data-walk defaults (one-microtask seed timing shift), arrayShapeAtPath made required."
+    ],
+    "evidence": "Ledger reconstruction verified against phase1-digest.md: every bucket resums exactly from the 14 reports' per-finding numbers (e.g. walkers 2421 = 600+600+631+140+280+110+60; store 4475 = 12 findings incl. the history-contingent 155; proxies 3920 = 5047 minus the correctly-deduped 1127 history claim; strings 2900 = measured 2554 strip + 350 warn-gating, 950 error-code finding correctly excluded). Raw sum 26,971.\n\nCross-report collisions quantified at ~1,900 gz: errors.ts prose double-claimed by validation(350)+defensive(~410 of 480); paths.ts (698 gz total, verified 13,897 B source) machinery claimed by both walkers(280) and defensive(450) → ~290 overlap; dev-strip 2554 overlaps unwelded/lazified code ~400-500; slim-gate/factory caches claimed by store(120)+defensive(300)+adapters(250) → ~225; registry wizard surface misc(95) inside ssr-plugin(180); error-writer family validation/store ~150; write-funnel/stripSymbolsDeep ~150; patch appliers ~110; resetField strings triple-claim ~100. So the orchestrator's 1500-2500 allowance correctly covers CROSS-REPORT double-counting.\n\nWhat it does not cover: within-estimate optimism and gzip superadditivity. Ran a synthetic probe (node zlib, minified-style code): one 30-key getter forest = 324 gz, TWO near-identical forests = 482 gz combined (second copy ~160 gz marginal), loop replacement ~100 gz marginal — so the 650 gz mirror claim realistically nets ~350-400. Same gzip-dedup logic deflates the four-proxy-trap-set and variant-switch merges. Source-level probe: forests at build-form-api.ts lines 174-293/711-876 gzip at 0.26 ratio vs 0.31 norm.\n\nBottom-up floor from the analysts' own ideal designs: kernel 3.0 + paths 0.4 + walkers 1.9 + zod-v4 stack 3.6 + API surface 4.5 + register core 0.8 + validation/display/errors 2.0 + arrays 1.1 + registry 0.5 + misc 0.25 ≈ 18.0-18.5 kB gz — matching ground truth's 17-18 core-floor note. 23 kB is therefore physically achievable with headroom.\n\nNet: 26,971 − 1,900 − ~2,800 (optimism/replacement) − ~800 (gzip) ≈ 21,400 gz savings → landing ≈ 24.0 kB (47%).",
+    "notes": "Verdict detail: the ~23 kB (50%) headline survives as the optimistic edge of my honest 22.9-25.0 kB landing band, not as a central estimate; expected central landing ~23.5-24.5 kB (~47-48% cut). Notably the claim is internally conservative relative to its own ledger (26,971 − 2,000 would imply landing ~20.3 kB; claiming 23 implies an extra ~2.5k implicit haircut), and that implicit haircut is almost exactly what my optimism+gzip deflation consumes — which is why the number roughly holds. Three biggest deflation risks in rank order: (1) store bucket 4,475 (contingent chains, uncounted stub/glue costs; realistic ~3.3-3.6k), (2) proxies/api 3,920 (replacement-cost optimism + gzip already dedupes the repetitive code being deleted; realistic ~3.0-3.3k), (3) strings/dev-dist 2,900 (overlaps code other findings remove; realistic ~2.0-2.2k net). The floor estimate (~18 kB) means a second, harder pass after this program could still find ~3-5 kB more, so 50% is a fair program target even if the first landing is 24 kB."
+  },
+  {
+    "claim": "Directive un-weld: removing vRegister from ensureAttaformInstalled/plugin install saves a measured 6.27 kB gz for non-directive consumers (46.48->40.22), delivered to v-register users via compile-time transform injection and/or a replay-stub directive; SSR keeps sync getSSRProps via a server-condition eager import.",
+    "verdict": "confirmed-with-conditions",
+    "adjusted_savings_gz_bytes": 6100,
+    "conditions": [
+      "Server bundles must resolve a build variant where the install path statically imports and app-registers the real directive (export condition node / __SERVER__ define). A stub cannot supply getSSRProps: compiled SSR calls ssrGetDirectiveProps with a name-resolved directive (verified in @vue/compiler-ssr buildSSRProps), and getSSRProps carries aria on both SSR paths plus value/checked on the runtime path. Server-eager import satisfies this fully.",
+      "The 'compiled v-model pattern' is NOT literally available: compiler-core registerRuntimeHelpers imports helpers only from module 'vue' (runtimeModuleName), so client delivery for compiled users needs new mechanism - component-local directives:{register:vRegister} injection by the vite/nuxt plugin (clean, works for client AND SSR compiles of that component), a compiled-output resolveDirective('register') rewrite, or a module-slot stub armed by a transform-injected side-effect import. Requires a spike, including the component-host (SSR_COMPONENT_HOST_MODIFIER) parity path the phase-1 report itself leaves OPEN.",
+      "Replay-stub timing must be redesigned or scoped: 'one microtask' is false for a code-split chunk in production (network fetch). During the load window listeners are unattached and the replayed mounted seed syncs storage->DOM, potentially clobbering input typed into the visible field. Mitigations: capture el.value at replay as user input, preload on registry install, or prescribe sync installVRegister(app) for the no-build population. Webpack/vue-cli consumers get NO template transforms (src/webpack.ts docblock: vite transforms 'do not transfer'), so they are entirely in this fallback bucket.",
+      "Accounting: on the minimal-v4 eager metric this finding is mutually exclusive with the directive-internal findings (file 347, host-machinery 440, table-kernel 550, SSR-strip 490, async-transform 300 - all bytes inside the 6,255); count once. Small overlap (~200-300 gz) with the dev/prod dual-dist finding (2,554): assigner-pipeline's dead if(!1) warn block and directive.ts checkbox warn strings sit inside the removed cluster. NO overlap with the store dom-binding 690B move (create-form-store and register-api verified still eager in the stubbed build).",
+      "Zero-config DX decision: if a ~150-250 B gz stub stays registered by ensureAttaformInstalled to preserve zero-config no-build v-register, net drops to ~6.0-6.1 kB; if the install path registers nothing (installVRegister-only fallback), the full 6.25 kB stands but no-build v-register users break until they add one line (api:public, needs Oswald sign-off).",
+      "A realistic v-register-using app reclaims ~0 of these bytes on its form route (the cluster relocates into the component chunk via transform delivery); the un-weld's win accrues to non-directive consumers, headless register()-spread forms (register-api stays eager and works without the directive), injectForm-only routes, and first-paint TTI ordering. The further ~1.6-2.1 kB for directive users comes from the separate internal splits, not this finding."
+    ],
+    "evidence": "Replicated the measurement with an independent esbuild experiment (scratchpad/verify-unweld.mjs, same method as scripts/check-eager-size.mjs, onLoad stub of plugin.ts removing only the vRegister import + app.directive line): baseline 46,477 gz -> stubbed 40,222 gz, delta 6,255 (claimant 6,265). Metafile diff shows exactly the directive cluster removed (directive.ts, directive-aria/file/listeners/lifecycle/value-sync, register-protocol, assigner-pipeline, vue-shared-shim); zero modules added; create-form-store and register-api remain eager - so no double count with the store dom-binding 690B finding, and register-api's 1,086 gz correctly stays (build-form-api.ts:47 imports buildRegister). Import-graph check: src/runtime/core/plugin.ts:4 is the ONLY outside-cluster importer of directive files; ensureAttaformInstalled is called from use-abstract-form.ts:23-anchored path plus use-form-context.ts:15, inject-wizard.ts:4, use-register.ts:72. SSR: directive.ts:1456-1516 getSSRProps carries aria (both paths) and value/checked (runtime path; compiled SSR skips form-state via the null-vnode guard because the transform injected the binding). @vue/compiler-ssr buildSSRProps (compiler-ssr.cjs.js:556) emits ssrGetDirectiveProps(_ctx, ...buildDirectiveArgs) with name-based resolveDirective - server app registration is mandatory; the claimed server-condition eager import satisfies it. Semantic trap: compiler-core registerRuntimeHelpers (compiler-core.cjs.js:132) + runtimeModuleName='vue' (:3705) means codegen helpers import ONLY from 'vue' - the 'compiled v-model pattern' cannot be reused verbatim; client delivery needs new plugin machinery. src/webpack.ts docblock confirms webpack/rspack ship only the adapter rewrite, no template transforms. register-api.ts:106 catch-up probe (autofocus race) exists as claimed. Timing: import() of a split chunk is a network fetch, not a microtask; replayed mounted seed can clobber typed input.",
+    "notes": "Verdict: the byte number is real and independently reproduced; the deflation is in the delivery story, not the measurement. The headline mechanism (un-weld + server-eager SSR) is sound; the client-side transform injection is feasible but mischaracterized as an existing Vue pattern and needs a spike (component-local directive registration injected by the vite/nuxt plugin is the cleanest route found). The replay stub's microtask-safety claim is false under real chunk loading and needs an input-preserving replay or a sync installVRegister prescription for no-build users. Adjusted 6,100 assumes a small eager stub survives for zero-config DX; use 6,255 if the install path registers nothing. On the whole-audit ledger, do not also credit the directive-internal split findings against the minimal-v4 metric, and shave ~200-300 gz if summing with the dev/prod dual-dist finding."
+  },
+  {
+    "name": "Architect B: Clean Sheet (\"Kernel and Ports\")",
+    "thesis": "Attaform v1.0 is rebuilt as a small trusted kernel (plain state record, one interned-path write descent, one tagged error store, hook slots) surrounded by feature modules that attach only when their entry is imported: binding, wizard, history, SSR, activation, and async transforms all leave the useForm graph. The public surface drops the callable-proxy design: values is a native readonly reactive, errors is a memoized plain tree, fields keeps dot-drill via one lean proxy, and call forms become ordinary methods. The zod layer becomes one shared engine plus per-major probe packs with no schema reconstruction, so dual-major support costs under 2 kB instead of 5.5. With a pre-stripped dev/prod dual dist, minimal-v4 eager lands at a budgeted 19 kB gz (17.65 kB itemized plus 1.35 kB reserve), a 58% cut, while every current capability stays reachable and keystroke/mount work drops (one walk per write, shared methods, cached binding ports).",
+    "target_architecture": "MODULE MAP (src/runtime unless noted; budgets in the eager table).\n\nKernel: `state.ts` defines FormState, a plain record ({form ref, fields Map, errors Map (tagged), blankPaths, originals, authored, lifecycle refs, schema adapter, resolved opts, hooks}); construction and reset() are the same initialize() with a delta flag. `path.ts` is a per-store interning trie: pathOf(dotted | segs) returns the unique frozen {segs, key, parent}; equality is ===, JSON round-trips and the FIFO caches disappear; strings are minted only at serialized edges. `write.ts` is the single funnel: rim mints a PathRef once, one resolveNode(path) lookup returns {slimKinds, isPreprocess, du, required, emptyValue}, then ONE schema-guided descent gate-checks, completes structure, marks blank/authored, and emits patches against current storage; commit consumes the patch list (no re-diff). Capability flags (hasDU, transforms registered, dom attached) computed once skip whole stages. `errors.ts`: one Map<PathNode, TaggedError[]> with src schema|user; blank derives from blankPaths + required on read; one forEachError iterator replaces six merge loops; writers are three shared functions. `validate.ts`/`submit.ts`: one imperative validation shell; reactive validate() is a 20-line wrapper; parse(path?, {commit}) absorbs validateAsync; handleSubmit keeps its exact semantics and lazy-imports the focus policy through a hook the binding module installs. `display.ts`: the existing engine merged into one module, unchanged behavior. `value-walk.ts`: raw get/set/has/delete over one validated-descent helper plus ONE reconcile(schema, path, value, mode) engine serving construction fill, setValue completion, unset expansion, hydration merge, and intersection merge. `schema-walk.ts`: walkers dispatch on a WeakMap-cached normalized node() (8 structural kinds) instead of 25 wrapper arms. `arrays.ts`: one remap engine (remapForOp, relocateKeys, permuteList, one index scan) plus tokenAt/realign and the field-array API. `variants.ts`: DU guard, reshape, stubs, and variant memory in one module with one clone walk, installed by the adapter when introspection finds a union (eager bytes, runtime skipped when hasDU is false). `field-state.ts`: one builder (leaf = degenerate container, O(1) leaf error fast path), memoized identity. `form-api.ts` + `trees.ts`: form.values = readonly(state.form); form.errors = computed sparse tree; form.fields = one ~90-line lazy proxy; form.meta generated by a defineProperty loop over the exported FIELD_STATE_KEYS; activation moves into kernel entry points (no gated() wrappers). `registry.ts`: plugin+ssr fused, one makeTracker, plain pendingHydration, no wizard slice. `diag.ts`: dev flavor only; prod throws AttaformError(code) + attaform.dev/e URL.\n\nAdapters: `zod-core.ts` (shared engine: peel family, tree-walk predicates, issue mapping, fieldMeta, strict-defaults as a data-walk fix pass over derived values; a prototype class ZodSchemaAdapter, no services object) + `v4-pack.ts`/`v3-pack.ts` (~28 two-line accessors, kind table as data, async predicates, safeParse glue, UNSUPPORTED list). No strip/rebuild/clone anywhere; v4 loses its only value-import of zod. attaform/abstract keeps the AbstractSchema interface (node(), arrayShapeAtPath and slim kinds required; fingerprint removed).\n\nBinding (`attaform/bind`, zero eager): dispatcher + table-driven variant records {events, read, write} over one shared listener/force-sync/identity-guard core; per-path FieldPort cache makes register() identity-stable; lazy arms for component-host, file, and async-transform; SSR props behind a server export condition. The compile transform (one merged NodeTransform) rewrites v-register into withDirectives with a direct import from attaform/bind, so the chunk lives with the components that use it; form.register(path, opts) stays on the form as a ~100 B descriptor the bind module upgrades at load (transform guarantees ordering); no-build consumers call installVRegister(app).\n\nEntries: \".\", \"./zod-v4\", \"./zod-v3\", \"./abstract\", \"./bind\", \"./wizard\" (form-less affordance steps, gate spine tree-shaken unless gate imported), \"./history\" (snapshot-ring plugin factory passed as the history option value), \"./ssr\", \"./nuxt\", \"./vite\", \"./plugin\" (rollup/esbuild/webpack/rspack), \"./transforms\", \"./devtools-panel\". Dual prod/dev dist via the \"development\" condition. Dropped: \"./types\", \"./zod\", the require condition, sourcemaps, CJS, two d.ts flavors.\n\nDisappears: 8 proxy files, the rebuild cluster, 4 duplicate schema walkers and 3 reconcile twins, JSON PathKey machinery, ByKey method twins, the 90-key store literal, gated()/getter forests, the four 30-key mirrors, noop wizard forms, delta history, stripSymbolsDeep, deep hydration guards (version stamp instead), probe fallback, per-entry formKey, prod prose, dead modules.",
+    "eager_total_gz": 19000,
+    "eager_budget": [
+      {
+        "module": "kernel (state, init=reset, write funnel, commit, scheduling, tagged error store, blank/authored, hook slots)",
+        "gz_bytes": 3000,
+        "note": "Replaces create-form-store's core concerns (~3.8 kB of 7,272) written once: single descent, patches consumed not re-diffed, no per-form closure allocation"
+      },
+      {
+        "module": "value-walk (raw ops + one reconcile engine, 5 modes)",
+        "gz_bytes": 1100,
+        "note": "Replaces path-walker core, unset-walker, merge-hydration, merge-deep, diff-apply emission (~3.0 kB today)"
+      },
+      {
+        "module": "schema-walk (normalized-node descent, derive-default, slim kinds)",
+        "gz_bytes": 1100,
+        "note": "Replaces 2.24 kB of wrapper-arm-duplicated walkers; walk-field-meta leaves eager via withMeta registration-side install"
+      },
+      {
+        "module": "path trie (interned PathNode)",
+        "gz_bytes": 400,
+        "note": "Replaces paths.ts 698 + JSON round-trips; equality becomes ==="
+      },
+      {
+        "module": "field-state (unified builder, leaf fast path, memoized identity)",
+        "gz_bytes": 1300,
+        "note": "Replaces field-state-api 1,828 + field-ids"
+      },
+      {
+        "module": "form API assembly (meta via FIELD_STATE_KEYS loop, pickDefined, lifecycle, activate glue, register descriptor stub)",
+        "gz_bytes": 1400,
+        "note": "Replaces build-form-api 2,755 + use-abstract-form 1,089; no gated() wrappers, one layer"
+      },
+      {
+        "module": "fields tree + errors tree",
+        "gz_bytes": 600,
+        "note": "One lean proxy + one computed sparse tree; replaces the 3.2 kB proxy zoo (values needs zero bytes: readonly())"
+      },
+      {
+        "module": "entry glue (per-adapter useForm wrapper, registry attach, shared bindConsumer)",
+        "gz_bytes": 400,
+        "note": "use-form + context sharing collapsed"
+      },
+      {
+        "module": "validation + submit pipeline",
+        "gz_bytes": 1300,
+        "note": "process-form at ~60% + one shell; focus policy is a lazy chunk behind a hook"
+      },
+      {
+        "module": "display engine",
+        "gz_bytes": 650,
+        "note": "Kept core as-is (merged files, test hooks DEV-gated); it is the product signature and already minimal"
+      },
+      {
+        "module": "arrays engine (remap once, relocateKeys, tokens, field-array API)",
+        "gz_bytes": 1000,
+        "note": "Replaces 4 files + 2 external switches (~2.0 kB); mutation half stays eager (no-silent-degradation)"
+      },
+      {
+        "module": "variants/DU module",
+        "gz_bytes": 650,
+        "note": "Consolidated from ~1.13 kB; eager on zod entries, runtime-skipped via hasDU flag (sync reshape contract forbids dynamic import)"
+      },
+      {
+        "module": "zod-core shared engine (peel, predicates, issue map, fieldMeta, data-walk strict defaults, prototype adapter)",
+        "gz_bytes": 2400,
+        "note": "Absorbs abstract-schema-factory; rebuild cluster (3.4 kB across majors) deleted"
+      },
+      {
+        "module": "zod-v4 probe pack",
+        "gz_bytes": 1100,
+        "note": "Accessors + kind table + async predicates + safeParse glue; marginal v3 pack ~1.2 kB makes the dual barrel penalty <2 kB"
+      },
+      {
+        "module": "registry (plugin+ssr fused, one tracker)",
+        "gz_bytes": 350,
+        "note": "Wizard slice and directive import gone; pendingHydration plain Map"
+      },
+      {
+        "module": "errors + prod diagnostics (classes, codes, URL template, public atta: codes)",
+        "gz_bytes": 350,
+        "note": "Prose lives only in the dev flavor; codes are the stable branchable surface"
+      },
+      {
+        "module": "misc glue (hash, humanize, guard()/emitAll, symbols, defaults)",
+        "gz_bytes": 550,
+        "note": "hash+humanize are genuinely eager (ids, label fallback)"
+      },
+      {
+        "module": "estimation reserve",
+        "gz_bytes": 1350,
+        "note": "Contingency for rewrite-estimate optimism, concentrated on kernel/zod-core/form-API lines; ratchet re-baselines per phase"
+      }
+    ],
+    "api_changes": [
+      {
+        "change": "form.values / form.errors / form.fields lose callability: values is plain readonly reactive, errors a plain tree; call forms become form.field(path), form.errorsAt(path), form.value(path)",
+        "why": "The dual dot+call function-target proxies cost ~3.2 kB of trap-repair machinery (toJSON quartets, Array swaps, sucrase shims, schema-authority arbitration) and rebuild trees per stringify; native reads are smaller, faster, and JSON/Array.isArray-correct",
+        "severity": "major"
+      },
+      {
+        "change": "Binding moves to attaform/bind: the compile transform injects the vRegister import; no-build consumers call installVRegister(app); useRegister imports from attaform/bind; form.register(path) remains but returns a descriptor the bind module upgrades",
+        "why": "The install weld makes every consumer pay a measured 6,265 B gz for a directive they may never render; transform-delivered directives are Vue's own compiled v-model pattern and keep SSR/autoAria working",
+        "severity": "moderate"
+      },
+      {
+        "change": "history enabled via useForm({ history: history({max}) }) with history imported from attaform/history; config-only {history:{max}} removed; internals become a snapshot ring",
+        "why": "Opt-in feature was statically welded (1.3 kB incl. its private diff/path helpers); plugin-value import keeps construction synchronous with no missed-delta window",
+        "severity": "moderate"
+      },
+      {
+        "change": "useWizard/injectWizard/gate move to attaform/wizard; affordance (string) steps become form-less (wizard.forms[key] is undefined, gates clear on advance-past); registry's wizard machinery installs lazily",
+        "why": "Subpath is free pre-1.0 and trims whole-entry + d.ts weight; noop FormStores allocated a 4,381-line closure for an intro screen; ~95 B of wizard registry state was eager for every consumer",
+        "severity": "moderate"
+      },
+      {
+        "change": "validateAsync removed; parse(path?, {commit?}) is the one imperative API and always returns data",
+        "why": "The two methods differed only in flags and a stripData projection; one method deletes a response type and a docs page",
+        "severity": "moderate"
+      },
+      {
+        "change": "AbstractSchema SPI: node() normalized-introspection added, arrayShapeAtPath + getSlimPrimitiveTypesAtPath required, fingerprint() removed, sub-schemas standardize on the lazy 3-method stub",
+        "why": "Required params kill the 1M-index probe fallback; fingerprint's only consumer is a dev-only warning that reference-inequality covers; smaller contract helps the third-party-adapter wedge",
+        "severity": "moderate"
+      },
+      {
+        "change": "ValidationError drops per-entry formKey (wizard stamps aggregates); prod error messages become 'attaform:E<code> <docs-url>' with full prose in the dev flavor; SSR helpers move to attaform/ssr; hydration payload gains a version stamp and guards become all-or-nothing",
+        "why": "formKey is constant within a form; prose is ~2 kB of eager string mass; the stamp diagnoses rolling-deploy skew more precisely than 8-field structural checks",
+        "severity": "cosmetic"
+      },
+      {
+        "change": "Packaging: no sourcemaps, no CJS (./nuxt ESM-only), single .d.mts flavor, dev/prod dual dist with a development condition, ./types and ./zod aliases dropped, rollup/esbuild/webpack/rspack collapse into ./plugin",
+        "why": "87% of the packed tarball (maps, d.ts triplicate, unreachable CJS) is bytes no tool reads; dual dist makes __DEV__ DCE deterministic instead of depending on a 4-step bundler chain that measurably leaks 2,554 B gz",
+        "severity": "moderate"
+      },
+      {
+        "change": "v3 .catch()-under-useDefault:false unifies on v4's recurseInner semantics; v3 primitive-constraints arm deleted; intersection-of-identical-DU resolves per v3's superset on both majors",
+        "why": "Per-major behavioral divergences pinned only by tests contradict the parity stance and cost a config axis (catchOnUseDefaultFalse)",
+        "severity": "cosmetic"
+      }
+    ],
+    "migration_phases": [
+      "P0 Packaging config (sourcemap:false, emitCJS:false, declaration:'node16', files-field guards, tarball ratchet ~350 kB): tarball 1.8 MB to ~282 kB measured; zero source changes, lands alone",
+      "P1 Dev/prod dual dist + 'development' export condition + error-code prod messages + hardened dev-dce structural test: eager 45.4 to ~41.9 kB (2,554 B measured leak + ~950 B prose); docs error-code pages land with it",
+      "P2 Binding de-weld: attaform/bind entry, merged compile transform injects the import, installVRegister fallback, DOM/focus leave the store behind hooks, FieldPort cache, lazy host/file/async-transform arms: eager to ~34.9 kB (6,265 B measured + ~0.7 kB store-side); used-path binding cost drops 7.1 to ~3.0-3.5 kB",
+      "P3 Path interning + trust-boundary rim (PathRef minted once, inverse caches and ByKey twins deleted, canonicalizePath test gate retired): eager to ~34.4 kB; keystroke drops from 6-10 path serializations to reference reads; enabler for P4",
+      "P4 Store kernel rewrite (plain FormState + hook slots, single-walk write funnel feeding patches to commit, one tagged error store with derived blank, construction=reset, capability flags) + arrays engine merge + variants consolidation: eager to ~31.5 kB; characterization suites pinned first, both zod majors green",
+      "P5 Schema layer: normalized node() introspector, zod-core + per-major probe packs, delete the rebuild cluster, prototype adapter class, field-meta registration-side install, probe fallback removed: eager to ~27.5 kB; barrel dual-adapter penalty 5.5 to <2 kB",
+      "P6 Form API: readonly values, computed error tree, lean fields proxy, FIELD_STATE_KEYS loop-generation, unified FieldState builder, pickDefined, activation folded into kernel entry points, adapter-entry collapse: eager to ~23.5 kB; docs sweep for call-form migration rides along",
+      "P7 Feature entries: attaform/history snapshot-ring plugin (-1.3 kB), attaform/wizard with form-less steps + gate spine split + registry slim (-0.3 kB eager), validation shell fold + lazy focus policy (-0.7 kB), attaform/ssr + Nuxt .server/.client plugin pair + hydration stamp (-0.5 kB): eager to ~20.2 kB",
+      "P8 Sweep and lock: formKey drop, display merge, shared groupBy/guard helpers, dead-module deletion, d.ts two-tier comment policy + audience split, re-baseline ratchets (eager budget 20,000 B, tarball ~450 kB with the dev flavor): eager lands ~19.0 kB"
+    ],
+    "top_risks": [
+      "Estimate optimism on the three rewrite-heavy lines (kernel 3.0, zod-core 2.4, form API 1.4): mitigated by the 1,350 B reserve and per-phase ratchet re-baselining; if kernel lands at 3.6 the total is still under 20",
+      "Write-funnel semantics regressions: phase ordering (blank/authored marks before identity short-circuit), same-tick DU reshape (no-flicker suite), blur-dedup value-equality, and schema-first error order are all locked behaviors; characterization suites must be pinned green on both zod majors before P4 starts",
+      "Transform-delivered directive: the component-host SSR compile (SSR_COMPONENT_HOST_MODIFIER) needs a spike proving withDirectives-with-value drives getSSRProps on that path; no-build/CDN consumers regress to one explicit installVRegister line",
+      "TS2589/Volar fragility: the v4 SupportedRootSchema arm, _zod brand, StorageShape property-access pattern, and escape-arm scaffolding must carry over verbatim through the adapter rewrite; the bundled-types fixtures and the playground's CDN-TS worker are the canaries",
+      "Dev/prod dual dist depends on consumers resolving the 'development' condition: Nuxt (vite + webpack builders) and Vitest resolution must be verified; bundlers that ignore it silently serve prod in dev (warnings vanish), needing a documented escape hatch",
+      "Data-walk strict-defaults changes observable timing: sync-check seeds on schemas that also contain an async refine surface one microtask post-construction, and unknown constraint keys are preserved rather than stripped; needs re-baselined adapter suites and Oswald's sign-off per the reference-before-API-change rule",
+      "Docs/demos churn is the largest labor item: ~1,400 fields-dot uses survive but ~560 call-form uses and every v-register/no-build recipe migrate; page-review cadence applies",
+      "Interned path trie lifetime: per-store scoping bounds growth to live form shape, but wizard/injectForm cross-store reads must not leak nodes across registries"
+    ],
+    "rejected_ideas": [
+      "Lazy-loading the array mutation half on first array detection (~500 B): a structural op racing the chunk degrades to positional identity, silently bleeding per-element state one slot; violates the no-silent-degradation stance for a small win",
+      "Runtime lazy adapter selection for the '.' barrel: useForm is synchronous and introspection must run before first paint; instead the probe-pack shrink makes the dual-eager penalty <2 kB and build plugins alias to one major",
+      "Making '.' v4-only with v3 throwing a pointer: demotes zod-v3 from first-class, contradicting the parity commitment; the marginal v3 pack at ~1.2 kB removes the motivation",
+      "Keeping wizard in the main entry (wizard agent's recommendation): correct that it saves 0 eager bytes, but clean-sheet subpath placement trims whole-entry size-limit numbers and per-entry d.ts, and Nuxt auto-imports erase the DX difference",
+      "Dynamic-importing the DU/variants module for union-free schemas: the same-tick reshape and rememberVariants default-true contracts require sync install; adopted the eager-bytes/runtime-skip compromise instead",
+      "Symbol.for description diet (~110 B): real debuggability cost in devtools for near-noise savings",
+      "Replacing unbuild with per-entry builds: re-creates solved problems (single registry-module identity across 12 entries, v3 alias rewrite, jiti stub dev flow) for zero tarball gain beyond the config fixes",
+      "Minifying dist for npm: consumer bundlers minify anyway; unminified output is the node_modules debugging story, doubly load-bearing once sourcemaps stop shipping",
+      "An eager buffering shim to preserve config-only useForm({history:{max}}): ~150 B forever on every consumer to save one import line for an opt-in feature; the plugin-value API is strictly cleaner",
+      "Build-time schema descriptor compilation (moving introspection to the transform): dynamic runtime-built schemas are a first-class commitment, which kills any design requiring schemas to be statically visible"
+    ]
+  },
+  {
+    "claim": "Store kernel + lazy feature modules: async-transform lazy (750), activation lazy (600), DOM binding to register feature (690), SSR replay to registry payload path (330), single-descent write funnel (450), DU consolidation (480); store core lands ~5.5-6 kB gz vs 11.3.",
+    "verdict": "partially-refuted",
+    "adjusted_savings_gz_bytes": 2200,
+    "conditions": [
+      "Transform bookkeeping (create-form-store.ts:1757-1906, ~430 gz measured) must stay eager: beginTransform's synchronous supersede, per-path fieldTransformCounts (field.transforming reads), cancelTransformsUnder inside the sync write funnel (2313), and settleTransforms' per-path counts cannot ride a chunk; only assigner-pipeline's post-thenable commit orchestrator (~150-250 gz) may defer, with beginTransform still called sync before the import.",
+      "Activation lazy (~600) is sound ONLY if the kernel keeps the sync gating: hydrating.value must flip synchronously in fireFactory (else a not-hydrating flash after first touch), activated/activationPromise published sync; module carries runFactoryAndApply + mergeSparseHydration + hydration-error helpers. SSR safe: onServerPrefetch awaits the composed promise.",
+      "DOM-binding 690 does NOT accrue to the minimal-v4 ratchet metric as designed: the scenario itself calls f.register('x') and register-api builds RegisterValue wrappers over registerElement/deregisterElement/markHostConnected, which are PUBLIC custom-integration API (types-api.ts:1925-1976). Credit requires (a) the directive un-weld landing, (b) RegisterValue dropping/relocating those methods (public API change, mislabeled api:internal), (c) process-form lazily resolving the focus module (dedupe with validation-display's 70B claim on the same bytes), (d) markConnectedOptimistically staying sync for first-paint field.connected.",
+      "SSR replay (~280): FormStoreHydration contract must change to pre-validated Maps shaped in serialize.ts (verified already off the eager set; sole store importer of the payload); constructor keeps a small copy branch, so ~50 gz of the 330 stays.",
+      "Write funnel: double diff verified real (create-form-store.ts:2091-2122 diffs, applyChangedKeys re-diffs at diff-apply.ts:309) but only on replacement writes, not the targeted leaf fast-path; credit ~300 not 450 since all six phase semantics survive the merge, and mergeStructural bytes are double-claimed by walkers-paths.",
+      "DU consolidation: credit ~400 after deducting the ~130B variant-memory/freshElementIndices switch overlap explicitly also claimed by arrays-history.",
+      "Ratchet methodology verified compatible: check-eager-size.mjs walks import-statement edges under splitting:true, so new dynamic imports do come off the eager number.",
+      "Aggregate honesty: even at face value the store-core findings sum to ~4.5 kB, landing at ~6.8 kB, not the asserted 5.5-6; with verified numbers the realistic landing zone is ~8-8.5 kB gz for the 11.3 kB store cluster."
+    ],
+    "evidence": "Recorded history: scripts/check-eager-size.mjs \"RECORDED LOOSENING (async register transforms, #361)\" explicitly declined deferring even the await/commit orchestrator because it \"reclaims a fraction of the cost and would push the synchronous transforming flip (beginTransform runs inside the assigner) behind a dynamic import.\" Code confirms the constraint is broader than the claimant's dodge: kickoffAsyncTransform calls rv.beginTransform synchronously (assigner-pipeline.ts:276); beginTransform synchronously supersedes+aborts the prior run and bumps per-path reactive counters (create-form-store.ts:1831-1845); the sync write funnel cancels in-flight runs at setValueAtPath:2313 (cancelTransformsUnder guarded on transformRuns.size — during a chunk-load window an unregistered run cannot be cancelled, so a stale transform result would commit over a newer write, violating latest-write-wins); settleTransforms(path) consults fieldTransformCounts per-path (1902) and handleSubmit drains on activeTransforms (process-form.ts:516) — a single kernel ref cannot answer path-scoped settles or keep field.transforming truthful during the window (\"module-or-idle\" reads idle while transforming). Measurements (esbuild transform, minified, ×0.31 bundle-gz ratio): transform machinery 1757-1906 = 1378 raw-min ≈ 427 gz (claimed 530); activate/rehydrate 3651-3792 = 1585 ≈ 491 + merge-hydration 224 (verified sole importer create-form-store.ts:66) supports ~600; hydration guards 126-193 = 1040 ≈ 322; DOM cluster registerElement..markHostConnected 1406 ≈ 436 + host-focus 324 ≈ 100 + getFirstErrorElement+sort 765 ≈ 237; setValueAtPath 3869 ≈ 1199 total (450 cut of it optimistic). Verified: double diff real (applyFormReplacementWithPath:2100 + diff-apply.ts:309); serialize.ts stages pendingHydration (serialize.ts:88) and is off the eager set; RegisterValue.registerElement is public API (types-api.ts:1925); ratchet scenario itself exercises f.register('x') + f.handleSubmit, keeping any register-attached dom module eager. Arithmetic: claimant's own findings sum ~4.5 kB → 6.8 kB store core, contradicting the 5.5-6 headline.",
+    "notes": "Adjusted number decomposes as: transforms ~200 (only the assigner-pipeline then-body defers; the abort-holder latch makes late chain-start safe, so this slice IS newly viable despite the recorded decline, which targeted the flag flip), activation ~600, DOM ~400 (conditional, cross-subsystem, public API reshape), SSR replay ~280, write funnel ~300, DU ~400. The kernel/plain-state conversion itself and the remaining small merges (construction=reset, error writers, touch/interact dedupe, patch-applier move) were not under test here but look individually credible and would add ~800-900 gz on top; even so the store cluster lands ~8 kB, not 5.5-6. Perf claims (double-diff removal, allocation reduction) verified directionally correct and are the strongest part of this proposal."
+  },
+  {
+    "name": "Kernel & Capabilities (Architect A)",
+    "thesis": "Attaform becomes a hooks-kernel: a plain FormState record plus store-first-arg functions, where every optional capability attaches through an explicit channel — compile-time (directive), import-gated sync (history plugin, wizard gate, field-meta), lazy-inside-an-async-moment (focus, activation, async transforms), or SSR-conditional (serialize/hydration replay) — so a minimal form pays only for the kernel it exercises. Three unifications collapse the semantic duplication that phase 1 found written four-plus times: one interned-path/walker layer (normalized schema nodes + one reconcile engine), one zod-core over two thin per-major probe packs, and one callable-tree proxy factory that keeps the callable-read API at roughly a third of today's proxy bytes. A dev/prod dual dist behind a \"development\" export condition makes DCE deterministic instead of hoping consumer bundlers fold __DEV__ (measured 2.55 kB leak today). Observable behavior — the useForm handle, v-register, callable reads, schema→blank→user error ordering, field.blank — is preserved while storage merges to one tagged error map. Projected minimal-v4 eager: 22.0 kB gz (from 45.4), including a 1.65 kB integration reserve.",
+    "target_architecture": "ENTRY LAYOUT. Exports: \".\" (unified zod, runtime dispatch — penalty drops to <2 kB once the marginal adapter is a probe pack), \"./zod-v4\", \"./zod-v3\", \"./abstract\", \"./nuxt\", \"./vite\", \"./transforms\", per-bundler plugin entries, \"./devtools-panel\", plus NEW \"./directive\" (vRegister + installVRegister), \"./history\" (historyPlugin), \"./ssr\" (renderAttaformState/hydrateAttaformState). \"./types\" dropped. Wizard stays in main entries (measured: tree-shakes to 0 eager). Every runtime entry ships prod+dev flavors behind a \"development\" condition; SSR-only code (getSSRProps, ssr aria/form-state props, serialize) behind node/server conditions. Packaging: sourcemap off, emitCJS off (./nuxt ESM-only), single .d.mts with two-tier comment policy, files-negation guards + tarball ratchet (~0.4 MB packed including the dev flavor).\n\nMODULE MAP (eager, minimal-v4; bytes in eager_budget). Primitives: path (interning trie — pathOf() returns THE frozen {segs, key, parent} node; equality is ===; Maps key on nodes; strings minted only at serialized edges, one edge-parser kept for SSR/wizard-URL payloads); value-walk (get/has/set/tryInPlaceLeafWrite over one validated-descent helper + ONE reconcile(schema, node, value, mode) engine whose mode flags cover construction fill, setValue completion, unset expansion, sparse hydration, intersection merge — replacing mergeStructural, setAtPathWithSchemaFill, unset-walker, merge-hydration, merge-deep); schema-walk (introspector gains node(schema) → {kind: 8-way, children, flags}, WeakMap-cached peel; descend/derive-default/slim-kinds dispatch on 8 kinds, not ~25 wrapper arms; arrayShapeAtPath/getSlimPrimitiveTypesAtPath required, probe fallback deleted); hash/humanize/field-ids; diag (prod: AttaformError(code) + attaform.dev/e URL; prose lives in the dev flavor only).\n\nKernel: plain FormState record — form ref, fields Map, ONE tagged error Map (src: schema|user; blank derived at read from blankPaths + isRequiredAtPath; per-key schema→blank→user order and field.blank unchanged; three shared fns writeErrors/clearErrors/forEachError replace 7 writer methods and 6 merge loops), originals, blankPaths, lifecycle refs, resolved opts, hooks (ordered arrays: write/commit/reset/dispose), capability flags computed once from introspection (hasDU, hasTransforms, hasArrays). initialize() serves construction AND reset. write(state, node, value, meta) is ONE schema-guided descent doing gate+strip-check+complete+author+patch-emit against current storage; commit consumes the patch list — no re-diff, no stripSymbolsDeep. Validation scheduling stays kernel.\n\nCore eager features (sync-on-write or universally observable): display (state+engine merged); arrays (one engine: remapForOp/relocateKeys/permuteList/scanKeysAtIndex + render half; mutation stays eager — no race degradation); validate (single imperative shell, reactive validate() a thin wrapper, unified parse, submit pipeline); schema-io (slim-gate + coerce over one per-store SchemaNode cache {slimKinds, isPreprocess, du, required, emptyValue} — one lookup per write); variants (DU reshape + stubs + memory, one shared clone walk; bytes eager because dynamic schemas forbid build-time knowledge and reshape is sync same-tick; work flag-gated).\n\nAPI layer: form-api (plain literal; FIELD_STATE_KEYS drives meta via defineProperty loop; activation folded into store entry points — gated() and activation getters deleted); field-state (one builder, leaf = degenerate container, O(1) leaf error fast-path preserved); surfaces — ONE callableTree factory (function target, array-target swap for renderList, apply → resolve(pathNode), coercion quartet defined once, ownKeys live, toJSON via per-store-change memoized computed tree, child cache keyed on interned nodes) instantiating values/fields/errors and the wizard record surfaces: callable reads fully preserved; register (per-path FieldPort cache — computeds/coerce/store delegates built once per path, RV identity stable; element-registration surface lives here, not in the kernel); createForm core with thin per-adapter entries and shared bindConsumer for injectForm; registry (plugin+ssr merged, one makeTracker, wizard surface lazy-installed, and registers only a ~150 B replay-stub directive).\n\nZod: zod-core (shared walkTree over pack.children; peel/required/DU/meta family once; issue mapping; strict defaults = derive + data-walk fix pass — all strip/rebuild/clone machinery deleted, v4 loses its zod value-import; one withMeta; lazy sub-schema stub; one shared lazy fingerprint walker) + per-major probe packs (~28 accessors, kind table as data, 2 async predicates, safeParse glue, UNSUPPORTED list) + prototype ZodSchemaAdapter (services object deleted; methods shared across forms).\n\nCAPABILITY ATTACHMENT. (a) Compile-time: vite/nuxt transforms rewrite v-register → withDirectives with a direct attaform/directive import (Vue's compiled v-model pattern; both client and SSR compiles); the replay-stub covers no-build apps. (b) Import-gated sync: historyPlugin option value (snapshot-ring rewrite), wizard gate() marker carrying its spine, walk-field-meta installed by the withMeta module. (c) Lazy inside async moments: focus-first-error (submit), activation/async defaults (activate()), async-transform runtime (first thenable), host/file binding chunks. (d) SSR-conditional: hydration replay + guards on the registry payload path; serialize in ./ssr + server flavor.\n\nDISAPPEARS: directive and history welds; strip/rebuild/clone schema machinery; derivedBlankErrors + dual writer families; five proxy files; four hand-written 30-key mirrors; four array-op switches + three relocation walkers; four wrapper-peel copies; the triple path representation + FIFO caches; gated()/activation getters; the services layer; stripSymbolsDeep; the construction/reset twin; ~4.1 kB dev mass from prod; maps/CJS/d.ts-triplicate from the tarball.",
+    "eager_budget": [
+      {
+        "module": "core/path",
+        "gz_bytes": 420,
+        "note": "Interned path trie: pathOf() -> unique frozen {segs,key,parent}; === equality; replaces paths.ts (698) incl. both FIFO caches, segmentsForPathKey, coerceToPathKey, keyForSegments; one edge-parser kept for serialized payloads"
+      },
+      {
+        "module": "core/value-walk",
+        "gz_bytes": 950,
+        "note": "Raw ops (get/has/set/tryInPlaceLeafWrite, one validated-descent helper) + ONE reconcile(schema,node,value,mode) engine; replaces path-walker core + unset-walker + merge-hydration + merge-deep (~2.0 kB today); deleteAtPath/patch appliers move to history chunk"
+      },
+      {
+        "module": "core/schema-walk",
+        "gz_bytes": 1050,
+        "note": "Normalized-node introspector (WeakMap peel cache) + descend/derive-default/slim-kinds on 8 structural kinds; replaces walk-path-segments + walk-derive-default + walk-slim-primitives (2,238 today); walk-field-meta (631) leaves eager via registration-side install"
+      },
+      {
+        "module": "core/hash+humanize+field-ids+meta-store",
+        "gz_bytes": 380,
+        "note": "Kept as-is (field ids, label fallback) + slimmed field-meta-store (lists WeakMap + 2 fns); identity memoized per path (perf)"
+      },
+      {
+        "module": "core/diag+errors (prod flavor)",
+        "gz_bytes": 500,
+        "note": "Error classes keep instanceof identity; prod = AttaformError(code)+URL template + public atta: codes; prose in dev flavor only (errors.ts 852+error-codes 136 today)"
+      },
+      {
+        "module": "core/kernel",
+        "gz_bytes": 2800,
+        "note": "FormState record; initialize()=reset(); single-walk write funnel emitting patches (subsumes diff-apply 914 + setValueAtPath walks); commit consumes patches; validation scheduling; tagged single error store w/ 3 shared fns; hooks; capability flags"
+      },
+      {
+        "module": "core/display",
+        "gz_bytes": 620,
+        "note": "display-state + display-engine merged (663 today); test introspection behind __DEV__; single-timer model preserved verbatim"
+      },
+      {
+        "module": "core/arrays",
+        "gz_bytes": 1100,
+        "note": "One merged engine (remapForOp/relocateKeys/permuteList/scanKeysAtIndex) + field-array API + render half (tokenAt et al); replaces array-identity/state-migrate/bookkeeping/field-arrays + variant-memory/store op switches (~1.85 kB today); mutation stays eager"
+      },
+      {
+        "module": "core/validate",
+        "gz_bytes": 1000,
+        "note": "process-form at ~60%: runImperativeValidation single shell, reactive validate() thin wrapper, unified parse, submit pipeline w/ shared groupByCanonicalKey; invalid-submit focus policy lazy"
+      },
+      {
+        "module": "core/schema-io",
+        "gz_bytes": 950,
+        "note": "slim-gate + schema-coerce merged (1,316 today) over one per-store SchemaNode cache {slimKinds,isPreprocess,du,required,emptyValue}; one lookup per write replaces ~5 path-keyed caches"
+      },
+      {
+        "module": "core/variants",
+        "gz_bytes": 700,
+        "note": "DU reshape + du-stubs + variant memory + ancestor guard in one module, one shared clone walk (~1.13 kB today); bytes eager (dynamic schemas), work skipped via hasDU flag; rememberVariants default-true intact"
+      },
+      {
+        "module": "core/form-api",
+        "gz_bytes": 1600,
+        "note": "build-form-api (2,755 today) as plain literal: FIELD_STATE_KEYS-driven meta via defineProperty loop (kills both getter forests), activation folded into store entry points, pickDefined() for option spreads, history/wizard namespace stubs"
+      },
+      {
+        "module": "core/field-state",
+        "gz_bytes": 1300,
+        "note": "field-state-api (1,828 today): one builder, leaf = degenerate container, O(1) leaf error fast-path and P3 blankPaths reactivity carve-out preserved; single forEachError read path"
+      },
+      {
+        "module": "core/surfaces",
+        "gz_bytes": 1300,
+        "note": "ONE callableTree factory (apply trap, array-target swap for renderList, coercion quartet once, memoized computed JSON tree, interned-node child cache) serving values/fields/errors + wizard records; replaces 7 proxy files (3,196 today); callable reads KEPT"
+      },
+      {
+        "module": "core/register",
+        "gz_bytes": 850,
+        "note": "register-api (1,086 today) with per-path FieldPort cache (stable RV identity, ~12 fields) + element-registration store surface moved here from kernel; focus machinery lazy"
+      },
+      {
+        "module": "core/create-form + adapter entries",
+        "gz_bytes": 850,
+        "note": "use-abstract-form + use-form collapsed to one createForm core (1,089+ today); per-adapter entries are thin adapt() wrappers; bindConsumer shared with injectForm; no history import"
+      },
+      {
+        "module": "core/registry (+replay stub)",
+        "gz_bytes": 380,
+        "note": "registry + plugin.ts + ssr.ts merged (589 today): one makeTracker, wizard surface lazy-installed, pendingHydration plain Map, ~150 B replay-stub directive registration (compile transform bypasses it)"
+      },
+      {
+        "module": "zod/core",
+        "gz_bytes": 1700,
+        "note": "Shared engine: walkTree over pack.children (async/container predicates, assert), peel/required/DU family, issue mapping, strict-defaults derive + data-walk fix pass (NO rebuilds - v4 strip.ts 1,547 deleted), one withMeta, lazy sub-schema stub + pathNeedsAsync, shared lazy fingerprint"
+      },
+      {
+        "module": "zod/v4-pack",
+        "gz_bytes": 1150,
+        "note": "Probe pack: ~28 two-line def accessors, kind table as data (def.type mostly identity), isAsyncCheck-exact predicate, safeParse glue, UNSUPPORTED list, version assert; v3 pack is the same shape (~1.1 kB, not on this path)"
+      },
+      {
+        "module": "zod/adapter-class",
+        "gz_bytes": 750,
+        "note": "Prototype ZodSchemaAdapter absorbing abstract-schema-factory (1,313 today): methods on prototype shared across forms, services object deleted, caches on instance; attaform/abstract keeps the interface for custom adapters"
+      },
+      {
+        "module": "integration reserve",
+        "gz_bytes": 1650,
+        "note": "Chunk/export glue + estimate risk on the three least-certain budgets (kernel, surfaces, zod-core); consumed only if modules land over budget - target still holds at <=23 kB if fully spent plus ~1 kB more"
+      }
+    ],
+    "eager_total_gz": 22000,
+    "api_changes": [
+      {
+        "change": "History becomes an import-gated plugin: useForm({ history: historyPlugin({ max }) }) from 'attaform/history'; the config-only { history: { max } } form is removed. form.history namespace stubs remain for non-users.",
+        "why": "Only way to get 1.3 kB gz (history + its private diff/path helpers) off every consumer's eager path while keeping construction synchronous (no missed-delta window that a dynamic import would create).",
+        "severity": "moderate"
+      },
+      {
+        "change": "v-register delivery: build-plugin users (vite/nuxt) are untouched and automatic (transform rewrites to withDirectives with a direct attaform/directive import). No-build apps run through a ~150 B replay-stub that loads the directive chunk on first use (one-microtask-late first value seed on client-only render-function mounts) or call installVRegister(app) from 'attaform/directive' for fully-sync behavior.",
+        "why": "The single largest measured lever: -6,265 B gz for every non-directive consumer; directive users move the cost to the components that bind fields. Stub keeps zero-config working; SSR imports eagerly so getSSRProps stays sync.",
+        "severity": "moderate"
+      },
+      {
+        "change": "SSR helpers move to 'attaform/ssr' (renderAttaformState, hydrateAttaformState, serialized-state types); the main barrel stops exporting them. Nuxt users unaffected (runtime plugin imports internals).",
+        "why": "Barrel hygiene + whole-entry size; bare-Vue SSR recipe changes one import specifier.",
+        "severity": "cosmetic"
+      },
+      {
+        "change": "ValidationError drops per-entry formKey; the wizard stamps it at aggregation (it already fallback-stamps). Error storage merges to one tagged map internally - the observable three-channel behavior (schema->blank->user order per key, field.blank, atta: codes, error-order-schema-first) is unchanged.",
+        "why": "formKey is constant within a form; removing it shrinks every construction site across core + both adapters plus history/hydration payloads, and the single tagged store deletes 6 triple-map merge loops and a dual writer family.",
+        "severity": "moderate"
+      },
+      {
+        "change": "Prod error/warn text becomes '[attaform] AF## <attaform.dev/e/AF##>'; full prose ships only in the dev flavor via the new \"development\" export condition. Classes and codes are stable; message text documented as non-API.",
+        "why": "~2.0 kB raw of tutorial prose currently ships in prod for developer-misuse throws; Vue/React's exact model. Requires the docs error pages to exist first.",
+        "severity": "moderate"
+      },
+      {
+        "change": "validateAsync folds into parse(path?, { commit? }) as the one imperative validation API (parse stays async per the locked no-sync stance).",
+        "why": "The two methods differ only in flags and a data-stripping projection; one API deletes stripData, a response type, and a docs page while returning strictly more information.",
+        "severity": "moderate"
+      },
+      {
+        "change": "AbstractSchema SPI tightens: arrayShapeAtPath, getSlimPrimitiveTypesAtPath, and the new node() normalized-introspection method become required; the services object disappears; fingerprint becomes a shared lazy helper. Full contract docs move to an 'authoring adapters' page.",
+        "why": "Deletes the 1M-index probe fallback and the per-adapter walker duplication; affects third-party adapter authors (the bring-your-own-components wedge) so it is the one genuinely breaking contract - pre-1.0 is the time.",
+        "severity": "major"
+      },
+      {
+        "change": "Schema fields literally named toString/hasOwnProperty/call/apply/bind become documented-unsupported on the callable surfaces, and the sucrase .call/.apply downlevel shims are dropped (REPL playground needs a pin/verify).",
+        "why": "The arbitration + shim stack is pure compensation bytes for exotic keys no real schema uses; callable reads themselves are kept.",
+        "severity": "cosmetic"
+      },
+      {
+        "change": "Wizard affordance (string) steps become form-less: wizard.forms['intro'] returns undefined instead of a noop form handle; string-slot gates clear on advance-acknowledge.",
+        "why": "Kills a synthesized AbstractSchema + full FormStore closure per intro/review screen; matches the documented 'clears on acknowledgment' gate semantics. Off the eager path but part of the coherent capability design.",
+        "severity": "moderate"
+      }
+    ],
+    "migration_phases": [
+      "Phase 0 - Packaging + dual dist (no runtime restructure): sourcemap off, emitCJS off (./nuxt ESM-only), declaration:'node16', files-negation guards + tarball ratchet -> 1.8 MB to ~0.4 MB packed. Build prod/dev flavors with a \"development\" export condition; harden dev-dce.test structurally; __DEV__-gate the stray warn sites; error-code prod messages (docs /e/ pages land first). Eager: -~3.9 kB -> ~41.5 kB. Update check-eager-size to resolve the prod flavor.",
+      "Phase 1 - Directive un-weld: registry registers only the replay-stub; vite/nuxt transforms emit withDirectives + direct import from new 'attaform/directive'; SSR-only directive code behind the server condition; spike the component-host (SSR_COMPONENT_HOST_MODIFIER) compiled-SSR rewrite before landing. Eager: -~6.3 kB (measured) -> ~35.2 kB.",
+      "Phase 2 - Capability subpaths: 'attaform/history' plugin + snapshot-ring rewrite (patch appliers move into its chunk), invalid-submit focus policy lazy inside the async submit, walk-field-meta registration-side install, 'attaform/ssr' + hydration replay/guards onto the registry payload path. Eager: -~2.3 kB -> ~32.9 kB.",
+      "Phase 3 - zod-core + probe packs: delete strip/rebuild/clone machinery (data-walk fix pass, async-refine seeds defer one microtask - needs Oswald sign-off + re-baselined characterization), kindOf as data, shared walkTree/peel/issue-map/withMeta, prototype adapter class, v3 sub-schema stub. Eager: -~3.4 kB -> ~29.5 kB; barrel both-adapters penalty 5.5 -> <2 kB.",
+      "Phase 4 - Walkers + paths: interned path trie threaded through core (PathRef at the rim, ByKey twins deleted), normalized-node introspector, one reconcile engine over the five value-merge boundaries, SchemaNode per-path cache, lazy mergeStructural default (per-keystroke schema walk removed). Eager: -~2.5 kB -> ~27.0 kB.",
+      "Phase 5 - Kernel store rewrite: FormState record + store-first-arg functions + hooks; single-walk write funnel feeding patches to commit; construction=reset; tagged single error store; lazy activation + async-transform runtime; DOM surface moves into register; capability flags; stripSymbolsDeep deleted. Eager: -~3.0 kB -> ~24.0 kB. Characterization suites pin funnel phase order; run both zod majors.",
+      "Phase 6 - API layer: form-api plain literal + FIELD_STATE_KEYS loops + activation fold; unified field-state builder; callableTree surface factory replacing the proxy zoo (callable reads kept); register FieldPort cache; arrays engine merge; display merge; registry merge + wizard surface out. Eager: -~2.0 kB -> ~22.0 kB projected (budget table is the authority; phase deltas overlap slightly).",
+      "Phase 7 - Polish (0 eager delta): 5-to-1 build-transform merge + ssr-accessed prefilter, wizard internal slimming (liveRecord via the shared factory, import-gated gate spine, form-less affordance steps, URL-sync consolidation), d.ts two-tier comment policy (config-driven trimmer, Oswald signs the Tier-A cap), perf line items (FieldPort/identity memoization, watcher-scope consolidation, allocation cuts)."
+    ],
+    "top_risks": [
+      "Write-funnel single-walk rewrite is the correctness core: gate/strip/complete/author/patch phase ordering, DU same-tick no-flicker, blank-before-identity-short-circuit semantics must be pinned by characterization suites against BOTH zod majors before the kernel swap (Phase 5 is the riskiest phase; land it behind the full array/DU/display test matrix).",
+      "callableTree factory must reproduce subtle proxy behavior in one place: Vue renderList over array subtrees (array-target swap + length invariant), JSON/coercion parity, ownKeys liveness, and the memoized toJSON tree's invalidation; dropping the sucrase shims can break optional-chained call-forms in the @vue/repl playground specifically - verify the playground before deleting.",
+      "Compile-delivered directive: the withDirectives rewrite must land on BOTH client and SSR compiles including the component-host path (SSR_COMPONENT_HOST_MODIFIER + getSSRProps-fires-twice trap from #381/#404); the replay-stub's one-microtask-late first seed on no-plugin render-function mounts is an accepted, documented edge - confirm Oswald accepts it, else installVRegister is the documented fallback.",
+      "Deleting the zod rebuild machinery changes two observable behaviors (sync-check seeds on async-refine schemas defer one microtask affecting SSR serialize timing; slim-parse no longer strips unknown constraint keys) - needs explicit sign-off per the reference-before-API-change rule and re-baselined adapter suites; v3/v4 parity must be re-verified since v4 aligns DOWN to v3's deferred behavior.",
+      "Budget estimate risk: kernel (2.8k), surfaces (1.3k), and zod-core (1.7k) are ideal-design numbers with the least measurement behind them; the 1.65 kB reserve absorbs ~8% overrun. Mitigate by ratcheting per phase (measure after each landing, re-plan if a phase under-delivers by >20%) rather than trusting the sum.",
+      "Measurement methodology drift: check-eager-size must resolve the prod flavor once the development condition exists, and the new dynamic imports (activation, transforms-async, focus, host/file chunks) must stay off the import-statement eager walk under splitting:true - add a packaging test asserting each chunk's absence from reachableInputs.",
+      "Type-system landmines: the TS2589/Volar defenses (named walker aliases, StorageShape property-access pattern, ZodV4Internals brand, reflexive escape arm) must survive the adapter merge verbatim, and the FieldState/meta getter-vs-computed dependency tracking must stay identical through the FIELD_STATE_KEYS loop rewrite - bundled-types fixtures for both majors are the gate."
+    ],
+    "rejected_ideas": [
+      "form-api-proxies' flagship rewrite (form.values = readonly(state.form), form.errors = computed plain tree, call-forms demoted to form.field(path)/form.errors(path) plain functions) AS SCOPED - it drops the callable-read API, which this architecture is mandated to keep; I take its deletions (memoized trees, mirror-loop generation, coercion-repair removal) but route all three surfaces through one callableTree factory instead (~0.4 kB more than their 0.9 kB estimate, callable DX intact).",
+      "Lazy-loading the array MUTATION half on first array detection (arrays-history finding 4, ~500 gz): the chunk-race fallback silently degrades one structural op to positional identity, violating the no-silent-degradation stance; the analyst themselves recommended skipping unless the window provably closes. The merged arrays engine stays eager.",
+      "Runtime lazy zod-adapter loading for the '.' barrel: useForm's introspection must be synchronous at first paint; instead the marginal second adapter shrinks to a ~1.1 kB probe pack and the build plugins keep aliasing to one major.",
+      "Flipping the '.' barrel to v4-only with v3 throwing: violates the locked zod v3/v4 first-class parity stance; unnecessary once the both-eager penalty is <2 kB.",
+      "Moving useWizard to an 'attaform/wizard' subpath: measured 0 eager benefit (it tree-shakes fully today); a breaking entry change buying only whole-entry size-limit cosmetics. Wizard slimming happens internally (Phase 7).",
+      "Deleting AbstractSchema.fingerprint from the SPI: it is already off the eager path and its dev key-collision diagnostic is real; I keep it as ONE shared lazy walker over the probe pack instead (halves the tarball copy, keeps the diagnostic).",
+      "Replacing unbuild with a raw rollup/esbuild pipeline: the shared-chunk splitter is what guarantees single registry/core instances across 12 entries (cross-entry identity), and the three config switches already reach the tarball target; re-solving solved problems for zero bytes.",
+      "Collapsing rollup/esbuild/webpack/rspack into one './plugin' entry: per-bundler subpaths are the unplugin-ecosystem convention, the cost after the packaging fixes is ~10 kB packed, and entry churn spends consumer-facing continuity on taste.",
+      "Symbol.for description diet ('attaform:...' -> 'af:...', ~110 gz): real debuggability and devtools-legibility loss for a below-threshold win.",
+      "Removing the catchOnUseDefaultFalse divergence knob now (60 gz): it is an observable v3 behavior change requiring its own sign-off conversation; too small a win to couple to this program - revisit standalone with Oswald.",
+      "PathKey-as-dotted-string / dropping the '' field key (defensive-code open question): would double the paths savings but changes a public key format with unresolved consumers (SSR payloads, wizard URL); the interned-trie design captures most of the win without betting on that answer."
+    ]
+  },
+  {
+    "claim": "zod-core + probe packs: delete strip/rebuild/clone machinery via a data-walk fix pass over derived defaults (1300), kindOf as data + shared tree-walk predicates (500), falsely-divergent services into shared factory (150), prototype-based adapter class absorbing abstract-schema-factory (250), field-meta dedupe (30), dead exports (60) - v4-minimal zod stack 6.8->~3.6 kB gz; both-majors total ~4.5 kB vs 12.3.",
+    "verdict": "partially-refuted",
+    "adjusted_savings_gz_bytes": 1400,
+    "conditions": [
+      "Author must explicitly accept the SSR behavior change, or the headline halves: deleting stripAsyncChecks (v4 strip.ts:241) / strip-async.ts (v3 index.ts:1334) means strict-mode schemas mixing an async refine with failing sync checks lose ALL construction-time error seeds, and the fallback async pass is `!ssr`-gated (create-form-store.ts:2005) - on SSR the errors never render server-side and pop in client-side post-hydration. This is NOT the 'one-microtask deferral' the claim describes. Preserving today's SSR parity keeps stripAsyncChecks: measured savings drop from 1,081 to 583 gz gross (net ~330 after replacement), total package ~900 gz.",
+      "The data-walk fix pass must be value-directed at discriminated unions: today fix-ups fire only at issue paths from a data-discriminating safeParse; a naive slimKindOf(value)-vs-candidates[0] leaf walk clobbers valid non-first-variant values. DU discrimination wiring (discriminator machinery exists but must be threaded) plus container-vs-leaf mismatch checks are ~200-300 gz of replacement cost the claim counts as zero.",
+      "Re-baseline the characterization suites for the parse-output normalizations the walk drops: coercion on clean coerce leaves, catch-value substitution (incl. the v3 'preserveCatch' vs v4 'recurseInner' fork at useDefault=false), unknown-constraint-key stripping. Defensible because v3 STRICT mode already returns raw merged data (index.ts:1300-1321) so the majors are already inconsistent here, and the store deep-clones via structuralSnapshot (create-form-store.ts:1337) so aliasing is a non-issue - but it is a v4 observable-behavior change requiring the author's sign-off per the reference-before-API-change rule.",
+      "Version-skew immunity ('v4 loses its only value import of zod') holds ONLY in the full-delete scenario; keeping stripAsyncChecks keeps the z.* constructor import (strip.ts:1).",
+      "assertSupportedKinds via shared walkSchemaTree loses the dotted-path error label unless path tracking is added to the shared walker; budget ~200 of the 346 gz stub delta, not all of it.",
+      "Count the dead-exports item (60B) as tarball-only: zod-shape's dead functions and the v3 primitive-constraints arm are already tree-shaken from the minimal-v4 eager set (verified absent from eager output).",
+      "Both-majors barrel: probe-pack consolidation is structurally sound (v3 helpers verified as line-for-line mirrors of v4's), but expect ~6.5-7.5 kB, not 4.5 - marginal deltas realized only ~60-70% of per-file attribution in every scenario I measured."
+    ],
+    "evidence": "Measured (esbuild prod define, exact check-eager-size.mjs methodology, baseline 46,477 gz minimal-v4): (1) strip.ts fully stubbed to identity fns: -1,081 gz, NOT the 1,547 attributed nor 1,300 net claimed - and that is GROSS, before the replacement fix-walk (~200-300 gz for DU-aware, container-aware fix logic). (2) Keeping stripAsyncChecks+carryChecks, stubbing only getSlimSchema/stripRefinements: -583 gz. (3) kindOf rewritten as alias-map + known-set lookup: -76 gz, vs ~250 claimed - the identity-case switch gzips almost free. (4) assert-supported fully stubbed: -346 gz upper bound. (5) zod-shape dead exports: absent from eager inputs/text already (0 eager savings).\n\nSource verification: strip.ts:1 is the only value import of zod in the v4 adapter (all others `import type`) - claim CONFIRMED, but conditional on full delete since stripAsyncChecks uses z.* constructors. getSlimSchema's only consumer is default-values.ts:112; its parse OUTPUT is returned as form data (default-values.ts:124/190), so slim safeParse today performs coercion, catch substitution, and unknown-key stripping the data-walk would not - however v3 strict already returns raw merged data (index.ts:1310), and create-form-store.ts:1337 structuralSnapshots defaults, neutralizing the aliasing trap. Key semantic refutation: create-form-store.ts:1972 seeds construction errors synchronously (SSR-visible); the compensating async pass at :2005 is skipped on SSR, and v4's stripAsyncChecks preserves every sync check (incl. sync .refine) while v3's strip-async preserves built-in checks - so the proposed deferral erases SSR strict seeds for async-mixed schemas, contradicting the 'one microtask' framing. v3 parallel helpers (isLeafRequiredV3 index.ts:496, peelAllV3Wrappers, unwrapStructuralLeafV3 :221-225) confirmed as mirrors, so the services-merge and probe-pack direction is real; its minimal-v4 value is mostly code motion as the claim itself admits.\n\nAdjusted minimal-v4 total: ~830 (strip, accept-changes) + 76 (kindOf) + ~200 (assert walk) + ~50 (services merge) + ~200 (prototype class, unmeasured estimate) + 30 (field-meta) + 0 (dead exports) ≈ 1,350-1,450 gz - not 2,290 summed, and nowhere near the 3.2 kB '6.8->3.6' headline. SSR-preserving variant: ~900 gz.",
+    "notes": "Directionally sound proposal - the rebuild machinery genuinely exists only for default-derivation + async-strip, and the barrel-side dedup is the real prize (v3's 7.15 kB duplicate stack). But the byte claims systematically use per-file gz attribution where marginal bundle deltas run 60-70% of that, the replacement fix-walk is costed at zero, and the deepest semantic trap (SSR construction-seed loss, not microtask deferral) is the one the claim's own RISK note misdescribes. Recommend: land the getSlimSchema/stripRefinements deletion + probe-pack/prototype consolidation, keep stripAsyncChecks (both majors) unless the author explicitly trades away SSR strict-seed parity, and re-estimate the barrel at ~6.5-7 kB. Measurement scripts at /private/tmp/claude-501/-Users-ozzy-Projects-attaform/8cd7263f-dfb9-471f-9983-6e7e0bab85b4/scratchpad/measure-strip.mjs and measure2.mjs for the architects to rerun."
+  },
+  {
+    "claim": "Replacing the callable-snapshot proxy zoo (~3.2 kB gz) with native readonly structures + memoized error tree + one fields tree saves ~2.2 kB gz; loop-generating the four 30-key FieldState mirrors saves ~650 gz.",
+    "verdict": "partially-refuted",
+    "adjusted_savings_gz_bytes": 1900,
+    "conditions": [
+      "form.errors and form.values must KEEP a thin function-target proxy: dot-drill + call-form on one symbol is impossible with a plain object, so the 'zero traps' framing is wrong — but a ~25-line callable wrapper over a memoized computed tree is cheap and is what my measurement priced in.",
+      "The fields tree must keep the array-target machinery (Array target for Array.isArray/renderList, length trap, ownKeys 'length' invariant, Array.prototype passthrough): v-for over form.fields.<array> appears 11x in apps/site; this is a third of surface-proxy's reason to exist and survives any replacement.",
+      "toJSON must survive on all three surfaces: apps/site uses JSON.stringify(form.values) 107x, form.errors 51x, form.fields 23x, plus 13 bare {{ form.values }} interpolations. String()/template-literal coercion of containers becomes a TypeError once Symbol.toPrimitive is dropped — claim-consistent but needs documenting.",
+      "Author sign-off on behavior deltas: error-free leaves read undefined instead of [] under a sparse tree; Object.keys(form.errors) stops unioning live form-data keys (errorAwareContainerKeys deleted); schema fields named toString/hasOwnProperty/call and the sucrase-REPL .call downleveling become unsupported. Restoring enumeration parity claws back ~100 gz.",
+      "wizard-statuses-proxy still consumes callable-readonly-snapshot-proxy + proxy-readonly-helpers; those modules only leave wizard bundles if the wizard surface migrates too (no effect on the minimal-v4 metric, which never included them).",
+      "Leaf terminal identity: returning the FieldState computed's .value gives a fresh object per recompute where today's leaf-view proxy is referentially stable; keep a small leaf-view or memoize if :field-prop identity matters (~100 gz clawback).",
+      "The two field-state-api builder return literals cannot be loop-generated (each key binds a distinct computed local); the mirror finding is really only the two build-form-api getter forests + one shared key list.",
+      "Replacement modules here are byte-realistic but functionally untested sketches; the full display-state/array/DU test suites must gate the real rewrite."
+    ],
+    "evidence": "Measured, not estimated: I wrote lean replacement modules (scratchpad/rep/values-rep.ts, errors-rep.ts keeping materializeErrors+placeAt verbatim, fields-rep.ts with truthful-absence gates + array targets + live enumeration + toJSON + a plain field(path) fn) and a loop-generated build-form-api copy (both forests replaced by defineProperty loops over one canonical key list), then rebuilt the exact minimal-v4 eager scenario with esbuild splitting + prod define (rep/measure-claims.mjs, same method as scripts/check-eager-size.mjs). Results: baseline 46,480 gz eager; proxy replacement 44,618 (saves 1,862, claim said 2,200); forest loops 46,136 (saves 344, claim said 650); both 44,397 (saves 2,083 — deltas are not additive). Metafile confirms surface-proxy, callable-readonly-snapshot-proxy, proxy-live-keys, proxy-readonly-helpers all left the bundle. The 3,196 gz attribution sum is arithmetically correct (attribution-v4.txt) but the uniform gz-ratio-per-chunk method overstates marginal gz of repetitive code, which is why the forest claim halves on real measurement and the zoo deletion nets less than attribution minus a naive 0.9 kB replacement. Semantic traps found reading surface-proxy.ts:365-370/448-485/582-613 (array-target + renderList machinery is load-bearing, not compensation — v-for over fields is a documented pattern), errors-proxy.ts:80-108/186-219 (dot-reads return [] and enumeration unions live keys today; sparse tree changes both), values-proxy.ts:30-47 (shadowed-key/pollution-safe stringify is droppable hardening), field-state-proxy.ts:33-71 + build-form-api.ts:156-293/711-876 (the loopable mirrors), field-state-api.ts:228-262 (return literal NOT loopable). SSR never routes through proxy toJSON (serialize.ts/ssr.ts clean). Adjusted: ~1.65-1.75k for the zoo (production clawback for leaf-view stability, enumeration parity, dev warnings), ~220-350 for the mirrors, combined ~1.9k vs the claimed 2.85k — directionally right, overstated ~33%.",
+    "notes": "Verdict on each half: zoo replacement confirmed-with-conditions at ~1.7k (claim 2.2k, -23%); mirror loop-generation refuted at claimed size, real ~350 standalone / ~220 marginal (claim 650, -46 to -66%). The design itself survives adversarial review — no public behavior I could find genuinely requires the callable-root + coercion-quartet + shim stack, provided the author accepts the listed behavior deltas and the thin-callable (not plain-object) shape for errors/values. Replacement sketches and measurement script preserved under scratchpad/rep/ for the architects."
+  },
+  {
+    "claim": "Pre-stripped dev/prod dual dist behind a \"development\" export condition removes a measured 2,554 B gz of leaked dev code from esbuild-consumer prod bundles (up to 4,152 on non-folding bundlers), plus ~950 error-code prod messages and ~350 unguarded warn sites; the current dev-dce test gives false confidence.",
+    "verdict": "confirmed-with-conditions",
+    "adjusted_savings_gz_bytes": 2551,
+    "conditions": [
+      "Flavor-mixing hazard: surfaces that bypass the exports map must resolve the same flavor as the app bundle — dist/runtime/plugins/attaform.mjs is registered via addPlugin({src: resolver.resolve(...)}) (a literal file path, build.config.ts comment block), and ./devtools-panel is a raw .vue path. If the Nuxt runtime plugin loads one flavor's shared-chunk graph while app imports resolve the other, two module instances (two registries) coexist. The Nuxt module must pick the flavored path from nuxt.options.dev or the plugin must import through the bare specifier.",
+      "The eager ratchet (scripts/check-eager-size.mjs) and test/packaging/dev-dce.test.ts both build from src through the consumer-define path; after dual dist they must measure the shipped prod flavor (or apply the same source-level strip), else the ratchet number never moves and CI still cannot catch a strip regression. The proposed structural asserts (no if(!1), no [attaform] prose outside an allowlist) are necessary, not optional.",
+      "Tarball budget: dual flavor adds roughly one more ~500 KB unminified runtime tree (~+120-140 kB packed) on top of the 282 kB post-cut tarball → ~410-430 kB packed; still under the 0.6 MB target but must be coordinated with the packaging agent's numbers.",
+      "Node SSR and dev-SSR-externalized deps resolve prod flavor (Node has no development condition by default) — dev diagnostics silently absent in those server contexts; acceptable only because dev code is diagnostics-only, and Nitro covers the Nuxt server build (verified: it pushes development/production first).",
+      "The two riders need dedupe: ~350 B gz of the 950 error-prose rider is the same errors.ts prose validation-display claims separately (its 350B finding), and the ~350 unguarded-warn rider is optimistic (~150-250 B gz realistic; its assigner-pipeline/create-form-store sites partially fall inside the 950 measurement). Credit the riders once, at ~1.0-1.1 kB combined.",
+      "Prod flavor must be verified free of process/typeof-process references (CDN safety) via the CI grep gate; unbuild supports the two-pass programmatically (build() twice with different replace + outDir), no forced build-tool change."
+    ],
+    "evidence": "Reproduced the measurement independently (esbuild 0.28.2, check-eager-size.mjs methodology, identifier-level __DEV__→false strip plugin): baseline prod eager 46,477 gz (claimed 46,481), true-strip 43,926 (claimed 43,927), leak 2,551 (claimed 2,554), dev-define 48,075, total dev mass 4,149 (claimed 4,152). Leak markers all present in prod eager text: 2 if(!1) blocks, 4 !1&& chains, 24 \"[attaform]\" strings (13 legitimately remain after strip), dev-stack-trace.ts in the eager input set. Source sites verified: register-api.ts:413-427 multi-root warn prose inside if(__DEV__); slim-primitive-gate.ts:178 `if (!__DEV__) return` + fix-it prose; directive.ts:545/573 unguarded warn() checkbox prose. dev-dce.test.ts:38 asserts exactly one string ('createAttaform() install was called twice') in a shape esbuild folds — false confidence confirmed. Key adversarial finding STRENGTHENS the claim: simulating a Vite-class consumer (flat scope-hoisted bundle, prod define, single esbuild minify pass — Vite's actual prod pipeline) leaks 4,409 B gz: the flat file retains `__DEV__ = (typeof process!==\"undefined\"?\"production\":\"production\")!==\"production\"` and esbuild's minifier does not propagate the local const into branches (43 [attaform] strings survive); discounting dev-only dynamic chunks a real rollup emits but never fetches, real Vite prod builds leak ~3.5 kB. Vue avoids this by inlining the NODE_ENV expression per call site; attaform's shared cross-module const defeats both rollup treeshaking and minifiers, so the \"worst case\" is approximately the default Vite build. Riders: scanner-based prose-crush of the six files finding 3 names measures 951 B gz (claimed ~950); directive+schema-coerce warn strings measure only 88 B gz (rider claimed 350 — optimistic). Condition mechanics verified in installed packages: vite@8.2.2 DEV_PROD_CONDITION 'development|production' in default client+server conditions; nitropack@2.13.4 pushes dev?\"development\":\"production\" first in exportConditions; vitest (via Vite, NODE_ENV=test) resolves dev flavor; webpack mode-based conditionNames per documented behavior.",
+    "notes": "adjusted_savings_gz_bytes = 2,551 covers the dual-dist strip alone against the agreed minimal-v4 eager metric (single-pass esbuild). Full-package honest total ≈ 3.6 kB gz (2,551 + 951 prose rider + ~150 unguarded-warn rider), before subtracting the ~350 B cross-agent overlap with validation-display's errors.ts finding. Real-world impact is larger than the headline for the most common consumer: Vite prod builds ship ~3.5 kB of dev mass today, not 2.5. A cheaper competing design also exists (per-site NODE_ENV expression inlining at package build, Vue's esm-bundler pattern): it fixes Vite/webpack/esbuild consumers without doubling tarball mjs, but keeps CDN degradation and consumer-define dependence; dual dist is strictly more deterministic. Either way, the current shared-const dev.ts shape is refuted as a DCE strategy. Reproduction scripts: /private/tmp/claude-501/-Users-ozzy-Projects-attaform/8cd7263f-dfb9-471f-9983-6e7e0bab85b4/scratchpad/verify-devdce.mjs, verify-vite-sim.mjs, verify-prose.mjs."
+  },
+  {
+    "name": "Byte-Accountant Ledger",
+    "thesis": "Unit note first: the ground-truth baseline \"45.39 kB\" is 46,477 gz BYTES; I re-measured it exactly (46,477) with the ratchet methodology, so this ledger is denominated in bytes on that baseline. After deduplicating the 14 reports (~31k of raw per-report claims collapse to ~25.4k of distinct claims), four mechanical levers are now MEASURED jointly at -10,087 bytes (directive un-weld 6,725; dev/prod strip 2,139 with a measured 422-byte overlap; history subpath 1,137; walk-field-meta 486), landing 36,390 by themselves; the remaining ~15.4k of estimated rewrite/merge claims realize at ~11.0k under honest haircuts. Projected landing: 25,400 gz bytes (-45%), bounds 23,300 optimistic to 29,500 pessimistic. The <=25 kB gate (25,600 B) passes at mid realization but only with ALL nine workstreams (no small subset reaches it); the <=23 kB / true-50% gate (23,239-23,552 B) is NOT honestly reachable from the phase-1 claims, missing by ~1,850-2,150 bytes unless the big-three rewrites (form-api, store kernel, adapter) deliver at >=85% of claim plus one extra lever (conditional DU install or the adapter ideal).",
+    "target_architecture": "This is a COMPOSITION of the phase-1 levers, not a new design. Baseline re-measured at 46,477 gz bytes (= ground truth 45.39 KiB; the prompt's \"45,390\" is the same figure). All numbers are gz bytes against the minimal-v4 eager scenario.\n\nMEASURED TIER (my own esbuild experiments, joint delta -10,087 -> 36,390):\n(1) Directive un-weld [SP1; subsumes DR1 and re-scopes DR2-DR8]: -6,725 solo, -6,303 after the dev strip. plugin.ts installs registry only; vite/nuxt transforms rewrite v-register to withDirectives with a direct import from a new attaform/directive entry; installVRegister(app) is the no-build fallback. DR's SSR-condition split, host/file/async-transform lazy chunks, and table-driven variant kernel (550+490+440+347+300) stop being eager findings and instead shrink the v-register async chunk from 7.1k to ~3.0-3.5k for directive users. (2) Dev/prod dual dist with a \"development\" export condition [DS1]: -2,139 measured by source-level __DEV__=false strip (DS claimed 2,554); overlap with the un-weld measured at 422 (dev code inside the directive cluster). (3) History as an attaform/history plugin value [AH1; subsumes FP3 1,127 and SC10 155]: -1,137 measured (claim 1,300; the \"pinned\" diff-apply/path-walker helpers already shake). Snapshot-ring rewrite [AH3] halves the subpath chunk. (4) walk-field-meta installed by the withMeta registration module [WP3]: -486 measured (attribution said 631).\n\nESTIMATED TIER (15,360 deduped claims -> 11,035 realized at mid haircuts: moves/deletes x0.85, string diets x0.8, rewrites/merges x0.65, delete-dominant rewrites x0.75). Key dedup rulings: error prose is ONE lever (DS3 950 superset of VD2 350 and DC1 480); path canonicalization is ONE lever (DC2 450 superset of WP5 280, SC13 pre-zeroed); SC9 error-writers inside VD1; WZ6 inside SP2; DC4 inside SC7; all assigner-pipeline shares (SC2's 220, DR6, DR8, parts of DS2/DC5/DS5) zeroed because the cluster leaves eager with the un-weld; SC8 shaved 70 for resetField-string overlap with DS2/DS3; AH5 shaved for variant-memory overlap with SC6; merge-hydration counted once (stays in WP2's eager reconcile engine; SC4 is store-side 385 only).\n\nFive subsystems REWRITTEN: store -> kernel + hooks-attached feature modules with lazy transforms/activation/SSR-replay and DOM-binding moved to the register feature (SC1/2/3/4/5/6/7/8, -2,558 mid); form-api surface -> readonly(state.form) values, computed sparse error tree, one lean fields proxy, key-list-generated meta, single entry layer, FieldPort register cache (FP1/2/4/5/6/7, DC6, DR7, -3,211); adapters -> zod-core + per-major probe packs, prototype adapter class, SchemaNode cache, schema-REBUILD machinery deleted (AZ1/2/3/5/8/10, DC7, -1,799); walkers/paths -> normalized-node introspector, one reconcile engine, interned path trie, shared descent, probe fallback deleted (WP1/2/4/7/8, DC2, -1,303); arrays -> one remap engine + relocateKeys (AH2/5, -489). PATCHED in place: error codes + unguarded warns (DS2/3, -880); tagged error store + validation shell folds + lazy focus (VD1/3/4/5/6/7/8, -549); registry fusion, tracker dedup, wizard slice out, stripSymbolsDeep delete, guard(), symbol diet (SP2/3/6, BD7, DC3/5, DS5, -547).\n\nDisappears from eager entirely: 8 directive-cluster files, history.ts, walk-field-meta.ts, 7 proxy files, v4 strip.ts, dev-stack-trace, derivedBlankErrors, the triple path representation, per-entry formKey, hydration shape guards.\n\nSCENARIO LEDGERS. Minimal-v4: 46,477 -> 25,400 mid (-45%); 23,334 optimistic (x0.85 realization; this is where 50% = 23,239 sits, just out of reach); 29,478 pessimistic (rewrites x0.45). Default barrel: 51,988 -> ~27,700 (shared core savings + marginal adapter shrunk from 5,495 to ~2,300 mid via AZ2/3/6/7/11); build-plugin aliasing (already shipped) makes plugin users pay single-adapter 25,400 and becomes the documented default install. Tarball: 1.8 MB -> 282 kB packed from config alone (measured worktree experiment: maps off, emitCJS off, node16 single d.mts); code program adds d.ts comment diet (-85 kB), runtime deletions (-40 kB), plugin-entry collapse (-10 kB), dev flavor adds back (+~30 kB): ~180-210 kB packed, locked by a check-tarball-size ratchet. Entry layout: '.', ./zod, ./zod-v4, ./zod-v3, ./abstract, ./nuxt, ./vite, ./plugin (4 bundler factories), ./transforms, ./directive (new), ./history (new), ./ssr (new), ./devtools-panel; wizard stays in main entries (measured: it fully tree-shakes; a subpath buys 0).",
+    "eager_budget": [
+      {
+        "module": "store-kernel",
+        "gz_bytes": 4150,
+        "note": "single-walk write funnel, validation scheduling, records, reset=initialize; DOM/transforms/activation/SSR-replay moved out (from 7,472)"
+      },
+      {
+        "module": "du-variants",
+        "gz_bytes": 620,
+        "note": "consolidated reshape+du-stubs+variant-memory as one hooks module, eager on zod entries (from ~1,130); conditional install for union-free schemas is the reserve lever (~600 more)"
+      },
+      {
+        "module": "arrays-engine",
+        "gz_bytes": 1050,
+        "note": "one remapForOp + relocateKeys + permuteList + field-array API (from 1,719 across 4 files)"
+      },
+      {
+        "module": "register-port",
+        "gz_bytes": 800,
+        "note": "register() per-path FieldPort cache, slimmed RegisterValue (from 1,086)"
+      },
+      {
+        "module": "schema-io",
+        "gz_bytes": 1100,
+        "note": "slim-primitive-gate + schema-coerce merged with per-store accept-set cache (from 1,316)"
+      },
+      {
+        "module": "validation-display",
+        "gz_bytes": 2380,
+        "note": "process-form single validation shell, error classes as codes, error-codes, merged display engine (from ~3,217)"
+      },
+      {
+        "module": "form-api-surface",
+        "gz_bytes": 5500,
+        "note": "create-form-api + field-state builder + fields tree + computed error tree + entry layer; 7 proxy files deleted (from ~9,040)"
+      },
+      {
+        "module": "walkers-paths",
+        "gz_bytes": 4600,
+        "note": "normalized-node introspector, one reconcile engine, path trie, shared descent, diff-apply without history appliers (from ~6,350)"
+      },
+      {
+        "module": "zod-v4-stack",
+        "gz_bytes": 4800,
+        "note": "v4 probe pack + shared zod-core + prototype adapter + SchemaNode cache; strip/rebuild deleted (from 6,831 incl. abstract-schema-factory)"
+      },
+      {
+        "module": "registry",
+        "gz_bytes": 400,
+        "note": "plugin+ssr fused in, one generic tracker, wizard slice lazy-installed, plain pendingHydration (from 589)"
+      },
+      {
+        "module": "moved-off-eager",
+        "gz_bytes": 0,
+        "note": "directive cluster (async chunk via transform), history (subpath), walk-field-meta (registration-side), dev diagnostics (dev dist flavor), focus policy / async transforms / activation / SSR replay (dynamic imports inside async seams)"
+      }
+    ],
+    "eager_total_gz": 25400,
+    "api_changes": [
+      {
+        "change": "v-register is delivered by the build plugin (withDirectives rewrite importing from new attaform/directive); no-build consumers must call installVRegister(app); useForm no longer registers the directive",
+        "why": "the weld is the single largest measured lever (-6,725); Vue resolves directives by name at render time so app-level lazy registration cannot work",
+        "severity": "major"
+      },
+      {
+        "change": "form.values becomes native readonly, form.errors a computed plain tree, form.fields one lean proxy; call forms become form.field(path) and form.errors(path); exotic keys (toString/call) unsupported",
+        "why": "deletes ~3.2k of callable-proxy compensation machinery; largest docs churn (1,396 fields-dot + 419 call-form uses)",
+        "severity": "major"
+      },
+      {
+        "change": "undo/redo requires import { historyPlugin } from 'attaform/history' passed as the history option value",
+        "why": "-1,137 measured off every non-history consumer; sync construction preserved, form.history namespace stubs remain",
+        "severity": "major"
+      },
+      {
+        "change": "prod error/warn text becomes 'attaform:E<code> <docs-url>'; full prose only in the dev dist flavor selected via a \"development\" export condition",
+        "why": "-2,139 measured strip plus ~760 prose conversion; requires attaform.dev/e/* pages; message text declared not-API",
+        "severity": "moderate"
+      },
+      {
+        "change": "AbstractSchema SPI: arrayShapeAtPath and getSlimPrimitiveTypesAtPath become required, fingerprint() removed or merged, SchemaNode resolve added",
+        "why": "deletes the 1M-index probe fallback and cache zoo; affects the third-party-adapter wedge, needs adapter-guide update",
+        "severity": "moderate"
+      },
+      {
+        "change": "validateAsync and parse unify into one parse(path?, {commit?}); ValidationError drops per-entry formKey",
+        "why": "one imperative validation API and a smaller error record; wizard aggregation already stamps formKey",
+        "severity": "moderate"
+      },
+      {
+        "change": "bare-Vue SSR helpers move to attaform/ssr; ./nuxt goes ESM-only (require condition dropped); v3 .catch() under useDefault:false aligns to v4 semantics",
+        "why": "barrel hygiene, kills the CJS twin, removes a v3/v4 parity knob (catchOnUseDefaultFalse)",
+        "severity": "moderate"
+      },
+      {
+        "change": "rollup/esbuild/webpack/rspack subpaths collapse into one ./plugin entry with named factories",
+        "why": "tarball/file-count only; four 40-112-line shims share one transform",
+        "severity": "cosmetic"
+      }
+    ],
+    "migration_phases": [
+      "P0 packaging config (independent, zero consumer risk): sourcemap:false + emitCJS:false + declaration:'node16' + files-field negation guards + check-tarball-size ratchet; tarball 1.8 MB -> 282 kB packed (measured), 0 eager change",
+      "P1 dev/prod dual dist + error codes: pre-stripped prod flavor with \"development\" condition (-2,139 measured), gate the unguarded warn sites (~-120), convert throw/invariant prose to codes+URL (~-760), harden dev-dce.test structurally; eager -3.0k, tarball +~30 kB for the dev flavor",
+      "P2 directive un-weld: registry-only install, transform-injected withDirectives import, attaform/directive entry with installVRegister; plus move store DOM-binding (elements/hostTargets/focus) into the register feature; eager -6.3k incremental measured + ~-0.6k store-side est; v-register users download a ~3-3.5k async chunk (DR2-DR7 land here as chunk diet)",
+      "P3 history subpath plugin + snapshot-ring rewrite + arrays engine merge (one remap, relocateKeys, variant-memory/fresh-index derived from it); eager -1.6k (1,137 measured + ~490 est), faster keystrokes on both halves",
+      "P4 walk-field-meta registration-side install + delete resolveArrayShape probe + drop catch knob; eager -0.65k (486 measured + ~160 est)",
+      "P5 adapter rebuild: zod-core + probe packs, delete strip/rebuild/clone cluster, kindOf tables, prototype adapter, shared fieldMeta; eager -1.6k mid, barrel additionally -3.2k (penalty 5,495 -> ~2,300); docs default flips to plugin-aliased single-major install",
+      "P6 form-api surface rebuild: proxy zoo -> native values/computed errors/lean fields tree, key-list mirrors, pickDefined, activation fold, layer collapse, FieldPort; eager -3.2k mid; largest docs migration, land behind the pre-1.0 break window",
+      "P7 store kernel + feature modules: plain FormState + store-first-arg functions, single-walk write funnel feeding applyChangedKeys, DU consolidation, lazy async-transforms/activation/SSR-replay, construction=reset; eager -2.6k mid, unblocks the mount-allocation perf win",
+      "P8 walkers/paths consolidation: normalized-node introspector, one reconcile engine, interned path trie at the rim, shared descent helper; eager -1.3k mid plus the per-keystroke canonicalization win",
+      "P9 garnish: tagged error store + validation shell folds + lazy focus policy (-0.55k), registry fusion/tracker/wizard-slice + stripSymbolsDeep + guard() + symbol diet (-0.55k); wizard-side quality (DCE fix, liveRecord, form-less steps, gate spine) rides here for wizard users (0 on this metric). Landing after P0-P9: ~25.4k bytes eager (24.8 KiB), tarball ~180-210 kB packed"
+    ],
+    "top_risks": [
+      "Realization risk on the big three rewrites: 10.6k of the 15.4k estimated claims sit in form-api/store/adapter rewrites carrying x0.65 haircuts; if they land at x0.45 the program finishes near 27.5k, and the <=25 kB gate fails; re-measure the ratchet after every phase and re-plan at each miss",
+      "Directive un-weld correctness: the withDirectives rewrite must cover the SSR compile of component hosts (SSR_COMPONENT_HOST_MODIFIER path) which needs a spike; no-build/CDN consumers silently lose v-register until they call installVRegister",
+      "Double-booking hazards the plan must respect: merge-hydration cannot be both merged into the eager reconcile engine (WP2) and lazy-loaded with activation (SC4); SC7's SSR-replay move is contingent on the Nuxt payload path being SSR-conditional (unverified); the ledger already counts each once but implementation order can silently re-eagerize them",
+      "gz superadditivity and accounting drift: per-chunk gz sums (46,477 method) are not exactly additive across removals; interactions measured at ~400 bytes for the four big levers alone; only the standing ratchet is authoritative",
+      "Dev/prod dual dist: bundlers that ignore the development condition serve prod in dev (silent warnings); Nuxt webpack-builder and consumer-Vitest flavor selection are open questions; a CI grep gate must guard against prose re-entering the prod flavor",
+      "Docs and characterization debt: FP1 touches ~2,600 doc call sites; the write-funnel phase ordering, DU no-flicker contract, and blur-dedup semantics need their characterization suites pinned green through P6-P8, tested against BOTH zod majors",
+      "Error-code URLs become load-bearing: prod messages reference attaform.dev/e/*, tying error DX to the Vercel docs deployment; pages must exist before P1 ships"
+    ],
+    "rejected_ideas": [
+      "AH4 lazy-load the array mutation half (claimed 500): the chunk-race fallback silently degrades one structural op to positional identity, vetoed by the no-silent-degradation stance; the arrays merge (AH2) delivers without it",
+      "DR1's runtime replay-stub as the primary directive delivery: strictly worse than compile-time withDirectives injection (microtask-late first seed on render-function mounts); the transform path wins, installVRegister is the only fallback",
+      "Runtime-lazy zod adapter selection (dynamic import on detected major): impossible, useForm introspection must be synchronous at first paint; the build-plugin alias is the sanctioned fix for the barrel penalty",
+      "Entry-flip making '.' v4-only with v3 throwing: saves ~3.5k for pluginless barrel users but demotes zod-v3 from first-class, violating the locked v3/v4 parity stance",
+      "Wizard subpath entry for eager savings: measured zero, wizard already tree-shakes out of the minimal set (WZ1); spending a breaking change there buys nothing",
+      "Replacing unbuild with a bespoke rollup pipeline: no tarball bytes beyond the three config switches, and it re-creates solved problems (single-registry chunk identity, zod-v3 alias hook, jiti stub dev flow)",
+      "Minifying the published dist: consumer bundlers minify anyway (0 consumer gz), costs node_modules debuggability; keep unminified + the eager ratchet split of concerns",
+      "Dropping the vue-shared-shim / looseEqual: load-bearing for v-model parity matching under the zero-deps constraint (DR10 verdict); only ~30 bytes of trims exist",
+      "Counting SC9 (error-writer collapse), WZ6 (wizard registry slice), DC4 (hydration guards), WP5 (path interning) as separate wins: each is a subset of a larger counted lever (VD1, SP2, SC7, DC2); they appear once in this ledger",
+      "Source comment stripping as a size lever: the minifier already removes comments; comment mass is a tarball (sourcesContent, d.ts) concern only, owned by P0 and the d.ts diet"
+    ]
+  },
+  {
+    "recommended_architecture": "Denomination: gz bytes against the measured 46,477 B minimal-v4 eager baseline; the standing ratchet (scripts/check-eager-size.mjs), re-pointed at the shipped prod flavor, is the sole authority and is re-run after every workstream.\n\nENTRIES: '.', './zod-v4', './zod-v3', './abstract', './nuxt', './vite', './transforms', the per-bundler plugin entries (kept: unplugin convention), './devtools-panel', plus new './directive', './history', './ssr'. './types' dropped. Wizard STAYS in the main entries (measured: it tree-shakes to 0 eager; a subpath buys nothing). Every runtime entry ships prod + dev flavors behind a 'development' export condition; SSR-only code (getSSRProps, SSR aria/form-state props, serialize) sits behind node/server conditions. Packaging: sourcemap off, emitCJS off ('./nuxt' ESM-only), single .d.mts with a two-tier comment policy, files-negation guards, tarball ratchet. Tarball lands ~330-430 kB packed (282 kB from config alone, +~130 dev flavor, -~80 d.ts diet), well under the 0.6 MB target.\n\nMODULE MAP (budgets in the table). Primitives: interned path trie (pathOf returns THE frozen {segs, key, parent}; equality is ===; one edge-parser kept for serialized payloads); value-walk (raw ops + ONE reconcile(schema, node, value, mode) engine covering construction fill, setValue completion, unset expansion, sparse hydration, and intersection merge; the hydration mode is EAGER in the engine, resolving the merge-hydration double-booking, so the activation chunk carries only factory plumbing); schema-walk (normalized node() with 8 structural kinds, WeakMap-cached peel; probe fallback deleted; arrayShapeAtPath and slim kinds required); hash/humanize/field-ids; diag (prod: AttaformError codes + attaform.dev/e URLs; prose only in the dev flavor).\n\nKernel: plain FormState record; initialize() serves construction AND reset; a single-walk write funnel (gate + strip-check + complete + author + patch-emit) whose patches commit consumes directly, deleting the verified double diff; ONE tagged error map (src schema|user; blank derived at read from blankPaths + isRequiredAtPath; per-key schema-then-blank-then-user order, field.blank, and atta: codes unchanged); hook arrays; capability flags. Transform-latch bookkeeping (beginTransform sync supersede, per-path counts, cancelTransformsUnder) STAYS eager per the verifier; only the assigner then-body defers on first thenable.\n\nEager features: display (merged, behavior verbatim); arrays (one remap engine + relocateKeys + permuteList + tokens + field-array API; mutation eager, no chunk race); validate/submit (one imperative shell; reactive validate() a thin wrapper; parse absorbs validateAsync; invalid-submit focus policy lazy inside the async submit); schema-io (slim-gate + coerce over one per-store SchemaNode cache); variants (DU consolidated into one module with one clone walk; eager, work gated on hasDU; rememberVariants default-true intact).\n\nAPI layer: form-api as a plain literal (FIELD_STATE_KEYS defineProperty loops for both meta forests; activation folded into store entry points; pickDefined); one field-state builder (leaf = degenerate container, O(1) leaf error fast path, memoized identity); surfaces via ONE callableTree factory serving values/fields/errors and the wizard records with callable reads KEPT (function target, array-target swap for renderList, memoized computed toJSON trees, [] leaf reads and live-key enumeration preserved; coercion quartet, sucrase shims, and exotic-key arbitration dropped); register with a per-path FieldPort cache, owning the element-registration and host-anchor surface moved out of the store; one createForm core + thin adapter entries + shared bindConsumer; registry (plugin + ssr fused, one makeTracker, wizard surface lazy-installed, plain pendingHydration, registers NO directive).\n\nZod: zod-core (shared walkTree/peel/required/DU/issue mapping/withMeta; strict defaults = derive + a DU-aware, value-directed data-walk fix pass; getSlimSchema/stripRefinements deleted; stripAsyncChecks KEPT in both majors by default, its deletion being a separate SSR sign-off worth ~500) + per-major probe packs (~28 accessors, kind table as data, async predicates, safeParse glue, UNSUPPORTED list) + prototype ZodSchemaAdapter (services object deleted). Both-majors barrel penalty lands ~2.5-3 kB (verifier-adjusted, not <2); build-plugin aliasing stays the documented default install.\n\nCAPABILITY ATTACHMENT. (a) Compile-time: the vite/nuxt transforms inject component-local directive registration (directives: {register: vRegister} with a direct attaform/directive import) on BOTH client and SSR compiles. This is NEW plugin machinery, not Vue's compiled v-model pattern (compiler helpers import only from 'vue'); spike first, including component-host SSR parity. NO replay stub: the install path registers nothing; no-build, CDN, and webpack-family consumers call installVRegister(app) once. The server condition eager-imports and registers the directive so getSSRProps stays sync. (b) Import-gated sync: historyPlugin as the history option value (snapshot-ring internals); the wizard gate() marker carrying its spine; withMeta installing walk-field-meta. (c) Lazy inside async moments: focus policy, activation/async defaults, async-transform then-body, host/file binding chunks. (d) SSR-conditional: hydration replay behind a payload version stamp on the registry payload path; serialize in './ssr'; the Nuxt runtime plugin splits .server/.client and imports through flavored bare specifiers (two-registry hazard).\n\nDEV/PROD DIST: __DEV__ resolved at package build; prod flavor verified prose-free by a CI grep gate plus a structural dev-dce test; prod errors become '[attaform] AF## attaform.dev/e/AF##' with docs pages landing first.",
+    "why": "Arch-A's skeleton wins (callable reads kept, wizard stays in main entries, four explicit capability channels), but not its arithmetic: verifiers cut its zod phase from 3.4k to 0.9-1.4k and its store lazy moves from 3.3k to 2.2k, so its 22.0k total recomputes to ~25.5k; its replay stub is also dropped because the one-microtask safety claim is false under a real chunk fetch and can clobber typed input, a silent degradation. Arch-B's flagship break (dropping callable surfaces) lost its byte case: the verifier's measured replacement that KEEPS errors/values callable saved the same 1,862 B as B's break, and callable-everywhere costs only ~150-300 more, so the audit's largest docs churn buys almost nothing; B's 19k also rests on kernel and zod-core budgets the dedicated verifiers refuted, and its wizard subpath buys a measured 0. B's cleanest internals are adopted anyway (memoized computed trees, hydration version stamp, .server/.client Nuxt plugin pair, per-phase re-baselining). The ledger is closest to honest and its dedup rulings are adopted wholesale, but it predates the adapter verdict (its zod line assumed ~2k savings vs the verified 0.9-1.4k) and its 25.4k central re-derives here to 25.3-26.0k. Net: A's architecture, B's internals, the ledger's accounting discipline, all repriced with verifier-adjusted numbers.",
+    "eager_budget": [
+      {
+        "module": "core/path",
+        "gz_bytes": 450,
+        "note": "Interned trie (pathOf returns the unique frozen node, === equality) + one edge-parser for serialized payloads; replaces paths.ts 698 incl. both FIFO caches and the JSON round-trips"
+      },
+      {
+        "module": "core/value-walk",
+        "gz_bytes": 1150,
+        "note": "Raw ops + ONE reconcile(schema,node,value,mode) engine; sparse-hydration mode stays EAGER here (double-booking resolved), activation chunk carries only factory plumbing; replaces path-walker core, unset-walker, merge-hydration, merge-deep"
+      },
+      {
+        "module": "core/schema-walk",
+        "gz_bytes": 1150,
+        "note": "Normalized node() introspector (WeakMap peel cache); descend/derive-default/slim-kinds dispatch on 8 structural kinds; probe fallback deleted; walk-field-meta leaves eager via withMeta registration-side install (486 measured)"
+      },
+      {
+        "module": "core/hash+humanize+field-ids+meta-store",
+        "gz_bytes": 380,
+        "note": "Kept; genuinely eager (field ids, label fallback); identity memoized per path"
+      },
+      {
+        "module": "core/diag+errors (prod flavor)",
+        "gz_bytes": 500,
+        "note": "Classes keep instanceof identity; prod = AF codes + attaform.dev/e URL template + public atta: codes; 951 B of prose (measured) moves to the dev flavor"
+      },
+      {
+        "module": "core/kernel",
+        "gz_bytes": 3400,
+        "note": "FormState record, init=reset, single-walk write funnel feeding patches to commit (double diff deleted; funnel credit 300 per verifier, not 450), tagged single error store with derived blank, hooks, capability flags; transform-latch bookkeeping (~430) stays eager per verifier. Above A's 2.8k / B's 3.0k for exactly those reasons"
+      },
+      {
+        "module": "core/display",
+        "gz_bytes": 640,
+        "note": "display-state + display-engine merged, single-timer model verbatim; test hooks DEV-gated"
+      },
+      {
+        "module": "core/arrays",
+        "gz_bytes": 1100,
+        "note": "One remap engine (remapForOp/relocateKeys/permuteList/scan) + tokens + field-array API; mutation stays eager (no chunk race; lazy-mutation idea vetoed)"
+      },
+      {
+        "module": "core/validate+submit",
+        "gz_bytes": 1150,
+        "note": "One imperative shell, reactive validate() thin wrapper, parse absorbs validateAsync, shared groupBy; focus policy lazy inside the async submit (counted once, store side)"
+      },
+      {
+        "module": "core/schema-io",
+        "gz_bytes": 1000,
+        "note": "slim-gate + schema-coerce merged over ONE per-store SchemaNode cache {slimKinds,isPreprocess,du,required,emptyValue}; one lookup per write replaces ~5 path-keyed caches"
+      },
+      {
+        "module": "core/variants",
+        "gz_bytes": 730,
+        "note": "DU reshape + stubs + memory + ancestor guard, one clone walk; eager (sync reshape contract forbids lazy), work gated on hasDU; verifier-adjusted saving 400 after the arrays-switch overlap; rememberVariants default-true intact"
+      },
+      {
+        "module": "core/form-api",
+        "gz_bytes": 1950,
+        "note": "Plain literal; FIELD_STATE_KEYS defineProperty loops (mirror claim halved by measurement: ~350, not 650), activation folded into store entry points, pickDefined, history/wizard namespace stubs"
+      },
+      {
+        "module": "core/field-state",
+        "gz_bytes": 1500,
+        "note": "One builder, leaf = degenerate container, O(1) leaf error fast path and blankPaths reactivity carve-out preserved; builder return literals verified NOT loop-generatable, hence above A/B's 1.3k"
+      },
+      {
+        "module": "core/surfaces",
+        "gz_bytes": 1450,
+        "note": "ONE callableTree factory for values/fields/errors + wizard records; callable reads KEPT (~150-300 over the measured non-callable-fields sketch); array-target swap for renderList, memoized computed toJSON trees, [] leaf reads + live-key enumeration preserved; quartet/shims/arbitration dropped"
+      },
+      {
+        "module": "core/register",
+        "gz_bytes": 1050,
+        "note": "Per-path FieldPort cache (stable RV identity); absorbs the store's element-registration + host-anchor surface (public RegisterValue methods relocate: sign-off item); focus machinery lazy"
+      },
+      {
+        "module": "core/create-form + adapter entries",
+        "gz_bytes": 850,
+        "note": "One createForm core, thin adapt() wrappers per adapter, shared bindConsumer with injectForm"
+      },
+      {
+        "module": "core/registry",
+        "gz_bytes": 380,
+        "note": "plugin + ssr fused, one makeTracker, wizard surface lazy-installed, plain pendingHydration; registers NO directive and NO stub"
+      },
+      {
+        "module": "zod/core",
+        "gz_bytes": 3600,
+        "note": "Shared walkTree/peel/required/DU/issue-map/withMeta + DU-aware data-walk strict defaults; getSlimSchema/stripRefinements deleted; stripAsyncChecks KEPT both majors (deleting it is a signed SSR trade worth ~500). Verifier-adjusted: well above A's 1.7k / B's 2.4k, whose savings claims were refuted"
+      },
+      {
+        "module": "zod/v4-pack",
+        "gz_bytes": 1500,
+        "note": "Probe pack: ~28 accessors, kind table as data (kindOf rewrite measured only ~76), async predicates, safeParse glue, UNSUPPORTED list, path-labeled assert (~200 of the 346 stub delta); marginal v3 pack keeps the barrel penalty at ~2.5-3k"
+      },
+      {
+        "module": "zod/adapter-class",
+        "gz_bytes": 830,
+        "note": "Prototype ZodSchemaAdapter absorbing abstract-schema-factory (1,313 today); services deleted; methods shared across forms; prototype credit 200 (unmeasured estimate, flagged)"
+      },
+      {
+        "module": "integration reserve",
+        "gz_bytes": 1200,
+        "note": "Chunk/export glue + overrun absorption concentrated on kernel/zod-core/surfaces (~6% of itemized); consumed only when a phase lands over budget, never new scope"
+      }
+    ],
+    "eager_total_gz": 25960,
+    "realistic_range": "24.5-27.0 kB gz for minimal-v4 eager (central 25.3-26.0 kB; plan-of-record budget 25,960 B including the 1,200 B reserve; itemized 24,760 B = 24.2 kB). Three things govern where it lands: (1) realization on the rewrite-heavy budgets (kernel 3.4k, zod stack 5.9k, surfaces + form-api ~3.5k combined): every rewrite a verifier measured delivered 60-75% of its original claim, so per-phase ratchet re-planning is the only real mitigation; (2) the stripAsyncChecks decision (about -0.5 kB more if the SSR strict-seed change is signed); (3) ~0.6k of budgeted gzip-superadditivity drag. The <=25 kB soft gate passes only in the favorable half of the range (reserve mostly unspent, or the SSR trade signed, or big-three overdelivery). The 23 kB true-50% number is NOT reachable from verified claims in this program: it needs the optimistic edge everywhere plus a second, harder pass (the ~18 kB ideal-design floor and the ledger's own arithmetic agree the headroom exists). Tarball: 1.8 MB to ~330-430 kB packed, comfortably under the 0.6 MB target.",
+    "workstreams": [
+      {
+        "order": 0,
+        "name": "P0 packaging config",
+        "delivers_gz_bytes": 0,
+        "scope": "sourcemap:false, emitCJS:false ('./nuxt' ESM-only), declaration:'node16' single .d.mts, files-field negation guards, check-tarball-size ratchet (~350 kB budget, raised to ~480 kB when the dev flavor lands), drop './types' + legacy main, prune .vue declaration stubs. Tarball 1.8 MB to 282 kB packed (measured); zero eager or consumer-bundle change.",
+        "depends_on": "none; lands alone"
+      },
+      {
+        "order": 1,
+        "name": "P1 dev/prod dual dist + error codes",
+        "delivers_gz_bytes": 3500,
+        "scope": "Prod flavor pre-stripped at package build behind a 'development' export condition (2,551 measured solo; ~2,200 net after P2); prose-to-codes conversion (951 measured) + gating the genuinely unguarded warns (~100-150, deflated from the claimed 350); harden dev-dce.test structurally (no if(!1), no [attaform] prose outside an allowlist); re-point check-eager-size at the shipped prod flavor; CI grep gate; fix the Nuxt runtime-plugin literal-path flavor hazard by importing through the flavored bare specifier.",
+        "depends_on": "attaform.dev/e/* docs pages live first; author sign-off 3"
+      },
+      {
+        "order": 2,
+        "name": "P2 directive un-weld",
+        "delivers_gz_bytes": 5900,
+        "scope": "Registry-only install (no directive, no stub); vite/nuxt transforms inject component-local directive registration with a direct import from the new attaform/directive entry on BOTH client and SSR compiles; server condition eager-imports + registers for sync getSSRProps; installVRegister(app) documented for no-build/CDN/webpack-family users; the store's DOM-binding surface (elements/hostTargets/focus anchors) relocates to the register module (enabled here, counted in P5). Net 5,900 after the P1 overlap; 6,255 reproduced solo by the verifier.",
+        "depends_on": "spike: component-local registration on the compiled SSR path incl. component hosts (SSR_COMPONENT_HOST_MODIFIER, getSSRProps-fires-twice); author sign-off 1"
+      },
+      {
+        "order": 3,
+        "name": "P3 history plugin + snapshot ring + arrays engine",
+        "delivers_gz_bytes": 1650,
+        "scope": "attaform/history exporting historyPlugin(config) passed as the history option value (1,137 measured; sync construction, no missed-delta window); internals rewritten as a snapshot ring (halves the chunk, faster keystrokes); arrays: one remap engine + relocateKeys + permuteList + shared index scan, with the variant-memory and freshElementIndices switches derived from the one remap (~500 realized of the ~730 claimed).",
+        "depends_on": "author sign-off 2; array/DU test matrix green on both zod majors"
+      },
+      {
+        "order": 4,
+        "name": "P4 walk-field-meta install + probe delete",
+        "delivers_gz_bytes": 600,
+        "scope": "withMeta/fieldMeta registration module installs the walker into the field-meta-store slot (486 measured; .describe()/humanize fallback when uninstalled); delete the resolveArrayShape 1M-index probe fallback and make arrayShapeAtPath + getSlimPrimitiveTypesAtPath required (~120).",
+        "depends_on": "author sign-off 6 for the SPI tightening; the field-meta half is independent"
+      },
+      {
+        "order": 5,
+        "name": "P5 store kernel program",
+        "delivers_gz_bytes": 2700,
+        "scope": "Plain FormState + store-first-arg functions + hook arrays; single-walk write funnel feeding patches to commit (300 verified for the double diff); construction=reset (~220); tagged single error store with derived blank + three shared writers + forEachError; capability flags; lazy activation chunk (~480 after keeping the hydration-merge mode eager; sync flag flips preserved); async-transform then-body deferral ONLY (~200; beginTransform and per-path counts stay eager); SSR replay to the payload path with pre-validated Maps (~280; ~50 copy branch stays); DOM surface to register (~400, conditional on P2 + the RegisterValue reshape); DU consolidation (~400); touch/interact and small merges (~500 net of string overlaps).",
+        "depends_on": "characterization suites pinned green on BOTH zod majors BEFORE the swap; P2 for the DOM slice"
+      },
+      {
+        "order": 6,
+        "name": "P6 validation/display fold",
+        "delivers_gz_bytes": 650,
+        "scope": "Reactive validate() kickoff folded onto runImperativeValidation; parse absorbs validateAsync; per-entry formKey dropped (wizard stamps at aggregation); display-state + display-engine merged with test hooks DEV-gated; shared groupByCanonicalKey.",
+        "depends_on": "P5 tagged store; author sign-offs 4 and 5"
+      },
+      {
+        "order": 7,
+        "name": "P7 zod probe-pack program",
+        "delivers_gz_bytes": 900,
+        "scope": "zod-core + per-major probe packs; kindOf as data + shared walkTree predicates + path-labeled assert (~276 verified); services merge (~50); prototype adapter class (~200); field-meta merge (30); getSlimSchema/stripRefinements deleted with a DU-aware value-directed data-walk fix pass (~330 net, SSR-preserving); stripAsyncChecks KEPT unless sign-off 7 trades SSR strict-seed parity (+500); v3 sub-schema stub + lax-loop port land barrel-side (barrel penalty 5.5k to ~2.5-3k).",
+        "depends_on": "author sign-offs 6 and 7; adapter characterization suites re-baselined on both majors"
+      },
+      {
+        "order": 8,
+        "name": "P8 surface/API program",
+        "delivers_gz_bytes": 2650,
+        "scope": "callableTree factory replacing the seven proxy files with callable reads kept (1,700-1,900 verified band incl. leaf-view identity and enumeration-parity clawbacks); FIELD_STATE_KEYS loops (~350); unified field-state builder (~300); pickDefined (~250); activation fold (~150); layer collapse to one createForm core (~100); register FieldPort cache (~200); sucrase-shim removal only after the REPL playground is pinned and verified.",
+        "depends_on": "P5 kernel entry points; REPL playground verification; author sign-off 8"
+      },
+      {
+        "order": 9,
+        "name": "P9 walkers/paths + schema-io",
+        "delivers_gz_bytes": 1500,
+        "scope": "Interned path trie threaded through core (ByKey twins deleted, canonicalizePath spy-gate retired); normalized-node introspector; ONE reconcile engine over the five value-merge boundaries; shared validated-descent helper; slim-gate + coerce merged over the single SchemaNode cache; mergeStructural lazy-default fix (removes the per-keystroke schema walk, perf).",
+        "depends_on": "P5 funnel in place; interning can start earlier behind the rim"
+      },
+      {
+        "order": 10,
+        "name": "P10 sweep and lock",
+        "delivers_gz_bytes": 480,
+        "scope": "Registry fusion + one tracker + wizard slice lazy-installed (~200); guard()/emitAll + rim plumbing (~200); DEVTOOLS_WINDOW_KEY off the barrel (40); d.ts two-tier comment policy + audience split (tarball ~-80 kB packed); wizard-path quality at 0 eager (~2.9k off the wizard-usage path: liveRecord factory, form-less affordance steps, gate spine import-gating, URL consolidation, DCE-failed warn fixes); re-baseline both ratchets and commit the new budgets.",
+        "depends_on": "all prior for the final re-baseline; individual items independent"
+      }
+    ],
+    "api_changes_for_author": [
+      {
+        "change": "v-register delivery: vite/nuxt build-plugin users stay untouched and automatic via transform-injected component-local directive registration importing from the new attaform/directive entry; useForm no longer registers the directive and there is NO replay stub; no-build, CDN, and webpack-family consumers must call installVRegister(app) once (Vue's own dev 'failed to resolve directive' warning is the miss signal); SSR registers eagerly under the server condition so getSSRProps stays sync.",
+        "recommendation": "Approve. Largest measured lever (6,255 reproduced; 5,900 net credited). The stub alternative was refuted: a real chunk fetch is not a microtask and the replayed seed can clobber typed input, which is silent degradation.",
+        "severity": "major"
+      },
+      {
+        "change": "Undo/redo becomes useForm({ history: historyPlugin({ max }) }) imported from attaform/history; the config-only { history: { max } } form is removed; internals become a snapshot ring; form.history namespace stubs remain for non-users.",
+        "recommendation": "Approve. 1,137 measured off every non-history consumer; construction stays synchronous with no missed-delta window.",
+        "severity": "moderate"
+      },
+      {
+        "change": "Prod error/warn text becomes '[attaform] AF## attaform.dev/e/AF##'; full prose ships only in the dev flavor behind a 'development' export condition; message text is documented as non-API (classes and codes stay stable).",
+        "recommendation": "Approve, with the docs error pages landing first. Note: bundlers that ignore the condition serve prod in dev (silent warnings), the same degradation today's CDN path has.",
+        "severity": "moderate"
+      },
+      {
+        "change": "validateAsync folds into parse(path?, { commit? }) as the one imperative validation API (parse stays async per the locked no-sync stance) and always returns data.",
+        "recommendation": "Approve. The two methods differ only in flags and a data-stripping projection; one API deletes stripData, a response type, and a docs page.",
+        "severity": "moderate"
+      },
+      {
+        "change": "ValidationError drops per-entry formKey (the wizard stamps it at aggregation); error storage merges to one tagged map internally; the observable three-channel behavior (schema-then-blank-then-user per key, field.blank, atta: codes, error-order-schema-first) is unchanged.",
+        "recommendation": "Approve; gate with the error-order characterization suite.",
+        "severity": "moderate"
+      },
+      {
+        "change": "AbstractSchema SPI tightens: node() normalized introspection added, arrayShapeAtPath + getSlimPrimitiveTypesAtPath required, the services object disappears, the 1M-index probe fallback is deleted; fingerprint() is KEPT but becomes one shared lazy walker (the dev key-collision diagnostic is real). Full contract docs move to an authoring-adapters page.",
+        "recommendation": "Approve pre-1.0. This is the one genuinely breaking contract for the bring-your-own-components wedge; the docs page must land with it.",
+        "severity": "major"
+      },
+      {
+        "change": "Zod strict-defaults: getSlimSchema/stripRefinements deleted in favor of a DU-aware data-walk fix pass (unknown constraint keys are preserved instead of stripped; suites re-baselined). SEPARATE decision: stripAsyncChecks. Default is KEEP in both majors, preserving SSR strict-seed parity. Deleting it is worth ~500 gz more but means strict-mode schemas mixing an async refine with failing sync checks render NO construction-time errors on SSR; they appear client-side post-hydration (the compensating async pass is !ssr-gated). This is not the one-microtask deferral the original claim described.",
+        "recommendation": "Sign the getSlimSchema deletion; decline the stripAsyncChecks deletion unless the SSR trade is explicitly acceptable for the Cubic Housing audit story.",
+        "severity": "major"
+      },
+      {
+        "change": "Callable reads on form.values/form.fields/form.errors are KEPT (the clean-sheet break is rejected). Dropped instead: schema fields literally named toString/hasOwnProperty/call/apply/bind become documented-unsupported, and the sucrase .call/.apply downlevel shims go (REPL playground pinned and verified first). Error-free leaf reads stay [] and live-key enumeration is preserved (both budgeted).",
+        "recommendation": "Approve. Verified byte-neutral within ~150-300 gz of the break, and it avoids the audit's largest docs churn (~560 call-form uses stay valid).",
+        "severity": "cosmetic"
+      },
+      {
+        "change": "renderAttaformState/hydrateAttaformState move to attaform/ssr (the barrel stops exporting them; Nuxt users unaffected); the hydration payload gains a version stamp and the per-field shape guards become one all-or-nothing check.",
+        "recommendation": "Approve; one import-specifier change in the bare-Vue SSR recipe, and the stamp diagnoses rolling-deploy skew more precisely than structural checks.",
+        "severity": "cosmetic"
+      },
+      {
+        "change": "Wizard affordance (string) steps become form-less: wizard.forms['intro'] returns undefined instead of a noop form handle; string-slot gates clear on advance-acknowledge.",
+        "recommendation": "Approve. Zero eager delta, but it deletes a full FormStore closure per intro/review screen and matches the documented gate-clearing semantics.",
+        "severity": "moderate"
+      },
+      {
+        "change": "Packaging: no sourcemaps, no CJS ('./nuxt' ESM-only), single .d.mts flavor, './types' export and legacy main dropped; per-bundler plugin subpaths are KEPT (unplugin convention; ~10 kB packed after the slim).",
+        "recommendation": "Approve; measured 1.8 MB to 282 kB packed with zero consumer-bundle change.",
+        "severity": "moderate"
+      },
+      {
+        "change": "d.ts two-tier comment policy: consumer-surface members keep first paragraph + one example (~600 B cap, config-driven trimmer); SPI/internal essays move to attaform.dev; ~80 kB packed savings on the remaining flavor.",
+        "recommendation": "Approve the mechanism; the Tier-A cap and member list are your call since hover-DX is a deliberate craft feature.",
+        "severity": "moderate"
+      }
+    ],
+    "risk_register": [
+      "Realization risk on the three rewrite-heavy budgets (kernel 3.4k, zod stack 5.9k, surfaces + form-api ~3.5k combined): every rewrite a verifier measured delivered 60-75% of its claim. Mitigation: re-measure the ratchet after EVERY workstream, re-plan at any >15% miss, and treat the 1,200 B reserve as absorbing ~6% overrun, never as new scope.",
+      "Write-funnel correctness core (P5): gate/strip/complete/author/patch phase ordering, blank-and-authored marks before the identity short-circuit, same-tick DU no-flicker, blur-dedup value-equality, and schema-first error order are locked behaviors; characterization suites must be pinned green on BOTH zod majors before the kernel swap starts.",
+      "The directive transform spike is unproven machinery: component-local registration must cover client AND SSR compiles including component hosts (SSR_COMPONENT_HOST_MODIFIER, the getSSRProps-fires-twice trap from #381/#404); the 'compiled v-model pattern' cannot be reused verbatim because compiler helpers import only from 'vue'. If the spike fails, the fallback is a compiled resolveDirective rewrite; the un-weld still lands with installVRegister as the only no-plugin path.",
+      "Do NOT re-attempt the full async-transform lazy claim: beginTransform's synchronous supersede, per-path transform counts, and cancelTransformsUnder must stay eager (recorded loosening #361 plus the verifier's latest-write-wins analysis); only the assigner then-body defers.",
+      "Dev/prod dual-dist hazards: bundlers ignoring the 'development' condition silently serve prod in dev; Nuxt webpack-builder and consumer-Vitest flavor selection need verification; the Nuxt runtime plugin's literal file path can mix flavors and instantiate TWO registries; the eager ratchet and dev-dce test must measure the shipped prod flavor or both go blind.",
+      "Double-booking guards are baked into the budget; implementation order must not undo them: merge-hydration lives EAGER in the reconcile engine (activation credits ~480, not 600); the focus-policy lazy move is counted once (store side); the error-writer collapse is inside the tagged-store credit; error prose is counted once in the P1 riders.",
+      "gzip superadditivity: per-file attributed savings realize below their sum (~600 B of drag is budgeted); only the standing ratchet number is authoritative, never ledger arithmetic.",
+      "Type-system landmines: the TS2589/Volar defenses (v4 SupportedRootSchema arm, ZodV4Internals _zod brand, StorageShape property-access pattern, reflexive escape arm, named walker aliases) must survive the adapter and surface rewrites verbatim; the FIELD_STATE_KEYS loops must preserve getter-vs-computed dependency tracking; gates are the bundled-types fixtures on both majors plus the REPL playground's CDN-TS worker before any sucrase-shim removal.",
+      "attaform.dev/e/* becomes load-bearing for prod error DX: the pages must exist and stay stable before P1 ships, coupling error messages to the Vercel docs deployment.",
+      "The DU-aware data-walk fix pass must be value-directed at discriminators: a naive first-candidate leaf walk clobbers valid non-first-variant values; the 200-300 gz replacement cost is budgeted and the correctness is not optional.",
+      "Docs churn is real but contained because callable reads are kept: v-register install recipes, the no-build one-liner, the history import, and the parse rename migrate; page-review commit cadence applies.",
+      "Interned path trie lifetime is per-store: wizard and injectForm cross-store reads must not leak nodes across registries; serialized boundaries (SSR payload, wizard URL) keep the one edge-parser."
+    ],
+    "graft_notes": "GRAFTS. Skeleton from Arch-A: callable surfaces kept via one callableTree factory, wizard stays in the main entries, four explicit capability channels, an integration reserve. From Arch-B: the memoized computed error tree and native readonly backing INSIDE the thin callable wrappers (the exact shape verify-proxy-api measured), the hydration payload version stamp with an all-or-nothing guard, the Nuxt .server/.client plugin pair, per-phase ratchet re-baselining, and form-less affordance steps. From the ledger: all dedup rulings adopted (error prose counted once in the P1 riders, superseding validation's 350 and defensive's 480; path machinery counted once; error-writer collapse inside the tagged store; hydration guards inside the SSR-replay move; assigner-pipeline shares zeroed because that cluster leaves eager with the un-weld), the double-booking hazards, the tarball program numbers, and the honesty that no small subset of workstreams reaches the 25 kB gate.\n\nVERIFIER ADJUSTMENTS REFLECTED. Directive un-weld: 6,255 independently reproduced; credited 5,900 net of the dev-strip overlap (~350-400) and entry glue; the replay stub is REJECTED outright (its one-microtask safety claim is false under a real chunk fetch and can clobber typed input), so delivery is transform-injected component-local registration plus installVRegister, and the 'compiled v-model pattern' framing is corrected to new plugin machinery needing a spike. Dev/prod dual dist: 2,551 confirmed; the unguarded-warn rider deflated from 350 to ~100-150 (88 measured); the prose rider 951 measured and counted once. History 1,300 to 1,137 measured. walk-field-meta 631 to 486 measured. Store lazy program 3,300 to 2,200 (transform bookkeeping must stay eager; the DOM move is conditional on the un-weld and a public RegisterValue reshape; write funnel 300 not 450; DU 400 after the arrays overlap), plus ~650 for untested-but-credible merges net of string overlaps; the 5.5-6 kB store-core headline is refuted, the cluster lands ~7.5-8 kB post-un-weld. Proxy zoo 2,200 to ~1,700-1,900 with clawbacks (leaf-view identity, enumeration parity); mirror loop-generation 650 REFUTED to ~350 standalone / 220 marginal (gzip already dedupes the second forest; the field-state builder literals cannot be loop-generated). Adapter program: the 6.8-to-3.6 headline REFUTED; strip deletion is 1,081 gross minus a 200-300 replacement fix-walk, and the 'one-microtask' framing hid an SSR strict-seed loss (the compensating async pass is !ssr-gated), so stripAsyncChecks is kept by default and the bucket is credited 900 central (1,400 with sign-off); kindOf 500 to ~276; dead zod exports 60 to 0 (already tree-shaken); the both-majors barrel lands ~6.5-7.5k, so the '.' penalty becomes ~2.5-3k, not <2k. Ledger-floor's 21,400 savings re-derives to ~19,900-20,500 once the dedicated adapter/store/proxy verdicts replace its generic haircuts, which is why this synthesis centers at 25.3-26.0 kB rather than 23.5-24.5.\n\nEXCLUDED / NOT BANKED. Lazy array-mutation half (silent positional-identity degradation; vetoed by all three architects and the no-silent-degradation stance). Conditional DU install as a reserve lever (the same-tick reshape contract forbids lazy install and a static import from the zod entries saves 0 eager; the ledger's ~600 reserve claim does not survive scrutiny). Symbol.for description diet (~110; debuggability loss for below-threshold savings). catchOnUseDefaultFalse removal (deferred to a standalone conversation per Arch-A and the reference-before-API-change rule). Barrel v4-only flip (violates the locked v3/v4 parity stance). Runtime-lazy adapter selection (useForm introspection must be sync at first paint). unbuild replacement and dist minification (zero consumer bytes; re-solves solved problems including cross-entry registry identity). PathKey-as-dotted-string (open question on serialized payloads; interning captures most of the win without betting on it). Wizard subpath entry (measured 0 eager; a breaking change buying only size-limit cosmetics)."
+  }
+]

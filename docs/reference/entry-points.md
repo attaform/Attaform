@@ -179,16 +179,6 @@ import { vRegisterHintTransform, vRegisterPreambleTransform } from 'attaform/tra
 
 The DevTools panel internals. The [Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel) is auto-wired by `attaform/nuxt`; this entry is exposed for advanced consumers building their own panel hosts.
 
-## `attaform/types`
-
-Type-only subpath. Re-exports every type from the runtime, useful when you want types in a `.d.ts` consumer file without pulling in the runtime barrel:
-
-```ts
-import type { UseFormReturnType, FieldState, ValidationError } from 'attaform/types'
-```
-
-For runtime imports under typical app code, import directly from `attaform`; the type re-exports there are equivalent.
-
 ## Which subpath for which job?
 
 | You want to…                                          | Import from         |
@@ -202,7 +192,7 @@ For runtime imports under typical app code, import directly from `attaform`; the
 | Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`          |
 | Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`          |
 | Catch an Attaform-thrown error by class               | `attaform`          |
-| Type-only imports in a `.d.ts` file                   | `attaform/types`    |
+| Type-only imports in a `.d.ts` file                   | `attaform`          |
 
 ## The Zod-default story
 

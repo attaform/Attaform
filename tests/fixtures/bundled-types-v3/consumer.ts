@@ -21,7 +21,7 @@
  * which is exactly what the `paths` remap recreates here.
  */
 import { z } from 'zod' // remapped to a v3 install via tsconfig `paths`
-import { useForm } from '../../../dist/zod'
+import { useForm } from 'attaform/zod'
 
 // Strict type equality — distinguishes `never` and `any` from the real
 // type, so a fix can't regress the read slot to either.

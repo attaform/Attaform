@@ -1,7 +1,7 @@
 /**
  * Bundled-types regression fixture for #422 — generic form wrappers, Zod v4
- * consumer. Imports from `dist/*` (the published artifact shape), NOT `src/*`,
- * so it guards what a real consumer sees through `attaform/zod` (unified) and
+ * consumer. Imports by package name, resolved through the exports map
+ * to the published `dist/*.d.mts`, NOT `src/*`, so it guards what a real consumer sees through `attaform/zod` (unified) and
  * `attaform/zod-v4` (direct). The companion `bundled-types-v3/generic-wrapper.ts`
  * covers the Zod v3 path (unified + v3-direct) under a single-major install.
  *
@@ -17,8 +17,8 @@
  * context.
  */
 import { z } from 'zod'
-import { useForm } from '../../../dist/zod'
-import { useForm as useFormV4 } from '../../../dist/zod-v4'
+import { useForm } from 'attaform/zod'
+import { useForm as useFormV4 } from 'attaform/zod-v4'
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false

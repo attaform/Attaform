@@ -907,10 +907,6 @@ export default defineNuxtConfig({
     //     consumer site never imports it from a `.ts` / `.vue`
     //     file; the Nuxt DevTools overlay loads it directly. No
     //     alias needed.
-    //
-    //   - `attaform/types` is types-only (no `import` condition
-    //     in the export map). Aliasing it would be a no-op at
-    //     runtime, so skip it.
     resolve: {
       alias: [
         { find: /^attaform$/, replacement: resolve(monorepoRoot, 'src/index.ts') },

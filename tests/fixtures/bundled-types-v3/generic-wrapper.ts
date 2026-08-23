@@ -15,8 +15,8 @@
  * `_neverInvoked` shapes call-site inference without a Vue app context.
  */
 import { z } from 'zod' // remapped to a v3 install via tsconfig `paths`
-import { useForm } from '../../../dist/zod'
-import { useForm as useFormV3 } from '../../../dist/zod-v3'
+import { useForm } from 'attaform/zod'
+import { useForm as useFormV3 } from 'attaform/zod-v3'
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false

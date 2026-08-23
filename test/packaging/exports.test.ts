@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -13,7 +13,7 @@ const repoRoot = join(__dirname, '..', '..')
 const distDir = join(repoRoot, 'dist')
 
 const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf-8')) as {
-  main: string
+  main?: string
   types: string
   // An export maps a subpath to either a direct target string
   // (e.g. "./package.json") or a conditions map (condition -> target path).
@@ -63,8 +63,8 @@ function closureContainsZodImport(entryPath: string): boolean {
 }
 
 describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json exports', () => {
-  it('main points at a file that exists', () => {
-    expect(existsSync(join(repoRoot, pkg.main))).toBe(true)
+  it('ships no legacy main field (exports-only resolution)', () => {
+    expect(pkg.main).toBeUndefined()
   })
 
   it('types points at a file that exists', () => {
@@ -108,6 +108,24 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
       expect(existsSync(join(distDir, `${name}.mjs`)), `${name}.mjs`).toBe(true)
       expect(existsSync(join(distDir, `${name}.d.mts`)), `${name}.d.mts`).toBe(true)
     }
+  })
+
+  it('no export subpath declares a require condition (ESM-only package)', () => {
+    for (const [subpath, entry] of Object.entries(pkg.exports)) {
+      if (typeof entry === 'string') continue
+      expect(Object.keys(entry), `${subpath} conditions`).not.toContain('require')
+    }
+  })
+
+  it('dist carries no CJS, sourcemap, or CJS-declaration artifacts', () => {
+    // Guards the build.config.ts trio (emitCJS: false, sourcemap: false,
+    // declaration: 'node16') at the dist level. The pack-time `files`
+    // negations are the second layer; scripts/check-tarball-size.mjs
+    // checks those by name against the actual pack list.
+    const offenders = readdirSync(distDir, { recursive: true })
+      .map(String)
+      .filter((p) => p.endsWith('.cjs') || p.endsWith('.map') || p.endsWith('.d.cts'))
+    expect(offenders).toEqual([])
   })
 
   it('core entry (index.mjs) does not import zod (keeps /zod-v3 opt-in)', () => {

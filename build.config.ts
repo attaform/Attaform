@@ -66,7 +66,12 @@ export default defineBuildConfig({
     'typescript',
     /lodash-es.*/,
   ],
-  declaration: true,
+  // 'node16' emits a single .d.mts flavor per entry instead of the
+  // .d.ts / .d.mts / .d.cts triple. The package is ESM-only ("type":
+  // "module", import-only exports), so one flavor is all any resolver
+  // consults; the other two were dead weight tripling the packed
+  // declaration payload.
+  declaration: 'node16',
   failOnWarn: false,
   hooks: {
     'rollup:options'(_ctx, options) {
@@ -114,7 +119,11 @@ export default defineBuildConfig({
     },
   },
   rollup: {
-    emitCJS: true,
+    // ESM-only. Nothing resolves the CJS tree: Node >=22 and every
+    // bundler read the import conditions, and Nuxt loads the module
+    // through jiti. The package.json exports map carries no require
+    // condition (dropped in the same commit as this flag).
+    emitCJS: false,
     // `hoistTransitiveImports: false` stops Rollup from emitting bare
     // `import './shared/chunk.mjs'` statements into an entry for chunks
     // that the entry only reaches transitively (through another shared
@@ -151,12 +160,16 @@ export default defineBuildConfig({
       // Tree-shaking stays on — it drops unreachable code without
       // mangling what remains.
       minify: false,
-      sourcemap: true,
+      // No sourcemaps in the published package: the shipped .mjs is
+      // readable unminified source, so a map adds nothing to consumer
+      // debugging while roughly doubling the tarball. Consumers who
+      // step into our code land in the actual shipped module.
+      sourcemap: false,
       treeShaking: true,
       legalComments: 'inline',
     },
   },
-  sourcemap: true,
+  sourcemap: false,
   parallel: false,
   name: 'attaform',
 })

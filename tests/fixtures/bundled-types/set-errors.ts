@@ -14,8 +14,8 @@
  *     round-trip as input.
  *   - `clearErrors` accepts no arg, a string path, or a segment array.
  */
-import { useForm } from '../../../dist/zod'
-import type { ErrorInput, Json, ValidationError } from '../../../dist/index'
+import { useForm } from 'attaform/zod'
+import type { ErrorInput, Json, ValidationError } from 'attaform'
 import { z } from 'zod'
 
 const form = useForm({

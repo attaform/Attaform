@@ -14,8 +14,8 @@
  *     not just on the standalone type — so an emit that drops the field
  *     from the surfaced error shape fails here.
  */
-import { useForm } from '../../../dist/zod'
-import type { Json, ValidationError } from '../../../dist/index'
+import { useForm } from 'attaform/zod'
+import type { Json, ValidationError } from 'attaform'
 import { z } from 'zod'
 
 type Equal<A, B> =

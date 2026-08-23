@@ -1,7 +1,26 @@
 # P0: packaging config
 
-Status: READY. Delivers: tarball 1.8 MB -> ~282 kB packed (measured in the audit
-worktree; `reference/packaging-experiment.md`). Eager: 0. Risk: low. No source changes.
+Status: DONE 2026-08-23. Measured: 282.2 kB packed, 60 files (was 1.8 MB, 182);
+eager unchanged at 46,477 B gz. Attribution not regenerated (no src changes).
+
+Execution findings beyond the plan below:
+
+- Two scripts used `dist/zod-v4.d.ts` as their built-dist sentinel
+  (`check-bundled-types.mjs`, `check-doc-snippets.mjs`); both re-pointed at
+  `.d.mts`.
+- The bundled-types fixtures imported dist by relative extensionless paths,
+  which only resolved through the deleted `.d.ts` flavor. Rewritten to package
+  -name imports (`attaform/zod-v4`, ...), which typecheck the real exports-map
+  resolution path via Node package self-reference.
+- `test/packaging/exports.test.ts` now carries the new contract: no `main`
+  field, no `require` conditions, and no `.cjs`/`.map`/`.d.cts` in a real
+  dist. It only runs against a real (non-stub) dist, so mid-chain `pnpm test`
+  skips it and `check:size`/`check:coverage` exercise it.
+- The `.vue` stub choice fell out of the generic negation: `!dist/**/*.d.ts`
+  prunes `*.vue.d.ts`, so `*.d.vue.ts` (the TS allowArbitraryExtensions shape)
+  is the shipped flavor. No re-include rule needed.
+- `check:doc-snippets` prints 7 tolerated typed mismatches; verified
+  pre-existing on the pre-P0 tree (stash + rebuild baseline), exit 0 both.
 
 ## Changes
 

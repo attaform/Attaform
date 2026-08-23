@@ -52,7 +52,7 @@ const fixtureProjects = [
     tsconfig: resolve(repoRoot, 'tests/fixtures/bundled-types-v3/tsconfig.json'),
   },
 ]
-const sentinelDts = resolve(distDir, 'zod-v4.d.ts')
+const sentinelDts = resolve(distDir, 'zod-v4.d.mts')
 
 function run(cmd, opts = {}) {
   return execSync(cmd, { stdio: 'inherit', cwd: repoRoot, ...opts })

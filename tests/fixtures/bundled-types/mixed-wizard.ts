@@ -28,8 +28,8 @@
  * end-to-end without needing a Vue app context.
  */
 import { z } from 'zod'
-import { useForm } from '../../../dist/zod-v4'
-import { useWizard, lazy } from '../../../dist/index'
+import { useForm } from 'attaform/zod-v4'
+import { useWizard, lazy } from 'attaform'
 
 const loginSchema = z.object({
   email: z.string(),

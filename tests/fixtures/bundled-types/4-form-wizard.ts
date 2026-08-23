@@ -1,6 +1,7 @@
 /**
- * Bundled-types depth-pressure regression fixture. Imports from
- * `dist/*` (the published artifact shape) — NOT from `src/*`. This
+ * Bundled-types depth-pressure regression fixture. Imports by package
+ * name, resolved through the exports map to the published `dist/*.d.mts`,
+ * NOT `src/*` (the fixture tsconfig carries no src paths). This
  * mirrors what a real consumer sees through `attaform/zod-v4` and
  * `attaform`. The fixture compiles under `vue-tsc` via
  * `scripts/check-bundled-types.mjs` and is the acceptance test for
@@ -23,8 +24,8 @@
  * end-to-end without needing a Vue app context.
  */
 import { z } from 'zod'
-import { useForm } from '../../../dist/zod-v4'
-import { useWizard } from '../../../dist/index'
+import { useForm } from 'attaform/zod-v4'
+import { useWizard } from 'attaform'
 
 const referenceSchema = z.object({
   shipperRef: z.string(),

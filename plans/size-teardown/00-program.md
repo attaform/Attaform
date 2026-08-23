@@ -17,20 +17,20 @@ attribution tables, verifier measurement scripts, the P8 replacement sketches).
 Update this table at every phase boundary. "eager after" is the measured ratchet
 number on the phase's merge commit, not an estimate.
 
-| phase | title                                 | status  | eager after (B gz) | date       | notes                |
-| ----- | ------------------------------------- | ------- | ------------------ | ---------- | -------------------- |
-| --    | baseline                              | --      | 46,477             | 2026-08-23 | main fb532ad9        |
-| P0    | packaging config                      | pending | (tarball-only)     |            |                      |
-| P1    | dev/prod dual dist + error codes      | pending | ~42,900 exp.       |            | P1b needs docs pages |
-| P2    | directive un-weld                     | pending | ~37,000 exp.       |            | spike-first          |
-| P3    | history plugin + arrays engine        | pending | ~35,350 exp.       |            |                      |
-| P4    | field-meta install + SPI probe delete | pending | ~34,750 exp.       |            |                      |
-| P5    | store kernel                          | pending | ~32,050 exp.       |            | suites pinned first  |
-| P6    | validation/display fold               | pending | ~31,400 exp.       |            | after P5             |
-| P7    | zod-core + probe packs                | pending | ~30,500 exp.       |            | independent          |
-| P8    | surface program                       | pending | ~27,850 exp.       |            | after P5             |
-| P9    | paths + walkers + schema-io           | pending | ~26,350 exp.       |            | after P5             |
-| P10   | sweep and lock                        | pending | ~25,870 exp.       |            | last                 |
+| phase | title                                 | status  | eager after (B gz) | date       | notes                                       |
+| ----- | ------------------------------------- | ------- | ------------------ | ---------- | ------------------------------------------- |
+| --    | baseline                              | --      | 46,477             | 2026-08-23 | main fb532ad9                               |
+| P0    | packaging config                      | done    | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182) |
+| P1    | dev/prod dual dist + error codes      | pending | ~42,900 exp.       |            | P1b needs docs pages                        |
+| P2    | directive un-weld                     | pending | ~37,000 exp.       |            | spike-first                                 |
+| P3    | history plugin + arrays engine        | pending | ~35,350 exp.       |            |                                             |
+| P4    | field-meta install + SPI probe delete | pending | ~34,750 exp.       |            |                                             |
+| P5    | store kernel                          | pending | ~32,050 exp.       |            | suites pinned first                         |
+| P6    | validation/display fold               | pending | ~31,400 exp.       |            | after P5                                    |
+| P7    | zod-core + probe packs                | pending | ~30,500 exp.       |            | independent                                 |
+| P8    | surface program                       | pending | ~27,850 exp.       |            | after P5                                    |
+| P9    | paths + walkers + schema-io           | pending | ~26,350 exp.       |            | after P5                                    |
+| P10   | sweep and lock                        | pending | ~25,870 exp.       |            | last                                        |
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

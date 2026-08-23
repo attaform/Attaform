@@ -35,9 +35,12 @@ number on the phase's merge commit, not an estimate.
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.
 
-## Sign-off ledger (Oswald, 2026-08-23)
+## Sign-off ledger (Oswald, 2026-08-23): 11/12 approved
 
-All 12 API changes from SIZE-TEARDOWN.md section 9 are ACCEPTED as recommended:
+Of the 12 API-change decisions in SIZE-TEARDOWN.md section 9, ELEVEN are APPROVED
+and ONE is DECLINED, following the judge's recommendation in every case.
+
+APPROVED (11):
 
 1. v-register delivery: transforms inject registration; others `installVRegister(app)`;
    no replay stub. 2. History via `historyPlugin({...})` from `attaform/history`.
@@ -46,13 +49,15 @@ All 12 API changes from SIZE-TEARDOWN.md section 9 are ACCEPTED as recommended:
    ValidationError drops per-entry formKey; observable channel behavior unchanged.
 4. AbstractSchema SPI tightening (node() added; arrayShapeAtPath + slim kinds required;
    services object gone; fingerprint kept, shared + lazy). 7. Zod strict defaults via
-   the DU-aware data-walk fix pass: SIGNED. The separate stripAsyncChecks deletion:
-   DECLINED (SSR construction-seed parity kept; see revisit trigger in P7 plan).
-5. Callable reads stay; exotic-name schema fields + sucrase shims dropped.
-6. SSR helpers move to `attaform/ssr`; hydration payload version stamp.
-7. Form-less wizard affordance steps. 11. Packaging (no maps, no CJS, single .d.mts,
-   ./types + legacy main dropped). 12. d.ts two-tier comment policy (mechanism
-   approved; Tier-A cap is Oswald's call at P10).
+   the DU-aware data-walk fix pass. 8. Callable reads stay; exotic-name schema fields +
+   sucrase shims dropped. 9. SSR helpers move to `attaform/ssr`; hydration payload
+   version stamp. 10. Form-less wizard affordance steps. 11. Packaging (no maps, no
+   CJS, single .d.mts, ./types + legacy main dropped). 12\*. d.ts two-tier comment
+   policy (mechanism approved; Tier-A cap is Oswald's call at P10).
+
+DECLINED (1): the stripAsyncChecks deletion (the separate ~500 B rider attached to
+decision 7). SSR construction-seed parity is kept. Evidence-based revisit trigger
+recorded in the P7 plan; do not re-propose without that evidence.
 
 ## Ratchet protocol
 

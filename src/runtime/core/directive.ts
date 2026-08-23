@@ -542,11 +542,13 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
       const checked = el.checked
       if (isArray(modelValue)) {
         if (rawElementValue === undefined) {
-          warn(
-            'Checkbox bound to an array model is missing a `value` attribute — ' +
-              'cannot determine which item to add or remove. ' +
-              'Add value="..." to each <input type="checkbox">.'
-          )
+          if (__DEV__) {
+            warn(
+              'Checkbox bound to an array model is missing a `value` attribute — ' +
+                'cannot determine which item to add or remove. ' +
+                'Add value="..." to each <input type="checkbox">.'
+            )
+          }
           return
         }
         // Element-level coerce on the raw DOM value so the
@@ -570,11 +572,13 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
         }
       } else if (isSet(modelValue)) {
         if (rawElementValue === undefined) {
-          warn(
-            'Checkbox bound to a Set model is missing a `value` attribute — ' +
-              'cannot determine which item to add or remove. ' +
-              'Add value="..." to each <input type="checkbox">.'
-          )
+          if (__DEV__) {
+            warn(
+              'Checkbox bound to a Set model is missing a `value` attribute — ' +
+                'cannot determine which item to add or remove. ' +
+                'Add value="..." to each <input type="checkbox">.'
+            )
+          }
           return
         }
         // Set's `.delete` uses strict ===, so coerce the element

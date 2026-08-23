@@ -1,5 +1,13 @@
 # P1: dev/prod dual dist + error codes
 
+Status: P1a DONE 2026-08-23. Measured: eager 43,741 B gz (down 2,736 from the
+46,477 baseline — 2,55x strip + ~180 warn gating, slightly better than the 2,551 +
+100-150 plan); tarball 377.6 kB packed, 75 files (budget 350k -> 450k, tighter than
+the sketched ~500k); 13 size-limit runtime caps tightened 3-5 kB each. Prod dist
+verified free of `__DEV__` / `process.env.NODE_ENV` / `typeof process` / dev prose
+beyond a 15-string allowlist; dev-boot e2e green (single registry through the real
+exports map). P1b remains GATED on attaform.dev/e/\* pages existing.
+
 Delivers: -3,500 B gz eager (2,551 measured strip + ~950 prose-to-codes measured +
 ~100-150 unguarded-warn gating, counted once per the dedup guards). Fixes the defect:
 ~2.5 kB (esbuild) to ~3.5-4.4 kB (Vite-class) of dev code shipping in prod today.
@@ -46,6 +54,46 @@ NODE_ENV expression inlining, Vue's esm-bundler pattern) that fixes Vite/webpack
 without dual dist but keeps prod prose in the dev-condition-less case; dual dist was
 chosen because it also carries P1b (prose lives only in the dev flavor). If dual-dist
 integration turns painful at execution, that fallback is pre-approved to reconsider.
+
+## P1a execution findings beyond the plan (2026-08-23)
+
+- Layout decision: `dist/dev/*` subtree (not `*.dev.mjs` twins). One
+  `defineBuildConfig([prod, dev])` array; prod builds first because unbuild's clean
+  of `dist` would wipe `dist/dev`. Dev flavor: runtime entries only, no declarations
+  (the `types` condition is listed first, so TS never consults the dev target).
+- Strip mechanism: a prepended rollup transform plugin doing textual
+  import-line-removal + `\b__DEV__\b` -> literal, exactly the verifier's measured
+  mechanism (esbuild `define` cannot reach a bound import). Rollup's tree-shaking
+  then eliminated EVERYTHING: zero `if (false)` husks, zero prose, and `dev.ts`
+  drops out of every graph (no `typeof process` anywhere in dist, tooling entries
+  included). An import-shape guard throws at build if `__DEV__` is ever imported in
+  a form the regex pair cannot rewrite.
+- Nuxt plugin flavor fix: primary design (flavored literal path off
+  `nuxt.options.dev` + existence probe, falling back to today's path in src/stub
+  contexts). The bare-specifier alternative was rejected for now: the plugin needs
+  `kAttaformWizardActiveStepResolver`, which is not a public export, and widening
+  the surface is not in the sign-off. Flag for Oswald if P2's delivery reshape
+  revisits plugin wiring.
+- The dev-boot e2e (`test/nuxt-dist-flavor.e2e.test.ts`) resolves through the REAL
+  exports map via a committed `node_modules/attaform` symlink (self-reference stops
+  at the fixture's own package.json, so a plain walk-up would never find the
+  package; `.gitignore` gained a negation for it). Green in ~4 s: Vite client AND
+  the dev SSR path both honor the `development` condition, so the plugin and app
+  imports share one graph — the mixed-graph worry (Nitro dev resolving prod for
+  externals) did not materialize. Prod-side single-graph is guarded statically
+  (graph-isolation + one-`createAttaform`-definition tests in dist-flavors.test.ts).
+- Unguarded-warn gating (planned under P1b item 3, pulled into P1a since it needs
+  no docs pages): directive.ts checkbox missing-`value` pair + assigner-pipeline's
+  non-RegisterValue hint now sit behind `if (__DEV__)`; behavior in tests is
+  unchanged (NODE_ENV=test keeps `__DEV__` true from source).
+- Prose allowlists landed as named constants in two layers: eager path (13 strings,
+  dev-dce.test.ts S3) and whole prod closure (those 13 + two zod-v3 walker
+  invariants, dist-flavors.test.ts). Both are P1b's conversion worklist.
+- `!1&&` structural gate needs a `(?<!=)` lookbehind: the minified select handler
+  legitimately compares `!==!1`.
+- attribution.mjs was re-aligned to the strip methodology and regenerated
+  (43,741 total matches the ratchet exactly); verify-unweld.mjs still measures the
+  old way — align it before P2's re-measure (noted in P2).
 
 ## P1b: error codes + prose diet (needs docs pages live first)
 

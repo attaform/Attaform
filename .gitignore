@@ -1,5 +1,10 @@
 # Dependencies
 node_modules
+# Except the dist-flavor fixture's committed self-install: a symlink to
+# the repo root, so the fixture resolves attaform through the real
+# exports map (Node self-reference stops at the fixture's own
+# package.json, so a plain walk-up would never find the package).
+!test/fixtures/dist-flavor/node_modules
 
 # Claude Code workspace state (auto-memory, scheduled-task locks, etc.)
 .claude

@@ -2,32 +2,40 @@ import { describe, expect, it } from 'vitest'
 import { measureEager } from '../../scripts/check-eager-size.mjs'
 
 /*
- * Standing guard on the production dead-code elimination of dev-only code.
+ * Standing guard on the production elimination of dev-only code.
  *
- * core/dev.ts shapes `__DEV__` so a consumer's production define folds it
- * to the literal `false`, which lets bundlers drop every `if (__DEV__)`
- * block. Two regressions this catches:
+ * Since size-teardown P1a the package build pre-strips `__DEV__` at the
+ * source level (build.config.ts devFlagStripPlugin), and measureEager
+ * applies the identical strip, so these assertions run against exactly
+ * what the shipped prod flavor delivers. The original F-cases stay:
  *
- *   F1 — rewriting the dev flag to a leading `&&` guard. esbuild will not
- *   inline a const whose initializer is a short-circuit expression, so the
- *   dev branches would survive into prod. Asserted via a dev-only warning
- *   string: present in a dev build, absent in a prod build.
+ *   F1 — rewriting the dev flag to a shape the strip cannot rewrite.
+ *   Asserted via a dev-only warning string: present in a dev build,
+ *   absent in a prod build.
  *
  *   F2 — dropping `__DEV__` from the devtools install gate. The devtools
- *   integration is dev-only; in prod its dynamic import must be DCE'd so
- *   the chunk is never fetched. Asserted via the reachable-input set: the
- *   devtools module is loaded in dev and orphaned (unreachable) in prod.
+ *   integration is dev-only; in prod its dynamic import must be
+ *   eliminated so the chunk is never fetched. Asserted via the
+ *   reachable-input set: loaded in dev, orphaned in prod.
  *
- *   F3 — moving a dev-only warning back inline as a top-level function
- *   called only from an `if (__DEV__)` block. esbuild removes the inline
- *   dead branch but keeps a function it is the sole (dead) caller of:
- *   tree-shaking runs before the define-fold, so the function survives. The
- *   shared-key collision diagnostics dodge that by living in their own
- *   module loaded via dynamic import, so prod orphans the chunk. Asserted
- *   via the reachable-input set: loaded in dev, unreachable in prod.
+ *   F3 — a top-level function whose only caller sits in a dead branch.
+ *   The define-fold approach left these behind (esbuild marks references
+ *   before it folds a define); the source-level strip makes the dead
+ *   branch visible at parse time, so they drop. The key-collision
+ *   diagnostics module is the canary.
  *
- * Uses the same esbuild measurement as scripts/check-eager-size.mjs, so it
- * adds no new dependency.
+ * The S-cases are the structural gates that make partial-DCE regressions
+ * visible (the pre-P1a CI asserted a single foldable string and was blind
+ * to a ~2.5 kB gz leak):
+ *
+ *   S1 — no minified dead-branch husks (`if(!1)`, dead `!1&&` chains) in
+ *   the prod eager output.
+ *
+ *   S2 — the dev-stack-trace module (statically imported by five
+ *   composables for warn call-site capture) leaves the prod eager set.
+ *
+ *   S3 — every `[attaform]` string on the prod eager path matches an
+ *   explicit allowlist of intentional production messages.
  */
 
 const PROD = { 'process.env.NODE_ENV': '"production"' }
@@ -39,9 +47,37 @@ const DEV_ONLY_WARNING = 'createAttaform() install was called twice'
 // Dev-only shared-key collision diagnostics, dynamic-imported behind an
 // `if (__DEV__)` gate in use-abstract-form.ts.
 const DEV_WARN_MODULE = 'src/runtime/core/dev-key-collision-warnings.ts'
+const DEV_STACK_TRACE_MODULE = 'src/runtime/core/dev-stack-trace.ts'
+
+/**
+ * The intentional production `[attaform]` messages on the minimal-useForm
+ * (zod-v4) eager path: thrown invariants, the no-uncaught-exceptions
+ * "callback threw" guards, and the two write-rejection notices. Everything
+ * else is dev-flavor-only. P1b converts most of these to AF## codes with
+ * attaform.dev/e URLs, shrinking this list — additions here are reviewed,
+ * never incidental.
+ *
+ * Prefix-matched against the minified eager output (non-ASCII characters
+ * appear as \uXXXX escapes there, so prefixes stop before any).
+ */
+const PROD_PROSE_ALLOWLIST = [
+  '[attaform] useForm received an invalid configuration',
+  '[attaform] No registry attached to this Vue app',
+  '[attaform] useForm / injectForm called outside Vue setup()',
+  '[attaform] Form key ',
+  '[attaform] onFormChange threw:',
+  '[attaform] onSubmitSuccess threw:',
+  '[attaform] cleanup threw:',
+  '[attaform] onReset threw:',
+  '[attaform] form.rehydrate(): no defaultValues factory was captured',
+  '[attaform] resetField: leaf write rejected for path ',
+  '[attaform] resetField: subtree write rejected at path ',
+  '[attaform] transform error',
+  '[attaform] transform result for path ',
+]
 
 describe('production dead-code elimination', () => {
-  it('F1: folds out dev-only branches in a production build', async () => {
+  it('F1: strips dev-only branches from a production build', async () => {
     const [prod, dev] = await Promise.all([measureEager(PROD), measureEager(DEV)])
     expect(dev.eagerText).toContain(DEV_ONLY_WARNING)
     expect(prod.eagerText).not.toContain(DEV_ONLY_WARNING)
@@ -57,5 +93,28 @@ describe('production dead-code elimination', () => {
     const [prod, dev] = await Promise.all([measureEager(PROD), measureEager(DEV)])
     expect(dev.reachableInputs).toContain(DEV_WARN_MODULE)
     expect(prod.reachableInputs).not.toContain(DEV_WARN_MODULE)
+  })
+
+  it('S1: prod eager output carries no dead-branch husks', async () => {
+    const { eagerText } = await measureEager(PROD)
+    expect(eagerText).not.toMatch(/if\(!1\)/)
+    // A dead `!1&&expr` chain, excluding real comparisons against the
+    // literal (`===!1`, `!==!1`, `==!1`, `!=!1` all end in `=` before it).
+    expect(eagerText).not.toMatch(/(?<!=)!1&&/)
+  })
+
+  it('S2: the dev-stack-trace module leaves the prod eager set', async () => {
+    const [prod, dev] = await Promise.all([measureEager(PROD), measureEager(DEV)])
+    expect(dev.eagerInputs).toContain(DEV_STACK_TRACE_MODULE)
+    expect(prod.eagerInputs).not.toContain(DEV_STACK_TRACE_MODULE)
+  })
+
+  it('S3: prod eager [attaform] prose stays within the allowlist', async () => {
+    const { eagerText } = await measureEager(PROD)
+    const found = [...new Set(eagerText.match(/\[attaform\][^"'`]*/g) ?? [])]
+    const offenders = found.filter(
+      (s) => !PROD_PROSE_ALLOWLIST.some((prefix) => s.startsWith(prefix))
+    )
+    expect(offenders).toEqual([])
   })
 })

@@ -24,7 +24,13 @@ import { dirname, resolve } from 'node:path'
 //     emitCJS off, declaration 'node16' (single .d.mts flavor), ./types +
 //     legacy main dropped, files negation guards. Measured 282 kB packed
 //     from 1.8 MB on main; ~68 kB headroom for ordinary feature growth.
-const BUDGET_BYTES = 350_000
+//   450_000 (2026-08-23, size-teardown P1a): the dev/prod dual dist adds
+//     the dev flavor under dist/dev (runtime entries with `__DEV__`
+//     resolved to `true`, no declarations) behind the `development`
+//     export condition. Measured 377.6 kB packed, 75 files; the P0 plan
+//     sketched ~500k for this raise, but the measured landing point
+//     supports the tighter lock with the same ~70 kB growth margin.
+const BUDGET_BYTES = 450_000
 
 // Shapes packaging is configured to keep out of the tarball. `.vue.d.ts`
 // matches the `.d.ts` rule by design: mkdist emits two declaration-stub

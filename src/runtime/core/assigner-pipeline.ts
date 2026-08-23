@@ -558,10 +558,12 @@ export function setAssignFunction(
     return
   }
   if (!isRegisterValue(value)) {
-    warn(
-      `v-register expected a RegisterValue, got '${typeof value}'. ` +
-        `Bind to form.register('field') — not the field's ref, value, or path string.`
-    )
+    if (__DEV__) {
+      warn(
+        `v-register expected a RegisterValue, got '${typeof value}'. ` +
+          `Bind to form.register('field') — not the field's ref, value, or path string.`
+      )
+    }
     el[assignKey] = makeNoopAssigner()
     return
   }

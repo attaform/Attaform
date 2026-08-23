@@ -45,11 +45,31 @@ export const make = (s) => {
   everything: `export * from '${IDX}'`,
 }
 
+// P1a alignment: apply the same source-level __DEV__ strip the package
+// build and scripts/check-eager-size.mjs use, so attribution numbers match
+// shipped prod-flavor bytes (the define-only fold under-strips).
+import { readFileSync } from 'node:fs'
+const stripPlugin = {
+  name: 'dev-flag-strip',
+  setup(build) {
+    build.onLoad({ filter: /\.ts$/ }, (args) => {
+      if (!args.path.startsWith(ROOT + '/src/')) return null
+      const text = readFileSync(args.path, 'utf8')
+      if (!/\b__DEV__\b/.test(text)) return null
+      const out = text
+        .replace(/^import\s*\{\s*__DEV__\s*\}\s*from\s*['"][^'"]*['"]\s*;?\s*$/gm, '')
+        .replace(/\b__DEV__\b/g, 'false')
+      return { contents: out, loader: 'ts' }
+    })
+  },
+}
+
 const r = await esbuild.build({
   stdin: { contents: SCENARIOS[scenarioName], loader: 'ts', resolveDir: ROOT },
   bundle: true, minify: true, format: 'esm', target: 'es2020', platform: 'neutral',
   packages: 'external', splitting: true,
   define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [stripPlugin],
   metafile: true, write: false, outdir: 'out', legalComments: 'none', logLevel: 'silent',
 })
 

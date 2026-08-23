@@ -15,10 +15,15 @@
  * and gzips just those chunks. Same methodology as
  * analysis/measure-split.mjs, kept as a standing CI guard.
  *
- * A production `define` (`process.env.NODE_ENV` -> "production") is
- * applied so the measured bytes match what a consumer's prod build
- * ships, including the dev-branch dead-code elimination from
- * core/dev.ts.
+ * The measurement applies the same source-level `__DEV__` strip the
+ * package build uses (size-teardown P1a): the dev-flag import is removed
+ * and the identifier inlined to a literal before esbuild parses, exactly
+ * as `build.config.ts` pre-strips the shipped prod flavor. The ratchet
+ * therefore equals shipped prod-flavor bytes — not the weaker
+ * define-fold, which leaves behind functions that are only called from
+ * dead branches (esbuild marks references before it folds the define).
+ * The `define` still selects the flavor: a production define measures
+ * the prod strip, anything else the dev flavor's literal `true`.
  *
  * Zero new deps: esbuild is already installed (transitively, via vite /
  * size-limit). pnpm keeps it under node_modules/.pnpm, so we resolve
@@ -28,7 +33,7 @@
  * Library: `import { measureEager }` powers test/packaging/dev-dce.test.ts.
  */
 import { gzipSync } from 'node:zlib'
-import { readdirSync, realpathSync } from 'node:fs'
+import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { argv, exit } from 'node:process'
@@ -70,13 +75,39 @@ export const make = (s) => {
 const PROD_DEFINE = { 'process.env.NODE_ENV': '"production"' }
 
 /**
+ * Source-level `__DEV__` strip, mirroring the devFlagStripPlugin in
+ * build.config.ts: drop the solo named-import line, inline the literal.
+ * With every importer's import removed, core/dev.ts falls out of the
+ * graph entirely (its own body is never rewritten, so no special case
+ * is needed here — esbuild simply never loads it).
+ * @param {boolean} flag
+ */
+const devFlagStripPlugin = (flag) => ({
+  name: 'attaform-dev-flag-strip',
+  setup(build) {
+    build.onLoad({ filter: /\.ts$/ }, (args) => {
+      const posixPath = args.path.replace(/\\/g, '/')
+      if (!posixPath.startsWith(ROOT.replace(/\\/g, '/') + '/src/')) return null
+      const text = readFileSync(args.path, 'utf8')
+      if (!/\b__DEV__\b/.test(text)) return null
+      const out = text
+        .replace(/^import\s*\{\s*__DEV__\s*\}\s*from\s*['"][^'"]*['"]\s*;?\s*$/gm, '')
+        .replace(/\b__DEV__\b/g, String(flag))
+      return { contents: out, loader: 'ts' }
+    })
+  },
+})
+
+/**
  * Build the scenario with code-splitting and return the eager/async
  * byte split plus the per-chunk input lists (so callers can assert a
  * module is or isn't on a given path) and the concatenated output text
  * (so callers can assert a dev-only string was dead-code-eliminated).
+ * The `define` doubles as the flavor selector for the source strip.
  * @param {Record<string, string>} define
  */
 export async function measureEager(define = PROD_DEFINE) {
+  const prodFlavor = define['process.env.NODE_ENV'] === '"production"'
   const r = await esbuild.build({
     stdin: { contents: SCENARIO, loader: 'ts', resolveDir: ROOT },
     bundle: true,
@@ -87,6 +118,7 @@ export async function measureEager(define = PROD_DEFINE) {
     packages: 'external',
     splitting: true,
     define,
+    plugins: [devFlagStripPlugin(!prodFlavor)],
     metafile: true,
     write: false,
     outdir: 'out',
@@ -274,7 +306,19 @@ export async function measureEager(define = PROD_DEFINE) {
 // `normalizeErrorInput`, so the net add is ~242 bytes gz, landing the eager set
 // at ~45_742 bytes. Budget raised 45_500 → 46_500 to restore ~0.5 kB headroom
 // for minifier drift.
-const BUDGET_GZ = 46_500
+//
+// RATCHET (size-teardown P1a, dev/prod dual dist): the measurement now applies
+// the package build's source-level `__DEV__` strip (see devFlagStripPlugin
+// above), so the ratchet equals shipped prod-flavor bytes. The strip removes
+// the dev mass the define-fold left behind (functions only called from dead
+// branches, dev prose consts, the dev-stack-trace module), and the three
+// previously unguarded v-register warn sites (checkbox missing-value pair in
+// directive.ts, non-RegisterValue hint in assigner-pipeline.ts) are now
+// `__DEV__`-gated so their prose strips too. Measured at 43,741 B gz
+// (down 2,736 from the 46,477 baseline). Budget tightened 46_500 → 44_250 to
+// lock the win, keeping ~0.5 kB headroom for minifier-version drift; never
+// loosen it without a recorded reason in the commit.
+const BUDGET_GZ = 44_250
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

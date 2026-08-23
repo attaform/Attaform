@@ -117,6 +117,41 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
     }
   })
 
+  it('runtime subpaths declare types → development → import, in that order', () => {
+    // Condition order is resolution order: `types` first so TS always
+    // wins regardless of a consumer's custom conditions, `development`
+    // before `import` because `import` matches everywhere and would
+    // shadow the dev flavor if listed first.
+    for (const subpath of ['.', './zod', './zod-v3', './zod-v4', './abstract']) {
+      const entry = pkg.exports[subpath]
+      expect(typeof entry, subpath).not.toBe('string')
+      if (typeof entry === 'string' || entry === undefined) continue
+      expect(Object.keys(entry), `${subpath} conditions`).toEqual([
+        'types',
+        'development',
+        'import',
+      ])
+      expect(entry['development'], `${subpath}.development`).toMatch(/^\.\/dist\/dev\//)
+    }
+  })
+
+  it('node tooling subpaths stay single-flavor (types → import only)', () => {
+    for (const subpath of [
+      './nuxt',
+      './vite',
+      './rollup',
+      './esbuild',
+      './webpack',
+      './rspack',
+      './transforms',
+    ]) {
+      const entry = pkg.exports[subpath]
+      expect(typeof entry, subpath).not.toBe('string')
+      if (typeof entry === 'string' || entry === undefined) continue
+      expect(Object.keys(entry), `${subpath} conditions`).toEqual(['types', 'import'])
+    }
+  })
+
   it('dist carries no CJS, sourcemap, or CJS-declaration artifacts', () => {
     // Guards the build.config.ts trio (emitCJS: false, sourcemap: false,
     // declaration: 'node16') at the dist level. The pack-time `files`

@@ -326,7 +326,12 @@ export default [
     // above, the dev warn folds out of a consumer's production build; this
     // tripwire defines no `process.env.NODE_ENV`, so it measures the raw dist.
     // Measured at 63.02 KB.
-    limit: '64 KB',
+    //
+    // Tightened 64 → 58 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 56.42 KB.
+    limit: '58 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -525,7 +530,12 @@ export default [
     // Raised 63 -> 64 KB tracking index.mjs's interact bump (#544):
     // `form.interact(path?)` plus the widened earned-success term. Byte-for-
     // byte identical to index.mjs; see that entry's note. Measured at 63.02 KB.
-    limit: '64 KB',
+    //
+    // Tightened 64 → 58 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 56.42 KB.
+    limit: '58 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -669,7 +679,12 @@ export default [
     // Raised 56 → 57 KB tracking index.mjs's gating bump (feat/form-disabled,
     // #523): the same disabled data freeze in the shared eager core plus the
     // wizard gate() surface. Measured at 56.37 KB.
-    limit: '57 KB',
+    //
+    // Tightened 57 → 52 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 50.33 KB.
+    limit: '52 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -892,7 +907,12 @@ export default [
     // the markHostConnected host-el thread. zod-v3.mjs, the tightest adapter
     // bundle, crossed 58 first (index / zod hold ~0.1 KB, zod-v4 ~0.2 KB).
     // Measured at 58.17 KB.
-    limit: '59 KB',
+    //
+    // Tightened 59 → 53 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 51.59 KB.
+    limit: '53 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -915,7 +935,12 @@ export default [
     // shared-core focus anchor (hostTargets, resolveHostFocusTarget, the
     // getFirstErrorElement weave) reaches this entry through useAbstractForm.
     // Measured at 47.23 KB.
-    limit: '48 KB',
+    //
+    // Tightened 48 → 42 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 40.68 KB.
+    limit: '42 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1069,7 +1094,12 @@ export default [
     // Raised 54 → 55 KB for submit-throw surfacing (process-form's catch-block
     // inject piping a thrown onSubmit into the user-error layer). Measured at
     // 54.04 KB.
-    limit: '55 KB',
+    //
+    // Tightened 55 → 52 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 50.21 KB.
+    limit: '52 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1093,7 +1123,12 @@ export default [
     // import, so this grew +1.18 KB in lockstep with the full zod-v4.mjs entry's
     // core growth (+1.13 KB), legitimate feature weight and not a wizard leak.
     // Measured at 48.47 KB.
-    limit: '49 KB',
+    //
+    // Tightened 49 → 46 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 44.11 KB.
+    limit: '46 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1138,7 +1173,12 @@ export default [
     // tripwire moves in lockstep -- a legitimate correctness-fix addition, not a
     // tree-shake leak. zod-v3.mjs stays the tightest { useForm } tripwire.
     // Measured at 50.05 KB.
-    limit: '51 KB',
+    //
+    // Tightened 51 → 47 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 45.47 KB.
+    limit: '47 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1159,7 +1199,12 @@ export default [
     // Raised 24 -> 25 KB tracking the #464 redundant-binding guard: the
     // eager dev-warn ships in the shared core injectForm reaches too.
     // Measured at 23.98 KB.
-    limit: '25 KB',
+    //
+    // Tightened 25 → 23 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 20.91 KB.
+    limit: '23 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1177,7 +1222,12 @@ export default [
     // the directive's component-host branch + the registerValue strip land in
     // the shared core that useRegister pulls in. The tightest tripwire, so it
     // shows the feature delta most starkly. Measured at 10.26 KB.
-    limit: '11 KB',
+    //
+    // Tightened 11 → 9.5 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 7.85 KB.
+    limit: '9.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1190,7 +1240,12 @@ export default [
     // `zod: { useForm }` tripwire above — index.mjs ≡ zod.mjs after the
     // re-partition — so this cap is the standing proof the barrel never
     // diverges from the explicit Zod entry. Measured at 54.05 KB.
-    limit: '55 KB',
+    //
+    // Tightened 55 → 52 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 50.21 KB.
+    limit: '52 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1205,7 +1260,12 @@ export default [
     // adapters — the payoff of moving core into _shared-exports. A
     // regression that ropes the adapters into createAttaform's graph
     // trips here. Measured at 8.98 KB.
-    limit: '10 KB',
+    //
+    // Tightened 10 → 8 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 6.66 KB.
+    limit: '8 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1219,7 +1279,12 @@ export default [
     // walker, or slim-primitive machinery). A regression that pulls a Zod
     // adapter into the abstract path would balloon this. Measured at
     // 38.56 KB.
-    limit: '40 KB',
+    //
+    // Tightened 40 → 36 KB on the size-teardown P1a dual-dist branch: the
+    // shipped prod flavor is pre-stripped of `__DEV__` code at package
+    // build, so the raw-dist measurement drops by the dev mass this
+    // tripwire previously carried. Measured at 34.69 KB.
+    limit: '36 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

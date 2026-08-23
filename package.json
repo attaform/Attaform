@@ -69,6 +69,7 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
+      "development": "./dist/dev/index.mjs",
       "import": "./dist/index.mjs"
     },
     "./nuxt": {
@@ -104,18 +105,22 @@
     },
     "./zod": {
       "types": "./dist/zod.d.mts",
+      "development": "./dist/dev/zod.mjs",
       "import": "./dist/zod.mjs"
     },
     "./zod-v3": {
       "types": "./dist/zod-v3.d.mts",
+      "development": "./dist/dev/zod-v3.mjs",
       "import": "./dist/zod-v3.mjs"
     },
     "./zod-v4": {
       "types": "./dist/zod-v4.d.mts",
+      "development": "./dist/dev/zod-v4.mjs",
       "import": "./dist/zod-v4.mjs"
     },
     "./abstract": {
       "types": "./dist/abstract.d.mts",
+      "development": "./dist/dev/abstract.mjs",
       "import": "./dist/abstract.mjs"
     },
     "./package.json": "./package.json"

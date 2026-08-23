@@ -179,6 +179,15 @@ import { vRegisterHintTransform, vRegisterPreambleTransform } from 'attaform/tra
 
 The DevTools panel internals. The [Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel) is auto-wired by `attaform/nuxt`; this entry is exposed for advanced consumers building their own panel hosts.
 
+## One import line, two builds
+
+Every runtime subpath above ships twice in the published package. The production flavor is the default resolution target: development-only diagnostics are already stripped from it when Attaform is built, so production bundles ship lean with zero bundler configuration. The development flavor carries the full diagnostic surface (the misuse warnings, warning call-site capture, and the DevTools bridge) and is selected automatically through the `development` export condition, which Vite's dev server, webpack's development mode, and Nuxt's dev tooling all set out of the box.
+
+Two consequences worth knowing:
+
+- A toolchain that never sets the `development` condition resolves the production flavor everywhere. Attaform behaves identically; the development-time warnings simply stay silent. Importing straight from a browser CDN lands in the same place.
+- The Node-side tooling subpaths (`attaform/nuxt`, `attaform/vite`, the bundler plugins, `attaform/transforms`) are single-flavor: they run inside your build, not in your app bundle, so there is nothing to strip.
+
 ## Which subpath for which job?
 
 | You want to…                                          | Import from         |

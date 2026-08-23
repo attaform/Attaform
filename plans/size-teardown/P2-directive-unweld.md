@@ -6,6 +6,14 @@ P1 lands). The single largest lever. Spike-first: the delivery mechanism is NEW
 machinery, not an existing Vue pattern (compiler helpers can only import from 'vue').
 Re-verify with `reference/scripts/verify-unweld.mjs` before and after.
 
+Fresh anchor (2026-08-23, post-P1a): eager is 43,741 B gz with the ratchet and
+attribution.mjs now measuring through the package build's source-level `__DEV__`
+strip. Align verify-unweld.mjs the same way (copy the stripPlugin from
+attribution.mjs) BEFORE re-measuring the un-weld delta, or the before/after pair
+mixes methodologies. Expected landing ~37,800; P1b's further ~950 is independent
+and still pending its docs pages, so P2 may run first — the dedup guards in
+00-program.md already keep the two claims separate.
+
 ## Accepted end state (sign-off 1)
 
 - `ensureAttaformInstalled` / `createAttaform()` register NO directive and NO stub.

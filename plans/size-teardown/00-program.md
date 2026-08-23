@@ -21,8 +21,9 @@ number on the phase's merge commit, not an estimate.
 | ----- | ------------------------------------- | ------- | ------------------ | ---------- | ------------------------------------------- |
 | --    | baseline                              | --      | 46,477             | 2026-08-23 | main fb532ad9                               |
 | P0    | packaging config                      | done    | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182) |
-| P1    | dev/prod dual dist + error codes      | pending | ~42,900 exp.       |            | P1b needs docs pages                        |
-| P2    | directive un-weld                     | pending | ~37,000 exp.       |            | spike-first                                 |
+| P1a   | dev/prod dual dist                    | done    | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok  |
+| P1b   | error codes + prose diet              | pending | ~42,800 exp.       |            | GATED on attaform.dev/e/\* pages            |
+| P2    | directive un-weld                     | pending | ~37,800 exp.       |            | spike-first; may run before P1b             |
 | P3    | history plugin + arrays engine        | pending | ~35,350 exp.       |            |                                             |
 | P4    | field-meta install + SPI probe delete | pending | ~34,750 exp.       |            |                                             |
 | P5    | store kernel                          | pending | ~32,050 exp.       |            | suites pinned first                         |

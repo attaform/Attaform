@@ -5,10 +5,21 @@ packages:
 # pnpm 11 no longer reads the `pnpm` field in package.json. See
 # https://pnpm.io/settings for the full list of supported keys.
 overrides:
-  '@nuxt/devtools': 3.2.4
+  # @nuxt/devtools resolves in apps/site both transitively (via nuxt) and
+  # through the root @nuxt/devtools-kit devDep. Two copies each register
+  # @vitejs/devtools' runtime client, and the second registration runs
+  # against a session the first has already closed, so the panel dies with
+  # "Failed to retrieve the current RPC session" (#168). One exact version
+  # means one client and one RPC session. Held at the newest 3.x that is
+  # past the .npmrc `minimumReleaseAge` cooldown, so the pin also clears
+  # GHSA-279x-mwfv-vcqv (critical: unauthenticated DevTools RPC allows
+  # arbitrary command execution on the developer's host), first patched in
+  # 3.3.1. Bumping to a same-day release makes pnpm write a
+  # `minimumReleaseAgeExclude` entry, which punches a hole in the cooldown
+  # gate; stay a patch behind instead.
+  '@nuxt/devtools': 3.4.1
   '@nuxt/kit': $nuxt
   '@nuxt/schema': $nuxt
-  fast-uri: ^3.1.2
   # Pin a single rollup so the dev tree never carries two copies. vite and
   # @rollup/plugin-alias float their rollup independently of unbuild's, and
   # when a bump lands them on different 4.x patches, `tsc` sees two distinct
@@ -34,25 +45,75 @@ overrides:
   # patch/minor rather than a breaking jump. Revisit when the source dep
   # floats past the range on its own and the override becomes a no-op.
   #
-  #   undici  ^7.28.0  clears GHSA-hm92-r4w5-c3mj and -vmh5-mc38-953g
-  #                    (both high, SOCKS5 ProxyAgent), -p88m-4jfj-68fv,
-  #                    -pr7r-676h-xcf6, -g8m3-5g58-fq7m, -35p6-xmwp-9g52,
-  #                    and the auto-dismissed WebSocket-DoS -vxpw-j846-p89q
-  #                    (high). Pulled by jsdom / cheerio (test harness).
-  #   ws      ^8.21.0  clears GHSA-96hv-2xvq-fx4p (high, memory-exhaustion
-  #                    DoS from tiny fragments), auto-dismissed. Pulled by
-  #                    socket.io-client > @nuxt/content (docs site).
-  #   js-yaml ^4.2.0   clears GHSA-h67p-54hq-rp68 (quadratic-complexity DoS
-  #                    in merge-key handling).
+  #   brace-expansion@^2 ^2.1.2 / brace-expansion@^5 ^5.0.7
+  #                    the same exponential-time `{}` expansion DoS
+  #                    (GHSA-3jxr-9vmj-r5cp, high) landed in both majors
+  #                    present in the tree, patched separately, hence two
+  #                    range-scoped floors rather than one. Pulled by
+  #                    minimatch / glob across the lint + test toolchain.
   #   esbuild ^0.28.1  clears GHSA-g7r4-m6w7-qqqr (arbitrary file read via
-  #                    the dev server on Windows — real for a Windows
+  #                    the dev server on Windows, real for a Windows
   #                    maintainer, not just a theoretical). Also pins the
   #                    minifier's minor so the eager-bundle bytes stay
   #                    predictable across installs.
-  undici: ^7.28.0
-  ws: ^8.21.0
-  js-yaml: ^4.2.0
+  #   fast-uri ^3.1.5  clears GHSA-v2hh-gcrm-f6hx and -7p8r-x3mc-p8w7 (both
+  #                    high, host confusion via a backslash authority
+  #                    delimiter / introducer) on top of the two earlier
+  #                    highs the original ^3.1.2 floor answered.
+  #   fast-xml-parser ^5.10.1
+  #                    clears GHSA-8r6m-32jq-jx6q (high, repeated DOCTYPE
+  #                    declarations reset entity expansion limits).
+  #   js-yaml ^4.3.1   clears GHSA-h67p-54hq-rp68 and -52cp-r559-cp3m (both
+  #                    quadratic CPU via merge-key chains) plus
+  #                    -5p4m-2wfm-xmqj (high, quadratic CPU in !!omap
+  #                    resolution).
+  #   postcss ^8.5.23  clears GHSA-r28c-9q8g-f849 and its incomplete-fix
+  #                    follow-up GHSA-fxqj-rqcc-2cmp: attacker-controlled
+  #                    sourceMappingURL reads arbitrary .map files.
+  #   shell-quote ^1.9.0
+  #                    clears GHSA-395f-4hp3-45gv (high,
+  #                    quadratic-complexity DoS in `parse()`).
+  #   socket.io-parser ^4.2.7
+  #                    clears GHSA-2m8v-j782-fhvr (high, zero-attachment
+  #                    memory exhaustion). Pulled by socket.io-client >
+  #                    @nuxt/content (docs site).
+  #   svgo ^4.0.2      clears GHSA-2p49-hgcm-8545 (high, the removeScripts
+  #                    plugin leaves some executable scripts intact).
+  #   tar ^7.5.18      clears GHSA-w8wr-v893-vjvp (process crash via PAX
+  #                    numeric path type confusion).
+  #   undici ^7.29.0   clears GHSA-4cwx-7wf7-3272 (high, cross-user
+  #                    disclosure + parse-time crash via degenerate private
+  #                    cache directives) plus four mediums (CRLF injection,
+  #                    cookie attribute injection, Cache-Control whitespace
+  #                    disclosure, and retry-interceptor response
+  #                    desynchronization) on top of the SOCKS5 ProxyAgent
+  #                    and WebSocket-DoS highs the original ^7.28.0 floor
+  #                    answered. Pulled by jsdom / cheerio (test harness).
+  #   ws ^8.21.0       clears GHSA-96hv-2xvq-fx4p (high, memory-exhaustion
+  #                    DoS from tiny fragments), auto-dismissed. Pulled by
+  #                    socket.io-client > @nuxt/content (docs site).
+  #
+  # Deliberately not floored: image-size (GHSA-w3rx-r6r6-pgpr and
+  # -5p2g-fcmc-qvqq, both high, infinite loops in the ICNS / JXL / HEIF
+  # parsers) has no published patch. 2.0.2 is the newest release. It enters
+  # the tree only through nuxt-seo-utils > @nuxtjs/seo, which calls it at
+  # prerender time to size OG images committed to this repo, and the docs
+  # site is pure SSG (`nitro.preset: 'static'`), so no runtime path feeds it
+  # bytes at all. Both alerts are dismissed as tolerable risk on GitHub;
+  # add a floor here the moment image-size ships one.
+  'brace-expansion@^2': ^2.1.2
+  'brace-expansion@^5': ^5.0.7
   esbuild: ^0.28.1
+  fast-uri: ^3.1.5
+  fast-xml-parser: ^5.10.1
+  js-yaml: ^4.3.1
+  postcss: ^8.5.23
+  shell-quote: ^1.9.0
+  socket.io-parser: ^4.2.7
+  svgo: ^4.0.2
+  tar: ^7.5.18
+  undici: ^7.29.0
+  ws: ^8.21.0
 
 # Install-script allowlist. Any package NOT listed here has its
 # install / postinstall / preinstall scripts skipped at install

@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Reference
   - label: Entry points
-    value: 15
+    value: 16
   - label: Recommended entry
     value: attaform
     kind: code
@@ -21,7 +21,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-New projects pick `attaform`. The other subpaths cover explicit Zod pins, the bring-your-own-adapter escape hatch, the `v-register` delivery entry, the Nuxt and Vite integrations, the compiler internals, the DevTools panel, and the type-only surface.
+New projects pick `attaform`. The other subpaths cover explicit Zod pins, the bring-your-own-adapter escape hatch, the `v-register` delivery entry, the undo/redo plugin, the Nuxt and Vite integrations, the compiler internals, the DevTools panel, and the type-only surface.
 
 ## `attaform`: the recommended entry
 
@@ -93,6 +93,18 @@ installVRegister(app)
 ```
 
 Ships `installVRegister`, plus the directive objects `vRegister` and `vRegisterFile` for advanced integrations that bind them locally (a `<script setup>` binding or a manual `withDirectives` render function). When no delivery ran, Vue's own development warning `Failed to resolve directive: register` names the miss.
+
+## `attaform/history`: the undo/redo plugin
+
+The history runtime, on its own subpath so a form that never opts in never ships it. Create the plugin and pass it via `useForm({ history })`:
+
+```ts
+import { historyPlugin } from 'attaform/history'
+
+const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
+```
+
+Ships `historyPlugin` and its types (`HistoryPlugin`, `HistoryPluginOptions`). One plugin instance is a reusable configuration — pass it to several forms, or set it once via `createAttaform({ defaults: { history: historyPlugin() } })`, and every form keeps its own independent chain. The [Undo & redo](/docs/cross-cutting-state/undo-redo) page covers the `form.history` namespace it unlocks.
 
 ## The framework-agnostic toolkit
 
@@ -211,6 +223,7 @@ Two consequences worth knowing:
 | Install the Nuxt module                               | `attaform/nuxt`      |
 | Install the Vite plugin under bare Vue + Vite         | `attaform/vite`      |
 | Deliver `v-register` without a build plugin           | `attaform/directive` |
+| Enable undo/redo (`historyPlugin`)                    | `attaform/history`   |
 | Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`           |
 | Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`           |
 | Catch an Attaform-thrown error by class               | `attaform`           |

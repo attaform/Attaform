@@ -4,6 +4,7 @@ import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { isUnset, unset, useForm } from '../../src/zod'
+import { historyPlugin } from '../../src/history'
 import type { UseFormReturn } from '../../src/zod'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
@@ -1646,7 +1647,7 @@ describe('variant memory — history (undo/redo) interaction', () => {
           schema: profileSchema,
           key: `du-variant-memory-history-${Math.random().toString(36).slice(2)}`,
           defaultValues: { name: '', notify: { channel: 'email', address: '' } },
-          history: true,
+          history: historyPlugin(),
         }) as unknown as ProfileApi
         return () => h('div')
       },

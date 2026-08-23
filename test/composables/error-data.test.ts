@@ -9,8 +9,7 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { getRegistryFromApp } from '../../src/runtime/core/registry'
 import { hydrateAttaformState, renderAttaformState } from '../../src/runtime/core/serialize'
-import { errorsEqual } from '../../src/runtime/core/history'
-import { canonicalizePath, type PathKey } from '../../src/runtime/core/paths'
+import { historyPlugin } from '../../src/history'
 import { fakeSchema } from '../utils/fake-schema'
 import type { Json, ValidationError } from '../../src/runtime/types/types-api'
 
@@ -20,7 +19,7 @@ import type { Json, ValidationError } from '../../src/runtime/types/types-api'
  * `unlocks_at` timestamp, an MFA step-up descriptor) and Attaform
  * carries it untouched across every surface — the manual setters, the
  * aggregate reads, the SSR serialise / hydrate round-trip, and the
- * undo / redo equality check.
+ * undo / redo restore.
  */
 
 // A nested payload that touches every arm of the `Json` shape (string,
@@ -125,41 +124,6 @@ describe('ValidationError.data — serialise / hydrate round-trip', () => {
   })
 })
 
-describe('ValidationError.data — history equality', () => {
-  const emailKey = canonicalizePath(['email']).key
-  const mk = (data?: Json | null): ValidationError[] => {
-    const e: ValidationError = { message: 'x', path: ['email'], formKey: 'k', code: 'c' }
-    if (data !== undefined) e.data = data
-    return [e]
-  }
-  const at = (errs: ValidationError[]): ReadonlyArray<readonly [PathKey, ValidationError[]]> => [
-    [emailKey, errs],
-  ]
-
-  it('treats errors that differ only in data as not equal', () => {
-    expect(errorsEqual(at(mk({ a: 1 })), at(mk({ a: 2 })))).toBe(false)
-  })
-
-  it('treats errors with deep-equal data as equal', () => {
-    const a = at(mk({ a: [1, 2], b: { c: 3 } }))
-    const b = at(mk({ a: [1, 2], b: { c: 3 } }))
-    expect(errorsEqual(a, b)).toBe(true)
-  })
-
-  it('treats two no-data errors as equal', () => {
-    expect(errorsEqual(at(mk()), at(mk()))).toBe(true)
-  })
-
-  it('treats present-data and absent-data as not equal', () => {
-    expect(errorsEqual(at(mk({ a: 1 })), at(mk()))).toBe(false)
-  })
-
-  it('distinguishes null data from a populated payload', () => {
-    expect(errorsEqual(at(mk(null)), at(mk(null)))).toBe(true)
-    expect(errorsEqual(at(mk(null)), at(mk({ a: 1 })))).toBe(false)
-  })
-})
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyUseForm = (opts: any) => any
 
@@ -183,12 +147,12 @@ describe.each(adapters)('ValidationError.data through the form API — $name', (
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function mountForm(): any {
+  function mountForm(extra: Record<string, unknown> = {}): any {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle: { api?: any } = {}
     const Host = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: `error-data-${keySeq++}`, strict: false })
+        handle.api = useForm({ schema, key: `error-data-${keySeq++}`, strict: false, ...extra })
         return () => h('div')
       },
     })
@@ -232,5 +196,33 @@ describe.each(adapters)('ValidationError.data through the form API — $name', (
     api.setErrors([{ path: ['email'], message: 'taken', formKey: api.key, code: 'api:dupe' }])
 
     expect(api.errors.email?.[0]).not.toHaveProperty('data')
+  })
+
+  it('carries data intact across an undo / redo round-trip', () => {
+    const api = mountForm({ history: historyPlugin() })
+    api.setErrors([
+      {
+        path: ['email'],
+        message: 'verify',
+        formKey: api.key,
+        code: 'api:captcha',
+        data: challenge,
+      },
+    ])
+    // setErrors alone records no position; the errors live at the next
+    // mutation ride into that mutation's snapshot.
+    api.setValue('email', 'a@example.com')
+    api.setValue('email', 'b@example.com')
+
+    expect(api.history.undo()).toBe(true)
+    expect(api.errors.email?.[0]?.data).toEqual(challenge)
+
+    // Back to the pre-error baseline: the error (and its payload) lift.
+    expect(api.history.undo()).toBe(true)
+    expect(api.errors.email?.[0]).toBeUndefined()
+
+    // Replaying forward restores the full payload structurally.
+    expect(api.history.redo()).toBe(true)
+    expect(api.errors.email?.[0]?.data).toEqual(challenge)
   })
 })

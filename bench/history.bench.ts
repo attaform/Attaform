@@ -3,8 +3,8 @@
  *
  * Measures `applyFormReplacement` cost with history enabled vs
  * disabled, on a 100-leaf form. With history on, each mutation
- * captures a snapshot (shallow-clones the errors Map) and pushes
- * it onto the undo stack — expect a modest constant-factor
+ * captures a snapshot (deep-clones the form, copies the errors
+ * entries) and appends a ring-buffer position — expect a modest constant-factor
  * penalty but no quadratic growth.
  *
  * No regression gate (no `old:` / `new:` pair). Reports numbers
@@ -13,7 +13,7 @@
 
 import { bench, describe } from 'vitest'
 import { createFormStore } from '../src/runtime/core/create-form-store'
-import { createHistoryModule } from '../src/runtime/core/history'
+import { historyPlugin } from '../src/history'
 import { fakeSchema } from '../test/utils/fake-schema'
 
 type Form = Record<string, unknown>
@@ -42,7 +42,7 @@ describe('history: applyFormReplacement with / without history', () => {
       formKey: 'bench',
       schema: fakeSchema<Form>(defaults100),
     })
-    const history = createHistoryModule(state, true)
+    const history = historyPlugin().attach(state)
     state.setValueAtPath(['field0'], 'mutated')
     state.setValueAtPath(['field1'], 'mutated')
     state.setValueAtPath(['field2'], 'mutated')

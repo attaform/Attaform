@@ -106,7 +106,7 @@ type AttaformDefaults = {
   validateOn?: 'change' | 'blur' | 'submit'
   debounceMs?: number
   onInvalidSubmit?: 'none' | 'focus-first-error' | 'scroll-to-first-error' | 'both'
-  history?: true | { max?: number }
+  history?: HistoryPlugin
   rememberVariants?: boolean
   coerce?: boolean | CoercionRegistry
   getDisplayState?: GetDisplayState
@@ -115,6 +115,8 @@ type AttaformDefaults = {
 ```
 
 `getDisplayState` resolves `field.displayState` and its `show*` projections: the centralized "what should this field surface right now?" reducer, returning one of idle, pending, error, or success. Set it once at the app level so every form follows the same convention. To keep the default behavior but retune the anti-flash spinner timing, pass `makeDefaultDisplayState({ showDelay, minVisible })`. See [Display state and showing errors](/docs/validation/showing-errors) for the full contract.
+
+`history` takes a `historyPlugin()` instance from the `attaform/history` entry. One instance set here is a shared configuration, and every form still gets its own independent undo/redo chain. See [Undo & redo](/docs/cross-cutting-state/undo-redo).
 
 ## What's NOT supported (and why)
 

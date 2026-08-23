@@ -8,6 +8,7 @@ import type {
   FormHistoryNamespace,
   FormMeta,
   GetDisplayState,
+  HistoryModule,
   OnInvalidSubmitPolicy,
   ReactiveValidationStatus,
   RegisterValue,
@@ -24,7 +25,7 @@ import { structuralSnapshot } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
 import { normalizeErrorInputs } from './errors'
 import { buildErrorsProxy } from './errors-proxy'
-import { buildFieldArrayApi } from './field-arrays'
+import { buildFieldArrayApi } from './array-engine'
 import {
   aggregateErrorsAt,
   buildContainerFieldStateBase,
@@ -33,7 +34,6 @@ import {
   type FormMetaBase,
 } from './field-state-api'
 import { buildFieldStateProxy } from './field-state-proxy'
-import type { HistoryModule } from './history'
 import { getAtPath } from './path-walker'
 import {
   canonicalizePath,

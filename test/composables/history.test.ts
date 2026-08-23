@@ -3,14 +3,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { unset, useForm } from '../../src/zod'
+import { historyPlugin } from '../../src/history'
 import type { UseFormConfig, UseFormReturn } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Phase 5.9 — undo/redo.
  *
- * `history: true` enables the default bounded stack (max 128);
- * `history: { max: N }` tunes it. `undo()` / `redo()` restore the
+ * `history: historyPlugin()` enables the default bounded chain (max
+ * 128); `historyPlugin({ max: N })` tunes it. `undo()` / `redo()` restore the
  * prior form value (and the error map). `canUndo` / `canRedo` gate
  * consumer UI. `reset()` is treated as an ordinary mutation — the
  * pre-reset state stays one undo away. Persistence hydration is the
@@ -46,14 +47,14 @@ function mountForm(history: UseFormConfig<typeof schema>['history']): {
   return { app, api: handle.api as ApiReturn }
 }
 
-describe('history — default (history: true)', () => {
+describe('history — default (historyPlugin())', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
   it('canUndo starts false and flips true after first mutation', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     expect(api.history.canUndo).toBe(false)
     api.setValue('email', 'a@example.com')
@@ -61,7 +62,7 @@ describe('history — default (history: true)', () => {
   })
 
   it('undo restores the prior form value', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     api.setValue('email', 'first@example.com')
     api.setValue('email', 'second@example.com')
@@ -76,7 +77,7 @@ describe('history — default (history: true)', () => {
   })
 
   it('redo replays an undone mutation', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     api.setValue('email', 'one@example.com')
     api.setValue('email', 'two@example.com')
@@ -87,7 +88,7 @@ describe('history — default (history: true)', () => {
   })
 
   it('new mutation after undo clears the redo stack', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     api.setValue('email', 'one@example.com')
     api.history.undo()
@@ -98,7 +99,7 @@ describe('history — default (history: true)', () => {
   })
 
   it('reset() is itself undoable — the pre-reset state stays recoverable', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     api.setValue('email', 'a@example.com')
     api.setValue('email', 'b@example.com')
@@ -114,7 +115,7 @@ describe('history — default (history: true)', () => {
   })
 
   it('restores errors alongside the form on undo', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     // setErrors does NOT trigger onFormChange — the snapshot
     // captured at a later form mutation is what carries the errors
@@ -143,7 +144,7 @@ describe('history — bounded stack', () => {
   })
 
   it('trims FIFO when mutations exceed max', () => {
-    const { app, api } = mountForm({ max: 3 })
+    const { app, api } = mountForm(historyPlugin({ max: 3 }))
     apps.push(app)
     // Mutate 5 times; only the 3 most recent snapshots should be
     // retained (plus the initial entry is FIFO-evicted too once the
@@ -160,7 +161,7 @@ describe('history — bounded stack', () => {
   })
 
   it('historySize tracks both stacks', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     api.setValue('email', 'a')
     api.setValue('email', 'b')
@@ -193,7 +194,7 @@ describe('history — blankPaths preservation', () => {
         handle.api = useForm({
           schema: numericSchema,
           key: `history-blank-${Math.random().toString(36).slice(2)}`,
-          history: true,
+          history: historyPlugin(),
         })
         return () => h('div')
       },
@@ -283,7 +284,7 @@ describe('history — delta round-trip', () => {
         handle.api = useForm({
           schema: nestedSchema,
           key: `history-roundtrip-${Math.random().toString(36).slice(2)}`,
-          history: true,
+          history: historyPlugin(),
         })
         return () => h('div')
       },
@@ -352,7 +353,7 @@ describe('history — clear()', () => {
   })
 
   it('wipes both branches and reseeds — current form state is preserved', () => {
-    const { app, api } = mountForm(true)
+    const { app, api } = mountForm(historyPlugin())
     apps.push(app)
 
     // Build up a chain: 2 mutations + 1 undo so both branches are populated.
@@ -409,5 +410,35 @@ describe('history — disabled (no config)', () => {
     expect(api.history.canRedo).toBe(false)
     expect(api.history.size).toBe(0)
     expect(api.values.email).toBe('mutated')
+  })
+})
+
+describe('history — one plugin instance across forms', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    while (apps.length > 0) apps.pop()?.unmount()
+  })
+
+  it('a shared historyPlugin() gives each form its own independent chain', () => {
+    // The plugin object is a reusable configuration (the shape
+    // `createAttaform({ defaults: { history } })` shares app-wide), so
+    // attaching one instance to two forms must produce two chains.
+    const shared = historyPlugin({ max: 10 })
+    const a = mountForm(shared)
+    const b = mountForm(shared)
+    apps.push(a.app, b.app)
+
+    a.api.setValue('email', 'a@example.com')
+    expect(a.api.history.canUndo).toBe(true)
+    // Form b never mutated: its chain is untouched by a's writes.
+    expect(b.api.history.canUndo).toBe(false)
+    expect(b.api.history.size).toBe(1)
+
+    b.api.setValue('email', 'b@example.com')
+    a.api.history.undo()
+    // a rewinds; b keeps its own position and value.
+    expect(a.api.values.email).toBe('')
+    expect(b.api.values.email).toBe('b@example.com')
+    expect(b.api.history.canUndo).toBe(true)
   })
 })

@@ -19,7 +19,10 @@ import { describe, expect, it } from 'vitest'
  * template binds `v-register`, the module's Vite plugin rewrites the
  * compiled output to an `attaform/directive` import (resolved through
  * the same real exports map), and the SSR-compiled render emits the
- * field's value through the directive's getSSRProps.
+ * field's value through the directive's getSSRProps. The P3
+ * `attaform/history` entry rides the same proof: the fixture imports
+ * `historyPlugin` through the exports map and renders the attached
+ * chain's size.
  *
  * Runs only against a real build (skipped while dist/ holds
  * `unbuild --stub` shims); `pnpm check` exercises it after `check:size`
@@ -53,5 +56,15 @@ describe.skipIf(!isRealBuild)('dist dev flavor: single registry in a dev boot (e
     // authors no :value of its own.
     const html = await $fetch('/')
     expect(html).toMatch(/<input[^>]*id="probe-input"[^>]*value="dist-flavor-ok"/)
+  })
+
+  it('resolves attaform/history through the exports map and attaches during SSR', async () => {
+    // The fixture opts into `history: historyPlugin()` from the
+    // `attaform/history` entry (P3 un-weld). A broken ./history export
+    // (or a missing dev-flavor artifact) fails the fixture's import at
+    // build; the rendered chain size proves attach() ran server-side
+    // against the same store the form renders from.
+    const html = await $fetch('/')
+    expect(html).toMatch(/id="probe-history"[^>]*>1</)
   })
 })

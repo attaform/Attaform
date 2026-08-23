@@ -24,7 +24,7 @@ number on the phase's merge commit, not an estimate.
 | P1a   | dev/prod dual dist                    | done    | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok  |
 | P1b   | error codes + prose diet              | pending | ~42,800 exp.       |            | GATED on attaform.dev/e/\* pages            |
 | P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed     |
-| P3    | history plugin + arrays engine        | pending | ~35,350 exp.       |            |                                             |
+| P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer |
 | P4    | field-meta install + SPI probe delete | pending | ~34,750 exp.       |            |                                             |
 | P5    | store kernel                          | pending | ~32,050 exp.       |            | suites pinned first                         |
 | P6    | validation/display fold               | pending | ~31,400 exp.       |            | after P5                                    |

@@ -1,7 +1,7 @@
 import type { Path } from './paths'
 
 // Per-path record shapes stored in a FormStore's keyed Maps. They live
-// here, not in create-form-store, so array-bookkeeping can reference them
+// here, not in create-form-store, so the arrays engine can reference them
 // without importing the store module back (which would form an import
 // cycle).
 

@@ -105,6 +105,7 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
       'zod-v3',
       'zod-v4',
       'directive',
+      'history',
     ]) {
       expect(existsSync(join(distDir, `${name}.mjs`)), `${name}.mjs`).toBe(true)
       expect(existsSync(join(distDir, `${name}.d.mts`)), `${name}.d.mts`).toBe(true)
@@ -123,7 +124,15 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
     // wins regardless of a consumer's custom conditions, `development`
     // before `import` because `import` matches everywhere and would
     // shadow the dev flavor if listed first.
-    for (const subpath of ['.', './zod', './zod-v3', './zod-v4', './abstract', './directive']) {
+    for (const subpath of [
+      '.',
+      './zod',
+      './zod-v3',
+      './zod-v4',
+      './abstract',
+      './directive',
+      './history',
+    ]) {
       const entry = pkg.exports[subpath]
       expect(typeof entry, subpath).not.toBe('string')
       if (typeof entry === 'string' || entry === undefined) continue
@@ -214,6 +223,7 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
       'zod-v3',
       'zod-v4',
       'directive',
+      'history',
     ]) {
       const mjs = readFileSync(join(distDir, `${name}.mjs`), 'utf-8')
       expect(mjs, `${name}.mjs imports zod-v3`).not.toMatch(

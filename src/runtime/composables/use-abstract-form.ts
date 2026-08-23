@@ -19,7 +19,6 @@ import { captureUserCallSite } from '../core/dev-stack-trace'
 import { InvalidUseFormConfigError, ReservedFormKeyError } from '../core/errors'
 import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
-import { createHistoryModule, type HistoryModule } from '../core/history'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
@@ -28,6 +27,7 @@ import type {
   AbstractSchema,
   AttaformDefaults,
   FormKey,
+  HistoryModule,
   UseFormReturnType,
   UseFormConfiguration,
 } from '../types/types-api'
@@ -265,14 +265,17 @@ export function useAbstractForm<
     onScopeDispose(releaseConsumer)
   }
 
-  // Wire history (opt-in). Fresh-state-only — the module subscribes
-  // to FormStore events, so subscribing twice would double-push
-  // snapshots. Cache the module on the FormStore so subsequent
-  // `useForm` / `injectForm` calls for the same key retrieve the
-  // SAME instance, keeping `canUndo` / `canRedo` / `historySize` /
+  // Wire history (opt-in). The plugin object carries the runtime —
+  // `historyPlugin()` from `attaform/history` rides the consumer's own
+  // import, so the core never links the history internals; `attach`
+  // subscribes it to this store synchronously, before any mutation can
+  // slip past unrecorded. Fresh-state-only — attaching twice would
+  // double-push snapshots. Cache the module on the FormStore so
+  // subsequent `useForm` / `injectForm` calls for the same key retrieve
+  // the SAME instance, keeping `canUndo` / `canRedo` / `historySize` /
   // `undo` / `redo` consistent across mount order.
   if (existing === undefined && merged.history !== undefined) {
-    const historyModule = createHistoryModule(state, merged.history)
+    const historyModule = merged.history.attach(state)
     state.modules.set(HISTORY_MODULE_KEY, historyModule)
     state.registerCleanup(() => historyModule.dispose())
   }

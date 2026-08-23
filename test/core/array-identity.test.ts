@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createArrayIdentity } from '../../src/runtime/core/array-identity'
+import { createArrayIdentity, remapForOp } from '../../src/runtime/core/array-engine'
 import type { Path } from '../../src/runtime/core/paths'
 
 // A self-contained world of arrays the tracker reads lengths from. The
@@ -50,7 +50,7 @@ describe('createArrayIdentity', () => {
     setArr(ITEMS, ['a', 'b', 'c'])
     const before = tokens(ITEMS)
     setArr(ITEMS, ['a', 'x', 'b', 'c'])
-    id.applyOp(ITEMS, { kind: 'insert', index: 1 })
+    id.applyOp(ITEMS, remapForOp({ kind: 'insert', index: 1 }, 3))
     const after = tokens(ITEMS)
     expect(after[0]).toBe(before[0]) // a
     expect(after[2]).toBe(before[1]) // b shifted right, same token
@@ -64,7 +64,7 @@ describe('createArrayIdentity', () => {
     setArr(ITEMS, ['a', 'b', 'c'])
     const before = tokens(ITEMS)
     setArr(ITEMS, ['a', 'c'])
-    id.applyOp(ITEMS, { kind: 'remove', index: 1 })
+    id.applyOp(ITEMS, remapForOp({ kind: 'remove', index: 1 }, 3))
     const after = tokens(ITEMS)
     expect(after[0]).toBe(before[0]) // a
     expect(after[1]).toBe(before[2]) // c keeps its token after the shift
@@ -77,7 +77,7 @@ describe('createArrayIdentity', () => {
     const before = tokens(ITEMS)
     // move index 0 -> 2: ['b','c','a','d']
     setArr(ITEMS, ['b', 'c', 'a', 'd'])
-    id.applyOp(ITEMS, { kind: 'move', from: 0, to: 2 })
+    id.applyOp(ITEMS, remapForOp({ kind: 'move', from: 0, to: 2 }, 4))
     const after = tokens(ITEMS)
     expect(after[2]).toBe(before[0]) // a's token followed it to index 2
     expect(after[0]).toBe(before[1]) // b
@@ -91,7 +91,7 @@ describe('createArrayIdentity', () => {
     const before = tokens(ITEMS)
     // move index 3 -> 1: ['a','d','b','c']
     setArr(ITEMS, ['a', 'd', 'b', 'c'])
-    id.applyOp(ITEMS, { kind: 'move', from: 3, to: 1 })
+    id.applyOp(ITEMS, remapForOp({ kind: 'move', from: 3, to: 1 }, 4))
     const after = tokens(ITEMS)
     expect(after[1]).toBe(before[3]) // d's token followed it to index 1
     expect(after[0]).toBe(before[0]) // a
@@ -104,7 +104,7 @@ describe('createArrayIdentity', () => {
     setArr(ITEMS, ['a', 'b', 'c'])
     const before = tokens(ITEMS)
     setArr(ITEMS, ['c', 'b', 'a'])
-    id.applyOp(ITEMS, { kind: 'swap', a: 0, b: 2 })
+    id.applyOp(ITEMS, remapForOp({ kind: 'swap', a: 0, b: 2 }, 3))
     const after = tokens(ITEMS)
     expect(after[0]).toBe(before[2])
     expect(after[2]).toBe(before[0])
@@ -116,7 +116,7 @@ describe('createArrayIdentity', () => {
     setArr(ITEMS, ['a', 'b', 'c'])
     const before = tokens(ITEMS)
     setArr(ITEMS, ['a', 'X', 'c'])
-    id.applyOp(ITEMS, { kind: 'replace-at', index: 1 })
+    id.applyOp(ITEMS, remapForOp({ kind: 'replace-at', index: 1 }, 3))
     const after = tokens(ITEMS)
     expect(after[1]).not.toBe(before[1]) // new element, new identity
     expect(after[0]).toBe(before[0])

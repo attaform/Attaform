@@ -330,7 +330,21 @@ export async function measureEager(define = PROD_DEFINE) {
 // Measured at 37,210 B gz (down 6,531 from 43,741: 5,702 un-weld + 829 DOM
 // slice). Budget tightened 44_250 → 37_700; dev-dce S4 guards the module
 // set structurally so a re-weld fails even inside the byte headroom.
-const BUDGET_GZ = 37_700
+//
+// RATCHET (size-teardown P3, history plugin + arrays engine): the undo/redo
+// runtime moved behind `historyPlugin()` from the new attaform/history
+// entry, so history.ts leaves this scenario's eager graph entirely — the
+// core wires the module through the plugin's attach() seam, and the ring-
+// buffer rewrite killed diff-apply's applyPatchesForward/Inverse plus
+// path-walker's deleteAtPath (history was their only consumer). The five
+// array/variant modules (identity, state-migrate, bookkeeping, variant-
+// memory, field-arrays) consolidated into array-engine.ts around one
+// remapForOp / permuteList / shared-key-walk core, and the write funnel
+// decodes each structural op's remap exactly once. Measured at 35,776 B gz
+// (down 1,434 from 37,210: ~1,240 history un-weld + ~195 arrays engine).
+// Budget tightened 37_700 → 36_250; dev-dce S4 now also asserts history.ts
+// off the eager inputs.
+const BUDGET_GZ = 36_250
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

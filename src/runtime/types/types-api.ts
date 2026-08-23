@@ -895,8 +895,8 @@ export type WriteMeta = {
   readonly skipDiscriminatorReshape?: boolean
   /**
    * Records an array structural mutation precisely enough to replay the
-   * exact index permutation it produced, set by `field-arrays.ts`
-   * helpers. `setValueAtPath` uses it to surgically clear variant memory
+   * exact index permutation it produced, set by the typed array helpers
+   * in `array-engine.ts`. `setValueAtPath` uses it to surgically clear variant memory
    * for the indices the operation invalidated. Without this hint, a raw
    * whole-array `setValue(arrayPath, [...])` clears all memory under the
    * array (the runtime can't tell which indices stayed put). Internal —
@@ -936,18 +936,73 @@ export type WriteMeta = {
 }
 
 /**
- * Undo/redo configuration passed via `useForm({ history })`.
+ * The store slice the history runtime binds to. Structural on purpose:
+ * `historyPlugin()` ships from the separate `attaform/history` entry, so
+ * the runtime receives the store through this seam instead of importing
+ * the store module (which would pull the history internals onto every
+ * form's eager path). A FormStore satisfies it as-is.
  *
- * - `true` — enable with the default position cap (`max: 128`).
- * - `{ max }` — enable and tune the bounded history size.
+ * @internal
+ */
+export type HistoryKernel = {
+  readonly form: Ref<unknown>
+  readonly blankPaths: Set<PathKey>
+  readonly schemaErrors: Map<PathKey, ValidationError[]>
+  readonly userErrors: Map<PathKey, ValidationError[]>
+  onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
+  applyFormReplacement(next: unknown): void
+  setAllSchemaErrors(errors: readonly ValidationError[]): void
+  setAllUserErrors(errors: readonly ValidationError[]): void
+}
+
+/**
+ * The live undo/redo runtime a {@link HistoryPlugin} attaches to one
+ * form. Cached on the FormStore so every `useForm` / `injectForm`
+ * consumer of the same key shares one chain; `buildFormApi` adapts it
+ * into the public `form.history` namespace.
  *
- * When enabled, every mutation records a forward delta; `form.history.undo()`
+ * @internal
+ */
+export type HistoryModule = {
+  undo(): boolean
+  redo(): boolean
+  clear(): void
+  canUndo: Readonly<ComputedRef<boolean>>
+  canRedo: Readonly<ComputedRef<boolean>>
+  historySize: Readonly<ComputedRef<number>>
+  dispose(): void
+}
+
+/**
+ * Opt-in undo/redo, created by `historyPlugin()` from `attaform/history`
+ * and passed via `useForm({ history })`:
+ *
+ * ```ts
+ * import { historyPlugin } from 'attaform/history'
+ *
+ * const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
+ * ```
+ *
+ * When enabled, every mutation records a position; `form.history.undo()`
  * / `form.history.redo()` walk the chain. `reset()` is itself a mutation —
  * the pre-reset state stays one undo away. Persistence hydration is the
  * floor: after hydrate applies, the chain reseeds with the hydrated value
  * and `undo()` cannot reach the transient pre-hydration default.
+ *
+ * One plugin instance is a reusable configuration, not per-form state:
+ * passing the same instance to several forms (or setting it once via
+ * `createAttaform({ defaults: { history } })`) gives each form its own
+ * independent chain.
  */
-export type HistoryConfig = true | { max?: number }
+export type HistoryPlugin = {
+  /**
+   * Bind a fresh history runtime to one form's store. Called by
+   * `useForm` when the store is first created.
+   *
+   * @internal
+   */
+  readonly attach: (kernel: HistoryKernel) => HistoryModule
+}
 
 /**
  * Consolidated undo/redo namespace at `form.history`. All history-related
@@ -1174,16 +1229,17 @@ export type UseFormConfiguration<
   debounceMs?: number
 
   /**
-   * Opt-in undo/redo. Off by default. `true` enables with a 128-position
-   * cap; `{ max: N }` tunes the cap.
+   * Opt-in undo/redo. Off by default. Pass `historyPlugin()` from
+   * `attaform/history` — a 128-position cap by default,
+   * `historyPlugin({ max: N })` to tune it.
    *
-   * Every mutation records a forward delta. `form.history.undo()` walks
+   * Every mutation records a position. `form.history.undo()` walks
    * one step back; `form.history.redo()` walks one step forward.
    * `reset()` is itself a mutation, so the pre-reset state stays one
    * undo away. The consolidated `form.history` namespace also exposes
    * `clear()`, `canUndo`, `canRedo`, and `size`.
    */
-  history?: HistoryConfig
+  history?: HistoryPlugin
 
   /**
    * Whether to remember the typed state of each discriminated-union
@@ -1331,8 +1387,8 @@ export type AttaformDefaults = {
    * `validateOn` resolves to `'change'`. Default `0` (synchronous).
    */
   debounceMs?: number
-  /** Default for `useForm({ history })`. */
-  history?: HistoryConfig
+  /** Default for `useForm({ history })` — a `historyPlugin()` instance. */
+  history?: HistoryPlugin
   /** Default for `useForm({ rememberVariants })`. */
   rememberVariants?: boolean
   /** Default for `useForm({ disabled })` — freeze the form's data. */

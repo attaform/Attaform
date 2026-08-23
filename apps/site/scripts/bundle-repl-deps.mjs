@@ -143,6 +143,15 @@ const ctxs = await Promise.all([
     entryPoints: { 'attaform-zod': resolve(repoRoot, 'src/zod.ts') },
     external: ['vue', 'zod', 'attaform'],
   }),
+  // attaform/history — the undo/redo plugin entry. Externalizes only vue:
+  // the entry pulls a few pure core helpers (structuralSnapshot, option
+  // normalization, path decoding) that esbuild inlines; none carry mutable
+  // module state, so duplicating them against the core bundle is safe.
+  esbuild.context({
+    ...sharedEsbuildOpts,
+    entryPoints: { 'attaform-history': resolve(repoRoot, 'src/history.ts') },
+    external: ['vue'],
+  }),
   // zod v4 — bundled fresh because zod's subpath exports defeat raw copy
   esbuild.context({
     ...sharedEsbuildOpts,
@@ -370,10 +379,15 @@ const packageManifests = {
         types: './zod.d.ts',
         import: './zod.js',
       },
+      './history': {
+        types: './history.d.ts',
+        import: './history.js',
+      },
     },
     typesVersions: {
       '*': {
         zod: ['./zod.d.ts'],
+        history: ['./history.d.ts'],
       },
     },
   },
@@ -414,11 +428,12 @@ const packageManifests = {
 // produces a "Two different types with this name exist" error on
 // `v-register="rv"` even though the runtime types are identical.
 //
-// Fix: after both bundles emit, post-process `attaform/zod.d.ts` to
-// strip the branded-type declarations and re-import them from
-// `./index`. Both bundles then share one brand identity, so the
-// "incompatible PathKey" error goes away. The published lib's source
-// is unaffected — this only adjusts the REPL's flattened bundles.
+// Fix: after the bundles emit, post-process the subpath bundles
+// (`attaform/zod.d.ts`, `attaform/history.d.ts`) to strip the
+// branded-type declarations and re-import them from `./index`. The
+// bundles then share one brand identity, so the "incompatible
+// PathKey" error goes away. The published lib's source is
+// unaffected — this only adjusts the REPL's flattened bundles.
 const SHARED_BRANDED_TYPE_BLOCKS = [
   {
     typeName: 'Unset',
@@ -433,17 +448,28 @@ const SHARED_BRANDED_TYPE_BLOCKS = [
 ]
 
 async function unifyAttaformBrandedTypes() {
-  const zodDtsPath = resolve(typesDir, 'attaform/zod.d.ts')
-  let content = await readFile(zodDtsPath, 'utf8')
+  // `expected` names the brands the file's surface is known to inline —
+  // a missing expected block means the rolled-up output changed shape
+  // and the regex needs a look. Any OTHER block that happens to match
+  // is stripped too (harmless: the re-import restores one identity).
+  await unifyBrandedTypesIn('attaform/zod.d.ts', ['Unset', 'PathKey'])
+  // history.d.ts inlines PathKey via the HistoryKernel maps/sets; it
+  // has no Unset on its surface.
+  await unifyBrandedTypesIn('attaform/history.d.ts', ['PathKey'])
+}
+
+async function unifyBrandedTypesIn(relPath, expected) {
+  const dtsPath = resolve(typesDir, relPath)
+  let content = await readFile(dtsPath, 'utf8')
 
   const imported = []
   for (const { typeName, regex } of SHARED_BRANDED_TYPE_BLOCKS) {
     if (regex.test(content)) {
       content = content.replace(regex, '')
       imported.push(typeName)
-    } else {
+    } else if (expected.includes(typeName)) {
       console.warn(
-        `[bundle-repl-deps] expected to find a "${typeName}" branded-type block in zod.d.ts; ` +
+        `[bundle-repl-deps] expected to find a "${typeName}" branded-type block in ${relPath}; ` +
           `the rolled-up output may have changed shape. Check the regex in SHARED_BRANDED_TYPE_BLOCKS.`
       )
     }
@@ -461,7 +487,7 @@ async function unifyAttaformBrandedTypes() {
     }
   }
 
-  await writeFile(zodDtsPath, content)
+  await writeFile(dtsPath, content)
 }
 
 // Just attaform's two .d.ts entry points. Re-run on every src/ change
@@ -483,6 +509,11 @@ async function emitAttaformTypeBundles() {
       input: resolve(repoRoot, 'src/zod.ts'),
       output: resolve(typesDir, 'attaform/zod.d.ts'),
       name: 'attaform-zod',
+    }),
+    bundleDts({
+      input: resolve(repoRoot, 'src/history.ts'),
+      output: resolve(typesDir, 'attaform/history.d.ts'),
+      name: 'attaform-history',
     }),
   ])
   await unifyAttaformBrandedTypes()
@@ -543,6 +574,7 @@ async function emitTypeBundles() {
   await Promise.all([
     writeFile(resolve(typesDir, 'attaform/index.js'), ''),
     writeFile(resolve(typesDir, 'attaform/zod.js'), ''),
+    writeFile(resolve(typesDir, 'attaform/history.js'), ''),
     writeFile(resolve(typesDir, 'vue/index.js'), ''),
     writeFile(resolve(typesDir, 'zod/index.js'), ''),
     writeFile(resolve(typesDir, 'zod-v3/index.js'), ''),
@@ -575,6 +607,10 @@ async function emitTypeBundles() {
       resolve(outDir, 'attaform-zod.d.ts'),
       `export * from './types/attaform/zod'\n`
     ),
+    writeFile(
+      resolve(outDir, 'attaform-history.d.ts'),
+      `export * from './types/attaform/history'\n`
+    ),
   ])
   // Directory listing JSON per package, mimicking unpkg's `?meta`
   // endpoint shape: `{ files: [{ path, type }] }`. Volar's worker
@@ -601,7 +637,7 @@ async function emitTypeBundles() {
     writeFile(
       resolve(typesDir, 'attaform/meta.json'),
       JSON.stringify(
-        dirMeta(['package.json', 'index.d.ts', 'index.js', 'zod.d.ts', 'zod.js']),
+        dirMeta(['package.json', 'index.d.ts', 'index.js', 'zod.d.ts', 'zod.js', 'history.d.ts', 'history.js']),
         null,
         2
       )

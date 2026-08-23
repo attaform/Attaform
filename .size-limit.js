@@ -338,7 +338,15 @@ export default [
     // elements dep. Whole-entry bundles keep the directive (the barrel
     // still exports it); the big win shows in the treeshaken tripwires
     // below. Measured at 56.49 KB.
-    limit: '57.5 KB',
+    //
+    // Tightened 57.5 -> 55.5 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 54.95 KB.
+    limit: '55.5 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -549,7 +557,15 @@ export default [
     // elements dep. Whole-entry bundles keep the directive (the barrel
     // still exports it); the big win shows in the treeshaken tripwires
     // below. Measured at 56.49 KB.
-    limit: '57.5 KB',
+    //
+    // Tightened 57.5 -> 55.5 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 54.95 KB.
+    limit: '55.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -705,7 +721,15 @@ export default [
     // elements dep. Whole-entry bundles keep the directive (the barrel
     // still exports it); the big win shows in the treeshaken tripwires
     // below. Measured at 50.42 KB.
-    limit: '51.5 KB',
+    //
+    // Tightened 51.5 -> 49.5 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 48.81 KB.
+    limit: '49.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -940,7 +964,15 @@ export default [
     // elements dep. Whole-entry bundles keep the directive (the barrel
     // still exports it); the big win shows in the treeshaken tripwires
     // below. Measured at 51.66 KB.
-    limit: '52.5 KB',
+    //
+    // Tightened 52.5 -> 50.75 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 50.09 KB.
+    limit: '50.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -975,7 +1007,15 @@ export default [
     // elements dep. Whole-entry bundles keep the directive (the barrel
     // still exports it); the big win shows in the treeshaken tripwires
     // below. Measured at 40.78 KB.
-    limit: '41.5 KB',
+    //
+    // Tightened 41.5 -> 39.75 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 39.24 KB.
+    limit: '39.75 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -991,6 +1031,21 @@ export default [
     // jump here without a matching directive-side feature means the
     // entry started dragging kernel weight along). Measured at 7.17 KB.
     limit: '8 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    path: 'dist/history.mjs',
+    // The undo/redo entry (size-teardown P3 un-weld): historyPlugin + the
+    // snapshot ring buffer, plus the pure core helpers it leans on
+    // (structuralSnapshot, numeric-option normalization). This is the
+    // weight only forms that opt into history pay — the core links none
+    // of it. The cap guards against kernel modules leaking INTO the
+    // plugin's graph (a jump here without a history-side feature means
+    // the entry started dragging store weight along). The snapshot ring
+    // buffer runs well under half the old delta-chain runtime's weight.
+    // Measured at 1.02 KB.
+    limit: '1.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1157,7 +1212,15 @@ export default [
     // and the store's DOM slice (now the lazily-armed dom-binding).
     // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
     // Measured at 43.82 KB.
-    limit: '45 KB',
+    //
+    // Tightened 45 -> 43 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 42.3 KB.
+    limit: '43 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1194,7 +1257,15 @@ export default [
     // and the store's DOM slice (now the lazily-armed dom-binding).
     // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
     // Measured at 37.71 KB.
-    limit: '39 KB',
+    //
+    // Tightened 39 -> 37 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 36.18 KB.
+    limit: '37 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1252,7 +1323,15 @@ export default [
     // and the store's DOM slice (now the lazily-armed dom-binding).
     // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
     // Measured at 39.05 KB.
-    limit: '40.5 KB',
+    //
+    // Tightened 40.5 -> 38.25 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 37.62 KB.
+    limit: '38.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1286,7 +1365,15 @@ export default [
     // and the store's DOM slice (now the lazily-armed dom-binding).
     // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
     // Measured at 15.14 KB.
-    limit: '16.5 KB',
+    //
+    // Tightened 16.5 -> 15.75 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 15.15 KB.
+    limit: '15.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1341,7 +1428,15 @@ export default [
     // and the store's DOM slice (now the lazily-armed dom-binding).
     // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
     // Measured at 43.82 KB.
-    limit: '45 KB',
+    //
+    // Tightened 45 -> 43 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 42.3 KB.
+    limit: '43 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1394,7 +1489,15 @@ export default [
     // and the store's DOM slice (now the lazily-armed dom-binding).
     // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
     // Measured at 28.36 KB.
-    limit: '29.5 KB',
+    //
+    // Tightened 29.5 -> 27.5 KB on the size-teardown P3 history plugin +
+    // arrays engine: the undo/redo runtime moved behind `historyPlugin()`
+    // from the new attaform/history entry (the core no longer links
+    // history.ts, and diff-apply's patch appliers + path-walker's
+    // deleteAtPath died with the delta model), and the five array/variant
+    // modules consolidated into array-engine.ts around one
+    // remapForOp / permuteList / shared-key-walk core. Measured at 26.91 KB.
+    limit: '27.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

@@ -45,6 +45,7 @@ export default defineConfig({
       { find: /^attaform\/zod-v4$/, replacement: `${rootDir}src/zod-v4.ts` },
       { find: /^attaform\/zod$/, replacement: `${rootDir}src/zod.ts` },
       { find: /^attaform\/directive$/, replacement: `${rootDir}src/directive.ts` },
+      { find: /^attaform\/history$/, replacement: `${rootDir}src/history.ts` },
       { find: /^attaform$/, replacement: `${rootDir}src/index.ts` },
     ],
   },

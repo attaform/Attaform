@@ -40,6 +40,7 @@ const RUNTIME_ENTRIES = [
   'zod-v4.mjs',
   'abstract.mjs',
   'directive.mjs',
+  'history.mjs',
   'runtime/plugins/attaform.mjs',
 ]
 

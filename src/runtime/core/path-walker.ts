@@ -176,8 +176,8 @@ function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: numb
   // a defineProperty call (own data property), while every other key
   // takes the plain bracket-assign branch. Schema fields literally
   // named `__proto__` / `constructor` / `prototype` round-trip
-  // through `setValue` / `applyPatchesForward` / history undo-redo
-  // alongside every other key, with no path to `Object.prototype`.
+  // through `setValue` / history undo-redo alongside every other
+  // key, with no path to `Object.prototype`.
   const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
   safeAssign(rec, head, setAtPathOffset(safeOwnRead(rec, head), path, value, nextOffset))
   return rec
@@ -246,60 +246,6 @@ export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): 
     return { applied: true, old }
   }
   return NO_IN_PLACE
-}
-
-/**
- * Copy-on-write deletion of `path` from `root`. Returns a fresh root
- * with the targeted leaf (or container) removed; siblings stay
- * reference-equal. Missing intermediates short-circuit and return
- * `root` unchanged.
- *
- * Array semantics: deleting a numeric index splices the array (length
- * shrinks by one). Object semantics: deleting a string key removes the
- * own-property and shrinks the key set by one.
- *
- * Used by `diff-apply`'s copy-on-write delta application to remove a
- * single path (e.g. inverting an `added` patch on undo) without
- * disturbing siblings.
- */
-export function deleteAtPath(root: unknown, path: Path): unknown {
-  return deleteAtPathOffset(root, path, 0)
-}
-
-function deleteAtPathOffset(root: unknown, path: Path, offset: number): unknown {
-  if (offset >= path.length) return undefined
-
-  const head = path[offset] as Segment
-  const isLeafStep = offset === path.length - 1
-  const nextOffset = offset + 1
-
-  if (typeof head === 'number') {
-    if (!Array.isArray(root)) return root
-    if (head < 0 || head >= root.length) return root
-    if (isLeafStep) {
-      const arr = [...root]
-      arr.splice(head, 1)
-      return arr
-    }
-    const arr = [...root]
-    arr[head] = deleteAtPathOffset(arr[head], path, nextOffset)
-    return arr
-  }
-
-  if (!isPlainRecord(root)) return root
-  if (isLeafStep) {
-    const rec: Record<string, unknown> = { ...root }
-    delete rec[head]
-    return rec
-  }
-  // Own-property existence check — `'__proto__' in root` would
-  // otherwise resolve via the inherited accessor and report `true`
-  // for every regular target, materializing a phantom delete-path on
-  // a slot the consumer never wrote.
-  if (!safeOwnHas(root, head)) return root
-  const rec: Record<string, unknown> = { ...root }
-  safeAssign(rec, head, deleteAtPathOffset(safeOwnRead(rec, head), path, nextOffset))
-  return rec
 }
 
 /**

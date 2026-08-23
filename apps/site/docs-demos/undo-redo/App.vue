@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import { useForm } from 'attaform'
+  import { historyPlugin } from 'attaform/history'
   import { z } from 'zod'
   import './styles.css'
 
@@ -11,7 +12,7 @@
     }),
     defaultValues: { title: '', body: '', tags: [] },
     key: 'docs-demo-undo-redo',
-    history: { max: 64 },
+    history: historyPlugin({ max: 64 }),
   })
 
   function addTag() {

@@ -118,14 +118,17 @@ describe('production dead-code elimination', () => {
     expect(offenders).toEqual([])
   })
 
-  it('S4: the directive cluster stays off the minimal eager path (P2 un-weld)', async () => {
-    // The single largest size lever: createAttaform / lazy install weld
+  it('S4: un-welded modules stay off the minimal eager path (P2 directive, P3 history)', async () => {
+    // The largest size levers: createAttaform / lazy install weld
     // no directive, so a form that never renders v-register never ships
     // it. Delivery is the compile-time rewrite (Vite/Nuxt) or
     // installVRegister; dom-binding rides the same lazy graph via the
-    // ensureDomBinding injection. Any of these reappearing in the
-    // minimal scenario's eager inputs is a regression of the whole
-    // un-weld, whatever the byte ratchet happens to say that day.
+    // ensureDomBinding injection. History rides the consumer's own
+    // `historyPlugin()` import from `attaform/history` (P3), so a form
+    // that never opts in never ships the undo/redo runtime. Any of
+    // these reappearing in the minimal scenario's eager inputs is a
+    // regression of the whole un-weld, whatever the byte ratchet
+    // happens to say that day.
     const UNWELDED_MODULES = [
       'src/runtime/core/directive.ts',
       'src/runtime/core/directive-aria.ts',
@@ -138,6 +141,7 @@ describe('production dead-code elimination', () => {
       'src/runtime/core/vue-shared-shim.ts',
       'src/runtime/core/dom-binding.ts',
       'src/runtime/core/interactive-tags.ts',
+      'src/runtime/core/history.ts',
     ]
     const { eagerInputs } = await measureEager(PROD)
     const welded = UNWELDED_MODULES.filter((m) => eagerInputs.includes(m))

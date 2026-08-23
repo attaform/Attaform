@@ -189,6 +189,7 @@
       zod: '/lib/zod.js',
       attaform: '/lib/attaform.js',
       'attaform/zod': '/lib/attaform-zod.js',
+      'attaform/history': '/lib/attaform-history.js',
       'reka-ui': '/lib/reka-ui.js',
       'primevue/config': '/lib/pv/config.js',
       'primevue/inputtext': '/lib/pv/inputtext.js',

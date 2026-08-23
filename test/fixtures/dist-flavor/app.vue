@@ -6,15 +6,21 @@
   // would throw `Registry not found` during SSR — the marker below
   // renders only when both sides share one graph.
   import { useForm } from 'attaform/zod-v4'
+  // The undo/redo entry, resolved through the same real exports map —
+  // a missing ./history export (or dev-flavor artifact) fails this
+  // import outright, and the attach must run during SSR for the
+  // history-size marker below to render.
+  import { historyPlugin } from 'attaform/history'
   import { z } from 'zod'
 
   const schema = z.object({ probe: z.string().default('dist-flavor-ok') })
-  const form = useForm({ schema, key: 'dist-flavor-probe' })
+  const form = useForm({ schema, key: 'dist-flavor-probe', history: historyPlugin() })
 </script>
 
 <template>
   <div>
     <span id="probe">{{ form.values.probe }}</span>
+    <span id="probe-history">{{ form.history.size }}</span>
     <!--
       v-register delivery probe: the module's Vite plugin rewrites this
       compiled template's resolveDirective("register") to an

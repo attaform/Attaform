@@ -177,16 +177,18 @@ const wizard = useWizard({ steps: [account, profile, review] })
 Same composition: each step gets its own `history` chain.
 
 ```ts
+import { historyPlugin } from 'attaform/history'
+
 const cargo = useForm({
   schema: cargoSchema,
   key: 'cargo',
-  history: true, // unlimited undo / redo across the cargo step
+  history: historyPlugin(), // default 128-position chain for the cargo step
 })
 
 const billing = useForm({
   schema: billingSchema,
   key: 'billing',
-  history: { max: 25 }, // capped chain
+  history: historyPlugin({ max: 25 }), // tighter cap
 })
 
 const wizard = useWizard({ steps: [cargo, billing] })

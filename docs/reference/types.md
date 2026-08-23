@@ -22,16 +22,16 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Form configuration
 
-| Type                                | Source                  | Purpose                                                                                   |
-| ----------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
-| `UseFormConfiguration<Form>`        | runtime/types/types-api | The options bag passed to `useForm`.                                                      |
-| `UseFormReturnType<Form, GetValue>` | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.                         |
-| `AttaformPluginOptions`             | runtime/core/plugin     | Options for `createAttaform({ defaults, devtools })`.                                     |
-| `AttaformDefaults`                  | runtime/types/types-api | The fields settable via `createAttaform({ defaults })`.                                   |
-| `HistoryConfig`                     | runtime/types/types-api | `useForm({ history })` shape.                                                             |
-| `OnInvalidSubmitPolicy`             | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.               |
-| `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api | `validateOn` field and its discriminated config.                                          |
-| `DisplayState` / `GetDisplayState`  | runtime/types/types-api | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver. |
+| Type                                | Source                  | Purpose                                                                                    |
+| ----------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
+| `UseFormConfiguration<Form>`        | runtime/types/types-api | The options bag passed to `useForm`.                                                       |
+| `UseFormReturnType<Form, GetValue>` | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.                          |
+| `AttaformPluginOptions`             | runtime/core/plugin     | Options for `createAttaform({ defaults, devtools })`.                                      |
+| `AttaformDefaults`                  | runtime/types/types-api | The fields settable via `createAttaform({ defaults })`.                                    |
+| `HistoryPlugin`                     | runtime/types/types-api | What `historyPlugin()` from `attaform/history` returns; passed via `useForm({ history })`. |
+| `OnInvalidSubmitPolicy`             | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.                |
+| `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api | `validateOn` field and its discriminated config.                                           |
+| `DisplayState` / `GetDisplayState`  | runtime/types/types-api | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver.  |
 
 ## Reactive surfaces
 

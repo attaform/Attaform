@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
+import { historyPlugin } from '../../src/history'
 import type { UseFormConfigV4 } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
@@ -11,8 +12,8 @@ import { waitUntil } from '../utils/form-harness'
 /**
  * Regression: when an async-defaults factory settles, the resulting
  * `applyFormReplacement` carries `meta: { hydration: true }`. The
- * undo/redo `history` module's `meta.hydration === true` guard
- * (`history.ts:256`) must skip recording this as a user mutation, so
+ * undo/redo history runtime's `meta.hydration === true` guard (in
+ * `history.ts`) must skip recording this as a user mutation, so
  * the consumer can't undo "back through" the hydration to the
  * transient slim defaults.
  *
@@ -33,7 +34,7 @@ function mountForm<Schema extends z.ZodObject>(
         schema,
         key: `history-skip-${Math.random().toString(36).slice(2)}`,
         defaultValues,
-        history: { max: 20 },
+        history: historyPlugin({ max: 20 }),
       }) as unknown as ApiFor<Schema>
       return () => h('div')
     },

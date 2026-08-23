@@ -4,7 +4,7 @@ import {
   migrateMapSubtree,
   migrateSetSubtree,
   remapForOp,
-} from '../../src/runtime/core/array-state-migrate'
+} from '../../src/runtime/core/array-engine'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import type { Path, PathKey } from '../../src/runtime/core/paths'
 

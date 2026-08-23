@@ -89,8 +89,10 @@ describe('createWizardHistory — primitive', () => {
     window.history.pushState({}, '', `${ORIGINAL_URL}?step=a`)
     window.history.pushState({}, '', `${ORIGINAL_URL}?step=b`)
     window.history.back()
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(seen[seen.length - 1]).toBe('a')
+    // jsdom dispatches popstate asynchronously with no completion signal;
+    // poll for the arrival instead of guessing a wall-clock delay (a fixed
+    // 20ms sleep flaked under the coverage-instrumented run).
+    await vi.waitFor(() => expect(seen[seen.length - 1]).toBe('a'))
     handle.dispose()
   })
 

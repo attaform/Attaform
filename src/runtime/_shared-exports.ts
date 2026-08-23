@@ -186,7 +186,7 @@ export type {
   FormMeta,
   GetDisplayState,
   HandleSubmit,
-  HistoryConfig,
+  HistoryPlugin,
   Json,
   MetaTrackerValue,
   OnError,

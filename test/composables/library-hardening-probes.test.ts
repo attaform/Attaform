@@ -4,6 +4,8 @@ import { createApp, defineComponent, h, nextTick, watch, type App } from 'vue'
 import { z } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { unset, useForm } from '../../src/zod'
+import { historyPlugin } from '../../src/history'
+import type { HistoryPlugin } from '../../src/history'
 import type { UseFormReturn } from '../../src/zod'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
@@ -493,7 +495,7 @@ describe('DU hardening — undo across an invalid intermediate', () => {
           schema: profileSchema,
           key: `du-invalid-undo-${Math.random().toString(36).slice(2)}`,
           defaultValues: { name: '', notify: { channel: 'email', address: 'kept@x.io' } },
-          history: true,
+          history: historyPlugin(),
         }) as unknown as ProfileApi
         return () => h('div')
       },
@@ -4286,7 +4288,7 @@ describe('chaos — preprocess on the discriminator leaf inside a variant', () =
 // =====================================================================
 // 10. HISTORY × DU probes.
 //
-// History: enabled via `useForm({ history: true })`. Probes drive
+// History: enabled via `useForm({ history: historyPlugin() })`. Probes drive
 // undo/redo across discriminator switches, invalid intermediates,
 // array-shape changes, and concurrent submission.
 // =====================================================================
@@ -4298,7 +4300,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  function mountWithHistory(overrides: { history?: true | { max?: number } } = {}): {
+  function mountWithHistory(overrides: { history?: HistoryPlugin } = {}): {
     app: App
     api: ProfileApi
   } {
@@ -4308,7 +4310,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
         handle.api = useForm({
           schema: profileSchema,
           key: `chaos-history-${Math.random().toString(36).slice(2)}`,
-          history: overrides.history ?? true,
+          history: overrides.history ?? historyPlugin(),
           defaultValues: {
             name: '',
             notify: { channel: 'email', address: '' },
@@ -4417,7 +4419,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
     // probe of the eviction mechanism, not of the chosen default.
     // After 60 mutations, the historySize is bounded at 50 and the
     // earliest restorable state isn't the original empty default.
-    const { app, api } = mountWithHistory({ history: { max: 50 } })
+    const { app, api } = mountWithHistory({ history: historyPlugin({ max: 50 }) })
     apps.push(app)
 
     for (let i = 0; i < 60; i++) {
@@ -4526,7 +4528,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
         handle.api = useForm({
           schema: arraySchema,
           key: `chaos-history-arr-${Math.random().toString(36).slice(2)}`,
-          history: true,
+          history: historyPlugin(),
           defaultValues: {
             events: [
               { type: 'click', x: 'first' },

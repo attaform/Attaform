@@ -27,14 +27,16 @@ import type {
 import { resolveGetDisplayState } from './display-state'
 import { createDisplayEngine, type DisplayEngine } from './display-engine'
 import { applyDuStubs } from './du-stubs'
-import { cloneVariantSnapshot, createVariantMemory } from './variant-memory'
-import { createArrayIdentity } from './array-identity'
 import {
+  cloneVariantSnapshot,
   createArrayBookkeeping,
+  createArrayIdentity,
+  createVariantMemory,
+  remapForOp,
   type ArrayBookkeeping,
   type FieldValidationEntry,
-} from './array-bookkeeping'
-import { remapForOp } from './array-state-migrate'
+  type IndexRemap,
+} from './array-engine'
 import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
@@ -545,7 +547,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * Stable identity for the array element at `path`. An array element
    * (numeric last segment) carries its allocated identity token,
-   * maintained by `array-identity.ts` across structural mutations.
+   * maintained by the arrays engine across structural mutations.
    * Empty for any non-array-element path: a record entry, a
    * fixed-object field, a container, or the root. Backs `FieldState.key`.
    */
@@ -1052,27 +1054,6 @@ function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<Path
     for (let i = 0; i < value.length; i++) {
       walkAuthoredFromConstraints(value[i], [...prefix, i], out)
     }
-  }
-}
-
-/**
- * The indices a structural array op introduces a brand-new element at:
- * `insert` / `replace-at` carry one fresh slot, while `swap` / `move` /
- * `remove` only permute or drop existing elements and carry none. The write
- * funnel uses this to scope its per-element work (slim gate, structural
- * completion, authoring) to just the new element(s) on an array op, since
- * existing elements were already gated / completed / authored when first
- * written and only change position here.
- */
-function freshElementIndices(op: NonNullable<WriteMeta['arrayOp']>): readonly number[] {
-  switch (op.kind) {
-    case 'insert':
-    case 'replace-at':
-      return [op.index]
-    case 'remove':
-    case 'swap':
-    case 'move':
-      return []
   }
 }
 
@@ -1947,6 +1928,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     schemaErrors,
     activeValidations,
     arrayIdentity,
+    variantMemory,
     touchFieldRecord,
     decFieldValidation,
   })
@@ -2113,6 +2095,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       }
       return false
     }
+    // Decode a structural array op into its index permutation exactly
+    // once, against the PRE-op array still live at `path`. Every
+    // consumer below derives from this one remap: the fresh-slot
+    // scoping (symbol strip, slim gate, structural completion,
+    // authoring) reads `remap.fresh`, and the post-write bookkeeping
+    // pass replays the whole permutation.
+    let arrayOpRemap: IndexRemap | null = null
+    if (meta?.arrayOp !== undefined) {
+      const preOpValue = getAtPath(form.value, path)
+      arrayOpRemap = remapForOp(meta.arrayOp, Array.isArray(preOpValue) ? preOpValue.length : 0)
+    }
     // Drop any Symbol-keyed properties before the value flows through
     // the gate, DU reshape, or storage. Form values are string-keyed
     // by schema design and the consumer-side leak would otherwise
@@ -2124,8 +2117,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // all N. The field-array helper owns this fresh array copy, so the
     // in-place element strip is safe — the same scoping the slim gate,
     // mergeStructural, and the authored walk apply below.
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
-      for (const idx of freshElementIndices(meta.arrayOp)) {
+    if (arrayOpRemap !== null && Array.isArray(value)) {
+      for (const idx of arrayOpRemap.fresh) {
         value[idx] = stripSymbolsDeep(value[idx])
       }
     } else {
@@ -2139,11 +2132,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // so storage retains the consumer's raw input; the schema-side
     // normalizers fire during `safeParse`, not at the write boundary.
     let slimOk = true
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
+    if (arrayOpRemap !== null && Array.isArray(value)) {
       // Array structural op: only the freshly-introduced element(s) carry new
       // leaf values. Existing elements were gated when first written and only
       // shift position here, so validate just the fresh slots, not all N.
-      for (const idx of freshElementIndices(meta.arrayOp)) {
+      for (const idx of arrayOpRemap.fresh) {
         if (!isSlimPrimitiveValid(schema, form, [...path, idx], value[idx])) {
           slimOk = false
           break
@@ -2357,13 +2350,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // setValue('url', undefined) over an already-undefined leaf case;
     // the mark is cheap and consistent either way.
     const wasAuthoredBefore = authoredPaths.has(pathKey)
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
+    if (arrayOpRemap !== null && Array.isArray(value)) {
       // The array container itself is authored (the consumer wrote it via a
       // field-array op), matching the whole-array walk this replaces. Existing
       // elements keep their authored marks (relocated with the op by
-      // migrateElementState), so only the fresh element(s) need a fresh walk.
+      // the structural-op bookkeeping), so only the fresh element(s) need a
+      // fresh walk.
       if (path.length > 0) authoredPaths.add(pathKey)
-      for (const idx of freshElementIndices(meta.arrayOp)) {
+      for (const idx of arrayOpRemap.fresh) {
         walkAuthoredFromConstraints(value[idx], [...path, idx], authoredPaths)
       }
     } else {
@@ -2384,12 +2378,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // ref-equal sub-trees, and the fill walker only queries the
     // schema at gap sites.
     let completedValue: unknown
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
+    if (arrayOpRemap !== null && Array.isArray(value)) {
       // Complete only the fresh element(s) against the schema element default;
       // existing elements are already structurally complete from prior writes.
       // Mutating the caller's fresh array copy in place is safe (the field-array
       // helper builds and hands it off exactly once).
-      for (const idx of freshElementIndices(meta.arrayOp)) {
+      for (const idx of arrayOpRemap.fresh) {
         value[idx] = mergeStructural(schema, [...path, idx], value[idx])
       }
       completedValue = value
@@ -2429,11 +2423,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       }
       return true
     }
-    // Capture the array length BEFORE replacement: `applyTargetedWrite`
-    // mutates `form.value` in place, so the pre-op length has to be read off
-    // `currentValue` here, while it still reflects the array the operation
-    // acted on. Only the `arrayOp` branch reads it.
-    const oldArrayLength = Array.isArray(currentValue) ? currentValue.length : 0
     // For a wholesale array replacement (no `arrayOp` to follow), anchor the
     // identity baseline at the PRE-write order before `applyTargetedWrite`
     // resizes the array in place. On an array's first track this is the only
@@ -2443,32 +2432,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // dirty the form (#420). The post-write realign then advances the current
     // order while the baseline stays put, so the length delta surfaces through
     // `hasStructuralChangeUnder`. Idempotent once the array is tracked, and it
-    // mirrors what the `arrayOp` branch already gets for free by reconstructing
-    // the pre-op length before replaying its permutation.
-    if (meta?.arrayOp === undefined && Array.isArray(value) && Array.isArray(currentValue)) {
+    // mirrors what the `arrayOp` branch gets for free from the remap's
+    // recorded pre-op length.
+    if (arrayOpRemap === null && Array.isArray(value) && Array.isArray(currentValue)) {
       arrayIdentity.realign(path)
     }
     applyTargetedWrite(path, completedValue, meta)
-    // Variant-memory bookkeeping for array structural mutations. The
-    // field-array helpers tag each op with an `arrayOp` describing
-    // which indices shifted; raw whole-array setValues (`setValue
-    // ('events', [...])`) clear all memory under the array path
-    // because identity bookkeeping was lost wholesale. Memory keyed
-    // by absolute index would otherwise bleed onto new occupants of
-    // those indices on a future variant switch.
-    if (meta?.arrayOp !== undefined) {
-      // Relocate non-derived per-element state along the operation's exact
-      // permutation, then register any freshly created element. Runs after
-      // `applyFormReplacement` so it overwrites the placeholder originals
-      // replacement seeds at shifted destinations with each moved element's
-      // true baseline.
-      const remap = remapForOp(meta.arrayOp, oldArrayLength)
-      arrayBookkeeping.migrateElementState(path, remap)
-      for (const freshIndex of remap.fresh) arrayBookkeeping.seedFreshElement(path, freshIndex)
-      arrayBookkeeping.dropSchemaErrorsAtChangedIndices(path, remap)
-      arrayBookkeeping.abortValidationAtVacatedIndices(path, remap)
-      variantMemory.applyArrayOp(path, meta.arrayOp)
-      arrayIdentity.applyOp(path, meta.arrayOp)
+    // Structural-mutation bookkeeping. The field-array helpers tag each
+    // op with an `arrayOp`; the remap decoded at funnel entry drives one
+    // engine pass — per-element state relocation, fresh-element seeding,
+    // derived-state eviction (schema verdicts + variant memory),
+    // in-flight validation aborts at vacated indices, and the identity
+    // replay. Runs after `applyFormReplacement` so it overwrites the
+    // placeholder originals replacement seeds at shifted destinations
+    // with each moved element's true baseline. Raw whole-array setValues
+    // (`setValue('events', [...])`) instead clear all memory under the
+    // array path because identity bookkeeping was lost wholesale —
+    // memory keyed by absolute index would otherwise bleed onto new
+    // occupants of those indices on a future variant switch.
+    if (arrayOpRemap !== null) {
+      arrayBookkeeping.applyStructuralOp(path, arrayOpRemap)
     } else if (Array.isArray(value) && Array.isArray(currentValue)) {
       variantMemory.clearUnderPath(path)
       arrayIdentity.realign(path)

@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
+import { historyPlugin } from '../../src/history'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import type {
   DisplayState,
@@ -61,7 +62,7 @@ function mountForm(): { app: App; api: Api } {
       handle.api = useForm({
         schema,
         key: `surface-contract-${Math.random().toString(36).slice(2)}`,
-        history: true,
+        history: historyPlugin(),
         defaultValues: { name: '', email: '' },
       })
       return () => h('div')

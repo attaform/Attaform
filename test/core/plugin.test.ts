@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
+import { installVRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { getRegistryFromApp } from '../../src/runtime/core/registry'
 
@@ -11,7 +12,7 @@ describe('createAttaform', () => {
     expect(getRegistryFromApp(app)).toBeDefined()
   })
 
-  it('registers the v-register directive on the app', () => {
+  it('registers no app-level directive (delivery is compile-time or installVRegister)', () => {
     const app = createApp({ render: () => null })
     app.use(createAttaform())
     // Vue exposes directive lookup via app._context.directives (stable internal).
@@ -21,14 +22,33 @@ describe('createAttaform', () => {
     // _context is the public-ish AppContext that holds directives/components/mixins.
     // Stable across Vue 3 versions; used here as the most direct lookup.
     const ctx = app._context as unknown as { directives: Record<string, unknown> }
-    // A custom directive registers as an object keyed by lifecycle
-    // hooks — `created` is mandatory (the v-register variants all
-    // implement it). Tightened from `.toBeDefined()`, which would
-    // pass for `null` or any plain object.
+    // The plugin deliberately registers NO app-level directive: v-register
+    // is delivered by the Vite/Nuxt compile-time binding, or by an explicit
+    // installVRegister(app). An app-level registration here would weld the
+    // directive cluster into every consumer's eager bundle.
+    expect(ctx.directives['register']).toBeUndefined()
+    app.unmount()
+  })
+
+  it('installVRegister registers the directive; idempotent; user shadow wins', () => {
+    const app = createApp({ render: () => null })
+    installVRegister(app)
+    const ctx = app._context as unknown as { directives: Record<string, unknown> }
     expect(ctx.directives['register']).toEqual(
       expect.objectContaining({ created: expect.any(Function) })
     )
-    app.unmount()
+    const first = ctx.directives['register']
+    // Second call is a no-op (no Vue "already registered" warn path).
+    installVRegister(app)
+    expect(ctx.directives['register']).toBe(first)
+    // A directive the consumer registered under the same name before the
+    // install is left in place.
+    const shadowApp = createApp({ render: () => null })
+    const shadow = { created: () => {} }
+    shadowApp.directive('register', shadow)
+    installVRegister(shadowApp)
+    const shadowCtx = shadowApp._context as unknown as { directives: Record<string, unknown> }
+    expect(shadowCtx.directives['register']).toBe(shadow)
   })
 
   it('passes the ssr option through to the registry', () => {

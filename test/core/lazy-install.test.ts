@@ -119,18 +119,17 @@ describe('injectForm — lazy install', () => {
 })
 
 describe('useRegister — lazy install', () => {
-  it('attaches the registry (and registers the v-register directive) on first call', () => {
+  it('attaches the registry (and no app-level directive) on first call', () => {
     const { app } = mountWithSetup(() => {
       useRegister()
     })
 
     expect(app._attaform).toBeDefined()
-    // Vue keeps directives on `app._context.directives`. The lazy
-    // install path's `app.directive('register', vRegister)` populates
-    // it; we assert by name to avoid a hard dep on an internal
-    // shape.
+    // The lazy install attaches the registry ONLY. v-register delivery
+    // is the compile-time binding (Vite/Nuxt) or installVRegister —
+    // never an app-level registration from this path.
     const directives = (app._context as unknown as { directives: Record<string, unknown> })
       .directives
-    expect(directives['register']).toBeDefined()
+    expect(directives['register']).toBeUndefined()
   })
 })

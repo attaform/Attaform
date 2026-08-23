@@ -8,6 +8,8 @@ import { injectForm } from '../../src/runtime/composables/use-form-context'
 import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
 import type { Path } from '../../src/runtime/core/paths'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { armDomBinding } from '../../src/runtime/core/dom-binding'
+import type { RegisterValue } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 
 type Form = {
@@ -84,6 +86,10 @@ function mountWith(options: {
             h('input', {
               ref: (el: unknown) => {
                 if (el instanceof HTMLInputElement && reg) {
+                  // Manual (directive-less) integration: arm the store's
+                  // DOM binding before the element call — in production
+                  // the directive's created hook or useRegister does this.
+                  armDomBinding(reg)
                   reg.registerElement(el)
                 }
               },
@@ -470,7 +476,10 @@ describe('focusFirstError — shared-key form isolation', () => {
           return h('input', {
             'data-mount': 'sidebar',
             ref: (el: unknown) => {
-              if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+              if (el instanceof HTMLInputElement && reg) {
+                armDomBinding(reg)
+                reg.registerElement(el)
+              }
             },
           })
         }
@@ -488,7 +497,10 @@ describe('focusFirstError — shared-key form isolation', () => {
           return h('input', {
             'data-mount': 'main',
             ref: (el: unknown) => {
-              if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+              if (el instanceof HTMLInputElement && reg) {
+                armDomBinding(reg)
+                reg.registerElement(el)
+              }
             },
           })
         }
@@ -622,7 +634,10 @@ describe('focusFirstError — sort cache invalidation', () => {
               h('input', {
                 'data-field': 'email',
                 ref: (el: unknown) => {
-                  if (el instanceof HTMLInputElement && regEmail) regEmail.registerElement(el)
+                  if (el instanceof HTMLInputElement && regEmail) {
+                    armDomBinding(regEmail)
+                    regEmail.registerElement(el)
+                  }
                 },
               })
             )
@@ -632,7 +647,10 @@ describe('focusFirstError — sort cache invalidation', () => {
             h('input', {
               'data-field': 'password',
               ref: (el: unknown) => {
-                if (el instanceof HTMLInputElement && regPwd) regPwd.registerElement(el)
+                if (el instanceof HTMLInputElement && regPwd) {
+                  armDomBinding(regPwd)
+                  regPwd.registerElement(el)
+                }
               },
             })
           )
@@ -718,7 +736,10 @@ describe('focusFirstError — instanceId inheritance through injectForm', () => 
           return h('input', {
             'data-mount': 'child',
             ref: (el: unknown) => {
-              if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+              if (el instanceof HTMLInputElement && reg) {
+                armDomBinding(reg)
+                reg.registerElement(el)
+              }
             },
           })
         }
@@ -792,7 +813,10 @@ describe('focusFirstError — instanceId inheritance through injectForm', () => 
           return h('input', {
             'data-mount': 'grandchild',
             ref: (el: unknown) => {
-              if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+              if (el instanceof HTMLInputElement && reg) {
+                armDomBinding(reg)
+                reg.registerElement(el)
+              }
             },
           })
         }
@@ -871,7 +895,7 @@ function mountApp(component: Parameters<typeof createApp>[0]): {
 // registerElement path v-register drives, tagged with a data-field so
 // assertions can name the focused / scrolled element.
 function registeredInput(
-  reg: { registerElement: (el: HTMLElement) => void } | undefined,
+  reg: RegisterValue | undefined,
   field: string,
   hide = false
 ): ReturnType<typeof h> {
@@ -879,7 +903,10 @@ function registeredInput(
     'data-field': field,
     style: hide ? 'display:none' : '',
     ref: (el: unknown) => {
-      if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+      if (el instanceof HTMLInputElement && reg) {
+        armDomBinding(reg)
+        reg.registerElement(el)
+      }
     },
   })
 }
@@ -1108,7 +1135,10 @@ describe('focusFirstError — no-latch component host (#538)', () => {
               return h('input', {
                 'data-field': 'email',
                 ref: (el: unknown) => {
-                  if (el instanceof HTMLInputElement && reg) reg.registerElement(el)
+                  if (el instanceof HTMLInputElement && reg) {
+                    armDomBinding(reg)
+                    reg.registerElement(el)
+                  }
                 },
               })
             }
@@ -1126,7 +1156,10 @@ describe('focusFirstError — no-latch component host (#538)', () => {
                 role: 'radiogroup',
                 'data-field': 'nickname',
                 ref: (el: unknown) => {
-                  if (el instanceof HTMLElement && reg) reg.markHostConnected(true, el)
+                  if (el instanceof HTMLElement && reg) {
+                    armDomBinding(reg)
+                    reg.markHostConnected(true, el)
+                  }
                 },
               },
               options

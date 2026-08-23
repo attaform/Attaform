@@ -981,7 +981,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // sharing a `key` (e.g. sidebar + main mounting the same form) only
   // focus / scroll within their own registered elements.
   const focusFirstError = (options?: { preventScroll?: boolean }): boolean => {
-    const target = state.getFirstErrorElement(formInstanceId)
+    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
     if (target === null) return false
     // `focusVisible: true` requests the focus ring even though the move
     // is programmatic — so non-text controls (radio / checkbox / custom
@@ -993,7 +993,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   }
 
   const scrollToFirstError = (options?: ScrollIntoViewOptions): boolean => {
-    const target = state.getFirstErrorElement(formInstanceId)
+    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
     if (target === null) return false
     target.element.scrollIntoView(options)
     return true

@@ -30,7 +30,7 @@ import {
 - **Do not import `useForm` from `attaform/abstract`.** That entry is the bring-your-own-adapter escape hatch: it exports `useAbstractForm`, which needs a schema adapter wired by hand. A Zod project wants `useForm` from `attaform`. This mismatch is the single most common first-try mistake.
 - Types come from the same barrel: `import type { AnyForm, WizardCtx, Json, ValidationError } from 'attaform'`.
 - `attaform/zod` is the same surface named explicitly; `attaform/zod-v3` and `attaform/zod-v4` pin a Zod major. Any of these works; default to `attaform`.
-- In **Nuxt** with the module installed (`attaform/nuxt`), this surface auto-imports and the `v-register` directive is registered globally, so a component needs no import lines at all. In **plain Vite**, add the Attaform plugin from `attaform/vite` plus the auto-import preset it exports.
+- In **Nuxt** with the module installed (`attaform/nuxt`), this surface auto-imports and the `v-register` directive is bound into each compiled template, so a component needs no import lines at all. In **plain Vite**, add the Attaform plugin from `attaform/vite` (it binds `v-register` the same way) plus the auto-import preset it exports. Without either build plugin, register the directive once per app: `import { installVRegister } from 'attaform/directive'` then `installVRegister(app)`.
 
 ## Build a form
 

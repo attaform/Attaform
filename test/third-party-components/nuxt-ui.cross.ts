@@ -20,6 +20,7 @@ import { useForm } from '../../src/zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { SSR_COMPONENT_HOST_MODIFIER } from '../../src/runtime/core/register-protocol'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { installVRegister } from '../../src/runtime/core/directive'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
 import ui from '@nuxt/ui/vue-plugin'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -96,6 +97,9 @@ async function mountHost(
   })
 
   const app = createApp(Parent).use(createAttaform()).use(ui)
+  // Runtime-resolved v-register (this harness compiles templates on the
+  // fly): installVRegister is that path's delivery.
+  installVRegister(app)
   const root = document.createElement('div')
   document.body.appendChild(root)
   app.mount(root)

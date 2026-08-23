@@ -1,6 +1,7 @@
 import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
+import type { ElementRecord, FieldRecord } from '../core/store-records'
 
 export type { FieldMetaPayload, ResolvedFieldMeta }
 import type {
@@ -1889,6 +1890,63 @@ export type RegisterOptions = {
 }
 
 /**
+ * The narrow kernel surface the DOM binding drives. Structurally a
+ * subset of the form store: the field-record connect/disconnect
+ * transitions, focus marking (which owns blur-validation), the record
+ * and merged-error reads the focus walk needs, and the async-transform
+ * abort for a fully-detached path.
+ * @internal
+ */
+export type DomBindingKernel = {
+  readonly noteDomConnected: (path: Path) => void
+  readonly noteDomDisconnected: (path: Path) => void
+  readonly markFocused: (
+    path: Path,
+    focused: boolean,
+    meta?: { readonly instance?: WriteMeta['instance'] }
+  ) => void
+  readonly getFieldRecord: (path: Path) => FieldRecord | undefined
+  readonly getErrorsForPath: (path: Path) => ValidationError[]
+  readonly cancelTransformsUnder: (prefix: Path) => void
+}
+
+/**
+ * The form store's DOM slice: the element registry backing
+ * `field.element` / `field.elements`, no-latch host focus anchors, and
+ * first-error focus resolution. Implemented in the directive cluster's
+ * lazy graph and armed into the store's `domBinding` slot on first use
+ * (see `RegisterValue.ensureDomBinding`); a `null` slot means nothing
+ * in the app ever registered an element.
+ * @internal
+ */
+export type AttaformDomBinding = {
+  readonly elements: Map<PathKey, ElementRecord>
+  readonly attach: (
+    segments: Path,
+    element: HTMLElement,
+    formInstanceId: string,
+    instanceMeta: WriteMeta['instance'] | undefined
+  ) => void
+  readonly detach: (segments: Path, element: HTMLElement) => void
+  readonly markHostConnected: (
+    segments: Path,
+    connected: boolean,
+    hostEl: HTMLElement,
+    formInstanceId: string
+  ) => void
+  readonly getFirstErrorElement: (
+    formInstanceId: string
+  ) => { path: Path; element: HTMLElement } | null
+}
+
+/**
+ * Factory the directive / `useRegister` inject through
+ * `RegisterValue.ensureDomBinding` to arm a store's `domBinding` slot.
+ * @internal
+ */
+export type DomBindingFactory = (kernel: DomBindingKernel) => AttaformDomBinding
+
+/**
  * The object returned by `form.register(path)`. Pass it to a native
  * input via `v-register`:
  *
@@ -1993,6 +2051,17 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   hasRegisteredDescendant: (hostElement: HTMLElement) => boolean
+  /**
+   * Arm this binding's form store with the DOM-binding implementation
+   * (element registry, focus listeners, first-error focus resolution).
+   * The implementation lives in the directive cluster's lazy graph, so
+   * the directive and `useRegister` inject its factory here before any
+   * element call; once armed, the store's `domBinding` slot serves every
+   * later registration. Optional so hand-rolled RegisterValues, which
+   * own their element handling, don't have to declare it.
+   * @internal
+   */
+  ensureDomBinding?: (factory: DomBindingFactory) => void
   /**
    * Canonical, JSON-encoded path key for this binding (e.g.
    * `'["items",0,"name"]'`). Useful for stable Map / Set keys, log
@@ -2488,10 +2557,10 @@ export type RegisterModelDynamicCustomDirective = ObjectDirective<
  * See `RegisterTextModifier` / `RegisterSelectModifier` for
  * per-modifier semantics.
  *
- * Registered globally by `createAttaform()` (and by the
- * `attaform/nuxt` module). Most consumers don't import the
- * directive itself — it's exposed for integrations that install
- * directives manually.
+ * Delivered by the Vite / Nuxt plugin's compile-time binding, or by
+ * `installVRegister(app)` from `attaform/directive` everywhere else.
+ * Most consumers don't import the directive itself — it's exposed for
+ * integrations that install directives manually.
  */
 export type RegisterDirective =
   | RegisterTextCustomDirective

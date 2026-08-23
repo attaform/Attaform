@@ -123,6 +123,11 @@
       "development": "./dist/dev/abstract.mjs",
       "import": "./dist/abstract.mjs"
     },
+    "./directive": {
+      "types": "./dist/directive.d.mts",
+      "development": "./dist/dev/directive.mjs",
+      "import": "./dist/directive.mjs"
+    },
     "./package.json": "./package.json"
   },
   "keywords": [

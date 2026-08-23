@@ -314,13 +314,18 @@
   const previewOptions = {
     headHTML: DARK_SYNC_SOURCE,
     customCode: {
+      // `app.directive('register', vRegister)` mirrors installVRegister:
+      // the playground compiles SFCs in the browser (no bundler plugin),
+      // so v-register resolves at render time against the app registry.
+      // vRegister rides the barrel, which the REPL's import map already
+      // serves — no extra subpath bundle needed.
       importCode:
-        `import { createAttaform } from 'attaform'` +
+        `import { createAttaform, vRegister } from 'attaform'` +
         (usesPrimeVue
           ? `\nimport PrimeVue from 'primevue/config'\nimport Aura from '@primeuix/themes/aura'`
           : ''),
       useCode:
-        `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())` +
+        `${TOAST_SHIM_SOURCE}\napp.use(createAttaform())\napp.directive('register', vRegister)` +
         (usesPrimeVue
           ? `\napp.use(PrimeVue, { theme: { preset: Aura, options: { darkModeSelector: '.dark' } } })`
           : '') +

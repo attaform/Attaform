@@ -15,6 +15,12 @@ import { describe, expect, it } from 'vitest'
  * would be two registries and `useForm` would throw `Registry not found`
  * during SSR — so the rendered marker IS the single-registry assertion.
  *
+ * Also covers the P2 v-register delivery end to end: the fixture's
+ * template binds `v-register`, the module's Vite plugin rewrites the
+ * compiled output to an `attaform/directive` import (resolved through
+ * the same real exports map), and the SSR-compiled render emits the
+ * field's value through the directive's getSSRProps.
+ *
  * Runs only against a real build (skipped while dist/ holds
  * `unbuild --stub` shims); `pnpm check` exercises it after `check:size`
  * produces the real bundle.
@@ -36,5 +42,16 @@ describe.skipIf(!isRealBuild)('dist dev flavor: single registry in a dev boot (e
   it('renders a form whose plugin and composable share one module graph', async () => {
     const html = await $fetch('/')
     expect(html).toContain('dist-flavor-ok')
+  })
+
+  it('delivers v-register through the rewrite: SSR emits the bound value', async () => {
+    // The rewrite leaves no runtime resolveDirective fallback: if the
+    // injected `attaform/directive` import didn't resolve through the
+    // real exports map, this SSR render would fail outright. The value=
+    // assertion then locks the full v-register SSR pipeline (transforms
+    // + directive) working against the shipped dist — the template
+    // authors no :value of its own.
+    const html = await $fetch('/')
+    expect(html).toMatch(/<input[^>]*id="probe-input"[^>]*value="dist-flavor-ok"/)
   })
 })

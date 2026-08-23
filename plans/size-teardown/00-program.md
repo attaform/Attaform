@@ -23,7 +23,7 @@ number on the phase's merge commit, not an estimate.
 | P0    | packaging config                      | done    | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182) |
 | P1a   | dev/prod dual dist                    | done    | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok  |
 | P1b   | error codes + prose diet              | pending | ~42,800 exp.       |            | GATED on attaform.dev/e/\* pages            |
-| P2    | directive un-weld                     | pending | ~37,800 exp.       |            | spike-first; may run before P1b             |
+| P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed     |
 | P3    | history plugin + arrays engine        | pending | ~35,350 exp.       |            |                                             |
 | P4    | field-meta install + SPI probe delete | pending | ~34,750 exp.       |            |                                             |
 | P5    | store kernel                          | pending | ~32,050 exp.       |            | suites pinned first                         |

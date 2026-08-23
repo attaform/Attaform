@@ -1,8 +1,8 @@
 import {
   computed,
-  markRaw,
   reactive,
   ref,
+  shallowRef,
   toRaw,
   toValue,
   triggerRef,
@@ -10,9 +10,11 @@ import {
   type ComputedRef,
   type MaybeRefOrGetter,
   type Ref,
+  type ShallowRef,
 } from 'vue'
 import type {
   AbstractSchema,
+  AttaformDomBinding,
   CoercionRegistry,
   FormKey,
   DefaultValuesResponse,
@@ -33,7 +35,7 @@ import {
   type FieldValidationEntry,
 } from './array-bookkeeping'
 import { remapForOp } from './array-state-migrate'
-import type { ElementRecord, FieldRecord, OriginalsRecord } from './store-records'
+import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
@@ -71,46 +73,6 @@ import { mergeSparseHydration } from './merge-hydration'
  * replacing a container with one of those drops a whole subtree at once.
  */
 const isContainer = (value: unknown): boolean => Array.isArray(value) || isPlainRecord(value)
-
-// Focusable candidates inside a no-latch component host, in the order the
-// browser would tab through them (document order at query time). A composite
-// widget exposes its entry point as a genuinely focusable element -- a
-// roving-tabindex group's active item (`[tabindex="0"]`), a `role="slider"`
-// thumb, a listbox/combobox trigger `<button>`, or a real `<input>` segment --
-// so match natively focusable elements plus anything given a non-negative
-// tabindex. `type="hidden"` inputs and `tabindex="-1"` mirrors (reka-ui's
-// BubbleInput and the like) are excluded: they can never be the user's focus
-// target. Disabled controls are filtered at resolve time.
-const HOST_FOCUS_TARGET_SELECTOR = [
-  'input:not([type="hidden"])',
-  'select',
-  'textarea',
-  'button',
-  'a[href]',
-  '[tabindex]:not([tabindex="-1"])',
-  '[contenteditable="true"]',
-].join(', ')
-
-/**
- * The focus-first-error target for a no-latch `v-register` component host. The
- * host binds a value but owns no single control, so resolve its root to the
- * first visible, enabled focusable descendant -- the tab stop a keyboard user
- * entering the widget lands on (the first radio of a group, a slider thumb, a
- * listbox trigger, the first pin segment). Falls back to the host root itself
- * when nothing focusable is found, so `scrollToFirstError` still has a target
- * even if `focus()` can't land. `offsetParent === null` mirrors
- * `getFirstErrorElement`'s own visibility gate (skips `display:none` subtrees).
- */
-function resolveHostFocusTarget(hostRoot: HTMLElement): HTMLElement {
-  const candidates = hostRoot.querySelectorAll<HTMLElement>(HOST_FOCUS_TARGET_SELECTOR)
-  for (const el of candidates) {
-    if (!el.isConnected) continue
-    if (el.offsetParent === null) continue
-    if (el.matches(':disabled')) continue
-    return el
-  }
-  return hostRoot
-}
 
 /**
  * Per-form closure state — the single store owned by each `useForm` call.
@@ -196,7 +158,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly formKey: FormKey
   readonly form: Ref<F>
   readonly fields: Map<PathKey, FieldRecord>
-  readonly elements: Map<PathKey, ElementRecord>
   /**
    * Schema-driven errors. Written ONLY by the schema validation pipeline:
    * `scheduleFieldValidation`, `handleSubmit`, the construction-time seed,
@@ -637,15 +598,29 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
 
   // --- DOM ---
   /**
-   * Register `element` as a binding for `path`, tagged with the calling
-   * `useForm()` instance's `formInstanceId`. The ID is the disambiguator
-   * used by `getFirstErrorElement` to scope focus / scroll to elements
-   * THIS form instance owns — important when two `useForm()` calls share
-   * a `key` (e.g. sidebar + main rendering the same form), since both
-   * write into one shared element store.
+   * The store's DOM slice, `null` until the directive cluster or
+   * `useRegister` arms it via `RegisterValue.ensureDomBinding`. Element
+   * registration, host anchors, and first-error focus resolution all
+   * live behind it; eager readers treat `null` as an empty registry.
    */
-  registerElement(path: Path, element: HTMLElement, formInstanceId: string): boolean
-  deregisterElement(path: Path, element: HTMLElement): number
+  readonly domBinding: ShallowRef<AttaformDomBinding | null>
+  /**
+   * Field-record connect transition, driven by the DOM binding on
+   * element attach / host connect (and by the SSR-only
+   * `markConnectedOptimistically`): `connected: true`, with
+   * `focused` / `blurred` lifted from `null` to optimistic booleans
+   * only when currently null — an existing boolean from an early focus
+   * event is never clobbered.
+   */
+  noteDomConnected(path: Path): void
+  /**
+   * Field-record disconnect transition, driven by the DOM binding when
+   * a path's last element detaches or its host disconnects:
+   * `connected: false`, `focused` / `blurred` back to `null` (DOM-state
+   * properties are meaningless with nothing attached; interaction
+   * history stays).
+   */
+  noteDomDisconnected(path: Path): void
   /**
    * Optional `meta.instance` carries per-`useForm()`-instance overrides
    * for `validateOn` / `debounceMs` so the blur-trigger respects the
@@ -687,25 +662,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * source there).
    */
   markConnectedOptimistically(path: Path): void
-  /**
-   * Client-side connected mark for a `v-register` component host that binds
-   * value via the v-model channel but has no single inner control to latch
-   * (a composite widget, or none found). The directive calls it on mount
-   * (`true`) and unmount (`false`). Distinct from the SSR-only
-   * `markConnectedOptimistically`; idempotent on the leading edge.
-   *
-   * `hostEl` (the host root) is recorded on connect as this path's
-   * focus-first-error anchor, scoped to `formInstanceId` the same way a
-   * registered control is. A no-latch host enters no `elements` record, so
-   * without this it is absent from `getFirstErrorElement`'s walk; the anchor
-   * lets that walk resolve a focus target from the host subtree.
-   */
-  markHostConnected(
-    path: Path,
-    connected: boolean,
-    hostEl: HTMLElement,
-    formInstanceId: string
-  ): void
 
   // --- derived ---
   /**
@@ -746,30 +702,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   hasRemovedSubtreeUnder(path: Path): boolean
   getFieldRecord(path: Path): FieldRecord | undefined
   getOriginalAtPath(path: Path): unknown
-  /**
-   * Returns the first errored field's first connected, visible DOM
-   * element scoped to `formInstanceId` — the target that
-   * `focusFirstError` / `scrollToFirstError` act on. "First" is
-   * VISUAL-first (DOM-tree order via `compareDocumentPosition`), not
-   * schema-declaration order, so a field rendered above another in the
-   * template focuses first regardless of which one the schema declared
-   * earlier. CSS `order:` flexbox/grid reordering is NOT respected
-   * (DOM-tree order wins) — documented as a tradeoff against forcing
-   * sync layout on every comparison.
-   *
-   * The `formInstanceId` filter scopes focus to elements registered
-   * through THIS form instance. When two `useForm({ key })` calls share
-   * a key, both register into the same element store; without the
-   * filter, the sidebar form's submit could focus the main form's
-   * input. With it, each `useForm()` callsite focuses only its own
-   * elements.
-   *
-   * Returns `null` when every errored path has no currently-attached
-   * element registered to this instance (fields behind `v-if="false"`,
-   * unmounted components, or a hidden `display:none` parent). Callers
-   * get the choice of no-op or a dev-only warning.
-   */
-  getFirstErrorElement(formInstanceId: string): { path: Path; element: HTMLElement } | null
 
   /**
    * Cancel every in-flight field-level validation run — clears timers
@@ -1385,56 +1317,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // reads of specific keys track those keys only, so a change to one field
   // doesn't invalidate computeds watching another.
   const fields = reactive(new Map<PathKey, FieldRecord>()) as Map<PathKey, FieldRecord>
-  const elements = reactive(new Map<PathKey, ElementRecord>()) as Map<PathKey, ElementRecord>
 
-  // Per-element form-instance tag. WeakMap so detached elements GC
-  // freely — `deregisterElement` does an explicit `.delete()` defensively
-  // (in case the element is still strongly referenced elsewhere), but
-  // the WeakMap keeps cleanup correct even when the consumer drops the
-  // element without going through deregister.
-  //
-  // Read by `getFirstErrorElement` to scope focus/scroll targets to the
-  // calling `useForm()` instance — load-bearing when two forms share a
-  // `key` and both register into the same `elements` Map.
-  const elementToFormInstance = new WeakMap<HTMLElement, string>()
-
-  // Focus-first-error anchors for no-latch `v-register` component hosts
-  // (composite widgets, multi-control or control-less hosts). Such a host
-  // binds a value but registers no single control, so it never enters
-  // `elements` and would be invisible to `getFirstErrorElement`. Keyed by
-  // canonical path key; the host root drives the DOM-order walk and resolves
-  // to a focusable descendant at submit time, and `formInstanceId` scopes it
-  // to the owning `useForm()` instance exactly as `elementToFormInstance`
-  // does for registered controls. A path holds at most one anchor, and never
-  // both an anchor and a registered element — `registerElement` drops the
-  // anchor when a control latches (e.g. a late self-heal supersede).
-  const hostTargets = new Map<
-    PathKey,
-    { path: Path; hostRoot: HTMLElement; formInstanceId: string }
-  >()
-
-  // Lazy DOM-order sort cache. Holds every registered element plus every
-  // no-latch host root flattened across paths, sorted by
-  // `compareDocumentPosition` (DOM-tree order). Invalidated to `null` on any
-  // register/deregister or host connect/disconnect; rebuilt on next
-  // `getFirstErrorElement` read. The cache amortises the sort across
-  // multiple submit failures between mutations — a 100-field form with
-  // 5 failed submits and no DOM changes pays one O(n log n) sort, not
-  // five.
-  //
-  // Note: `compareDocumentPosition` is DOM-tree order, NOT visual order.
-  // CSS `order:` flexbox/grid reorders visually but not in tree, so a
-  // child with `order: -1` will sort AFTER its tree-earlier siblings.
-  // Real visual order would need `getBoundingClientRect`, which forces
-  // sync layout per comparison and breaks under `display: none`. Tree-
-  // order is the right tradeoff for a hot path; the 99% case (semantic
-  // source-order rendering) works correctly.
-  let sortedRegistrationsCache: Array<{
-    path: Path
-    element: HTMLElement
-    host: boolean
-    formInstanceId: string
-  }> | null = null
+  // The DOM slice (element registry, no-latch host anchors, DOM-order
+  // sort cache, focus listeners, first-error focus resolution) lives in
+  // `dom-binding.ts` inside the directive cluster's lazy graph, armed
+  // into this slot through `RegisterValue.ensureDomBinding` on first
+  // element use. `shallowRef` so eager readers (field-state's
+  // `element` / `elements`, the invalid-submit focus walk) re-run when
+  // the slot arms; `null` means nothing in this app ever registered an
+  // element, and every reader treats that as the empty registry it is.
+  const domBinding = shallowRef<AttaformDomBinding | null>(null)
   // Errors are split by source so each writer touches exactly one slot.
   // Schema validation owns `schemaErrors`; the `setErrors` / `clearErrors`
   // API owns `userErrors`. The two stores merge on read via `getErrorsForPath` and
@@ -2044,7 +1936,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
     form,
     fields,
-    elements,
     userErrors,
     originals,
     blankPaths,
@@ -3284,69 +3175,30 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   // --- DOM ---
 
-  function registerElement(path: Path, element: HTMLElement, formInstanceId: string): boolean {
-    const { key } = canonicalizePath(path)
-    const record = elements.get(key)
-    // `markRaw` keeps HTMLElement out of Vue's auto-proxy machinery
-    // (DOM nodes have circular refs and external state that fight
-    // reactivity, and consumers comparing `===` against the original
-    // ref expect to get back what they registered). The Set itself
-    // is reactive so add/delete on an existing record fires
-    // FieldState's `element` / `elements` accessors.
-    const raw = markRaw(element)
-    if (record === undefined) {
-      elements.set(key, { path, elements: reactive(new Set([raw])) })
-    } else {
-      if (record.elements.has(raw)) return false
-      record.elements.add(raw)
-    }
-    elementToFormInstance.set(element, formInstanceId)
-    // A real control now owns this path's focus target, so drop any no-latch
-    // host anchor for it: a late self-heal supersede (a single control that
-    // rendered after mount) latches here after `markHostConnected` recorded
-    // the root. The two focus channels are mutually exclusive per path.
-    hostTargets.delete(key)
-    sortedRegistrationsCache = null
+  function noteDomConnected(path: Path): void {
     // Connect transition. Lift focused/blurred from `null`
     // (no-element-meaningless) to optimistic booleans only when they
     // are currently null; preserve existing booleans so a reconnect
     // doesn't blow away DOM-truth from an autofocus event that landed
-    // before this directive's registration.
+    // before the registration.
+    const { key } = canonicalizePath(path)
     const current = fields.get(key)
     touchFieldRecord(key, path, {
       connected: true,
       focused: current?.focused ?? false,
       blurred: current?.blurred ?? true,
     })
-    return true
   }
 
-  function deregisterElement(path: Path, element: HTMLElement): number {
+  function noteDomDisconnected(path: Path): void {
+    // Disconnect transition. `focused` / `blurred` are DOM-state
+    // properties — with no element to be focused or blurred, the
+    // concepts don't apply, so flip back to `null`. `touched` is
+    // interaction history and is preserved across disconnects
+    // (a v-if'd-away field that was previously blurred stays
+    // touched).
     const { key } = canonicalizePath(path)
-    const record = elements.get(key)
-    if (record === undefined) return 0
-    const removed = record.elements.delete(element)
-    if (removed) {
-      elementToFormInstance.delete(element)
-      sortedRegistrationsCache = null
-    }
-    const remaining = record.elements.size
-    if (remaining === 0) {
-      elements.delete(key)
-      // Disconnect transition. `focused` / `blurred` are DOM-state
-      // properties — with no element to be focused or blurred, the
-      // concepts don't apply, so flip back to `null`. `touched` is
-      // interaction history and is preserved across disconnects
-      // (a v-if'd-away field that was previously blurred stays
-      // touched).
-      touchFieldRecord(key, path, { connected: false, focused: null, blurred: null })
-      // The last binding for this path just unmounted: abort any
-      // in-flight async transform so its late resolve can't commit to a
-      // detached field. Gated on `remaining === 0`, so a sibling element
-      // still bound to the same path keeps its run alive.
-      if (transformRuns.size !== 0) cancelTransformsUnder(path)
-    }
-    return remaining
+    touchFieldRecord(key, path, { connected: false, focused: null, blurred: null })
   }
 
   function markConnectedOptimistically(path: Path): void {
@@ -3355,70 +3207,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // the only environment where we can't observe the DOM and need an
     // upfront hint that the field WILL be wired up after hydration.
     if (!ssr) return
+    // Idempotent: a second SSR mark for an already-connected path leaves
+    // the record untouched. The lift itself (via `noteDomConnected`)
+    // never clobbers an existing focused/blurred boolean, since a prior
+    // `markFocused` may have landed ahead of the optimistic mark
+    // (uncommon but possible during SSR when a custom directive flips
+    // focus state up-front). Server-rendered FieldState then matches the
+    // post-hydration optimistic state (`focused: false, blurred: true`)
+    // without a flash from `null` on the first reactive tick after
+    // hydration; real focus state lands as soon as the browser fires a
+    // focus event — the directive's listener catches it and flips the
+    // booleans.
     const { key } = canonicalizePath(path)
-    const current = fields.get(key)
-    if (current?.connected === true) return
-    // Lift focused/blurred from `null` to optimistic booleans alongside
-    // `connected: true`. Only when currently `null` — never clobber an
-    // existing boolean, since a prior `markFocused` may have landed
-    // ahead of the optimistic mark (uncommon but possible during SSR
-    // when a custom directive flips focus state up-front). Server-
-    // rendered FieldState then matches the post-hydration optimistic
-    // state (`focused: false, blurred: true`) without a flash from
-    // `null` on the first reactive tick after hydration; real focus
-    // state lands as soon as the browser fires a focus event
-    // (autofocus / programmatic / user) — the directive's listener
-    // catches it and flips the booleans.
-    touchFieldRecord(key, path, {
-      connected: true,
-      focused: current?.focused ?? false,
-      blurred: current?.blurred ?? true,
-    })
-  }
-
-  function markHostConnected(
-    path: Path,
-    connected: boolean,
-    hostEl: HTMLElement,
-    formInstanceId: string
-  ): void {
-    // Client-side connected marking for a `v-register` component host that
-    // binds value through the v-model channel but exposes no single inner
-    // control to latch (a composite widget, or none discovered). Distinct
-    // from the SSR-only `markConnectedOptimistically`: the directive calls
-    // this from its mount / unmount on the client, so it is the
-    // authoritative connect/disconnect for a no-latch host -- there's no
-    // element-Set entry to carry `connected` for it.
-    const { key } = canonicalizePath(path)
-    const current = fields.get(key)
-    if (connected) {
-      // Record the host root as this path's focus-first-error anchor even if
-      // `connected` is already true (a re-mark): the element may have changed.
-      // Skipped when a real control already owns the path (`registerElement`
-      // dropped any anchor and owns the focus target now).
-      if (!elements.has(key)) {
-        hostTargets.set(key, { path, hostRoot: hostEl, formInstanceId })
-        sortedRegistrationsCache = null
-      }
-      if (current?.connected === true) return
-      // Connect transition, mirroring `registerElement`: lift focused /
-      // blurred from null to optimistic booleans only when currently null.
-      touchFieldRecord(key, path, {
-        connected: true,
-        focused: current?.focused ?? false,
-        blurred: current?.blurred ?? true,
-      })
-    } else {
-      // Drop the focus anchor first, unconditionally: the host root is
-      // detaching regardless of whether the field record still reads
-      // connected (a latch supersede may have flipped it via the element Set).
-      if (hostTargets.delete(key)) sortedRegistrationsCache = null
-      if (current?.connected !== true) return
-      // Disconnect transition, mirroring `deregisterElement`'s empty-Set
-      // branch: focused / blurred are DOM-state and meaningless with nothing
-      // connected, so flip them back to null.
-      touchFieldRecord(key, path, { connected: false, focused: null, blurred: null })
-    }
+    if (fields.get(key)?.connected === true) return
+    noteDomConnected(path)
   }
 
   function markFocused(
@@ -4189,100 +3991,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return originals.get(key)?.value
   }
 
-  function getFirstErrorElement(
-    formInstanceId: string
-  ): { path: Path; element: HTMLElement } | null {
-    // Single-pass DOM-order walk over every registered element plus every
-    // no-latch host root. The sort cache is rebuilt lazily on the first read
-    // after a register/deregister or host connect/disconnect; subsequent
-    // calls amortise to O(n) until the next mutation.
-    sortedRegistrationsCache ??= rebuildSortedRegistrations()
-
-    for (const entry of sortedRegistrationsCache) {
-      // Scope to this form instance — when two `useForm()` calls share
-      // a key, both write into `elements` / `hostTargets`; this filter keeps
-      // each form's submit from focusing the other's field. The instance tag
-      // is denormalised onto the entry at rebuild time.
-      if (entry.formInstanceId !== formInstanceId) continue
-
-      // `el.isConnected` covers "component was unmounted, element
-      // removed from DOM" cases that lag the FieldRecord.connected
-      // flag. `el.offsetParent === null` catches `display:none` and
-      // its ancestor chain — the browser won't focus or scroll to a
-      // hidden element anyway, so we keep walking. For a host entry the
-      // element is the host root; a hidden host is skipped the same way.
-      if (!entry.element.isConnected) continue
-      if (entry.element.offsetParent === null) continue
-
-      // Route through the canonical merged read so focus / scroll target
-      // exactly the paths that surface an error in `form.errors` /
-      // `field.errors`. The blank-required class lives only in
-      // `derivedBlankErrors` (never `schemaErrors`), so consulting the
-      // schema / user stores alone silently skipped the first empty
-      // required field — the very class this policy exists to jump to
-      // (#468). `getErrorsForPath` folds in all three channels, keeping the
-      // focus target and the visible error set from ever drifting apart.
-      if (getErrorsForPath(entry.path).length === 0) continue
-
-      // A registered control is its own focus target. A no-latch host owns
-      // no single control, so resolve its root to the first focusable
-      // descendant (the tab stop a user entering the widget would land on);
-      // the resolver falls back to the root itself, keeping scroll-to-error
-      // a target even when nothing inside can take focus.
-      const element = entry.host ? resolveHostFocusTarget(entry.element) : entry.element
-      return { path: entry.path, element }
-    }
-    return null
-  }
-
-  function rebuildSortedRegistrations(): Array<{
-    path: Path
-    element: HTMLElement
-    host: boolean
-    formInstanceId: string
-  }> {
-    const flat: Array<{ path: Path; element: HTMLElement; host: boolean; formInstanceId: string }> =
-      []
-    for (const [, record] of elements) {
-      for (const el of record.elements) {
-        flat.push({
-          path: record.path,
-          element: el,
-          host: false,
-          formInstanceId: elementToFormInstance.get(el) ?? '',
-        })
-      }
-    }
-    // No-latch host roots. `registerElement` drops the anchor when a control
-    // latches, so a path is never in both maps; guard anyway so a rebuild
-    // between a latch and the anchor delete never double-lists a path.
-    for (const [key, target] of hostTargets) {
-      if (elements.has(key)) continue
-      flat.push({
-        path: target.path,
-        element: target.hostRoot,
-        host: true,
-        formInstanceId: target.formInstanceId,
-      })
-    }
-    // `compareDocumentPosition` returns a bitmask. The
-    // `DOCUMENT_POSITION_FOLLOWING` bit (0x04) is set when the argument
-    // node FOLLOWS the receiver in document order, which means the
-    // receiver comes first → return -1 to keep `a` before `b`. A host root
-    // and a control are distinct elements across fields (a no-latch host has
-    // no registered descendant), so the comparison is always a clean
-    // before/after, never a containment tie.
-    flat.sort((a, b) =>
-      a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
-    )
-    return flat
-  }
-
   return {
     formKey,
     form,
     fields,
-    elements,
     schemaErrors,
     userErrors,
     derivedBlankErrors,
@@ -4338,14 +4050,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     getErrorsForPath,
     ensurePathOrdinal,
 
-    registerElement,
-    deregisterElement,
+    domBinding,
+    noteDomConnected,
+    noteDomDisconnected,
     markFocused,
     markInteracted,
     touchAtPath,
     interactAtPath,
     markConnectedOptimistically,
-    markHostConnected,
 
     isPristineAtPath,
     isPristineAtPathByKey,
@@ -4353,7 +4065,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     hasRemovedSubtreeUnder,
     getFieldRecord,
     getOriginalAtPath,
-    getFirstErrorElement,
     cancelFieldValidation,
     beginTransform,
     isCurrentTransform,

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { resolveConfig, type Plugin, type ResolvedConfig } from 'vite'
+import { resolveConfig, type Plugin, type PluginOption, type ResolvedConfig } from 'vite'
 import { attaform } from '../../src/vite'
 
 /**
@@ -65,7 +65,7 @@ afterAll(() => {
   // teardown obviously safe.
 })
 
-async function resolveWithRoot(plugins: Plugin[], root: string): Promise<ResolvedConfig> {
+async function resolveWithRoot(plugins: PluginOption[], root: string): Promise<ResolvedConfig> {
   return resolveConfig({ plugins, configFile: false, root }, 'serve')
 }
 

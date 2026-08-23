@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { resolveConfig, type Plugin, type ResolvedConfig } from 'vite'
+import { resolveConfig, type PluginOption, type ResolvedConfig } from 'vite'
 import { attaform } from '../../src/vite'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
 import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
@@ -62,7 +62,7 @@ beforeAll(() => {
   zodV4Root = makeFixtureWithZod('wiring-zod-v4', '4.3.0')
 })
 
-async function resolveWithRoot(plugins: Plugin[], root: string): Promise<ResolvedConfig> {
+async function resolveWithRoot(plugins: PluginOption[], root: string): Promise<ResolvedConfig> {
   return resolveConfig({ plugins, configFile: false, root }, 'serve')
 }
 

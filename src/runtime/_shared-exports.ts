@@ -116,8 +116,9 @@ export { hydrateAttaformState, renderAttaformState } from './core/serialize'
 export type { SerializedAttaformState } from './core/serialize'
 export { escapeForInlineScript } from './core/serialize-script'
 
-// The v-register directive (registered automatically by createAttaform,
-// but exported for advanced consumers who install directives themselves).
+// The v-register directive (delivered by the Vite / Nuxt plugin's
+// compile-time binding or by installVRegister from attaform/directive;
+// exported here for advanced consumers who install directives themselves).
 export { vRegister, assignKey } from './core/directive'
 export { isRegisterValue } from './core/register-protocol'
 export { defaultCoercionRules, defineCoercion } from './core/schema-coerce'

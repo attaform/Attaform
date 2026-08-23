@@ -34,6 +34,7 @@ const RUNTIME_ENTRIES = [
   'src/zod-v3',
   'src/zod-v4',
   'src/abstract',
+  'src/directive',
   // Nuxt-only plugin file registered by literal path from src/nuxt.ts
   // (`addPlugin({ src: resolver.resolve(...) })`), so it must exist on
   // disk in BOTH flavors: the module picks `./dev/runtime/plugins/...`

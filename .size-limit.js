@@ -330,8 +330,15 @@ export default [
     // Tightened 64 → 58 KB on the size-teardown P1a dual-dist branch: the
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
-    // tripwire previously carried. Measured at 56.42 KB.
-    limit: '58 KB',
+    // tripwire previously carried. Measured at 56.42 KB.    //
+    // Tightened 58 -> 57.5 KB on the size-teardown P2 directive un-weld:
+    // the app-level `app.directive('register', ...)` weld left
+    // createAttaform, the store's DOM slice moved behind the lazily-armed
+    // dom-binding module, and array-bookkeeping dropped its unused
+    // elements dep. Whole-entry bundles keep the directive (the barrel
+    // still exports it); the big win shows in the treeshaken tripwires
+    // below. Measured at 56.49 KB.
+    limit: '57.5 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -534,8 +541,15 @@ export default [
     // Tightened 64 → 58 KB on the size-teardown P1a dual-dist branch: the
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
-    // tripwire previously carried. Measured at 56.42 KB.
-    limit: '58 KB',
+    // tripwire previously carried. Measured at 56.42 KB.    //
+    // Tightened 58 -> 57.5 KB on the size-teardown P2 directive un-weld:
+    // the app-level `app.directive('register', ...)` weld left
+    // createAttaform, the store's DOM slice moved behind the lazily-armed
+    // dom-binding module, and array-bookkeeping dropped its unused
+    // elements dep. Whole-entry bundles keep the directive (the barrel
+    // still exports it); the big win shows in the treeshaken tripwires
+    // below. Measured at 56.49 KB.
+    limit: '57.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -683,8 +697,15 @@ export default [
     // Tightened 57 → 52 KB on the size-teardown P1a dual-dist branch: the
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
-    // tripwire previously carried. Measured at 50.33 KB.
-    limit: '52 KB',
+    // tripwire previously carried. Measured at 50.33 KB.    //
+    // Tightened 52 -> 51.5 KB on the size-teardown P2 directive un-weld:
+    // the app-level `app.directive('register', ...)` weld left
+    // createAttaform, the store's DOM slice moved behind the lazily-armed
+    // dom-binding module, and array-bookkeeping dropped its unused
+    // elements dep. Whole-entry bundles keep the directive (the barrel
+    // still exports it); the big win shows in the treeshaken tripwires
+    // below. Measured at 50.42 KB.
+    limit: '51.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -911,8 +932,15 @@ export default [
     // Tightened 59 → 53 KB on the size-teardown P1a dual-dist branch: the
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
-    // tripwire previously carried. Measured at 51.59 KB.
-    limit: '53 KB',
+    // tripwire previously carried. Measured at 51.59 KB.    //
+    // Tightened 53 -> 52.5 KB on the size-teardown P2 directive un-weld:
+    // the app-level `app.directive('register', ...)` weld left
+    // createAttaform, the store's DOM slice moved behind the lazily-armed
+    // dom-binding module, and array-bookkeeping dropped its unused
+    // elements dep. Whole-entry bundles keep the directive (the barrel
+    // still exports it); the big win shows in the treeshaken tripwires
+    // below. Measured at 51.66 KB.
+    limit: '52.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -939,8 +967,30 @@ export default [
     // Tightened 48 → 42 KB on the size-teardown P1a dual-dist branch: the
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
-    // tripwire previously carried. Measured at 40.68 KB.
-    limit: '42 KB',
+    // tripwire previously carried. Measured at 40.68 KB.    //
+    // Tightened 42 -> 41.5 KB on the size-teardown P2 directive un-weld:
+    // the app-level `app.directive('register', ...)` weld left
+    // createAttaform, the store's DOM slice moved behind the lazily-armed
+    // dom-binding module, and array-bookkeeping dropped its unused
+    // elements dep. Whole-entry bundles keep the directive (the barrel
+    // still exports it); the big win shows in the treeshaken tripwires
+    // below. Measured at 40.78 KB.
+    limit: '41.5 KB',
+    gzip: true,
+    modifyEsbuildConfig: asEsm,
+  },
+  {
+    path: 'dist/directive.mjs',
+    // The v-register delivery entry (size-teardown P2 un-weld): the
+    // directive + its satellites (aria / file / listeners / lifecycle /
+    // value-sync), register-protocol, assigner-pipeline, vue-shared-shim,
+    // dom-binding, and installVRegister. This is the weight only apps
+    // that render v-register pay — delivered by the Vite/Nuxt rewrite's
+    // injected import, or by the installVRegister one-liner. The cap
+    // guards against core modules leaking INTO the cluster's graph (a
+    // jump here without a matching directive-side feature means the
+    // entry started dragging kernel weight along). Measured at 7.17 KB.
+    limit: '8 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1099,7 +1149,15 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 50.21 KB.
-    limit: '52 KB',
+    //
+    // Tightened 52 -> 45 KB on the size-teardown P2 directive un-weld:
+    // createAttaform / lazy install register no directive, so this
+    // treeshaken graph drops the whole directive cluster (directive +
+    // satellites, register-protocol, assigner-pipeline, vue-shared-shim)
+    // and the store's DOM slice (now the lazily-armed dom-binding).
+    // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
+    // Measured at 43.82 KB.
+    limit: '45 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1128,7 +1186,15 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 44.11 KB.
-    limit: '46 KB',
+    //
+    // Tightened 46 -> 39 KB on the size-teardown P2 directive un-weld:
+    // createAttaform / lazy install register no directive, so this
+    // treeshaken graph drops the whole directive cluster (directive +
+    // satellites, register-protocol, assigner-pipeline, vue-shared-shim)
+    // and the store's DOM slice (now the lazily-armed dom-binding).
+    // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
+    // Measured at 37.71 KB.
+    limit: '39 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1178,7 +1244,15 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 45.47 KB.
-    limit: '47 KB',
+    //
+    // Tightened 47 -> 40.5 KB on the size-teardown P2 directive un-weld:
+    // createAttaform / lazy install register no directive, so this
+    // treeshaken graph drops the whole directive cluster (directive +
+    // satellites, register-protocol, assigner-pipeline, vue-shared-shim)
+    // and the store's DOM slice (now the lazily-armed dom-binding).
+    // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
+    // Measured at 39.05 KB.
+    limit: '40.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1204,7 +1278,15 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 20.91 KB.
-    limit: '23 KB',
+    //
+    // Tightened 23 -> 16.5 KB on the size-teardown P2 directive un-weld:
+    // createAttaform / lazy install register no directive, so this
+    // treeshaken graph drops the whole directive cluster (directive +
+    // satellites, register-protocol, assigner-pipeline, vue-shared-shim)
+    // and the store's DOM slice (now the lazily-armed dom-binding).
+    // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
+    // Measured at 15.14 KB.
+    limit: '16.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1227,6 +1309,12 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 7.85 KB.
+    //
+    // Held at 9.5 KB through the size-teardown P2 directive un-weld:
+    // useRegister's graph swapped the app-level weld it reached through
+    // ensureAttaformInstalled for the dom-binding module it now arms
+    // directly (element registry + focus listeners + focus walk).
+    // Measured at 9.09 KB.
     limit: '9.5 KB',
     gzip: true,
     ignore: ['zod'],
@@ -1245,7 +1333,15 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 50.21 KB.
-    limit: '52 KB',
+    //
+    // Tightened 52 -> 45 KB on the size-teardown P2 directive un-weld:
+    // createAttaform / lazy install register no directive, so this
+    // treeshaken graph drops the whole directive cluster (directive +
+    // satellites, register-protocol, assigner-pipeline, vue-shared-shim)
+    // and the store's DOM slice (now the lazily-armed dom-binding).
+    // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
+    // Measured at 43.82 KB.
+    limit: '45 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1265,7 +1361,13 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 6.66 KB.
-    limit: '8 KB',
+    //
+    // Tightened 8 -> 1.5 KB on the size-teardown P2 directive un-weld:
+    // createAttaform WAS the weld. With `app.directive('register', ...)`
+    // gone from the install path, this import is now just the plugin +
+    // registry it always claimed to be — the leanest core import for
+    // real this time. Measured at 0.79 KB.
+    limit: '1.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1284,7 +1386,15 @@ export default [
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
     // tripwire previously carried. Measured at 34.69 KB.
-    limit: '36 KB',
+    //
+    // Tightened 36 -> 29.5 KB on the size-teardown P2 directive un-weld:
+    // createAttaform / lazy install register no directive, so this
+    // treeshaken graph drops the whole directive cluster (directive +
+    // satellites, register-protocol, assigner-pipeline, vue-shared-shim)
+    // and the store's DOM slice (now the lazily-armed dom-binding).
+    // Delivery is the Vite/Nuxt compile-time rewrite or installVRegister.
+    // Measured at 28.36 KB.
+    limit: '29.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

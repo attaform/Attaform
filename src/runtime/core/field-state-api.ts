@@ -219,7 +219,11 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     !hasAtPath(state.form.value, segments) &&
     isUnderStubAncestor(state, segments)
   const valid = !gated && errors.length === 0 && !validating && !isOrphan
-  const elementRecord = state.elements.get(key)
+  // Reads through the DOM-binding slot: `null` (never armed) means no
+  // element was ever registered anywhere in this app, so the empty
+  // fallback below is the truth, not a degradation. The shallowRef read
+  // re-tracks when the binding arms.
+  const elementRecord = state.domBinding.value?.elements.get(key)
   const elementsArr: readonly HTMLElement[] = elementRecord
     ? Object.freeze([...elementRecord.elements])
     : EMPTY_ELEMENTS

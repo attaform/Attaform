@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
+import { armDomBinding } from '../../src/runtime/core/dom-binding'
 import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
@@ -824,7 +825,10 @@ describe('useWizard — focusFirstError lands focus through v-if step swap', () 
             return h('form', [
               h('input', {
                 ref: (el: unknown) => {
-                  if (el instanceof HTMLInputElement) reg.registerElement(el)
+                  if (el instanceof HTMLInputElement) {
+                    armDomBinding(reg)
+                    reg.registerElement(el)
+                  }
                 },
                 'data-field': 'account-email',
               }),
@@ -835,7 +839,10 @@ describe('useWizard — focusFirstError lands focus through v-if step swap', () 
             return h('form', [
               h('input', {
                 ref: (el: unknown) => {
-                  if (el instanceof HTMLInputElement) reg.registerElement(el)
+                  if (el instanceof HTMLInputElement) {
+                    armDomBinding(reg)
+                    reg.registerElement(el)
+                  }
                 },
                 'data-field': 'profile-name',
               }),

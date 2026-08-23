@@ -16,7 +16,7 @@ import {
 } from './paths'
 import { diffAndApply } from './diff-apply'
 import { getAtPath } from './path-walker'
-import type { ElementRecord, FieldRecord, OriginalsRecord } from './store-records'
+import type { FieldRecord, OriginalsRecord } from './store-records'
 
 /**
  * Per-(field-path) async validation entry. Tracks the in-flight or
@@ -62,7 +62,6 @@ export type FieldValidationEntry = {
 export type ArrayBookkeepingDeps = {
   readonly form: Ref<unknown>
   readonly fields: Map<PathKey, FieldRecord>
-  readonly elements: Map<PathKey, ElementRecord>
   readonly userErrors: Map<PathKey, ValidationError[]>
   readonly originals: Map<PathKey, OriginalsRecord>
   readonly blankPaths: Set<PathKey>

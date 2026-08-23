@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
+import { rewriteDirectiveDelivery } from './src/runtime/lib/core/transforms/directive-delivery-transform'
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
@@ -31,7 +32,25 @@ export default defineConfig({
   // Vue SFC support for `*.test.ts` files that import `.vue` components
   // (e.g., the overlay-panel devtools tests). The plugin is otherwise
   // dormant — tests that don't touch `.vue` files pay no cost.
-  plugins: [vue()],
+  //
+  // The second plugin is the production v-register delivery: the same
+  // post-compile rewrite `attaform/vite` ships, binding each compiled
+  // SFC's `v-register` to the directive by static import (createAttaform
+  // registers no app-level directive). Registering it here means every
+  // SFC-based suite — the docs-demos smoke in particular — mounts
+  // through the real delivery mechanism. The injected
+  // `attaform/directive` specifier resolves through the alias map below.
+  plugins: [
+    vue(),
+    {
+      name: 'attaform:directive-delivery',
+      enforce: 'post',
+      transform(code, id) {
+        const rewritten = rewriteDirectiveDelivery(code, id)
+        return rewritten === null ? null : { code: rewritten, map: null }
+      },
+    },
+  ],
   resolve: {
     // Source-alias `attaform/*` to `src/*.ts` for tests. Without this,
     // any SFC or module reached by tests that bare-imports `attaform`
@@ -55,6 +74,7 @@ export default defineConfig({
       { find: /^attaform\/zod-v4$/, replacement: `${rootDir}src/zod-v4.ts` },
       { find: /^attaform\/zod$/, replacement: `${rootDir}src/zod.ts` },
       { find: /^attaform\/abstract$/, replacement: `${rootDir}src/abstract.ts` },
+      { find: /^attaform\/directive$/, replacement: `${rootDir}src/directive.ts` },
       { find: /^attaform\/vite$/, replacement: `${rootDir}src/vite.ts` },
       { find: /^attaform\/transforms$/, replacement: `${rootDir}src/transforms.ts` },
       { find: /^attaform$/, replacement: `${rootDir}src/index.ts` },

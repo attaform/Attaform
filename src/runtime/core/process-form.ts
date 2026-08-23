@@ -777,7 +777,7 @@ export function applyInvalidSubmitPolicy<F extends GenericForm>(
   policy: OnInvalidSubmitPolicy
 ): void {
   if (policy === 'none') return
-  const target = state.getFirstErrorElement(formInstanceId)
+  const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
   if (target === null) return
   if (policy === 'scroll-to-first-error') {
     target.element.scrollIntoView()

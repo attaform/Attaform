@@ -2,6 +2,7 @@ import { computed, nextTick, ref, shallowReadonly, warn, type Ref } from 'vue'
 import type {
   CoercionRegistry,
   DisplayState,
+  DomBindingFactory,
   InternalRegisterValue,
   RegisterOptions,
   RegisterTransform,
@@ -12,7 +13,6 @@ import type {
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { computeFieldIdentity } from './field-ids'
-import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
 import { __DEV__ } from './dev'
@@ -63,69 +63,17 @@ const EMPTY_TRANSFORMS: ReadonlyArray<RegisterTransform> = Object.freeze([])
  *
  * Design points:
  *
- * - Focus/blur listeners are attached per-element-registration and stored
- *   on the element itself via a symbol, then removed on deregistration.
- *   No registration-time helper cache.
+ * - Element registration and focus/blur listeners live in the DOM
+ *   binding (`dom-binding.ts`, part of the directive cluster's lazy
+ *   graph). The RegisterValue's element members delegate through the
+ *   store's `domBinding` slot, which the directive / `useRegister` arm
+ *   via `ensureDomBinding` before any element call.
  * - `innerRef` reads `form.value` directly via `getValueAtPath`; there's
  *   no separate raw-vs-form tracking. The synchronous diff-apply writer
  *   keeps the two values in lock-step.
  * - Cross-form isolation is by construction: every call to `buildRegister`
  *   closes over a FormStore<F> unique to one form.
  */
-
-// `Symbol.for(...)` so duplicate copies of attaform agree on the
-// element-property key for stashed focus/blur handlers — see
-// `assignKey` in core/directive.ts for the same reasoning.
-const attaformListenersSymbol: unique symbol = Symbol.for('attaform:focus-listeners')
-
-type ElementWithListeners = HTMLElement & {
-  [attaformListenersSymbol]?: {
-    handleFocus: (event: FocusEvent) => void
-    handleBlur: (event: FocusEvent) => void
-  }
-}
-
-function attachFocusListeners<F extends GenericForm>(
-  state: FormStore<F, GenericForm>,
-  segments: Path,
-  element: HTMLElement,
-  instanceMeta: WriteMeta['instance'] | undefined
-): void {
-  const target = element as ElementWithListeners
-  if (target[attaformListenersSymbol] !== undefined) return
-  const focusMeta = instanceMeta !== undefined ? { instance: instanceMeta } : undefined
-  const handleFocus = (): void => state.markFocused(segments, true, focusMeta)
-  const handleBlur = (): void => state.markFocused(segments, false, focusMeta)
-  element.addEventListener('focus', handleFocus)
-  element.addEventListener('blur', handleBlur)
-  target[attaformListenersSymbol] = { handleFocus, handleBlur }
-  // Catch-up probe: the browser applies `autofocus` and dispatches the
-  // resulting `focus` event during HTML parse, BEFORE Vue's directive
-  // lifecycle runs and we attach the listeners above. Programmatic
-  // `.focus()` from a parent component's `onMounted` has the same race.
-  // In both cases, by the time we wire up, the focus event has come and
-  // gone and our handler never runs. Probe `document.activeElement`
-  // (ShadowRoot-aware, mirroring the lookup at directive.ts:881) once
-  // immediately after attaching, so the freshly-rendered field's
-  // FieldState reflects DOM truth instead of the optimistic
-  // `focused: false` seeded at registration.
-  const rootNode = element.getRootNode()
-  const activeElement =
-    rootNode instanceof Document || rootNode instanceof ShadowRoot ? rootNode.activeElement : null
-  if (activeElement === element) {
-    state.markFocused(segments, true, focusMeta)
-  }
-}
-
-function detachFocusListeners(element: HTMLElement): void {
-  const target = element as ElementWithListeners
-  const listeners = target[attaformListenersSymbol]
-  if (listeners === undefined) return
-  element.removeEventListener('focus', listeners.handleFocus)
-  element.removeEventListener('blur', listeners.handleBlur)
-  delete target[attaformListenersSymbol]
-}
-
 export function buildRegister<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   formInstanceId: string,
@@ -345,20 +293,39 @@ export function buildRegister<F extends GenericForm>(
         state.markInteracted(segments)
       },
 
+      ensureDomBinding: (factory: DomBindingFactory): void => {
+        // Arm-once per store. The factory arrives from the directive
+        // cluster / `useRegister` (the modules that own the DOM
+        // machinery), so this eager module never imports it — the whole
+        // point of the slot. Passing the factory per call also keeps
+        // duplicate-package-copy apps coherent: whichever copy's cluster
+        // runs arms the store its RegisterValue is actually bound to.
+        state.domBinding.value ??= factory(state)
+      },
+
       registerElement: (element: HTMLElement): void => {
-        // Form-element semantics (state-side registration + focus
-        // listeners) are gated behind the interactive tag set —
-        // prevents accidental registration of component wrapper divs
-        // when fallthrough attributes carry the directive past the
-        // intended `<input>` / `<select>` / `<textarea>`.
-        if (!INTERACTIVE_TAG_NAMES.has(element.tagName)) return
-        const added = state.registerElement(segments, element, formInstanceId)
-        if (added) attachFocusListeners(state, segments, element, instanceMeta)
+        const dom = state.domBinding.value
+        if (dom === null) {
+          // Reachable only from a custom integration calling
+          // `rv.registerElement` directly with neither the directive
+          // cluster nor `useRegister` loaded anywhere in the app — the
+          // machinery that registration feeds (field.element, focus
+          // walk, blur listeners) is absent in that world too.
+          if (__DEV__) {
+            warn(
+              `[attaform] registerElement('${pathKey}'): no DOM binding is armed for this form. ` +
+                `Element registration is delivered by the v-register directive or useRegister(); ` +
+                `for a fully manual integration, mount the element through useRegister's ` +
+                `registerElement instead.`
+            )
+          }
+          return
+        }
+        dom.attach(segments, element, formInstanceId, instanceMeta)
       },
 
       deregisterElement: (element: HTMLElement): void => {
-        detachFocusListeners(element)
-        state.deregisterElement(segments, element)
+        state.domBinding.value?.detach(segments, element)
       },
 
       setValueWithInternalPath: (value: unknown, meta?: WriteMeta): boolean => {
@@ -413,7 +380,7 @@ export function buildRegister<F extends GenericForm>(
         if (__DEV__) {
           const dedupeKey = `${formInstanceId}:${pathKey}`
           const isWired = (): boolean =>
-            (state.elements.get(pathKey)?.elements.size ?? 0) > 0 ||
+            (state.domBinding.value?.elements.get(pathKey)?.elements.size ?? 0) > 0 ||
             state.getFieldRecord(segments)?.connected === true
           if (!warnedMultiRootHosts.has(dedupeKey) && !isWired()) {
             warnedMultiRootHosts.add(dedupeKey)
@@ -446,7 +413,11 @@ export function buildRegister<F extends GenericForm>(
       },
 
       markHostConnected: (connected: boolean, hostEl: HTMLElement): void => {
-        state.markHostConnected(segments, connected, hostEl, formInstanceId)
+        // Directive-only caller (component-host mount/unmount), so the
+        // binding is always armed by the time this runs — the `?.` is
+        // for a hand-dispatched call in a binding-less world, where the
+        // anchor it would record has no reader either.
+        state.domBinding.value?.markHostConnected(segments, connected, hostEl, formInstanceId)
       },
 
       markFocused: (focused: boolean): void => {
@@ -469,7 +440,7 @@ export function buildRegister<F extends GenericForm>(
         // equal to) the host? True for a `useRegister` wrapper whose inner
         // control self-registered before the host mounted (children mount
         // first); false for a third-party component that registered nothing.
-        const record = state.elements.get(pathKey)
+        const record = state.domBinding.value?.elements.get(pathKey)
         if (record === undefined) return false
         for (const element of record.elements) {
           if (hostElement.contains(element)) return true

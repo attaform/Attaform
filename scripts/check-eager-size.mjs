@@ -318,7 +318,19 @@ export async function measureEager(define = PROD_DEFINE) {
 // (down 2,736 from the 46,477 baseline). Budget tightened 46_500 → 44_250 to
 // lock the win, keeping ~0.5 kB headroom for minifier-version drift; never
 // loosen it without a recorded reason in the commit.
-const BUDGET_GZ = 44_250
+//
+// RATCHET (size-teardown P2, directive un-weld): createAttaform /
+// ensureAttaformInstalled no longer register the v-register directive, so
+// the whole directive cluster (directive + aria/file/listeners/lifecycle/
+// value-sync satellites, register-protocol, assigner-pipeline,
+// vue-shared-shim) leaves this scenario's eager graph — delivery is the
+// Vite/Nuxt compile-time rewrite or installVRegister, and the store's DOM
+// slice (element registry, focus listeners, first-error focus walk,
+// interactive-tags) moved behind the lazily-armed dom-binding module.
+// Measured at 37,210 B gz (down 6,531 from 43,741: 5,702 un-weld + 829 DOM
+// slice). Budget tightened 44_250 → 37_700; dev-dce S4 guards the module
+// set structurally so a re-weld fails even inside the byte headroom.
+const BUDGET_GZ = 37_700
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

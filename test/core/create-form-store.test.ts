@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
+import { createDomBinding } from '../../src/runtime/core/dom-binding'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 import type { ValidationError } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 
@@ -311,32 +313,49 @@ describe('createFormStore', () => {
     })
   })
 
-  describe('DOM elements', () => {
-    it('registerElement marks the field as connected', () => {
+  describe('DOM elements (via the armed dom binding)', () => {
+    const armedDom = (state: ReturnType<typeof makeState>) => {
+      state.domBinding.value ??= createDomBinding(state)
+      return state.domBinding.value
+    }
+    const elementCount = (state: ReturnType<typeof makeState>, path: string): number =>
+      state.domBinding.value?.elements.get(canonicalizePath(path).key)?.elements.size ?? 0
+
+    it('attach marks the field as connected', () => {
       const state = makeState()
       const el: HTMLElement = document.createElement('input')
-      const registered = state.registerElement(['email'], el, 'test:inst')
-      expect(registered).toBe(true)
+      armedDom(state).attach(['email'], el, 'test:inst', undefined)
       expect(state.getFieldRecord(['email'])?.connected).toBe(true)
+      expect(elementCount(state, 'email')).toBe(1)
     })
 
-    it('registering the same element twice is a no-op', () => {
+    it('attaching the same element twice is a no-op', () => {
       const state = makeState()
       const el: HTMLElement = document.createElement('input')
-      expect(state.registerElement(['email'], el, 'test:inst')).toBe(true)
-      expect(state.registerElement(['email'], el, 'test:inst')).toBe(false)
+      armedDom(state).attach(['email'], el, 'test:inst', undefined)
+      armedDom(state).attach(['email'], el, 'test:inst', undefined)
+      expect(elementCount(state, 'email')).toBe(1)
     })
 
-    it('deregister returns remaining count; marks disconnected when empty', () => {
+    it('detach drops elements one by one; marks disconnected when empty', () => {
       const state = makeState()
       const el1: HTMLElement = document.createElement('input')
       const el2: HTMLElement = document.createElement('input')
-      state.registerElement(['email'], el1, 'test:inst')
-      state.registerElement(['email'], el2, 'test:inst')
-      expect(state.deregisterElement(['email'], el1)).toBe(1)
+      const dom = armedDom(state)
+      dom.attach(['email'], el1, 'test:inst', undefined)
+      dom.attach(['email'], el2, 'test:inst', undefined)
+      dom.detach(['email'], el1)
+      expect(elementCount(state, 'email')).toBe(1)
       expect(state.getFieldRecord(['email'])?.connected).toBe(true)
-      expect(state.deregisterElement(['email'], el2)).toBe(0)
+      dom.detach(['email'], el2)
+      expect(elementCount(state, 'email')).toBe(0)
       expect(state.getFieldRecord(['email'])?.connected).toBe(false)
+    })
+
+    it('the unarmed slot reads as an empty registry', () => {
+      const state = makeState()
+      expect(state.domBinding.value).toBeNull()
+      expect(state.domBinding.value?.getFirstErrorElement('test:inst') ?? null).toBeNull()
     })
   })
 

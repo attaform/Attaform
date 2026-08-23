@@ -5,6 +5,7 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { vRegister } from '../../src/runtime/core/directive'
 import { computeFieldIdentity } from '../../src/runtime/core/field-ids'
 import { canonicalizePath } from '../../src/runtime/core/paths'
+import { armDomBinding } from '../../src/runtime/core/dom-binding'
 import { buildRegister, type InstanceRegisterConfig } from '../../src/runtime/core/register-api'
 import type { DisplayState } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
@@ -17,7 +18,17 @@ function makeRegister(opts?: { ssr?: boolean; formKey?: string; instanceId?: str
     schema: fakeSchema<F>({ email: '', note: '' }),
     ...(opts?.ssr === true ? { ssr: true } : {}),
   })
-  return { state, register: buildRegister(state, opts?.instanceId ?? 'test:inst') }
+  const register = buildRegister(state, opts?.instanceId ?? 'test:inst')
+  // Arm each RV's DOM binding at creation: this suite drives
+  // rv.registerElement directly, without the directive hooks that arm
+  // it in production (Vue runs the directive's created hook before any
+  // element call).
+  const armedRegister: typeof register = (path, options) => {
+    const rv = register(path, options)
+    armDomBinding(rv)
+    return rv
+  }
+  return { state, register: armedRegister }
 }
 
 describe('buildRegister', () => {
@@ -252,6 +263,8 @@ describe('buildRegister', () => {
 
       const rvA = registerA(['email'])
       const rvB = registerB(['email'])
+      armDomBinding(rvA)
+      armDomBinding(rvB)
 
       const input = document.createElement('input')
       document.body.appendChild(input)

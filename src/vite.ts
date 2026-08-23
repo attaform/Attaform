@@ -1,6 +1,8 @@
 /**
  * `attaform/vite` — Vite plugin that wires the compile-time node
- * transforms with @vitejs/plugin-vue AND rewrites `attaform` and
+ * transforms with @vitejs/plugin-vue, binds `v-register` into each
+ * compiled template that uses it (so no app-level directive
+ * registration exists or is needed), AND rewrites `attaform` and
  * `attaform/zod` imports to either `attaform/zod-v3` or `attaform/zod-v4`
  * at build time, based on the consumer's installed Zod major. The result
  * is one Zod adapter shipped per bundle, with no manual subpath choice.
@@ -36,6 +38,7 @@
 import type { Plugin } from 'vite'
 import { isRewritableZodSpecifier, resolveZodAliasTarget } from './core/detect-zod-major'
 import { componentBridgeTransform } from './runtime/lib/core/transforms/component-bridge-transform'
+import { rewriteDirectiveDelivery } from './runtime/lib/core/transforms/directive-delivery-transform'
 import { inputTextAreaNodeTransform } from './runtime/lib/core/transforms/input-text-area-transform'
 import { redundantBindingWarnTransform } from './runtime/lib/core/transforms/redundant-binding-warn-transform'
 import { vRegisterHintTransform } from './runtime/lib/core/transforms/v-register-hint-transform'
@@ -74,9 +77,11 @@ interface VitePluginVueApi {
 
 /**
  * Vite plugin that wires the form library's compile-time template
- * transforms into `@vitejs/plugin-vue` and rewrites the bare `attaform`
- * barrel and the unified `attaform/zod` import to the matching adapter
- * subpath. Required for SSR and for hydration accuracy under bare Vue 3.
+ * transforms into `@vitejs/plugin-vue`, binds the `v-register`
+ * directive into each compiled template that uses it, and rewrites the
+ * bare `attaform` barrel and the unified `attaform/zod` import to the
+ * matching adapter subpath. Required for SSR and for hydration
+ * accuracy under bare Vue 3.
  *
  * ```ts
  * // vite.config.ts
@@ -90,8 +95,16 @@ interface VitePluginVueApi {
  *
  * Place the call after `vue()` in the plugins array. Nuxt projects
  * don't need this — `attaform/nuxt` handles it.
+ *
+ * Returns a two-plugin array (Vite flattens nested plugin arrays): the
+ * main pre-plugin above, plus a post-plugin that rewrites each compiled
+ * SFC's `resolveDirective("register")` to a static import from
+ * `attaform/directive`. The rewrite is why no app-level directive
+ * registration exists or is needed here — see
+ * `runtime/lib/core/transforms/directive-delivery-transform.ts` for the
+ * mechanism and its scope.
  */
-export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
+export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
   const resolveZodAlias = options.resolveZodAlias !== false
   // Resolution is computed once per plugin instance from the resolved
   // Vite root in `configResolved`, then cached for every `resolveId`
@@ -99,7 +112,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
   let aliasTarget: string | null = null
   const warnState = { warned: false }
 
-  return {
+  const main: Plugin = {
     name: 'attaform',
     enforce: 'pre',
     configResolved(resolved) {
@@ -322,6 +335,25 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin {
       return transformSsrAccessed(code, id)
     },
   }
+
+  // Second plugin, post-ordered so it sees @vitejs/plugin-vue's COMPILED
+  // module output (the main plugin's `enforce: 'pre'` transform sees raw
+  // SFC source, where no `resolveDirective` call exists yet). Applies to
+  // both the client and SSR module graphs, which is what keeps the two
+  // render paths on one directive object.
+  const delivery: Plugin = {
+    name: 'attaform:directive-delivery',
+    enforce: 'post',
+    transform(code, id) {
+      const rewritten = rewriteDirectiveDelivery(code, id)
+      // `map: null` is Rollup's documented "no code moved" contract: the
+      // rewrite pads in place and appends at end-of-file, so original
+      // positions all survive and upstream sourcemaps stay valid.
+      return rewritten === null ? null : { code: rewritten, map: null }
+    },
+  }
+
+  return [main, delivery]
 }
 
 /**

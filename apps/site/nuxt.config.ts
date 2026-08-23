@@ -344,6 +344,7 @@ export default defineNuxtConfig({
   alias: {
     attaform: resolve(monorepoRoot, 'src/index.ts'),
     'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
+    'attaform/directive': resolve(monorepoRoot, 'src/directive.ts'),
     'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
     'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
     'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),
@@ -743,6 +744,7 @@ export default defineNuxtConfig({
     alias: {
       attaform: resolve(monorepoRoot, 'src/index.ts'),
       'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
+      'attaform/directive': resolve(monorepoRoot, 'src/directive.ts'),
       'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
       'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
       'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),

@@ -1,8 +1,30 @@
+// P2 re-measure, aligned with the P1a methodology: the same source-level
+// __DEV__ strip the package build and scripts/check-eager-size.mjs apply
+// (import-line removal + literal inline) runs on every src module, including
+// the stubbed plugin.ts, so baseline/stubbed both measure shipped
+// prod-flavor bytes. Baseline must reproduce the ratchet number exactly.
 import { gzipSync } from 'node:zlib'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ROOT = '/Users/ozzy/Projects/attaform'
+
+const stripDevFlag = (text) =>
+  text
+    .replace(/^import\s*\{\s*__DEV__\s*\}\s*from\s*['"][^'"]*['"]\s*;?\s*$/gm, '')
+    .replace(/\b__DEV__\b/g, 'false')
+
+const stripPlugin = {
+  name: 'dev-flag-strip',
+  setup(build) {
+    build.onLoad({ filter: /\.ts$/ }, (args) => {
+      if (!args.path.startsWith(ROOT + '/src/')) return null
+      const text = readFileSync(args.path, 'utf8')
+      if (!/\b__DEV__\b/.test(text)) return null
+      return { contents: stripDevFlag(text), loader: 'ts' }
+    })
+  },
+}
 
 function resolveEsbuild() {
   const store = join(ROOT, 'node_modules', '.pnpm')
@@ -23,6 +45,8 @@ const PROD_DEFINE = { 'process.env.NODE_ENV': '"production"' }
 const PLUGIN_PATH = join(ROOT, 'src', 'runtime', 'core', 'plugin.ts')
 
 // Stub: same registry semantics, no vRegister import / app.directive call.
+// Applies the dev-flag strip itself: esbuild gives the load to the first
+// plugin whose onLoad returns content, so stripPlugin never sees plugin.ts.
 const stubPlugin = {
   name: 'stub-plugin-ts',
   setup(build) {
@@ -32,7 +56,7 @@ const stubPlugin = {
       src = src.replace("import { vRegister } from './directive'\n", '')
       src = src.replace("app.directive('register', vRegister)", '/* directive un-weld */')
       if (src.includes('vRegister')) throw new Error('residual vRegister ref: ' + src.match(/.*vRegister.*/g))
-      return { contents: src, loader: 'ts', resolveDir: join(ROOT, 'src', 'runtime', 'core') }
+      return { contents: stripDevFlag(src), loader: 'ts', resolveDir: join(ROOT, 'src', 'runtime', 'core') }
     })
   },
 }
@@ -82,8 +106,8 @@ async function measure(plugins) {
   return { eagerGz, eagerInputs }
 }
 
-const base = await measure([])
-const stub = await measure([stubPlugin])
+const base = await measure([stripPlugin])
+const stub = await measure([stubPlugin, stripPlugin])
 console.log('baseline eager gz:', base.eagerGz)
 console.log('stubbed  eager gz:', stub.eagerGz)
 console.log('delta:', base.eagerGz - stub.eagerGz)

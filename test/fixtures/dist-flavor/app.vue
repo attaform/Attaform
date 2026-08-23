@@ -15,5 +15,15 @@
 <template>
   <div>
     <span id="probe">{{ form.values.probe }}</span>
+    <!--
+      v-register delivery probe: the module's Vite plugin rewrites this
+      compiled template's resolveDirective("register") to an
+      `attaform/directive` import, which must resolve through the REAL
+      exports map (development condition in dev). The SSR-compiled
+      output then emits value= through ssrGetDirectiveProps, so the
+      rendered HTML carrying the probe value proves the injected import
+      resolved AND the directive's SSR path ran.
+    -->
+    <input id="probe-input" v-register="form.register('probe')" />
   </div>
 </template>

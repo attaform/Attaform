@@ -65,9 +65,17 @@ Two guards keep this right without you thinking about it:
 
 Each names the offending attribute and leaves the radio and `<option>` identity `:value` alone.
 
-## Auto-installed
+## Delivered at compile time
 
-`createAttaform()` registers the directive globally, in bare Vue and in Nuxt. You don't import it.
+The [Vite plugin and Nuxt module](/docs/getting-started/installation) bind `v-register` into each compiled template that uses it, so in those setups you write the directive and never import it. Building without either (a webpack-family bundler, a no-build page, runtime-compiled templates)? One line per app delivers it:
+
+```ts
+import { installVRegister } from 'attaform/directive'
+
+installVRegister(app)
+```
+
+This split is also what keeps Attaform lean: an app that never renders `v-register` never ships the directive's DOM machinery.
 
 If you wrap inputs inside a component whose root is **not** the input itself, [`useRegister`](/docs/binding-inputs/use-register) re-binds `v-register` onto an inner native element. For compound components binding multiple paths, prefer [`injectForm`](/docs/reading-the-form/the-form) over `useRegister`.
 

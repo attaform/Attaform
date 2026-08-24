@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.28.0-beta.1.0
 ### Breaking
 
 - **A minimal form ships 29% less JavaScript, and the package is 80%

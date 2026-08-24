@@ -1,5 +1,17 @@
 # Releases
 
+## v0.28.0-beta.1.0 — 2026-08-24
+
+## What's Changed
+* chore(deps): clear 26 Dependabot alerts, dedupe the dev tree by @ozzyfromspace in https://github.com/attaform/Attaform/pull/555
+* perf(core)!: size teardown: eager -29%, tarball -80% by @ozzyfromspace in https://github.com/attaform/Attaform/pull/561
+* feat(site): searchable error-code index at /e by @ozzyfromspace in https://github.com/attaform/Attaform/pull/562
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.27.6...v0.28.0-beta.1.0
+
+---
+
 ## v0.27.6 — 2026-07-21
 
 ## What's Changed

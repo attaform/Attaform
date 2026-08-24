@@ -170,58 +170,66 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     }
   }
 
-  // Thunk producing a fresh `FormMetaBase` on each call — the omit'd-shape
-  // second argument to `state.getDisplayState`. Each call runs inside a
-  // field-state computed, so every reactive primitive a getter touches
-  // registers as a dependency of THAT computed; what a predicate does not
-  // read, the field does not track (see the per-field laziness below). The
-  // rollup getters bypass the cached field-state accessor by calling
-  // `buildContainerFieldStateBase` directly — going through the accessor would
-  // recurse through the root path's own showErrors computation.
+  // The omit'd-shape second argument to `state.getDisplayState`, built
+  // ONCE per buildFormApi call as a bag of enumerable getters. Every
+  // getter read happens inside the calling field-state computed, so
+  // whatever a predicate reads, that field tracks — and what it does
+  // not read, the field does not track (P3 vector 1: the library-
+  // default predicate reads no rollup field, so it never subscribes to
+  // the whole-form rollup).
+  //
+  // The rollup mirrors read through a per-form computed over
+  // `buildContainerFieldStateBase` (base only — NOT the cached
+  // field-state accessor, which would recurse through the root path's
+  // own showErrors computation). The computed memoises the rollup
+  // across predicate invocations, where the old per-call bag rebuilt
+  // it for every field evaluation that touched a rollup key; the
+  // rollup's `validatingSince` is for the field machine, not the
+  // predicate's meta arg, so only `.base` is exposed here.
+  const rootBaseComputed = computed<FieldStateBase>(
+    () => buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY, formInstanceId).base
+  )
+  const metaBase: Record<string, unknown> = {
+    instanceId: formInstanceId,
+    get submitting() {
+      return state.submitting.value
+    },
+    get submissionAttempts() {
+      return state.submissionAttempts.value
+    },
+    get departAttempts() {
+      return state.departAttempts.value
+    },
+    get submitError() {
+      return state.submitError.value
+    },
+    get submitted() {
+      return state.submitted.value
+    },
+  }
+  for (const k of BASE_MIRROR_KEYS) {
+    defineGetter(
+      metaBase,
+      k,
+      () => (rootBaseComputed.value as unknown as Record<string, unknown>)[k]
+    )
+  }
+  defineGetter(metaBase, 'errorCount', () => rootBaseComputed.value.errors.length)
   const getFormMetaBase = (): FormMetaBase => {
-    // The whole-form ROLLUP is lazy: its fields are getters that build
-    // `rootBase` once, on first access. Building it eagerly here was P3 vector
-    // 1 — it made every field-state computed depend on every leaf (the edited
-    // leaf's `updatedAt` bumps on each write), re-rendering all fields per
-    // keystroke. The library-default predicate reads no rollup field (only the
-    // O(1) form-level scalars below), so it never tracks the rollup. A custom
-    // predicate that reads `valid` / `errorCount` / ... trips the shared memo
-    // and tracks the rollup, exactly as before. Getters are enumerable, so
-    // `Object.keys` / spread / `JSON.stringify` over the meta arg carry the
-    // full FieldStateBase key set.
-    //
-    // The rollup's `validatingSince` is for the field machine, not the
-    // predicate's meta arg — unused here; the root field-state computed threads
-    // the root's own anchor when it resolves `form.meta.displayState`.
-    let rollup: FieldStateBase | undefined
-    const rootBase = (): FieldStateBase =>
-      (rollup ??= buildContainerFieldStateBase(
-        state,
-        ROOT_PATH,
-        ROOT_PATH_KEY,
-        formInstanceId
-      ).base)
-    const o: Record<string, unknown> = {
-      // Form-level scalars — EAGER reads, tracked on every field-state eval.
-      // They are O(1) refs that never change on a keystroke, so tracking them
-      // per field costs nothing on the hot path. Kept eager (NOT lazy like the
-      // rollup) because behaviors beyond the predicate's own output depend on
-      // every field re-evaluating when they flip — most notably, the display
-      // engine is cleared on submit (revealing held spinners), and that
-      // imperative reset only becomes visible if `submitting` is a tracked dep
-      // of each field.
-      submitting: state.submitting.value,
-      submissionAttempts: state.submissionAttempts.value,
-      departAttempts: state.departAttempts.value,
-      submitError: state.submitError.value,
-      submitted: state.submitted.value,
-      instanceId: formInstanceId,
-    }
-    for (const k of BASE_MIRROR_KEYS) {
-      defineGetter(o, k, () => (rootBase() as unknown as Record<string, unknown>)[k])
-    }
-    defineGetter(o, 'errorCount', () => rootBase().errors.length)
-    return o as unknown as FormMetaBase
+    // Form-level scalars — EAGERLY tracked on every field-state eval.
+    // They are O(1) refs that never change on a keystroke, so tracking
+    // them per field costs nothing on the hot path. Kept eager (NOT
+    // lazy like the rollup) because behaviors beyond the predicate's
+    // own output depend on every field re-evaluating when they flip —
+    // most notably, the display engine is cleared on submit (revealing
+    // held spinners), and that imperative reset only becomes visible if
+    // `submitting` is a tracked dep of each field.
+    void state.submitting.value
+    void state.submissionAttempts.value
+    void state.departAttempts.value
+    void state.submitError.value
+    void state.submitted.value
+    return metaBase as unknown as FormMetaBase
   }
 
   const fieldStateAccessorOptions =

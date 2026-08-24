@@ -5,7 +5,11 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { getRegistryFromApp, type SerializedFormData } from '../../src/runtime/core/registry'
-import { hydrateAttaformState, renderAttaformState } from '../../src/runtime/core/serialize'
+import {
+  ATTAFORM_STATE_VERSION,
+  hydrateAttaformState,
+  renderAttaformState,
+} from '../../src/runtime/core/serialize'
 import { fakeSchema } from '../utils/fake-schema'
 
 type Signup = { email: string; password: string }
@@ -111,6 +115,30 @@ describe('hydrateAttaformState', () => {
     // Originals still derive from the schema — so pristine/dirty works client-side.
     expect(rehydratedState.getOriginalAtPath(['email'])).toBe('')
     expect(rehydratedState.isPristineAtPath(['email'])).toBe(false)
+  })
+
+  it('skips anything that is not a version-matched envelope, without throwing', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const clientApp = createApp({ render: () => null })
+    clientApp.use(createAttaform())
+
+    const bogusPayloads: unknown[] = [
+      undefined,
+      null,
+      'not-a-snapshot',
+      42,
+      { forms: [] }, // missing stamp
+      { v: ATTAFORM_STATE_VERSION + 1, forms: [] }, // stamp from another version
+      { v: ATTAFORM_STATE_VERSION, forms: {} }, // forms not an array
+    ]
+    for (const bogus of bogusPayloads) {
+      hydrateAttaformState(clientApp, bogus)
+    }
+
+    expect(getRegistryFromApp(clientApp).pendingHydration.size).toBe(0)
+    // One dev diagnostic per rejected payload.
+    expect(warnSpy).toHaveBeenCalledTimes(bogusPayloads.length)
+    warnSpy.mockRestore()
   })
 })
 

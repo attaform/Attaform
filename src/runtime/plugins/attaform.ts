@@ -63,8 +63,7 @@ export default defineNuxtPlugin({
       // Stage the payload into pendingHydration so `useForm` finds it. The
       // `enforce: 'pre'` + `prepend: true` pair above is what makes it safe
       // to assume this runs before any user setup.
-      const serialized = (nuxtApp.payload as unknown as { attaform?: SerializedAttaformState })
-        .attaform
+      const serialized = (nuxtApp.payload as { attaform?: unknown }).attaform
       if (serialized !== undefined) {
         hydrateAttaformState(nuxtApp.vueApp, serialized)
       }

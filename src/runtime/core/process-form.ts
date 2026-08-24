@@ -134,43 +134,30 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
       // so writing to `activeValidations` / `result` can't re-trigger
       // the watchEffect below.
       //
-      // The lifecycle setup (counter increment + `pending: true` write)
-      // lives INSIDE the try block so a sync watcher on
-      // `meta.validating` or on the returned `result` ref that throws
-      // can't leak the counter — the finally still decrements (Math.max
-      // clamps the partial-increment underflow case at zero).
-      try {
-        state.activeValidations.value += 1
-        result.value = {
-          pending: true,
-          errors: undefined,
-          success: false,
-          formKey: state.formKey,
+      // The `pending: true` write lives INSIDE the guarded region so a
+      // sync watcher on `meta.validating` or on the returned `result`
+      // ref that throws can't leak the counter — the shell's finally
+      // still decrements.
+      await withActiveValidation(async () => {
+        try {
+          result.value = {
+            pending: true,
+            errors: undefined,
+            success: false,
+            formKey: state.formKey,
+          }
+          const refinement = await runRefinementValidation(data, path)
+          if (captured !== gen) return
+          result.value = settled(composeWithDerivedBlank(refinement, path))
+        } catch (err) {
+          if (captured !== gen) return
+          // Adapters are contractually "return errors, don't throw"; if
+          // one does throw we don't want the validate() ref to hang in
+          // `pending: true` forever. Wrap the throw as a single
+          // adapter-level error so the form surfaces something.
+          result.value = settled(adapterThrowResponse(err))
         }
-        const refinement = await runRefinementValidation(data, path)
-        if (captured !== gen) return
-        result.value = settled(composeWithDerivedBlank(refinement, path))
-      } catch (err) {
-        if (captured !== gen) return
-        // Adapters are contractually "return errors, don't throw"; if
-        // one does throw we don't want the validate() ref to hang in
-        // `pending: true` forever. Wrap the throw as a single
-        // adapter-level error so the form surfaces something.
-        result.value = {
-          pending: false,
-          errors: [
-            {
-              message: adapterThrowMessage(err),
-              path: [],
-              code: AttaformErrorCode.AdapterThrew,
-            },
-          ],
-          success: false,
-          formKey: state.formKey,
-        }
-      } finally {
-        state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-      }
+      })
     }
 
     const stop = watchEffect(() => {
@@ -240,35 +227,52 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   ): Promise<ImperativeValidationResult> {
     const segments = pathInput === undefined ? undefined : toSegments(pathInput)
     const dataAtPath = segments === undefined ? state.form.value : state.getValueAtPath(segments)
+    return await withActiveValidation(async () => {
+      try {
+        // Abort any in-flight per-field validation runs so their late
+        // writes can't clobber the authoritative imperative result.
+        // Mirrors handleSubmit's pre-validate cancellation.
+        if (config.cancelInFlight) state.cancelFieldValidation()
+        const refinement = await runRefinementValidation(dataAtPath, segments)
+        // Commit the refinement to schemaErrors at the validated scope.
+        // The adapter emits issue paths relative to the sub-schema it
+        // parsed (`[]` for a leaf; whole-form pass emits absolute paths
+        // already), so re-stamp with `segments` to land at canonical
+        // store keys. `applySchemaErrorsForSubtree` replaces every key
+        // under the scope so stale entries drop and current ones
+        // survive in their original insertion slots.
+        if (config.commitToSchemaErrors) {
+          const scopePath: Path = segments ?? []
+          const errors = refinement.success ? [] : refinement.errors
+          const reStamped =
+            segments === undefined
+              ? errors
+              : errors.map((err) => ({
+                  ...err,
+                  path: [...segments, ...(err.path as Segment[])],
+                }))
+          state.applySchemaErrorsForSubtree(scopePath, reStamped)
+        }
+        return { ok: true, refinement, segments }
+      } catch (err) {
+        return { ok: false, error: adapterThrowResponse(err) }
+      }
+    })
+  }
+
+  /**
+   * The one `activeValidations` shell. Increments inside the guarded
+   * region (a sync watcher on `meta.validating` that throws on the
+   * increment still hits the finally), runs `fn`, and decrements with
+   * the Math.max clamp on every exit path. Every validation surface —
+   * the reactive `validate()` kickoff, the imperative paths, and
+   * handleSubmit's pre-dispatch pass — rides this, so the counter can
+   * never leak or steal a concurrent run's count.
+   */
+  async function withActiveValidation<T>(fn: () => Promise<T>): Promise<T> {
     try {
       state.activeValidations.value += 1
-      // Abort any in-flight per-field validation runs so their late
-      // writes can't clobber the authoritative imperative result.
-      // Mirrors handleSubmit's pre-validate cancellation.
-      if (config.cancelInFlight) state.cancelFieldValidation()
-      const refinement = await runRefinementValidation(dataAtPath, segments)
-      // Commit the refinement to schemaErrors at the validated scope.
-      // The adapter emits issue paths relative to the sub-schema it
-      // parsed (`[]` for a leaf; whole-form pass emits absolute paths
-      // already), so re-stamp with `segments` to land at canonical
-      // store keys. `applySchemaErrorsForSubtree` replaces every key
-      // under the scope so stale entries drop and current ones
-      // survive in their original insertion slots.
-      if (config.commitToSchemaErrors) {
-        const scopePath: Path = segments ?? []
-        const errors = refinement.success ? [] : refinement.errors
-        const reStamped =
-          segments === undefined
-            ? errors
-            : errors.map((err) => ({
-                ...err,
-                path: [...segments, ...(err.path as Segment[])],
-              }))
-        state.applySchemaErrorsForSubtree(scopePath, reStamped)
-      }
-      return { ok: true, refinement, segments }
-    } catch (err) {
-      return { ok: false, error: adapterThrowResponse(err) }
+      return await fn()
     } finally {
       state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
     }
@@ -467,7 +471,6 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
       // capture only when a `reset()` hasn't fired between entry and
       // throw (see the catch block).
       const genAtEntry = state.submissionGeneration.value
-      let validationSettled = false
       try {
         // All lifecycle setup happens inside the try so a throw from
         // any of the setters (e.g. a sync `watch` on `meta.submitting`
@@ -519,11 +522,10 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // already cleared `fieldValidatingSince`, so the next read recomputes
         // the settled verdict against the post-submit gate immediately.
         state.displayEngine.clear()
-        state.activeValidations.value += 1
-        const refinement = await runRefinementValidation(state.form.value, undefined)
+        const refinement = await withActiveValidation(() =>
+          runRefinementValidation(state.form.value, undefined)
+        )
         const merged = composeWithDerivedBlank(refinement, undefined)
-        state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-        validationSettled = true
         // Generation guard: if `reset()` fired while we were awaiting
         // validation, the consumer just zeroed the submission surface
         // — the validation result is for state that's been replaced.
@@ -668,11 +670,6 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           }
         }
       } finally {
-        // If validation threw before we decremented, drop the counter now
-        // so `validating` doesn't hang true after a failed submit.
-        if (!validationSettled) {
-          state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-        }
         state.activeSubmissions.value = Math.max(0, state.activeSubmissions.value - 1)
         // `activeSubmissions` always decrements (the submission is done),
         // but the *visible* lifecycle counters — `submitting` and

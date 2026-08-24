@@ -11,7 +11,7 @@
  */
 
 import type { ErrorCell, ErrorInput, ValidationError } from '../types/types-api'
-import type { Path, PathKey } from './paths'
+import { canonicalizePath, type Path, type PathKey } from './paths'
 
 /**
  * Base for every error class thrown by `attaform`. Sets
@@ -214,4 +214,27 @@ export class ReservedFormKeyError extends AttaformError {
         `(anonymous useForm() calls without an explicit key).`
     )
   }
+}
+
+/**
+ * Group `entries` by each error's own canonical storage key, preserving
+ * entry order within a key (adapter ordering for multiple issues at the
+ * same leaf). Form-level (global) errors arrive with `err.path: []` and
+ * group under the root key `'[]'` directly, no rerouting: aggregate
+ * reads (`errors()`, `meta.errors`) surface them, `errors([])` returns
+ * the root bucket alone, while `errors('')` reads the unrelated literal
+ * `''` field at key `'[""]'`. Shared by the store's channel writers and
+ * the submit-throw path grouping.
+ */
+export function groupErrorsByKey(
+  entries: readonly ValidationError[]
+): Map<PathKey, ValidationError[]> {
+  const grouped = new Map<PathKey, ValidationError[]>()
+  for (const raw of entries) {
+    const { key } = canonicalizePath(raw.path as Path)
+    const list = grouped.get(key)
+    if (list === undefined) grouped.set(key, [raw])
+    else list.push(raw)
+  }
+  return grouped
 }

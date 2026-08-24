@@ -44,6 +44,7 @@ import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
+import { groupErrorsByKey } from './errors'
 import { runFactoryAndApply } from './form-activation'
 import {
   canonicalizePath,
@@ -2807,26 +2808,6 @@ function getValueAtPath<F extends GenericForm, G extends GenericForm = F>(
 type ErrorSource = 'schema' | 'user'
 
 const ERROR_SOURCES: readonly ErrorSource[] = ['schema', 'user']
-
-/**
- * Group `entries` by each error's own canonical storage key, preserving
- * entry order within a key (adapter ordering for multiple issues at the
- * same leaf). Form-level (global) errors arrive with `err.path: []` and
- * group under the root key `'[]'` directly, no rerouting: aggregate
- * reads (`errors()`, `meta.errors`) surface them, `errors([])` returns
- * the root bucket alone, while `errors('')` reads the unrelated literal
- * `''` field at key `'[""]'`.
- */
-function groupErrorsByKey(entries: readonly ValidationError[]): Map<PathKey, ValidationError[]> {
-  const grouped = new Map<PathKey, ValidationError[]>()
-  for (const raw of entries) {
-    const { key } = canonicalizePath(raw.path as Path)
-    const list = grouped.get(key)
-    if (list === undefined) grouped.set(key, [raw])
-    else list.push(raw)
-  }
-  return grouped
-}
 
 /**
  * Shared channel writer 1 — replace one side of the cell at `key` with

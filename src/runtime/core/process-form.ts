@@ -14,8 +14,14 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { AttaformErrorCode } from './error-codes'
-import { normalizeErrorInput, SubmitErrorHandlerError, toError } from './errors'
-import { canonicalizePath, segmentsForPathKey, type Path, type Segment } from './paths'
+import { groupErrorsByKey, normalizeErrorInput, SubmitErrorHandlerError, toError } from './errors'
+import {
+  canonicalizePath,
+  isPathPrefix,
+  segmentsForPathKey,
+  type Path,
+  type Segment,
+} from './paths'
 
 /**
  * Tracks FormStores for which we've already emitted the
@@ -620,16 +626,13 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
             // one bucket per path. Per-path writes MERGE: a bucket the
             // callback set at another path via `setErrors` before it threw
             // survives, while a bucket at a colliding path is replaced (the
-            // throw is the newer verdict).
-            const byPath = new Map<string, { segments: Path; entries: ValidationError[] }>()
-            for (const entry of entries) {
-              const { key } = canonicalizePath(entry.path)
-              const bucket = byPath.get(key)
-              if (bucket === undefined) byPath.set(key, { segments: entry.path, entries: [entry] })
-              else bucket.entries.push(entry)
-            }
-            for (const { segments, entries: bucket } of byPath.values()) {
-              state.setUserErrorsForPath(segments, bucket)
+            // throw is the newer verdict). Keys come fresh out of the
+            // grouper, so the segment lookup always hits; the null guard
+            // keeps a corrupt key from throwing into the consumer app.
+            for (const [key, bucket] of groupErrorsByKey(entries)) {
+              const segments = segmentsForPathKey(key)
+              if (segments === null) continue
+              state.setUserErrorsForPath([...segments], bucket)
             }
             // Focus the first error, mirroring the validation-failure and
             // leftover-errors branches. A form-level `[]` error owns no
@@ -715,25 +718,11 @@ function collectScopedBlankErrors<F extends GenericForm>(
       // containing the literal JSON.
       const segments = segmentsForPathKey(pathKey)
       if (segments === null) continue
-      if (!pathStartsWith(segments, scope)) continue
+      if (!isPathPrefix(scope, segments)) continue
     }
     errors.push(...entries)
   }
   return errors
-}
-
-/**
- * `true` if `target`'s segments start with `prefix`. Used to honour the
- * per-path scope of `validate(path)` / `parse(path, ...)` — only
- * blank paths inside the validated subtree contribute. An empty prefix
- * matches every path.
- */
-function pathStartsWith(target: Path, prefix: Path): boolean {
-  if (prefix.length > target.length) return false
-  for (let i = 0; i < prefix.length; i++) {
-    if (!Object.is(target[i], prefix[i])) return false
-  }
-  return true
 }
 
 export function applyInvalidSubmitPolicy<F extends GenericForm>(

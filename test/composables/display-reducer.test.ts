@@ -493,18 +493,18 @@ describe('createDisplayEngine', () => {
       const engine = createDisplayEngine(false)
       // idle → not retained.
       engine.resolve(KEY, ctx({ field: field() }), defaultDisplayState)
-      expect(engine.has(KEY)).toBe(false)
-      expect(engine.size()).toBe(0)
+      expect(engine.has?.(KEY)).toBe(false)
+      expect(engine.size?.()).toBe(0)
       // error → retained (so a later show-delay window can hold it).
       engine.resolve(
         KEY,
         ctx({ field: field({ errors: [ownError], blurredAfterInteraction: true }) }),
         defaultDisplayState
       )
-      expect(engine.has(KEY)).toBe(true)
+      expect(engine.has?.(KEY)).toBe(true)
       // back to idle → evicted again.
       engine.resolve(KEY, ctx({ field: field() }), defaultDisplayState)
-      expect(engine.has(KEY)).toBe(false)
+      expect(engine.has?.(KEY)).toBe(false)
       engine.dispose()
     })
 
@@ -519,10 +519,10 @@ describe('createDisplayEngine', () => {
         }),
         defaultDisplayState
       )
-      expect(engine.hasTimer()).toBe(true)
+      expect(engine.hasTimer?.()).toBe(true)
       expect(vi.getTimerCount()).toBe(1)
       engine.dispose()
-      expect(engine.hasTimer()).toBe(false)
+      expect(engine.hasTimer?.()).toBe(false)
       expect(vi.getTimerCount()).toBe(0)
     })
 
@@ -537,11 +537,11 @@ describe('createDisplayEngine', () => {
         }),
         defaultDisplayState
       )
-      expect(engine.size()).toBe(1)
-      expect(engine.hasTimer()).toBe(true)
+      expect(engine.size?.()).toBe(1)
+      expect(engine.hasTimer?.()).toBe(true)
       engine.clear()
-      expect(engine.size()).toBe(0)
-      expect(engine.hasTimer()).toBe(false)
+      expect(engine.size?.()).toBe(0)
+      expect(engine.hasTimer?.()).toBe(false)
     })
   })
 
@@ -559,9 +559,9 @@ describe('createDisplayEngine', () => {
         defaultDisplayState
       )
       expect(machine.display).toBe('pending') // the reducer still computes
-      expect(engine.size()).toBe(0) // but the engine persists nothing
-      expect(engine.has(KEY)).toBe(false)
-      expect(engine.hasTimer()).toBe(false)
+      expect(engine.size?.()).toBe(0) // but the engine persists nothing
+      expect(engine.has?.(KEY)).toBe(false)
+      expect(engine.hasTimer?.()).toBe(false)
     })
   })
 })
@@ -582,7 +582,7 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
     const engine = createDisplayEngine(false)
     const bad: GetDisplayState = () => ({ display: 'pending', reviewAt: NaN })
     engine.resolve(KEY, ctx({ field: gated(), validatingSince: 0, now: 0 }), bad)
-    expect(engine.hasTimer()).toBe(false)
+    expect(engine.hasTimer?.()).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
     engine.dispose()
   })
@@ -591,7 +591,7 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
     const engine = createDisplayEngine(false)
     const bad: GetDisplayState = () => ({ display: 'pending', reviewAt: Infinity })
     engine.resolve(KEY, ctx({ field: gated(), validatingSince: 0, now: 0 }), bad)
-    expect(engine.hasTimer()).toBe(false)
+    expect(engine.hasTimer?.()).toBe(false)
     engine.dispose()
   })
 
@@ -599,8 +599,8 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
     const engine = createDisplayEngine(false)
     const bad: GetDisplayState = () => ({ display: 'idle', reviewAt: NaN })
     engine.resolve(KEY, ctx({ field: gated(), validatingSince: 0, now: 0 }), bad)
-    expect(engine.has(KEY)).toBe(false)
-    expect(engine.size()).toBe(0)
+    expect(engine.has?.(KEY)).toBe(false)
+    expect(engine.size?.()).toBe(0)
     engine.dispose()
   })
 
@@ -608,11 +608,11 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
     const engine = createDisplayEngine(false)
     const farFuture: GetDisplayState = (_p, c) => ({ display: 'pending', reviewAt: c.now + 1e15 })
     engine.resolve(KEY, ctx({ field: gated(), validatingSince: 0, now: 0 }), farFuture)
-    expect(engine.hasTimer()).toBe(true)
+    expect(engine.hasTimer?.()).toBe(true)
     // A normal advance must NOT fire it — an un-clamped 1e15 ms would overflow
     // a 32-bit setTimeout and fire almost immediately, then re-arm and loop.
     vi.advanceTimersByTime(10_000)
-    expect(engine.hasTimer()).toBe(true)
+    expect(engine.hasTimer?.()).toBe(true)
     engine.dispose()
   })
 
@@ -640,7 +640,7 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
     // vitest aborts at its 10k-timer ceiling.
     vi.advanceTimersByTime(1000)
     expect(calls).toBeLessThanOrEqual(3)
-    expect(engine.hasTimer()).toBe(false)
+    expect(engine.hasTimer?.()).toBe(false)
     scope.stop()
     engine.dispose()
   })

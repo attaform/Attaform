@@ -74,13 +74,16 @@ export default defineContentConfig({
         source: z.string().url().optional(),
       }),
     }),
-    // The AF## error-code reference: one page per code plus the /e
-    // index. Sourced from docs/e/ (excluded from the docs collection
-    // above) and served from the short /e prefix so the URL inside
-    // every production `[attaform] AF## attaform.dev/e/af##` message
-    // stays compact. Rendered by pages/e/[...slug].vue; the same
-    // description bounds as the docs collection keep SERP snippets
-    // healthy for people who search a code instead of clicking it.
+    // The AF## error-code reference: one page per code. Sourced from
+    // docs/e/ (excluded from the docs collection above) and served
+    // from the short /e prefix so the URL inside every production
+    // `[attaform] AF## attaform.dev/e/af##` message stays compact.
+    // Rendered by pages/e/[...slug].vue; the /e index is its own page
+    // (pages/e/index.vue) that derives a searchable row per code from
+    // this collection, so a new code page lists itself with no extra
+    // wiring. The same description bounds as the docs collection keep
+    // SERP snippets healthy for people who search a code instead of
+    // clicking it.
     errors: defineCollection({
       type: 'page',
       source: {
@@ -94,6 +97,15 @@ export default defineContentConfig({
           .string()
           .min(80, 'description must be at least 80 characters for a useful SERP snippet')
           .max(200, 'description over 200 characters will get truncated in most SERPs'),
+        // The one-line answer to "when does this code fire", rendered
+        // as the code's row on the /e index. Backtick spans come out
+        // as inline-code chips there. Required, so a new code page
+        // cannot land without listing itself; the cap keeps the row a
+        // single scannable line instead of a second description.
+        condition: z
+          .string()
+          .min(20, 'condition must be a full one-line sentence')
+          .max(90, 'condition over 90 characters wraps the index row'),
       }),
     }),
   },

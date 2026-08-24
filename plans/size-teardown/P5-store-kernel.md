@@ -109,3 +109,32 @@ with the phase's total.
 ## Entry criteria
 
 P2/P3/P4 landed (met). No docs-page gate. Both majors on every commit.
+
+## 5a characterization pin record (2026-08-23, at anchor 9a057bb2)
+
+Resolved the named suites to 47 actual files (list pinned in the 5a commit
+message and reproducible via the buckets above; naming deltas from the stub:
+"slim-primitive-write-gate (v3 property)" =
+slim-primitive-write-gate-v3.property.test.ts, run with its .test.ts and
+.property.test.ts siblings; "discriminated-union-lift / -root" = the two
+composables files; "submit-related" = submit-success-semantics,
+submit-clears-user-errors, submit-error-no-rethrow, submit-throw-surfaces,
+form-meta-submitted; optimistic-connected exists in BOTH test/core and
+test/ssr-bare-vue, both pinned; perf-lock = the whole directory, 6 files;
+plus test/transforms/async-transform-store.test.ts for the stays-eager
+bookkeeping).
+
+Result: `pnpm test <47 files>` = 47 passed / 569 tests passed, 0 skipped.
+Major coverage as pinned: 22 files carry explicit zod-v3 arms, 4 are
+abstract-store (major-independent), the rest exercise v4/unified entries.
+Every bucket has at least one v3 arm.
+
+Perf baseline (mount + keystroke gate): recorded to
+reference/p5-bench-before.json (52 scenarios, hz). Headlines: init flat
+F=5/50/500 [v4] 12,580 / 3,671 / 307 hz ([v3] 17,278 / 4,679 / 457);
+keystroke flat F=5/50/500 [v4] 328k / 306k / 161k hz; keystroke.bench
+new-vs-old ratios 5.3x (100-leaf) and 10.6x (500-leaf) against the 3.0
+floor. AFTER run: same machine, same command
+(`pnpm bench bench/matrix.bench.ts bench/keystroke.bench.ts`); the hard
+gate is the 3x check-bench floor plus no-regression on init + keystroke
+outside run noise (~10%).

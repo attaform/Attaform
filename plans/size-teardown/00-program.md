@@ -9,43 +9,59 @@ attribution tables, verifier measurement scripts, the P8 replacement sketches).
 - Artifact: https://claude.ai/code/artifact/e784bdb8-1c19-4c26-86ab-73e75ee6268a
 - Baseline: main @ fb532ad9, v0.27.6. Ratchet metric 46,477 B gz
   (minimal useForm, zod-v4, prod; `scripts/check-eager-size.mjs`).
-- Program target: plan-of-record 25,960 B gz, honest range 24.5-27.0 kB.
-  Tarball: 1.8 MB packed to 330-430 kB.
+- Program target: ORIGINAL plan-of-record 25,960 B gz — SUPERSEDED by the
+  post-P5 re-anchor (2026-08-23): re-derived landing ~31.4 kB, honest range
+  30.5-32.5 kB (see the ruling note under the ledger). Tarball: 1.8 MB packed
+  to 330-430 kB (unchanged; P0/P1a already banked most of it).
 
 ## Status ledger
 
 Update this table at every phase boundary. "eager after" is the measured ratchet
 number on the phase's merge commit, not an estimate.
 
-| phase | title                                 | status  | eager after (B gz) | date       | notes                                       |
-| ----- | ------------------------------------- | ------- | ------------------ | ---------- | ------------------------------------------- |
-| --    | baseline                              | --      | 46,477             | 2026-08-23 | main fb532ad9                               |
-| P0    | packaging config                      | done    | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182) |
-| P1a   | dev/prod dual dist                    | done    | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok  |
-| P1b   | error codes + prose diet              | pending | ~42,800 exp.       |            | GATED on attaform.dev/e/\* pages            |
-| P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed     |
-| P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer |
-| P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted    |
-| P5    | store kernel                          | done    | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase |
-| P6    | validation/display fold               | pending | RE-ANCHOR          |            | after P5                                    |
-| P7    | zod-core + probe packs                | pending | ~30,500 exp.       |            | independent                                 |
-| P8    | surface program                       | pending | ~27,850 exp.       |            | after P5                                    |
-| P9    | paths + walkers + schema-io           | pending | ~26,350 exp.       |            | after P5                                    |
-| P10   | sweep and lock                        | pending | ~25,870 exp.       |            | last                                        |
+| phase | title                                 | status  | eager after (B gz) | date       | notes                                           |
+| ----- | ------------------------------------- | ------- | ------------------ | ---------- | ----------------------------------------------- |
+| --    | baseline                              | --      | 46,477             | 2026-08-23 | main fb532ad9                                   |
+| P0    | packaging config                      | done    | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182)     |
+| P1a   | dev/prod dual dist                    | done    | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok      |
+| P1b   | error codes + prose diet              | pending | ~42,800 exp.       |            | GATED on attaform.dev/e/\* pages                |
+| P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed         |
+| P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer     |
+| P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted        |
+| P5    | store kernel                          | done    | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase     |
+| P6    | validation shell fold (re-scoped)     | pending | ~35,400 exp.       |            | next; band -250..-500; sign-off 4               |
+| P8    | surface program                       | pending | ~33,500 exp.       |            | 2nd; prototype-backed, band -1,500..-2,300      |
+| P7    | zod-core + probe packs                | pending | ~33,000 exp.       |            | 3rd; central band -300..-900 + barrel win       |
+| P1b   | error codes + prose diet              | pending | ~32,100 exp.       |            | 4th; build /e/AF## pages in the same PR         |
+| P9    | paths + walkers (re-scoped)           | pending | ~31,800 exp.       |            | 5th; trie + node(); reconcile merge = rep-first |
+| P10   | sweep and lock                        | pending | ~31,400 exp.       |            | last                                            |
 
-> **RE-ANCHOR REQUIRED (2026-08-23, post-P5).** P5 measured **+561** against
-> a ~-2,700 promise: the kernel-record enabler, the semantics-preserving
-> tagged-store machinery, and the capability flag cost more than the
-> phase's deletions saved, and the activation lazy-chunk split proved
-> gzip-NEGATIVE (~880 B of cross-chunk glue + per-chunk gzip loss vs
-> ~570 B moved) — implemented, measured, reverted. Two consequences for
-> P6-P10 before any further execution: (1) every remaining expectation
-> column is stale — the true anchor is 35,768; (2) the audit's lazy-move
-> credits need a split-overhead discount (~0.5-1 kB per new chunk) and
-> its consolidation credits need a semantics-preservation discount.
-> Oswald decides whether the remaining phases run as scoped, get
-> re-audited, or the program closes with P5's perf/API wins banked. P5's
-> full account: P5-store-kernel.md findings.
+> **RE-ANCHOR RULING (Oswald, 2026-08-23, post-P5): CONTINUE, re-scoped.**
+> His words: push wherever more is achievable without triggering
+> regressions ("this is my preference"); goal = performance as high as
+> possible AND build size as low as possible; call it only with good
+> reason. Consequences applied to this ledger:
+>
+> 1. Expectations above are RE-DERIVED from the true anchor 35,768 with
+>    P5's two discounts (split-overhead ~0.5-1 kB per new chunk;
+>    semantics-preservation tax on consolidations). Re-derived landing
+>    ~31.4 kB, honest range 30.5-32.5 kB — NOT the stale 25,960.
+> 2. Execution order changed to value-confidence order: P6 (small,
+>    retires sign-off 4) -> P8 (largest credit, the only one
+>    prototype-measured) -> P7 (barrel-penalty halving is the real
+>    prize) -> P1b (pure string deletion; the /e/AF## docs pages are
+>    built in the same PR so the gate self-satisfies) -> P9 (re-scoped)
+>    -> P10.
+> 3. Items REFUTED by P5 evidence are dropped or demoted per phase file:
+>    P6's focus-policy lazy chunk (tiny mover vs ~880 B glue) and its
+>    display-state/display-engine file merge (byte-neutral under scope
+>    hoisting); P9's five-walker reconcile engine runs ONLY if a
+>    P8-style replacement sketch measures net-negative first.
+> 4. NEW STANDING RULE for every remaining consolidation item: measure a
+>    replacement sketch (reference/rep/ style) BEFORE committing to the
+>    rewrite; module merges count zero unless they delete duplicated
+>    logic; a lazy chunk needs >~1 kB of genuinely-cold moved code.
+>    P5's full account: P5-store-kernel.md findings.
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

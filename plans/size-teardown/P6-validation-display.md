@@ -1,21 +1,126 @@
-# P6: validation/display fold (STUB — GATED on the post-P5 re-anchor)
+# P6: validation shell fold (re-scoped post-re-anchor)
 
-> **Do not detail or execute until Oswald rules on the post-P5
-> re-anchor** (00-program.md ledger note): P5 measured +561 against a
-> ~-2,700 promise, so every remaining phase's expected delta needs
-> re-derivation with the split-overhead and semantics-preservation
-> discounts P5 established. Anchor for any re-derivation: 35,768 B gz
-> (reference/attribution-v4.txt regenerated on the P5 final commit).
-> One scope item is already DONE: the sign-off-5 formKey drop shipped in
-> P5 (commit 9c7ccf64). The invalid-submit focus-policy "lazy chunk"
-> item must be re-judged against P5's finding that a new chunk costs
-> ~0.5-1 kB of glue before it saves anything.
+Detailed 2026-08-23 against anchor 35,768 B gz (P5 final, commit b996a725),
+under the re-anchor ruling in 00-program.md. Expected band **-250..-500 B gz**
+(honest; the original -650 assumed items P5 evidence has since refuted).
+Behavior verbatim except the ONE approved API change (sign-off 4). Both zod
+majors. Perf gate: no keystroke/submit regression vs
+reference/p5-bench-after.json.
 
-Original stub (pre-P5 expectations, stale): delivers ~-650 B gz. Scope: reactive validate() kickoff folds onto
-runImperativeValidation (one shell); `parse(path?, { commit? })` absorbs
-validateAsync (sign-off 4; parse stays async per the locked no-sync stance);
-ValidationError drops per-entry formKey, wizard stamps at aggregation (sign-off 5);
-display-state + display-engine merge with test hooks DEV-gated (behavior verbatim);
-invalid-submit focus policy becomes a lazy chunk inside the async submit moment
-(counted here once); shared groupByCanonicalKey helper.
-Entry criteria: P5 tagged store landed. Error-order characterization suite is the gate.
+## What this phase is now
+
+The audit's P6 had five items. Two are gone before we start: the sign-off-5
+formKey drop ALREADY SHIPPED in P5 (9c7ccf64), and two more are REFUTED by
+P5 measurement (recorded below, no code motion). What remains is one small,
+high-certainty phase: fold the three duplicated imperative-validation shells,
+land `parse(path?, { commit? })` absorbing `validateAsync` (sign-off 4), and
+sweep three micro-duplications.
+
+## Refuted items (recorded; do NOT implement)
+
+- **Invalid-submit focus-policy lazy chunk**: `applyInvalidSubmitPolicy`
+  (process-form.ts) is ~25 lines — far below the ~880 B cross-chunk glue P5
+  measured for a new async chunk. Stays eager. Counted-once guard in
+  00-program.md is moot.
+- **display-state + display-engine file merge**: both dist and the eager
+  measurement bundle scope-hoist (rollup/esbuild), so merging two modules
+  into one file moves ~0 bytes. A merge only pays when it DELETES duplicated
+  logic; these two share none (pure reducer policy vs clock/timer owner).
+  No file motion.
+
+## Characterization gate (pin FIRST, test-only commit if anything new)
+
+The P5 pin battery is green at b996a725 and covers the submit/error-order
+surface. P6's gate adds the validateAsync-behavior contract that must
+survive verbatim into `parse(path, { commit: true })`:
+
+- commits the refinement verdict to the schema-error store at the validated
+  scope (stale entries drop, slot order preserved — applySchemaErrorsForSubtree)
+- cancels in-flight per-field validation (a late SFV write cannot clobber it)
+- composes derived-blank errors into the response, scoped to the path
+- adapter-throw -> `{ success: false, errors: [{ code: AdapterThrew }] }`,
+  never a rejection
+- `activeValidations` (meta.validating) increments for the run, Math.max
+  clamp on the way down
+- plain `parse(path?)` stays a PURE read: no cancel, no commit (existing
+  tests already pin this)
+
+Suites to run green before and after every slice: test/core/process-form,
+submit-semantics, first-error/own-errors/error-order files, display-state +
+display-reducer, validation lifecycle files, plus the two adapters'
+validate suites. Full `pnpm test` + `pnpm typecheck` at the phase end.
+
+## Slices
+
+### 6a: one imperative shell (internal only, no API change)
+
+process-form.ts holds THREE copies of the counter/throw shell:
+
+1. `validate()`'s `kickoff` — increment, pending-write, refinement,
+   adapter-throw translation, compose, finally-decrement.
+2. `runImperativeValidation` — increment, optional cancel, refinement,
+   optional commit, adapter-throw translation, finally-decrement.
+3. `handleSubmit`'s inline pass — increment, refinement, manual decrement +
+   `validationSettled` flag replayed in the outer finally.
+
+Fold: a `withActiveValidation(state, fn)` wrapper owning increment /
+finally-clamped-decrement, and route ALL THREE through it. handleSubmit's
+`validationSettled` dance deletes outright (try/finally subsumes it).
+`kickoff` keeps its pending-write + generation guard locally (they are
+reactive-shell concerns, not validation concerns) and consumes the shared
+core for the rest: its catch-arm result is exactly
+`settled(adapterThrowResponse(err))` — same shape, one construction site.
+Ordering stays verbatim: increment BEFORE the pending-write inside the
+guarded region (a sync watcher throw on either still decrements).
+
+### 6b: `parse(path?, { commit? })` absorbs `validateAsync` (sign-off 4)
+
+Pre-1.0, no back-compat: `validateAsync` is DELETED, not aliased.
+
+- `parse(pathInput?, options?: { commit?: boolean })`. First-arg dispatch
+  mirrors the setErrors/setValue house idiom (path-shaped = string | array;
+  a lone plain-object first arg is the options bag), so whole-form commit is
+  `parse({ commit: true })`, not `parse(undefined, {...})`.
+- `commit: true` = the old validateAsync flags (cancelInFlight +
+  commitToSchemaErrors) with data RETAINED — return type stays
+  `Promise<ValidationResponse<GetValueFormType>>` in both modes.
+- Delete: public `validateAsync` (types-api UseFormReturnType member, the
+  build-form-api skin + gated() wrap, the process-form builder export),
+  `stripData`, and `ValidationResponseWithoutValue` IF no other user
+  remains (check \_shared-exports; it is public API, deletion is part of the
+  approved change).
+- `form.interact()` internally rides `parse(path, { commit: true })`
+  semantics (same flags it gets from validateAsync today).
+- Docs sweep: ~12 docs pages + reference/types.md name validateAsync;
+  demos autosave/useAutosave.ts + validation-lifecycle/App.vue; check
+  whether public/llms.txt regenerates or needs a source edit. Tests: ~26
+  files migrate call sites; tests asserting the stripped-data shape reframe
+  to the retained-data shape.
+- Wizard: grep for validateAsync in use-wizard (whole-list handleSubmit
+  path) and migrate the same way.
+
+### 6c: micro-dedup sweep
+
+- `pathStartsWith` (process-form.ts) duplicates `isPathPrefix` (paths.ts):
+  delete, import. (Object.is vs === per segment differs only for NaN/-0
+  segments, which canonical paths never hold.)
+- `groupErrorsByKey` (kernel-internal, create-form-store.ts) duplicates the
+  submit-throw `byPath` grouping (process-form.ts): move the pure helper to
+  errors.ts, both import it. Submit path re-derives segments per bucket via
+  `segmentsForPathKey(key)` (canonical keys just produced — never null; keep
+  the null-skip guard anyway per no-uncaught-exceptions).
+- DEV-gate the display-engine introspection hooks: `size()` / `has()` /
+  `hasTimer()` become optional members assigned only under `__DEV__` (tests
+  run the dev flavor; runtime uses only resolve/clear/dispose — verified by
+  grep).
+
+## Exit criteria
+
+- Full `pnpm test` + `pnpm typecheck` green; `pnpm check:bundled-types`
+  both majors (types-api changed); doc-snippet gate (docs changed).
+- Ratchet run; BUDGET_GZ tightened to lock the measured number with the
+  recorded reason; .size-limit.js caps tightened in the same commit.
+- Perf spot-check vs reference/p5-bench-after.json (keystroke + submit
+  scenarios; expect noise-level).
+- Ledger row updated with the MEASURED delta; attribution regenerated;
+  P8 stub fleshed out from its reference/rep sketches; commit; /compact.

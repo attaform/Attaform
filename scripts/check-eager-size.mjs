@@ -424,7 +424,15 @@ export async function measureEager(define = PROD_DEFINE) {
 // attaform.dev/e via the site's `errors` content collection), so the
 // URL in every prod message resolves from day one. Budget
 // 34_400 -> 33_550 (~0.43 kB headroom).
-const BUDGET_GZ = 33_550
+// P10 RATCHET (sweep + lock, program close, 2026-08-24): 33,128 ->
+// 33,004 measured (-124). The June persist rip-out had orphaned the
+// store's whole drain spine (registerDrain / drainHooks / an
+// awaitPendingWrites that always resolved immediately) plus the
+// registry's drain-then-dispose eviction choreography and a
+// shutdown() that awaited nothing, with zero callers anywhere. Deleted;
+// eviction now disposes directly. Budget 33_550 -> 33_430
+// (~0.43 kB headroom).
+const BUDGET_GZ = 33_430
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

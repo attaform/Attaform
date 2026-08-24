@@ -129,13 +129,6 @@ export type AttaformRegistry = {
    * @internal
    */
   readonly shouldPrefetch: (key: FormKey) => boolean
-  /**
-   * Wait for all pending persistence writes across every live form
-   * to settle. Useful for SSR shutdown and integration tests that
-   * need a deterministic teardown.
-   * @internal
-   */
-  readonly shutdown: () => Promise<void>
 }
 
 /**
@@ -263,12 +256,6 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
   // avoids triggering watchers when we increment on every mount.
   const consumers = new Map<FormKey, number>()
 
-  // Stores that have been evicted from `forms` but still have a
-  // pending drain. `shutdown()` awaits these too so a process-exit
-  // hook doesn't tear down before debounced writes from already-
-  // unmounted forms have a chance to flush.
-  const evicting = new Set<FormStore<GenericForm>>()
-
   // Eviction is deferred to the next microtask when consumer count
   // hits zero — a new consumer that claims the same key inside the
   // same tick cancels the schedule and reuses the live FormStore.
@@ -320,18 +307,7 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
         const state = forms.get(key)
         forms.delete(key)
         if (state === undefined) return
-        // Drain-then-dispose runs in the background so the
-        // persistence layer's debounced final write can complete —
-        // the FormStore is reachable through the closure here even
-        // after `forms.delete`.
-        evicting.add(state)
-        void state
-          .awaitPendingWrites()
-          .catch(() => undefined)
-          .finally(() => {
-            evicting.delete(state)
-            state.dispose()
-          })
+        state.dispose()
       })
     }
   }
@@ -377,15 +353,6 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
     }
   }
 
-  async function shutdown(): Promise<void> {
-    // Snapshot the keys — `awaitPendingWrites` may resolve mid-iteration
-    // and trigger eviction that mutates `forms` while we're walking.
-    // Include the evicting set so in-flight drains from already-
-    // unmounted forms also flush before shutdown returns.
-    const states = [...forms.values(), ...evicting]
-    await Promise.allSettled(states.map((state) => state.awaitPendingWrites()))
-  }
-
   // SSR prefetch coordination. Plain (non-reactive) Sets — the read
   // path is `onServerPrefetch` callbacks, which fire imperatively after
   // setup, not from inside a reactive effect. A new registry is
@@ -414,7 +381,6 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
     enqueuePrefetch,
     skipPrefetch,
     shouldPrefetch,
-    shutdown,
   }
 }
 

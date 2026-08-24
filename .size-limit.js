@@ -357,7 +357,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '52 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 51.3 KB.
+    limit: '51.75 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -587,7 +588,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '52 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 51.3 KB.
+    limit: '51.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -762,7 +764,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '47.5 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 46.92 KB.
+    limit: '47.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1016,7 +1019,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '48.5 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 47.72 KB.
+    limit: '48.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1067,7 +1071,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '38.75 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 38.02 KB.
+    limit: '38.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1290,7 +1295,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '38.25 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 37.67 KB.
+    limit: '38 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1354,7 +1360,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '34 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 33.36 KB.
+    limit: '33.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1438,7 +1445,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '35 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 34.26 KB.
+    limit: '34.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1480,7 +1488,8 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 15.15 KB.
-    limit: '14.5 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 13.99 KB.
+    limit: '14.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1561,7 +1570,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '38.25 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 37.67 KB.
+    limit: '38 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1635,7 +1645,8 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '26 KB',
+    // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 25.34 KB.
+    limit: '25.75 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

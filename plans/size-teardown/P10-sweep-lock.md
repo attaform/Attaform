@@ -66,3 +66,51 @@ every eager claim below.
   assumed P9/P10 eager wins that refused on measurement); the honest
   program total is told in eager + barrel + tarball + when-used
   terms, not eager alone.
+
+## CLOSED 2026-08-24: program complete at 33,004 B gz
+
+Entry criteria: wizard battery green (32 files / 274 tests; dual-major
+explicit in wizard-gate + wizard-gate-seed, adapter-agnostic elsewhere
+by design). Bench re-run vs reference/p9-bench-baseline: within noise
+at 46 of 50 points; the three first-run dropouts (blank-flat F=50,
+refined F=50, deep D=16) all recovered at 0.98-1.00x on a same-tree
+re-run. keystroke array N=100 [v4] is BISTABLE (2,607 / ~247,000 /
+447 hz across three same-tree runs while N=10 and N=1000 hold steady);
+parked beside the flat-F200 slope point, excluded from within-noise
+verdicts. Since P9 landed zero code, this diff measured the noise
+floor itself.
+
+Item verdicts (full arithmetic in 00-program.md addendum 10):
+
+1. EXECUTED, expanded. Dead modules deleted (assertions.ts,
+   extract-schema-fields.ts), zod-shape.ts pruned to the live v4
+   detector: 0 eager by construction. The entry re-grep surfaced the
+   real find: the June persist rip-out had orphaned the store's whole
+   drain spine (registerDrain / drainHooks / always-immediate
+   awaitPendingWrites) plus the registry's drain-then-dispose eviction
+   choreography and a shutdown() awaiting nothing, zero callers
+   anywhere. Deleted: measured -124 B gz (33,128 -> 33,004).
+2. REFUSED at sketch: in-bundle fusion ~0; tracker twins diverge at
+   the eviction tail; -0..-25 B after parameterization cost.
+3. REFUSED at measurement: zero attribution rows on both scenarios.
+4. TO OSWALD (sign-off 12), options measured: A keep (364.9 kB packed
+   vs 450 budget); B strip 37 @internal docblocks (-4.6 kB gz);
+   C strip all shared-chunk docblocks (-104 kB gz, deletes the hover
+   surface). Shared chunks ARE the public hover surface; entries are
+   re-export shims.
+5. REFUSED at re-price: when-used cost measured 5,175 B gz eager
+   (async 0); use-wizard.ts is 84% and unique; gate ground is 25 B;
+   the -2.9k claim had no ground on today's tree.
+6. REFUSED at inventory: 7 transforms with commons already extracted;
+   ordering contracts are public API; bundler entries already thin.
+7. TO OSWALD: sucrase re-drop evidence unchanged from P8 (+131 B keeps
+   the docs playground alive).
+
+Final acts: BUDGET_GZ 33_550 -> 33_430; 11 size-limit caps re-baselined
+to fresh actuals; attribution regenerated (v4, index, new v3 snapshot);
+tarball green (364.9 kB packed / 88 files). Full suite 369 files /
+4,683 tests, size-limit, bundled-types, doc-snippets, typecheck: all
+green. Program totals: eager 46,477 -> 33,004 (-29.0%); barrel 36,587
+at close; tarball 1.8 MB -> 364.9 kB (-80%); wizard when-used 5,175 B
+gz banked; async lazy 1,327 B gz. SIZE-TEARDOWN.md carries the landed
+appendix.

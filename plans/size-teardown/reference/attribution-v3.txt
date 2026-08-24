@@ -1,0 +1,64 @@
+SCENARIO: v3
+eager total: raw=112978 gz=33265 (32.49 kB gz) chunks=1
+
+== BY DIRECTORY (gz-attributed bytes) ==
+  27382 gz    93005 raw   40 files  src/runtime/core
+   4996 gz    16962 raw    9 files  src/runtime/adapters/zod-v3
+    836 gz     2841 raw    2 files  src/runtime/composables
+     44 gz      150 raw    1 files  <stdin>
+      0 gz        0 raw    1 files  src
+
+== TOP 70 FILES (gz-attributed bytes) ==
+   7256 gz    24642 raw  src/runtime/core/create-form-store.ts
+   2071 gz     7034 raw  src/runtime/core/callable-tree.ts
+   2013 gz     6837 raw  src/runtime/core/build-form-api.ts
+   1800 gz     6112 raw  src/runtime/adapters/zod-v3/introspect.ts
+   1761 gz     5981 raw  src/runtime/core/array-engine.ts
+   1749 gz     5939 raw  src/runtime/core/field-state-api.ts
+   1661 gz     5640 raw  src/runtime/adapters/zod-v3/index.ts
+   1258 gz     4272 raw  src/runtime/core/process-form.ts
+   1252 gz     4253 raw  src/runtime/core/abstract-schema-factory.ts
+    944 gz     3207 raw  src/runtime/core/walk-derive-default.ts
+    942 gz     3200 raw  src/runtime/core/path-walker.ts
+    775 gz     2633 raw  src/runtime/composables/use-abstract-form.ts
+    737 gz     2502 raw  src/runtime/core/walk-fix-structural.ts
+    716 gz     2432 raw  src/runtime/core/diff-apply.ts
+    712 gz     2419 raw  src/runtime/core/register-api.ts
+    700 gz     2379 raw  src/runtime/core/walk-slim-primitives.ts
+    673 gz     2287 raw  src/runtime/adapters/zod-v3/strip-async.ts
+    640 gz     2175 raw  src/runtime/core/unset-walker.ts
+    524 gz     1778 raw  src/runtime/core/schema-coerce.ts
+    452 gz     1534 raw  src/runtime/core/paths.ts
+    448 gz     1521 raw  src/runtime/core/walk-path-segments.ts
+    424 gz     1441 raw  src/runtime/core/registry.ts
+    378 gz     1283 raw  src/runtime/adapters/zod-v3/assert-supported.ts
+    375 gz     1275 raw  src/runtime/core/errors.ts
+    311 gz     1056 raw  src/runtime/core/display-state.ts
+    298 gz     1013 raw  src/runtime/core/display-engine.ts
+    283 gz      962 raw  src/runtime/core/slim-primitive-gate.ts
+    244 gz      827 raw  src/runtime/adapters/zod-v3/rebuild-schema.ts
+    225 gz      763 raw  src/runtime/core/form-activation.ts
+    210 gz      714 raw  src/runtime/core/merge-hydration.ts
+    197 gz      668 raw  src/runtime/adapters/zod-v3/walker-introspector.ts
+    142 gz      483 raw  src/runtime/core/proxy-live-keys.ts
+    132 gz      450 raw  src/runtime/core/error-codes.ts
+    110 gz      372 raw  src/runtime/core/safe-assign.ts
+    105 gz      357 raw  src/runtime/core/hash.ts
+    103 gz      349 raw  src/runtime/core/humanize.ts
+    102 gz      347 raw  src/runtime/core/field-ids.ts
+     97 gz      331 raw  src/runtime/core/defaults.ts
+     61 gz      208 raw  src/runtime/composables/use-form.ts
+     51 gz      173 raw  src/runtime/core/merge-deep.ts
+     48 gz      163 raw  src/runtime/core/field-meta-store.ts
+     44 gz      150 raw  <stdin>
+     39 gz      132 raw  src/runtime/core/proxy-readonly-helpers.ts
+     38 gz      129 raw  src/runtime/core/plugin.ts
+     28 gz       94 raw  src/runtime/core/field-meta.ts
+     26 gz       90 raw  src/runtime/core/resolve-default-values.ts
+     25 gz       85 raw  src/runtime/core/ssr.ts
+     22 gz       76 raw  src/runtime/adapters/zod-v3/helpers.ts
+     19 gz       65 raw  src/runtime/core/unset.ts
+     16 gz       56 raw  src/runtime/core/get-computed-schema.ts
+     13 gz       43 raw  src/runtime/adapters/zod-v3/slim-primitives.ts
+      8 gz       26 raw  src/runtime/adapters/zod-v3/errors.ts
+      0 gz        0 raw  src/zod-v3.ts

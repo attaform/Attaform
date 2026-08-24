@@ -287,3 +287,44 @@ per-store; serialized boundaries keep one edge parser.
 - Workflow journals: `subagents/workflows/wf_11c2b74f-a84/` and `wf_03202724-26e/`
   under the session directory (per-agent transcripts and structured results).
 - Fleet cost: ~3.4M subagent tokens, 624 tool calls, ~45 min wall clock.
+
+## 12. Landed (program close, 2026-08-24)
+
+The program ran P0 through P10 on `experiment/size-teardown` (ledger and
+per-phase addenda: `plans/size-teardown/00-program.md`). Final measured
+state, in the four terms that matter, against the main fb532ad9 baseline:
+
+| surface                               | baseline       | landed        | delta  |
+| ------------------------------------- | -------------- | ------------- | ------ |
+| eager (minimal useForm, zod-v4, prod) | 46,477 B gz    | 33,004 B gz   | -29.0% |
+| barrel (`attaform` index, eager)      | 41,080 B gz \* | 36,587 B gz   | -10.9% |
+| tarball (packed / files)              | 1.8 MB / 182   | 364.9 kB / 88 | -80%   |
+| wizard when-used (over useForm)       | (not measured) | 5,175 B gz    | banked |
+| async lazy chunks                     | --             | 1,327 B gz    | --     |
+
+\* first recorded barrel figure (P7 entry); the pre-program barrel was
+not captured. The v4-gap penalty (barrel minus minimal v4) closed from
+6,104 to 3,583 B gz.
+
+What the numbers cost and taught:
+
+- The original 25,960 plan-of-record was superseded twice on evidence
+  (post-P5 re-anchor, P8-boundary re-derivation). Landing at 33,004 is
+  the honest number: every gap to the original target traces to a
+  measured refusal recorded in an addendum, not to abandoned work.
+- The pricing law that governed the tail of the program: unique code
+  and prose delete near raw; structural-twin folds on this tree
+  realize at ~2-15% of raw (measured exhibit: 467 raw chars of perfect
+  twins bought -10 B gz). P9 closed with all four arms refused on that
+  law; P10's four refusals confirmed it at when-used scope.
+- The last real eager win was archaeology, not architecture: the June
+  persist rip-out had orphaned the store's entire drain spine, and
+  deleting it bought -124 B gz of pure dead machinery.
+- Guardrails at close: eager ratchet BUDGET_GZ 33_430 (~0.43 kB
+  headroom), 24 size-limit caps re-baselined to fresh actuals, tarball
+  budget 450 kB (364.9 actual), attribution snapshots (v4, index, v3)
+  regenerated in `plans/size-teardown/reference/`.
+- Open rulings (Oswald): sign-off 12's d.ts Tier-A cap (options priced
+  in addendum 10) and the sucrase-shim re-drop (P8 evidence stands).
+- The do-not-do list in section 7 was reconfirmed at close; nothing on
+  it was re-attempted.

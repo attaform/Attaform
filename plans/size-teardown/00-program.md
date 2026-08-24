@@ -14,28 +14,30 @@ attribution tables, verifier measurement scripts, the P8 replacement sketches).
   (2026-08-24): landing ~32.3 kB, honest range 31.5-33.2 kB (see the
   ruling note + addenda under the ledger). Tarball: 1.8 MB packed
   to 330-430 kB (unchanged; P0/P1a already banked most of it).
+- PROGRAM CLOSED at P10 (2026-08-24): eager 33,004 B gz (-29.0% vs
+  baseline), tarball 364.9 kB packed / 88 files, all gates green.
 
 ## Status ledger
 
 Update this table at every phase boundary. "eager after" is the measured ratchet
 number on the phase's merge commit, not an estimate.
 
-| phase | title                                 | status  | eager after (B gz) | date       | notes                                           |
-| ----- | ------------------------------------- | ------- | ------------------ | ---------- | ----------------------------------------------- |
-| --    | baseline                              | --      | 46,477             | 2026-08-23 | main fb532ad9                                   |
-| P0    | packaging config                      | done    | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182)     |
-| P1a   | dev/prod dual dist                    | done    | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok      |
-| P1b   | error codes + prose diet              | moved   | --                 |            | re-sequenced after P7 (re-anchor ruling item 2) |
-| P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed         |
-| P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer     |
-| P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted        |
-| P5    | store kernel                          | done    | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase     |
-| P6    | validation shell fold (re-scoped)     | done    | 35,621             | 2026-08-23 | -147 (under band); sign-off 4 retired           |
-| P8    | surface program                       | done    | 34,530             | 2026-08-24 | -1,091; callable-tree; shims restored (+131)    |
-| P7    | zod-core + probe packs                | done    | 33,999             | 2026-08-24 | -531; fix walk; barrel -2,260; s/o 6 refused    |
-| P1b   | error codes + prose diet              | done    | 33,124             | 2026-08-24 | -875; 14 AF codes; /e/af## pages same PR        |
-| P9    | paths + walkers (re-scoped)           | done    | 33,124             | 2026-08-24 | 0 of 4 arms survived rep pricing; -10B exhibit  |
-| P10   | sweep and lock                        | pending | ~33,000 exp. eager |            | last; value = tarball + wizard when-used        |
+| phase | title                                 | status | eager after (B gz) | date       | notes                                           |
+| ----- | ------------------------------------- | ------ | ------------------ | ---------- | ----------------------------------------------- |
+| --    | baseline                              | --     | 46,477             | 2026-08-23 | main fb532ad9                                   |
+| P0    | packaging config                      | done   | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182)     |
+| P1a   | dev/prod dual dist                    | done   | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok      |
+| P1b   | error codes + prose diet              | moved  | --                 |            | re-sequenced after P7 (re-anchor ruling item 2) |
+| P2    | directive un-weld                     | done   | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed         |
+| P3    | history plugin + arrays engine        | done   | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer     |
+| P4    | field-meta install + SPI probe delete | done   | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted        |
+| P5    | store kernel                          | done   | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase     |
+| P6    | validation shell fold (re-scoped)     | done   | 35,621             | 2026-08-23 | -147 (under band); sign-off 4 retired           |
+| P8    | surface program                       | done   | 34,530             | 2026-08-24 | -1,091; callable-tree; shims restored (+131)    |
+| P7    | zod-core + probe packs                | done   | 33,999             | 2026-08-24 | -531; fix walk; barrel -2,260; s/o 6 refused    |
+| P1b   | error codes + prose diet              | done   | 33,124             | 2026-08-24 | -875; 14 AF codes; /e/af## pages same PR        |
+| P9    | paths + walkers (re-scoped)           | done   | 33,124             | 2026-08-24 | 0 of 4 arms survived rep pricing; -10B exhibit  |
+| P10   | sweep and lock                        | done   | 33,004             | 2026-08-24 | -124 drain spine; 4 arms refused; gates locked  |
 
 > **RE-ANCHOR RULING (Oswald, 2026-08-23, post-P5): CONTINUE, re-scoped.**
 > His words: push wherever more is achievable without triggering
@@ -151,6 +153,71 @@ number on the phase's merge commit, not an estimate.
 >    outlier: keystroke array N=100). Lesson locked: a dedup arm needs
 >    a measured UNIQUE-bytes core to price above noise;
 >    structural-twin folds on this tree are already spent.
+
+> 10. P10 addendum (program close, 2026-08-24; ratchet 33,124 -> 33,004):
+>     ENTRY: wizard battery 32 files / 274 tests green (dual-major explicit
+>     in the gate suites, adapter-agnostic elsewhere by design); bench
+>     re-run vs reference/p9-bench-baseline within noise at 46 of 50
+>     points, and the three first-run dropouts (blank-flat F=50, refined
+>     F=50, deep D=16) all recovered at 0.98-1.00x on a same-tree re-run.
+>     keystroke array N=100 [v4] is BISTABLE, not merely noisy: three
+>     same-tree runs read 2,607 / ~247,000 / 447 hz while N=10 and N=1000
+>     hold steady (the P9 baseline had captured a glitch reading). Parked
+>     beside the flat-F200 slope point; exclude from within-noise verdicts.
+>     LANDED (item 1, expanded): assertions.ts (test-only) and
+>     extract-schema-fields.ts (zero importers) deleted, zod-shape.ts
+>     pruned to the one live detector (unified dispatch is v4-check with
+>     implicit v3 else): 0 eager by construction, tarball hygiene. The
+>     entry re-grep found better than the stub's "orphaned persistence
+>     constants": the June persist rip-out orphaned the store's ENTIRE
+>     drain spine (registerDrain / drainHooks / an awaitPendingWrites that
+>     always resolved immediately) plus the registry's drain-then-dispose
+>     eviction choreography and a shutdown() awaiting nothing, with zero
+>     callers anywhere (src, test, docs, types). Deleted; eviction now
+>     disposes directly. Measured -124 B gz eager. Unique deletion
+>     realizing near raw: the pricing law's other half, confirmed again.
+>     REFUSED on measurement: (2) registry fusion (in-bundle module fusion
+>     ~0; tracker twins share the count/token/microtask skeleton but
+>     diverge at the eviction tail, dispose vs plain delete: -0..-25 B
+>     after parameterization, on lifecycle-critical ground). (3)
+>     DEVTOOLS_WINDOW_KEY (zero attribution rows on BOTH scenarios;
+>     treeshaken; nothing to move). (5) wizard internal program (the
+>     -2.9k claim REFUTED: measured when-used cost is 5,175 B gz eager
+>     over useForm with async 0; use-wizard.ts is 84% of it and is unique
+>     feature code; the gate-family ground measures 25 B gz so the
+>     import-gated gate spine has nothing to gate; the satellite proxy
+>     fold ceiling of -300..-500 B sits on the most behavior-pinned
+>     semantics and prices under the ~+3x risk bar; the stub's named
+>     quality fixes do not map to today's tree). (6) build-transform
+>     consolidation (7 transforms, not 5; commons already extracted to
+>     \_shared-props.ts; the ordering contracts are public API via
+>     attaform/transforms' 5 exports; bundler entries already thin at
+>     45-117 lines: negative maintenance value at 0 runtime bytes).
+>     TO OSWALD, measured (the two standing decision points): (4) d.ts
+>     Tier-A cap, sign-off 12. The shared-chunk d.ts ARE the public hover
+>     surface (entry files are re-export shims), so a tier split by file
+>     location would delete hover docs. Options: A keep everything
+>     (tarball 364.9 kB vs 450 budget, zero DX risk); B strip the 37
+>     @internal-tagged docblocks of 536 (-4.6 kB gz measured); C strip
+>     all shared-chunk docblocks (-104 kB gz measured, deletes the
+>     hover-doc surface of an inference-first library). (7) sucrase-shim
+>     re-drop: keep costs +131 B; dropping crashes the docs playground
+>     (@vue/repl compiles with sucrase minus disableESTransforms, so the
+>     documented `surface(path)?.x` idiom downlevels into a .call-reading
+>     helper). The P8 evidence is unchanged.
+>     RE-BASELINED: BUDGET_GZ 33_550 -> 33_430; 11 size-limit caps
+>     tightened to fresh actuals (quarter-kB steps, ~0.3-0.5 headroom);
+>     attribution regenerated (v4 + index + NEW v3 snapshot); tarball
+>     check green at 364.9 kB packed / 1,473.4 kB unpacked / 88 files.
+>     Verification: full suite 369 files / 4,683 tests green; size-limit
+>     exit 0 on the new caps; bundled-types green; doc-snippets green
+>     against the fresh dist; typecheck green.
+>     PROGRAM TOTALS (honest, four terms): eager (minimal v4 prod) 46,477
+>     -> 33,004 = -13,473 B gz = -29.0%. Barrel (index) 36,587 at close
+>     (first recorded 41,080 at P7 entry; v4-gap penalty 6,104 -> 3,583).
+>     Tarball 1.8 MB / 182 files -> 364.9 kB / 88 files = -80% (P1a's
+>     dual-dist growth deliberate). Wizard when-used 5,175 B gz eager
+>     over useForm (banked baseline). Async lazy chunks 1,327 B gz.
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

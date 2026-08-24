@@ -831,23 +831,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   registerCleanup(fn: () => void): void
 
   /**
-   * Register an async drain function. Called by the registry before
-   * `dispose()` so async background work — chiefly the persistence
-   * layer's debounced storage writes — has a chance to settle without
-   * losing the last keystroke. Each registered function is awaited in
-   * parallel; failures are swallowed to keep eviction reliable.
-   */
-  registerDrain(fn: () => Promise<void>): void
-
-  /**
-   * Drain async work registered via `registerDrain`. Resolves once
-   * every registered drain has settled (in parallel). Safe to call
-   * repeatedly — registered drains decide their own idempotency.
-   */
-  awaitPendingWrites(): Promise<void>
-
-  /**
-   * Cache for per-state modules (history, persistence) that must
+   * Cache for per-state modules (chiefly history) that must
    * outlive any single consumer. Subsequent `useForm` / `injectForm`
    * calls for the same key read from this map so the public API shape
    * is identical regardless of mount order. Keyed by a string identifier
@@ -1224,7 +1208,6 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
   readonly submitSuccessListeners: Set<() => void>
   readonly resetListeners: Set<() => void>
   readonly cleanupHooks: (() => void)[]
-  readonly drainHooks: (() => Promise<void>)[]
   readonly authoredPaths: Set<PathKey>
   readonly arrayIdentity: ArrayIdentity
   readonly removedSubtrees: Set<PathKey>
@@ -2748,22 +2731,6 @@ function registerCleanup<F extends GenericForm, G extends GenericForm = F>(
   st.cleanupHooks.push(fn)
 }
 
-function registerDrain<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  fn: () => Promise<void>
-): void {
-  st.drainHooks.push(fn)
-}
-
-async function awaitPendingWrites<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>
-): Promise<void> {
-  if (st.drainHooks.length === 0) return
-  // Run drains in parallel — each owns its own retry / failure
-  // semantics; we just need to know when all have settled.
-  await Promise.allSettled(st.drainHooks.map((fn) => fn()))
-}
-
 function dispose<F extends GenericForm, G extends GenericForm = F>(st: FormState<F, G>): void {
   // Run state-scoped teardowns BEFORE clearing listener sets, so a
   // module that wants to flush something by emitting one last event
@@ -2778,7 +2745,6 @@ function dispose<F extends GenericForm, G extends GenericForm = F>(st: FormState
     }
   }
   st.cleanupHooks.length = 0
-  st.drainHooks.length = 0
   st.modules.clear()
   cancelFieldValidation(st)
   cancelTransforms(st)
@@ -3799,7 +3765,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // FormStore's own lifetime (`dispose()` call at registry-eviction)
   // and not the first consumer's effect scope.
   const cleanupHooks: (() => void)[] = []
-  const drainHooks: (() => Promise<void>)[] = []
   const modules = new Map<string, unknown>()
 
   // Anti-flash display engine + its episode-timing companion. The engine
@@ -4219,7 +4184,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     submitSuccessListeners,
     resetListeners,
     cleanupHooks,
-    drainHooks,
     authoredPaths,
     arrayIdentity,
     removedSubtrees,
@@ -4297,8 +4261,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     onReset: (listener) => onReset(st, listener),
     emitSubmitSuccess: () => emitSubmitSuccess(st),
     registerCleanup: (fn) => registerCleanup(st, fn),
-    registerDrain: (fn) => registerDrain(st, fn),
-    awaitPendingWrites: () => awaitPendingWrites(st),
     dispose: () => dispose(st),
   }
 

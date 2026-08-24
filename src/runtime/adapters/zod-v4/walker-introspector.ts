@@ -13,6 +13,7 @@ import type { SchemaIntrospector, SharedZodKind } from '../../core/abstract-sche
 import {
   containsAsyncRefine,
   containsAsyncTransform,
+  containsDiscriminatedUnion,
   getArrayElement,
   getCatchDefault,
   getDefaultValue,
@@ -54,6 +55,7 @@ export const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
   isCoercePrimitive,
   containsAsyncRefine,
   containsAsyncTransform,
+  containsDiscriminatedUnion,
   hasContainerOrRootRefine,
 
   // Walker accessors (D2 / D3 / D5).

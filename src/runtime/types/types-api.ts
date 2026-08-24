@@ -692,6 +692,19 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * toward returning `true` when in doubt.
    */
   hasContainerOrRootRefine?(): boolean
+  /**
+   * `true` when the schema tree contains at least one discriminated
+   * union at any depth (inside arrays, tuples, records, and lazy
+   * schemas included). The store computes its per-form DU capability
+   * flag from this once at construction: `false` lets every write skip
+   * the cross-variant ancestor guard and the variant-reshape dispatch,
+   * and DU stub correction never runs. Optional: an adapter that omits
+   * it is treated as containing unions, keeping the conservative
+   * per-write probes on. Never return `false` for a schema that DOES
+   * hold a discriminated union — that disables variant reshape and
+   * stub correction for the form.
+   */
+  hasDiscriminatedUnions?(): boolean
 }
 
 /**

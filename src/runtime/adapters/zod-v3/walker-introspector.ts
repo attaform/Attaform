@@ -12,6 +12,7 @@ import { isZodSchemaType } from './helpers'
 import {
   containsAsyncRefine,
   containsAsyncTransform,
+  containsDiscriminatedUnion,
   getArrayElement,
   getCatchDefault,
   getDefaultValue,
@@ -52,6 +53,7 @@ export const V3_INTROSPECTOR: SchemaIntrospector<z.ZodTypeAny> = {
   isCoercePrimitive,
   containsAsyncRefine,
   containsAsyncTransform,
+  containsDiscriminatedUnion,
   hasContainerOrRootRefine,
 
   // Walker accessors (D2 / D3 / D5).

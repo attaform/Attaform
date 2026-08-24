@@ -178,6 +178,12 @@ export interface SchemaIntrospector<Schema> {
    * subtree validation catches the same verdicts as a whole-form pass.
    */
   hasContainerOrRootRefine(schema: Schema): boolean
+  /**
+   * True iff the schema tree holds at least one discriminated union at
+   * any depth. Drives the store's per-form DU capability flag; queried
+   * once at construction.
+   */
+  containsDiscriminatedUnion(schema: Schema): boolean
 
   // ---------------------------------------------------------------------
   // Walker accessors — consumed by the shared `core/walk-*` walkers (D2 /
@@ -443,6 +449,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   // subtree-vs-whole-form scope cut).
   let asyncValidationFlag: boolean | null = null
   let containerRefineFlag: boolean | null = null
+  let discriminatedUnionFlag: boolean | null = null
 
   function computeDiscriminator(path: Path): UnionDiscriminatorContext | undefined {
     const candidates =
@@ -509,6 +516,11 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     hasContainerOrRootRefine(): boolean {
       containerRefineFlag ??= intro.hasContainerOrRootRefine(rootSchema)
       return containerRefineFlag
+    },
+
+    hasDiscriminatedUnions(): boolean {
+      discriminatedUnionFlag ??= intro.containsDiscriminatedUnion(rootSchema)
+      return discriminatedUnionFlag
     },
 
     getDefaultValues(config: GetDefaultValuesConfig<Form>): DefaultValuesResponse<Form> {

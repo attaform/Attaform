@@ -1,7 +1,19 @@
 import type { App } from 'vue'
 import type { FormKey } from '../types/types-api'
+import { __DEV__ } from './dev'
 import { pathKeyToDotted, type PathKey } from './paths'
 import { getRegistryFromApp, type SerializedFormData } from './registry'
+
+/**
+ * Version stamp written onto every serialized envelope and required
+ * back at hydration. Rolling deploys and stale CDN caches can pair an
+ * old server bundle's payload with a new client (or vice versa); a
+ * stamp mismatch skips hydration wholesale — the client falls back to
+ * fresh construction, which beats replaying a payload whose inner
+ * shapes have drifted. Bump when `SerializedFormData`'s wire shape
+ * changes.
+ */
+export const ATTAFORM_STATE_VERSION = 1
 
 /**
  * Serialised snapshot of every form in a Vue app, produced by
@@ -11,6 +23,8 @@ import { getRegistryFromApp, type SerializedFormData } from './registry'
  * serialiser before embedding in your SSR payload.
  */
 export type SerializedAttaformState = {
+  /** Envelope version — see {@link ATTAFORM_STATE_VERSION}. */
+  readonly v: number
   /** Tuples of `[formKey, snapshot]` for every form in the app. */
   readonly forms: ReadonlyArray<readonly [FormKey, SerializedFormData]>
 }
@@ -70,7 +84,7 @@ export function renderAttaformState(app: App): SerializedAttaformState {
       },
     ])
   }
-  return { forms }
+  return { v: ATTAFORM_STATE_VERSION, forms }
 }
 
 /**
@@ -90,6 +104,29 @@ export function renderAttaformState(app: App): SerializedAttaformState {
  * the snapshot transparently — no further action is required.
  */
 export function hydrateAttaformState(app: App, payload: SerializedAttaformState): void {
+  // The payload typically arrives via `window.__ATTAFORM_STATE__` —
+  // runtime-validate the envelope rather than trusting the type. A
+  // missing or mismatched stamp means the server bundle that produced
+  // it is on a different version than this client (rolling deploy /
+  // stale cache): skip hydration wholesale and let every form
+  // construct fresh from its schema.
+  const stamped = payload as { v?: unknown; forms?: unknown } | null | undefined
+  if (
+    stamped === null ||
+    typeof stamped !== 'object' ||
+    stamped.v !== ATTAFORM_STATE_VERSION ||
+    !Array.isArray(stamped.forms)
+  ) {
+    if (__DEV__) {
+      console.warn(
+        '[attaform] hydrateAttaformState: payload version mismatch (expected ' +
+          `${ATTAFORM_STATE_VERSION}, got ${String(stamped === null || typeof stamped !== 'object' ? stamped : stamped.v)}). ` +
+          'Skipping hydration — forms will construct fresh. This usually means the SSR bundle ' +
+          'is on a different attaform version than the client (rolling deploy / stale cache).'
+      )
+    }
+    return
+  }
   const registry = getRegistryFromApp(app)
   for (const [key, data] of payload.forms) {
     registry.pendingHydration.set(key, data)

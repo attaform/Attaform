@@ -4,6 +4,7 @@ import {
   assertZodVersion,
   containsAsyncRefine,
   containsAsyncTransform,
+  containsDiscriminatedUnion,
   getArrayElement,
   getCatchDefault,
   getChecks,
@@ -297,6 +298,42 @@ describe('isAsyncEffect', () => {
   it('returns false for non-ZodEffects schemas', () => {
     expect(isAsyncEffect(z.string())).toBe(false)
     expect(isAsyncEffect(z.object({ x: z.string() }))).toBe(false)
+  })
+})
+
+describe('containsDiscriminatedUnion', () => {
+  it('false for a plain object schema', () => {
+    expect(containsDiscriminatedUnion(z.object({ a: z.string(), b: z.number() }))).toBe(false)
+  })
+
+  it('true for a top-level discriminated union', () => {
+    const du = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a'), x: z.string() }),
+      z.object({ kind: z.literal('b'), y: z.number() }),
+    ])
+    expect(containsDiscriminatedUnion(du)).toBe(true)
+  })
+
+  it('true for a union nested under an object key', () => {
+    const du = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a'), x: z.string() }),
+      z.object({ kind: z.literal('b'), y: z.number() }),
+    ])
+    expect(containsDiscriminatedUnion(z.object({ notify: du }))).toBe(true)
+  })
+
+  it('true for a union inside an array element (never-populated arrays still count)', () => {
+    const du = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a'), x: z.string() }),
+      z.object({ kind: z.literal('b'), y: z.number() }),
+    ])
+    expect(containsDiscriminatedUnion(z.object({ items: z.array(du) }))).toBe(true)
+  })
+
+  it('false for a plain (non-discriminated) union', () => {
+    expect(containsDiscriminatedUnion(z.object({ v: z.union([z.string(), z.number()]) }))).toBe(
+      false
+    )
   })
 })
 

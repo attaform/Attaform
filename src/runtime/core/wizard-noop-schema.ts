@@ -65,5 +65,6 @@ export function buildNoopWizardSchema(
     isLeafAtPath: () => false,
     isRequiredAtPath: () => false,
     getUnionDiscriminatorAtPath: () => undefined,
+    hasDiscriminatedUnions: () => false,
   }
 }

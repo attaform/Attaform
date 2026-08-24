@@ -27,7 +27,6 @@ import type {
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
 import { createDisplayEngine, type DisplayEngine } from './display-engine'
-import { applyDuStubs } from './du-stubs'
 import {
   cloneVariantSnapshot,
   createArrayBookkeeping,
@@ -44,12 +43,12 @@ import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
-import { AttaformErrorCode, makeBlankRequiredError, NO_ERRORS } from './error-codes'
+import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
+import { runFactoryAndApply } from './form-activation'
 import {
   canonicalizePath,
   coerceToPathKey,
   isPathPrefix,
-  ROOT_PATH,
   ROOT_PATH_KEY,
   segmentsForPathKey,
   type Path,
@@ -65,12 +64,11 @@ import {
   setAtPathWithSchemaFill,
   tryInPlaceLeafWrite,
 } from './path-walker'
-import { isShadowedKey } from './safe-assign'
+import { isShadowedKey, safeAssign } from './safe-assign'
 import { __DEV__ } from './dev'
 import { resolveCoercionIndex, type CoercionIndex } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
-import { walkUnspecified } from './unset-walker'
-import { mergeSparseHydration } from './merge-hydration'
+import { walkAuthoredFromConstraints, walkUnspecified } from './unset-walker'
 
 /**
  * A value that holds descendant leaves — an array or a plain object. The dirty
@@ -1008,6 +1006,110 @@ function isPathKeyUnder(existingKey: PathKey, parentPath: Path): boolean {
 }
 
 /**
+ * Walk an `initialData` / restored payload and collapse any object whose
+ * position carries a discriminated union but whose `discriminator` value
+ * isn't a known variant literal into a stub holding only the
+ * discriminator key. Drops any first-variant fields that snuck in past
+ * the parser to keep the form value structurally consistent with the
+ * schema's view of "no variant selected yet."
+ *
+ * The walker is intentionally pure — every dependency (schema, data,
+ * base path, warning-set policy) is a parameter, not a closure capture
+ * — so `createFormStore` can call it both at construction (for the
+ * authored defaults) and inside `reshapeUnionAtPath` (for runtime
+ * variant transitions) without sharing state across calls.
+ *
+ * SSR hydration payloads (third-party storage JSON) flow through the
+ * same walker. Pollution defense routes every untrusted-key write
+ * through `safeAssign`, which uses `Object.defineProperty` for the
+ * `__proto__` key (own data property, no chain mutation) and plain
+ * bracket-assign for every other key. Legitimate fields literally
+ * named `prototype` / `constructor` / `__proto__` round-trip the same
+ * way every other key does.
+ *
+ * `warn: true` opts in to a `__DEV__`-only one-shot per
+ * `(dotted-path, disc-value)` console warning when a non-blank
+ * discriminator value falls back to a stub — typo-style bugs where the
+ * consumer wrote `kind: 'BAD'` and got a stub by accident. The blank
+ * literals `''` / `0` / `0n` / `false` / `null` are the intentional
+ * "no variant selected" signal from `expandUnsetAt` and never warn.
+ */
+export function applyDuStubs(
+  schema: AbstractSchema<unknown, unknown>,
+  data: unknown,
+  options: { warn?: boolean; basePath?: Path } = {}
+): unknown {
+  const warned = options.warn === true ? new Set<string>() : undefined
+  return walkDuStubs(schema, data, options.basePath ?? [], warned)
+}
+
+function walkDuStubs(
+  schema: AbstractSchema<unknown, unknown>,
+  value: unknown,
+  path: Path,
+  warned: Set<string> | undefined
+): unknown {
+  if (value === null || value === undefined || typeof value !== 'object') return value
+  if (
+    value instanceof Date ||
+    value instanceof RegExp ||
+    value instanceof Map ||
+    value instanceof Set ||
+    typeof value === 'function'
+  ) {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.map((item, i) => walkDuStubs(schema, item, [...path, i], warned))
+  }
+  const rec = value as Record<string, unknown>
+  const du = schema.getUnionDiscriminatorAtPath(path)
+  if (du !== undefined) {
+    const discValue = rec[du.discriminatorKey]
+    if (discValue !== undefined && !du.isVariantSelected(discValue)) {
+      // Kind-blank stub (`''` / `0` / `0n` / `false` / `null`) is the
+      // intentional "no variant selected yet" signal from
+      // `expandUnsetAt` — don't warn. The warn is for typo-style bugs
+      // where the user wrote `kind: 'BAD'` and got a stub by accident.
+      const isKindBlank =
+        discValue === '' ||
+        discValue === 0 ||
+        discValue === 0n ||
+        discValue === false ||
+        discValue === null
+      if (!isKindBlank && warned !== undefined && __DEV__) {
+        const dotted = path.map((s) => String(s)).join('.') || '(root)'
+        const key = `${dotted}::${String(discValue)}`
+        if (!warned.has(key)) {
+          warned.add(key)
+          console.warn(
+            `[attaform] defaultValues at '${dotted}' carries discriminator ` +
+              `'${du.discriminatorKey}=${JSON.stringify(discValue)}' which isn't a known variant. ` +
+              `Form mounts in a stub holding only the discriminator key. Validation will surface the mismatch.`
+          )
+        }
+      }
+      // The disc-only stub routes the discriminator-key write through
+      // `safeAssign` so a schema using `z.discriminatedUnion('__proto__', …)`
+      // (vanishingly rare, but possible) lands the disc value as an
+      // own data property instead of invoking the inherited setter.
+      const stub: Record<string, unknown> = {}
+      safeAssign(stub, du.discriminatorKey, discValue)
+      return stub
+    }
+  }
+  // SSR-walk container. The `safeAssign` per key lands a literal
+  // `__proto__` segment as an own data property; every other key
+  // takes the plain bracket-assign branch. A hostile payload carrying
+  // `__proto__` can't reassign the container's prototype chain.
+  const out: Record<string, unknown> = {}
+  for (const k of Object.keys(rec)) {
+    safeAssign(out, k, walkDuStubs(schema, rec[k], [...path, k], warned))
+  }
+  return out
+}
+
+/**
  * Walk a consumer-supplied value and drop Symbol-keyed properties
  * recursively. Form values are string-keyed by schema design — symbols
  * at any level would trip JSON serialization (persistence adapters),
@@ -1047,30 +1149,6 @@ function stripSymbolsDeep(value: unknown): unknown {
     if (cleaned !== src[k]) mutated = true
   }
   return mutated ? out : value
-}
-
-/**
- * Walk the consumer's `defaultValues` argument and stamp every leaf path
- * as "consumer-authored." Even an explicit `undefined` at a leaf counts:
- * the consumer named the path, so any verdict against that undefined IS
- * one they had a chance to provoke and should see.
- *
- * Plain records and arrays descend; non-record leaves (primitives, Date,
- * Map, class instances) mark their own path and stop.
- */
-function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<PathKey>): void {
-  if (prefix.length > 0) out.add(canonicalizePath(prefix).key)
-  if (isPlainRecord(value)) {
-    for (const k of Object.keys(value)) {
-      walkAuthoredFromConstraints((value as Record<string, unknown>)[k], [...prefix, k], out)
-    }
-    return
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      walkAuthoredFromConstraints(value[i], [...prefix, i], out)
-    }
-  }
 }
 
 /**
@@ -1129,7 +1207,7 @@ type TransformRun = { token: number; holder: TransformAbortHolder; released: boo
  * the returned record are thin per-instance arrows delegating into the
  * shared module functions.
  */
-type FormState<F extends GenericForm, G extends GenericForm = F> = FormStore<F, G> & {
+export type FormState<F extends GenericForm, G extends GenericForm = F> = FormStore<F, G> & {
   // --- resolved configuration (fixed at construction) ---
   readonly strict: boolean
   /** Construction-time `defaultValues`, kept as `reset()`'s fallback source. */
@@ -1156,6 +1234,15 @@ type FormState<F extends GenericForm, G extends GenericForm = F> = FormStore<F, 
   readonly transformRuns: Map<PathKey, TransformRun>
   readonly transformWaiters: { key: PathKey | null; resolve: () => void }[]
   readonly arrayBookkeeping: ArrayBookkeeping
+
+  /**
+   * Per-form DU capability flag, computed once at construction from
+   * `schema.hasDiscriminatedUnions?.()` (absent reads as `true` — the
+   * conservative per-write probes stay on). `false` skips the
+   * cross-variant ancestor guard, the variant-reshape dispatch, and
+   * construction-time stub correction entirely.
+   */
+  readonly hasDU: boolean
 
   // --- mutable scalars (plain fields; never read reactively) ---
   nextOrdinal: number
@@ -1859,7 +1946,7 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   // The DU's own disc key is always reachable — writes to it
   // recover the form from stub state by selecting a valid variant
   // — so the guard skips when the next path segment IS the disc.
-  if (path.length >= 2) {
+  if (st.hasDU && path.length >= 2) {
     for (let i = 0; i < path.length - 1; i++) {
       const ancestorPath = path.slice(0, i + 1)
       const du = st.schema.getUnionDiscriminatorAtPath(ancestorPath)
@@ -1915,7 +2002,7 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   //   Path is the union; the consumer's value carries the
   //   discriminator. Layer the consumer's value on top of the
   //   matched variant default so consumer-supplied keys win.
-  if (meta?.skipDiscriminatorReshape !== true) {
+  if (st.hasDU && meta?.skipDiscriminatorReshape !== true) {
     // Case A: discriminator-key write.
     if (path.length > 0) {
       const last = path[path.length - 1]
@@ -3222,12 +3309,19 @@ function rehydrate<F extends GenericForm, G extends GenericForm = F>(
 // captured factory, mark the form `activated`, and publish the
 // in-flight promise so concurrent `activate()` calls join rather
 // than double-fire. The promise self-clears on settle so a
-// subsequent refetch can publish a fresh one.
+// subsequent refetch can publish a fresh one. The gating flips
+// (`activated`, `hydrating`) publish synchronously before the
+// orchestrator runs, so gated readers and `onServerPrefetch` (which
+// awaits the composed promise) observe a consistent in-flight state.
+// (A lazy-chunk split of the orchestrator was measured and declined:
+// the cross-chunk overhead outweighed the moved bytes — see
+// plans/size-teardown/P5-store-kernel.md.)
 function fireFactory<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   factory: () => unknown | Promise<unknown>
 ): Promise<void> {
   st.activated.value = true
+  st.hydrating.value = true
   const promise = runFactoryAndApply(st, factory)
   st.activationPromise.value = promise
   void promise.finally(() => {
@@ -3266,81 +3360,6 @@ function activate<F extends GenericForm, G extends GenericForm = F>(
   const factory = st.defaultValuesFactory.value
   if (factory === undefined) return Promise.resolve()
   return fireFactory(st, factory)
-}
-
-async function runFactoryAndApply<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  factory: () => unknown | Promise<unknown>
-): Promise<void> {
-  st.hydrating.value = true
-  // Stale-while-revalidate: keep any prior `HydrationFailed` entry
-  // visible until the new attempt settles. Same contract field
-  // errors follow under `field.validating === true` — the surface
-  // shouldn't flicker to empty during the retry. The entry is
-  // replaced on failure or cleared on success in the branches
-  // below.
-  try {
-    const value = await factory()
-    // The factory's resolved value is the consumer's late-bound
-    // `defaultValues`. Mark every leaf inside it as authored so the
-    // schema-error filter surfaces verdicts at preprocess / coerce
-    // paths the factory named with explicit undefined (same contract
-    // as the sync `defaultValues` argument applied at construction).
-    walkAuthoredFromConstraints(value, [], st.authoredPaths)
-    const full = mergeSparseHydration(
-      toRaw(st.form.value) as F,
-      value,
-      st.schema as unknown as Parameters<typeof mergeSparseHydration>[2]
-    )
-    applyFormReplacement(st, full, { hydration: true })
-    scheduleFieldValidation(st, [], true /* immediate */)
-    // Success: drop the previous attempt's error (if any) from both
-    // surfaces. New attempt's verdict has landed; the stale entry
-    // would now mis-narrate the state.
-    clearHydrationFailedEntry(st)
-    st.hydrateError.value = null
-    st.defaultsResolved.value = true
-  } catch (error) {
-    // Failure: replace (clear-then-append) so a repeat failure
-    // produces a single fresh entry rather than accumulating dupes.
-    // Single ValidationError covers both surfaces: the dedicated
-    // `hydrateError` ref AND the standard `schemaErrors` channel
-    // that feeds `form.meta.errors`. SSR factory rejections cross
-    // the wire through `schemaErrors`; the local `hydrateError`
-    // ref points to the same entry so the shape is identical at
-    // every read site.
-    clearHydrationFailedEntry(st)
-    st.hydrateError.value = appendHydrationFailedEntry(st, error)
-  } finally {
-    st.hydrating.value = false
-  }
-}
-
-function clearHydrationFailedEntry<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>
-): void {
-  const existing = st.errorCells.get(ROOT_PATH_KEY)?.schema
-  if (existing === undefined || existing.length === 0) return
-  const filtered = existing.filter((e) => e.code !== AttaformErrorCode.HydrationFailed)
-  if (filtered.length !== existing.length) {
-    setErrorChannelForKey(st, ROOT_PATH_KEY, 'schema', filtered)
-  }
-}
-
-function appendHydrationFailedEntry<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  error: unknown
-): ValidationError {
-  const message =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : 'Hydration failed'
-  const entry: ValidationError = {
-    message,
-    path: [...ROOT_PATH],
-    code: AttaformErrorCode.HydrationFailed,
-  }
-  const existing = st.errorCells.get(ROOT_PATH_KEY)?.schema ?? NO_ERRORS
-  setErrorChannelForKey(st, ROOT_PATH_KEY, 'schema', [...existing, entry])
-  return entry
 }
 
 // --- Reset ---
@@ -3844,9 +3863,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // `defaultValues` (or hydration payload) carried a bad discriminator.
   // Mirrors the runtime stub-state contract `setValueAtPath` uses for
   // bad-disc Case A/B writes; emits a one-shot dev warning per bad path.
-  const stubbedInitialData = applyDuStubs(schema as AbstractSchema<unknown, unknown>, initialData, {
-    warn: true,
-  }) as F
+  // One clone walk: for a DU-carrying schema the stub walk's rebuild is
+  // itself a fresh tree, so the snapshot above stays the pre-stub view
+  // (field records seed from it) and the stub pass produces the storage
+  // tree. A schema with no discriminated unions skips the stub walk —
+  // the snapshot IS the storage tree.
+  const hasDU = schema.hasDiscriminatedUnions?.() !== false
+  const stubbedInitialData = hasDU
+    ? (applyDuStubs(schema as AbstractSchema<unknown, unknown>, initialData, {
+        warn: true,
+      }) as F)
+    : initialData
 
   const form = ref(stubbedInitialData) as Ref<F>
 
@@ -4199,6 +4226,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     rememberVariants,
     fieldValidationMode,
     fieldValidationDebounceMs,
+    hasDU,
     fieldValidationState,
     formChangeListeners,
     submitSuccessListeners,

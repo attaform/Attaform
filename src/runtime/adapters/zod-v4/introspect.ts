@@ -534,6 +534,16 @@ export function walkSchemaTree(
  * behavior. False positives are unlikely (the AsyncFunction check is
  * precise) and cost only one extra microtask of validation work.
  */
+/**
+ * True iff the schema tree holds at least one discriminated union at
+ * any depth — `walkSchemaTree` reaches unions inside arrays, tuples,
+ * records, intersections, pipes, and (cycle-capped) lazy schemas.
+ * Queried once per form at construction to set the DU capability flag.
+ */
+export function containsDiscriminatedUnion(schema: z.ZodType, seen?: WeakSet<object>): boolean {
+  return walkSchemaTree(schema, (node) => kindOf(node) === 'discriminated-union', seen)
+}
+
 export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
   return walkSchemaTree(
     schema,

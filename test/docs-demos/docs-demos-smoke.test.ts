@@ -509,6 +509,13 @@ const entries: SmokeEntry[] = [
     // counter change.
     slug: 'defaults-sync-factory',
     gesture: async (root) => {
+      // The activation orchestrator is a lazy chunk, so the mount-time
+      // factory run lands asynchronously — wait for the first
+      // invocation before clicking.
+      await waitUntil(() => {
+        const text = root.textContent ?? ''
+        return /[Ii]nvocations?[\s\S]*[1-9]/.test(text) ? true : null
+      }, 2000)
       // The first button labeled "New session" lives in the form's
       // action row.
       const button = Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find(
@@ -520,7 +527,12 @@ const entries: SmokeEntry[] = [
     },
     assert: async (root) => {
       // After "New session", the factory invocations dl row should
-      // show a count >= 2 (one initial mount, one explicit reset).
+      // show a count >= 2 (one initial mount, one explicit reset) —
+      // poll, since the reset's factory run also rides the lazy chunk.
+      await waitUntil(() => {
+        const text = root.textContent ?? ''
+        return /[Ii]nvocations?[\s\S]*[2-9]/.test(text) ? true : null
+      }, 2000)
       const text = root.textContent ?? ''
       expect(text).toMatch(/[Ii]nvocations?[\s\S]*[2-9]/)
     },

@@ -223,7 +223,7 @@ export function assertZodVersion(schema: unknown): void {
             'which auto-detects the Zod version (and tree-shakes to a single adapter when the ' +
             '`attaform/vite` plugin is active); or (c) import from `attaform/zod-v4` if you are ' +
             'on Zod v4.'
-        : '[attaform] AF01 attaform.dev/e/AF01'
+        : '[attaform] AF01 attaform.dev/e/af01'
     )
   }
 }

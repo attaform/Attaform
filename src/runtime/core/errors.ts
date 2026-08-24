@@ -60,7 +60,7 @@ export class InvalidUseFormConfigError extends AttaformError {
             'or no `schema` field). Pass it as `useForm({ schema })` — the schema is one of several ' +
             'configuration options. See https://attaform.dev/docs/reading-the-form/the-form for the full ' +
             'configuration shape.'
-        : '[attaform] AF04 attaform.dev/e/AF04'
+        : '[attaform] AF04 attaform.dev/e/af04'
     )
   }
 }
@@ -183,7 +183,7 @@ export class RegistryNotInstalledError extends AttaformError {
             'hydrateAttaformState) run outside setup and require an explicit ' +
             '`app.use(createAttaform())` at server-render time. Add it to your SSR entry, before ' +
             '`renderToString`.'
-        : '[attaform] AF07 attaform.dev/e/AF07'
+        : '[attaform] AF07 attaform.dev/e/af07'
     )
   }
 }
@@ -202,7 +202,7 @@ export class OutsideSetupError extends AttaformError {
       __DEV__
         ? '[attaform] useForm / injectForm called outside Vue setup(). ' +
             'Move into setup or mount a child component to trigger from an event.'
-        : '[attaform] AF06 attaform.dev/e/AF06'
+        : '[attaform] AF06 attaform.dev/e/af06'
     )
   }
 }
@@ -220,7 +220,7 @@ export class ReservedFormKeyError extends AttaformError {
         ? `[attaform] Form key "${key}" uses the reserved "__atta:" namespace. ` +
             `Use a different prefix — "__atta:" is for library-internal synthetic keys ` +
             `(anonymous useForm() calls without an explicit key).`
-        : `[attaform] AF05 attaform.dev/e/AF05 "${key}"`
+        : `[attaform] AF05 attaform.dev/e/af05 "${key}"`
     )
   }
 }

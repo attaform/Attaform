@@ -74,7 +74,7 @@ export function assertSupportedKinds(
     throw new UnsupportedSchemaError(
       __DEV__
         ? `[attaform/zod] unsupported kind '${kind}' at '${labelPath(path)}'`
-        : `[attaform] AF02 attaform.dev/e/AF02 '${kind}' at '${labelPath(path)}'`
+        : `[attaform] AF02 attaform.dev/e/af02 '${kind}' at '${labelPath(path)}'`
     )
   }
 
@@ -178,7 +178,7 @@ export function assertSupportedKinds(
       throw new Error(
         __DEV__
           ? `assertSupportedKinds: unhandled ZodKind '${_exhaustive as string}'`
-          : `[attaform] AF03 attaform.dev/e/AF03 '${_exhaustive as string}'`
+          : `[attaform] AF03 attaform.dev/e/af03 '${_exhaustive as string}'`
       )
     }
   }

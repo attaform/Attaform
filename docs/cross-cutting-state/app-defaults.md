@@ -164,16 +164,20 @@ If you need defaults but don't want to touch the plugin (third-party component l
 import { useForm as attaformUseForm } from 'attaform'
 import type { z } from 'zod'
 
-export function useAppForm<S extends z.ZodObject>(opts: Parameters<typeof attaformUseForm<S>>[0]) {
+export function useAppForm<S extends z.ZodObject<z.ZodRawShape>>(
+  schema: S,
+  defaultValues: z.input<S>
+) {
   return attaformUseForm({
+    schema,
+    defaultValues,
     validateOn: 'change',
     debounceMs: 100,
-    ...opts,
   })
 }
 ```
 
-Fully equivalent for the consumer; every `useAppForm` call gets your defaults; per-form options still win via the spread. The plugin-level approach is idiomatic for first-party apps; the wrapper is right when you can't (or shouldn't) influence the plugin config from your call site.
+Every `useAppForm(schema, defaults)` call gets your app-wide settings, and inference still flows from the schema. Forward more options the same way, as named parameters the wrapper assembles into the configuration. Keep the wrapper in this shape rather than typing one passthrough options bag under the generic: TypeScript relates `schema: S` and `defaultValues: z.input<S>` to `useForm`'s slots directly, while a whole-bag parameter forces an instantiation cascade that Zod v4's types push past the compiler's depth limit. The plugin-level approach is idiomatic for first-party apps; the wrapper is right when you can't (or shouldn't) influence the plugin config from your call site.
 
 ## Where to next
 

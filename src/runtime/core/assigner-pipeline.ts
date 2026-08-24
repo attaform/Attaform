@@ -326,7 +326,7 @@ function logTransformFailure(
       err
     )
   } else {
-    console.error('[attaform] AF14 attaform.dev/e/AF14')
+    console.error('[attaform] AF14 attaform.dev/e/af14')
   }
 }
 

@@ -60,7 +60,7 @@ export function assertSupportedKinds(
     throw new UnsupportedSchemaError(
       __DEV__
         ? `[attaform/zod-v3] unsupported kind '${typeName}' at '${labelPath(path)}'`
-        : `[attaform] AF02 attaform.dev/e/AF02 '${typeName}' at '${labelPath(path)}'`
+        : `[attaform] AF02 attaform.dev/e/af02 '${typeName}' at '${labelPath(path)}'`
     )
   }
 

@@ -674,7 +674,7 @@ function getDefaultValuesFromZodSchema<
           ? `[attaform] zod-v3 adapter: unsupported schema kind '${kindName}' ` +
               `on form '${formKey}'. Defaulting the field to null. ` +
               `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
-          : `[attaform] AF13 attaform.dev/e/AF13 '${kindName}' on '${formKey}'`
+          : `[attaform] AF13 attaform.dev/e/af13 '${kindName}' on '${formKey}'`
       )
       return null
     },

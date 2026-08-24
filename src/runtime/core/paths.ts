@@ -31,7 +31,7 @@ function normalizeSegment(raw: Segment): Segment {
       throw new InvalidPathError(
         __DEV__
           ? `Path segments must be non-negative integers when numeric; got ${String(raw)}`
-          : `[attaform] AF08 attaform.dev/e/AF08 ${String(raw)}`
+          : `[attaform] AF08 attaform.dev/e/af08 ${String(raw)}`
       )
     }
     return raw
@@ -71,7 +71,7 @@ export function parseDottedPath(path: string): Segment[] {
       throw new InvalidPathError(
         __DEV__
           ? `Path '${path}' has an empty segment; use the array form for empty keys.`
-          : `[attaform] AF09 attaform.dev/e/AF09 '${path}'`
+          : `[attaform] AF09 attaform.dev/e/af09 '${path}'`
       )
     }
     segments.push(normalizeSegment(raw))

@@ -1,19 +1,27 @@
 import type { z } from 'zod'
-import { getAtPath, setAtPath } from '../../core/path-walker'
 import { slimKindOf } from '../../core/slim-primitive-gate'
 import { mergeDeep } from '../../core/merge-deep'
 import { deriveDefaultWalk } from '../../core/walk-derive-default'
 import { getDiscriminatedUnionFirstOption, unwrapToDiscriminatedUnion } from './discriminator'
 import { slimPrimitivesOf } from './slim-primitives'
 import {
+  getArrayElement,
   getDiscriminatedOptions,
+  getDiscriminator,
+  getIntersectionLeft,
+  getIntersectionRight,
+  getLiteralValues,
+  getObjectShape,
+  getRecordValueType,
+  getTupleItems,
   getUnionOptions,
   isCoercePrimitive,
+  isPreprocessNode,
   kindOf,
+  unwrapInner,
+  unwrapLazy,
   unwrapPipeIn,
 } from './introspect'
-import { getNestedZodSchemasAtPath } from './path-walker'
-import { getSlimSchema } from './strip'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
@@ -51,14 +59,6 @@ export function deriveDefault(
   })
 }
 
-// `defaultForKind` body lifted to `core/walk-derive-default.ts`; this
-// module now just adapts the result to the v4-specific
-// `getDefaultValuesFromZodSchema` validate-then-fix loop.
-
-// `mergeDeep` lifted to `core/merge-deep.ts` so v3 and v4 share one
-// body. Re-exported below as `mergeDeep` for backwards-compatible
-// internal callers (the v4 strict-mode flow still consults it).
-
 export type GetDefaultValuesOptions = {
   // `z.ZodType`, not `z.ZodObject`: the derivation walk is generic over
   // the root kind (object, record, discriminated-union), and the
@@ -72,25 +72,38 @@ export type GetDefaultValuesOptions = {
 export type DefaultValuesResult<Form> = {
   data: Form
   success: boolean
-  slimSchema: z.ZodType
 }
 
 /**
  * getDefaultValuesFromZodSchema — produces a form's starting value.
  *
- * The algorithm mirrors v3's: walk the schema to derive blank defaults,
- * merge constraints, then run the schema's `safeParse`. On failure, walk
- * the resulting issues and fill in issue-specific defaults at each
- * complaining path — e.g. `invalid_type` with `issue.expected === 'string'`
- * fills in `''`, `invalid_value` picks the first allowed value, etc. Re-
- * parse and return.
+ * Walk the schema to derive blank defaults, merge constraints, then
+ * run the DU-aware structural fix walk (sign-off 7) over the merged
+ * tree: at every node whose value's slim-primitive kind falls outside
+ * the schema's accept set, the value is replaced with that node's
+ * derived default; matching containers recurse. No schema is rebuilt
+ * and no `safeParse` runs, so:
  *
- * Refinements are always stripped from the slim schema — this helper's
- * concern is producing usable starting data, not surfacing refinement
- * errors. Refinement enforcement (in strict mode) lives upstream in
- * `adapter.ts`'s `rootSchema.safeParse(data)` pass, which uses the full
- * schema. Stripping here is also what keeps `safeParse` from throwing
- * synchronously when the schema contains an async refine.
+ *  - user refinements and transforms NEVER fire during construction
+ *    (a `.refine(fn)` returning a Promise from a sync fn used to be
+ *    the crash case the slim rebuild dodged; now nothing calls it),
+ *  - constraint keys the schema doesn't declare are preserved
+ *    verbatim rather than dropped by Zod's unknown-key stripping —
+ *    EXCEPT at discriminated-union values, where keys foreign to the
+ *    value's selected variant are removed (the variant-memory and
+ *    reshape machinery treat present keys as the active variant's
+ *    state, so a first-variant residue from the schema-blind
+ *    `mergeDeep` would corrupt them),
+ *  - async refines / async transforms need no special casing — the
+ *    fix walk works identically for them, and refinement enforcement
+ *    stays where it always was (the adapter's strict-mode pass and
+ *    the post-mount async pass).
+ *
+ * `success` reports whether the walk left (or produced) a
+ * structurally coherent tree: `false` means some mismatch could not
+ * be fixed (an unsupported kind derived `undefined`, say) and the
+ * partially-fixed data shipped anyway — better than an exception at
+ * mount time.
  */
 export function getDefaultValuesFromZodSchema<Form>(
   opts: GetDefaultValuesOptions
@@ -99,134 +112,208 @@ export function getDefaultValuesFromZodSchema<Form>(
   const initial = deriveDefault(schema, useDefaultSchemaValues, maxRecursionDepth)
   const merged = mergeDeep(initial, constraints) as unknown
 
-  // Strip wrappers, including refinements. The slim schema is for
-  // *default-value derivation* — its job is to produce usable starting
-  // data, not to surface refinement errors. Refinement errors are the
-  // domain of the strict-mode pass downstream (`adapter.ts`'s
-  // `rootSchema.safeParse(data)`), which uses the full schema.
-  //
-  // Crucially, this also avoids `safeParse` throwing synchronously when
-  // the schema contains an async refine (zod's "Encountered Promise
-  // during synchronous parse" error) — which would otherwise crash
-  // construction for any strict-mode form with `z.string().refine(async …)`.
-  const slimSchema = getSlimSchema(
-    schema,
-    {
-      stripDefaultValues: true,
-      stripPipe: true,
-      stripRefinements: true,
-    },
-    maxRecursionDepth
-  )
-
-  const firstParse = slimSchema.safeParse(merged)
-  if (firstParse.success) {
-    return { data: firstParse.data as Form, success: true, slimSchema }
+  const ctx: FixContext = {
+    useDefault: useDefaultSchemaValues,
+    maxDepth: maxRecursionDepth,
+    clean: true,
   }
-
-  // Validate-then-fix: walk issues and fill defaults per path. Under
-  // the slim-primitive write contract, we only fix issues that violate
-  // STRUCTURAL or PRIMITIVE-TYPE shape. Refinement-level issues (enum
-  // membership, literal equality, .email/.min(N)/regex, custom
-  // refines, unrecognized_keys) pass THROUGH unchanged — the user's
-  // defaultValues are preserved verbatim and the strict-mode
-  // validation pass downstream surfaces the error at construction.
-  //
-  // The discriminant: look up the actual offending value at the
-  // issue's path and check its slim primitive kind against the
-  // candidate schema's slim primitive set. If the value's kind IS in
-  // the set, the issue is refinement-level → skip. If it's NOT in
-  // the set, the issue is primitive/structural → fix. This unifies
-  // every issue code under one check rather than enumerating refinement
-  // codes (which differ between Zod versions and grow over time).
-  let fixedData = merged as Record<string, unknown>
-  for (const issue of firstParse.error.issues) {
-    const pathSegments = issue.path.map((seg) => (typeof seg === 'number' ? seg : String(seg))) as (
-      | string
-      | number
-    )[]
-    // Schema-side input normalizers (preprocess pipes, coerce-flagged
-    // primitives) are slim-stripped, so the slim-schema sees only the
-    // post-strip leaf and complains when storage is `undefined`. Look
-    // up the ORIGINAL schema at the path; if it's such a wrapper, the
-    // `undefined` is intentional under the no-write-mutation contract
-    // and we leave it alone.
-    const originalCandidate = getNestedZodSchemasAtPath(schema, pathSegments, maxRecursionDepth)[0]
-    if (originalCandidate !== undefined) {
-      if (isCoercePrimitive(originalCandidate)) continue
-      if (kindOf(originalCandidate) === 'pipe') {
-        const pipeIn = unwrapPipeIn(originalCandidate)
-        if (pipeIn !== undefined && kindOf(pipeIn) === 'transform') continue
-      }
-    }
-
-    // Pass the structured path directly — joining with '.' would merge
-    // a literal-dot key (`['profile.name']`) into two segments and
-    // target the wrong sub-schema during fix-up.
-    const candidates = getNestedZodSchemasAtPath(slimSchema, pathSegments, maxRecursionDepth)
-    if (candidates.length === 0) continue
-    const candidate = candidates[0]
-    if (candidate === undefined) continue
-
-    // Refinement-vs-primitive classification.
-    const valueAtPath = getAtPath(merged, pathSegments)
-    const slimKinds = slimPrimitivesOf(candidate, maxRecursionDepth)
-    if (slimKinds.size > 0 && slimKinds.has(slimKindOf(valueAtPath))) {
-      // Refinement-level: pass through unchanged.
-      continue
-    }
-
-    // Some issues don't carry a type path: fall back to deriving a default
-    // for the schema at that location.
-    const fixValue = defaultFromIssue(issue, candidate, useDefaultSchemaValues, maxRecursionDepth)
-    if (fixValue === SKIP) continue
-    fixedData = (
-      pathSegments.length === 0 ? fixValue : setAtPath(fixedData, pathSegments, fixValue)
-    ) as Record<string, unknown>
-  }
-
-  const secondParse = slimSchema.safeParse(fixedData)
-  if (secondParse.success) {
-    return { data: secondParse.data as Form, success: true, slimSchema }
-  }
-
-  // Last-resort: hand back what we constructed even if it still doesn't
-  // parse. Better a partially-valid form than an exception at mount time.
-  return { data: fixedData as unknown as Form, success: false, slimSchema }
+  const data = fixNode(schema, merged, ctx, 0)
+  return { data: data as Form, success: ctx.clean }
 }
 
-const SKIP = Symbol('atta:skip-fix')
+type FixContext = {
+  useDefault: boolean
+  maxDepth: number
+  clean: boolean
+}
 
 /**
- * Map a Zod v4 issue to a concrete replacement value for the path the
- * issue points at. Falls back to the candidate subschema's walker default
- * when the issue code doesn't carry enough info.
+ * The DU-aware structural fix walk. Descends the merged DATA alongside
+ * the schema:
+ *
+ *  1. Schema-side input normalizers (`z.coerce.X()`, `z.preprocess`)
+ *     accept raw consumer writes verbatim — their whole subtree passes
+ *     through untouched (the no-write-mutation contract).
+ *  2. A value whose slim-primitive kind is outside the node's accept
+ *     set is replaced wholesale with the node's derived default —
+ *     discriminated unions derive the variant the VALUE selects when
+ *     its discriminator is usable, first option otherwise.
+ *  3. A matching container recurses per child. Object recursion visits
+ *     every DECLARED key (a constraint that set a declared key to a
+ *     mismatched value — `undefined` included — gets that key's
+ *     default filled in); undeclared keys are left alone. DU recursion
+ *     first removes keys foreign to the selected variant, then
+ *     recurses the variant's shape. Plain unions can't be routed and
+ *     pass through, matching the old refinement-level skip.
+ *
+ * Refinement-level violations (enum membership, `.email()`, `.min(N)`,
+ * custom refines) are invisible to the walk by construction — the
+ * accept-set check is purely structural, so user starting data is
+ * preserved verbatim and the strict-mode pass owns surfacing those.
  */
-function defaultFromIssue(
-  issue: z.core.$ZodIssue,
-  candidate: z.ZodType,
-  useDefaultSchemaValues: boolean,
-  maxRecursionDepth: number
-): unknown {
-  if (issue.code === 'invalid_type') {
-    // If the candidate is (or wraps) a discriminated union, prefer the
-    // first-option default over `undefined` — matches v3's behaviour.
-    const du = unwrapToDiscriminatedUnion(candidate)
-    if (du !== undefined) {
-      const first = getDiscriminatedUnionFirstOption(du)
-      if (first !== undefined)
-        return deriveDefault(first, useDefaultSchemaValues, maxRecursionDepth)
+function fixNode(schema: z.ZodType, value: unknown, ctx: FixContext, lazyDepth: number): unknown {
+  if (isCoercePrimitive(schema) || isPreprocessNode(schema)) return value
+
+  const kinds = slimPrimitivesOf(schema, ctx.maxDepth)
+  if (kinds.size > 0 && !kinds.has(slimKindOf(value))) {
+    const replacement = deriveFixValue(schema, value, ctx)
+    if (kinds.has(slimKindOf(replacement))) return replacement
+    // The derived replacement is itself outside the accept set (an
+    // unsupported kind deriving `undefined`, say): record the miss and
+    // ship the replacement anyway.
+    ctx.clean = false
+    return replacement
+  }
+
+  const kind = kindOf(schema)
+  switch (kind) {
+    case 'optional':
+    case 'nullable': {
+      // The wrapper admitted `undefined` / `null` via the accept set;
+      // only a present value recurses against the inner shape.
+      if (value === undefined || value === null) return value
+      const inner = unwrapInner(schema)
+      return inner === undefined ? value : fixNode(inner, value, ctx, lazyDepth)
     }
-    return deriveDefault(candidate, useDefaultSchemaValues, maxRecursionDepth)
+    case 'default':
+    case 'readonly':
+    case 'catch': {
+      const inner = unwrapInner(schema)
+      return inner === undefined ? value : fixNode(inner, value, ctx, lazyDepth)
+    }
+    case 'pipe': {
+      // Preprocess-shaped pipes returned above; a `.transform()` pipe
+      // stores its source on the IN side — fix structure against it.
+      const pipeIn = unwrapPipeIn(schema)
+      if (pipeIn === undefined || kindOf(pipeIn) === 'transform') return value
+      return fixNode(pipeIn, value, ctx, lazyDepth)
+    }
+    case 'lazy': {
+      if (lazyDepth >= ctx.maxDepth) return value
+      const inner = unwrapLazy(schema)
+      return inner === undefined ? value : fixNode(inner, value, ctx, lazyDepth + 1)
+    }
+    case 'discriminated-union': {
+      if (value === null || typeof value !== 'object') return value
+      const variant = selectVariantByValue(schema, value)
+      if (variant === undefined) return value
+      const record = value as Record<string, unknown>
+      const shape = getObjectShape(variant)
+      for (const key of Object.keys(record)) {
+        if (!(key in shape)) delete record[key]
+      }
+      for (const [key, sub] of Object.entries(shape)) {
+        record[key] = fixNode(sub, record[key], ctx, lazyDepth)
+      }
+      return value
+    }
+    case 'object': {
+      if (value === null || typeof value !== 'object') return value
+      const record = value as Record<string, unknown>
+      for (const [key, sub] of Object.entries(getObjectShape(schema as z.ZodObject))) {
+        record[key] = fixNode(sub, record[key], ctx, lazyDepth)
+      }
+      return value
+    }
+    case 'array': {
+      if (!Array.isArray(value)) return value
+      const element = getArrayElement(schema as z.ZodArray)
+      for (let i = 0; i < value.length; i++) {
+        value[i] = fixNode(element, value[i], ctx, lazyDepth)
+      }
+      return value
+    }
+    case 'tuple': {
+      if (!Array.isArray(value)) return value
+      const items = getTupleItems(schema)
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (item !== undefined) value[i] = fixNode(item, value[i], ctx, lazyDepth)
+      }
+      return value
+    }
+    case 'record': {
+      if (value === null || typeof value !== 'object') return value
+      const valueType = getRecordValueType(schema)
+      const record = value as Record<string, unknown>
+      for (const key of Object.keys(record)) {
+        record[key] = fixNode(valueType, record[key], ctx, lazyDepth)
+      }
+      return value
+    }
+    case 'intersection': {
+      const left = getIntersectionLeft(schema)
+      const right = getIntersectionRight(schema)
+      let out = value
+      if (left !== undefined) out = fixNode(left, out, ctx, lazyDepth)
+      if (right !== undefined) out = fixNode(right, out, ctx, lazyDepth)
+      return out
+    }
+    // Leaves and plain unions (no discriminator to route by).
+    case 'union':
+    case 'string':
+    case 'number':
+    case 'bigint':
+    case 'boolean':
+    case 'date':
+    case 'enum':
+    case 'literal':
+    case 'null':
+    case 'undefined':
+    case 'any':
+    case 'unknown':
+    case 'nan':
+    case 'void':
+    case 'never':
+    case 'set':
+    case 'promise':
+    case 'custom':
+    case 'template-literal':
+    case 'transform':
+    case 'file':
+    case 'map':
+    case 'symbol':
+    case 'function':
+      return value
   }
-  if (issue.code === 'invalid_value') {
-    const values = (issue as unknown as { values?: readonly unknown[] }).values
-    if (values !== undefined && values.length > 0) return values[0]
-    return deriveDefault(candidate, useDefaultSchemaValues, maxRecursionDepth)
+}
+
+/**
+ * Replacement value for a structural mismatch at `schema`.
+ * Discriminated unions are VALUE-directed: when the offending value
+ * already carries the union's discriminator key and it selects a
+ * declared variant, the fix derives THAT variant's default —
+ * first-option is only the fallback for values that select nothing.
+ */
+function deriveFixValue(schema: z.ZodType, value: unknown, ctx: FixContext): unknown {
+  const du = unwrapToDiscriminatedUnion(schema)
+  if (du !== undefined) {
+    const selected = selectVariantByValue(du, value) ?? getDiscriminatedUnionFirstOption(du)
+    if (selected !== undefined) {
+      return deriveDefault(selected, ctx.useDefault, ctx.maxDepth)
+    }
   }
-  // Other issue codes (too_small/too_big/invalid_format) only fire in strict
-  // mode since lax mode strips refinements. Fall back to the walker default.
-  return deriveDefault(candidate, useDefaultSchemaValues, maxRecursionDepth)
+  return deriveDefault(schema, ctx.useDefault, ctx.maxDepth)
+}
+
+/**
+ * Resolve the DU variant the value itself selects: the option whose
+ * discriminator literal includes `value[discriminatorKey]`. Returns
+ * `undefined` when the value carries no usable discriminator — the
+ * caller falls back to the first option.
+ */
+function selectVariantByValue(du: z.ZodType, value: unknown): z.ZodObject | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const discKey = getDiscriminator(du)
+  if (discKey === undefined) return undefined
+  const discValue = (value as Record<string, unknown>)[discKey]
+  if (discValue === undefined) return undefined
+  for (const opt of getDiscriminatedOptions(du)) {
+    const litSchema = getObjectShape(opt)[discKey]
+    if (litSchema === undefined || kindOf(litSchema) !== 'literal') continue
+    if (getLiteralValues(litSchema).includes(discValue)) return opt
+  }
+  return undefined
 }
 
 /**

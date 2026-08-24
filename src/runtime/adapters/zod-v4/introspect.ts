@@ -101,6 +101,53 @@ function readDef(schema: unknown): ZodInternalShape['def'] | undefined {
   return (schema as ZodInternalShape).def
 }
 
+// The handful of `def.type` spellings that don't match their `ZodKind`
+// verbatim. Everything else is identity-mapped via `IDENTITY_KINDS`.
+const KIND_ALIAS: ReadonlyMap<string, ZodKind> = new Map([
+  ['discriminated_union', 'discriminated-union'],
+  ['discriminatedUnion', 'discriminated-union'],
+  ['prefault', 'default'],
+  ['template_literal', 'template-literal'],
+  ['templateLiteral', 'template-literal'],
+])
+
+const IDENTITY_KINDS = new Set<string>([
+  'object',
+  'array',
+  'set',
+  'record',
+  'tuple',
+  'string',
+  'number',
+  'boolean',
+  'bigint',
+  'date',
+  'enum',
+  'literal',
+  'null',
+  'undefined',
+  'any',
+  'unknown',
+  'optional',
+  'nullable',
+  'default',
+  'pipe',
+  'readonly',
+  'nan',
+  'void',
+  'never',
+  'lazy',
+  'intersection',
+  'catch',
+  'promise',
+  'custom',
+  'transform',
+  'file',
+  'map',
+  'symbol',
+  'function',
+])
+
 /**
  * Inspect a Zod v4 schema and return its `ZodKind`. Returns
  * `'unknown'` for non-Zod inputs and unrecognised shapes.
@@ -112,87 +159,14 @@ export function kindOf(schema: unknown): ZodKind {
   const def = readDef(schema)
   const rawType = def?.type
   if (rawType === undefined) return 'unknown'
-  switch (rawType) {
-    case 'object':
-      return 'object'
-    case 'array':
-      return 'array'
-    case 'set':
-      return 'set'
-    case 'record':
-      return 'record'
-    case 'tuple':
-      return 'tuple'
-    case 'union':
-      // v4 stores `z.discriminatedUnion(...)` as `type: 'union'` with an
-      // extra `discriminator: string` field — differentiate here.
-      return def?.discriminator !== undefined ? 'discriminated-union' : 'union'
-    case 'discriminated_union':
-    case 'discriminatedUnion':
-      return 'discriminated-union'
-    case 'string':
-      return 'string'
-    case 'number':
-      return 'number'
-    case 'boolean':
-      return 'boolean'
-    case 'bigint':
-      return 'bigint'
-    case 'date':
-      return 'date'
-    case 'enum':
-      return 'enum'
-    case 'literal':
-      return 'literal'
-    case 'null':
-      return 'null'
-    case 'undefined':
-      return 'undefined'
-    case 'optional':
-      return 'optional'
-    case 'nullable':
-      return 'nullable'
-    case 'default':
-    case 'prefault':
-      return 'default'
-    case 'pipe':
-      return 'pipe'
-    case 'readonly':
-      return 'readonly'
-    case 'any':
-      return 'any'
-    case 'nan':
-      return 'nan'
-    case 'void':
-      return 'void'
-    case 'never':
-      return 'never'
-    case 'lazy':
-      return 'lazy'
-    case 'intersection':
-      return 'intersection'
-    case 'catch':
-      return 'catch'
-    case 'transform':
-      return 'transform'
-    case 'promise':
-      return 'promise'
-    case 'custom':
-      return 'custom'
-    case 'template_literal':
-    case 'templateLiteral':
-      return 'template-literal'
-    case 'file':
-      return 'file'
-    case 'map':
-      return 'map'
-    case 'symbol':
-      return 'symbol'
-    case 'function':
-      return 'function'
-    default:
-      return 'unknown'
+  // v4 stores `z.discriminatedUnion(...)` as `type: 'union'` with an
+  // extra `discriminator: string` field — differentiate here.
+  if (rawType === 'union') {
+    return def?.discriminator !== undefined ? 'discriminated-union' : 'union'
   }
+  const alias = KIND_ALIAS.get(rawType)
+  if (alias !== undefined) return alias
+  return IDENTITY_KINDS.has(rawType) ? (rawType as ZodKind) : 'unknown'
 }
 
 /** Returns schema.shape as Record<string, ZodTypeAny>. */
@@ -451,6 +425,21 @@ export function assertZodVersion(schema: unknown): void {
  * "walk the tree, short-circuit on first hit" — the walker hosts that
  * shape once, the predicates contribute only the per-node test.
  */
+// Every descendable `def.*` child slot, as data: single sub-schemas,
+// record-shaped maps of sub-schemas, and list-shaped option/item arrays.
+const DESCEND_SINGLE = [
+  'innerType',
+  'element',
+  'in',
+  'out',
+  'left',
+  'right',
+  'keyType',
+  'valueType',
+] as const
+const DESCEND_RECORD = ['shape', 'entries'] as const
+const DESCEND_LIST = ['options', 'items'] as const
+
 export function walkSchemaTree(
   schema: z.ZodType,
   visit: (node: z.ZodType) => boolean,
@@ -469,41 +458,26 @@ export function walkSchemaTree(
 
   const def = readDef(schema)
   if (def === undefined) return false
+  const slots = def as Record<string, unknown>
 
-  if (def.innerType !== undefined && walkSchemaTree(def.innerType as z.ZodType, visit, visited)) {
-    return true
+  for (const key of DESCEND_SINGLE) {
+    const child = slots[key]
+    if (child !== undefined && walkSchemaTree(child as z.ZodType, visit, visited)) return true
   }
-  if (def.element !== undefined && walkSchemaTree(def.element as z.ZodType, visit, visited)) {
-    return true
-  }
-  if (def.in !== undefined && walkSchemaTree(def.in as z.ZodType, visit, visited)) return true
-  if (def.out !== undefined && walkSchemaTree(def.out as z.ZodType, visit, visited)) return true
-  if (def.left !== undefined && walkSchemaTree(def.left as z.ZodType, visit, visited)) return true
-  if (def.right !== undefined && walkSchemaTree(def.right as z.ZodType, visit, visited)) return true
-  if (def.keyType !== undefined && walkSchemaTree(def.keyType as z.ZodType, visit, visited)) {
-    return true
-  }
-  if (def.valueType !== undefined && walkSchemaTree(def.valueType as z.ZodType, visit, visited)) {
-    return true
-  }
-  if (def.shape !== undefined) {
-    for (const sub of Object.values(def.shape)) {
-      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+  for (const key of DESCEND_RECORD) {
+    const record = slots[key]
+    if (record !== undefined) {
+      for (const sub of Object.values(record as Record<string, unknown>)) {
+        if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+      }
     }
   }
-  if (def.entries !== undefined) {
-    for (const sub of Object.values(def.entries)) {
-      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
-    }
-  }
-  if (def.options !== undefined) {
-    for (const sub of def.options) {
-      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
-    }
-  }
-  if (def.items !== undefined) {
-    for (const sub of def.items) {
-      if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+  for (const key of DESCEND_LIST) {
+    const list = slots[key]
+    if (list !== undefined) {
+      for (const sub of list as readonly unknown[]) {
+        if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
+      }
     }
   }
   if (typeof def.getter === 'function') {
@@ -579,23 +553,26 @@ export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): 
  * nested inside still triggers `true`. Unknown wrappers we forget
  * to peel only lose the perf win, never correctness.
  */
+const CONTAINER_SLOTS = [
+  'shape',
+  'entries',
+  'element',
+  'options',
+  'items',
+  'keyType',
+  'valueType',
+  'left',
+  'right',
+] as const
+
 export function hasContainerOrRootRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
   return walkSchemaTree(
     schema,
     (node) => {
       const def = readDef(node)
       if (def === undefined) return false
-      const isContainer =
-        def.shape !== undefined ||
-        def.entries !== undefined ||
-        def.element !== undefined ||
-        def.options !== undefined ||
-        def.items !== undefined ||
-        def.keyType !== undefined ||
-        def.valueType !== undefined ||
-        def.left !== undefined ||
-        def.right !== undefined
-      if (!isContainer) return false
+      const slots = def as Record<string, unknown>
+      if (!CONTAINER_SLOTS.some((key) => slots[key] !== undefined)) return false
       return getChecks(node).length > 0
     },
     seen

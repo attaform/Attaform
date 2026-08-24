@@ -1,5 +1,63 @@
 # P7: zod-core + probe packs (detailed 2026-08-24 at the P8 boundary)
 
+## 7a findings (2026-08-24) — re-baseline done, claim re-anchored
+
+Battery green first: 58 files / 972 tests (test/adapters/\*\* both majors
+
+- zod-shape, schema-coerce, coerce, discriminator-cache,
+  is-fixed-object, use-form-unified/guard, values-storage-shape v3/v4,
+  default-values-shape).
+
+Survey correction: the plan's item 1 is largely PRIOR ART. The shared
+walkers already exist (`core/walk-derive-default` 996 gz,
+`core/walk-slim-primitives` 724, `core/walk-path-segments` 463, all
+parameterized by `SchemaIntrospector`), and `walker-introspector.ts`
+IS the v4 probe pack (~28 accessors as data). The remaining eager fat
+sits in strip.ts's THREE same-skeleton rebuilders, introspect.ts's
+switch/walk text, and the factory indirection.
+
+Rep sketch (reference/rep-p7/, cumulative arms, esbuild redirect on
+the day's tree, scenario baseline 36,734 gz):
+
+| arm | claim                                                                                      | lean delta      |
+| --- | ------------------------------------------------------------------------------------------ | --------------- |
+| A   | sign-off 7: getSlimSchema+stripRefinements DELETED; fix pass parses original-or-stripAsync | **-730**        |
+| B   | introspect diet: kindOf alias table + data-driven walkSchemaTree                           | -102            |
+| C   | sign-off 6: class adapter absorbs factory + services                                       | **+17 (GROWS)** |
+| D   | all three                                                                                  | -834            |
+
+**armC is REFUSED as a size item** (rep-first rule): the services
+record + createAbstractSchema indirection was fully gzip-pre-discounted;
+the lean class port measured +17. The factory stays. Sign-off 6's
+`node()` SPI addition moves to P9 where its consumer (trie) lives; the
+"services deleted" arm is dropped. Barrel value of the absorption is
+also ~0 (a shared class weighs what the shared factory weighs).
+
+Re-anchored expectation: armD lean -834 x0.6 realization (P8 addendum
+discount) = **~-500 realized central, band -400..-650** — inside the
+plan's -400..-600. Anchor 34,530 -> ~34,030 expected.
+
+Re-sliced execution: 7b = strip diet + fix-pass rewire + introspect
+diet (the -832 lean cluster, ratchet slice) -> 7c = stripAsyncChecks
+SSR-visibility characterization test (the declined-sign-off revisit
+trigger) + strict-defaults behavior migration -> 7d = v3 alignment +
+barrel re-measure (v3's mirror of armA is where the barrel prize
+lives, NOT the factory).
+
+7b design notes carried from the sketch (the claws the x0.6 prices):
+
+- First-parse success now returns `merged`, not `firstParse.data` —
+  unknown constraint keys PRESERVED (the sign-off 7 documented change;
+  Zod's default object parse strips undeclared keys, the slim rebuild
+  also lost `.catchall()`/`.strict()`).
+- Lax mode now runs the full original parse -> sync `.transform` fns
+  fire at construction in lax mode (strict mode already ran them).
+- Async-TRANSFORM schemas lose the construction fix pass entirely
+  (today the slim rebuild stripped pipes and still fixed structural
+  constraint mismatches; stripAsyncChecks leaves pipes intact so no
+  sync parse is possible). Decide at 7b: accept + document, or keep a
+  minimal pipe-peel for this one case. The parity suites referee.
+
 Anchor 34,530 B gz (P8 final). Expected band **-300..-900 B gz** on the
 ratchet metric (minimal-v4), central ~-600 BEFORE the P8 addendum's
 ~0.6 rep-realization discount — plan against **~-400..-600 realized**.

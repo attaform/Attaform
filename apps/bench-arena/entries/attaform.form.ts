@@ -1,14 +1,17 @@
-import { createAttaform } from 'attaform'
 import { useForm } from 'attaform/zod-v3'
 import { type App, createApp, defineComponent, h } from 'vue'
 import { z } from 'zod'
 
 /**
  * The minimal real Attaform form weighed by the bundle dimension: a Zod schema,
- * `useForm`, two registered fields, and a submit handler, mounted with the
- * Attaform plugin so `register` and the value funnel resolve exactly as a
- * consumer's app wires them. Every cohort entry is this same two-field form in
- * its own idiomatic API, so esbuild (Vue external) weighs like against like.
+ * `useForm`, two registered fields, and a submit handler. No plugin install:
+ * `useForm` lazy-installs the registry on first use, which is the shipping
+ * default setup (installing the package and calling `useForm` is the whole
+ * story; `createAttaform()` exists for app-wide options). The opt-in layers
+ * (`v-register`, `attaform/history`, `useWizard`) are separate entries this
+ * form never imports, so they are not in the weighed graph. Every cohort entry
+ * is this same two-field form in its own idiomatic API, so esbuild (Vue
+ * external) weighs like against like.
  */
 const schema = z.object({
   name: z.string().min(2),
@@ -50,7 +53,7 @@ const Form = defineComponent({
 })
 
 export function mount(el: HTMLElement): App {
-  const app = createApp(Form).use(createAttaform())
+  const app = createApp(Form)
   app.mount(el)
   return app
 }

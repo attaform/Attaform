@@ -275,10 +275,10 @@ export function zodV4Adapter<
  * (`runStrictGetDefaults` / `makeSubSchema`) propagate the form
  * shape correctly.
  */
-// Lazy fingerprint: the only consumers are opt-in async features
-// (the persistence storage key) plus a dev-only
-// mismatch warning, so the structural walk + its `canonicalStringify`
-// helper load on demand off the eager `useForm` path instead of being
+// Lazy fingerprint: the only consumers are the public
+// `AbstractSchema.fingerprint()` accessor and a dev-only mismatch
+// warning, so the structural walk + its `canonicalStringify` helper
+// load on demand off the eager `useForm` path instead of being
 // anchored eager by a static import.
 async function lazyFingerprint(schema: z.ZodType): Promise<string> {
   const { fingerprintZodSchema } = await import('./fingerprint')

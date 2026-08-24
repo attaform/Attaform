@@ -3,11 +3,12 @@
  * Per-library gzipped bundle measurement for the benchmark arena.
  *
  * A structural sibling of the repo-root scripts/check-eager-size.mjs (same
- * pnpm-store esbuild resolver, same gzip level, same production define), but it
- * weighs a different thing: the cost a CONSUMER pays to ship a minimal real
- * form in each library. Every entry under entries/ is the SAME minimal form
- * (one text field, one email field, schema-validated, a submit handler) written
- * in that library's idiomatic API, so the comparison is like against like.
+ * pnpm-store esbuild resolver, same gzip level, same production define, same
+ * code-splitting build), but it weighs a different thing: the cost a CONSUMER
+ * pays to ship a minimal real form in each library. Every entry under
+ * entries/ is the SAME minimal form (one text field, one email field,
+ * schema-validated, a submit handler) written in that library's idiomatic
+ * API, so the comparison is like against like.
  *
  * Fairness:
  *  - The library AND its validator are bundled and weighed together (vee +
@@ -20,6 +21,15 @@
  *    alias, so a symlinked workspace package's own `import 'zod'` cannot pull a
  *    second copy into one row. That is the single-validator install a real
  *    consumer has, and it mirrors the vite config's dedupe.
+ *  - The build code-splits, exactly as a real bundler does: a row's `gzBytes`
+ *    is the entry chunk plus every chunk it reaches through STATIC imports,
+ *    the JavaScript a browser executes before the form is interactive. Code a
+ *    library loads through a dynamic `import()` stays out of that figure and
+ *    is reported separately as `asyncGzBytes`, because a consumer's bundler
+ *    ships it as an on-demand chunk, not on first paint. The same rule is
+ *    applied to every row; a library with no dynamic imports measures
+ *    identically to a flat bundle, and a chunk nothing live can fetch (see
+ *    the phantom note in `measureEntrySizes`) is not weighed at all.
  *
  * Run `pnpm prepack` at the repo root first so the Attaform row weighs the real
  * published dist, not a stale or stubbed build.
@@ -28,7 +38,7 @@
  * Library: `import { measureBundles }` powers the orchestrator (run-arena.mjs).
  */
 import { readdirSync, realpathSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { argv } from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
@@ -119,8 +129,16 @@ function validatorLabel(validatorPkg) {
   return `${validatorPkg} ${readInstalledVersion(validatorPkg)}`
 }
 
-/** Bundle one entry (lib + validator, Vue external) and return its gzipped size. */
-async function gzippedSize(file) {
+/**
+ * Bundle one entry (lib + validator, Vue external) with code splitting and
+ * weigh the two load stages separately, each output file gzipped on its own
+ * (the shape a browser actually fetches):
+ *  - `gzBytes`: the entry chunk plus its static-import closure, the JS that
+ *    executes before the form is interactive.
+ *  - `asyncGzBytes`: every remaining chunk, reached only through dynamic
+ *    `import()` and shipped on demand (0 for a library with none).
+ */
+async function measureEntrySizes(file) {
   const result = await esbuild.build({
     entryPoints: [join(PKG_ROOT, 'entries', file)],
     bundle: true,
@@ -128,6 +146,9 @@ async function gzippedSize(file) {
     format: 'esm',
     target: 'es2020',
     platform: 'browser',
+    splitting: true,
+    outdir: join(PKG_ROOT, '.bundle-out'),
+    absWorkingDir: PKG_ROOT,
     // Vue is shipped once by every app, so it is never counted in a row.
     external: ['vue', '@vue/*'],
     // Pin the single installed validator copy (mirrors the vite dedupe), so a
@@ -138,28 +159,71 @@ async function gzippedSize(file) {
     },
     define: PROD_DEFINE,
     write: false,
+    metafile: true,
     legalComments: 'none',
     logLevel: 'silent',
   })
-  const js = result.outputFiles.map((f) => f.text).join('')
-  return gzipSync(Buffer.from(js), { level: 9 }).length
+
+  const outputs = result.metafile.outputs
+  const gzByKey = new Map()
+  for (const f of result.outputFiles) {
+    gzByKey.set(relative(PKG_ROOT, f.path), gzipSync(Buffer.from(f.text), { level: 9 }).length)
+  }
+
+  // Classify chunks by walking the import graph from the entry chunk. `kind`
+  // separates a chunk the entry pulls eagerly ('import-statement') from one
+  // it defers ('dynamic-import'); externals (vue) carry no output key to
+  // visit. Only chunks REACHABLE from the entry count at all: esbuild
+  // registers every dynamic-import target it parses before tree shaking, so
+  // a dynamic `import()` sitting in code that shaking then discards still
+  // emits its chunk, with no live importer. A consumer's bundler (Rollup)
+  // drops that phantom, so this measurement does too.
+  const entryKey = Object.keys(outputs).find((key) => outputs[key].entryPoint !== undefined)
+  if (entryKey === undefined) throw new Error(`no entry chunk in the metafile for ${file}`)
+  const walk = (from, kinds) => {
+    const seen = new Set(from)
+    const queue = [...from]
+    while (queue.length > 0) {
+      const key = queue.shift()
+      for (const imp of outputs[key].imports ?? []) {
+        if (imp.external === true || !kinds.has(imp.kind)) continue
+        if (!seen.has(imp.path)) {
+          seen.add(imp.path)
+          queue.push(imp.path)
+        }
+      }
+    }
+    return seen
+  }
+  const initial = walk([entryKey], new Set(['import-statement']))
+  const reachable = walk([entryKey], new Set(['import-statement', 'dynamic-import']))
+
+  let gzBytes = 0
+  let asyncGzBytes = 0
+  for (const [key, gz] of gzByKey) {
+    if (initial.has(key)) gzBytes += gz
+    else if (reachable.has(key)) asyncGzBytes += gz
+  }
+  return { gzBytes, asyncGzBytes }
 }
 
 /**
  * Measure every entry and return one row per library: resolved version, the
- * validator weighed with it, gzipped bytes, and the ratio to Attaform's row
- * (the baseline). The orchestrator embeds these rows verbatim in results.json.
+ * validator weighed with it, gzipped bytes for the eager entry closure plus
+ * the on-demand remainder, and the ratio to Attaform's row (the baseline).
+ * The orchestrator embeds these rows verbatim in results.json.
  */
 export async function measureBundles() {
   const rows = []
   for (const entry of ENTRIES) {
-    const gzBytes = await gzippedSize(entry.file)
+    const { gzBytes, asyncGzBytes } = await measureEntrySizes(entry.file)
     rows.push({
       id: entry.id,
       lib: entry.lib,
       version: readInstalledVersion(entry.pkg),
       validator: validatorLabel(entry.validatorPkg),
       gzBytes,
+      asyncGzBytes,
     })
   }
   const baseline = rows.find((r) => r.id === 'attaform')?.gzBytes ?? 0
@@ -176,6 +240,7 @@ if (isMain) {
   for (const row of [...rows].sort((a, b) => a.gzBytes - b.gzBytes)) {
     const size = `${kb(row.gzBytes)} kB gz`.padStart(13)
     const ratio = `x${row.ratio.toFixed(2)}`.padStart(7)
-    console.log(`${row.lib.padEnd(20)} ${size} ${ratio}  (${row.validator})`)
+    const lazy = row.asyncGzBytes > 0 ? `  +${kb(row.asyncGzBytes)} kB lazy` : ''
+    console.log(`${row.lib.padEnd(20)} ${size} ${ratio}  (${row.validator})${lazy}`)
   }
 }

@@ -440,15 +440,15 @@ describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
 })
 
 describe('surface proxies — schema-named toString/valueOf collisions', () => {
-  // When a schema literally has a field named `toString` or `valueOf`,
-  // schema authority wins: dot-access resolves to the field, not the
-  // primitive-coercion handler. This is the symmetric companion to the
-  // FIELD_STATE_KEYS shadowing fix that was the headline of 0.14.
-  // Primitive coercion at the parent (`String(parent)`) still produces
-  // a primitive via `Symbol.toPrimitive`, so the field collision and
-  // the coercion shortcut coexist without conflict.
+  // A schema field literally named `toString` or `valueOf` is not
+  // dot-reachable on the fields / errors surfaces: dot-access resolves
+  // the primitive-coercion handler so `String(...)` and direct method
+  // calls always produce primitives. The call form addresses any path
+  // regardless of name, and `form.values` keeps native dot semantics
+  // (its containers are plain readonly objects, not schema-aware
+  // proxies), so the data stays reachable on every surface.
 
-  it('schema field literally named "toString" (string leaf) is reachable via dot-access', () => {
+  it('schema field literally named "toString" (string leaf): call form reaches it', () => {
     const schema = z.object({
       address: z.object({
         toString: z.string(), // collision case
@@ -457,14 +457,18 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
     })
     const form = mount(schema, { address: { toString: 'render-as', city: 'NYC' } })
 
-    // Dot-access on `form.fields.address.toString` resolves to the
-    // FieldState for the schema's `toString` field, NOT the
-    // primitive-coercion handler.
-    expect(form.fields.address.toString.value).toBe('render-as')
-    expect(form.fields.address.toString.path).toEqual(['address', 'toString'])
+    // Dot-access resolves the coercion handler (a callable that
+    // stringifies the container), never a phantom node.
+    expect(typeof form.fields.address.toString).toBe('function')
+    expect(() => String(form.fields.address)).not.toThrow()
 
-    // Per-leaf error reads through the same dot-path.
-    expect(form.errors.address.toString).toEqual([])
+    // The call form addresses the field by path.
+    expect(form.fields('address.toString').value).toBe('render-as')
+    expect(form.fields('address.toString').path).toEqual(['address', 'toString'])
+    expect(form.errors('address.toString')).toEqual([])
+
+    // The values surface keeps native dot reachability.
+    expect(form.values.address.toString).toBe('render-as')
 
     // String coercion at the PARENT still produces a primitive, because
     // `Symbol.toPrimitive` is the hot path for `String(...)` and isn't
@@ -481,7 +485,7 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
     expect(JSON.parse(String(form.errors.address))).toEqual({})
   })
 
-  it('schema field literally named "valueOf" (number leaf) is reachable via dot-access', () => {
+  it('schema field literally named "valueOf" (number leaf): call form reaches it', () => {
     const schema = z.object({
       account: z.object({
         valueOf: z.number(), // collision case
@@ -490,7 +494,10 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
     })
     const form = mount(schema, { account: { valueOf: 42, owner: 'alice' } })
 
-    expect(form.fields.account.valueOf.value).toBe(42)
+    // Dot-access resolves the coercion handler; the call form and the
+    // values surface reach the datum.
+    expect(typeof form.fields.account.valueOf).toBe('function')
+    expect(form.fields('account.valueOf').value).toBe(42)
     expect(form.values.account.valueOf).toBe(42)
 
     // Parent coercion: the materialised tree exposes both leaves, with
@@ -503,10 +510,7 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
     })
   })
 
-  it('schema field "toString" as a CONTAINER (object) is also reachable', () => {
-    // Tests the second branch of the existence check: schema has a
-    // child at this path, but it's a container — descent must still
-    // proceed (not the primitive-coercion handler).
+  it('schema field "toString" as a CONTAINER (object): call form drills through it', () => {
     const schema = z.object({
       page: z.object({
         toString: z.object({ format: z.string(), locale: z.string() }),
@@ -516,7 +520,10 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
       page: { toString: { format: 'iso', locale: 'en-US' } },
     })
 
-    expect(form.fields.page.toString.format.value).toBe('iso')
+    // Dot-access resolves the coercion handler at the collision hop;
+    // the call form drills through it, and values stays native.
+    expect(typeof form.fields.page.toString).toBe('function')
+    expect(form.fields('page.toString.format').value).toBe('iso')
     expect(form.values.page.toString.locale).toBe('en-US')
   })
 
@@ -587,7 +594,7 @@ describe('surface proxies — hasOwnProperty resolves to the real method (not a 
     expect(ownHas(form.errors.address, 'ghost')).toBe(false)
   })
 
-  it('schema authority: a literal `hasOwnProperty` field descends to the schema leaf', () => {
+  it('a literal `hasOwnProperty` field resolves via the call form; dot stays the real method', () => {
     const collisionSchema = z.object({
       wrap: z.object({
         hasOwnProperty: z.string(),
@@ -597,17 +604,14 @@ describe('surface proxies — hasOwnProperty resolves to the real method (not a 
     const form = mount(collisionSchema, {
       wrap: { hasOwnProperty: 'literal-field', city: 'NYC' },
     })
-    // Schema authority: dot-access resolves to the FieldState leaf-view
-    // for the `hasOwnProperty` field, NOT the Object.prototype method.
-    // (The leaf-view is a non-callable object at the field's path; we
-    // assert on `path`, which is derived from the segments rather than
-    // the stored value — a field literally named `hasOwnProperty` trips
-    // a separate, pre-existing storage-layer collision that this test
-    // deliberately does not depend on.)
-    const node = form.fields.wrap.hasOwnProperty
-    expect(node).not.toBe(Object.prototype.hasOwnProperty)
-    expect(typeof node).toBe('object')
-    expect(node.path).toEqual(['wrap', 'hasOwnProperty'])
+    // Dot-access always resolves the real Object.prototype method, so
+    // tooling that probes membership never gets a non-callable node.
+    expect(form.fields.wrap.hasOwnProperty).toBe(Object.prototype.hasOwnProperty)
+    // The call form addresses the field by path. (Assert on `path`,
+    // which derives from the segments — a field literally named
+    // `hasOwnProperty` trips a separate, pre-existing storage-layer
+    // collision this test deliberately does not depend on.)
+    expect(form.fields('wrap.hasOwnProperty').path).toEqual(['wrap', 'hasOwnProperty'])
     // The sibling field is unaffected.
     expect(form.fields.wrap.city.value).toBe('NYC')
   })

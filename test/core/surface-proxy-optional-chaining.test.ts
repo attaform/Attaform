@@ -1,18 +1,15 @@
 // @vitest-environment jsdom
 /**
- * Callable surface proxies survive downleveled optional chaining.
+ * Callable surfaces × fields named after Function.prototype members.
  *
- * `form.fields(path)?.x` / `form.errors(path)?.x` is the idiomatic
- * call-form. A bundler that downlevels optional chaining — sucrase
- * (what `@vue/repl` strips TS with), or any target below ES2020 —
- * compiles it into a helper that READS `.call` off the surface and
- * invokes the result to call the surface. Pre-fix the `get` trap
- * descended on `call`, handing back a non-callable sub-proxy, so the
- * helper threw `value.call is not a function` (the `@vue/repl` preview
- * crash). The fix answers `call` / `apply` / `bind` with a callable
- * shim that ALSO stays transparent to a field literally named
- * call / apply / bind — so a telephone-company form keeps its `call`
- * field. Both guarantees, both adapters.
+ * The surfaces carry no `call` / `apply` / `bind` special-casing: a
+ * schema field with one of those names is an ordinary declared field
+ * (reachable by dot and call form through the truthful descend gate),
+ * and on a schema WITHOUT such a field the same reads are `undefined`
+ * like any other absent key. Native optional chaining over the call
+ * form (`form.fields(path)?.value`, ES2020+) is the supported form;
+ * transpilers that downlevel `?.` into a `.call`-reading helper are
+ * not supported against these surfaces.
  */
 import { describe, expect, it } from 'vitest'
 import { z as zV4 } from 'zod'
@@ -42,98 +39,63 @@ const schemaV3 = zV3.object({
   bind: zV3.string(),
 })
 
+const plainV4 = zV4.object({ email: zV4.string() })
+const plainV3 = zV3.object({ email: zV3.string() })
+
 const adapters = [
-  { name: 'v4', mount: makeMounter(useFormV4, schemaV4, { defaultValues: shape }) },
-  { name: 'v3', mount: makeMounter(useFormV3, schemaV3, { defaultValues: shape }) },
+  {
+    name: 'v4',
+    mount: makeMounter(useFormV4, schemaV4, { defaultValues: shape }),
+    mountPlain: makeMounter(useFormV4, plainV4, { defaultValues: { email: 'a@b.c' } }),
+  },
+  {
+    name: 'v3',
+    mount: makeMounter(useFormV3, schemaV3, { defaultValues: shape }),
+    mountPlain: makeMounter(useFormV3, plainV3, { defaultValues: { email: 'a@b.c' } }),
+  },
 ] as const
 
-// Faithful copy of sucrase's `_optionalChain` helper — the exact runtime
-// shape `@vue/repl` emits when it downlevels `surface(path)?.x`. Its
-// `call` step reads `value.call` off the surface, which is what threw
-// pre-fix.
-function optionalChain(ops: unknown[]): unknown {
-  let lastAccessLHS: unknown = undefined
-  let value: unknown = ops[0]
-  let i = 1
-  while (i < ops.length) {
-    const op = ops[i] as string
-    const fn = ops[i + 1] as (arg: unknown) => unknown
-    i += 2
-    if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) {
-      return undefined
-    } else if (op === 'access' || op === 'optionalAccess') {
-      lastAccessLHS = value
-      value = fn(value)
-    } else if (op === 'call' || op === 'optionalCall') {
-      const lhs = lastAccessLHS
-      const target = value as (this: unknown, ...args: unknown[]) => unknown
-      value = fn((...args: unknown[]) => target.call(lhs, ...args))
-      lastAccessLHS = undefined
-    }
+describe.each(adapters)(
+  'callable surface × Function.prototype-named fields — $name',
+  ({ mount, mountPlain }) => {
+    it('a field literally named `call` stays reachable (dot + call form)', () => {
+      const { api, app } = mount()
+      expect(api.fields.call.value).toBe('+1-555-0100')
+      expect(api.fields('call').value).toBe('+1-555-0100')
+      expect(api.fields.call.touched).toBe(false)
+      app.unmount()
+    })
+
+    it('fields named `apply` / `bind` stay reachable', () => {
+      const { api, app } = mount()
+      expect(api.fields.apply.value).toBe('submitted')
+      expect(api.fields.bind.value).toBe('legal')
+      app.unmount()
+    })
+
+    it('values and errors surfaces reach the exotic names too', () => {
+      const { api, app } = mount()
+      expect(api.values.call).toBe('+1-555-0100')
+      expect(api.values('apply')).toBe('submitted')
+      expect(Array.isArray(api.errors.call)).toBe(true)
+      app.unmount()
+    })
+
+    it('without such fields, `.call` / `.apply` / `.bind` read undefined', () => {
+      const { api, app } = mountPlain()
+      expect(api.fields.call).toBeUndefined()
+      expect(api.fields.apply).toBeUndefined()
+      expect(api.fields.bind).toBeUndefined()
+      expect(api.errors.call).toBeUndefined()
+      app.unmount()
+    })
+
+    it('native optional chaining over the call form resolves and short-circuits', () => {
+      const { api, app } = mountPlain()
+      expect(api.fields('email')?.value).toBe('a@b.c')
+      expect(api.fields('bogus')?.value).toBeUndefined()
+      expect(api.errors('email')?.length).toBe(0)
+      app.unmount()
+    })
   }
-  return value
-}
-
-const access = (key: string) => (o: unknown) => (o as Record<string, unknown>)[key]
-const callPath = (path: string) => (f: unknown) => (f as (p: string) => unknown)(path)
-
-describe.each(adapters)('callable surface × downleveled optional chaining — $name', ({ mount }) => {
-  it('form.fields(path)?.x survives the sucrase _optionalChain helper', () => {
-    const { api, app } = mount()
-    // `form.fields('email')?.value`
-    const value = optionalChain([
-      api,
-      'access',
-      access('fields'),
-      'call',
-      callPath('email'),
-      'optionalAccess',
-      access('value'),
-    ])
-    expect(value).toBe('ada@site.example')
-    expect(value).toBe(api.fields.email.value)
-    app.unmount()
-  })
-
-  it('form.errors(path) call-form survives the helper too', () => {
-    const { api, app } = mount()
-    const direct = api.errors('email')
-    const viaChain = optionalChain([api, 'access', access('errors'), 'call', callPath('email')])
-    // Same terminal both ways — the downleveled `.call` no longer throws.
-    expect(viaChain).toStrictEqual(direct)
-    app.unmount()
-  })
-
-  it('a field literally named `call` stays reachable (dot + call form)', () => {
-    const { api, app } = mount()
-    expect(api.fields.call.value).toBe('+1-555-0100')
-    expect(api.fields('call').value).toBe('+1-555-0100')
-    expect(api.fields.call.touched).toBe(false)
-    app.unmount()
-  })
-
-  it('fields named `apply` / `bind` stay reachable', () => {
-    const { api, app } = mount()
-    expect(api.fields.apply.value).toBe('submitted')
-    expect(api.fields.bind.value).toBe('legal')
-    app.unmount()
-  })
-
-  it('the `call` field and the downleveled invoke path coexist in one module', () => {
-    const { api, app } = mount()
-    // Reading the `call` field...
-    expect(api.fields.call.value).toBe('+1-555-0100')
-    // ...does not stop the downleveled call-form from resolving a sibling.
-    const value = optionalChain([
-      api,
-      'access',
-      access('fields'),
-      'call',
-      callPath('apply'),
-      'optionalAccess',
-      access('value'),
-    ])
-    expect(value).toBe('submitted')
-    app.unmount()
-  })
-})
+)

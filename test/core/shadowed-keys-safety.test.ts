@@ -159,11 +159,15 @@ describe('shadowed-key safety — live form surfaces', () => {
     return fields['wrap']?.[key]?.value
   }
 
-  it('form.fields.wrap.<shadowed>.value reads the stored value', () => {
+  it('shadowed leaves stay reachable: coercion names via the call form, the rest by dot', () => {
     const form = mount(schema, dv)
-    expect(fieldVal(form, 'hasOwnProperty')).toBe('h')
-    expect(fieldVal(form, 'toString')).toBe('t')
-    expect(fieldVal(form, 'valueOf')).toBe('v')
+    // `hasOwnProperty` / `toString` / `valueOf` resolve their built-in
+    // handlers on dot-access (so coercion and membership probes always
+    // work); the call form addresses the data fields by path.
+    expect(form.fields('wrap.hasOwnProperty').value).toBe('h')
+    expect(form.fields('wrap.toString').value).toBe('t')
+    expect(form.fields('wrap.valueOf').value).toBe('v')
+    // Names with no built-in collision on the surface keep dot access.
     expect(fieldVal(form, 'constructor')).toBe('c')
   })
 
@@ -202,9 +206,10 @@ describe('shadowed-key safety — live form surfaces', () => {
   it('setValue at a shadowed leaf round-trips through every read surface', () => {
     const form = mount(schema, dv)
     form.setValue('wrap.hasOwnProperty', 'changed')
-    expect(fieldVal(form, 'hasOwnProperty')).toBe('changed')
     expect(form.values('wrap.hasOwnProperty')).toBe('changed')
     expect(form.fields('wrap.hasOwnProperty').value).toBe('changed')
+    const parsed = JSON.parse(JSON.stringify(form.values)) as { wrap: Record<string, unknown> }
+    expect(parsed.wrap['hasOwnProperty']).toBe('changed')
   })
 
   it('form.values.hasOwnProperty(k) still works as the real method when no such field exists', () => {

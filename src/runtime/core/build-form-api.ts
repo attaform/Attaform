@@ -24,7 +24,7 @@ import type { FormStore } from './create-form-store'
 import { structuralSnapshot } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
 import { normalizeErrorInputs } from './errors'
-import { buildErrorsProxy } from './errors-proxy'
+import { buildErrorsSurface, buildFieldsSurface, buildValuesSurface } from './callable-tree'
 import { buildFieldArrayApi } from './array-engine'
 import {
   aggregateErrorsAt,
@@ -33,7 +33,6 @@ import {
   type FieldStateBase,
   type FormMetaBase,
 } from './field-state-api'
-import { buildFieldStateProxy } from './field-state-proxy'
 import { getAtPath } from './path-walker'
 import {
   canonicalizePath,
@@ -53,7 +52,6 @@ import {
   substituteUnsetSentinels,
   walkUnsetSentinels,
 } from './unset-walker'
-import { buildValuesProxy } from './values-proxy'
 
 export type BuildFormApiOptions = {
   /** Forwarded to buildProcessForm. See `UseFormConfiguration.onInvalidSubmit`. */
@@ -533,7 +531,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   //
   // Container paths are descend-only (no terminal). The "give me every
   // error" need is served by `form.meta.errors` (flat ValidationError[]).
-  const errorsProxy = buildErrorsProxy(state)
+  const errorsProxy = buildErrorsSurface(state)
 
   // `setErrors` / `clearErrors` own the `userErrors` store — the manual
   // error layer that merges with schema/validation errors on read. The
@@ -1058,20 +1056,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // fresh one keyed to the new target. The callable proxy itself is
   // identity-stable — consumers caching `form.values` get a stable
   // reference whose underlying data tracks the live form value.
-  const valuesProxy = buildValuesProxy(state.form)
+  const valuesProxy = buildValuesSurface(state.form)
 
   // --- Pinia-style reactive per-field state proxy ---
   // Allocated once per buildFormApi call (one per consumer). Each Proxy
-  // node memoizes its descendants and the per-path FieldState
-  // computed it reads through, so repeated access to the same path
-  // (`form.fields.email` twice) returns the same object — useful
-  // for downstream `===` checks and Vue's render diff.
-  const fieldStateProxy = buildFieldStateProxy(
-    state,
-    formInstanceId,
-    getFormMetaBase,
-    fieldStateAccessorOptions
-  )
+  // node memoizes its descendants; the per-path FieldState computeds
+  // come from the SAME accessor `meta` / register read through, so
+  // every consumer of a path shares one computed and repeated access
+  // (`form.fields.email` twice) returns the same object — useful for
+  // downstream `===` checks and Vue's render diff.
+  const fieldStateProxy = buildFieldsSurface(state, getRootFieldStateAt)
 
   // Lazy-activation gate: every public method routes through `activate`
   // so the first reactive interaction kicks the captured factory. The

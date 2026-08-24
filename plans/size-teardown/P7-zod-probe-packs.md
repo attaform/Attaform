@@ -117,6 +117,18 @@ in the barrel/both-majors metrics only.
   form.meta consumers)?" If provably invisible in all default
   configurations, the ~500 B deletion may be re-proposed WITH that
   evidence; until then it stays.
+- **TRIGGER ANSWERED 2026-08-24 (7c): the seeds ARE user-visible —
+  the walker stays, now with pinned evidence.**
+  `test/composables/construction-seed-visibility.test.ts` proves the
+  strict-mode seed reads through `meta.valid === false`,
+  `meta.errors` / `errorCount`, and `form.errors('name')` on first
+  paint (a submit button bound to `meta.valid` renders disabled
+  BECAUSE of the seed), while the per-field display gate
+  simultaneously hides it from the field UI (`displayState` 'idle',
+  `showErrors` false). The suite also pins strip-walker parity (an
+  async refine elsewhere does not eat the seed) and the lax-mode
+  control (no seed). The deletion is off the table for good unless
+  the meta surfaces themselves change.
 
 ## Entry criteria / characterization gate
 

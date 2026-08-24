@@ -1,11 +1,14 @@
 ---
 title: Undo & redo
-description: history opt-in unlocks a per-form undo/redo chain. Every mutation records a position, undo() and redo() walk the timeline, clear() reseeds at a milestone.
+description: historyPlugin() from attaform/history unlocks a per-form undo/redo chain. Every mutation records a position, undo() and redo() walk the timeline, clear() reseeds at a milestone.
 metaRows:
   - label: Category
     value: Module
   - label: Opt in
-    value: 'useForm({ history: true })'
+    value: 'history: historyPlugin()'
+    kind: code
+  - label: Entry
+    value: attaform/history
     kind: code
   - label: Default depth
     value: 128 positions
@@ -16,7 +19,7 @@ metaRows:
 
 # Undo & redo
 
-> Opt into a per-form history chain with one option. Every value mutation records a position; the namespace exposes `undo()` / `redo()` / `clear()` and the reactive flags that gate your UI.
+> Opt into a per-form history chain with one plugin. Every value mutation records a position; the namespace exposes `undo()` / `redo()` / `clear()` and the reactive flags that gate your UI.
 
 ::docs-meta-table
 ::
@@ -26,28 +29,36 @@ Type into any field, append a few tags, then hit `⌘Z` / `⌘⇧Z` (or click th
 ::docs-demo{slug="undo-redo" label="Undo & Redo Demo"}
 ::
 
-## The option
+## The plugin
+
+The undo/redo runtime lives in its own entry, `attaform/history`, and rides your import: a form that never opts in never ships it. Create the plugin and hand it to `useForm`:
 
 ```ts
-useForm({
+import { useForm } from 'attaform'
+import { historyPlugin } from 'attaform/history'
+
+const form = useForm({
   schema,
-  history: true, // default 128-position bounded chain
+  history: historyPlugin(), // default 128-position bounded chain
 })
 ```
 
 Tune the depth:
 
 ```ts
-useForm({ schema, history: { max: 200 } })
+const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
 ```
 
-Disable explicitly:
+Or set it once for the whole app; one plugin instance is a reusable configuration, and every form still gets its own independent chain:
 
 ```ts
-useForm({ schema, history: false })
+import { createAttaform } from 'attaform'
+import { historyPlugin } from 'attaform/history'
+
+app.use(createAttaform({ defaults: { history: historyPlugin() } }))
 ```
 
-When omitted, `history` defaults to `false`. The namespace is still present on the form return so templates don't need conditional logic, but every method is a no-op and the flags read `false` / `0`.
+When omitted, history is off. The namespace is still present on the form return so templates don't need conditional logic, but every method is a no-op and the flags read `false` / `0`.
 
 ## The namespace
 
@@ -76,7 +87,7 @@ What's NOT captured:
 - **Submission lifecycle**: `meta.submissionAttempts`, `meta.submitError`.
 - **Validation in-flight state**.
 
-Calling `setErrors` / `clearErrors` does NOT record a position; those only touch the error map. Whatever errors are live when the next mutation lands go into that mutation's delta.
+Calling `setErrors` / `clearErrors` does NOT record a position; those only touch the error map. Whatever errors are live when the next mutation lands ride into that mutation's position.
 
 ## Keyboard shortcuts
 
@@ -121,7 +132,7 @@ After `clear()`: `canUndo === false`, `canRedo === false`, `size === 1`. The cur
 
 ## Memory
 
-The default `max: 128` keeps at most 128 reachable positions across the undo + redo halves combined. Bump it for editors with long histories; drop it for memory-constrained targets. Internally history stores one base snapshot plus a chain of forward deltas (per-mutation `Patch[]` from the diff machinery), so each additional position costs `O(changed-leaf-count)`. Typing one character into one field allocates a single patch, not a clone of the whole form.
+The default `max: 128` keeps at most 128 reachable positions across the undo + redo halves combined. Bump it for editors with long histories; drop it for memory-constrained targets. Internally history is a snapshot ring buffer: each position holds a full structural copy of the form value plus the error entries live at that moment, so memory scales with `max × form size` and recording a position is a straight clone with no diffing work on the keystroke path. When a fresh mutation would exceed the cap, the oldest position falls off the front.
 
 ## Where to next
 

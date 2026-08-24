@@ -8,7 +8,7 @@ import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/regi
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
- * `handleSubmit` / `validate` / `validateAsync` synthesise a "Required"
+ * `handleSubmit` / `validate` / `parse({ commit: true })` synthesise a "Required"
  * error for every path in the form's `blankPaths` set whose
  * schema is required (no `.optional()` / `.nullable()` / `.default()` /
  * `.catch()` wrapper). This is the public-housing footgun fix: a user
@@ -199,7 +199,7 @@ describe('handleSubmit — required-empty raises a synthesised error', () => {
   })
 })
 
-describe('validateAsync — surfaces required-empty errors', () => {
+describe('parse({ commit: true }) — surfaces required-empty errors', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -215,7 +215,7 @@ describe('validateAsync — surfaces required-empty errors', () => {
     }
     binding.setValueWithInternalPath(0, { blank: true })
 
-    const result = await form.validateAsync()
+    const result = await form.parse({ commit: true })
     expect(result.success).toBe(false)
     const errors = result.errors ?? []
     expect(
@@ -242,7 +242,7 @@ describe('validateAsync — surfaces required-empty errors', () => {
 
     // Validate just the income subtree — the name's required-empty
     // error should NOT contribute (different path scope).
-    const result = await form.validateAsync('income')
+    const result = await form.parse('income', { commit: true })
     expect(result.success).toBe(false)
     const errors = result.errors ?? []
     const paths = errors.map((e) => e.path[0])

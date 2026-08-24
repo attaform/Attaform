@@ -144,7 +144,7 @@ Most operations accept a path argument that scopes them to a subtree:
 
 ```ts
 form.validate('profile') // validate just profile.* leaves
-form.validateAsync('address') // async-validate the address subtree
+form.parse('address', { commit: true }) // validate the address subtree, verdict on form.errors
 form.resetField('profile') // re-seed just the profile subtree
 form.history.undo() // global to the whole form (no subtree variant)
 ```

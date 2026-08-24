@@ -28,6 +28,8 @@
  */
 
 import type { FieldMetaPayload } from './field-meta'
+import type { PathKey } from './paths'
+import type { FieldMetaWalkServices } from './walk-field-meta'
 
 /**
  * Minimal registry shape the shared store satisfies — `.add` / `.get`
@@ -85,10 +87,49 @@ export function getFieldMetaForSchema(schema: object): FieldMetaPayload | undefi
 
 /**
  * Read every payload registered against `schema` in registration
- * order. Empty list when nothing has been registered. Used by the v4
- * adapter's path-resolver to disambiguate per occurrence when one
+ * order. Empty list when nothing has been registered. Used by the
+ * adapters' path-resolvers to disambiguate per occurrence when one
  * schema instance is bound at multiple form paths.
  */
 export function getFieldMetaListForSchema(schema: object): readonly FieldMetaPayload[] {
   return lists.get(schema) ?? []
+}
+
+/**
+ * Signature of `getFieldMetaPathMap` — the tree-walking path → payload
+ * resolver in `walk-field-meta`. Held here as an installable slot so
+ * the walker's bytes ride the REGISTRATION surface (`withMeta` /
+ * `fieldMeta.add`) instead of the adapter modules: an app that never
+ * registers field metadata never ships the walk, and the resolvers
+ * fall back to `.describe()` / humanize.
+ */
+export type FieldMetaPathMapBuilder = <Schema extends object>(
+  rootSchema: Schema,
+  services: FieldMetaWalkServices<Schema>
+) => Map<PathKey, FieldMetaPayload>
+
+let pathMapBuilder: FieldMetaPathMapBuilder | null = null
+
+/**
+ * Install the path-map walk. The registration surfaces call this on
+ * every metadata write (idempotent — always the same function), which
+ * is what guarantees the walk is present before any lookup could need
+ * it: registering is the only way a payload can exist.
+ */
+export function installFieldMetaPathMapBuilder(builder: FieldMetaPathMapBuilder): void {
+  pathMapBuilder = builder
+}
+
+/**
+ * Build the path → payload map for `rootSchema` through the installed
+ * walk, or `undefined` when no registration surface has ever run — in
+ * which case nothing was registered and there is no map to build.
+ * Callers fall back to the schema-keyed single-payload lookup and the
+ * `.describe()` / humanize resolution.
+ */
+export function buildFieldMetaPathMap<Schema extends object>(
+  rootSchema: Schema,
+  services: FieldMetaWalkServices<Schema>
+): Map<PathKey, FieldMetaPayload> | undefined {
+  return pathMapBuilder === null ? undefined : pathMapBuilder(rootSchema, services)
 }

@@ -101,7 +101,12 @@ createAttaform({
     coerce: [
       ...defaultCoercionRules,
       defineCoercion({
-        /* ... */
+        input: 'string',
+        output: 'date',
+        transform: (s) => {
+          const d = new Date(s)
+          return Number.isFinite(d.getTime()) ? { coerced: true, value: d } : { coerced: false }
+        },
       }),
     ],
   },

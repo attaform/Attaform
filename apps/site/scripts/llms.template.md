@@ -50,7 +50,7 @@ The form handle returned by `useForm({ schema })`:
 - `form.handleSubmit(onSubmit, onError?)` submit wrapper. Validates, routes errors, calls `onSubmit` with the parsed values.
 - `form.setValue(path, value)`, `form.reset(defaults?)`, `form.resetField(path)`, `form.clear(path?)`, `form.unset(path)` programmatic writes.
 - `form.append`, `form.prepend`, `form.insert`, `form.remove`, `form.swap`, `form.move`, `form.replace` typed field-array mutations. An element's state (value, errors, dirty, touched) travels with it across reorders.
-- `form.validate(path?)`, `form.validateAsync(path?)`, `form.parse(path?)` manual validation. `form.parse` is always async (no sync variant by design) and resolves the parsed Zod output.
+- `form.validate(path?)`, `form.parse(path?, { commit? })` manual validation. `form.parse` is always async (no sync variant by design) and resolves the parsed Zod output; `{ commit: true }` writes the verdict to `form.errors` and cancels in-flight field runs.
 - `form.setErrors(errors)`, `form.setErrors(path, errors)`, `form.setErrors(updater)`, `form.clearErrors(path?)` set or clear the manual error layer. A path-less error is form-level at the root `[]`; each error accepts an optional `data` payload.
 - `form.history.{undo, redo, clear, canUndo, canRedo, size}` undo/redo namespace.
 - `form.applyInvalidSubmitPolicy(policy?)`, `form.focusFirstError()`, `form.scrollToFirstError()` UX primitives.

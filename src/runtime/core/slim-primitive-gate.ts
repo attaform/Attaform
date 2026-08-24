@@ -129,7 +129,7 @@ function walk(
   // Schema-side normalizers (z.preprocess, z.coerce) run at parse,
   // not at the write boundary — accept anything raw at the wrapper
   // node OR anywhere underneath it. The consumer's verbatim input
-  // lands in storage; `handleSubmit` / `validate` / `validateAsync`
+  // lands in storage; `handleSubmit` / `validate` / `parse`
   // re-parses through the wrapper and surfaces the typed shape.
   if (schema.isPreprocessOrCoerceLeaf(path)) return true
   // Top-of-tree check: does the value at THIS path satisfy the

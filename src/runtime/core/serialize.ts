@@ -1,7 +1,19 @@
 import type { App } from 'vue'
 import type { FormKey } from '../types/types-api'
+import { __DEV__ } from './dev'
 import { pathKeyToDotted, type PathKey } from './paths'
 import { getRegistryFromApp, type SerializedFormData } from './registry'
+
+/**
+ * Version stamp written onto every serialized envelope and required
+ * back at hydration. Rolling deploys and stale CDN caches can pair an
+ * old server bundle's payload with a new client (or vice versa); a
+ * stamp mismatch skips hydration wholesale — the client falls back to
+ * fresh construction, which beats replaying a payload whose inner
+ * shapes have drifted. Bump when `SerializedFormData`'s wire shape
+ * changes.
+ */
+export const ATTAFORM_STATE_VERSION = 1
 
 /**
  * Serialised snapshot of every form in a Vue app, produced by
@@ -11,6 +23,8 @@ import { getRegistryFromApp, type SerializedFormData } from './registry'
  * serialiser before embedding in your SSR payload.
  */
 export type SerializedAttaformState = {
+  /** Envelope version — see {@link ATTAFORM_STATE_VERSION}. */
+  readonly v: number
   /** Tuples of `[formKey, snapshot]` for every form in the app. */
   readonly forms: ReadonlyArray<readonly [FormKey, SerializedFormData]>
 }
@@ -56,14 +70,21 @@ export function renderAttaformState(app: App): SerializedAttaformState {
       key,
       {
         form: state.form.value,
-        schemaErrors: Array.from(state.schemaErrors.entries()),
-        userErrors: Array.from(state.userErrors.entries()),
+        // The wire shape stays two per-source arrays; the tagged store
+        // splits at the boundary and the client replays each side into
+        // its cell half.
+        schemaErrors: [...state.errorCells.entries()]
+          .filter(([, cell]) => cell.schema.length > 0)
+          .map(([key, cell]) => [key, cell.schema] as const),
+        userErrors: [...state.errorCells.entries()]
+          .filter(([, cell]) => cell.user.length > 0)
+          .map(([key, cell]) => [key, cell.user] as const),
         fields: Array.from(state.fields.entries()),
         ...(transientList.length > 0 ? { blankPaths: transientList } : {}),
       },
     ])
   }
-  return { forms }
+  return { v: ATTAFORM_STATE_VERSION, forms }
 }
 
 /**
@@ -79,12 +100,55 @@ export function renderAttaformState(app: App): SerializedAttaformState {
  * app.mount('#app')
  * ```
  *
+ * Accepts `unknown` because the payload crosses the wire untyped
+ * (an inline `<script>` tag, `JSON.parse`): the envelope is
+ * validated at runtime, and anything that isn't a version-matched
+ * `renderAttaformState` snapshot is skipped wholesale, so forms
+ * construct fresh from their schemas instead.
+ *
  * The next `useForm({ key })` call for each serialised form picks up
  * the snapshot transparently — no further action is required.
  */
-export function hydrateAttaformState(app: App, payload: SerializedAttaformState): void {
+export function hydrateAttaformState(app: App, payload: unknown): void {
+  // A missing or mismatched stamp means the server bundle that
+  // produced the payload is on a different version than this client
+  // (rolling deploy / stale cache): skip hydration wholesale and let
+  // every form construct fresh from its schema.
+  if (!isHydratableEnvelope(payload)) {
+    if (__DEV__) {
+      let got: unknown = payload
+      if (payload !== null && typeof payload === 'object') {
+        got = 'v' in payload ? payload.v : undefined
+      }
+      console.warn(
+        '[attaform] hydrateAttaformState: payload version mismatch (expected ' +
+          `${ATTAFORM_STATE_VERSION}, got ${String(got)}). ` +
+          'Skipping hydration — forms will construct fresh. This usually means the SSR bundle ' +
+          'is on a different attaform version than the client (rolling deploy / stale cache).'
+      )
+    }
+    return
+  }
   const registry = getRegistryFromApp(app)
   for (const [key, data] of payload.forms) {
     registry.pendingHydration.set(key, data)
   }
+}
+
+/**
+ * Envelope check behind `hydrateAttaformState`'s `unknown` payload:
+ * an object carrying the exact current version stamp and a `forms`
+ * array. The stamp doubles as the interior-shape guarantee (only
+ * `renderAttaformState` on this same version writes it), so the
+ * inner tuples are trusted without deep validation.
+ */
+function isHydratableEnvelope(payload: unknown): payload is SerializedAttaformState {
+  return (
+    payload !== null &&
+    typeof payload === 'object' &&
+    'v' in payload &&
+    payload.v === ATTAFORM_STATE_VERSION &&
+    'forms' in payload &&
+    Array.isArray(payload.forms)
+  )
 }

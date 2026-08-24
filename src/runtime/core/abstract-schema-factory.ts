@@ -178,6 +178,12 @@ export interface SchemaIntrospector<Schema> {
    * subtree validation catches the same verdicts as a whole-form pass.
    */
   hasContainerOrRootRefine(schema: Schema): boolean
+  /**
+   * True iff the schema tree holds at least one discriminated union at
+   * any depth. Drives the store's per-form DU capability flag; queried
+   * once at construction.
+   */
+  containsDiscriminatedUnion(schema: Schema): boolean
 
   // ---------------------------------------------------------------------
   // Walker accessors — consumed by the shared `core/walk-*` walkers (D2 /
@@ -382,7 +388,7 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    * `ValidationError[]` shape. v3 and v4 have slightly different
    * `ZodIssue` payloads; each adapter knows how to map its own.
    */
-  issuesToValidationErrors(issues: readonly unknown[], formKey: FormKey): ValidationError[]
+  issuesToValidationErrors(issues: readonly unknown[]): ValidationError[]
   /**
    * Run a sync `safeParse` against the schema. Returns a tagged result
    * the factory aggregates into a `ValidationResponse`. MAY throw when
@@ -443,6 +449,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   // subtree-vs-whole-form scope cut).
   let asyncValidationFlag: boolean | null = null
   let containerRefineFlag: boolean | null = null
+  let discriminatedUnionFlag: boolean | null = null
 
   function computeDiscriminator(path: Path): UnionDiscriminatorContext | undefined {
     const candidates =
@@ -511,6 +518,11 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       return containerRefineFlag
     },
 
+    hasDiscriminatedUnions(): boolean {
+      discriminatedUnionFlag ??= intro.containsDiscriminatedUnion(rootSchema)
+      return discriminatedUnionFlag
+    },
+
     getDefaultValues(config: GetDefaultValuesConfig<Form>): DefaultValuesResponse<Form> {
       return services.runStrictGetDefaults(rootSchema, config, formKey, maxRecursionDepth)
     },
@@ -550,14 +562,17 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     arrayShapeAtPath(path) {
-      if (path.length === 0) return undefined
+      // Definitive per the contract: `null` is "not a tuple" — an
+      // unbounded array, a path that doesn't resolve, or a non-array
+      // kind (the root included). Callers only consult this while
+      // descending an array branch and treat `null` as consumer
+      // length + one shared element default.
+      if (path.length === 0) return null
       const [first] = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
-      if (first === undefined) return undefined
+      if (first === undefined) return null
       const peeled = services.peelAllWrappers(first)
-      const kind = intro.kindOf(peeled)
-      if (kind === 'tuple') return intro.getTupleItems(peeled).length
-      if (kind === 'array') return null
-      return undefined
+      if (intro.kindOf(peeled) === 'tuple') return intro.getTupleItems(peeled).length
+      return null
     },
 
     isFixedObjectAtPath(path) {
@@ -720,7 +735,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           ? { data: result.data as GetValueFormType, errors: undefined, success: true, formKey }
           : {
               data: undefined,
-              errors: services.issuesToValidationErrors(result.issues, formKey),
+              errors: services.issuesToValidationErrors(result.issues),
               success: false,
               formKey,
             }
@@ -791,7 +806,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
             {
               message,
               path: [...errPath],
-              formKey,
               code: AttaformErrorCode.ValidatorThrew,
             },
           ],
@@ -807,7 +821,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
             {
               message: `Path '${p.join(PATH_SEPARATOR)}' did not resolve to any schema`,
               path: [...p],
-              formKey,
               code: AttaformErrorCode.PathNotFound,
             },
           ],

@@ -13,8 +13,8 @@
  *     (`values` / `register` / `handleSubmit`), so an emit that dropped
  *     the core surface off the abstract entry fails here.
  */
-import { useAbstractForm } from '../../../dist/abstract'
-import type { AbstractSchema } from '../../../dist/abstract'
+import { useAbstractForm } from 'attaform/abstract'
+import type { AbstractSchema } from 'attaform/abstract'
 
 type Fields = { name: string }
 

@@ -11,7 +11,6 @@ import {
 } from '../../../src/runtime/adapters/zod-v4/default-values'
 import { getNestedZodSchemasAtPath } from '../../../src/runtime/adapters/zod-v4/path-walker'
 import { slimPrimitivesOf } from '../../../src/runtime/adapters/zod-v4/slim-primitives'
-import { getSlimSchema } from '../../../src/runtime/adapters/zod-v4/strip'
 
 /**
  * `maxRecursionDepth` caps descent through `z.lazy()` only — the
@@ -191,28 +190,6 @@ describe('maxRecursionDepth — counter bumps on lazy only', () => {
       const schema = z.object({ wrap: z.lazy(() => inner) })
       const result = getNestedZodSchemasAtPath(schema, 'wrap.value', 0)
       expect(result).toEqual([])
-    })
-  })
-
-  describe('getSlimSchema', () => {
-    it('rebuilds a 4-deep object tree intact at maxRecursionDepth=0', () => {
-      const schema = z.object({
-        a: z.object({ b: z.object({ c: z.object({ d: z.string() }) }) }),
-      })
-      const slim = getSlimSchema(schema, { stripRefinements: true }, 0)
-      // Slim schema accepts the structural default.
-      const parsed = slim.safeParse({ a: { b: { c: { d: '' } } } })
-      expect(parsed.success).toBe(true)
-    })
-
-    it('leaves the lazy in place when maxRecursionDepth=0', () => {
-      const inner = z.object({ value: z.string() })
-      const schema = z.object({ wrap: z.lazy(() => inner) })
-      const slim = getSlimSchema(schema, { stripRefinements: true }, 0)
-      // The lazy still resolves through Zod's own parser, so a valid
-      // input still parses. The walker just didn't strip inside it.
-      const parsed = slim.safeParse({ wrap: { value: 'x' } })
-      expect(parsed.success).toBe(true)
     })
   })
 

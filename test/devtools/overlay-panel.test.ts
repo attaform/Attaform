@@ -105,9 +105,7 @@ describe('AttaformDevtoolsPanel — form display', () => {
       formKey: 'errs',
       schema: fakeSchema<{ email: string }>({ email: '' }),
     })
-    state.setAllUserErrors([
-      { message: 'looks bad', path: ['email'], formKey: 'errs', code: 'api:bad-email' },
-    ])
+    state.setAllUserErrors([{ message: 'looks bad', path: ['email'], code: 'api:bad-email' }])
     registry.forms.set('errs', state)
 
     const { root, app } = mountPanel({ registry, version: '0' })

@@ -433,11 +433,11 @@ describe('derivedBlankErrors — lifecycle integration', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('validateAsync() response includes the derived class', async () => {
+  it('parse({ commit: true }) response includes the derived class', async () => {
     const { app, api } = mountNumeric()
     apps.push(app)
 
-    const result = await api.validateAsync()
+    const result = await api.parse({ commit: true })
     expect(result.success).toBe(false)
     expect(result.errors?.some((e) => e.code === AttaformErrorCode.NoValueSupplied)).toBe(true)
   })

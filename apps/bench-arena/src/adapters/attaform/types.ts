@@ -17,7 +17,7 @@ export interface AttaformForm {
   /** Awaitable whole-form (or subtree) validation that resolves when the pass
    *  completes - the parity with the cohort's awaited validate() for the
    *  validation-throughput dimension. */
-  validateAsync(path?: string): Promise<unknown>
+  parse(path?: string | { commit?: boolean }, options?: { commit?: boolean }): Promise<unknown>
   /** Append a fresh row to the array at `path` (the array add/remove dimension). */
   append(path: string, value: unknown): unknown
   /** Remove the row at `index` from the array at `path`. */

@@ -9,14 +9,16 @@
  * <input v-register="form.register('email')" />
  * ```
  *
- * Installed automatically by `createAttaform()`; the export is
- * for advanced consumers who install directives manually. Works
- * identically under Nuxt, bare Vue CSR, and bare Vue +
- * `@vue/server-renderer` — Vue skips directive lifecycle hooks during
- * SSR, so the directive is a safe no-op server-side.
+ * Delivery: the Vite / Nuxt plugin binds each compiled template's
+ * `v-register` to this directive at build time; every other setup
+ * (webpack-family bundlers, no-build / CDN, runtime-compiled
+ * templates) calls `installVRegister(app)` once. Works identically
+ * under Nuxt, bare Vue CSR, and bare Vue + `@vue/server-renderer` —
+ * Vue skips directive lifecycle hooks during SSR, so the directive is
+ * a safe no-op server-side.
  */
 import { isArray, isSet, looseEqual, looseIndexOf, looseToNumber } from './vue-shared-shim'
-import type { DirectiveBinding, DirectiveHook, ObjectDirective, VNode } from 'vue'
+import type { App, DirectiveBinding, DirectiveHook, ObjectDirective, VNode } from 'vue'
 import { nextTick, warn } from 'vue'
 import {
   isRegisterValue,
@@ -62,6 +64,7 @@ import {
   isDefaultAssigner,
   setAssignFunction,
 } from './assigner-pipeline'
+import { armDomBinding } from './dom-binding'
 
 // `assignKey` now lives in `assigner-pipeline.ts`; re-export it here so
 // the public `attaform` entry keeps exporting it from this module.
@@ -542,11 +545,13 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
       const checked = el.checked
       if (isArray(modelValue)) {
         if (rawElementValue === undefined) {
-          warn(
-            'Checkbox bound to an array model is missing a `value` attribute — ' +
-              'cannot determine which item to add or remove. ' +
-              'Add value="..." to each <input type="checkbox">.'
-          )
+          if (__DEV__) {
+            warn(
+              'Checkbox bound to an array model is missing a `value` attribute — ' +
+                'cannot determine which item to add or remove. ' +
+                'Add value="..." to each <input type="checkbox">.'
+            )
+          }
           return
         }
         // Element-level coerce on the raw DOM value so the
@@ -570,11 +575,13 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
         }
       } else if (isSet(modelValue)) {
         if (rawElementValue === undefined) {
-          warn(
-            'Checkbox bound to a Set model is missing a `value` attribute — ' +
-              'cannot determine which item to add or remove. ' +
-              'Add value="..." to each <input type="checkbox">.'
-          )
+          if (__DEV__) {
+            warn(
+              'Checkbox bound to a Set model is missing a `value` attribute — ' +
+                'cannot determine which item to add or remove. ' +
+                'Add value="..." to each <input type="checkbox">.'
+            )
+          }
           return
         }
         // Set's `.delete` uses strict ===, so coerce the element
@@ -1268,6 +1275,12 @@ function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
 
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   created(el, binding, vnode) {
+    // Arm the store's DOM binding before any element registration below
+    // (the variant `created` hooks call `value.registerElement`). This
+    // is the dependency injection that keeps the DOM machinery out of
+    // the form core's eager graph — see dom-binding.ts.
+    if (isRegisterValue(binding.value)) armDomBinding(binding.value)
+
     // Always run the per-tag variant's `created` — listener-body bail
     // (`shouldBailListener`) prevents the bubbled-write bug on
     // non-supported roots while letting consumer overrides through.
@@ -1356,6 +1369,11 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     }
   },
   beforeUpdate(el, binding, vnode, prevVNode) {
+    // A binding that mounted with `undefined` and received its RV on
+    // this render never went through `created`'s arm — cover it here
+    // before the registration sync below.
+    if (isRegisterValue(binding.value)) armDomBinding(binding.value)
+
     // Same diff for the form's element map. Catches the
     // `useRegister`-driven swap (binding mounted with `undefined`,
     // a real RV arrives on the next render), the dynamic-path case,
@@ -1705,10 +1723,10 @@ export type VXCustomDirective =
  * ```
  *
  * The directive picks the right binding strategy automatically based
- * on the element's `tagName` and `type`. Registered globally by
- * `createAttaform()`. Most consumers never import it directly, but
- * it's exposed for advanced integrations that wire directives
- * manually.
+ * on the element's `tagName` and `type`. Delivered by the Vite / Nuxt
+ * plugin's compile-time binding, or by `installVRegister(app)`
+ * everywhere else. Most consumers never import it directly, but it's
+ * exposed for advanced integrations that wire directives manually.
  */
 export const vRegister = vRegisterDynamic
 
@@ -1718,3 +1736,28 @@ export const vRegister = vRegisterDynamic
 // prop injection — keeps the wrapper pattern working in bare-Vue and
 // playground setups.
 ;(vRegisterDynamic as unknown as { [k: symbol]: true })[V_REGISTER_MARKER] = true
+
+/**
+ * Register the `v-register` directive app-wide. The one-line setup for
+ * apps whose templates are compiled without Attaform's Vite or Nuxt
+ * plugin — a webpack-family bundler, a no-build / CDN page, or
+ * runtime-compiled templates:
+ *
+ * ```ts
+ * import { createApp } from 'vue'
+ * import { installVRegister } from 'attaform/directive'
+ *
+ * const app = createApp(App)
+ * installVRegister(app)
+ * ```
+ *
+ * Vite and Nuxt consumers don't call this: the build plugin binds each
+ * template's `v-register` to the directive at compile time. Idempotent —
+ * a second call for the same app is a no-op, and an app-level directive
+ * a consumer registered under the same name is left in place.
+ */
+export function installVRegister(app: App): void {
+  if (app.directive('register') === undefined) {
+    app.directive('register', vRegister)
+  }
+}

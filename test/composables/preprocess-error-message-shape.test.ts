@@ -72,7 +72,7 @@ describe('form.errors at a preprocess leaf: terminates as an array, not a sub-pr
     unmounts.push(unmount)
 
     api.setValue('url', '')
-    await api.validateAsync('url')
+    await api.parse('url', { commit: true })
 
     expect(Array.isArray(api.errors.url)).toBe(true)
     expect(api.errors.url.length).toBeGreaterThan(0)

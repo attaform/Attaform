@@ -63,24 +63,6 @@ export interface DeriveDefaultContext<Schema> {
    * `SchemaIntrospector.kindOf`).
    */
   unsupportedKindFallback(schema: Schema, kind: string): unknown
-  /**
-   * How `case 'catch'` resolves when `useDefault=false`. The two
-   * adapters chose differently and pinned the choice with tests:
-   *
-   *   - v3 wires `'preserveCatch'`: a `.catch(v)` wrapper always
-   *     surfaces its fallback `v`, regardless of `useDefault`. Rationale:
-   *     the catch is an emphatic consumer statement that should
-   *     resurface across submit failures, hydration, and history.
-   *   - v4 wires `'recurseInner'`: `useDefault=false` means "show the
-   *     leaf empty", and `.catch()` is a default-like wrapper that gets
-   *     skipped. The walker recurses into the inner so the leaf's
-   *     bare empty value (`'' / 0 / false / ...`) wins.
-   *
-   * On `useDefault=true` the chain-peel at the top of the walker
-   * already finds and returns the catch fallback at either adapter,
-   * so this knob only takes effect on `useDefault=false`.
-   */
-  catchOnUseDefaultFalse: 'preserveCatch' | 'recurseInner'
 }
 
 /**
@@ -405,14 +387,10 @@ export function deriveDefaultWalk<Schema>(
     }
     case 'catch': {
       // `useDefault=true` was already caught by `peelEmbeddedDefault`
-      // at the top of the walker; reaching this branch implies
-      // `useDefault=false`. The two adapters chose different
-      // semantics here and pinned the choice with tests (see the
-      // `catchOnUseDefaultFalse` docblock on `DeriveDefaultContext`).
+      // at the top of the walker; on `useDefault=false` the catch is a
+      // default-like wrapper that gets skipped — the inner leaf's bare
+      // empty value wins (both majors, aligned in size-teardown P7).
       if (useDefault) return intro.getCatchDefault(schema)
-      if (ctx.catchOnUseDefaultFalse === 'preserveCatch' && intro.hasCatchValue(schema)) {
-        return intro.getCatchDefault(schema)
-      }
       const inner = intro.unwrapInner(schema)
       return inner === undefined
         ? undefined

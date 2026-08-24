@@ -1,6 +1,6 @@
 import vue from '@vitejs/plugin-vue'
 import { describe, expect, it } from 'vitest'
-import { resolveConfig, type Plugin, type ResolvedConfig } from 'vite'
+import { resolveConfig, type Plugin, type PluginOption, type ResolvedConfig } from 'vite'
 import { attaform } from '../../src/vite'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
 import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
@@ -26,7 +26,7 @@ type VuePluginApi = {
   }
 }
 
-async function resolveWith(plugins: Plugin[]): Promise<ResolvedConfig> {
+async function resolveWith(plugins: PluginOption[]): Promise<ResolvedConfig> {
   return resolveConfig({ plugins, configFile: false }, 'serve')
 }
 

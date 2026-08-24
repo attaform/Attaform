@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 /**
- * PASS2-6 — `field-arrays.ts:insert` recorded `op.index` against the
+ * PASS2-6 — the typed `insert` helper recorded `op.index` against the
  * POST-splice length, not the pre-splice length. For a negative
  * `index` argument, JS `splice` normalises against PRE-splice length
  * (e.g. `-1` on length-2 → position 1), but the recorded
  * `arrayOp.index` was the SAME `index` clamped to `[0, postLen]`,
  * yielding `0` for the negative case. Downstream consumers
- * (`applyArrayOpToMemory`, `arrayIdentity.applyOp`, `remapForOp`)
+ * (variant-memory eviction, `arrayIdentity.applyOp`, `remapForOp`)
  * then operated on the wrong slot — variant memory was cleared at
  * index 0 (where nothing happened), and the identity-token list got
  * its splice at index 0 (clobbering the unchanged head element's

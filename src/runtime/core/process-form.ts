@@ -1,7 +1,6 @@
 import { getCurrentScope, onScopeDispose, ref, watchEffect, type Ref } from 'vue'
 import type {
   ErrorInput,
-  FormKey,
   HandleSubmit,
   OnError,
   OnInvalidSubmitPolicy,
@@ -10,14 +9,19 @@ import type {
   SubmitHandler,
   ValidationError,
   ValidationResponse,
-  ValidationResponseWithoutValue,
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { AttaformErrorCode } from './error-codes'
-import { normalizeErrorInput, SubmitErrorHandlerError, toError } from './errors'
-import { canonicalizePath, segmentsForPathKey, type Path, type Segment } from './paths'
+import { groupErrorsByKey, normalizeErrorInput, SubmitErrorHandlerError, toError } from './errors'
+import {
+  canonicalizePath,
+  isPathPrefix,
+  segmentsForPathKey,
+  type Path,
+  type Segment,
+} from './paths'
 
 /**
  * Tracks FormStores for which we've already emitted the
@@ -60,21 +64,18 @@ function isErrorInputLike(value: unknown): value is ErrorInput {
  * fallback (consistent with `setErrors`), and reports `messageless` so
  * the caller can nudge the dev in development.
  */
-function deriveSubmitErrors(
-  err: unknown,
-  formKey: FormKey
-): { entries: ValidationError[]; messageless: boolean } {
+function deriveSubmitErrors(err: unknown): { entries: ValidationError[]; messageless: boolean } {
   if (Array.isArray(err) && err.length > 0 && err.every(isErrorInputLike)) {
     return {
       entries: err.map((item) =>
-        normalizeErrorInput(item, undefined, formKey, AttaformErrorCode.SubmitError)
+        normalizeErrorInput(item, undefined, AttaformErrorCode.SubmitError)
       ),
       messageless: false,
     }
   }
   if (isErrorInputLike(err)) {
     return {
-      entries: [normalizeErrorInput(err, undefined, formKey, AttaformErrorCode.SubmitError)],
+      entries: [normalizeErrorInput(err, undefined, AttaformErrorCode.SubmitError)],
       messageless: false,
     }
   }
@@ -84,7 +85,7 @@ function deriveSubmitErrors(
   // `Unknown error` fallback, not a bespoke submit string. `toError`'s raw
   // diagnostic still lands on `submitError`; this is the consistent projection.
   return {
-    entries: [normalizeErrorInput({}, undefined, formKey, AttaformErrorCode.SubmitError)],
+    entries: [normalizeErrorInput({}, undefined, AttaformErrorCode.SubmitError)],
     messageless: true,
   }
 }
@@ -138,44 +139,30 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
       // so writing to `activeValidations` / `result` can't re-trigger
       // the watchEffect below.
       //
-      // The lifecycle setup (counter increment + `pending: true` write)
-      // lives INSIDE the try block so a sync watcher on
-      // `meta.validating` or on the returned `result` ref that throws
-      // can't leak the counter — the finally still decrements (Math.max
-      // clamps the partial-increment underflow case at zero).
-      try {
-        state.activeValidations.value += 1
-        result.value = {
-          pending: true,
-          errors: undefined,
-          success: false,
-          formKey: state.formKey,
+      // The `pending: true` write lives INSIDE the guarded region so a
+      // sync watcher on `meta.validating` or on the returned `result`
+      // ref that throws can't leak the counter — the shell's finally
+      // still decrements.
+      await withActiveValidation(async () => {
+        try {
+          result.value = {
+            pending: true,
+            errors: undefined,
+            success: false,
+            formKey: state.formKey,
+          }
+          const refinement = await runRefinementValidation(data, path)
+          if (captured !== gen) return
+          result.value = settled(composeWithDerivedBlank(refinement, path))
+        } catch (err) {
+          if (captured !== gen) return
+          // Adapters are contractually "return errors, don't throw"; if
+          // one does throw we don't want the validate() ref to hang in
+          // `pending: true` forever. Wrap the throw as a single
+          // adapter-level error so the form surfaces something.
+          result.value = settled(adapterThrowResponse(err))
         }
-        const refinement = await runRefinementValidation(data, path)
-        if (captured !== gen) return
-        result.value = settled(composeWithDerivedBlank(refinement, path))
-      } catch (err) {
-        if (captured !== gen) return
-        // Adapters are contractually "return errors, don't throw"; if
-        // one does throw we don't want the validate() ref to hang in
-        // `pending: true` forever. Wrap the throw as a single
-        // adapter-level error so the form surfaces something.
-        result.value = {
-          pending: false,
-          errors: [
-            {
-              message: adapterThrowMessage(err),
-              path: [],
-              formKey: state.formKey,
-              code: AttaformErrorCode.AdapterThrew,
-            },
-          ],
-          success: false,
-          formKey: state.formKey,
-        }
-      } finally {
-        state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-      }
+      })
     }
 
     const stop = watchEffect(() => {
@@ -215,22 +202,18 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * Shared shell for the imperative validation paths (`validateAsync`,
-   * `process`). Handles the path-segment resolution, the
-   * `activeValidations` increment/decrement (Math.max-guarded against
-   * a sync watcher throw between increment and refinement), the
+   * Shared shell for the imperative validation path (`parse`, both
+   * modes). Handles the path-segment resolution, the
+   * `activeValidations` lifecycle (via `withActiveValidation`), the
    * adapter-throw → structured-failure translation, and the optional
    * pre-validate cancellation + post-validate schema-error commit
-   * that distinguishes `validateAsync` from `process`. Callers
-   * post-process the refinement themselves (the blank-class
-   * composition, the data strip — both unique to their public
-   * contract).
+   * that `commit: true` switches on. The caller composes the
+   * blank class into the refinement itself.
    *
-   * The discriminated `ok` branch lets each caller preserve the
-   * exact behavior on adapter throw: `validateAsync` and `process`
-   * historically returned the adapter-throw response verbatim, never
-   * folding `derivedBlankErrors` into it, so the helper returns the
-   * raw `adapterThrowResponse` for the failure leg.
+   * The discriminated `ok` branch preserves the exact behavior on
+   * adapter throw: the adapter-throw response is returned verbatim,
+   * never folding `derivedBlankErrors` into it, so the helper returns
+   * the raw `adapterThrowResponse` for the failure leg.
    */
   type ImperativeValidationOptions = {
     cancelInFlight: boolean
@@ -245,114 +228,111 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   ): Promise<ImperativeValidationResult> {
     const segments = pathInput === undefined ? undefined : toSegments(pathInput)
     const dataAtPath = segments === undefined ? state.form.value : state.getValueAtPath(segments)
+    return await withActiveValidation(async () => {
+      try {
+        // Abort any in-flight per-field validation runs so their late
+        // writes can't clobber the authoritative imperative result.
+        // Mirrors handleSubmit's pre-validate cancellation.
+        if (config.cancelInFlight) state.cancelFieldValidation()
+        const refinement = await runRefinementValidation(dataAtPath, segments)
+        // Commit the refinement to schemaErrors at the validated scope.
+        // The adapter emits issue paths relative to the sub-schema it
+        // parsed (`[]` for a leaf; whole-form pass emits absolute paths
+        // already), so re-stamp with `segments` to land at canonical
+        // store keys. `applySchemaErrorsForSubtree` replaces every key
+        // under the scope so stale entries drop and current ones
+        // survive in their original insertion slots.
+        if (config.commitToSchemaErrors) {
+          const scopePath: Path = segments ?? []
+          const errors = refinement.success ? [] : refinement.errors
+          const reStamped =
+            segments === undefined
+              ? errors
+              : errors.map((err) => ({
+                  ...err,
+                  path: [...segments, ...(err.path as Segment[])],
+                }))
+          state.applySchemaErrorsForSubtree(scopePath, reStamped)
+        }
+        return { ok: true, refinement, segments }
+      } catch (err) {
+        return { ok: false, error: adapterThrowResponse(err) }
+      }
+    })
+  }
+
+  /**
+   * The one `activeValidations` shell. Increments inside the guarded
+   * region (a sync watcher on `meta.validating` that throws on the
+   * increment still hits the finally), runs `fn`, and decrements with
+   * the Math.max clamp on every exit path. Every validation surface —
+   * the reactive `validate()` kickoff, the imperative paths, and
+   * handleSubmit's pre-dispatch pass — rides this, so the counter can
+   * never leak or steal a concurrent run's count.
+   */
+  async function withActiveValidation<T>(fn: () => Promise<T>): Promise<T> {
     try {
       state.activeValidations.value += 1
-      // Abort any in-flight per-field validation runs so their late
-      // writes can't clobber the authoritative imperative result.
-      // Mirrors handleSubmit's pre-validate cancellation.
-      if (config.cancelInFlight) state.cancelFieldValidation()
-      const refinement = await runRefinementValidation(dataAtPath, segments)
-      // Commit the refinement to schemaErrors at the validated scope.
-      // The adapter emits issue paths relative to the sub-schema it
-      // parsed (`[]` for a leaf; whole-form pass emits absolute paths
-      // already), so re-stamp with `segments` to land at canonical
-      // store keys. `applySchemaErrorsForSubtree` replaces every key
-      // under the scope so stale entries drop and current ones
-      // survive in their original insertion slots.
-      if (config.commitToSchemaErrors) {
-        const scopePath: Path = segments ?? []
-        const errors = refinement.success ? [] : refinement.errors
-        const reStamped =
-          segments === undefined
-            ? errors
-            : errors.map((err) => ({
-                ...err,
-                path: [...segments, ...(err.path as Segment[])],
-              }))
-        state.applySchemaErrorsForSubtree(scopePath, reStamped)
-      }
-      return { ok: true, refinement, segments }
-    } catch (err) {
-      return { ok: false, error: adapterThrowResponse(err) }
+      return await fn()
     } finally {
       state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
     }
   }
 
   /**
-   * Imperative one-shot validation. Doesn't subscribe to form reactivity;
-   * each call runs validation once against the current form snapshot.
-   * Used by consumers who want to `await` a single validation run — the
-   * debounced field-level path in 5.7, server-side round-trips, tests.
+   * Imperative one-shot parse. Doesn't subscribe to form reactivity;
+   * each call runs the full pipeline once against the current form
+   * snapshot — refinements, `.transform()`s, blank-required
+   * composition — and RETAINS the parsed data. Returns what
+   * `form.values` WOULD be if every refinement passed and every
+   * transform fired: storage holds the pre-transform "honest input
+   * view" (Attaform runs preprocess at write time, never
+   * `.transform()`), and `parse` is the on-demand read of the
+   * post-transform output. handleSubmit's callback receives this same
+   * shape.
    *
-   * Cancels any in-flight per-field validation (mirroring `handleSubmit`)
-   * so a late SFV resolution can't clobber this call's authoritative
-   * result, and writes the parsed refinement back to `schemaErrors` at
-   * the validated scope — `await validateAsync(path)` therefore lands
-   * a deterministic view of `form.errors.<path>` regardless of the
-   * background SFV race.
-   */
-  async function validateAsync(
-    pathInput?: string | Path
-  ): Promise<ValidationResponseWithoutValue<F>> {
-    const result = await runImperativeValidation(pathInput, {
-      cancelInFlight: true,
-      commitToSchemaErrors: true,
-    })
-    if (!result.ok) return result.error
-    return stripData(composeWithDerivedBlank(result.refinement, result.segments))
-  }
-
-  /**
-   * Imperative one-shot parse — same pipeline as `validateAsync` but
-   * RETAINS the parsed data. Returns what `form.values` WOULD be if
-   * every refinement passed and every transform fired. Useful when
-   * the form's storage holds the pre-transform input view (the
-   * "honest input view" — Attaform doesn't run `.transform()` at
-   * write time, only preprocess) and the consumer wants the
-   * post-transform output on demand.
+   * `commit: false` is a PURE read: no store write, no effect on
+   * in-flight field validation — "what would the parsed form look
+   * like right now", independent of the live `form.errors` surface.
    *
-   * For a schema like `z.object({ email: z.string().transform(v =>
-   * v.length > 10) })`, `form.values.email` is the string the user
-   * wrote, while `(await form.parse()).data?.email` is the boolean
-   * the transform produces. handleSubmit's callback already receives
-   * this same shape (it's what the parse pipeline emits before
-   * onSubmit runs); `parse()` is the standalone read-only form.
+   * `commit: true` makes the run authoritative: cancels any in-flight
+   * per-field validation (mirroring `handleSubmit`) so a late SFV
+   * resolution can't clobber the result, and writes the refinement
+   * verdict back to `schemaErrors` at the validated scope — `await
+   * parse(path, { commit: true })` lands a deterministic view of
+   * `form.errors.<path>` regardless of the background SFV race.
    *
    * Always async, and there is no synchronous variant by design. A
    * schema can carry async refinements (`.refine(async ...)`) or async
    * transforms, so a sync parse would silently miss them the moment
    * one is added — a latent correctness bug. One always-awaited `parse`
-   * closes that category entirely. The path-scoped variant mirrors
-   * `validateAsync(path?)` — `parse('email')` returns the parsed value
-   * at that path only.
+   * closes that category entirely. `parse('email', ...)` scopes the
+   * run to that path only.
    *
-   * Unlike `validateAsync`, `parse` does NOT cancel in-flight field
-   * validation and does NOT commit the parsed result to `schemaErrors`
-   * — `parse` is a pure read of "what would the parsed form look like
-   * right now", independent of the live `form.errors` surface.
-   *
-   * Like `validateAsync`, this never rejects on adapter misbehavior:
-   * a throwing adapter (or any pipeline failure) lands in the
-   * response as a `success: false, errors: [{ code: AdapterThrew }]`
-   * shape so the library stays robust against a bad adapter.
+   * Never rejects on adapter misbehavior: a throwing adapter (or any
+   * pipeline failure) lands in the response as a `success: false,
+   * errors: [{ code: AdapterThrew }]` shape so the library stays
+   * robust against a bad adapter.
    */
-  async function parse(pathInput?: string | Path): Promise<ValidationResponse<Out>> {
+  async function parse(
+    pathInput: string | Path | undefined,
+    options: { commit: boolean }
+  ): Promise<ValidationResponse<Out>> {
     const result = await runImperativeValidation(pathInput, {
-      cancelInFlight: false,
-      commitToSchemaErrors: false,
+      cancelInFlight: options.commit,
+      commitToSchemaErrors: options.commit,
     })
     if (!result.ok) return result.error
     return composeWithDerivedBlank(result.refinement, result.segments)
   }
 
   /**
-   * Build an adapter-threw failure response. Shared between
-   * `validateAsync`, `parse`, and the reactive `validate()`'s
-   * kickoff so every imperative validation surface presents the same
+   * Build an adapter-threw failure response. Shared between `parse`
+   * and the reactive `validate()`'s kickoff so every validation
+   * surface presents the same
    * shape on adapter misbehavior: `{ success: false, errors: [{ code
-   * AdapterThrew, message: adapterThrowMessage(err), path: [],
-   * formKey }] }`. The `data` field is `undefined` so the
+   * AdapterThrew, message: adapterThrowMessage(err), path: [] }],
+   * formKey }`. The `data` field is `undefined` so the
    * ValidationResponse union resolves to ErrorWithoutData.
    */
   function adapterThrowResponse(err: unknown): ValidationResponse<Out> {
@@ -363,7 +343,6 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         {
           message: adapterThrowMessage(err),
           path: [],
-          formKey: state.formKey,
           code: AttaformErrorCode.AdapterThrew,
         },
       ],
@@ -473,7 +452,6 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
       // capture only when a `reset()` hasn't fired between entry and
       // throw (see the catch block).
       const genAtEntry = state.submissionGeneration.value
-      let validationSettled = false
       try {
         // All lifecycle setup happens inside the try so a throw from
         // any of the setters (e.g. a sync `watch` on `meta.submitting`
@@ -525,11 +503,10 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // already cleared `fieldValidatingSince`, so the next read recomputes
         // the settled verdict against the post-submit gate immediately.
         state.displayEngine.clear()
-        state.activeValidations.value += 1
-        const refinement = await runRefinementValidation(state.form.value, undefined)
+        const refinement = await withActiveValidation(() =>
+          runRefinementValidation(state.form.value, undefined)
+        )
         const merged = composeWithDerivedBlank(refinement, undefined)
-        state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-        validationSettled = true
         // Generation guard: if `reset()` fired while we were awaiting
         // validation, the consumer just zeroed the submission surface
         // — the validation result is for state that's been replaced.
@@ -594,7 +571,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // already ruled the submit valid; the dev's own `setErrors` is a
         // state write, not a re-verdict, so it must not route back through
         // the `onError` arm.
-        if (state.userErrors.size > 0) {
+        if (hasUserErrorEntries(state)) {
           if (state.submissionGeneration.value === genAtEntry) {
             applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
           }
@@ -644,21 +621,18 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           // it stays a pure `submitError` diagnostic and is never shown as
           // a form error.
           if (!(err instanceof SubmitErrorHandlerError)) {
-            const { entries, messageless } = deriveSubmitErrors(err, state.formKey)
+            const { entries, messageless } = deriveSubmitErrors(err)
             // Group by path so a thrown array spanning several fields writes
             // one bucket per path. Per-path writes MERGE: a bucket the
             // callback set at another path via `setErrors` before it threw
             // survives, while a bucket at a colliding path is replaced (the
-            // throw is the newer verdict).
-            const byPath = new Map<string, { segments: Path; entries: ValidationError[] }>()
-            for (const entry of entries) {
-              const { key } = canonicalizePath(entry.path)
-              const bucket = byPath.get(key)
-              if (bucket === undefined) byPath.set(key, { segments: entry.path, entries: [entry] })
-              else bucket.entries.push(entry)
-            }
-            for (const { segments, entries: bucket } of byPath.values()) {
-              state.setUserErrorsForPath(segments, bucket)
+            // throw is the newer verdict). Keys come fresh out of the
+            // grouper, so the segment lookup always hits; the null guard
+            // keeps a corrupt key from throwing into the consumer app.
+            for (const [key, bucket] of groupErrorsByKey(entries)) {
+              const segments = segmentsForPathKey(key)
+              if (segments === null) continue
+              state.setUserErrorsForPath([...segments], bucket)
             }
             // Focus the first error, mirroring the validation-failure and
             // leftover-errors branches. A form-level `[]` error owns no
@@ -674,11 +648,6 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           }
         }
       } finally {
-        // If validation threw before we decremented, drop the counter now
-        // so `validating` doesn't hang true after a failed submit.
-        if (!validationSettled) {
-          state.activeValidations.value = Math.max(0, state.activeValidations.value - 1)
-        }
         state.activeSubmissions.value = Math.max(0, state.activeSubmissions.value - 1)
         // `activeSubmissions` always decrements (the submission is done),
         // but the *visible* lifecycle counters — `submitting` and
@@ -696,7 +665,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     return submitHandler
   }
 
-  return { validate, validateAsync, parse, handleSubmit }
+  return { validate, parse, handleSubmit }
 }
 
 function toSegments(pathInput: string | Path): Path {
@@ -712,15 +681,6 @@ function settled<F extends GenericForm>(
   return { pending: false, errors: response.errors, success: false, formKey: response.formKey }
 }
 
-function stripData<F extends GenericForm>(
-  response: ValidationResponse<F>
-): ValidationResponseWithoutValue<F> {
-  if (response.success) {
-    return { errors: undefined, success: true, formKey: response.formKey }
-  }
-  return { errors: response.errors, success: false, formKey: response.formKey }
-}
-
 function adapterThrowMessage(err: unknown): string {
   if (err instanceof Error) return `Adapter validateAtPath threw: ${err.message}`
   return 'Adapter validateAtPath threw a non-Error value'
@@ -734,6 +694,14 @@ function adapterThrowMessage(err: unknown): string {
  * the validation/submit response. Mutating the returned array is safe;
  * the store's computed builds a fresh map per recompute.
  */
+/** `true` when any cell in the tagged store holds consumer-set (user-side) entries. */
+function hasUserErrorEntries<F extends GenericForm>(state: FormStore<F, GenericForm>): boolean {
+  for (const cell of state.errorCells.values()) {
+    if (cell.user.length > 0) return true
+  }
+  return false
+}
+
 function collectScopedBlankErrors<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   scope: Path | undefined
@@ -750,25 +718,11 @@ function collectScopedBlankErrors<F extends GenericForm>(
       // containing the literal JSON.
       const segments = segmentsForPathKey(pathKey)
       if (segments === null) continue
-      if (!pathStartsWith(segments, scope)) continue
+      if (!isPathPrefix(scope, segments)) continue
     }
     errors.push(...entries)
   }
   return errors
-}
-
-/**
- * `true` if `target`'s segments start with `prefix`. Used to honour the
- * per-path scope of `validate(path)` / `validateAsync(path)` — only
- * blank paths inside the validated subtree contribute. An empty prefix
- * matches every path.
- */
-function pathStartsWith(target: Path, prefix: Path): boolean {
-  if (prefix.length > target.length) return false
-  for (let i = 0; i < prefix.length; i++) {
-    if (!Object.is(target[i], prefix[i])) return false
-  }
-  return true
 }
 
 export function applyInvalidSubmitPolicy<F extends GenericForm>(
@@ -777,7 +731,7 @@ export function applyInvalidSubmitPolicy<F extends GenericForm>(
   policy: OnInvalidSubmitPolicy
 ): void {
   if (policy === 'none') return
-  const target = state.getFirstErrorElement(formInstanceId)
+  const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
   if (target === null) return
   if (policy === 'scroll-to-first-error') {
     target.element.scrollIntoView()

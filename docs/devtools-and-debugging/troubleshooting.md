@@ -90,7 +90,12 @@ Three usual suspects:
 - **Non-JSON-safe value in the form?** `Date`, `Map`, `Set`, `BigInt`, and circular refs don't survive `JSON.stringify`. Coerce at the form boundary (`z.date().transform((d) => d.toISOString())`) or use Nuxt's `devalue`-based payload (automatic under Nuxt).
 - **`escapeForInlineScript` missing on the bare-Vue side?** A form value containing `</script>` breaks the inline payload. Wrap `JSON.stringify(payload)` in `escapeForInlineScript`. Not required under Nuxt.
 
+## "`[attaform] AF10` in a production console"
+
+Working as designed: production builds ship every diagnostic as a compact code, `[attaform] AF10 attaform.dev/e/af10`, and the link in the message is the fix. Each code has its own page under the [error-code index](/e) with the full development message, the cause, and the way out. Development builds print the complete prose inline instead.
+
 ## Where to next
 
 - [The form](/docs/reading-the-form/the-form): the full reactive surface.
 - [`errors`](/docs/reading-the-form/errors): per-path error reads.
+- [Error codes](/e): every production `AF##` diagnostic, decoded.

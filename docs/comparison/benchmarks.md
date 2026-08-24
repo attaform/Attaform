@@ -26,7 +26,7 @@ A fair cross-library comparison has to account for the fact that these libraries
 - **Layers are the fairness axis.** Form-state libraries (Attaform among them) own reactive values, validation, and input binding. Validation-only libraries own validation against state you wire yourself. A batteries-included library renders its own inputs. Each row is labeled with its layer, so a validation-only engine mounting faster than a full form-state library is read as owning less, not as winning.
 - **The DOM is held constant.** Every headless library drives the same bare `<input>` markup over the same field count and the same schema, so a runtime number reflects the library's own machinery, not its choice of components.
 - **Every library runs in its fastest idiomatic configuration.** Debounces are neutralized, validation triggers are normalized, and array and union primitives use each library's native fast path. Attaform is measured on its shipping default, strict mode, never a relaxed setting.
-- **Real builds, pinned validators.** Attaform is consumed as its published `dist`, the same artifact an installer gets, minified in the same build as every other library. Zod v3 is pinned across the Zod-capable cohort.
+- **Real builds, pinned validators.** Attaform is consumed as its published `dist`, the same artifact an installer gets, minified and code-split in the same build as every other library. Zod v3 is pinned across the Zod-capable cohort.
 - **Numbers normalize two ways.** A _ratio_ compares each library to Attaform at the same size. A _slope_ compares a library to itself at the scenario's smallest size, so the shape of growth survives a change of machine.
 
 The harness, every adapter, and the scenario generators live in [`apps/bench-arena`](https://github.com/attaform/Attaform/tree/main/apps/bench-arena). Found a fairer configuration for a library? The adapters are small and the README invites a pull request.
@@ -44,7 +44,7 @@ What each library expresses as a first-class primitive versus composes by hand. 
 
 ### Bundle size
 
-Attaform is the heaviest in the cohort. That is the cost of shipping reactive form state, schema validation binding, persistence, undo and redo, and a multi-step wizard in one zero-dependency package, and it is the honest price of admission. The figure is the full bundle; an app that route-splits its forms pulls less on a first paint.
+Attaform is the heaviest in the cohort. That is the cost of shipping reactive form state, deep schema binding, and the whole display-state model in one zero-dependency package, and it is the honest price of admission. The figure is what a code-split build executes before the form is interactive; opt-in layers like the `v-register` directive, undo and redo, and the multi-step wizard live behind separate imports this minimal form never pays for.
 
 ::bench-arena{dimension="bundle"}
 ::

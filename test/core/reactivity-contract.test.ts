@@ -6,7 +6,7 @@ import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { applyChangedKeys } from '../../src/runtime/core/diff-apply'
+import { applyChangedKeys, diffAndApply, type Patch } from '../../src/runtime/core/diff-apply'
 
 /**
  * Reactivity contract for the targeted in-place write (Bust 2 / T2) and the
@@ -624,11 +624,22 @@ describe.each(ADAPTERS)(
  * mid-write, but the in-place recurse must still degrade safely if it ever did).
  */
 describe('applyChangedKeys — reconcile gate (unit)', () => {
+  // applyChangedKeys consumes the caller's single content diff instead of
+  // re-walking; the unit calls build that list the same way the write
+  // funnel does.
+  const contentDiff = (target: unknown, source: unknown): Patch[] => {
+    const patches: Patch[] = []
+    diffAndApply(target, source, [], (patch) => {
+      patches.push(patch)
+    })
+    return patches
+  }
+
   it('null arrayOpPath reassigns a changed nested container wholesale (no in-place recurse)', () => {
     const target = { a: { n: 1 } }
     const source = { a: { n: 2 } }
     const aBefore = target.a
-    expect(applyChangedKeys(target, source, null, [])).toBe(true)
+    expect(applyChangedKeys(target, source, null, [], contentDiff(target, source))).toBe(true)
     // No array op: the changed key is reassigned, so the container gets a fresh
     // reference. This is the contract a DU reshape / explicit setValue rides on.
     expect(target.a).not.toBe(aBefore)
@@ -640,7 +651,9 @@ describe('applyChangedKeys — reconcile gate (unit)', () => {
     const source = { a: { n: 2 } }
     const aBefore = target.a
     // arrayOpPath runs through `a`, so `a` is an ancestor container on the path.
-    expect(applyChangedKeys(target, source, ['a', 'rows'], [])).toBe(true)
+    expect(applyChangedKeys(target, source, ['a', 'rows'], [], contentDiff(target, source))).toBe(
+      true
+    )
     expect(target.a).toBe(aBefore) // recursed in place
     expect(target.a.n).toBe(2)
   })
@@ -651,7 +664,9 @@ describe('applyChangedKeys — reconcile gate (unit)', () => {
     // The in-place recurse bails on the shape mismatch (object vs array) and the
     // key is reassigned; the value still lands correctly. Bracket access because
     // `target` is an index-signature bag (noPropertyAccessFromIndexSignature).
-    expect(applyChangedKeys(target, source, ['a', 'rows'], [])).toBe(true)
+    expect(applyChangedKeys(target, source, ['a', 'rows'], [], contentDiff(target, source))).toBe(
+      true
+    )
     expect(target['a']).toEqual([1, 2, 3])
   })
 })

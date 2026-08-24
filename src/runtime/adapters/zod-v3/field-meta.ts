@@ -28,17 +28,18 @@
  */
 import type { z } from 'zod-v3'
 import type { FieldMetaPayload } from '../../core/field-meta'
-import {
-  fieldMetaStore,
-  getFieldMetaForSchema,
-  getFieldMetaListForSchema,
-} from '../../core/field-meta-store'
+import { getFieldMetaForSchema } from '../../core/field-meta-store'
+import { installingFieldMetaStore } from '../../core/walk-field-meta'
 
 /**
  * The shared registry every Attaform-aware Zod 3 schema can register
- * field metadata against. Backed by the cross-adapter
- * `fieldMetaStore` — a payload registered here is visible to the v4
- * adapter and the unified `attaform/zod` entry, and vice versa.
+ * field metadata against. Backed by the cross-adapter store — a
+ * payload registered here is visible to the v4 adapter and the
+ * unified `attaform/zod` entry, and vice versa. Every `add` also
+ * installs the path-walking resolver into the shared store's builder
+ * slot, so the walk's bytes ride this module's import instead of the
+ * adapter — a consumer that never registers metadata never ships the
+ * walk.
  */
 type FieldMetaRegistryV3 = {
   /**
@@ -60,7 +61,7 @@ type FieldMetaRegistryV3 = {
   remove(schema: z.ZodTypeAny): FieldMetaRegistryV3
 }
 
-export const fieldMeta = fieldMetaStore as unknown as FieldMetaRegistryV3
+export const fieldMeta = installingFieldMetaStore as unknown as FieldMetaRegistryV3
 
 /**
  * Attach `payload` to `schema` in the shared `fieldMeta` registry
@@ -96,32 +97,6 @@ export function withMeta<S extends z.ZodTypeAny>(schema: S, payload: FieldMetaPa
   // identity.
   const Ctor = schema.constructor as new (def: S['_def']) => S
   const cloned = new Ctor(schema._def)
-  fieldMetaStore.add(cloned as object, { ...existing, ...payload })
+  installingFieldMetaStore.add(cloned as object, { ...existing, ...payload })
   return cloned
-}
-
-/**
- * Read the registered payload for a schema. Returns `undefined`
- * when nothing has been registered — callers apply their own
- * fallbacks (humanize for label, `.describe()` for description).
- *
- * Internal helper used by the v3 adapter's `getFieldMetaAtPath`.
- * Not part of the public `attaform/zod-v3` surface.
- */
-export function getFieldMeta(schema: z.ZodTypeAny): FieldMetaPayload | undefined {
-  return getFieldMetaForSchema(schema as object)
-}
-
-/**
- * Read the list of payloads registered against `schema`, in
- * registration order. Empty list when nothing has been registered.
- *
- * Used by the v3 adapter's path-resolver to disambiguate per
- * occurrence when a schema is shared across multiple form paths.
- * Most consumers won't need this — use `fieldMeta.get(schema)` for
- * the single-payload case. Mirrors `getFieldMetaList` on the v4
- * adapter so per-adapter feature parity stays explicit.
- */
-export function getFieldMetaList(schema: z.ZodTypeAny): readonly FieldMetaPayload[] {
-  return getFieldMetaListForSchema(schema as object)
 }

@@ -1,6 +1,7 @@
 import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
+import type { ElementRecord, FieldRecord } from '../core/store-records'
 
 export type { FieldMetaPayload, ResolvedFieldMeta }
 import type {
@@ -68,11 +69,13 @@ interface JsonObject {
  * structured array — `['user', 'address', 0, 'line1']` for a nested
  * field, `[]` (the root path) for a form-level error (root `.refine()`
  * messages, `setErrors` entries with no path, hydration failures,
- * server-emitted form banners). `formKey` identifies which form
- * produced the error so a single error list can be routed to multiple
- * forms. The optional `data` slot carries an arbitrary server payload.
+ * server-emitted form banners). Which form produced an error is
+ * envelope-level identity: the `ValidationResponse` / submit result
+ * that carries the list stamps `formKey` once, and aggregators that
+ * merge lists across forms (the wizard) stamp their own envelope. The
+ * optional `data` slot carries an arbitrary server payload.
  *
- * Returned by `validate()` / `validateAsync()` / `handleSubmit`'s
+ * Returned by `validate()` / `parse()` / `handleSubmit`'s
  * `onError` callback, and accepted (leniently, as `ErrorInput`) by
  * `form.setErrors`.
  */
@@ -87,8 +90,6 @@ export type ValidationError = {
    * literal empty-key field.
    */
   path: (string | number)[]
-  /** Identifies which form produced this error. */
-  formKey: FormKey
   /**
    * Stable machine identifier for the failure, scoped by prefix:
    *
@@ -112,6 +113,24 @@ export type ValidationError = {
 }
 
 /**
+ * One path's slot in the form's tagged error store. The two sources
+ * that can put an error at a path stay segregated inside the cell:
+ * `schema` holds the validation pipeline's verdicts, `user` holds
+ * `setErrors` entries (and their history / SSR replays). Reads merge
+ * schema -> derived-blank -> user; each writer replaces exactly its
+ * own side. Cells are immutable — every write replaces the whole cell
+ * (or deletes the key when both sides empty), so Vue's per-key Map
+ * tracking fires for any side's change. An empty side is the shared
+ * frozen `NO_ERRORS` array, never a fresh allocation.
+ *
+ * @internal
+ */
+export type ErrorCell = {
+  readonly schema: readonly ValidationError[]
+  readonly user: readonly ValidationError[]
+}
+
+/**
  * The lenient input shape `form.setErrors` accepts: a real `Error`, or
  * a partial `ValidationError` where every field is optional.
  *
@@ -120,13 +139,11 @@ export type ValidationError = {
  *   the path-scoped `setErrors(path, …)` form, which stamps its own.
  * - `code`: defaults to `atta:user-error`.
  * - `data`: forwarded verbatim onto the produced `ValidationError`.
- * - `formKey`: accepted but ignored — the form always stamps its own.
  *
- * Because every field is optional and `formKey` is accepted-and-ignored,
- * `ValidationError` is a subtype of `ErrorInput`: a `ValidationError[]`
- * you read back, or a server response that already emits the shape, pipes
- * straight into `form.setErrors` with no adapter and no excess-property
- * friction.
+ * Because every field is optional, `ValidationError` is a subtype of
+ * `ErrorInput`: a `ValidationError[]` you read back, or a server
+ * response that already emits the shape, pipes straight into
+ * `form.setErrors` with no adapter.
  */
 export type ErrorInput =
   | Error
@@ -135,7 +152,6 @@ export type ErrorInput =
       path?: (string | number)[]
       code?: string
       data?: Json | null
-      formKey?: FormKey
     }
 
 /** Settled validation result when the form (or subtree) parsed successfully. */
@@ -189,10 +205,20 @@ export type DefaultValuesResponse<TData> =
 
 /**
  * Trimmed `ValidationResponse` that omits the `data` payload. Used by
- * `validate()` / `validateAsync()` since consumers usually only need
- * the success flag and error list at those entry points.
+ * the reactive `validate()` status, whose consumers only need the
+ * success flag and error list.
  */
 export type ValidationResponseWithoutValue<Form> = Omit<ValidationResponse<Form>, 'data'>
+
+/**
+ * Options bag for `form.parse`. `commit: true` turns the pure read
+ * into an authoritative run: the verdict is committed to the error
+ * store at the parsed scope and in-flight per-field validation runs
+ * are cancelled first. Default `false`.
+ */
+export type ParseOptions = {
+  readonly commit?: boolean
+}
 
 /**
  * Sync-or-async return shape for `AbstractSchema.validateAtPath`. The
@@ -361,7 +387,7 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * the gate accepts the consumer's raw value verbatim and stops
    * walking children — storage holds the user's input, and the
    * normalizer fires during `safeParse` (handleSubmit / validate /
-   * validateAsync), not at `setValue` time.
+   * parse), not at `setValue` time.
    *
    * Path-prefix semantic: returns true if ANY ancestor of `path`
    * resolves to such a wrapper, so descendants under a preprocess-
@@ -373,25 +399,24 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * Distinguish a tuple (fixed-length, position-typed) from an
    * unbounded array at `path`. The runtime calls this on every
    * `mergeStructural` / `setAtPathWithSchemaFill` write that descends
-   * into an array branch — caching the answer at the schema level
-   * replaces the per-write 1M-index probe + sequential probe loop
-   * (up to 1024 schema lookups) the runtime previously used.
+   * into an array branch, and the answer is definitive — the runtime
+   * never second-guesses it.
    *
    * Return values:
    * - `number` → tuple of this structural length. The runtime pads
    *   the consumer to this length and recurses position-by-position.
-   * - `null` → unbounded array. The runtime uses the consumer's
-   *   length and reuses one element default for every position.
-   * - `undefined` → the path doesn't resolve to an array OR the
-   *   adapter can't determine the shape. The runtime falls back to
-   *   a probe loop in this case (defensive — every built-in adapter
-   *   returns `number` or `null`).
+   * - `null` → not a tuple. Covers the unbounded array (the runtime
+   *   uses the consumer's length and reuses one element default for
+   *   every position) and every path that doesn't resolve to an
+   *   array at all — there `getDefaultAtPath` yields no element
+   *   default either, so the consumer's array passes through
+   *   unchanged.
    *
    * Wrappers (optional / nullable / default / readonly / catch /
    * pipe / lazy) are peeled transparently before the type check, so
    * `optional(z.tuple([...]))` reports its tuple length.
    */
-  arrayShapeAtPath(path: Path): number | null | undefined
+  arrayShapeAtPath(path: Path): number | null
   /**
    * Whether the schema at `path` is a FIXED object: a closed set of
    * declared keys (`z.object`), as opposed to an open or union container
@@ -677,6 +702,19 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * toward returning `true` when in doubt.
    */
   hasContainerOrRootRefine?(): boolean
+  /**
+   * `true` when the schema tree contains at least one discriminated
+   * union at any depth (inside arrays, tuples, records, and lazy
+   * schemas included). The store computes its per-form DU capability
+   * flag from this once at construction: `false` lets every write skip
+   * the cross-variant ancestor guard and the variant-reshape dispatch,
+   * and DU stub correction never runs. Optional: an adapter that omits
+   * it is treated as containing unions, keeping the conservative
+   * per-write probes on. Never return `false` for a schema that DOES
+   * hold a discriminated union — that disables variant reshape and
+   * stub correction for the form.
+   */
+  hasDiscriminatedUnions?(): boolean
 }
 
 /**
@@ -813,7 +851,7 @@ export type OnInvalidSubmitPolicy = 'none' | 'focus-first-error' | 'scroll-to-fi
  *   registered field. No debounce — `debounceMs` is rejected by the
  *   type.
  * - `'submit'`: no live validation. `handleSubmit` and explicit
- *   `validate()` / `validateAsync()` calls are the only validation
+ *   `validate()` / `parse()` calls are the only validation
  *   surfaces. `debounceMs` is rejected by the type.
  */
 export type ValidateOn = 'change' | 'blur' | 'submit'
@@ -894,8 +932,8 @@ export type WriteMeta = {
   readonly skipDiscriminatorReshape?: boolean
   /**
    * Records an array structural mutation precisely enough to replay the
-   * exact index permutation it produced, set by `field-arrays.ts`
-   * helpers. `setValueAtPath` uses it to surgically clear variant memory
+   * exact index permutation it produced, set by the typed array helpers
+   * in `array-engine.ts`. `setValueAtPath` uses it to surgically clear variant memory
    * for the indices the operation invalidated. Without this hint, a raw
    * whole-array `setValue(arrayPath, [...])` clears all memory under the
    * array (the runtime can't tell which indices stayed put). Internal —
@@ -935,18 +973,71 @@ export type WriteMeta = {
 }
 
 /**
- * Undo/redo configuration passed via `useForm({ history })`.
+ * The store slice the history runtime binds to. Structural on purpose:
+ * `historyPlugin()` ships from the separate `attaform/history` entry, so
+ * the runtime receives the store through this seam instead of importing
+ * the store module (which would pull the history internals onto every
+ * form's eager path). A FormStore satisfies it as-is.
  *
- * - `true` — enable with the default position cap (`max: 128`).
- * - `{ max }` — enable and tune the bounded history size.
+ * @internal
+ */
+export type HistoryKernel = {
+  readonly form: Ref<unknown>
+  readonly blankPaths: Set<PathKey>
+  readonly errorCells: Map<PathKey, ErrorCell>
+  onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
+  applyFormReplacement(next: unknown): void
+  restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
+}
+
+/**
+ * The live undo/redo runtime a {@link HistoryPlugin} attaches to one
+ * form. Cached on the FormStore so every `useForm` / `injectForm`
+ * consumer of the same key shares one chain; `buildFormApi` adapts it
+ * into the public `form.history` namespace.
  *
- * When enabled, every mutation records a forward delta; `form.history.undo()`
+ * @internal
+ */
+export type HistoryModule = {
+  undo(): boolean
+  redo(): boolean
+  clear(): void
+  canUndo: Readonly<ComputedRef<boolean>>
+  canRedo: Readonly<ComputedRef<boolean>>
+  historySize: Readonly<ComputedRef<number>>
+  dispose(): void
+}
+
+/**
+ * Opt-in undo/redo, created by `historyPlugin()` from `attaform/history`
+ * and passed via `useForm({ history })`:
+ *
+ * ```ts
+ * import { historyPlugin } from 'attaform/history'
+ *
+ * const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
+ * ```
+ *
+ * When enabled, every mutation records a position; `form.history.undo()`
  * / `form.history.redo()` walk the chain. `reset()` is itself a mutation —
  * the pre-reset state stays one undo away. Persistence hydration is the
  * floor: after hydrate applies, the chain reseeds with the hydrated value
  * and `undo()` cannot reach the transient pre-hydration default.
+ *
+ * One plugin instance is a reusable configuration, not per-form state:
+ * passing the same instance to several forms (or setting it once via
+ * `createAttaform({ defaults: { history } })`) gives each form its own
+ * independent chain.
  */
-export type HistoryConfig = true | { max?: number }
+export type HistoryPlugin = {
+  /**
+   * Bind a fresh history runtime to one form's store. Called by
+   * `useForm` when the store is first created.
+   *
+   * @internal
+   */
+  readonly attach: (kernel: HistoryKernel) => HistoryModule
+}
 
 /**
  * Consolidated undo/redo namespace at `form.history`. All history-related
@@ -1173,16 +1264,17 @@ export type UseFormConfiguration<
   debounceMs?: number
 
   /**
-   * Opt-in undo/redo. Off by default. `true` enables with a 128-position
-   * cap; `{ max: N }` tunes the cap.
+   * Opt-in undo/redo. Off by default. Pass `historyPlugin()` from
+   * `attaform/history` — a 128-position cap by default,
+   * `historyPlugin({ max: N })` to tune it.
    *
-   * Every mutation records a forward delta. `form.history.undo()` walks
+   * Every mutation records a position. `form.history.undo()` walks
    * one step back; `form.history.redo()` walks one step forward.
    * `reset()` is itself a mutation, so the pre-reset state stays one
    * undo away. The consolidated `form.history` namespace also exposes
    * `clear()`, `canUndo`, `canRedo`, and `size`.
    */
-  history?: HistoryConfig
+  history?: HistoryPlugin
 
   /**
    * Whether to remember the typed state of each discriminated-union
@@ -1330,8 +1422,8 @@ export type AttaformDefaults = {
    * `validateOn` resolves to `'change'`. Default `0` (synchronous).
    */
   debounceMs?: number
-  /** Default for `useForm({ history })`. */
-  history?: HistoryConfig
+  /** Default for `useForm({ history })` — a `historyPlugin()` instance. */
+  history?: HistoryPlugin
   /** Default for `useForm({ rememberVariants })`. */
   rememberVariants?: boolean
   /** Default for `useForm({ disabled })` — freeze the form's data. */
@@ -1410,7 +1502,7 @@ export type AttaformDefaults = {
    *
    * "Permissive fallback" means storage and reads keep working at any
    * depth; only the per-write type gate stops checking past the cap.
-   * Full schema validation (`validateAsync`, `handleSubmit`) still runs
+   * Full schema validation (`parse`, `handleSubmit`) still runs
    * against the real schema, so refinement errors at any depth still
    * surface — the cap only affects the *write-time gate*.
    *
@@ -1889,6 +1981,63 @@ export type RegisterOptions = {
 }
 
 /**
+ * The narrow kernel surface the DOM binding drives. Structurally a
+ * subset of the form store: the field-record connect/disconnect
+ * transitions, focus marking (which owns blur-validation), the record
+ * and merged-error reads the focus walk needs, and the async-transform
+ * abort for a fully-detached path.
+ * @internal
+ */
+export type DomBindingKernel = {
+  readonly noteDomConnected: (path: Path) => void
+  readonly noteDomDisconnected: (path: Path) => void
+  readonly markFocused: (
+    path: Path,
+    focused: boolean,
+    meta?: { readonly instance?: WriteMeta['instance'] }
+  ) => void
+  readonly getFieldRecord: (path: Path) => FieldRecord | undefined
+  readonly getErrorsForPath: (path: Path) => ValidationError[]
+  readonly cancelTransformsUnder: (prefix: Path) => void
+}
+
+/**
+ * The form store's DOM slice: the element registry backing
+ * `field.element` / `field.elements`, no-latch host focus anchors, and
+ * first-error focus resolution. Implemented in the directive cluster's
+ * lazy graph and armed into the store's `domBinding` slot on first use
+ * (see `RegisterValue.ensureDomBinding`); a `null` slot means nothing
+ * in the app ever registered an element.
+ * @internal
+ */
+export type AttaformDomBinding = {
+  readonly elements: Map<PathKey, ElementRecord>
+  readonly attach: (
+    segments: Path,
+    element: HTMLElement,
+    formInstanceId: string,
+    instanceMeta: WriteMeta['instance'] | undefined
+  ) => void
+  readonly detach: (segments: Path, element: HTMLElement) => void
+  readonly markHostConnected: (
+    segments: Path,
+    connected: boolean,
+    hostEl: HTMLElement,
+    formInstanceId: string
+  ) => void
+  readonly getFirstErrorElement: (
+    formInstanceId: string
+  ) => { path: Path; element: HTMLElement } | null
+}
+
+/**
+ * Factory the directive / `useRegister` inject through
+ * `RegisterValue.ensureDomBinding` to arm a store's `domBinding` slot.
+ * @internal
+ */
+export type DomBindingFactory = (kernel: DomBindingKernel) => AttaformDomBinding
+
+/**
  * The object returned by `form.register(path)`. Pass it to a native
  * input via `v-register`:
  *
@@ -1993,6 +2142,17 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   hasRegisteredDescendant: (hostElement: HTMLElement) => boolean
+  /**
+   * Arm this binding's form store with the DOM-binding implementation
+   * (element registry, focus listeners, first-error focus resolution).
+   * The implementation lives in the directive cluster's lazy graph, so
+   * the directive and `useRegister` inject its factory here before any
+   * element call; once armed, the store's `domBinding` slot serves every
+   * later registration. Optional so hand-rolled RegisterValues, which
+   * own their element handling, don't have to declare it.
+   * @internal
+   */
+  ensureDomBinding?: (factory: DomBindingFactory) => void
   /**
    * Canonical, JSON-encoded path key for this binding (e.g.
    * `'["items",0,"name"]'`). Useful for stable Map / Set keys, log
@@ -2488,10 +2648,10 @@ export type RegisterModelDynamicCustomDirective = ObjectDirective<
  * See `RegisterTextModifier` / `RegisterSelectModifier` for
  * per-modifier semantics.
  *
- * Registered globally by `createAttaform()` (and by the
- * `attaform/nuxt` module). Most consumers don't import the
- * directive itself — it's exposed for integrations that install
- * directives manually.
+ * Delivered by the Vite / Nuxt plugin's compile-time binding, or by
+ * `installVRegister(app)` from `attaform/directive` everywhere else.
+ * Most consumers don't import the directive itself — it's exposed for
+ * integrations that install directives manually.
  */
 export type RegisterDirective =
   | RegisterTextCustomDirective
@@ -2753,7 +2913,7 @@ export type FieldState<Value = unknown> = {
    * `true` while a per-field validation run is in flight at this path.
    * Reflects field-level debounced runs (`validate-on-change`) and
    * cross-field re-validations targeting this path. Whole-form
-   * `validate()` / `validateAsync()` calls drive `form.meta.validating`
+   * `validate()` / `parse()` calls drive `form.meta.validating`
    * only — they don't flip per-field flags.
    *
    * Per-field analogue of `form.meta.validating`. Use for a tight
@@ -3822,19 +3982,6 @@ export type UseFormReturnType<
   validate: (path?: FlatPath<Form>) => Readonly<Ref<ReactiveValidationStatus<Form>>>
 
   /**
-   * Run validation once and return the result. Unlike `validate()`,
-   * this does not subscribe to form reactivity.
-   *
-   * ```ts
-   * const result = await form.validateAsync()
-   * if (!result.success) showErrors(result.errors)
-   * ```
-   *
-   * Pass a path to validate a subtree. `state.validating` flips
-   * `true` while the promise is in flight.
-   */
-  validateAsync: (path?: FlatPath<Form>) => Promise<ValidationResponseWithoutValue<Form>>
-  /**
    * Resolve once every in-flight async `register({ transforms })` run
    * has settled — globally, or (with `path`) only at-or-under that path.
    * Resolve-never-reject: a transform that throws still settles the
@@ -3855,9 +4002,9 @@ export type UseFormReturnType<
    */
   settleTransforms: (path?: FlatPath<Form>) => Promise<void>
   /**
-   * Imperative one-shot parse. Same pipeline as `validateAsync` —
-   * runs refinements, applies `.transform()`s, composes blank-required
-   * errors — but RETAINS the parsed data instead of stripping it.
+   * Imperative one-shot parse. Runs the full pipeline — refinements,
+   * `.transform()`s, blank-required composition — against the current
+   * form snapshot and RETAINS the parsed data.
    *
    * Storage holds the "honest input view" — values you wrote, with
    * preprocess normalization applied but `.transform()` deferred. For
@@ -3875,16 +4022,31 @@ export type UseFormReturnType<
    * }
    * ```
    *
+   * By default the call is a PURE read: nothing is written to
+   * `form.errors`, and in-flight per-field validation runs are left
+   * alone. Pass `{ commit: true }` to make the run authoritative —
+   * the verdict is committed to the error store at the parsed scope
+   * and any in-flight per-field runs are cancelled first (mirroring
+   * `handleSubmit`), so `await form.parse('email', { commit: true })`
+   * lands a deterministic view of `form.errors.email`:
+   *
+   * ```ts
+   * const result = await form.parse({ commit: true })
+   * if (!result.success) showErrors(result.errors)
+   * ```
+   *
    * Always async, and there is no synchronous variant by design: a
    * schema can carry async refinements or transforms, so a sync parse
    * would silently miss them the moment one is added. One always-
    * awaited `parse` closes that category of bug entirely. The returned
    * promise never rejects (a thrown adapter lands as a `success: false`
    * response). Pass a path to parse a subtree only. `meta.validating`
-   * flips `true` while the promise is in flight (shared with
-   * validateAsync).
+   * flips `true` while the promise is in flight.
    */
-  parse: (path?: FlatPath<Form>) => Promise<ValidationResponse<GetValueFormType>>
+  parse: {
+    (path?: FlatPath<Form>, options?: ParseOptions): Promise<ValidationResponse<GetValueFormType>>
+    (options: ParseOptions): Promise<ValidationResponse<GetValueFormType>>
+  }
   /**
    * Bind a path to a native input via `v-register`. Returns a
    * `RegisterValue` carrying the live ref and event handlers the

@@ -101,7 +101,7 @@ function describeOwnErrors(label: string, makeForm: () => FormLike): void {
 
     it('leaf ownErrors IS the same array reference as errors', () => {
       const form = makeForm()
-      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
+      form.setErrors([{ path: ['email'], message: 'required', code: 'test' }])
       const field = form.fields('email')
       expect(field.ownErrors).toBe(field.errors)
       expect(field.firstOwnError).toBe(field.firstError)
@@ -110,7 +110,7 @@ function describeOwnErrors(label: string, makeForm: () => FormLike): void {
 
     it('leaf firstOwnError is a ValidationError (message, path, code)', () => {
       const form = makeForm()
-      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
+      form.setErrors([{ path: ['email'], message: 'required', code: 'test' }])
       const first = form.fields('email').firstOwnError
       expect(first).toBeDefined()
       expect(typeof first?.message).toBe('string')
@@ -123,8 +123,8 @@ function describeOwnErrors(label: string, makeForm: () => FormLike): void {
     it('container ownErrors holds only the OWN-bucket error, errors rolls up children', () => {
       const form = makeForm()
       form.setErrors([
-        { path: ['profile'], message: 'own-bucket', formKey: form.key, code: 'own' },
-        { path: ['profile', 'handle'], message: 'child', formKey: form.key, code: 'child' },
+        { path: ['profile'], message: 'own-bucket', code: 'own' },
+        { path: ['profile', 'handle'], message: 'child', code: 'child' },
       ])
       const profile = form.fields('profile')
       // Own bucket: the container's error alone, no descendant.
@@ -164,8 +164,8 @@ function describeOwnErrors(label: string, makeForm: () => FormLike): void {
     it('meta.ownErrors is the root [] bucket only, excluding field errors', () => {
       const form = makeForm()
       form.setErrors([
-        { path: [], message: 'form-level', formKey: form.key, code: 'root' },
-        { path: ['email'], message: 'email-error', formKey: form.key, code: 'field' },
+        { path: [], message: 'form-level', code: 'root' },
+        { path: ['email'], message: 'email-error', code: 'field' },
       ])
       // Root bucket alone: the form-level error, not the field error.
       expect(messages(form.meta.ownErrors)).toEqual(['form-level'])
@@ -179,7 +179,7 @@ function describeOwnErrors(label: string, makeForm: () => FormLike): void {
 
     it('firstOwnError flips back to undefined when the own bucket clears', async () => {
       const form = makeForm()
-      form.setErrors([{ path: ['email'], message: 'required', formKey: form.key, code: 'test' }])
+      form.setErrors([{ path: ['email'], message: 'required', code: 'test' }])
       await nextTick()
       expect(form.fields('email').firstOwnError).toBeDefined()
       form.clearErrors('email')

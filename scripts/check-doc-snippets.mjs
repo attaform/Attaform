@@ -42,7 +42,7 @@ import { dirname, resolve, relative, join } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..')
 const distDir = resolve(repoRoot, 'dist')
-const sentinelDts = resolve(distDir, 'zod-v4.d.ts')
+const sentinelDts = resolve(distDir, 'zod-v4.d.mts')
 const fixtureRoot = resolve(repoRoot, 'tests/fixtures/doc-snippets')
 const generatedDir = resolve(fixtureRoot, '.generated')
 const tsconfigPath = resolve(fixtureRoot, 'tsconfig.json')

@@ -78,9 +78,9 @@ describe('register({ transforms }) — prod log shape (information-leak guard)',
     // Single arg, fixed string.
     expect(call.length).toBe(1)
     const msg = String(call[0])
-    expect(msg).toContain('transform error')
-    expect(msg).toContain('write aborted')
-    expect(msg).toContain('NODE_ENV=development')
+    // The whole prod payload is the fixed AF14 code + reference URL;
+    // the /e/af14 page carries the "set NODE_ENV=development" guidance.
+    expect(msg).toBe('[attaform] AF14 attaform.dev/e/af14')
 
     // The leak surface — every one of these MUST be absent.
     expect(msg).not.toContain('email') // path

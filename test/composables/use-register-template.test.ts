@@ -9,6 +9,7 @@ import type { UseFormReturn } from '../../src/zod'
 import { useRegister } from '../../src/runtime/composables/use-register'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { installVRegister } from '../../src/runtime/core/directive'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
 import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
@@ -77,9 +78,9 @@ describe('useRegister — template-compiled v-register reaches inner input', () 
   it('parent + child compiled templates: typing in the inner <input v-register> writes to the form', async () => {
     // Child SFC equivalent: <label><input v-register="register" /></label>.
     // After compilation, the `v-register` directive on the inner input
-    // is resolved against the globally-registered `register` directive
-    // (see createAttaform()). The render function reads
-    // `register` from setup return.
+    // is resolved against the app-level `register` directive
+    // (installVRegister — the runtime-compiled-template delivery). The
+    // render function reads `register` from setup return.
     const Child = defineComponent({
       name: 'Child',
       setup() {
@@ -108,6 +109,9 @@ describe('useRegister — template-compiled v-register reaches inner input', () 
     })
 
     app = createApp(Parent).use(createAttaform())
+    // Runtime-compiled templates resolve v-register at render time, so
+    // this is the documented no-build delivery: one install per app.
+    installVRegister(app)
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
@@ -161,6 +165,9 @@ describe('useRegister — template-compiled v-register reaches inner input', () 
     })
 
     app = createApp(Parent).use(createAttaform())
+    // Runtime-compiled templates resolve v-register at render time, so
+    // this is the documented no-build delivery: one install per app.
+    installVRegister(app)
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
@@ -182,13 +189,15 @@ describe('useRegister — template-compiled v-register reaches inner input', () 
     expect(captured.api.fields.email.focused).toBe(true)
   })
 
-  // Direct assertion that the directive used in the template path is
-  // the one we exported. If global registration in the plugin ever
-  // drifted, this would catch it before the consumer-facing template
-  // started silently no-op'ing.
-  it('the globally-registered v-register directive is the same vRegister this lib exports', () => {
+  // Direct assertion that the directive the runtime-compiled template
+  // path resolves is the one we exported. installVRegister is the
+  // delivery for this path (createAttaform registers no directive); if
+  // the installed object ever drifted from the export, the template
+  // would silently no-op.
+  it('installVRegister registers the same vRegister this lib exports', () => {
     const probe = createApp({ render: () => null })
     probe.use(createAttaform())
+    installVRegister(probe)
     expect(probe._context.directives['register']).toBe(vRegister)
   })
 })

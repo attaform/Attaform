@@ -2,7 +2,7 @@
   // ─────────────────────────────────────────────────────────────────
   // Cargo shipment booking — multistep wizard built on `useWizard`
   // composing four `useForm` instances. Each step owns its own schema,
-  // history, and persistence; the wizard orchestrates navigation,
+  // history, and validation cadence; the wizard orchestrates navigation,
   // status aggregation, and the cross-form submit.
   //
   // Stresses: discriminated unions, enums, field arrays, async field +
@@ -15,6 +15,7 @@
   import { computed, nextTick, ref, watch } from 'vue'
   import { z } from 'zod'
   import { fieldMeta, useForm, useWizard, unset, withMeta } from 'attaform'
+  import { historyPlugin } from 'attaform/history'
   import type { FieldState } from 'attaform'
 
   // ─── Mock async services ─────────────────────────────────────────
@@ -322,13 +323,13 @@
   })
 
   // ─── Forms ──────────────────────────────────────────────────────
-  // Each form owns its own schema, history, and persistence. Sequence
+  // Each form owns its own schema, history, and validation cadence. Sequence
   // ownership lives on the wizard's `steps` list further down — forms
   // stay decoupled from flow shape so any one is reusable elsewhere.
   const refForm = useForm({
     schema: referenceSchema,
     key: 'reference',
-    history: { max: 50 },
+    history: historyPlugin({ max: 50 }),
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
@@ -342,7 +343,7 @@
   const cargoForm = useForm({
     schema: cargoSchema,
     key: 'cargo',
-    history: { max: 50 },
+    history: historyPlugin({ max: 50 }),
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
@@ -354,7 +355,7 @@
   const serviceForm = useForm({
     schema: serviceSchema,
     key: 'service',
-    history: { max: 50 },
+    history: historyPlugin({ max: 50 }),
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {
@@ -372,7 +373,7 @@
   const reviewForm = useForm({
     schema: reviewSchema,
     key: 'review',
-    history: { max: 50 },
+    history: historyPlugin({ max: 50 }),
     validateOn: 'change',
     debounceMs: 200,
     defaultValues: {

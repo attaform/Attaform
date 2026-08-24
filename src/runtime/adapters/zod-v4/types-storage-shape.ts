@@ -11,7 +11,7 @@
  *    normalizer runs at parse time, NOT at the write boundary, so
  *    storage holds the consumer's raw input and the type collapses
  *    to `unknown` to match. Reach the typed value via
- *    `handleSubmit`, `validate`, or `validateAsync` — they re-parse
+ *    `handleSubmit`, `validate`, or `parse` — they re-parse
  *    storage through the wrapper.
  *
  * 2. `inner.transform(fn)` — compiles to `ZodPipe<inner, ZodTransform>`.

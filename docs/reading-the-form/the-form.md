@@ -86,11 +86,11 @@ Every write path runs the same validation, dirty-tracking, and history pipeline.
 ## Validation
 
 ```ts
-form.validate() // sync pass
-form.validateAsync() // awaits async refinements
+form.validate() // reactive status ref
+await form.parse({ commit: true }) // awaited verdict, lands on form.errors
 ```
 
-Validators emit into `form.errors` on completion. The same pipeline runs inside [`handleSubmit`](/docs/submitting/handle-submit) before your success callback fires, so reach for `validate` directly only when you need a check outside the submit cycle.
+Validators emit into `form.errors` on completion. The same pipeline runs inside [`handleSubmit`](/docs/submitting/handle-submit) before your success callback fires, so reach for these directly only when you need a check outside the submit cycle.
 
 ## Where to next
 

@@ -12,6 +12,7 @@ import {
   ANONYMOUS_FORM_KEY_PREFIX,
   DEFAULT_MAX_RECURSION_DEPTH,
   normalizeNumericOption,
+  pickDefined,
   RESERVED_KEY_PREFIX,
 } from '../core/defaults'
 import { __DEV__ } from '../core/dev'
@@ -19,7 +20,6 @@ import { captureUserCallSite } from '../core/dev-stack-trace'
 import { InvalidUseFormConfigError, ReservedFormKeyError } from '../core/errors'
 import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
-import { createHistoryModule, type HistoryModule } from '../core/history'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
@@ -28,6 +28,7 @@ import type {
   AbstractSchema,
   AttaformDefaults,
   FormKey,
+  HistoryModule,
   UseFormReturnType,
   UseFormConfiguration,
 } from '../types/types-api'
@@ -265,14 +266,17 @@ export function useAbstractForm<
     onScopeDispose(releaseConsumer)
   }
 
-  // Wire history (opt-in). Fresh-state-only — the module subscribes
-  // to FormStore events, so subscribing twice would double-push
-  // snapshots. Cache the module on the FormStore so subsequent
-  // `useForm` / `injectForm` calls for the same key retrieve the
-  // SAME instance, keeping `canUndo` / `canRedo` / `historySize` /
+  // Wire history (opt-in). The plugin object carries the runtime —
+  // `historyPlugin()` from `attaform/history` rides the consumer's own
+  // import, so the core never links the history internals; `attach`
+  // subscribes it to this store synchronously, before any mutation can
+  // slip past unrecorded. Fresh-state-only — attaching twice would
+  // double-push snapshots. Cache the module on the FormStore so
+  // subsequent `useForm` / `injectForm` calls for the same key retrieve
+  // the SAME instance, keeping `canUndo` / `canRedo` / `historySize` /
   // `undo` / `redo` consistent across mount order.
   if (existing === undefined && merged.history !== undefined) {
-    const historyModule = createHistoryModule(state, merged.history)
+    const historyModule = merged.history.attach(state)
     state.modules.set(HISTORY_MODULE_KEY, historyModule)
     state.registerCleanup(() => historyModule.dispose())
   }
@@ -318,14 +322,6 @@ export function useAbstractForm<
     provide(kFormInstanceId, formInstanceId)
   }
 
-  const apiOptions: Parameters<typeof buildFormApi<Form, GetValueFormType>>[2] = {}
-  if (merged.onInvalidSubmit !== undefined) {
-    apiOptions.onInvalidSubmit = merged.onInvalidSubmit
-  }
-  const history = state.modules.get(HISTORY_MODULE_KEY) as HistoryModule | undefined
-  if (history !== undefined) {
-    apiOptions.history = history
-  }
   // Per-instance config lifts: each `useForm()` callsite carries its
   // own `validateOn` / `debounceMs` / `getDisplayState` / `coerce` /
   // `rememberVariants`. These thread through `buildFormApi` into
@@ -333,25 +329,16 @@ export function useAbstractForm<
   // writes' WriteMeta — so two `useForm({ key })` calls (modal + main)
   // can validate on different cadences and surface errors with
   // different visibility rules even though they share a FormStore.
-  if (merged.validateOn !== undefined) {
-    apiOptions.validateOn = merged.validateOn
-  }
-  const mergedDebounceMs = (merged as { debounceMs?: number }).debounceMs
-  if (mergedDebounceMs !== undefined) {
-    apiOptions.debounceMs = mergedDebounceMs
-  }
-  if (merged.getDisplayState !== undefined) {
-    apiOptions.getDisplayState = merged.getDisplayState
-  }
-  if (merged.coerce !== undefined) {
-    apiOptions.coerce = merged.coerce
-  }
-  if (merged.rememberVariants !== undefined) {
-    apiOptions.rememberVariants = merged.rememberVariants
-  }
-  if (merged.autoAria !== undefined) {
-    apiOptions.autoAria = merged.autoAria
-  }
+  const apiOptions: Parameters<typeof buildFormApi<Form, GetValueFormType>>[2] = pickDefined({
+    onInvalidSubmit: merged.onInvalidSubmit,
+    history: state.modules.get(HISTORY_MODULE_KEY) as HistoryModule | undefined,
+    validateOn: merged.validateOn,
+    debounceMs: (merged as { debounceMs?: number }).debounceMs,
+    getDisplayState: merged.getDisplayState,
+    coerce: merged.coerce,
+    rememberVariants: merged.rememberVariants,
+    autoAria: merged.autoAria,
+  })
   // `buildFormApi` returns the schema-agnostic shape (`ReadForm = Form`);
   // adapter callers compute the richer `ReadForm` (zod-v4's
   // `StorageShape<Schema>`) and assert it through the public return
@@ -379,41 +366,31 @@ function mergeWithDefaults<
   configuration: UseFormConfiguration<Form, GetValueFormType, Schema, Defaults>
 ): UseFormConfiguration<Form, GetValueFormType, Schema, Defaults> {
   // exactOptionalPropertyTypes rejects explicit `undefined` on optional
-  // properties (different from omitting), so conditionally spread each
-  // resolved value rather than assigning undefined into the field.
-  const strict = configuration.strict ?? defaults.strict
-  const onInvalidSubmit = configuration.onInvalidSubmit ?? defaults.onInvalidSubmit
-  const history = configuration.history ?? defaults.history
-  const rememberVariants = configuration.rememberVariants ?? defaults.rememberVariants
-  // Threaded raw (ref / getter / boolean), never resolved here — the
-  // store unwraps it live via `toValue` so a reactive source keeps
-  // tracking. `??` picks config over default at the reference level; an
-  // explicit `false` still wins over a truthy default.
-  const disabled = configuration.disabled ?? defaults.disabled
-  const coerce = configuration.coerce ?? defaults.coerce
-  const validateOn = configuration.validateOn ?? defaults.validateOn
-  // `debounceMs` is type-narrowed in the public discriminated union to
-  // disallow non-`'change'` mode + debounce; here at the resolution
-  // boundary we only see the unwrapped fields, so the access is
-  // unconditional. The runtime check in `create-form-store.ts` ignores
-  // the value under non-`'change'` modes regardless.
-  const debounceMs = (configuration as { debounceMs?: number }).debounceMs ?? defaults.debounceMs
-  const getDisplayState = configuration.getDisplayState ?? defaults.getDisplayState
-  const maxRecursionDepth = configuration.maxRecursionDepth ?? defaults.maxRecursionDepth
-  const autoAria = configuration.autoAria ?? defaults.autoAria
+  // properties (different from omitting), so resolve each candidate and
+  // keep only the defined ones. `disabled` is threaded raw (ref /
+  // getter / boolean), never resolved here — the store unwraps it live
+  // via `toValue` so a reactive source keeps tracking; `??` picks
+  // config over default at the reference level, so an explicit `false`
+  // still wins over a truthy default. `debounceMs` is type-narrowed in
+  // the public discriminated union to disallow non-`'change'` mode +
+  // debounce; at this resolution boundary only the unwrapped fields are
+  // visible, so the access is unconditional (the runtime check in
+  // `create-form-store.ts` ignores the value under other modes).
   return {
     ...configuration,
-    ...(strict === undefined ? {} : { strict }),
-    ...(onInvalidSubmit === undefined ? {} : { onInvalidSubmit }),
-    ...(history === undefined ? {} : { history }),
-    ...(rememberVariants === undefined ? {} : { rememberVariants }),
-    ...(disabled === undefined ? {} : { disabled }),
-    ...(coerce === undefined ? {} : { coerce }),
-    ...(validateOn === undefined ? {} : { validateOn }),
-    ...(debounceMs === undefined ? {} : { debounceMs }),
-    ...(getDisplayState === undefined ? {} : { getDisplayState }),
-    ...(maxRecursionDepth === undefined ? {} : { maxRecursionDepth }),
-    ...(autoAria === undefined ? {} : { autoAria }),
+    ...pickDefined({
+      strict: configuration.strict ?? defaults.strict,
+      onInvalidSubmit: configuration.onInvalidSubmit ?? defaults.onInvalidSubmit,
+      history: configuration.history ?? defaults.history,
+      rememberVariants: configuration.rememberVariants ?? defaults.rememberVariants,
+      disabled: configuration.disabled ?? defaults.disabled,
+      coerce: configuration.coerce ?? defaults.coerce,
+      validateOn: configuration.validateOn ?? defaults.validateOn,
+      debounceMs: (configuration as { debounceMs?: number }).debounceMs ?? defaults.debounceMs,
+      getDisplayState: configuration.getDisplayState ?? defaults.getDisplayState,
+      maxRecursionDepth: configuration.maxRecursionDepth ?? defaults.maxRecursionDepth,
+      autoAria: configuration.autoAria ?? defaults.autoAria,
+    }),
   } as UseFormConfiguration<Form, GetValueFormType, Schema, Defaults>
 }
 
@@ -466,13 +443,18 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     formKey: key,
     schema,
     defaultValues: walked.cleanedValues as DeepPartial<WriteShape<F>> | undefined,
-    ...(configuration.strict !== undefined ? { strict: configuration.strict } : {}),
     hydration: pending,
-    ...(configuration.validateOn !== undefined ? { validateOn: configuration.validateOn } : {}),
-    ...((configuration as { debounceMs?: number }).debounceMs !== undefined
-      ? { debounceMs: (configuration as { debounceMs?: number }).debounceMs }
-      : {}),
     ssr: registry.ssr,
+    ...pickDefined({
+      strict: configuration.strict,
+      validateOn: configuration.validateOn,
+      debounceMs: (configuration as { debounceMs?: number }).debounceMs,
+      rememberVariants: configuration.rememberVariants,
+      disabled: configuration.disabled,
+      coerce: configuration.coerce,
+      getDisplayState: configuration.getDisplayState,
+      initialBlankPaths,
+    }),
     // Server-only: bind the SSR prefetch coordination handles. `enqueue`
     // records intent on every `state.activate()` so a wizard skip-list
     // override or a future transform mark has a consistent set to diff
@@ -490,15 +472,6 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
           },
         }
       : {}),
-    ...(configuration.rememberVariants !== undefined
-      ? { rememberVariants: configuration.rememberVariants }
-      : {}),
-    ...(configuration.disabled !== undefined ? { disabled: configuration.disabled } : {}),
-    ...(configuration.coerce !== undefined ? { coerce: configuration.coerce } : {}),
-    ...(configuration.getDisplayState !== undefined
-      ? { getDisplayState: configuration.getDisplayState }
-      : {}),
-    ...(initialBlankPaths !== undefined ? { initialBlankPaths } : {}),
   }
   const state = createFormStore<F, G>(createOptions)
   // Storage type is FormStore<GenericForm>; the lookup above narrows

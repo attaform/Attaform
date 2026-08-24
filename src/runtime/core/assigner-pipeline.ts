@@ -306,10 +306,10 @@ function kickoffAsyncTransform(
 /**
  * Log a transform throw. Dev message includes path, index, transform name,
  * remediation hint, and the original error (with message + stack). Prod
- * message is a fixed string with NONE of those — transform bodies are
- * consumer code we don't control, so error messages and stack frames are
- * an information-leak surface (consumer-typed values, file paths, internal
- * function names). Set `NODE_ENV=development` to surface details.
+ * message is the fixed AF14 code with NONE of those — transform bodies
+ * are consumer code we don't control, so error messages and stack frames
+ * are an information-leak surface (consumer-typed values, file paths,
+ * internal function names). Set `NODE_ENV=development` to surface details.
  */
 function logTransformFailure(
   path: PathKey,
@@ -326,9 +326,7 @@ function logTransformFailure(
       err
     )
   } else {
-    console.error(
-      `[attaform] transform error — write aborted (set NODE_ENV=development for details).`
-    )
+    console.error('[attaform] AF14 attaform.dev/e/af14')
   }
 }
 
@@ -558,10 +556,12 @@ export function setAssignFunction(
     return
   }
   if (!isRegisterValue(value)) {
-    warn(
-      `v-register expected a RegisterValue, got '${typeof value}'. ` +
-        `Bind to form.register('field') — not the field's ref, value, or path string.`
-    )
+    if (__DEV__) {
+      warn(
+        `v-register expected a RegisterValue, got '${typeof value}'. ` +
+          `Bind to form.register('field') — not the field's ref, value, or path string.`
+      )
+    }
     el[assignKey] = makeNoopAssigner()
     return
   }

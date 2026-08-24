@@ -11,23 +11,23 @@ import { isShadowedKey, safeAssign, safeOwnHas, safeOwnRead } from './safe-assig
 export type SchemaForFill = {
   getDefaultAtPath(path: Path): unknown
   /**
-   * Distinguish tuple (number — structural length) from unbounded
-   * array (null) at `path`. `undefined` signals "fall back to the
-   * runtime's index-probe loop" for adapters that can't introspect.
-   * See `AbstractSchema.arrayShapeAtPath` for the full contract.
+   * Distinguish tuple (number — structural length) from everything
+   * else (null: unbounded array, or no array at `path` at all). The
+   * answer is definitive. See `AbstractSchema.arrayShapeAtPath` for
+   * the full contract.
    */
-  arrayShapeAtPath(path: Path): number | null | undefined
+  arrayShapeAtPath(path: Path): number | null
   /**
    * Slim primitive set at `path`. Used by `mergeStructural` to
    * distinguish "consumer omitted this key from a partial" (fill from
    * schema default) from "consumer explicitly wrote undefined into a
-   * path that admits undefined" (preserve undefined). Returns `null`
-   * when the adapter can't introspect — callers fall back to the
-   * legacy fill-with-default behavior.
+   * path that admits undefined" (preserve undefined). An empty set
+   * (path unknown to the schema) never contains `'undefined'`, so
+   * unknown paths keep the fill-with-default behavior.
    * See `AbstractSchema.getSlimPrimitiveTypesAtPath` for the full
    * contract.
    */
-  getSlimPrimitiveTypesAtPath?: (path: Path) => ReadonlySet<string>
+  getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<string>
 }
 
 /**
@@ -176,8 +176,8 @@ function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: numb
   // a defineProperty call (own data property), while every other key
   // takes the plain bracket-assign branch. Schema fields literally
   // named `__proto__` / `constructor` / `prototype` round-trip
-  // through `setValue` / `applyPatchesForward` / history undo-redo
-  // alongside every other key, with no path to `Object.prototype`.
+  // through `setValue` / history undo-redo alongside every other
+  // key, with no path to `Object.prototype`.
   const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
   safeAssign(rec, head, setAtPathOffset(safeOwnRead(rec, head), path, value, nextOffset))
   return rec
@@ -249,60 +249,6 @@ export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): 
 }
 
 /**
- * Copy-on-write deletion of `path` from `root`. Returns a fresh root
- * with the targeted leaf (or container) removed; siblings stay
- * reference-equal. Missing intermediates short-circuit and return
- * `root` unchanged.
- *
- * Array semantics: deleting a numeric index splices the array (length
- * shrinks by one). Object semantics: deleting a string key removes the
- * own-property and shrinks the key set by one.
- *
- * Used by `diff-apply`'s copy-on-write delta application to remove a
- * single path (e.g. inverting an `added` patch on undo) without
- * disturbing siblings.
- */
-export function deleteAtPath(root: unknown, path: Path): unknown {
-  return deleteAtPathOffset(root, path, 0)
-}
-
-function deleteAtPathOffset(root: unknown, path: Path, offset: number): unknown {
-  if (offset >= path.length) return undefined
-
-  const head = path[offset] as Segment
-  const isLeafStep = offset === path.length - 1
-  const nextOffset = offset + 1
-
-  if (typeof head === 'number') {
-    if (!Array.isArray(root)) return root
-    if (head < 0 || head >= root.length) return root
-    if (isLeafStep) {
-      const arr = [...root]
-      arr.splice(head, 1)
-      return arr
-    }
-    const arr = [...root]
-    arr[head] = deleteAtPathOffset(arr[head], path, nextOffset)
-    return arr
-  }
-
-  if (!isPlainRecord(root)) return root
-  if (isLeafStep) {
-    const rec: Record<string, unknown> = { ...root }
-    delete rec[head]
-    return rec
-  }
-  // Own-property existence check — `'__proto__' in root` would
-  // otherwise resolve via the inherited accessor and report `true`
-  // for every regular target, materializing a phantom delete-path on
-  // a slot the consumer never wrote.
-  if (!safeOwnHas(root, head)) return root
-  const rec: Record<string, unknown> = { ...root }
-  safeAssign(rec, head, deleteAtPathOffset(safeOwnRead(rec, head), path, nextOffset))
-  return rec
-}
-
-/**
  * Recursive merge that fills consumer-supplied gaps with the schema's
  * prescribed defaults. The runtime calls this on every `setValueAtPath`
  * write (and on whole-form callback returns) so the form remains
@@ -329,41 +275,6 @@ function deleteAtPathOffset(root: unknown, path: Path, offset: number): unknown 
  * relative to defaults the function returns `consumer` by reference,
  * so common-case writes (consumer already complete) allocate nothing.
  */
-/**
- * Resolve the array shape at `scratch`. Returns the tuple's
- * structural length, `null` for unbounded arrays, or `undefined`
- * if the adapter doesn't support `arrayShapeAtPath` (signalling
- * the fallback probe loop).
- *
- * The fallback probes at index `1_000_000` (tuple → `undefined`;
- * array → element default), then probes sequentially up to the cap
- * to discover the tuple length. Built-in zod adapters return a
- * definitive shape so this never fires for them; the fallback
- * exists for third-party adapters that haven't implemented the
- * method.
- */
-function resolveArrayShape(schema: SchemaForFill, scratch: Segment[]): number | null | undefined {
-  const shape = schema.arrayShapeAtPath(scratch)
-  if (shape !== undefined) return shape
-  // Legacy probe: high-index lookup distinguishes tuple from array.
-  const TUPLE_PROBE_INDEX = 1_000_000
-  scratch.push(TUPLE_PROBE_INDEX)
-  const probe = schema.getDefaultAtPath(scratch)
-  scratch.pop()
-  if (probe !== undefined) return null // unbounded array
-  // Tuple-like: walk forward to find the structural length. Cap at
-  // 1024 to protect against pathological recursive lazies.
-  let n = 0
-  while (n < 1024) {
-    scratch.push(n)
-    const v = schema.getDefaultAtPath(scratch)
-    scratch.pop()
-    if (v === undefined) break
-    n++
-  }
-  return n
-}
-
 export function mergeStructural(
   schema: SchemaForFill,
   path: Path,
@@ -401,7 +312,7 @@ function mergeStructuralImpl(
   // `.nullable().optional()`), defeating the schema-aware DOM-clear
   // mapping.
   if (consumer === undefined) {
-    if (schema.getSlimPrimitiveTypesAtPath?.(scratch).has('undefined') === true) {
+    if (schema.getSlimPrimitiveTypesAtPath(scratch).has('undefined')) {
       return undefined
     }
     return defaultValue
@@ -456,7 +367,7 @@ function mergeStructuralArray(
   scratch: Segment[],
   consumer: readonly unknown[]
 ): unknown {
-  const shape = resolveArrayShape(schema, scratch)
+  const shape = schema.arrayShapeAtPath(scratch)
   const isTuple = typeof shape === 'number'
   const targetLen = isTuple ? shape : consumer.length
   // Unbounded array: every position resolves to the same element
@@ -602,15 +513,14 @@ function setAtPathWithSchemaFillImpl(
     const arr = Array.isArray(root) ? [...root] : []
     const prefix = fullPath.slice(0, startIdx)
     // Pad with element defaults if extending past length. Tuple-vs-
-    // array detection mirrors mergeStructural: probe at a high index
-    // — tuples return `undefined` (out of range), unbounded arrays
-    // return the element default. The previous heuristic (compare two
-    // adjacent defaults via Object.is) gave wrong answers for arrays
+    // array detection comes from the schema's definitive
+    // `arrayShapeAtPath` — a value-based heuristic (compare two
+    // adjacent defaults via Object.is) gives wrong answers for arrays
     // of objects (each call yields a fresh object, identity differs)
     // AND for tuples of identical primitives (Object.is(0, 0) === true).
     if (arr.length < head) {
       const scratch: Segment[] = prefix.slice() as Segment[]
-      const shape = resolveArrayShape(schema, scratch)
+      const shape = schema.arrayShapeAtPath(scratch)
       const tupleLike = typeof shape === 'number'
       // For unbounded arrays, every position resolves to the same
       // element default — cache the lookup once. For tuples, query

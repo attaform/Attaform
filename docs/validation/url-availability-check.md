@@ -125,7 +125,7 @@ Every message comes out of the refine layer. Preprocess never raises an error it
 
 Under the [storage contract](/docs/schemas/storage-shape), `form.values.url` holds whatever the user typed, never the post-preprocess value and never the sentinel. The directive re-renders the input from storage, so the user always sees their own text. The sentinels live only inside the parse pipeline (preprocess output → refine input); they never leak to the surface.
 
-This split is what makes the recipe work. Under a "preprocess mutates storage at write" model, typing `google.com` would jump to `https://google.com` mid-edit, the cursor would land in the middle of "google", and the sentinel pattern would surface in `form.values.url` as a magic string. Under the no-write-mutation contract, the typed value is the displayed value is the stored value, and the parsed view is reached through `handleSubmit`, `validate`, or `validateAsync`.
+This split is what makes the recipe work. Under a "preprocess mutates storage at write" model, typing `google.com` would jump to `https://google.com` mid-edit, the cursor would land in the middle of "google", and the sentinel pattern would surface in `form.values.url` as a magic string. Under the no-write-mutation contract, the typed value is the displayed value is the stored value, and the parsed view is reached through `handleSubmit`, `validate`, or `parse`.
 
 ## Reaching the typed result
 
@@ -138,7 +138,7 @@ const onSubmit = form.handleSubmit((data) => {
 })
 ```
 
-If you need the typed shape outside submit, call `form.validateAsync()` or `form.parse()`. Both run the same pipeline against current storage and return the post-parse output.
+If you need the typed shape outside submit, call `form.parse()`. It runs the same pipeline against current storage and returns the post-parse output; add `{ commit: true }` when the verdict should also land on `form.errors`.
 
 ## Tweaks
 

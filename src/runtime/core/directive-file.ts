@@ -5,6 +5,7 @@ import type {
 } from '../types/types-api'
 import { addTrackedListener, noteInteraction, removeTrackedListeners } from './directive-listeners'
 import { fireAssigner, setAssignFunction } from './assigner-pipeline'
+import { armDomBinding } from './dom-binding'
 import { isRegisterValue, isTransforming } from './register-protocol'
 
 /**
@@ -89,6 +90,10 @@ export const vRegisterFile: RegisterModelDynamicCustomDirective = {
     // assign-key symbol index, so widen to the assigner carrier here — the
     // shared `setAssignFunction` / `fireAssigner` both read `el[assignKey]`.
     const input = el as HTMLInputElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn }
+    // Direct-use path (`vRegisterFile` bound without the dynamic
+    // dispatcher): arm the store's DOM binding before registering, same
+    // as vRegisterDynamic's created hook.
+    armDomBinding(value)
     value.registerElement(input)
     // Install the shared assigner (the default writer, or a consumer
     // `@update:registerValue` override) so a file selection routes through the

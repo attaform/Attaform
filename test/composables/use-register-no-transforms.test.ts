@@ -8,6 +8,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { useRegister } from '../../src/runtime/composables/use-register'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { installVRegister } from '../../src/runtime/core/directive'
 import { waitUntil } from '../utils/form-harness'
 
 /**
@@ -30,7 +31,7 @@ import { waitUntil } from '../utils/form-harness'
  *     propagating the binding.
  *
  * The directive itself (the runtime side) is still registered
- * globally via `createAttaform()`; the consumer's app boots fine, and
+ * app-wide via `installVRegister(app)`; the consumer's app boots fine, and
  * `<input v-register>` directly on a native input works. The
  * failure is specifically the component-wrapper case where the
  * bridge prop is the only current propagation channel.
@@ -92,6 +93,8 @@ describe('useRegister — works without attaform compile-time transforms', () =>
     })
 
     app = createApp(Parent).use(createAttaform())
+    // No-transforms case = runtime-resolved v-register: install once.
+    installVRegister(app)
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
@@ -132,6 +135,8 @@ describe('useRegister — works without attaform compile-time transforms', () =>
     })
 
     app = createApp(Parent).use(createAttaform())
+    // No-transforms case = runtime-resolved v-register: install once.
+    installVRegister(app)
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)

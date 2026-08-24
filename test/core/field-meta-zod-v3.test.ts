@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod-v3'
-import { fieldMeta, getFieldMeta, withMeta } from '../../src/runtime/adapters/zod-v3/field-meta'
+import { getFieldMetaForSchema as getFieldMeta } from '../../src/runtime/core/field-meta-store'
+import { fieldMeta, withMeta } from '../../src/runtime/adapters/zod-v3/field-meta'
 
 describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
   it('round-trips a payload via the withMeta helper', () => {

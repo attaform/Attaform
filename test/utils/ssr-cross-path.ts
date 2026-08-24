@@ -41,7 +41,7 @@ import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
-import { vRegister } from '../../src/runtime/core/directive'
+import { installVRegister, vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
@@ -285,7 +285,12 @@ async function runOnePath(renderPath: RenderPath, f: Fixture, adapter: Adapter):
   const errorSpy = vi.spyOn(console, 'error').mockImplementation(capture)
 
   try {
-    const html = await renderToString(createSSRApp(Comp).use(createAttaform()))
+    // The compiled path resolves `v-register` at render time
+    // (runtime-compiled template): installVRegister is that path's
+    // production delivery, since createAttaform registers no directive.
+    const serverApp = createSSRApp(Comp).use(createAttaform())
+    installVRegister(serverApp)
+    const html = await renderToString(serverApp)
 
     // Ground-truth + no-flash: the value/checked/selected the browser parses
     // before any client JS runs.
@@ -298,14 +303,21 @@ async function runOnePath(renderPath: RenderPath, f: Fixture, adapter: Adapter):
 
     // Clean hydration over the planted markup.
     const app = createSSRApp(Comp).use(createAttaform())
+    installVRegister(app)
     app.mount(root)
     await settle()
     const mismatches = warnings.filter((w) => /hydrat|mismatch/i.test(w))
     const falseWarns = warnings.filter(
       (w) => w.includes('is a no-op') || w.includes('no parent registerValue')
     )
+    // The delivery guard: a compiled-path fixture rendering without the
+    // directive would still pass the signal assertions (the transforms
+    // carry value/checked/selected), so an unresolved `v-register` must
+    // fail loudly here rather than degrade the matrix silently.
+    const unresolved = warnings.filter((w) => w.includes('Failed to resolve directive'))
     expect(mismatches, `${where}: hydration mismatch warnings`).toEqual([])
     expect(falseWarns, `${where}: false v-register warnings`).toEqual([])
+    expect(unresolved, `${where}: v-register not delivered`).toEqual([])
     app.unmount()
     root.remove()
   } finally {

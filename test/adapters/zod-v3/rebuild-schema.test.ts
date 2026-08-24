@@ -12,7 +12,6 @@ import {
   rebuildTuple,
   rebuildUnion,
   rebuildWrapperInner,
-  stripLeafChecks,
 } from '../../../src/runtime/adapters/zod-v3/rebuild-schema'
 
 /**
@@ -139,30 +138,6 @@ describe('rebuild* container helpers', () => {
     expect(rebuilt).toBeInstanceOf(z.ZodLazy)
     expect(rebuilt._def.getter()).toBeInstanceOf(z.ZodNumber)
     expect(rebuilt.parse(7)).toBe(7)
-  })
-})
-
-describe('stripLeafChecks', () => {
-  it('clears checks while keeping description', () => {
-    const original = z.string().min(5).describe('a label')
-    const rebuilt = stripLeafChecks(original)
-    expect(rebuilt._def.checks).toEqual([])
-    expect(rebuilt._def.description).toBe('a label')
-    expect(rebuilt.safeParse('').success).toBe(true)
-  })
-
-  it('keeps the coerce flag (unlike a fresh z.string())', () => {
-    const coerced = z.coerce.number().min(3)
-    expect(coerced._def.coerce).toBe(true)
-    const rebuilt = stripLeafChecks(coerced)
-    expect(rebuilt._def.coerce).toBe(true)
-    expect(rebuilt._def.checks).toEqual([])
-  })
-
-  it('never mutates the original leaf', () => {
-    const original = z.string().min(5)
-    stripLeafChecks(original)
-    expect(original.safeParse('').success).toBe(false)
   })
 })
 

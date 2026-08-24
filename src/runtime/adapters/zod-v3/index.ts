@@ -20,38 +20,17 @@ import {
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
 import { mergeDeep } from '../../core/merge-deep'
-import { getAtPath, setAtPath } from '../../core/path-walker'
 import { walkPathSegments } from '../../core/walk-path-segments'
+import { fixStructuralDefaults } from '../../core/walk-fix-structural'
+import { deriveDefaultWalk } from '../../core/walk-derive-default'
 import {
-  deriveDefaultWalk,
-  peelEmbeddedDefault,
-  NO_EMBEDDED_DEFAULT,
-} from '../../core/walk-derive-default'
+  buildFieldMetaPathMap,
+  getFieldMetaForSchema,
+  getFieldMetaListForSchema,
+} from '../../core/field-meta-store'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path } from '../../core/paths'
-import { slimKindOf } from '../../core/slim-primitive-gate'
-import { getFieldMeta, getFieldMetaList } from './field-meta'
-import { cloneSchemaDeep } from './clone-schema'
-import {
-  rebuildArray,
-  rebuildDiscriminatedUnion,
-  rebuildIntersection,
-  rebuildLazy,
-  rebuildObject,
-  rebuildRecord,
-  rebuildSet,
-  rebuildTuple,
-  rebuildUnion,
-  rebuildWrapperInner,
-  stripLeafChecks,
-} from './rebuild-schema'
 import type { GenericForm } from '../../types/types-core'
-
-// The adapter exchanges dotted-string paths with core at the
-// AbstractSchema boundary (`validateAtPath`, `getSchemasAtPath`).
-// A future revision may migrate the adapter to structured `Path`
-// (Segment[]) without changing the public surface.
-const PATH_SEPARATOR = '.'
 
 // Shared cap for every wrapper-peeling / unwrap helper in this file.
 // Pathological schemas (deep `.refine()` chains, self-referential lazy
@@ -59,31 +38,6 @@ const PATH_SEPARATOR = '.'
 // realistic form schema; past it we bail conservatively rather than
 // crash.
 const MAX_UNWRAP_STEPS = 64
-
-function isPrimitive(input: unknown): boolean {
-  const type = typeof input
-  if (
-    type === 'string' ||
-    type === 'number' ||
-    type === 'boolean' ||
-    type === 'bigint' ||
-    type === 'undefined'
-  )
-    return true
-  return input === null
-}
-
-// Probe whether a primitive constraint passes the slim schema. Wrapped
-// in try/catch because strict mode keeps refinements on the slim schema,
-// and `safeParse` throws synchronously if any refine on the root is
-// async.
-function constraintsAreSlimValid(slimSchema: z.ZodSchema, constraints: unknown): boolean {
-  try {
-    return slimSchema.safeParse(constraints).success
-  } catch {
-    return false
-  }
-}
 
 import { __DEV__ } from '../../core/dev'
 import type { TypeWithNullableDynamicKeys } from './types-zod'
@@ -96,21 +50,11 @@ import { assertSupportedKinds } from './assert-supported'
 import { isZodSchemaType } from './helpers'
 import {
   containsAsyncTransform,
-  getArrayElement,
-  getDiscriminatedOptions,
-  getDiscriminator,
   getEffectsKind,
   getIntersectionLeft,
   getIntersectionRight,
-  getLiteralValue,
-  getObjectShape,
-  getRecordKeyType,
-  getRecordValueType,
-  getSetValueType,
-  getTupleItems,
   getTypeName,
   getUnionOptions,
-  hasChecks,
   unwrapBranded,
   unwrapEffectsSource,
   unwrapInner,
@@ -119,7 +63,6 @@ import {
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 import { stripAsyncChecks } from './strip-async'
-import { getFieldMetaPathMap } from '../../core/walk-field-meta'
 import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
@@ -148,19 +91,13 @@ export function zodAdapter<
   // for kinds we can't represent — `z.promise`, `z.function`,
   // `z.map`, `z.symbol` — and for self-referencing `z.lazy(...)`.
   assertSupportedKinds(zodSchema)
-  const [_strippedRoot] = stripRootSchema(zodSchema, {
-    stripDefaultValues: true,
-    stripNullable: true,
-    stripOptional: true,
-    stripZodEffects: true,
-    stripZodRefinements: true,
-  })
+  const peeledRoot = peelAllV3Wrappers(zodSchema)
   if (
-    !isZodSchemaType(_strippedRoot, 'ZodObject') &&
-    !isZodSchemaType(_strippedRoot, 'ZodRecord') &&
-    !isZodSchemaType(_strippedRoot, 'ZodDiscriminatedUnion')
+    !isZodSchemaType(peeledRoot, 'ZodObject') &&
+    !isZodSchemaType(peeledRoot, 'ZodRecord') &&
+    !isZodSchemaType(peeledRoot, 'ZodDiscriminatedUnion')
   ) {
-    const name = getTypeName(_strippedRoot)
+    const name = getTypeName(peeledRoot)
     throw new Error(
       `Attaform: useForm schema root must be a ZodObject, ZodRecord, or ` +
         `ZodDiscriminatedUnion (got ${name}). Wrap other shapes under a key.`
@@ -189,10 +126,10 @@ export function zodAdapter<
  * so the typed methods (`runStrictGetDefaults` / `makeSubSchema`)
  * propagate the form shape correctly.
  */
-// Lazy fingerprint: the only consumers are opt-in async features
-// (the persistence storage key) plus a dev-only
-// mismatch warning, so the structural walk + its `canonicalStringify`
-// helper load on demand off the eager `useForm` path instead of being
+// Lazy fingerprint: the only consumers are the public
+// `AbstractSchema.fingerprint()` accessor and a dev-only mismatch
+// warning, so the structural walk + its `canonicalStringify` helper
+// load on demand off the eager `useForm` path instead of being
 // anchored eager by a static import.
 async function lazyFingerprint(schema: z.ZodSchema): Promise<string> {
   const { fingerprintZodSchema } = await import('./fingerprint')
@@ -211,8 +148,11 @@ function buildV3Services<
     // slim-mode walks — `getSlimPrimitiveTypesAtPath` and
     // `getSchemasAtPath` both consume this variant so the yielded
     // candidates reflect the slim shape.
+    // The slim-root projection is gone (size-teardown P7): the shared
+    // path walker peels wrappers / effects inline, so the slim and
+    // unstripped walks coincide — same aliasing v4 always had.
     getNestedSchemasInSlimMode: (schema, path, maxRecursionDepth) =>
-      getNestedSchemasInSlimModeV3(schema as z.ZodSchema, path, maxRecursionDepth),
+      getNestedZodSchemasAtPath(schema as z.ZodSchema, path, maxRecursionDepth),
     slimPrimitivesOf: (schema, _maxRecursionDepth) => slimPrimitivesV3(schema),
     deriveDefault: (schema, useDefault, _maxRecursionDepth, formKey) =>
       getDefaultValuesFromZodSchema(schema as z.ZodSchema, useDefault, formKey),
@@ -225,8 +165,7 @@ function buildV3Services<
     isLeafRequired: (schema) => isLeafRequiredV3(schema),
     resolveFieldMetaAtPath: (schema, path, maxRecursionDepth) =>
       resolveFieldMetaAtPathV3(schema as z.ZodSchema, path, maxRecursionDepth),
-    issuesToValidationErrors: (issues, formKey) =>
-      zodIssuesToValidationErrors(issues as z.ZodIssue[], formKey),
+    issuesToValidationErrors: (issues) => zodIssuesToValidationErrors(issues as z.ZodIssue[]),
     safeParseSync: (schema, data) => {
       const result = schema.safeParse(data)
       return result.success
@@ -254,7 +193,7 @@ function buildV3Services<
   }
 }
 
-function zodIssuesToValidationErrors(issues: z.ZodIssue[], formKey: FormKey): ValidationError[] {
+function zodIssuesToValidationErrors(issues: z.ZodIssue[]): ValidationError[] {
   const validationErrors: ValidationError[] = []
   for (const issue of issues) {
     let code: string
@@ -285,7 +224,6 @@ function zodIssuesToValidationErrors(issues: z.ZodIssue[], formKey: FormKey): Va
       // to absolutise, then routes form-level (absolute path length 0)
       // entries to the empty-string bucket at storage time.
       path: coercePathSegments(issue.path),
-      formKey: formKey,
       code,
     })
   }
@@ -648,462 +586,6 @@ function unwrapToDiscriminatedUnion(
   return undefined
 }
 
-type DefaultValueContext = {
-  formKey: FormKey
-  discriminator: { useDefaultSchemaValues: boolean } & {
-    isDiscriminatorKey: boolean
-    schema:
-      | z.ZodDiscriminatedUnion<string, readonly z.ZodDiscriminatedUnionOption<string>[]>
-      | undefined
-  }
-}
-
-function getDefaultValue(
-  expected: z.ZodInvalidTypeIssue['expected'],
-  context: DefaultValueContext
-) {
-  // special default value for discriminated unions:
-  const discriminatorContext = context.discriminator
-  if (discriminatorContext.isDiscriminatorKey) {
-    if (!discriminatorContext.schema) {
-      throw new Error('discriminatorContext.schema unspecified')
-    }
-
-    if (!isZodSchemaType(discriminatorContext.schema, 'ZodDiscriminatedUnion')) {
-      throw new TypeError(
-        'Programming error: discriminatorContext.schema is not a ZodDiscriminatedUnion schema.'
-      )
-    }
-
-    const defaultDiscriminatorKey = undefined
-    const optionDiscriminator = getSchemaByDiscriminatorKey(
-      discriminatorContext.schema,
-      defaultDiscriminatorKey
-    )
-
-    if (!optionDiscriminator) {
-      throw new Error('ZodDiscriminatedUnion: default option not found')
-    }
-
-    return getDefaultValuesFromZodSchema(
-      optionDiscriminator,
-      discriminatorContext.useDefaultSchemaValues,
-      context.formKey
-    )
-  }
-
-  if (expected === 'string') return ''
-  if (expected === 'number') return 0
-  if (expected === 'array') return []
-  if (expected === 'boolean') return false
-  if (expected === 'bigint') return 0n
-  if (expected === 'float') return 0.0
-  if (expected === 'integer') return 0
-  if (expected === 'null') return null
-  if (expected === 'object') return {}
-  if (expected === 'set') return new Set()
-  if (expected === 'date') return new Date()
-  // ZodMap / ZodPromise / ZodSymbol / ZodFunction are rejected by
-  // `assertSupportedKinds` at construction (the four entries in
-  // `UNSUPPORTED_TYPE_NAMES` at `assert-supported.ts:34`), so a
-  // ZodInvalidTypeIssue with `expected` set to one of those values
-  // is unreachable through the public adapter surface. The branches
-  // were dead before Phase 9 even started; deleting them now retires
-  // the only synthesisers we had for those values, eliminating the
-  // risk of someone reaching in privately and discovering an
-  // adapter-internal `new Promise` / `Symbol()` instance pinned
-  // against a kind the schema couldn't be.
-  if (expected === 'undefined') return undefined
-  if (expected === 'unknown') return undefined
-  if (expected === 'nan') return Number('nan')
-  // 'never' and 'void' fall through to the default below.
-  return undefined
-}
-
-function getDefaultValuesFromZodSchema<
-  FormSchema extends z.ZodSchema,
-  Form extends z.infer<FormSchema>,
->(formSchema: FormSchema, useDefaultSchemaValues: boolean, formKey: FormKey): Form {
-  // Thin wrapper around the shared `deriveDefaultWalk` core walker;
-  // v3 and v4 dispatch through the same body via their respective
-  // `SchemaIntrospector` instance. See `core/walk-derive-default.ts`
-  // for the per-kind dispatch rules and the `peelEmbeddedDefault`
-  // chain-walk that previously lived here as `unwrapDefault`.
-  //
-  // `maxRecursionDepth` is the historical v3 cap (64); the v3
-  // adapter doesn't thread the consumer-supplied cap into this
-  // call site — every existing v3 test passes against the embedded
-  // 64-cap so the dedup preserves the prior behavior.
-  return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64, {
-    unsupportedKindFallback: (schema) => {
-      console.warn(
-        `[attaform] zod-v3 adapter: unsupported schema kind ` +
-          `'${(schema as { constructor?: { name?: string } }).constructor?.name ?? 'unknown'}' ` +
-          `on form '${formKey}'. Defaulting the field to null. ` +
-          `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
-      )
-      return null
-    },
-    // v3 historically surfaces the `.catch(v)` fallback even when
-    // `useDefaultSchemaValues=false`. Pinned by
-    // `test/adapters/zod-v3/wrappers.test.ts` ('surfaces the catch
-    // fallback even when useDefaultSchemaValues is false').
-    catchOnUseDefaultFalse: 'preserveCatch',
-  }) as Form
-}
-// helpful tip: discriminator option schemas are always zod objects (because of discriminant key)
-function getSchemaByDiscriminatorKey(
-  unionSchema: z.ZodTypeAny | z.ZodSchema,
-  key: string | undefined
-): z.ZodObject<z.ZodRawShape> | undefined {
-  // Check if the schema is a discriminated union
-  if (!isZodSchemaType(unionSchema, 'ZodDiscriminatedUnion')) {
-    throw new TypeError('Provided schema is not a discriminated union.')
-  }
-
-  // return first/default option schema if no key is provided
-  if (key === undefined) {
-    const options = getDiscriminatedOptions(unionSchema)
-    if (!options.length) {
-      throw new TypeError('Provided ZodDiscriminatedUnion does not have any options')
-    }
-    return options[0]
-  }
-
-  // Find the schema with the matching discriminator value
-  const discKey = getDiscriminator(unionSchema)
-  if (discKey === undefined) return undefined
-  return getDiscriminatedOptions(unionSchema).find((schema) => {
-    const discriminator = schema.shape[discKey] as z.ZodTypeAny | undefined
-    return discriminator !== undefined && getLiteralValue(discriminator) === key
-  })
-}
-
-type StripConfigCallback = (schema: z.ZodTypeAny | z.ZodSchema) => boolean
-
-type StripConfig = {
-  stripNullable?: boolean | StripConfigCallback
-  stripOptional?: boolean | StripConfigCallback
-  stripZodEffects?: boolean | StripConfigCallback
-  stripZodRefinements?: boolean | StripConfigCallback
-  stripDefaultValues?: boolean | StripConfigCallback
-}
-
-function stripRefinements<T extends z.ZodTypeAny>(schema: T) {
-  // `depth` bounds the recursion at MAX_UNWRAP_STEPS (per branch). For
-  // realistic form schemas the structural depth is in single digits;
-  // the bound only matters for pathological chains
-  // (`z.string().refine().refine()...` produces nested ZodEffects whose
-  // depth is exactly the chain length).
-  function _stripRefinements(_schema: z.ZodTypeAny, depth: number): z.ZodTypeAny {
-    if (depth >= MAX_UNWRAP_STEPS) return _schema as T
-    if (isZodSchemaType(_schema, 'ZodString') && hasChecks(_schema)) {
-      // Clear the ZodString's checks, keeping its prototype and coerce
-      return stripLeafChecks(_schema)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodNumber') && hasChecks(_schema)) {
-      // Clear the ZodNumber's checks, keeping its prototype and coerce
-      return stripLeafChecks(_schema)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodArray')) {
-      // Recursively process the array's inner type
-      const inner = getArrayElement(_schema)
-      if (!inner) return _schema
-      return rebuildArray(_schema, _stripRefinements(inner, depth + 1))
-    }
-
-    if (isZodSchemaType(_schema, 'ZodObject')) {
-      // Recursively process each property of the object
-      const strippedShape = Object.fromEntries(
-        Object.entries(getObjectShape(_schema)).map(([key, value]) => [
-          key,
-          _stripRefinements(value, depth + 1),
-        ])
-      )
-      return rebuildObject(_schema, strippedShape)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodEffects')) {
-      // Unwrap the inner schema and strip refinements
-      const inner = unwrapEffectsSource(_schema)
-      if (!inner) return _schema
-      return _stripRefinements(inner, depth + 1)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodOptional')) {
-      // Recursively strip optional's inner type
-      const inner = unwrapInner(_schema)
-      if (!inner) return _schema
-      return rebuildWrapperInner(_schema, _stripRefinements(inner, depth + 1))
-    }
-
-    if (isZodSchemaType(_schema, 'ZodNullable')) {
-      // Recursively strip nullable's inner type
-      const inner = unwrapInner(_schema)
-      if (!inner) return _schema
-      return rebuildWrapperInner(_schema, _stripRefinements(inner, depth + 1))
-    }
-
-    // Newer transparent wrappers — descend into their inner schema and
-    // return that. We don't reconstruct the wrapper because its
-    // refinement/branding/pipeline metadata isn't load-bearing for the
-    // slim-parse pass that consumes the stripped schema.
-    if (isZodSchemaType(_schema, 'ZodReadonly')) {
-      const inner = unwrapInner(_schema)
-      if (!inner) return _schema
-      return _stripRefinements(inner, depth + 1)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodBranded')) {
-      const inner = unwrapBranded(_schema)
-      if (!inner) return _schema
-      return _stripRefinements(inner, depth + 1)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodPipeline')) {
-      const inner = unwrapPipeIn(_schema)
-      if (!inner) return _schema
-      return _stripRefinements(inner, depth + 1)
-    }
-
-    // Container kinds that nest other schemas. Pre-fix, refinements
-    // inside these survived into the slim schema and the fix-up loop
-    // had to patch each leaf via the second-parse fallback. Mirroring
-    // v4's strip.ts means the FIRST slim parse passes for the lax
-    // contract, no fix-up needed.
-
-    if (isZodSchemaType(_schema, 'ZodSet')) {
-      const valueType = getSetValueType(_schema)
-      if (!valueType) return _schema
-      return rebuildSet(_schema, _stripRefinements(valueType, depth + 1))
-    }
-
-    if (isZodSchemaType(_schema, 'ZodTuple')) {
-      const items = getTupleItems(_schema)
-      if (items.length === 0) return _schema
-      const stripped = items.map((it) => _stripRefinements(it, depth + 1))
-      return rebuildTuple(_schema, stripped)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodRecord')) {
-      const valueType = getRecordValueType(_schema)
-      if (!valueType) return _schema
-      const value = _stripRefinements(valueType, depth + 1)
-      // z.record's two-arg form preserves the key schema; one-arg form
-      // assumes z.string(). Forward the key type unchanged — refinements
-      // on record keys aren't load-bearing for slim-schema concerns.
-      const keyType = getRecordKeyType(_schema)
-      if (keyType) {
-        return rebuildRecord(_schema, value, keyType)
-      }
-      return rebuildRecord(_schema, value)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodUnion')) {
-      const options = getUnionOptions(_schema)
-      if (options.length === 0) return _schema
-      const stripped = options.map((o) => _stripRefinements(o, depth + 1))
-      return rebuildUnion(_schema, stripped)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodDiscriminatedUnion')) {
-      const discKey = getDiscriminator(_schema)
-      const options = getDiscriminatedOptions(_schema)
-      if (discKey === undefined || options.length === 0) return _schema
-      const stripped = options.map(
-        (o) => _stripRefinements(o, depth + 1) as z.ZodObject<z.ZodRawShape>
-      )
-      return rebuildDiscriminatedUnion(_schema, stripped)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodIntersection')) {
-      const left = getIntersectionLeft(_schema)
-      const right = getIntersectionRight(_schema)
-      if (!left || !right) return _schema
-      return rebuildIntersection(
-        _schema,
-        _stripRefinements(left, depth + 1),
-        _stripRefinements(right, depth + 1)
-      )
-    }
-
-    if (isZodSchemaType(_schema, 'ZodLazy')) {
-      const inner = unwrapLazy(_schema)
-      if (!inner) return _schema
-      // Eagerly resolve once and capture the stripped target so the
-      // returned lazy resolves to a stable schema. assertSupportedKinds
-      // has already rejected self-referencing lazies, so this is finite.
-      const stripped = _stripRefinements(inner, depth + 1)
-      return rebuildLazy(_schema, stripped)
-    }
-
-    // Return other schema types as-is
-    return _schema as T
-  }
-
-  return _stripRefinements(schema, 0) as T
-}
-
-function stripRootSchema(schema: z.ZodSchema, stripConfig: StripConfig) {
-  function recursion(_schema: z.ZodSchema, _stripped = false): [z.ZodSchema, boolean] {
-    if (
-      getStripInstruction(stripConfig.stripNullable, _schema) &&
-      isZodSchemaType(_schema, 'ZodNullable')
-    ) {
-      return recursion(_schema.unwrap(), true)
-    }
-
-    if (
-      getStripInstruction(stripConfig.stripOptional, _schema) &&
-      isZodSchemaType(_schema, 'ZodOptional')
-    ) {
-      return recursion(_schema.unwrap(), true)
-    }
-
-    if (
-      getStripInstruction(stripConfig.stripZodEffects, _schema) &&
-      isZodSchemaType(_schema, 'ZodEffects')
-    ) {
-      const inner = unwrapEffectsSource(_schema)
-      if (inner) return recursion(inner as z.ZodSchema, true)
-    }
-
-    if (
-      getStripInstruction(stripConfig.stripDefaultValues, _schema) &&
-      isZodSchemaType(_schema, 'ZodDefault')
-    ) {
-      const inner = unwrapInner(_schema)
-      if (inner) return recursion(inner as z.ZodSchema, true)
-    }
-
-    if (getStripInstruction(stripConfig.stripZodRefinements, _schema) && hasChecks(_schema)) {
-      return recursion(stripRefinements(_schema))
-    }
-
-    return [_schema, _stripped]
-  }
-
-  return recursion(schema, false)
-}
-
-type SlimSchemaConfig<Schema> = {
-  schema: Schema
-  stripConfig: StripConfig
-}
-
-const getStripInstruction = (
-  stripValueOrCallback: boolean | StripConfigCallback | undefined,
-  schema: z.ZodTypeAny | z.ZodSchema
-): boolean => {
-  if (stripValueOrCallback === undefined || stripValueOrCallback === false) return false
-
-  return typeof stripValueOrCallback === 'function'
-    ? stripValueOrCallback(schema)
-    : stripValueOrCallback
-}
-
-// make the schema more relaxed so we can construct a initial form state
-// schema is based on ZodType in case we ever work with nested schemas
-function getSlimSchema<RS extends z.ZodRawShape, Schema extends z.ZodSchema>(
-  config: SlimSchemaConfig<Schema>
-) {
-  function _getSlimSchema(_schema: z.ZodSchema): z.ZodSchema {
-    if (isZodSchemaType(_schema, 'ZodObject')) {
-      const newShape: z.ZodRawShape = {}
-      for (const [key, value] of Object.entries(getObjectShape(_schema))) {
-        newShape[key] = _getSlimSchema(value as z.ZodSchema)
-      }
-      return rebuildObject(_schema, newShape)
-    }
-
-    if (isZodSchemaType(_schema, 'ZodArray')) {
-      const inner = getArrayElement(_schema)
-      if (!inner) return _schema
-      return rebuildArray(_schema, _getSlimSchema(inner as z.ZodSchema))
-    }
-
-    if (isZodSchemaType(_schema, 'ZodRecord')) {
-      const keyType = getRecordKeyType(_schema)
-      const valueType = getRecordValueType(_schema)
-      if (!keyType || !valueType) return _schema
-      const key = _getSlimSchema(keyType as z.ZodSchema)
-      const value = _getSlimSchema(valueType as z.ZodSchema)
-      return rebuildRecord(_schema, value, key)
-    }
-
-    // same way we go into records, objects, and arrays, go into discriminated unions
-    if (isZodSchemaType(_schema, 'ZodDiscriminatedUnion')) {
-      const slimmedSchemas = []
-      const discKey = getDiscriminator(_schema)
-      if (discKey === undefined) return _schema
-
-      for (const option of getDiscriminatedOptions(_schema)) {
-        const slimmedSchema = _getSlimSchema(option as unknown as z.ZodSchema)
-        // slimmedSchema will be a structurally deep object, so break pointer refs to prevent recursion bugs
-        const deepCloneSlimmedSchema = cloneSchemaDeep(slimmedSchema)
-        slimmedSchemas.push(deepCloneSlimmedSchema)
-      }
-
-      return rebuildDiscriminatedUnion(
-        _schema,
-        slimmedSchemas as unknown as readonly z.AnyZodObject[]
-      )
-    }
-
-    if (
-      getStripInstruction(config.stripConfig.stripZodEffects, _schema) &&
-      isZodSchemaType(_schema, 'ZodEffects')
-    ) {
-      const inner = unwrapEffectsSource(_schema)
-      if (inner) return _getSlimSchema(inner as z.ZodSchema)
-    }
-
-    if (
-      getStripInstruction(config.stripConfig.stripNullable, _schema) &&
-      isZodSchemaType(_schema, 'ZodNullable')
-    ) {
-      const inner = unwrapInner(_schema)
-      if (inner) return _getSlimSchema(inner as z.ZodSchema)
-    }
-
-    if (
-      getStripInstruction(config.stripConfig.stripOptional, _schema) &&
-      isZodSchemaType(_schema, 'ZodOptional')
-    ) {
-      const inner = unwrapInner(_schema)
-      if (inner) return _getSlimSchema(inner as z.ZodSchema)
-    }
-
-    if (
-      getStripInstruction(config.stripConfig.stripZodRefinements, _schema) &&
-      hasChecks(_schema)
-    ) {
-      return stripRefinements(_schema)
-    }
-
-    if (
-      getStripInstruction(config.stripConfig.stripDefaultValues, _schema) &&
-      isZodSchemaType(_schema, 'ZodDefault')
-    ) {
-      const inner = unwrapInner(_schema)
-      if (inner) return _getSlimSchema(inner as z.ZodSchema)
-    }
-
-    // Attempt to unwrap a schema to find a discriminated union (bail if you hit another valid schema type)
-    const unionSchema = unwrapToDiscriminatedUnion(_schema)
-    if (unionSchema && getStripInstruction(config.stripConfig.stripDefaultValues, unionSchema)) {
-      return _getSlimSchema(unionSchema)
-    }
-
-    return _schema
-  }
-
-  const processedRootSchema = stripRootSchema(config.schema, config.stripConfig)[0]
-  return _getSlimSchema(processedRootSchema) as unknown as z.ZodObject<RS>
-}
-
 /**
  * Resolve the field metadata for the schema node at `path` against
  * the user's ORIGINAL schema (not the stripped / slim derivative —
@@ -1169,6 +651,36 @@ function peelAllV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
   return current
 }
 
+function getDefaultValuesFromZodSchema<
+  FormSchema extends z.ZodSchema,
+  Form extends z.infer<FormSchema>,
+>(formSchema: FormSchema, useDefaultSchemaValues: boolean, formKey: FormKey): Form {
+  // Thin wrapper around the shared `deriveDefaultWalk` core walker;
+  // v3 and v4 dispatch through the same body via their respective
+  // `SchemaIntrospector` instance. See `core/walk-derive-default.ts`
+  // for the per-kind dispatch rules and the `peelEmbeddedDefault`
+  // chain-walk that previously lived here as `unwrapDefault`.
+  //
+  // `maxRecursionDepth` is the historical v3 cap (64); the v3
+  // adapter doesn't thread the consumer-supplied cap into this
+  // call site — every existing v3 test passes against the embedded
+  // 64-cap so the dedup preserves the prior behavior.
+  return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64, {
+    unsupportedKindFallback: (schema) => {
+      const kindName =
+        (schema as { constructor?: { name?: string } }).constructor?.name ?? 'unknown'
+      console.warn(
+        __DEV__
+          ? `[attaform] zod-v3 adapter: unsupported schema kind '${kindName}' ` +
+              `on form '${formKey}'. Defaulting the field to null. ` +
+              `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
+          : `[attaform] AF13 attaform.dev/e/af13 '${kindName}' on '${formKey}'`
+      )
+      return null
+    },
+  }) as Form
+}
+
 function resolveFieldMetaAtPathV3(
   rootSchema: z.ZodSchema,
   path: Path,
@@ -1189,18 +701,21 @@ function resolveFieldMetaAtPathV3(
   }
   // Path-keyed payload map (built once per rootSchema) disambiguates
   // shared schemas registered at multiple paths. Falls back to the
-  // schema-keyed registry for paths not visited by the walker.
-  const pathMap = getFieldMetaPathMap(rootSchema as z.ZodTypeAny, {
+  // schema-keyed registry for paths not visited by the walker. The
+  // walk itself lives behind the store's builder slot — installed by
+  // the registration surfaces (`withMeta` / `fieldMeta.add`), absent
+  // (and the map with it) when the consumer never registers metadata.
+  const pathMap = buildFieldMetaPathMap(rootSchema as z.ZodTypeAny, {
     intro: V3_INTROSPECTOR,
     peelAllWrappers: peelAllV3Wrappers,
-    getFieldMetaList,
+    getFieldMetaList: getFieldMetaListForSchema,
   })
   const pathKey = canonicalizePath(path).key
   const peeled = peelV3Wrappers(target)
   const payload =
-    pathMap.get(pathKey) ??
-    getFieldMeta(target) ??
-    (peeled !== target ? getFieldMeta(peeled) : undefined)
+    pathMap?.get(pathKey) ??
+    getFieldMetaForSchema(target) ??
+    (peeled !== target ? getFieldMetaForSchema(peeled) : undefined)
   const targetDescription =
     typeof (target as { description?: unknown }).description === 'string'
       ? ((target as { description?: string }).description as string)
@@ -1219,9 +734,9 @@ function resolveFieldMetaAtPathV3(
 }
 
 /**
- * v3's construction-time `getDefaultValues` flow. Extracted from the
- * pre-factory inline adapter body. Builds the slim default-value seed
- * via `getDefaultValuesFromZodSchema`, merges constraints, then runs:
+ * v3's construction-time `getDefaultValues` flow. Builds the derived
+ * default seed via `getDefaultValuesFromZodSchema`, merges
+ * constraints, then runs:
  *
  *   - Strict mode (default): parse against the REAL schema so refines
  *     and container / leaf checks surface at construction. If a sync
@@ -1230,10 +745,12 @@ function resolveFieldMetaAtPathV3(
  *     invoking the wrapper). If a user refine throws raw, fall back
  *     to mount-clean success.
  *
- *   - Lax mode: validate-then-fix loop against the slim schema —
- *     primitive / structural mismatches get patched with the slim
- *     default; refinement-level issues pass through unchanged so the
- *     downstream strict validation pass surfaces them.
+ *   - Lax mode: the shared DU-aware structural fix walk
+ *     (`core/walk-fix-structural.ts`, sign-off 7) — primitive /
+ *     structural mismatches get patched with the node's derived
+ *     default; refinement-level state is invisible to the walk so the
+ *     user's defaultValues are preserved verbatim and no user fn runs
+ *     at construction.
  *
  * Both arms compose with the shared core `mergeDeep` (NOT lodash merge)
  * so arrays replace wholesale and explicit `null` / `undefined`
@@ -1251,30 +768,14 @@ function runStrictGetDefaultsV3<Form>(
     formKey
   )
 
-  const slimSchema = getSlimSchema({
-    schema: rootSchema,
-    stripConfig: {
-      stripZodEffects: true,
-      stripDefaultValues: true,
-      // `strict: false` strips refinements (so empty defaults pass);
-      // strict keeps them so the slim parse below surfaces refinement
-      // errors. Async refines are guarded by the try/catch — they
-      // can't be surfaced synchronously regardless.
-      stripZodRefinements: (config.strict ?? true) === false,
-    },
-  })
-
-  let rawDefaultValues = defaultValuesWithoutConstraints
-  if (!isPrimitive(rawDefaultValues)) {
-    // Shared core `mergeDeep` (NOT lodash `merge`) so arrays replace
-    // wholesale and explicit `null`/`undefined` overrides survive; v3
-    // and v4 call the same helper. `safeAssign` inside lands a
-    // `__proto__` constraint key as own data rather than reassigning the
-    // result's prototype.
-    rawDefaultValues = mergeDeep(defaultValuesWithoutConstraints, config.constraints)
-  } else if (constraintsAreSlimValid(slimSchema, config.constraints)) {
-    rawDefaultValues = config.constraints
-  }
+  // Shared core `mergeDeep` (NOT lodash `merge`) so arrays replace
+  // wholesale and explicit `null`/`undefined` overrides survive; v3
+  // and v4 call the same helper. A primitive base yields the override
+  // wholesale (or the base when no constraints were supplied), which
+  // also covers the old slim-validated primitive-root branch — the
+  // structural fix walk below patches any mismatch the replacement
+  // introduces.
+  const rawDefaultValues = mergeDeep(defaultValuesWithoutConstraints, config.constraints)
 
   // Strict-mode path: parse against the REAL schema so refines and
   // container / leaf checks (`.min(n)` / `.max(n)` / `.email()` etc.)
@@ -1315,7 +816,7 @@ function runStrictGetDefaultsV3<Form>(
       }
       return {
         data: rawDefaultValues as Form,
-        errors: zodIssuesToValidationErrors(strictResult.error.issues, formKey),
+        errors: zodIssuesToValidationErrors(strictResult.error.issues),
         success: false,
         formKey,
       }
@@ -1342,7 +843,7 @@ function runStrictGetDefaultsV3<Form>(
           }
           return {
             data: rawDefaultValues as Form,
-            errors: zodIssuesToValidationErrors(strippedResult.error.issues, formKey),
+            errors: zodIssuesToValidationErrors(strippedResult.error.issues),
             success: false,
             formKey,
           }
@@ -1370,224 +871,31 @@ function runStrictGetDefaultsV3<Form>(
     }
   }
 
-  // Lax mode: validate-then-fix loop. The slim schema's structural
-  // shape is what the loop patches against — any throw collapses to
-  // mount-clean success. The existing try/catch is the slim equivalent
-  // of the strict-mode defensive floor above.
-  let parseResult: ReturnType<typeof slimSchema.safeParse>
-  try {
-    parseResult = slimSchema.safeParse(rawDefaultValues)
-  } catch {
-    return {
-      data: rawDefaultValues as Form,
-      errors: undefined,
-      success: true,
-      formKey,
+  // Lax mode: the shared DU-aware structural fix walk (sign-off 7,
+  // core/walk-fix-structural.ts) replaces the deleted slim-schema
+  // rebuild + issue-directed fix loop. Structural / primitive-type
+  // mismatches are patched with the node's derived default (DUs derive
+  // the variant the VALUE selects, foreign-variant keys are removed);
+  // refinement-level state is invisible to the walk, so the user's
+  // defaultValues are preserved verbatim and nothing parses — user
+  // refines and transforms never fire at construction.
+  const fixed = fixStructuralDefaults<Form, z.ZodTypeAny>(
+    rootSchema as z.ZodTypeAny,
+    rawDefaultValues,
+    config.useDefaultSchemaValues,
+    maxRecursionDepth,
+    {
+      intro: V3_INTROSPECTOR,
+      slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
+      deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
+        getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault, formKey),
+      unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
     }
-  }
-  const { data, success, error } = parseResult
-
-  if (success) {
-    return {
-      data: data as Form,
-      errors: undefined,
-      success,
-      formKey,
-    }
-  }
-
-  let fixedData: Record<string, unknown> = {}
-
-  // `if (success) return ...` above handles the happy path; below
-  // we're always in the failure case.
-  //
-  // Under the slim-primitive write contract, the validate-then-fix
-  // loop only patches issues that violate STRUCTURAL or
-  // PRIMITIVE-TYPE shape. Refinement-level issues
-  // (invalid_enum_value, invalid_literal, invalid_string, too_small,
-  // too_big, custom, unrecognized_keys) pass THROUGH unchanged — the
-  // user's defaultValues are preserved verbatim and the strict-mode
-  // validation pass downstream surfaces the error at construction.
-  //
-  // The classifier: look up the actual offending value at the issue's
-  // path and check its slim primitive kind against the candidate
-  // schema's slim primitive set. If the value's kind IS in the set,
-  // the issue is refinement-level → skip. If it's NOT in the set, the
-  // issue is primitive/structural → fix. Unifies every issue code
-  // under one check.
-  for (const issue of error.issues) {
-    const schemasAtPath = getNestedZodSchemasAtPath(slimSchema, issue.path, maxRecursionDepth)
-    // `setAtPath` accepts a Segment[] directly; keeps the literal-dot
-    // case (`['user.name']`) from being flattened into two key
-    // accesses. Coerce in case a custom check smuggled a Symbol —
-    // `path.join` would throw on it.
-    const path = coercePathSegments(issue.path)
-    if (!schemasAtPath.length) {
-      console.error(
-        `[attaform] zod-v3 adapter: no schema at path ` +
-          `'${path.join(PATH_SEPARATOR)}' for key '${formKey}'. ` +
-          `Skipping the issue. (This is a library-internal invariant — please file a bug.)`
-      )
-      continue
-    }
-
-    // Refinement-vs-primitive classification.
-    const candidate = schemasAtPath[0]
-    if (candidate !== undefined) {
-      const valueAtPath = getAtPath(rawDefaultValues, path)
-      const slimKinds = slimPrimitivesV3(candidate as z.ZodTypeAny)
-      if (slimKinds.size > 0 && slimKinds.has(slimKindOf(valueAtPath))) {
-        // Refinement-level: pass through unchanged.
-        continue
-      }
-    }
-
-    for (const schemaAtPath of schemasAtPath) {
-      if (issue.code === 'invalid_type') {
-        const isDiscriminatedUnion = isZodSchemaType(schemaAtPath, 'ZodDiscriminatedUnion')
-        const defaultValueContext: DefaultValueContext = isDiscriminatedUnion
-          ? {
-              formKey,
-              discriminator: {
-                isDiscriminatorKey: true,
-                schema: schemaAtPath as z.ZodDiscriminatedUnion<
-                  string,
-                  readonly z.ZodDiscriminatedUnionOption<string>[]
-                >,
-                useDefaultSchemaValues: false,
-              },
-            }
-          : {
-              formKey,
-              discriminator: {
-                isDiscriminatorKey: false,
-                schema: undefined,
-                useDefaultSchemaValues: false,
-              },
-            }
-        const defaultValue = getDefaultValue(issue.expected, defaultValueContext)
-        fixedData = setAtPath(fixedData, path, defaultValue) as Record<string, unknown>
-        continue
-      }
-
-      // Wrong-primitive issues with non-invalid_type codes (e.g.,
-      // invalid_enum_value where the offending value is a number
-      // against a string-enum). Fall back to the schema's default —
-      // peel the wrapper chain for an embedded `ZodDefault` /
-      // `ZodCatch.fallback`. Mirrors the chain-peel that
-      // `deriveDefaultWalk` runs at the top of every node visit.
-      const peeled = peelEmbeddedDefault(schemaAtPath as z.ZodTypeAny, V3_INTROSPECTOR)
-      if (peeled !== NO_EMBEDDED_DEFAULT) {
-        fixedData = setAtPath(fixedData, path, peeled) as Record<string, unknown>
-        continue
-      }
-      // Last-ditch: derive a default for the schema kind at this path.
-      // Skips if no useful default emerges.
-      const ctx: DefaultValueContext = {
-        formKey,
-        discriminator: {
-          isDiscriminatorKey: false,
-          schema: undefined,
-          useDefaultSchemaValues: false,
-        },
-      }
-      // Use the slim primitive's first kind to derive a default.
-      const slimKinds = slimPrimitivesV3(schemaAtPath as z.ZodTypeAny)
-      const firstKind = [...slimKinds][0]
-      if (firstKind !== undefined) {
-        const expected =
-          firstKind === 'string'
-            ? 'string'
-            : firstKind === 'number'
-              ? 'number'
-              : firstKind === 'boolean'
-                ? 'boolean'
-                : firstKind === 'bigint'
-                  ? 'bigint'
-                  : firstKind === 'date'
-                    ? 'date'
-                    : firstKind === 'array'
-                      ? 'array'
-                      : firstKind === 'object'
-                        ? 'object'
-                        : null
-        if (expected !== null) {
-          fixedData = setAtPath(fixedData, path, getDefaultValue(expected, ctx)) as Record<
-            string,
-            unknown
-          >
-        }
-      }
-    }
-  }
-  // Shared core `mergeDeep` so the fix-up overrides the raw defaults
-  // with copy-on-write semantics matching v4 (array replace,
-  // null/undefined clears honored).
-  fixedData = mergeDeep(rawDefaultValues, fixedData) as Record<string, unknown>
-
-  // Best-effort re-parse: if the fix-up loop couldn't fully reconcile
-  // the data (nested unions whose branches don't match the defaulted
-  // shape, bigint edge cases), return the partial data instead of
-  // throwing. Matches the v4 adapter's lax semantics — a partially-
-  // valid initial state is preferable to a mount-time exception.
-  // Strict mode short-circuited earlier via the real-schema parse
-  // path, so reaching here implies `config.strict === false`.
-  const secondParse = slimSchema.safeParse(fixedData)
-  const finalData = secondParse.success ? secondParse.data : fixedData
+  )
   return {
-    data: finalData as Form,
+    data: fixed.data,
     errors: undefined,
     success: true,
     formKey,
   }
-}
-
-/**
- * The slim-mode root projection (strip refinements / defaults / wrappers,
- * then derive the slim shape) is a pure function of the root schema — the
- * strip and slim configs below are fixed. Memoise it on root identity so the
- * projection runs once per schema instead of once per slim-mode walk.
- *
- * The walk is invoked once per `register()` (via `getSlimPrimitiveTypesAtPath`)
- * and once per field on its first state read (via the factory's `isLeafAtPath`
- * cache miss), always against the form root. Recomputing the whole-root
- * projection on each call made both O(F), i.e. O(F²) to wire an F-field form.
- * Cached, each lookup is the O(D) `getNestedZodSchemasAtPath` walk. WeakMap-keyed
- * so a schema going out of scope releases its slim copy. The projection is
- * read-only walked downstream, so sharing one copy across calls is sound.
- */
-const slimRootCacheV3 = new WeakMap<z.ZodSchema, z.ZodTypeAny>()
-
-function getSlimRootV3(rootSchema: z.ZodSchema): z.ZodTypeAny {
-  const cached = slimRootCacheV3.get(rootSchema)
-  if (cached !== undefined) return cached
-  const [strippedSchema] = stripRootSchema(rootSchema, {
-    stripDefaultValues: true,
-    stripNullable: true,
-    stripOptional: true,
-    stripZodEffects: true,
-  })
-  const slimSchema = getSlimSchema({
-    schema: strippedSchema,
-    stripConfig: { stripDefaultValues: true, stripZodEffects: true },
-  })
-  slimRootCacheV3.set(rootSchema, slimSchema)
-  return slimSchema
-}
-
-/**
- * v3's slim-mode path walk for `getSlimPrimitiveTypesAtPath` and
- * `getSchemasAtPath`. Resolves the path against the slim-projected root
- * (memoised by `getSlimRootV3`), so yielded candidates reflect the slim
- * shape the slim-primitive gate consults at write time and consumers expect
- * when introspecting sub-schemas. v4's introspector aliases this to the
- * unstripped walk because its path walker already inlines wrapper peeling,
- * so v4 never pays the projection per call.
- */
-function getNestedSchemasInSlimModeV3(
-  rootSchema: z.ZodSchema,
-  path: Path,
-  maxRecursionDepth: number
-): z.ZodTypeAny[] {
-  return getNestedZodSchemasAtPath(getSlimRootV3(rootSchema), path, maxRecursionDepth)
 }

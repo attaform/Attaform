@@ -27,9 +27,14 @@ type TransformReturn = string | TransformOutput | null | undefined | void
 type RawHandler = (this: unknown, code: string, id: string) => unknown
 
 function runTransform(code: string, id: string): TransformReturn {
-  const plugin = attaform() as unknown as {
+  // attaform() returns [main, directive-delivery]; this suite exercises
+  // the MAIN plugin's pre-transform (the __ssrAccessed injection).
+  const plugins = attaform() as unknown as Array<{
+    name: string
     transform?: RawHandler | { handler: RawHandler }
-  }
+  }>
+  const plugin = plugins.find((p) => p.name === 'attaform')
+  if (plugin === undefined) throw new Error('attaform() did not return the main plugin')
   const hook = plugin.transform
   if (hook === undefined) throw new Error('attaform() did not register a transform hook')
   const handler = typeof hook === 'function' ? hook : hook.handler

@@ -20,7 +20,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Covers the AbstractSchema contract change (Promise-returning
  * validateAtPath) at the public useForm surface: async zod refinements
  * resolve through handleSubmit, validate()'s pending flag flips
- * correctly, validateAsync() returns a one-shot promise, stale runs are
+ * correctly, parse({ commit: true }) returns a one-shot promise, stale runs are
  * dropped via the generation counter, and validating mirrors the
  * in-flight count.
  */
@@ -59,7 +59,7 @@ function mountForm(onCreated: (form: UseFormReturn<typeof signupSchema>) => void
   const App = defineComponent({
     setup() {
       // Pin lax: these tests exercise async refinements via handleSubmit /
-      // validate() / validateAsync, not the construction-time strict-mode
+      // validate() / parse({ commit: true }), not the construction-time strict-mode
       // seed. Lax keeps the form mount-clean so each test drives the
       // async path explicitly.
       handle.api = useForm({
@@ -135,7 +135,7 @@ describe('async validation — handleSubmit awaits async refinements', () => {
   })
 })
 
-describe('validateAsync — imperative one-shot', () => {
+describe('parse({ commit: true }) — imperative one-shot', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -147,7 +147,7 @@ describe('validateAsync — imperative one-shot', () => {
     apps.push(app)
     api.setValue('email', 'ok@example.com')
     api.setValue('password', 'very-secret')
-    const response = await api.validateAsync()
+    const response = await api.parse({ commit: true })
     expect(response.success).toBe(true)
     expect(response.errors).toBeUndefined()
   })
@@ -158,7 +158,7 @@ describe('validateAsync — imperative one-shot', () => {
     apps.push(app)
     api.setValue('email', 'taken@x.com')
     api.setValue('password', 'very-secret')
-    const response = await api.validateAsync()
+    const response = await api.parse({ commit: true })
     expect(response.success).toBe(false)
     const msg = response.errors?.find((e) => e.path[0] === 'email')?.message
     expect(msg).toBe('Email already registered')
@@ -218,7 +218,7 @@ describe('per-field validating — `form.fields.<path>.validating`', () => {
     expect(api.fields.password.validating).toBe(false)
   })
 
-  it('whole-form validateAsync() does NOT flip per-field flags (only form.meta.validating)', async () => {
+  it('whole-form parse({ commit: true }) does NOT flip per-field flags (only form.meta.validating)', async () => {
     // Per-field `validating` reflects field-LEVEL scheduled runs only,
     // by design. Whole-form validation drives the form-wide flag and the
     // per-field flag stays at its prior value (here, `false`).
@@ -237,8 +237,8 @@ describe('per-field validating — `form.fields.<path>.validating`', () => {
     expect(api.fields.email.validating).toBe(false)
     expect(api.fields.password.validating).toBe(false)
 
-    const pending = api.validateAsync()
-    // Crack the microtask so validateAsync's increment lands on
+    const pending = api.parse({ commit: true })
+    // Crack the microtask so parse({ commit: true })'s increment lands on
     // `activeValidations` before we observe.
     await Promise.resolve()
     expect(api.meta.validating).toBe(true)
@@ -318,7 +318,7 @@ describe('form.meta.valid — `valid && !validating`', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('flips false during validateAsync, true after settle when no errors', async () => {
+  it('flips false during parse({ commit: true }), true after settle when no errors', async () => {
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))
     apps.push(app)
@@ -335,7 +335,7 @@ describe('form.meta.valid — `valid && !validating`', () => {
     expect(api.meta.errors).toEqual([])
     expect(api.meta.valid).toBe(true)
 
-    const pending = api.validateAsync()
+    const pending = api.parse({ commit: true })
     await Promise.resolve()
     expect(api.meta.validating).toBe(true)
     // `valid` is the stricter signal: an in-flight validation flips it
@@ -348,14 +348,14 @@ describe('form.meta.valid — `valid && !validating`', () => {
     expect(api.meta.valid).toBe(true)
   })
 
-  it('false after a failed validateAsync (errors land, no in-flight)', async () => {
+  it('false after a failed parse({ commit: true }) (errors land, no in-flight)', async () => {
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))
     apps.push(app)
 
     api.setValue('email', 'taken@example.com')
     api.setValue('password', 'very-secret')
-    const response = await api.validateAsync()
+    const response = await api.parse({ commit: true })
     expect(response.success).toBe(false)
     expect(api.meta.validating).toBe(false)
     expect(api.meta.errors.length).toBeGreaterThan(0)

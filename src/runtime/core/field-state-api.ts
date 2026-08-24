@@ -14,6 +14,7 @@ import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { defaultDisplayState, isDefaultDisplayState } from './display-state'
 import { makeBlankRequiredError } from './error-codes'
+import { cellEntriesFor } from './errors'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
@@ -176,7 +177,8 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   const value = state.getValueAtPath(segments)
   const original = state.originals.get(key)?.value
   const pristine = state.isPristineAtPath(segments)
-  const schemaForKey = state.schemaErrors.get(key)
+  const cell = state.errorCells.get(key)
+  const schemaForKey = cell !== undefined && cell.schema.length > 0 ? cell.schema : undefined
   // Synthesize this leaf's blank-required error from its OWN blank membership
   // rather than reading the whole-form `derivedBlankErrors` Map. That computed
   // returns a fresh Map identity on ANY blank transition, which woke every
@@ -188,9 +190,9 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   // a container legitimately depends on every descendant.
   const blankForKey =
     state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
-      ? [makeBlankRequiredError(segments, state.formKey)]
+      ? [makeBlankRequiredError(segments)]
       : undefined
-  const userForKey = state.userErrors.get(key)
+  const userForKey = cell !== undefined && cell.user.length > 0 ? cell.user : undefined
   const errors: ValidationError[] = []
   if (schemaForKey !== undefined) errors.push(...schemaForKey)
   if (blankForKey !== undefined) errors.push(...blankForKey)
@@ -219,7 +221,11 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     !hasAtPath(state.form.value, segments) &&
     isUnderStubAncestor(state, segments)
   const valid = !gated && errors.length === 0 && !validating && !isOrphan
-  const elementRecord = state.elements.get(key)
+  // Reads through the DOM-binding slot: `null` (never armed) means no
+  // element was ever registered anywhere in this app, so the empty
+  // fallback below is the truth, not a degradation. The shallowRef read
+  // re-tracks when the binding arms.
+  const elementRecord = state.domBinding.value?.elements.get(key)
   const elementsArr: readonly HTMLElement[] = elementRecord
     ? Object.freeze([...elementRecord.elements])
     : EMPTY_ELEMENTS
@@ -784,7 +790,7 @@ export function aggregateErrorsAt<F extends GenericForm>(
 ): ValidationError[] {
   const formValue = state.form.value
   const buckets = new Map<number, ValidationError[]>()
-  const collect = (errs: ReadonlyMap<PathKey, ValidationError[]>): void => {
+  const collect = (errs: Iterable<readonly [PathKey, readonly ValidationError[]]>): void => {
     for (const [pathKey, list] of errs) {
       if (list.length === 0) continue
       // Resolve the path's segments via the canonical PathKey ↔
@@ -811,9 +817,9 @@ export function aggregateErrorsAt<F extends GenericForm>(
       else existing.push(...list)
     }
   }
-  collect(state.schemaErrors)
+  collect(cellEntriesFor(state.errorCells, 'schema'))
   collect(state.derivedBlankErrors.value)
-  collect(state.userErrors)
+  collect(cellEntriesFor(state.errorCells, 'user'))
   if (buckets.size === 0) return []
   return [...buckets.entries()].sort(([a], [b]) => a - b).flatMap(([, errs]) => errs)
 }

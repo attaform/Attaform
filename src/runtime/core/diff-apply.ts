@@ -1,4 +1,3 @@
-import { deleteAtPath, setAtPath } from './path-walker'
 import { isPathPrefix, pathsEqual } from './paths'
 import type { Path, Segment } from './paths'
 import { safeAssign, safeOwnRead } from './safe-assign'
@@ -215,12 +214,22 @@ function diffObjectsLockstep(
 
 /**
  * Apply `source`'s changes to `target` by reassigning only the
- * top-level keys whose subtrees CONTENT-differ. Uses `diffAndApply`'s
- * structural walk (not `Object.is`) to decide which keys changed,
- * because reactive proxies and copy-on-write spreads routinely produce
+ * top-level keys whose subtrees CONTENT-differ. Which keys changed
+ * comes from `patches` — the caller's single `diffAndApply(target,
+ * source, [], ...)` pass over the same pair — rather than a second
+ * structural walk of its own, so every write pays exactly one
+ * content diff. Content (not `Object.is`) is the right gate because
+ * reactive proxies and copy-on-write spreads routinely produce
  * reference-different but content-equal subtrees that we don't want
  * to reassign — reassigning fires Vue's property dep and re-triggers
  * deep watches on that subtree.
+ *
+ * `patches` carries absolute paths and must be the content diff of
+ * exactly this `(target, source)` pair, scoped at or under
+ * `currentPath` (the root call passes the full list with
+ * `currentPath: []`; recursion filters per child). A patch landing AT
+ * `currentPath` itself is the container-level shape mismatch the diff
+ * emits for object ↔ array flips — the un-reconcilable case.
  *
  * Returns `true` on success. Returns `false` when `target` and
  * `source` have incompatible shapes (e.g. object ↔ array, or one
@@ -290,30 +299,25 @@ export function applyChangedKeys(
   target: unknown,
   source: unknown,
   arrayOpPath: Path | null,
-  currentPath: Path
+  currentPath: Path,
+  patches: readonly Patch[]
 ): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false
   const targetIsArray = Array.isArray(target)
   const sourceIsArray = Array.isArray(source)
   if (targetIsArray !== sourceIsArray) return false
 
-  // Find the unique first segments where target and source differ in
-  // CONTENT. A root-level patch (path.length === 0) signals an
-  // un-recoverable shape mismatch: tell the caller to wholesale-replace.
-  // Tracking a sentinel inside `changedFirstSegments` itself rather
-  // than a separate flag — keeps eslint's narrowing from declaring
-  // the flag dead code (the visitor callback is opaque to its flow
-  // analysis).
-  const ROOT_SENTINEL = Symbol.for('attaform.applyChangedKeys.rootMismatch')
-  const changedFirstSegments = new Set<string | number | symbol>()
-  diffAndApply(target, source, [], (patch) => {
-    if (patch.path.length === 0) {
-      changedFirstSegments.add(ROOT_SENTINEL)
-      return
-    }
-    changedFirstSegments.add(patch.path[0] as string | number)
-  })
-  if (changedFirstSegments.has(ROOT_SENTINEL)) return false
+  // The unique child segments where target and source differ in
+  // CONTENT, read off the caller's patch list at this node's depth. A
+  // patch landing AT this node (path length === depth) is the diff's
+  // container-level shape-mismatch marker: tell the caller to
+  // wholesale-replace. No mutation has happened yet at that point.
+  const depth = currentPath.length
+  const changedFirstSegments = new Set<Segment>()
+  for (const patch of patches) {
+    if (patch.path.length === depth) return false
+    changedFirstSegments.add(patch.path[depth] as Segment)
+  }
 
   if (targetIsArray) {
     const t = target as unknown[]
@@ -330,7 +334,6 @@ export function applyChangedKeys(
       // would content-copy and break that identity.
       if (t.length > s.length) t.length = s.length
       for (const idx of changedFirstSegments) {
-        if (typeof idx === 'symbol') continue
         const i = typeof idx === 'number' ? idx : Number(idx)
         // Skip slots the length cut already dropped. On a shrink, diffAndApply
         // emits a 'removed' patch at every truncated index, so those land in
@@ -347,7 +350,6 @@ export function applyChangedKeys(
       // selects the one on-path element; anything else reference-assigns
       // defensively (no length change, so no truncation here).
       for (const idx of changedFirstSegments) {
-        if (typeof idx === 'symbol') continue
         const i = typeof idx === 'number' ? idx : Number(idx)
         if (i >= s.length) continue
         const childPath = appendSegment(currentPath, i)
@@ -357,7 +359,13 @@ export function applyChangedKeys(
           isPathPrefix(childPath, arrayOpPath) &&
           isDescendable(curEl) &&
           isDescendable(nextEl) &&
-          applyChangedKeys(curEl, nextEl, arrayOpPath, childPath)
+          applyChangedKeys(
+            curEl,
+            nextEl,
+            arrayOpPath,
+            childPath,
+            patches.filter((p) => isPathPrefix(childPath, p.path))
+          )
         ) {
           continue
         }
@@ -372,7 +380,6 @@ export function applyChangedKeys(
       if (!sourceKeys.has(k)) delete t[k]
     }
     for (const k of changedFirstSegments) {
-      if (typeof k === 'symbol') continue
       const key = String(k)
       const nextVal = safeOwnRead(s, key)
       // On an array helper op (arrayOpPath non-null), reconcile a changed
@@ -387,10 +394,17 @@ export function applyChangedKeys(
       // or a non-helper write (arrayOpPath null), which replaces the reference.
       if (arrayOpPath !== null) {
         const curVal = safeOwnRead(t, key)
+        const childPath = appendSegment(currentPath, key)
         if (
           isDescendable(curVal) &&
           isDescendable(nextVal) &&
-          applyChangedKeys(curVal, nextVal, arrayOpPath, appendSegment(currentPath, key))
+          applyChangedKeys(
+            curVal,
+            nextVal,
+            arrayOpPath,
+            childPath,
+            patches.filter((p) => isPathPrefix(childPath, p.path))
+          )
         ) {
           continue
         }
@@ -399,79 +413,6 @@ export function applyChangedKeys(
     }
   }
   return true
-}
-
-/**
- * Apply a `Patch[]` forward to `root`, returning a fresh root with each
- * patch's `newValue` (or `path` deletion) realised. Uses `setAtPath` /
- * `deleteAtPath` from `path-walker.ts`, which are copy-on-write — each
- * step rebuilds only the spine from root to the touched path, leaving
- * sibling subtrees reference-equal with the input. The result is a
- * structurally-shared successor suitable for use as a history snapshot.
- *
- * Patch semantics:
- * - `added` — set the path to `newValue`. Intermediate containers are
- *   created on demand (`setAtPath` handles this).
- * - `removed` — delete the path (array splice / object key deletion).
- * - `changed` — set the path to `newValue`. A root-level `changed`
- *   (path: []) replaces `root` wholesale; this matches `diffAndApply`'s
- *   "object ↔ array mismatch at root" emission.
- *
- * Patches are applied in their emitted order. `diffAndApply` emits
- * array patches in index order, so a sequence like
- * `[changed@1, removed@2]` collapses to the correct final array shape
- * (set then splice).
- */
-export function applyPatchesForward(root: unknown, patches: readonly Patch[]): unknown {
-  let current = root
-  for (const patch of patches) {
-    if (patch.path.length === 0) {
-      current = patch.kind === 'removed' ? undefined : patch.newValue
-      continue
-    }
-    if (patch.kind === 'removed') {
-      current = deleteAtPath(current, patch.path)
-    } else {
-      current = setAtPath(current, patch.path, patch.newValue)
-    }
-  }
-  return current
-}
-
-/**
- * Apply a `Patch[]` in reverse, restoring `root` to its pre-patch state.
- * Walks patches back-to-front and inverts each one's direction:
- * - `added` (forward set) → `deleteAtPath` (remove what was added).
- * - `removed` (forward delete) → `setAtPath` with `oldValue`.
- * - `changed` (forward set newValue) → `setAtPath` with `oldValue`.
- *
- * Reverse traversal matters because `diffAndApply` emits array patches
- * in index order. A forward sequence `[changed@1, removed@2]` applied
- * forward yields the new array; to invert, the splice at index 2 must
- * un-splice FIRST (extending the array back to length 3 by setting
- * index 2 to its `oldValue`), then the `changed@1` patch restores
- * index 1 to its `oldValue`. Going the other direction would leave a
- * hole.
- */
-export function applyPatchesInverse(root: unknown, patches: readonly Patch[]): unknown {
-  let current = root
-  for (let i = patches.length - 1; i >= 0; i--) {
-    const patch = patches[i] as Patch
-    if (patch.path.length === 0) {
-      if (patch.kind === 'added') {
-        current = undefined
-      } else {
-        current = patch.oldValue
-      }
-      continue
-    }
-    if (patch.kind === 'added') {
-      current = deleteAtPath(current, patch.path)
-    } else {
-      current = setAtPath(current, patch.path, patch.oldValue)
-    }
-  }
-  return current
 }
 
 /**

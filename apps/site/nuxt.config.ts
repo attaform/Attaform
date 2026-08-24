@@ -344,6 +344,8 @@ export default defineNuxtConfig({
   alias: {
     attaform: resolve(monorepoRoot, 'src/index.ts'),
     'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
+    'attaform/directive': resolve(monorepoRoot, 'src/directive.ts'),
+    'attaform/history': resolve(monorepoRoot, 'src/history.ts'),
     'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
     'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
     'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),
@@ -743,6 +745,8 @@ export default defineNuxtConfig({
     alias: {
       attaform: resolve(monorepoRoot, 'src/index.ts'),
       'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
+      'attaform/directive': resolve(monorepoRoot, 'src/directive.ts'),
+      'attaform/history': resolve(monorepoRoot, 'src/history.ts'),
       'attaform/zod': resolve(monorepoRoot, 'src/zod.ts'),
       'attaform/zod-v3': resolve(monorepoRoot, 'src/zod-v3.ts'),
       'attaform/zod-v4': resolve(monorepoRoot, 'src/zod-v4.ts'),
@@ -907,14 +911,19 @@ export default defineNuxtConfig({
     //     consumer site never imports it from a `.ts` / `.vue`
     //     file; the Nuxt DevTools overlay loads it directly. No
     //     alias needed.
-    //
-    //   - `attaform/types` is types-only (no `import` condition
-    //     in the export map). Aliasing it would be a no-op at
-    //     runtime, so skip it.
     resolve: {
       alias: [
         { find: /^attaform$/, replacement: resolve(monorepoRoot, 'src/index.ts') },
         { find: /^attaform\/abstract$/, replacement: resolve(monorepoRoot, 'src/abstract.ts') },
+        // directive + history need their own exact rules: without one, the
+        // import falls through to the top-level `alias:` block's bare
+        // `attaform` STRING alias, whose rollup-style matcher prefix-matches
+        // any `attaform/*` specifier and rewrites it to `src/index.ts/<sub>`
+        // (the compile-time v-register rewrite injects `attaform/directive`
+        // into every demo that uses the directive, so this is load-bearing
+        // for the whole docs build, not just one demo).
+        { find: /^attaform\/directive$/, replacement: resolve(monorepoRoot, 'src/directive.ts') },
+        { find: /^attaform\/history$/, replacement: resolve(monorepoRoot, 'src/history.ts') },
         { find: /^attaform\/zod$/, replacement: resolve(monorepoRoot, 'src/zod.ts') },
         { find: /^attaform\/zod-v3$/, replacement: resolve(monorepoRoot, 'src/zod-v3.ts') },
         { find: /^attaform\/zod-v4$/, replacement: resolve(monorepoRoot, 'src/zod-v4.ts') },

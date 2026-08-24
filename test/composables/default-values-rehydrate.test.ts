@@ -96,6 +96,9 @@ describe('form.rehydrate', () => {
 
     const promise = api.rehydrate()
     expect(api.hydrating).toBe(true)
+    // The activation orchestrator is a lazy chunk: the factory fires
+    // once it loads, so wait for the resolver capture before releasing.
+    await waitUntil(() => (resolveFactory !== undefined ? true : null))
     resolveFactory({ email: 'second@example.com', name: 'Hopper' })
     await promise
     expect(api.hydrating).toBe(false)
@@ -160,6 +163,8 @@ describe('form.rehydrate', () => {
     )([])
     expect(formLevel[0]?.message).toBe('first-attempt failed')
 
+    // Factory fires once the lazy orchestrator chunk loads.
+    await waitUntil(() => (resolveSecond !== undefined ? true : null))
     resolveSecond({ email: 'recovered@example.com', name: 'Recovered' })
     await inFlight
 

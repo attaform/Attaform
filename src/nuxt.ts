@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -224,8 +225,24 @@ export default defineNuxtModule<AttaformModuleOptions>({
     // that ordering explicit at the Nuxt-plugin layer too. Together
     // they guarantee the registry is installed (and SSR payload staged
     // into `pendingHydration`) before any `useForm` call runs.
+    //
+    // Flavor selection: the published package ships the runtime twice
+    // (dist prod flavor + dist/dev dev flavor behind the `development`
+    // export condition), and this plugin is registered by LITERAL path,
+    // outside the exports map. In dev the app's own `attaform/*` imports
+    // resolve the dev flavor, so the plugin must point at the dev copy
+    // too — a prod plugin path plus dev app imports would load two
+    // module graphs with two registries, and `useForm` would throw
+    // `Registry not found`. The existence probe keeps source and
+    // stub contexts (this module running from `src/`, or a repo dev
+    // setup with `unbuild --stub` plus source aliases) on today's
+    // single-path behavior: no `dev/` twin exists there, and the
+    // un-flavored source reads `__DEV__` from NODE_ENV as before.
+    const prodPluginSrc = resolver.resolve('./runtime/plugins/attaform')
+    const devPluginSrc = resolver.resolve('./dev/runtime/plugins/attaform')
+    const devPluginExists = ['.mjs', '.ts'].some((ext) => existsSync(devPluginSrc + ext))
     addPlugin({
-      src: resolver.resolve('./runtime/plugins/attaform'),
+      src: nuxt.options.dev && devPluginExists ? devPluginSrc : prodPluginSrc,
     })
 
     // Dev-only: register a Nuxt DevTools overlay tab pointing at an

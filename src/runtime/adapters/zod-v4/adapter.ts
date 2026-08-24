@@ -11,7 +11,11 @@ import {
   createAbstractSchema,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
-import { getFieldMeta, getFieldMetaList } from './field-meta'
+import {
+  buildFieldMetaPathMap,
+  getFieldMetaForSchema,
+  getFieldMetaListForSchema,
+} from '../../core/field-meta-store'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path } from '../../core/paths'
 import type { DeepPartial, GenericForm } from '../../types/types-core'
@@ -36,7 +40,6 @@ import {
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
 import { stripAsyncChecks } from './strip'
-import { getFieldMetaPathMap } from '../../core/walk-field-meta'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
@@ -272,10 +275,10 @@ export function zodV4Adapter<
  * (`runStrictGetDefaults` / `makeSubSchema`) propagate the form
  * shape correctly.
  */
-// Lazy fingerprint: the only consumers are opt-in async features
-// (the persistence storage key) plus a dev-only
-// mismatch warning, so the structural walk + its `canonicalStringify`
-// helper load on demand off the eager `useForm` path instead of being
+// Lazy fingerprint: the only consumers are the public
+// `AbstractSchema.fingerprint()` accessor and a dev-only mismatch
+// warning, so the structural walk + its `canonicalStringify` helper
+// load on demand off the eager `useForm` path instead of being
 // anchored eager by a static import.
 async function lazyFingerprint(schema: z.ZodType): Promise<string> {
   const { fingerprintZodSchema } = await import('./fingerprint')
@@ -306,8 +309,7 @@ function buildV4Services<
     isLeafRequired: (schema) => isLeafRequired(schema),
     resolveFieldMetaAtPath: (schema, path, maxRecursionDepth) =>
       resolveFieldMetaAtPath(schema, path, maxRecursionDepth),
-    issuesToValidationErrors: (issues, fk) =>
-      zodIssuesToValidationErrors(issues as z.core.$ZodIssue[], fk),
+    issuesToValidationErrors: (issues) => zodIssuesToValidationErrors(issues as z.core.$ZodIssue[]),
     safeParseSync: (schema, data) => {
       const result = schema.safeParse(data) as z.ZodSafeParseResult<unknown>
       return result.success
@@ -387,7 +389,7 @@ function runStrictGetDefaultsV4<Form>(
     }
     return {
       data,
-      errors: zodIssuesToValidationErrors(strictResult.error.issues, formKey),
+      errors: zodIssuesToValidationErrors(strictResult.error.issues),
       success: false,
       formKey,
     }
@@ -440,7 +442,7 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
       }
       return {
         data: undefined,
-        errors: zodIssuesToValidationErrors(result.error.issues, formKey),
+        errors: zodIssuesToValidationErrors(result.error.issues),
         success: false,
         formKey,
       }
@@ -493,18 +495,21 @@ function resolveFieldMetaAtPath(
   // Path-keyed payload map (built once per rootSchema) disambiguates
   // shared schemas. Falls back to the schema-keyed registry for paths
   // not visited by the walker (e.g. dynamic discriminated-union
-  // sub-paths the walker can't statically enumerate).
-  const pathMap = getFieldMetaPathMap(rootSchema, {
+  // sub-paths the walker can't statically enumerate). The walk itself
+  // lives behind the store's builder slot — installed by the
+  // registration surfaces (`withMeta` / `fieldMeta.add`), absent (and
+  // the map with it) when the consumer never registers metadata.
+  const pathMap = buildFieldMetaPathMap(rootSchema, {
     intro: V4_INTROSPECTOR,
     peelAllWrappers,
-    getFieldMetaList,
+    getFieldMetaList: getFieldMetaListForSchema,
   })
   const pathKey = canonicalizePath(path).key
   const peeled = peelAllWrappers(target)
   const payload =
-    pathMap.get(pathKey) ??
-    getFieldMeta(target) ??
-    (peeled !== target ? getFieldMeta(peeled) : undefined)
+    pathMap?.get(pathKey) ??
+    getFieldMetaForSchema(target) ??
+    (peeled !== target ? getFieldMetaForSchema(peeled) : undefined)
   // `description` is exposed as a public property on Zod 4 schemas;
   // when set via `.describe('...')` or `.meta({ description })`, it
   // reads back as a string. Read from the target first; fall back to

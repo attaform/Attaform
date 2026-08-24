@@ -11,6 +11,11 @@ export default defineContentConfig({
       source: {
         cwd: resolve(here, '../../docs'),
         include: '**/*.md',
+        // The error-code pages live under docs/e/ but serve from the
+        // short /e prefix (the URL every production AF## message
+        // embeds), via the `errors` collection below. Excluding them
+        // here keeps each file on exactly one route.
+        exclude: ['e/**'],
         prefix: '/docs',
       },
       // Frontmatter contract for every doc page. The `description`
@@ -67,6 +72,28 @@ export default defineContentConfig({
           )
           .optional(),
         source: z.string().url().optional(),
+      }),
+    }),
+    // The AF## error-code reference: one page per code plus the /e
+    // index. Sourced from docs/e/ (excluded from the docs collection
+    // above) and served from the short /e prefix so the URL inside
+    // every production `[attaform] AF## attaform.dev/e/af##` message
+    // stays compact. Rendered by pages/e/[...slug].vue; the same
+    // description bounds as the docs collection keep SERP snippets
+    // healthy for people who search a code instead of clicking it.
+    errors: defineCollection({
+      type: 'page',
+      source: {
+        cwd: resolve(here, '../../docs/e'),
+        include: '**/*.md',
+        prefix: '/e',
+      },
+      schema: z.object({
+        title: z.string().optional(),
+        description: z
+          .string()
+          .min(80, 'description must be at least 80 characters for a useful SERP snippet')
+          .max(200, 'description over 200 characters will get truncated in most SERPs'),
       }),
     }),
   },

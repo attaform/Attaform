@@ -1,7 +1,6 @@
 import type { App, Plugin } from 'vue'
 import { __DEV__ } from './dev'
 import { attachRegistryToApp, createRegistry, type AttaformRegistry } from './registry'
-import { vRegister } from './directive'
 import type { SSRDetectOptions } from './ssr'
 import type { AttaformDefaults } from '../types/types-api'
 
@@ -46,9 +45,15 @@ export type AttaformPluginOptions = SSRDetectOptions & {
  *    has happened yet.
  *
  * Both paths converge here so the `_attaform` slot, the
- * `kAttaformRegistry` provide, the `v-register` directive, and the
- * devtools attach happen in the same order regardless of how the
- * registry was first attached.
+ * `kAttaformRegistry` provide, and the devtools attach happen in the
+ * same order regardless of how the registry was first attached.
+ *
+ * Deliberately NOT here: the `v-register` directive. Registering it
+ * app-wide would weld the whole directive cluster into every consumer's
+ * eager bundle through this module. Delivery instead happens where the
+ * directive is used: the Vite / Nuxt plugin binds it into each compiled
+ * template, and every other setup calls `installVRegister(app)` from
+ * `attaform/directive` once.
  */
 function installAttaformOnApp(
   app: App,
@@ -74,7 +79,6 @@ function installAttaformOnApp(
   }
   const registry = createRegistry(options)
   attachRegistryToApp(app, registry)
-  app.directive('register', vRegister)
 
   if (__DEV__ && options.devtools !== false && !registry.ssr) {
     void (async () => {

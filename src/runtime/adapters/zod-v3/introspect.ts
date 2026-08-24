@@ -12,6 +12,7 @@
  * shape-based pattern matching on `_def`.
  */
 import type { z } from 'zod-v3'
+import { __DEV__ } from '../../core/dev'
 import { isZodSchemaType } from './helpers'
 
 // Shared cap for every wrapper-peeling helper. Pathological schemas
@@ -216,11 +217,13 @@ export function assertZodVersion(schema: unknown): void {
   const def = readDef(schema)
   if (def?.typeName === undefined) {
     throw new Error(
-      '[attaform/zod-v3] Schema is not a Zod v3 schema. The `attaform/zod-v3` adapter requires ' +
-        'zod@^3. Either: (a) install zod@^3 in your project; (b) import from `attaform/zod`, ' +
-        'which auto-detects the Zod version (and tree-shakes to a single adapter when the ' +
-        '`attaform/vite` plugin is active); or (c) import from `attaform/zod-v4` if you are ' +
-        'on Zod v4.'
+      __DEV__
+        ? '[attaform/zod-v3] Schema is not a Zod v3 schema. The `attaform/zod-v3` adapter requires ' +
+            'zod@^3. Either: (a) install zod@^3 in your project; (b) import from `attaform/zod`, ' +
+            'which auto-detects the Zod version (and tree-shakes to a single adapter when the ' +
+            '`attaform/vite` plugin is active); or (c) import from `attaform/zod-v4` if you are ' +
+            'on Zod v4.'
+        : '[attaform] AF01 attaform.dev/e/af01'
     )
   }
 }
@@ -455,7 +458,17 @@ export function isAsyncEffect(schema: z.ZodTypeAny): boolean {
  * together.
  */
 export function containsAsyncRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
-  return walkForAsync(schema, 'refinement', seen ?? new WeakSet<object>())
+  return walkForTarget(schema, 'refinement', seen ?? new WeakSet<object>())
+}
+
+/**
+ * True iff the v3 schema tree holds at least one `ZodDiscriminatedUnion`
+ * at any depth — the walk reaches unions inside arrays, tuples, records,
+ * intersections, pipelines, and (cycle-capped) lazy schemas. Queried
+ * once per form at construction to set the DU capability flag.
+ */
+export function containsDiscriminatedUnion(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
+  return walkForTarget(schema, 'discriminated-union', seen ?? new WeakSet<object>())
 }
 
 /**
@@ -473,14 +486,14 @@ export function containsAsyncRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>
  * Mirrors `zod-v4/introspect.ts:612 containsAsyncTransform`.
  */
 export function containsAsyncTransform(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
-  return walkForAsync(schema, 'transform-or-preprocess', seen ?? new WeakSet<object>())
+  return walkForTarget(schema, 'transform-or-preprocess', seen ?? new WeakSet<object>())
 }
 
-type AsyncWalkTarget = 'refinement' | 'transform-or-preprocess'
+type SchemaWalkTarget = 'refinement' | 'transform-or-preprocess' | 'discriminated-union'
 
-function walkForAsync(
+function walkForTarget(
   schema: z.ZodTypeAny,
-  target: AsyncWalkTarget,
+  target: SchemaWalkTarget,
   visited: WeakSet<object>
 ): boolean {
   const candidate = schema as unknown
@@ -504,7 +517,7 @@ function walkForAsync(
       return true
     }
     const inner = unwrapEffectsSource(schema)
-    return inner !== undefined && walkForAsync(inner, target, visited)
+    return inner !== undefined && walkForTarget(inner, target, visited)
   }
 
   // Transparent wrappers: recurse without flagging.
@@ -516,64 +529,67 @@ function walkForAsync(
     isZodSchemaType(schema, 'ZodReadonly')
   ) {
     const inner = unwrapInner(schema)
-    return inner !== undefined && walkForAsync(inner, target, visited)
+    return inner !== undefined && walkForTarget(inner, target, visited)
   }
   if (isZodSchemaType(schema, 'ZodBranded')) {
     const inner = unwrapBranded(schema)
-    return inner !== undefined && walkForAsync(inner, target, visited)
+    return inner !== undefined && walkForTarget(inner, target, visited)
   }
   if (isZodSchemaType(schema, 'ZodLazy')) {
     const inner = unwrapLazy(schema)
-    return inner !== undefined && walkForAsync(inner, target, visited)
+    return inner !== undefined && walkForTarget(inner, target, visited)
   }
   if (isZodSchemaType(schema, 'ZodPipeline')) {
     const inSide = unwrapPipeIn(schema)
-    if (inSide !== undefined && walkForAsync(inSide, target, visited)) return true
+    if (inSide !== undefined && walkForTarget(inSide, target, visited)) return true
     const outSide = unwrapPipeOut(schema)
-    if (outSide !== undefined && walkForAsync(outSide, target, visited)) return true
+    if (outSide !== undefined && walkForTarget(outSide, target, visited)) return true
     return false
   }
 
   // Container types: recurse into children.
   if (isZodSchemaType(schema, 'ZodObject')) {
     for (const sub of Object.values(getObjectShape(schema))) {
-      if (walkForAsync(sub, target, visited)) return true
+      if (walkForTarget(sub, target, visited)) return true
     }
     return false
   }
   if (isZodSchemaType(schema, 'ZodArray')) {
     const elem = getArrayElement(schema)
-    return elem !== undefined && walkForAsync(elem, target, visited)
+    return elem !== undefined && walkForTarget(elem, target, visited)
   }
   if (isZodSchemaType(schema, 'ZodTuple')) {
     for (const it of getTupleItems(schema)) {
-      if (walkForAsync(it, target, visited)) return true
+      if (walkForTarget(it, target, visited)) return true
     }
     return false
   }
   if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
+    if (target === 'discriminated-union' && isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
+      return true
+    }
     for (const opt of getUnionOptions(schema)) {
-      if (walkForAsync(opt, target, visited)) return true
+      if (walkForTarget(opt, target, visited)) return true
     }
     return false
   }
   if (isZodSchemaType(schema, 'ZodIntersection')) {
     const left = getIntersectionLeft(schema)
-    if (left !== undefined && walkForAsync(left, target, visited)) return true
+    if (left !== undefined && walkForTarget(left, target, visited)) return true
     const right = getIntersectionRight(schema)
-    if (right !== undefined && walkForAsync(right, target, visited)) return true
+    if (right !== undefined && walkForTarget(right, target, visited)) return true
     return false
   }
   if (isZodSchemaType(schema, 'ZodRecord')) {
     const keyType = getRecordKeyType(schema)
-    if (keyType !== undefined && walkForAsync(keyType, target, visited)) return true
+    if (keyType !== undefined && walkForTarget(keyType, target, visited)) return true
     const valueType = getRecordValueType(schema)
-    if (valueType !== undefined && walkForAsync(valueType, target, visited)) return true
+    if (valueType !== undefined && walkForTarget(valueType, target, visited)) return true
     return false
   }
   if (isZodSchemaType(schema, 'ZodSet')) {
     const elem = getSetValueType(schema)
-    return elem !== undefined && walkForAsync(elem, target, visited)
+    return elem !== undefined && walkForTarget(elem, target, visited)
   }
 
   // Leaves and unrecognised wrappers: nothing to descend into.

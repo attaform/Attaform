@@ -8,6 +8,7 @@ import type {
   FormHistoryNamespace,
   FormMeta,
   GetDisplayState,
+  HistoryModule,
   OnInvalidSubmitPolicy,
   ReactiveValidationStatus,
   RegisterValue,
@@ -15,16 +16,22 @@ import type {
   ValidateOn,
   ValidationError,
   ValidationResponse,
-  ValidationResponseWithoutValue,
+  ParseOptions,
   WriteMeta,
 } from '../types/types-api'
 import type { DeepPartial, DefaultValuesInput, GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import { pickDefined } from './defaults'
 import { structuralSnapshot } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
 import { normalizeErrorInputs } from './errors'
-import { buildErrorsProxy } from './errors-proxy'
-import { buildFieldArrayApi } from './field-arrays'
+import {
+  FIELD_STATE_KEYS,
+  buildErrorsSurface,
+  buildFieldsSurface,
+  buildValuesSurface,
+} from './callable-tree'
+import { buildFieldArrayApi } from './array-engine'
 import {
   aggregateErrorsAt,
   buildContainerFieldStateBase,
@@ -32,8 +39,6 @@ import {
   type FieldStateBase,
   type FormMetaBase,
 } from './field-state-api'
-import { buildFieldStateProxy } from './field-state-proxy'
-import type { HistoryModule } from './history'
 import { getAtPath } from './path-walker'
 import {
   canonicalizePath,
@@ -53,7 +58,31 @@ import {
   substituteUnsetSentinels,
   walkUnsetSentinels,
 } from './unset-walker'
-import { buildValuesProxy } from './values-proxy'
+
+/**
+ * Derived display props (`FieldStateDerivedKey`) — computed by the
+ * reducer, absent from the predicate-safe base shape.
+ */
+const DERIVED_DISPLAY_KEYS = new Set([
+  'displayState',
+  'showErrors',
+  'showPending',
+  'showSuccess',
+  'showIdle',
+  'firstError',
+  'firstOwnError',
+])
+/** FieldState props `form.meta` computes itself rather than mirroring. */
+const META_SPECIAL_KEYS = new Set(['errors', 'validating', 'valid', 'transforming', 'busy'])
+/** getFormMetaBase mirrors: the FieldStateBase key set. */
+const BASE_MIRROR_KEYS = [...FIELD_STATE_KEYS].filter((k) => !DERIVED_DISPLAY_KEYS.has(k))
+/** form.meta mirrors: every FieldState prop the meta bundle doesn't own. */
+const META_MIRROR_KEYS = [...FIELD_STATE_KEYS].filter((k) => !META_SPECIAL_KEYS.has(k))
+
+/** Enumerable-configurable getter, the shape a literal `get x()` produces. */
+function defineGetter(target: object, key: string, get: () => unknown): void {
+  Object.defineProperty(target, key, { get, enumerable: true, configurable: true })
+}
 
 export type BuildFormApiOptions = {
   /** Forwarded to buildProcessForm. See `UseFormConfiguration.onInvalidSubmit`. */
@@ -109,17 +138,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // / `rememberVariants` honor THIS instance's config. Sibling
   // instances sharing the same FormStore (modal + main) carry their
   // own instanceMeta in their own buildFormApi closure.
-  const instanceMeta: WriteMeta['instance'] | undefined = (() => {
-    const bag: {
-      -readonly [K in keyof NonNullable<WriteMeta['instance']>]: NonNullable<
-        WriteMeta['instance']
-      >[K]
-    } = {}
-    if (options.validateOn !== undefined) bag.validateOn = options.validateOn
-    if (options.debounceMs !== undefined) bag.debounceMs = options.debounceMs
-    if (options.rememberVariants !== undefined) bag.rememberVariants = options.rememberVariants
-    return Object.keys(bag).length > 0 ? bag : undefined
-  })()
+  const instanceBag = pickDefined({
+    validateOn: options.validateOn,
+    debounceMs: options.debounceMs,
+    rememberVariants: options.rememberVariants,
+  })
+  const instanceMeta: WriteMeta['instance'] | undefined =
+    Object.keys(instanceBag).length > 0 ? instanceBag : undefined
   // Helper used by every internal `state.setValueAtPath` call below to
   // splice the instance bag into the forwarded WriteMeta. Identity
   // when no instance overrides are active.
@@ -145,151 +170,66 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     }
   }
 
-  // Thunk producing a fresh `FormMetaBase` on each call — the omit'd-shape
-  // second argument to `state.getDisplayState`. Each call runs inside a
-  // field-state computed, so every reactive primitive a getter touches
-  // registers as a dependency of THAT computed; what a predicate does not
-  // read, the field does not track (see the per-field laziness below). The
-  // rollup getters bypass the cached field-state accessor by calling
-  // `buildContainerFieldStateBase` directly — going through the accessor would
-  // recurse through the root path's own showErrors computation.
+  // The omit'd-shape second argument to `state.getDisplayState`, built
+  // ONCE per buildFormApi call as a bag of enumerable getters. Every
+  // getter read happens inside the calling field-state computed, so
+  // whatever a predicate reads, that field tracks — and what it does
+  // not read, the field does not track (P3 vector 1: the library-
+  // default predicate reads no rollup field, so it never subscribes to
+  // the whole-form rollup).
+  //
+  // The rollup mirrors read through a per-form computed over
+  // `buildContainerFieldStateBase` (base only — NOT the cached
+  // field-state accessor, which would recurse through the root path's
+  // own showErrors computation). The computed memoises the rollup
+  // across predicate invocations, where the old per-call bag rebuilt
+  // it for every field evaluation that touched a rollup key; the
+  // rollup's `validatingSince` is for the field machine, not the
+  // predicate's meta arg, so only `.base` is exposed here.
+  const rootBaseComputed = computed<FieldStateBase>(
+    () => buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY, formInstanceId).base
+  )
+  const metaBase: Record<string, unknown> = {
+    instanceId: formInstanceId,
+    get submitting() {
+      return state.submitting.value
+    },
+    get submissionAttempts() {
+      return state.submissionAttempts.value
+    },
+    get departAttempts() {
+      return state.departAttempts.value
+    },
+    get submitError() {
+      return state.submitError.value
+    },
+    get submitted() {
+      return state.submitted.value
+    },
+  }
+  for (const k of BASE_MIRROR_KEYS) {
+    defineGetter(
+      metaBase,
+      k,
+      () => (rootBaseComputed.value as unknown as Record<string, unknown>)[k]
+    )
+  }
+  defineGetter(metaBase, 'errorCount', () => rootBaseComputed.value.errors.length)
   const getFormMetaBase = (): FormMetaBase => {
-    // The whole-form ROLLUP is lazy: its fields are getters that build
-    // `rootBase` once, on first access. Building it eagerly here was P3 vector
-    // 1 — it made every field-state computed depend on every leaf (the edited
-    // leaf's `updatedAt` bumps on each write), re-rendering all fields per
-    // keystroke. The library-default predicate reads no rollup field (only the
-    // O(1) form-level scalars below), so it never tracks the rollup. A custom
-    // predicate that reads `valid` / `errorCount` / ... trips the shared memo
-    // and tracks the rollup, exactly as before. Output is byte-identical for
-    // every predicate; only the rollup dependency tightens. Getters are
-    // enumerable, so `Object.keys` / spread / `JSON.stringify` over the meta
-    // arg are unchanged. (Same getter-over-computed pattern the public
-    // `form.meta` uses below.)
-    //
-    // The rollup's `validatingSince` is for the field machine, not the
-    // predicate's meta arg — unused here; the root field-state computed threads
-    // the root's own anchor when it resolves `form.meta.displayState`.
-    let rollup: FieldStateBase | undefined
-    const rootBase = (): FieldStateBase =>
-      (rollup ??= buildContainerFieldStateBase(
-        state,
-        ROOT_PATH,
-        ROOT_PATH_KEY,
-        formInstanceId
-      ).base)
-    return {
-      // Rollup-derived (FieldStateBase) — the whole rollup builds once, on the
-      // first access of any of these.
-      get value() {
-        return rootBase().value
-      },
-      get original() {
-        return rootBase().original
-      },
-      get pristine() {
-        return rootBase().pristine
-      },
-      get dirty() {
-        return rootBase().dirty
-      },
-      get focused() {
-        return rootBase().focused
-      },
-      get blurred() {
-        return rootBase().blurred
-      },
-      get touched() {
-        return rootBase().touched
-      },
-      get interacted() {
-        return rootBase().interacted
-      },
-      get blurredAfterInteraction() {
-        return rootBase().blurredAfterInteraction
-      },
-      get connected() {
-        return rootBase().connected
-      },
-      get element() {
-        return rootBase().element
-      },
-      get elements() {
-        return rootBase().elements
-      },
-      get updatedAt() {
-        return rootBase().updatedAt
-      },
-      get errors() {
-        return rootBase().errors
-      },
-      get ownErrors() {
-        return rootBase().ownErrors
-      },
-      get validating() {
-        return rootBase().validating
-      },
-      get valid() {
-        return rootBase().valid
-      },
-      get transforming() {
-        return rootBase().transforming
-      },
-      get busy() {
-        return rootBase().busy
-      },
-      get transformError() {
-        return rootBase().transformError
-      },
-      get path() {
-        return rootBase().path
-      },
-      get id() {
-        return rootBase().id
-      },
-      get aria() {
-        return rootBase().aria
-      },
-      get key() {
-        return rootBase().key
-      },
-      get blank() {
-        return rootBase().blank
-      },
-      get disabled() {
-        return rootBase().disabled
-      },
-      get label() {
-        return rootBase().label
-      },
-      get description() {
-        return rootBase().description
-      },
-      get placeholder() {
-        return rootBase().placeholder
-      },
-      get meta() {
-        return rootBase().meta
-      },
-      get errorCount() {
-        return rootBase().errors.length
-      },
-      // Form-level scalars — EAGER reads, tracked on every field-state eval.
-      // They are O(1) refs that never change on a keystroke, so tracking them
-      // per field costs nothing on the hot path. Kept eager (NOT lazy like the
-      // rollup) because behaviors beyond the predicate's own output depend on
-      // every field re-evaluating when they flip — most notably, the display
-      // engine is cleared on submit (revealing held spinners), and that
-      // imperative reset only becomes visible if `submitting` is a tracked dep
-      // of each field. Matches the pre-bust dependency set for these scalars
-      // exactly.
-      submitting: state.submitting.value,
-      submissionAttempts: state.submissionAttempts.value,
-      departAttempts: state.departAttempts.value,
-      submitError: state.submitError.value,
-      submitted: state.submitted.value,
-      instanceId: formInstanceId,
-    }
+    // Form-level scalars — EAGERLY tracked on every field-state eval.
+    // They are O(1) refs that never change on a keystroke, so tracking
+    // them per field costs nothing on the hot path. Kept eager (NOT
+    // lazy like the rollup) because behaviors beyond the predicate's
+    // own output depend on every field re-evaluating when they flip —
+    // most notably, the display engine is cleared on submit (revealing
+    // held spinners), and that imperative reset only becomes visible if
+    // `submitting` is a tracked dep of each field.
+    void state.submitting.value
+    void state.submissionAttempts.value
+    void state.departAttempts.value
+    void state.submitError.value
+    void state.submitted.value
+    return metaBase as unknown as FormMetaBase
   }
 
   const fieldStateAccessorOptions =
@@ -309,24 +249,17 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     getRootFieldStateAt(segments).value.displayState
 
   const registerConfig = {
-    ...(instanceMeta !== undefined ? { instanceMeta } : {}),
-    ...(options.coerce !== undefined ? { coerce: options.coerce } : {}),
-    ...(options.autoAria !== undefined ? { autoAria: options.autoAria } : {}),
+    ...pickDefined({ instanceMeta, coerce: options.coerce, autoAria: options.autoAria }),
     getDisplayStateAt,
   }
   const register = buildRegister(state, formInstanceId, registerConfig) as (
     path: string | Path
   ) => RegisterValue<unknown>
-  // Don't set `onInvalidSubmit: undefined` — exactOptionalPropertyTypes
-  // treats an explicit-undefined value differently from an omitted
-  // property. Only pass the key when the consumer opted in.
-  const processOptions =
-    options.onInvalidSubmit !== undefined ? { onInvalidSubmit: options.onInvalidSubmit } : {}
+  const processOptions = pickDefined({ onInvalidSubmit: options.onInvalidSubmit })
   const defaultInvalidSubmitPolicy: OnInvalidSubmitPolicy =
     options.onInvalidSubmit ?? 'focus-first-error'
   const {
     validate: validateBuilt,
-    validateAsync: validateAsyncBuilt,
     parse: parseBuilt,
     handleSubmit,
   } = buildProcessForm<Form, GetValueFormType>(state, formInstanceId, processOptions)
@@ -334,11 +267,18 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const validate = (pathInput?: string) =>
     validateBuilt(pathInput) as Ref<ReactiveValidationStatus<Form>>
 
-  const validateAsync = (pathInput?: string) =>
-    validateAsyncBuilt(pathInput) as Promise<ValidationResponseWithoutValue<Form>>
-
-  const parse = (pathInput?: string) =>
-    parseBuilt(pathInput) as Promise<ValidationResponse<GetValueFormType>>
+  // Two public call forms, mirroring `setErrors`' first-arg dispatch:
+  // `parse(path?, options?)` and `parse(options)` — a path-shaped first
+  // arg (string) scopes the run, a lone options bag applies to the
+  // whole form. `commit` defaults false (the pure read).
+  const parse = (arg1?: string | ParseOptions, arg2?: ParseOptions) => {
+    const isPathArg = typeof arg1 === 'string' || Array.isArray(arg1)
+    const pathInput = isPathArg ? (arg1 as string) : undefined
+    const options = isPathArg ? arg2 : (arg1 as ParseOptions | undefined)
+    return parseBuilt(pathInput, { commit: options?.commit === true }) as Promise<
+      ValidationResponse<GetValueFormType>
+    >
+  }
 
   // --- toRef escape hatch — Readonly<Ref<...>> for the rare case
   // a consumer needs ref-shaped interop (external composables that
@@ -527,7 +467,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   //
   // Container paths are descend-only (no terminal). The "give me every
   // error" need is served by `form.meta.errors` (flat ValidationError[]).
-  const errorsProxy = buildErrorsProxy(state)
+  const errorsProxy = buildErrorsSurface(state)
 
   // `setErrors` / `clearErrors` own the `userErrors` store — the manual
   // error layer that merges with schema/validation errors on read. The
@@ -537,11 +477,11 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // covers both.
   //
   // Input is lenient (`ErrorInput`): a real `Error`, a partial
-  // `{ message?, path?, code?, data? }`, or an array of either. The form
-  // always stamps its own `formKey` and defaults a missing `code`; a
-  // missing or empty message coerces to "Unknown error" rather than
-  // throwing (library code never throws into the consumer app). What the
-  // store holds is always a firm `ValidationError`.
+  // `{ message?, path?, code?, data? }`, or an array of either. A
+  // missing `code` defaults; a missing or empty message coerces to
+  // "Unknown error" rather than throwing (library code never throws
+  // into the consumer app). What the store holds is always a firm
+  // `ValidationError`.
   type SetErrorsArg =
     | ErrorInput
     | ErrorInput[]
@@ -549,7 +489,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   function flattenUserErrors(): ValidationError[] {
     const all: ValidationError[] = []
-    for (const errs of state.userErrors.values()) all.push(...errs)
+    for (const cell of state.errorCells.values()) all.push(...cell.user)
     return all
   }
 
@@ -565,18 +505,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       const { segments, key } = canonicalizePath(arg1 as string | Path)
       const input = arg2 as SetErrorsArg
       const resolved =
-        typeof input === 'function' ? input((state.userErrors.get(key) ?? []).slice()) : input
+        typeof input === 'function' ? input([...(state.errorCells.get(key)?.user ?? [])]) : input
       state.setUserErrorsForPath(
         segments,
-        normalizeErrorInputs(resolved, segments, state.formKey, AttaformErrorCode.UserError)
+        normalizeErrorInputs(resolved, segments, AttaformErrorCode.UserError)
       )
       return
     }
     const input = arg1 as SetErrorsArg
     const resolved = typeof input === 'function' ? input(flattenUserErrors()) : input
-    state.setAllUserErrors(
-      normalizeErrorInputs(resolved, undefined, state.formKey, AttaformErrorCode.UserError)
-    )
+    state.setAllUserErrors(normalizeErrorInputs(resolved, undefined, AttaformErrorCode.UserError))
   }
 
   function clearErrors(path?: string | (string | number)[]): void {
@@ -627,8 +565,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const valid = computed<boolean>(
     () =>
       state.firstValidationDone.value &&
-      state.schemaErrors.size === 0 &&
-      state.userErrors.size === 0 &&
+      state.errorCells.size === 0 &&
       state.derivedBlankErrors.value.size === 0 &&
       !validating.value
   )
@@ -708,172 +645,56 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // dep-tracking lands on the underlying computed exactly as before.
   // `watch(() => form.meta.dirty, …)` collects the same dependency
   // graph either way.
-  const formMeta = readonly(
-    reactive({
-      get value() {
-        return rootFieldState.value.value
-      },
-      get original() {
-        return rootFieldState.value.original
-      },
-      get pristine() {
-        return rootFieldState.value.pristine
-      },
-      get dirty() {
-        return rootFieldState.value.dirty
-      },
-      get focused() {
-        return rootFieldState.value.focused
-      },
-      get blurred() {
-        return rootFieldState.value.blurred
-      },
-      get touched() {
-        return rootFieldState.value.touched
-      },
-      get interacted() {
-        return rootFieldState.value.interacted
-      },
-      get blurredAfterInteraction() {
-        return rootFieldState.value.blurredAfterInteraction
-      },
-      get connected() {
-        return rootFieldState.value.connected
-      },
-      get element() {
-        return rootFieldState.value.element
-      },
-      get elements() {
-        return rootFieldState.value.elements
-      },
-      get updatedAt() {
-        return rootFieldState.value.updatedAt
-      },
-      // Whole-form validating mirrors the LIFECYCLE counter
-      // (`state.activeValidations`) ORed with any per-leaf validation
-      // in flight (via `rootFieldState.validating`). A submit-time
-      // validate run shows up as activeValidations; per-field
-      // debounced validators show up as fieldValidationCounts. Either
-      // flips the flag.
-      validating: computed(
-        () => state.activeValidations.value > 0 || rootFieldState.value.validating
-      ),
-      // Whole-form valid keeps the original `firstValidationDone`
-      // mount gate so the surface doesn't lie about a yet-to-arrive
-      // verdict at construction time. The shared `aggregateErrorsAt`
-      // ensures `form.meta.errors` and `rootFieldState.errors` match,
-      // so `errors.length === 0` here would agree with `valid` —
-      // keep the explicit form-level computation for the gate.
-      valid,
-      errors: metaErrors,
-      // The root `[]` bucket alone: form-level errors from a root
-      // `.refine()` or a path-less `setErrors`, excluding every field error
-      // that `errors` (the whole-form aggregate) rolls up. This is the
-      // banner accessor. Mirrors `rootFieldState` rather than taking a
-      // dedicated computed: `getFieldState([])` routes a container root
-      // through `getErrorsForPath([])` and a primitive root through its own
-      // bucket, and both equal the root bucket, so the root field state is
-      // already the single source of truth.
-      get ownErrors() {
-        return rootFieldState.value.ownErrors
-      },
-      // Whole-form transforming mirrors the global `activeTransforms`
-      // counter ORed with any per-leaf transform in flight (the root
-      // rollup), exactly as `validating` composes its lifecycle and
-      // per-field sources. `busy` is the union of both work signals at
-      // the form level. `transformError` is leaf-only, so the root
-      // rollup reads it as `null` (kept for FieldState-shape parity).
-      transforming: computed(
-        () => state.activeTransforms.value > 0 || rootFieldState.value.transforming
-      ),
-      busy: computed(
-        () =>
-          state.activeValidations.value > 0 ||
-          state.activeTransforms.value > 0 ||
-          rootFieldState.value.validating ||
-          rootFieldState.value.transforming
-      ),
-      get transformError() {
-        return rootFieldState.value.transformError
-      },
-      // `displayState` / the `show*` booleans / `firstError` flow
-      // through the same root field-state computed as the rest of the
-      // FieldState surface, so `form.meta.displayState` matches
-      // `form.fields().displayState` exactly — the predicate runs once
-      // at the root and the result is shared.
-      get displayState() {
-        return rootFieldState.value.displayState
-      },
-      get showErrors() {
-        return rootFieldState.value.showErrors
-      },
-      get showPending() {
-        return rootFieldState.value.showPending
-      },
-      get showSuccess() {
-        return rootFieldState.value.showSuccess
-      },
-      get showIdle() {
-        return rootFieldState.value.showIdle
-      },
-      get firstError() {
-        return rootFieldState.value.firstError
-      },
-      // `ownErrors[0]`: the form's first top-level error. Pair it with
-      // `ownErrors` for the form-level banner.
-      get firstOwnError() {
-        return rootFieldState.value.firstOwnError
-      },
-      get path() {
-        return rootFieldState.value.path
-      },
-      get id() {
-        return rootFieldState.value.id
-      },
-      get aria() {
-        return rootFieldState.value.aria
-      },
-      get key() {
-        return rootFieldState.value.key
-      },
-      get blank() {
-        return rootFieldState.value.blank
-      },
-      get disabled() {
-        return rootFieldState.value.disabled
-      },
-      get label() {
-        return rootFieldState.value.label
-      },
-      get description() {
-        return rootFieldState.value.description
-      },
-      get placeholder() {
-        return rootFieldState.value.placeholder
-      },
-      get meta() {
-        return rootFieldState.value.meta
-      },
-      // Lifecycle (form-level only — not on FieldState).
-      submitting,
-      submissionAttempts,
-      departAttempts,
-      submitError,
-      // Scalar mirror over the array — meta is a single sticky surface
-      // for both templates and `useWizard`'s `FormStatus`, so the
-      // projection lives here.
-      get errorCount() {
-        return metaErrors.value.length
-      },
-      submitted,
-      // Per-`useForm()`-call identity. Stable for one mount; new on
-      // re-mount; orthogonal to `form.key` (which is the user-supplied
-      // shared identifier). Useful for devtools panels disambiguating
-      // shared-key instances, telemetry hooks tagging events with
-      // "which mount", and E2E tests stamping `data-form-id`.
-      instanceId: formInstanceId,
-    })
-  ) as FormMeta<Form>
+  const metaTarget: Record<string, unknown> = {
+    // Whole-form work signals compose the LIFECYCLE counters with the
+    // per-leaf rollup: a submit-time validate shows up as
+    // activeValidations, per-field debounced validators as
+    // fieldValidationCounts — either flips the flag. `valid` keeps the
+    // form-level `firstValidationDone` mount gate; `errors` is the
+    // unfiltered whole-form aggregate.
+    validating: computed(
+      () => state.activeValidations.value > 0 || rootFieldState.value.validating
+    ),
+    valid,
+    errors: metaErrors,
+    transforming: computed(
+      () => state.activeTransforms.value > 0 || rootFieldState.value.transforming
+    ),
+    busy: computed(
+      () =>
+        state.activeValidations.value > 0 ||
+        state.activeTransforms.value > 0 ||
+        rootFieldState.value.validating ||
+        rootFieldState.value.transforming
+    ),
+    // Lifecycle (form-level only — not on FieldState).
+    submitting,
+    submissionAttempts,
+    departAttempts,
+    submitError,
+    submitted,
+    // Per-`useForm()`-call identity. Stable for one mount; new on
+    // re-mount; orthogonal to `form.key` (the user-supplied shared
+    // identifier).
+    instanceId: formInstanceId,
+  }
+  // Every remaining FieldState prop mirrors the root field-state
+  // computed through an enumerable getter, so `form.meta.dirty`,
+  // `form.fields().dirty`, and `form.fields([]).dirty` read identical
+  // aggregated state and `form.meta.displayState` matches
+  // `form.fields().displayState` exactly (the predicate runs once at
+  // the root and the result is shared).
+  for (const k of META_MIRROR_KEYS) {
+    defineGetter(
+      metaTarget,
+      k,
+      () => (rootFieldState.value as unknown as Record<string, unknown>)[k]
+    )
+  }
+  // Scalar mirror over the aggregate — meta is a single sticky surface
+  // for both templates and `useWizard`'s `FormStatus`.
+  defineGetter(metaTarget, 'errorCount', () => metaErrors.value.length)
+  const formMeta = readonly(reactive(metaTarget)) as FormMeta<Form>
 
   // --- Reset ---
   // Reset semantics are "fresh start across every layer": the form
@@ -967,10 +788,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     // form (which legitimately resolves nothing) stays quiet.
     if (!state.interactAtPath(segments)) return
     try {
-      await validateAsyncBuilt(pathInput === undefined ? undefined : segments)
+      await parseBuilt(pathInput === undefined ? undefined : segments, { commit: true })
     } catch {
-      // `validateAsync` reports failure through its return value; a
-      // throw here means the adapter itself blew up. The flags are
+      // The committing parse reports failure through its return value;
+      // a throw here means the adapter itself blew up. The flags are
       // already set, so the gate is open either way — swallow rather
       // than reject into the consumer's app.
     }
@@ -981,7 +802,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // sharing a `key` (e.g. sidebar + main mounting the same form) only
   // focus / scroll within their own registered elements.
   const focusFirstError = (options?: { preventScroll?: boolean }): boolean => {
-    const target = state.getFirstErrorElement(formInstanceId)
+    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
     if (target === null) return false
     // `focusVisible: true` requests the focus ring even though the move
     // is programmatic — so non-text controls (radio / checkbox / custom
@@ -993,7 +814,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   }
 
   const scrollToFirstError = (options?: ScrollIntoViewOptions): boolean => {
-    const target = state.getFirstErrorElement(formInstanceId)
+    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
     if (target === null) return false
     target.element.scrollIntoView(options)
     return true
@@ -1055,20 +876,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // fresh one keyed to the new target. The callable proxy itself is
   // identity-stable — consumers caching `form.values` get a stable
   // reference whose underlying data tracks the live form value.
-  const valuesProxy = buildValuesProxy(state.form)
+  const valuesProxy = buildValuesSurface(state.form)
 
   // --- Pinia-style reactive per-field state proxy ---
   // Allocated once per buildFormApi call (one per consumer). Each Proxy
-  // node memoizes its descendants and the per-path FieldState
-  // computed it reads through, so repeated access to the same path
-  // (`form.fields.email` twice) returns the same object — useful
-  // for downstream `===` checks and Vue's render diff.
-  const fieldStateProxy = buildFieldStateProxy(
-    state,
-    formInstanceId,
-    getFormMetaBase,
-    fieldStateAccessorOptions
-  )
+  // node memoizes its descendants; the per-path FieldState computeds
+  // come from the SAME accessor `meta` / register read through, so
+  // every consumer of a path shares one computed and repeated access
+  // (`form.fields.email` twice) returns the same object — useful for
+  // downstream `===` checks and Vue's render diff.
+  const fieldStateProxy = buildFieldsSurface(state, getRootFieldStateAt)
 
   // Lazy-activation gate: every public method routes through `activate`
   // so the first reactive interaction kicks the captured factory. The
@@ -1163,10 +980,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     },
     setValue: gated(setValueImpl) as UseFormReturnType<Form, GetValueFormType>['setValue'],
     validate: gated(validate) as UseFormReturnType<Form, GetValueFormType>['validate'],
-    validateAsync: gated(validateAsync) as UseFormReturnType<
-      Form,
-      GetValueFormType
-    >['validateAsync'],
     parse: gated(parse) as UseFormReturnType<Form, GetValueFormType>['parse'],
     settleTransforms: gated(state.settleTransforms) as UseFormReturnType<
       Form,

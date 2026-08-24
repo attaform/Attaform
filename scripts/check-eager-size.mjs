@@ -15,10 +15,15 @@
  * and gzips just those chunks. Same methodology as
  * analysis/measure-split.mjs, kept as a standing CI guard.
  *
- * A production `define` (`process.env.NODE_ENV` -> "production") is
- * applied so the measured bytes match what a consumer's prod build
- * ships, including the dev-branch dead-code elimination from
- * core/dev.ts.
+ * The measurement applies the same source-level `__DEV__` strip the
+ * package build uses (size-teardown P1a): the dev-flag import is removed
+ * and the identifier inlined to a literal before esbuild parses, exactly
+ * as `build.config.ts` pre-strips the shipped prod flavor. The ratchet
+ * therefore equals shipped prod-flavor bytes — not the weaker
+ * define-fold, which leaves behind functions that are only called from
+ * dead branches (esbuild marks references before it folds the define).
+ * The `define` still selects the flavor: a production define measures
+ * the prod strip, anything else the dev flavor's literal `true`.
  *
  * Zero new deps: esbuild is already installed (transitively, via vite /
  * size-limit). pnpm keeps it under node_modules/.pnpm, so we resolve
@@ -28,7 +33,7 @@
  * Library: `import { measureEager }` powers test/packaging/dev-dce.test.ts.
  */
 import { gzipSync } from 'node:zlib'
-import { readdirSync, realpathSync } from 'node:fs'
+import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { argv, exit } from 'node:process'
@@ -70,13 +75,39 @@ export const make = (s) => {
 const PROD_DEFINE = { 'process.env.NODE_ENV': '"production"' }
 
 /**
+ * Source-level `__DEV__` strip, mirroring the devFlagStripPlugin in
+ * build.config.ts: drop the solo named-import line, inline the literal.
+ * With every importer's import removed, core/dev.ts falls out of the
+ * graph entirely (its own body is never rewritten, so no special case
+ * is needed here — esbuild simply never loads it).
+ * @param {boolean} flag
+ */
+const devFlagStripPlugin = (flag) => ({
+  name: 'attaform-dev-flag-strip',
+  setup(build) {
+    build.onLoad({ filter: /\.ts$/ }, (args) => {
+      const posixPath = args.path.replace(/\\/g, '/')
+      if (!posixPath.startsWith(ROOT.replace(/\\/g, '/') + '/src/')) return null
+      const text = readFileSync(args.path, 'utf8')
+      if (!/\b__DEV__\b/.test(text)) return null
+      const out = text
+        .replace(/^import\s*\{\s*__DEV__\s*\}\s*from\s*['"][^'"]*['"]\s*;?\s*$/gm, '')
+        .replace(/\b__DEV__\b/g, String(flag))
+      return { contents: out, loader: 'ts' }
+    })
+  },
+})
+
+/**
  * Build the scenario with code-splitting and return the eager/async
  * byte split plus the per-chunk input lists (so callers can assert a
  * module is or isn't on a given path) and the concatenated output text
  * (so callers can assert a dev-only string was dead-code-eliminated).
+ * The `define` doubles as the flavor selector for the source strip.
  * @param {Record<string, string>} define
  */
 export async function measureEager(define = PROD_DEFINE) {
+  const prodFlavor = define['process.env.NODE_ENV'] === '"production"'
   const r = await esbuild.build({
     stdin: { contents: SCENARIO, loader: 'ts', resolveDir: ROOT },
     bundle: true,
@@ -87,6 +118,7 @@ export async function measureEager(define = PROD_DEFINE) {
     packages: 'external',
     splitting: true,
     define,
+    plugins: [devFlagStripPlugin(!prodFlavor)],
     metafile: true,
     write: false,
     outdir: 'out',
@@ -274,13 +306,139 @@ export async function measureEager(define = PROD_DEFINE) {
 // `normalizeErrorInput`, so the net add is ~242 bytes gz, landing the eager set
 // at ~45_742 bytes. Budget raised 45_500 → 46_500 to restore ~0.5 kB headroom
 // for minifier drift.
-const BUDGET_GZ = 46_500
+//
+// RATCHET (size-teardown P1a, dev/prod dual dist): the measurement now applies
+// the package build's source-level `__DEV__` strip (see devFlagStripPlugin
+// above), so the ratchet equals shipped prod-flavor bytes. The strip removes
+// the dev mass the define-fold left behind (functions only called from dead
+// branches, dev prose consts, the dev-stack-trace module), and the three
+// previously unguarded v-register warn sites (checkbox missing-value pair in
+// directive.ts, non-RegisterValue hint in assigner-pipeline.ts) are now
+// `__DEV__`-gated so their prose strips too. Measured at 43,741 B gz
+// (down 2,736 from the 46,477 baseline). Budget tightened 46_500 → 44_250 to
+// lock the win, keeping ~0.5 kB headroom for minifier-version drift; never
+// loosen it without a recorded reason in the commit.
+//
+// RATCHET (size-teardown P2, directive un-weld): createAttaform /
+// ensureAttaformInstalled no longer register the v-register directive, so
+// the whole directive cluster (directive + aria/file/listeners/lifecycle/
+// value-sync satellites, register-protocol, assigner-pipeline,
+// vue-shared-shim) leaves this scenario's eager graph — delivery is the
+// Vite/Nuxt compile-time rewrite or installVRegister, and the store's DOM
+// slice (element registry, focus listeners, first-error focus walk,
+// interactive-tags) moved behind the lazily-armed dom-binding module.
+// Measured at 37,210 B gz (down 6,531 from 43,741: 5,702 un-weld + 829 DOM
+// slice). Budget tightened 44_250 → 37_700; dev-dce S4 guards the module
+// set structurally so a re-weld fails even inside the byte headroom.
+//
+// RATCHET (size-teardown P3, history plugin + arrays engine): the undo/redo
+// runtime moved behind `historyPlugin()` from the new attaform/history
+// entry, so history.ts leaves this scenario's eager graph entirely — the
+// core wires the module through the plugin's attach() seam, and the ring-
+// buffer rewrite killed diff-apply's applyPatchesForward/Inverse plus
+// path-walker's deleteAtPath (history was their only consumer). The five
+// array/variant modules (identity, state-migrate, bookkeeping, variant-
+// memory, field-arrays) consolidated into array-engine.ts around one
+// remapForOp / permuteList / shared-key-walk core, and the write funnel
+// decodes each structural op's remap exactly once. Measured at 35,776 B gz
+// (down 1,434 from 37,210: ~1,240 history un-weld + ~195 arrays engine).
+// Budget tightened 37_700 → 36_250; dev-dce S4 now also asserts history.ts
+// off the eager inputs.
+//
+// RATCHET (size-teardown P4, field-meta walk un-weld + probe delete): the
+// path-walking field-meta resolver (walk-field-meta.ts) rides the
+// registration surface now — `withMeta` / `fieldMeta.add` install it into
+// the shared store's builder slot, the adapters read the slot, and a
+// consumer that never registers metadata resolves labels through the
+// `.describe()` / humanize fallbacks without shipping the walk. And
+// `arrayShapeAtPath` became definitive (`number | null`, sign-off 6), so
+// path-walker's high-index probe loop died. Measured at 35,207 B gz (down
+// 569 from 35,776). Budget tightened 36_250 → 35_650; dev-dce S4 now also
+// asserts walk-field-meta.ts off the eager inputs.
+//
+// P5 RATCHET (store kernel, 2026-08-23): the one phase that RAISED this
+// number, recorded honestly. The kernel rewrite (plain state record +
+// store-first-arg functions + method skins), the tagged error store
+// (semantics-preserving cell machinery net of the per-entry formKey
+// drops), and the DU capability flag cost more bytes than the phase's
+// deletions (double diff, du-stubs fold, one-clone construction) saved:
+// measured 35,768 B gz, +561 over P4. The audit's store-lazy credits did
+// not survive measurement — the activation-chunk split was implemented
+// and DECLINED (cross-chunk glue + per-chunk gzip loss exceeded the
+// moved bytes). The phase's value landed elsewhere: keystroke deep
+// +14/+26/+50%, array writes +8-12% (see
+// plans/size-teardown/reference/p5-bench-after.json), one construction
+// tree-copy dropped, per-entry formKey off the SSR wire, and the
+// characterization discipline. Budget 35_650 -> 36_200.
+//
+// P6 RATCHET (validation shell fold, 2026-08-23): one activeValidations
+// shell (withActiveValidation) across the reactive kickoff, the
+// imperative path, and handleSubmit; parse(path?, { commit? }) absorbed
+// validateAsync (sign-off 4); pathStartsWith / groupErrorsByKey /
+// submit-throw grouping deduped; display-engine introspection hooks
+// dev-gated. Measured 35,621 B gz (down 147 from 35,768) — under the
+// -250..-500 expectation band because gzip already compresses
+// near-identical shells to almost nothing: folding textual twins buys
+// little; only deleting structurally redundant logic moves this number.
+// Budget tightened 36_200 -> 36_050 (the ~430 B headroom convention).
+//
+// P7 RATCHET (2026-08-24): 34,530 -> 33,999 measured (-531). Sign-off 7
+// landed: the slim-schema rebuild (getSlimSchema + stripRefinements +
+// walkSlim) is DELETED on both majors in favor of the shared DU-aware
+// structural fix walk (core/walk-fix-structural.ts) that never parses
+// and never runs user refines/transforms at construction; introspect's
+// kindOf switch became an alias table + identity set and walkSchemaTree
+// descent went data-driven; the catchOnUseDefaultFalse knob died when
+// v3 aligned to v4's recurse-inner semantics. Exhaustive-case lint
+// tails cost +49 back; the core-walk genericization cost +98 on this
+// metric and bought -2,260 on the plugin-less barrel (41,080 ->
+// 38,820). Sign-off 6's factory absorption was REFUSED on rep evidence
+// (+17 gz). Budget 34_950 -> 34_400 (~0.4 kB headroom).
+//
+// P8 RATCHET (surface program, 2026-08-24): callable-tree.ts replaced the
+// seven-module proxy zoo (surface-proxy, errors-proxy, field-state-proxy,
+// values-proxy, callable-readonly-snapshot-proxy [now wizard-only],
+// plus the two helper modules staying as imports); fields leaf views and
+// call-form terminals unified onto one cached per-path view over the
+// shared field-state accessor; errors toJSON trees memoised in
+// per-container computeds; the two build-form-api meta getter forests
+// loop-generated over FIELD_STATE_KEYS with a once-per-form shared
+// FormMetaBase bag (rollup computed-memoised); pickDefined collapsed the
+// conditional-spread stacks. The exotic-name schema-authority
+// arbitration is dropped (sign-off 8); the root call/apply/bind invoke
+// shims are RESTORED after the playground finding (sucrase downlevels
+// the documented `surface(path)?.x` idiom into a `.call`-reading helper
+// — no-uncaught-exceptions outranks the size sign-off). Measured
+// 34,530 B gz (down 1,091 from 35,621). Refused with measurement: the
+// leaf/container field-state builder fold (twin-tail-only, P6 gzip
+// discount), the activation-getter loop (+15 B), the useForm layer
+// collapse (type-weight only). Budget tightened 36_050 -> 34_950.
+// P1b RATCHET (error codes + prose diet, 2026-08-24): 33,999 -> 33,124
+// measured (-875). Every prod-surviving prose diagnostic (14 sites)
+// now ships as `[attaform] AF## attaform.dev/e/af##` (+ the dynamic
+// detail where load-bearing) while the dev flavor keeps the full
+// prose via call-site `__DEV__` ternaries the dual-dist split folds
+// per flavor. No shared helper on purpose: 14 near-identical literals
+// gzip to almost nothing and each site stays greppable by its code.
+// The /e/af## reference pages ship in the same PR (docs/e/ ->
+// attaform.dev/e via the site's `errors` content collection), so the
+// URL in every prod message resolves from day one. Budget
+// 34_400 -> 33_550 (~0.43 kB headroom).
+// P10 RATCHET (sweep + lock, program close, 2026-08-24): 33,128 ->
+// 33,004 measured (-124). The June persist rip-out had orphaned the
+// store's whole drain spine (registerDrain / drainHooks / an
+// awaitPendingWrites that always resolved immediately) plus the
+// registry's drain-then-dispose eviction choreography and a
+// shutdown() that awaited nothing, with zero callers anywhere. Deleted;
+// eviction now disposes directly. Budget 33_550 -> 33_430
+// (~0.43 kB headroom).
+const BUDGET_GZ = 33_430
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {
   const { eagerGz, asyncGz } = await measureEager()
   const kb = (b) => (b / 1024).toFixed(2)
-  console.log(`eager (minimal useForm, zod-v4, prod): ${kb(eagerGz)} kB gz`)
+  console.log(`eager (minimal useForm, zod-v4, prod): ${kb(eagerGz)} kB gz (${eagerGz} B)`)
   console.log(`async (lazy chunks):                   ${kb(asyncGz)} kB gz`)
   console.log(`budget:                                ${kb(BUDGET_GZ)} kB gz`)
   if (eagerGz > BUDGET_GZ) {

@@ -1,8 +1,8 @@
 import {
   computed,
-  markRaw,
   reactive,
   ref,
+  shallowRef,
   toRaw,
   toValue,
   triggerRef,
@@ -10,10 +10,13 @@ import {
   type ComputedRef,
   type MaybeRefOrGetter,
   type Ref,
+  type ShallowRef,
 } from 'vue'
 import type {
   AbstractSchema,
+  AttaformDomBinding,
   CoercionRegistry,
+  ErrorCell,
   FormKey,
   DefaultValuesResponse,
   GetDisplayState,
@@ -24,25 +27,29 @@ import type {
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
 import { createDisplayEngine, type DisplayEngine } from './display-engine'
-import { applyDuStubs } from './du-stubs'
-import { cloneVariantSnapshot, createVariantMemory } from './variant-memory'
-import { createArrayIdentity } from './array-identity'
 import {
+  cloneVariantSnapshot,
   createArrayBookkeeping,
+  createArrayIdentity,
+  createVariantMemory,
+  remapForOp,
   type ArrayBookkeeping,
+  type ArrayIdentity,
   type FieldValidationEntry,
-} from './array-bookkeeping'
-import { remapForOp } from './array-state-migrate'
-import type { ElementRecord, FieldRecord, OriginalsRecord } from './store-records'
+  type IndexRemap,
+  type VariantMemory,
+} from './array-engine'
+import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
-import { AttaformErrorCode, makeBlankRequiredError } from './error-codes'
+import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
+import { groupErrorsByKey } from './errors'
+import { runFactoryAndApply } from './form-activation'
 import {
   canonicalizePath,
   coerceToPathKey,
   isPathPrefix,
-  ROOT_PATH,
   ROOT_PATH_KEY,
   segmentsForPathKey,
   type Path,
@@ -58,12 +65,11 @@ import {
   setAtPathWithSchemaFill,
   tryInPlaceLeafWrite,
 } from './path-walker'
-import { isShadowedKey } from './safe-assign'
+import { isShadowedKey, safeAssign } from './safe-assign'
 import { __DEV__ } from './dev'
 import { resolveCoercionIndex, type CoercionIndex } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
-import { walkUnspecified } from './unset-walker'
-import { mergeSparseHydration } from './merge-hydration'
+import { walkAuthoredFromConstraints, walkUnspecified } from './unset-walker'
 
 /**
  * A value that holds descendant leaves — an array or a plain object. The dirty
@@ -72,55 +78,18 @@ import { mergeSparseHydration } from './merge-hydration'
  */
 const isContainer = (value: unknown): boolean => Array.isArray(value) || isPlainRecord(value)
 
-// Focusable candidates inside a no-latch component host, in the order the
-// browser would tab through them (document order at query time). A composite
-// widget exposes its entry point as a genuinely focusable element -- a
-// roving-tabindex group's active item (`[tabindex="0"]`), a `role="slider"`
-// thumb, a listbox/combobox trigger `<button>`, or a real `<input>` segment --
-// so match natively focusable elements plus anything given a non-negative
-// tabindex. `type="hidden"` inputs and `tabindex="-1"` mirrors (reka-ui's
-// BubbleInput and the like) are excluded: they can never be the user's focus
-// target. Disabled controls are filtered at resolve time.
-const HOST_FOCUS_TARGET_SELECTOR = [
-  'input:not([type="hidden"])',
-  'select',
-  'textarea',
-  'button',
-  'a[href]',
-  '[tabindex]:not([tabindex="-1"])',
-  '[contenteditable="true"]',
-].join(', ')
-
 /**
- * The focus-first-error target for a no-latch `v-register` component host. The
- * host binds a value but owns no single control, so resolve its root to the
- * first visible, enabled focusable descendant -- the tab stop a keyboard user
- * entering the widget lands on (the first radio of a group, a slider thumb, a
- * listbox trigger, the first pin segment). Falls back to the host root itself
- * when nothing focusable is found, so `scrollToFirstError` still has a target
- * even if `focus()` can't land. `offsetParent === null` mirrors
- * `getFirstErrorElement`'s own visibility gate (skips `display:none` subtrees).
- */
-function resolveHostFocusTarget(hostRoot: HTMLElement): HTMLElement {
-  const candidates = hostRoot.querySelectorAll<HTMLElement>(HOST_FOCUS_TARGET_SELECTOR)
-  for (const el of candidates) {
-    if (!el.isConnected) continue
-    if (el.offsetParent === null) continue
-    if (el.matches(':disabled')) continue
-    return el
-  }
-  return hostRoot
-}
-
-/**
- * Per-form closure state — the single store owned by each `useForm` call.
+ * Per-form kernel state — the single store owned by each `useForm` call.
  * Bundles the form value, the summary record, element references, field
  * state, the meta tracker, and the error stores under one keyed-by-
- * `(formKey, path)` instance so cross-form DOM state cannot collide.
+ * `(formKey, path)` record so cross-form DOM state cannot collide. The
+ * record's behavior lives in module-level kernel functions that take the
+ * state record as their required first argument (see `FormState` below);
+ * the store allocates data, not function bodies.
  *
  * This is NOT a singleton. Each call to `useForm` creates its own FormStore
- * instance and holds onto it via closure. The registry provides SSR
- * hydration; otherwise the state is per-component-per-form.
+ * instance. The registry provides SSR hydration; otherwise the state is
+ * per-component-per-form.
  */
 
 // Hydration shape guards — defend against rolling deploys / stale cache
@@ -175,7 +144,6 @@ function isHydratedValidationErrorArray(value: unknown): value is ValidationErro
     const e = entry as Partial<ValidationError>
     if (typeof e.message !== 'string') return false
     if (!Array.isArray(e.path)) return false
-    if (typeof e.formKey !== 'string') return false
     if (typeof e.code !== 'string') return false
     // `data` is an opaque JSON passthrough: it arrived via JSON.parse,
     // so it is structurally JSON by construction. Don't hard-validate
@@ -196,20 +164,21 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly formKey: FormKey
   readonly form: Ref<F>
   readonly fields: Map<PathKey, FieldRecord>
-  readonly elements: Map<PathKey, ElementRecord>
   /**
-   * Schema-driven errors. Written ONLY by the schema validation pipeline:
-   * `scheduleFieldValidation`, `handleSubmit`, the construction-time seed,
-   * history restore, and hydration. Cleared by `reset` / `resetField` and by
-   * a successful submit. `setErrors` / `clearErrors` do NOT touch this Map.
-   */
-  readonly schemaErrors: Map<PathKey, ValidationError[]>
-  /**
-   * User-injected errors. Written ONLY by the `setErrors` / `clearErrors`
-   * API surface (and history / hydration replay). Survives schema revalidation and
+   * The tagged error store: one cell per error-bearing path, each cell
+   * segregating its two sources. The `schema` side is written ONLY by
+   * the validation pipeline (`scheduleFieldValidation`, `handleSubmit`,
+   * the construction-time seed, history restore, hydration) and cleared
+   * by `reset` / `resetField` and a successful submit; the `user` side
+   * is written ONLY by the `setErrors` / `clearErrors` API surface (and
+   * history / hydration replay) and survives schema revalidation and
    * successful submits — the consumer owns its lifetime explicitly.
+   * A key exists iff a side is non-empty; cells are replaced, never
+   * mutated, so Vue's per-key Map tracking fires for either side's
+   * change. Derived blank entries are NOT stored here — they synthesize
+   * at read (`derivedBlankErrors`).
    */
-  readonly userErrors: Map<PathKey, ValidationError[]>
+  readonly errorCells: Map<PathKey, ErrorCell>
   /**
    * Reactively-derived "No value supplied" errors. Pure function of
    * `(blankPaths, schema.isRequiredAtPath)` — no writers, no clears.
@@ -433,7 +402,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly submissionGeneration: Ref<number>
   /**
    * Counts in-flight validation calls across every `validate()` ref and
-   * every `validateAsync(...)` / `handleSubmit` pre-check. `validating`
+   * every committing `parse(...)` / `handleSubmit` pre-check. `validating`
    * on the public API mirrors `activeValidations.value > 0`. Tracked
    * separately from submissions because a validate-while-submitting
    * (e.g. a debounced field check overlapping a submit) needs to show
@@ -493,7 +462,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * call) and decremented in the matching `.finally` — so the per-path
    * bookkeeping is exactly co-extensive with the form-wide counter for
    * the field-scheduled branch. Whole-form `validate()` /
-   * `validateAsync()` runs touch `activeValidations` only; they don't
+   * `parse()` runs touch `activeValidations` only; they don't
    * have a single field path and so don't contribute here.
    *
    * Counter (not Set) because two runs for the same path can briefly
@@ -584,7 +553,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * Stable identity for the array element at `path`. An array element
    * (numeric last segment) carries its allocated identity token,
-   * maintained by `array-identity.ts` across structural mutations.
+   * maintained by the arrays engine across structural mutations.
    * Empty for any non-array-element path: a record entry, a
    * fixed-object field, a container, or the root. Backs `FieldState.key`.
    */
@@ -602,7 +571,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * Replace `schemaErrors` under `path` with `errors`, keying each
    * error by its OWN absolute path. Used by validation pipelines
-   * (scheduleFieldValidation, validateAsync, handleSubmit, reset)
+   * (scheduleFieldValidation, the committing parse, handleSubmit, reset)
    * to commit a parse result wholesale — entries not in the new
    * pass get dropped from the subtree, surviving keys update in
    * place to preserve insertion order. Pass `path === []` for the
@@ -616,10 +585,19 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   clearUserErrors(path?: Path): void
 
   /**
-   * Merged read — returns `[...schemaErrors[path], ...userErrors[path]]`.
-   * Schema errors come first (structural validation before business logic),
-   * matching the iteration order for `getFirstErrorElement` and the
-   * top-level `errors` drillable Proxy.
+   * Rebuild the whole tagged store from a snapshot's `[key, cell]`
+   * entries — the history ring buffer's restore road. Entry arrays are
+   * cloned in, so the snapshot stays detached from the live store;
+   * cells with both sides empty are skipped.
+   */
+  restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
+
+  /**
+   * Merged read — the cell at `path` in schema -> blank -> user order.
+   * Schema errors come first (structural validation before business
+   * logic), the derived blank entry synthesizes between, and user
+   * entries close, matching the iteration order for
+   * `getFirstErrorElement` and the top-level `errors` drillable Proxy.
    */
   getErrorsForPath(path: Path): ValidationError[]
 
@@ -637,15 +615,29 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
 
   // --- DOM ---
   /**
-   * Register `element` as a binding for `path`, tagged with the calling
-   * `useForm()` instance's `formInstanceId`. The ID is the disambiguator
-   * used by `getFirstErrorElement` to scope focus / scroll to elements
-   * THIS form instance owns — important when two `useForm()` calls share
-   * a `key` (e.g. sidebar + main rendering the same form), since both
-   * write into one shared element store.
+   * The store's DOM slice, `null` until the directive cluster or
+   * `useRegister` arms it via `RegisterValue.ensureDomBinding`. Element
+   * registration, host anchors, and first-error focus resolution all
+   * live behind it; eager readers treat `null` as an empty registry.
    */
-  registerElement(path: Path, element: HTMLElement, formInstanceId: string): boolean
-  deregisterElement(path: Path, element: HTMLElement): number
+  readonly domBinding: ShallowRef<AttaformDomBinding | null>
+  /**
+   * Field-record connect transition, driven by the DOM binding on
+   * element attach / host connect (and by the SSR-only
+   * `markConnectedOptimistically`): `connected: true`, with
+   * `focused` / `blurred` lifted from `null` to optimistic booleans
+   * only when currently null — an existing boolean from an early focus
+   * event is never clobbered.
+   */
+  noteDomConnected(path: Path): void
+  /**
+   * Field-record disconnect transition, driven by the DOM binding when
+   * a path's last element detaches or its host disconnects:
+   * `connected: false`, `focused` / `blurred` back to `null` (DOM-state
+   * properties are meaningless with nothing attached; interaction
+   * history stays).
+   */
+  noteDomDisconnected(path: Path): void
   /**
    * Optional `meta.instance` carries per-`useForm()`-instance overrides
    * for `validateOn` / `debounceMs` so the blur-trigger respects the
@@ -687,25 +679,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * source there).
    */
   markConnectedOptimistically(path: Path): void
-  /**
-   * Client-side connected mark for a `v-register` component host that binds
-   * value via the v-model channel but has no single inner control to latch
-   * (a composite widget, or none found). The directive calls it on mount
-   * (`true`) and unmount (`false`). Distinct from the SSR-only
-   * `markConnectedOptimistically`; idempotent on the leading edge.
-   *
-   * `hostEl` (the host root) is recorded on connect as this path's
-   * focus-first-error anchor, scoped to `formInstanceId` the same way a
-   * registered control is. A no-latch host enters no `elements` record, so
-   * without this it is absent from `getFirstErrorElement`'s walk; the anchor
-   * lets that walk resolve a focus target from the host subtree.
-   */
-  markHostConnected(
-    path: Path,
-    connected: boolean,
-    hostEl: HTMLElement,
-    formInstanceId: string
-  ): void
 
   // --- derived ---
   /**
@@ -746,30 +719,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   hasRemovedSubtreeUnder(path: Path): boolean
   getFieldRecord(path: Path): FieldRecord | undefined
   getOriginalAtPath(path: Path): unknown
-  /**
-   * Returns the first errored field's first connected, visible DOM
-   * element scoped to `formInstanceId` — the target that
-   * `focusFirstError` / `scrollToFirstError` act on. "First" is
-   * VISUAL-first (DOM-tree order via `compareDocumentPosition`), not
-   * schema-declaration order, so a field rendered above another in the
-   * template focuses first regardless of which one the schema declared
-   * earlier. CSS `order:` flexbox/grid reordering is NOT respected
-   * (DOM-tree order wins) — documented as a tradeoff against forcing
-   * sync layout on every comparison.
-   *
-   * The `formInstanceId` filter scopes focus to elements registered
-   * through THIS form instance. When two `useForm({ key })` calls share
-   * a key, both register into the same element store; without the
-   * filter, the sidebar form's submit could focus the main form's
-   * input. With it, each `useForm()` callsite focuses only its own
-   * elements.
-   *
-   * Returns `null` when every errored path has no currently-attached
-   * element registered to this instance (fields behind `v-if="false"`,
-   * unmounted components, or a hidden `display:none` parent). Callers
-   * get the choice of no-op or a dev-only warning.
-   */
-  getFirstErrorElement(formInstanceId: string): { path: Path; element: HTMLElement } | null
 
   /**
    * Cancel every in-flight field-level validation run — clears timers
@@ -882,23 +831,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   registerCleanup(fn: () => void): void
 
   /**
-   * Register an async drain function. Called by the registry before
-   * `dispose()` so async background work — chiefly the persistence
-   * layer's debounced storage writes — has a chance to settle without
-   * losing the last keystroke. Each registered function is awaited in
-   * parallel; failures are swallowed to keep eviction reliable.
-   */
-  registerDrain(fn: () => Promise<void>): void
-
-  /**
-   * Drain async work registered via `registerDrain`. Resolves once
-   * every registered drain has settled (in parallel). Safe to call
-   * repeatedly — registered drains decide their own idempotency.
-   */
-  awaitPendingWrites(): Promise<void>
-
-  /**
-   * Cache for per-state modules (history, persistence) that must
+   * Cache for per-state modules (chiefly history) that must
    * outlive any single consumer. Subsequent `useForm` / `injectForm`
    * calls for the same key read from this map so the public API shape
    * is identical regardless of mount order. Keyed by a string identifier
@@ -1058,6 +991,110 @@ function isPathKeyUnder(existingKey: PathKey, parentPath: Path): boolean {
 }
 
 /**
+ * Walk an `initialData` / restored payload and collapse any object whose
+ * position carries a discriminated union but whose `discriminator` value
+ * isn't a known variant literal into a stub holding only the
+ * discriminator key. Drops any first-variant fields that snuck in past
+ * the parser to keep the form value structurally consistent with the
+ * schema's view of "no variant selected yet."
+ *
+ * The walker is intentionally pure — every dependency (schema, data,
+ * base path, warning-set policy) is a parameter, not a closure capture
+ * — so `createFormStore` can call it both at construction (for the
+ * authored defaults) and inside `reshapeUnionAtPath` (for runtime
+ * variant transitions) without sharing state across calls.
+ *
+ * SSR hydration payloads (third-party storage JSON) flow through the
+ * same walker. Pollution defense routes every untrusted-key write
+ * through `safeAssign`, which uses `Object.defineProperty` for the
+ * `__proto__` key (own data property, no chain mutation) and plain
+ * bracket-assign for every other key. Legitimate fields literally
+ * named `prototype` / `constructor` / `__proto__` round-trip the same
+ * way every other key does.
+ *
+ * `warn: true` opts in to a `__DEV__`-only one-shot per
+ * `(dotted-path, disc-value)` console warning when a non-blank
+ * discriminator value falls back to a stub — typo-style bugs where the
+ * consumer wrote `kind: 'BAD'` and got a stub by accident. The blank
+ * literals `''` / `0` / `0n` / `false` / `null` are the intentional
+ * "no variant selected" signal from `expandUnsetAt` and never warn.
+ */
+export function applyDuStubs(
+  schema: AbstractSchema<unknown, unknown>,
+  data: unknown,
+  options: { warn?: boolean; basePath?: Path } = {}
+): unknown {
+  const warned = options.warn === true ? new Set<string>() : undefined
+  return walkDuStubs(schema, data, options.basePath ?? [], warned)
+}
+
+function walkDuStubs(
+  schema: AbstractSchema<unknown, unknown>,
+  value: unknown,
+  path: Path,
+  warned: Set<string> | undefined
+): unknown {
+  if (value === null || value === undefined || typeof value !== 'object') return value
+  if (
+    value instanceof Date ||
+    value instanceof RegExp ||
+    value instanceof Map ||
+    value instanceof Set ||
+    typeof value === 'function'
+  ) {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.map((item, i) => walkDuStubs(schema, item, [...path, i], warned))
+  }
+  const rec = value as Record<string, unknown>
+  const du = schema.getUnionDiscriminatorAtPath(path)
+  if (du !== undefined) {
+    const discValue = rec[du.discriminatorKey]
+    if (discValue !== undefined && !du.isVariantSelected(discValue)) {
+      // Kind-blank stub (`''` / `0` / `0n` / `false` / `null`) is the
+      // intentional "no variant selected yet" signal from
+      // `expandUnsetAt` — don't warn. The warn is for typo-style bugs
+      // where the user wrote `kind: 'BAD'` and got a stub by accident.
+      const isKindBlank =
+        discValue === '' ||
+        discValue === 0 ||
+        discValue === 0n ||
+        discValue === false ||
+        discValue === null
+      if (!isKindBlank && warned !== undefined && __DEV__) {
+        const dotted = path.map((s) => String(s)).join('.') || '(root)'
+        const key = `${dotted}::${String(discValue)}`
+        if (!warned.has(key)) {
+          warned.add(key)
+          console.warn(
+            `[attaform] defaultValues at '${dotted}' carries discriminator ` +
+              `'${du.discriminatorKey}=${JSON.stringify(discValue)}' which isn't a known variant. ` +
+              `Form mounts in a stub holding only the discriminator key. Validation will surface the mismatch.`
+          )
+        }
+      }
+      // The disc-only stub routes the discriminator-key write through
+      // `safeAssign` so a schema using `z.discriminatedUnion('__proto__', …)`
+      // (vanishingly rare, but possible) lands the disc value as an
+      // own data property instead of invoking the inherited setter.
+      const stub: Record<string, unknown> = {}
+      safeAssign(stub, du.discriminatorKey, discValue)
+      return stub
+    }
+  }
+  // SSR-walk container. The `safeAssign` per key lands a literal
+  // `__proto__` segment as an own data property; every other key
+  // takes the plain bracket-assign branch. A hostile payload carrying
+  // `__proto__` can't reassign the container's prototype chain.
+  const out: Record<string, unknown> = {}
+  for (const k of Object.keys(rec)) {
+    safeAssign(out, k, walkDuStubs(schema, rec[k], [...path, k], warned))
+  }
+  return out
+}
+
+/**
  * Walk a consumer-supplied value and drop Symbol-keyed properties
  * recursively. Form values are string-keyed by schema design — symbols
  * at any level would trip JSON serialization (persistence adapters),
@@ -1100,51 +1137,6 @@ function stripSymbolsDeep(value: unknown): unknown {
 }
 
 /**
- * Walk the consumer's `defaultValues` argument and stamp every leaf path
- * as "consumer-authored." Even an explicit `undefined` at a leaf counts:
- * the consumer named the path, so any verdict against that undefined IS
- * one they had a chance to provoke and should see.
- *
- * Plain records and arrays descend; non-record leaves (primitives, Date,
- * Map, class instances) mark their own path and stop.
- */
-function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<PathKey>): void {
-  if (prefix.length > 0) out.add(canonicalizePath(prefix).key)
-  if (isPlainRecord(value)) {
-    for (const k of Object.keys(value)) {
-      walkAuthoredFromConstraints((value as Record<string, unknown>)[k], [...prefix, k], out)
-    }
-    return
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      walkAuthoredFromConstraints(value[i], [...prefix, i], out)
-    }
-  }
-}
-
-/**
- * The indices a structural array op introduces a brand-new element at:
- * `insert` / `replace-at` carry one fresh slot, while `swap` / `move` /
- * `remove` only permute or drop existing elements and carry none. The write
- * funnel uses this to scope its per-element work (slim gate, structural
- * completion, authoring) to just the new element(s) on an array op, since
- * existing elements were already gated / completed / authored when first
- * written and only change position here.
- */
-function freshElementIndices(op: NonNullable<WriteMeta['arrayOp']>): readonly number[] {
-  switch (op.kind) {
-    case 'insert':
-    case 'replace-at':
-      return [op.index]
-    case 'remove':
-    case 'swap':
-    case 'move':
-      return []
-  }
-}
-
-/**
  * Diff the schema's with-defaults data against its blank baseline (the
  * raw `deriveDefault(false)` walk) to find every path where the schema
  * author declared a `.default(...)` chain. Paths whose value differs
@@ -1181,6 +1173,2561 @@ function walkAuthoredFromSchemaDiff(
   }
 }
 
+/**
+ * One in-flight async-transform run at a path: a monotonic `token`
+ * (globally unique via `FormState.transformTokenSeq`, so a superseded run
+ * can never collide with a future one even after the entry is deleted and
+ * recreated) plus the directive-owned abort `holder`. `released` guards
+ * the count so a synchronous cancel / supersede release isn't
+ * double-counted by the run's own late `endTransform`.
+ */
+type TransformRun = { token: number; holder: TransformAbortHolder; released: boolean }
+
+/**
+ * The kernel's full state record: the public `FormStore` contract plus the
+ * internal slots the module-level kernel functions operate on. Everything a
+ * per-form closure used to capture lives here as an explicit member, and
+ * every kernel function takes the record as its required first argument —
+ * the store allocates data, not function bodies. The `FormStore` methods on
+ * the returned record are thin per-instance arrows delegating into the
+ * shared module functions.
+ */
+export type FormState<F extends GenericForm, G extends GenericForm = F> = FormStore<F, G> & {
+  // --- resolved configuration (fixed at construction) ---
+  readonly strict: boolean
+  /** Construction-time `defaultValues`, kept as `reset()`'s fallback source. */
+  readonly defaultValues: DeepPartial<WriteShape<F>> | undefined
+  readonly ssrPrefetch: CreateFormStoreOptions<F, G>['ssrPrefetch']
+  readonly rememberVariants: boolean
+  readonly fieldValidationMode: ValidateOn
+  readonly fieldValidationDebounceMs: number
+
+  // --- internal containers ---
+  readonly fieldValidationState: Map<PathKey, FieldValidationEntry>
+  readonly formChangeListeners: Set<(next: F, meta?: WriteMeta) => void>
+  readonly submitSuccessListeners: Set<() => void>
+  readonly resetListeners: Set<() => void>
+  readonly cleanupHooks: (() => void)[]
+  readonly authoredPaths: Set<PathKey>
+  readonly arrayIdentity: ArrayIdentity
+  readonly removedSubtrees: Set<PathKey>
+  readonly variantMemory: VariantMemory
+  readonly pathOrdinals: Map<PathKey, number>
+  readonly pathSnapshots: Map<PathKey, unknown>
+  readonly pathAsyncCache: Map<PathKey, boolean>
+  readonly transformRuns: Map<PathKey, TransformRun>
+  readonly transformWaiters: { key: PathKey | null; resolve: () => void }[]
+  readonly arrayBookkeeping: ArrayBookkeeping
+
+  /**
+   * Per-form DU capability flag, computed once at construction from
+   * `schema.hasDiscriminatedUnions?.()` (absent reads as `true` — the
+   * conservative per-write probes stay on). `false` skips the
+   * cross-variant ancestor guard, the variant-reshape dispatch, and
+   * construction-time stub correction entirely.
+   */
+  readonly hasDU: boolean
+
+  // --- mutable scalars (plain fields; never read reactively) ---
+  nextOrdinal: number
+  scheduleEpoch: number
+  lastCommittedEpoch: number
+  transformTokenSeq: number
+  warnedDisabledWrite: boolean
+}
+
+// --- Construction = reset: the shared baseline sequence ---
+// Construction and `reset()` both establish a pristine baseline. The steps
+// they genuinely share live in the helpers below so the two paths cannot
+// drift; the mode-specific work (field-record seeding vs history-flag
+// clearing, hydration replay vs lifecycle teardown) stays at each call
+// site.
+
+/**
+ * Compute the effective baseline for `source` (consumer `defaultValues` at
+ * construction, `nextDefaultValues ?? defaultValues` at reset). Sparse
+ * constraints pre-merge through `mergeStructural` BEFORE `getDefaultValues`
+ * so partial constraints against tuple shapes (e.g. `coords: [42]` for
+ * `z.tuple([_, _, _])`) get padded with position defaults before the
+ * adapter's validate-then-fix loop sees them — and so the adapter's
+ * verdict is rendered against the FILLED form, keeping the construction
+ * and reset responses byte-equivalent for the same source.
+ */
+function computeBaselineResponse<F extends GenericForm, G extends GenericForm = F>(
+  schema: AbstractSchema<F, G>,
+  strict: boolean,
+  source: DeepPartial<WriteShape<F>> | undefined
+): DefaultValuesResponse<F> {
+  const completed =
+    source === undefined
+      ? undefined
+      : (mergeStructural(schema, [], source) as DeepPartial<WriteShape<F>>)
+  return schema.getDefaultValues({
+    useDefaultSchemaValues: true,
+    constraints: completed,
+    strict,
+  })
+}
+
+/**
+ * Initial value of the `firstValidationDone` gate — shared by the ref's
+ * construction seed and `reset()`'s restore, so the post-reset window
+ * gates container `.valid` exactly like the post-mount window does. Only
+ * async-validating strict schemas need the gate; see the
+ * `FormStore.firstValidationDone` JSDoc.
+ */
+function initialFirstValidationGate<F extends GenericForm, G extends GenericForm = F>(
+  schema: AbstractSchema<F, G>,
+  strict: boolean
+): boolean {
+  return !strict || schema.needsAsyncValidation?.() !== true
+}
+
+/**
+ * Rebuild `originals` from a fresh baseline value tree. `diffAndApply`
+ * visits every leaf in declaration order. Construction passes
+ * `ensureOrdinals: true` so `pathOrdinals` gets schema-declaration order
+ * for free in the same walk; `reset()` passes `false`, preserving its
+ * lazy first-encounter ordinal assignment for paths a reset baseline
+ * introduces (ordinals never reset — a path keeps its slot for the
+ * form's lifetime).
+ */
+function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  baseline: unknown,
+  ensureOrdinals: boolean
+): void {
+  st.originals.clear()
+  diffAndApply({}, baseline, [], (patch) => {
+    if (patch.kind !== 'added') return
+    const { key } = canonicalizePath(patch.path)
+    st.originals.set(key, { segments: patch.path, value: patch.newValue })
+    if (ensureOrdinals) ensurePathOrdinal(st, key)
+  })
+}
+
+/**
+ * Queue the one-shot full-form validation pass that surfaces async-only
+ * verdicts (e.g. zod's `.refine(async (v) => ...)`), which can't surface
+ * from the sync `getDefaultValues` contract. Shared by construction and
+ * `reset()`. Two gates: SKIP on SSR (microtasks don't get awaited before
+ * `renderToString` serialises, so firing would only stamp a misleading
+ * `validating: true` into the SSR HTML that the client's hydration pass
+ * wouldn't reproduce), and `queueMicrotask` so the increment lands AFTER
+ * Vue's synchronous hydration / first render. Gated to strict mode AND to
+ * schemas that actually need async work — sync-only schemas would
+ * otherwise pay a redundant microtask + briefly flash
+ * `meta.validating: true`, misrepresenting "validation is running" when
+ * nothing is.
+ */
+function queueInitialAsyncValidation<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): void {
+  if (!st.ssr && st.strict && st.schema.needsAsyncValidation?.() === true) {
+    queueMicrotask(() => scheduleFieldValidation(st, [], true /* immediate */))
+  }
+}
+
+/**
+ * Rebuild `authoredPaths` from a fresh constraints baseline + schema
+ * defaults. Used at construction AND at `reset()` time. Both moments
+ * replace the form's pristine reference, so the authoring set must
+ * track the new baseline. Idempotent: clears the Set first, then
+ * re-populates from (1) the constraints argument and (2) a diff of
+ * the schema's with-defaults data against its blank baseline.
+ */
+function rebuildAuthoredPaths<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  constraints: unknown,
+  schemaWithDefaultsData: unknown
+): void {
+  st.authoredPaths.clear()
+  if (constraints !== undefined) {
+    walkAuthoredFromConstraints(constraints, [], st.authoredPaths)
+  }
+  // The authored-default diff needs only the schema's BLANK baseline
+  // value tree (every `.default()` skipped), not a validated parse of
+  // it. `getEmptyValueAtPath([])` is the raw `deriveDefault(false)`
+  // walk — structurally identical to a full slim-mode
+  // `getDefaultValues({ useDefaultSchemaValues: false })` here (the
+  // blank tree round-trips through the slim parse unchanged), without
+  // the schema clone + double `safeParse` that pass pays. Locked by
+  // `test/core/authored-baseline-equivalence.test.ts`.
+  const slimBaseline = st.schema.getEmptyValueAtPath([])
+  walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimBaseline, [], st.authoredPaths)
+}
+
+/**
+ * Filter schema-source verdicts: drop issues at preprocess / coerce
+ * leaves whose storage is undefined AND whose path the consumer
+ * never authored. Form-level errors (`path.length === 0`) and
+ * verdicts at paths with non-undefined storage always pass through.
+ * Mount and field-validation pipelines run errors through this
+ * filter; `handleSubmit` does not (submit is the moment "you must
+ * have supplied all fields" applies, and the consumer should see
+ * every verdict).
+ */
+function filterAuthoredErrors<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  errors: readonly ValidationError[]
+): ValidationError[] {
+  return errors.filter((err) => {
+    const pathSegments = err.path as Path
+    if (pathSegments.length === 0) return true
+    const value = getAtPath(st.form.value, pathSegments)
+    if (value !== undefined) return true
+    if (st.authoredPaths.has(canonicalizePath(pathSegments).key)) return true
+    return !st.schema.isPreprocessOrCoerceLeaf(pathSegments)
+  })
+}
+
+// FieldState.key: an array element (numeric last segment) carries its
+// allocated identity token, which travels with the element across
+// structural mutations so a keyed `v-for` survives reorders. Empty for
+// any non-array-element path; a record entry's stable identity is its
+// own key, surfaced through `form.record`, so it needs no token here.
+function arrayElementKey<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): string {
+  if (path.length === 0) return ''
+  const last = path[path.length - 1]
+  if (typeof last === 'number') return st.arrayIdentity.tokenAt(path.slice(0, -1), last)
+  return ''
+}
+
+function ensurePathOrdinal<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey
+): number {
+  let ordinal = st.pathOrdinals.get(key)
+  if (ordinal === undefined) {
+    ordinal = st.nextOrdinal
+    st.pathOrdinals.set(key, ordinal)
+    st.nextOrdinal += 1
+  }
+  return ordinal
+}
+
+function pathHasAsyncValidation<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): boolean {
+  const { key } = canonicalizePath(path)
+  return pathHasAsyncValidationByKey(st, key, path)
+}
+
+function pathHasAsyncValidationByKey<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  segments: Path
+): boolean {
+  const cached = st.pathAsyncCache.get(key)
+  if (cached !== undefined) return cached
+  // `getSchemasAtPath` returns every candidate sub-schema (DU
+  // variants, intersections all surface here). Async work in any
+  // candidate means the prefix is "could be async" — be
+  // conservative and gate. Adapters that don't expose
+  // `needsAsyncValidation` are treated as `false`, matching the
+  // optional-method contract on AbstractSchema.
+  const candidates = st.schema.getSchemasAtPath(segments)
+  const hasAsync = candidates.some((sub) => sub.needsAsyncValidation?.() === true)
+  st.pathAsyncCache.set(key, hasAsync)
+  return hasAsync
+}
+
+function incFieldValidation<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey
+): void {
+  // Stamp `validatingSince` BEFORE bumping the count so the two signals can
+  // never disagree mid-flight. The count drives `field.validating` (and so
+  // clamps `field.valid` to false for the duration of a run); `validatingSince`
+  // is what the display reducer reads to decide "settled vs in-flight". If the
+  // count led, a synchronous reader landing between the two writes would see
+  // `validating: true, validatingSince: null` — the reducer would read the run
+  // as settled and return the in-flight verdict (idle, because `valid` is
+  // clamped), flashing idle at the start of every re-validation. Stamping the
+  // anchor first makes `validatingSince !== null` an outer bracket around
+  // `count > 0` (it is cleared only AFTER the count reaches 0, in
+  // `decFieldValidation`), so the reducer never sees a run as settled while
+  // `valid` is still clamped.
+  //
+  // Re-anchored on every run start, not just the 0 → 1 edge: the anti-flash
+  // show-delay measures `now - validatingSince`, so a burst of keystrokes —
+  // each aborting the prior run and starting a new one — keeps pushing the
+  // anchor forward and the spinner stays suppressed until the user pauses.
+  // Anchoring only at the streak start would surface the spinner mid-typing:
+  // with `debounceMs: 0` the aborted run's `.finally` decrement lands a
+  // microtask AFTER the next run's increment, so the count oscillates
+  // 1 → 2 → 1 and never returns to 0 between fast keystrokes, pinning the
+  // stamp to the first keystroke. `ssr` never reaches here in practice (no
+  // field validation is scheduled server-side); the `0` keeps the stamp
+  // clock-free.
+  st.fieldValidatingSince.set(key, st.ssr ? 0 : Date.now())
+  const prevCount = st.fieldValidationCounts.get(key) ?? 0
+  st.fieldValidationCounts.set(key, prevCount + 1)
+}
+
+function decFieldValidation<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey
+): void {
+  const next = (st.fieldValidationCounts.get(key) ?? 0) - 1
+  if (next <= 0) {
+    // → 0 edge: clear the count FIRST (so `field.valid` is accurate again),
+    // THEN drop the anchor — the trailing edge of the bracket described in
+    // `incFieldValidation`. Whenever the reducer sees `validatingSince ===
+    // null` the count is already 0 and `valid` is settled, so a run is never
+    // read as settled while `valid` is still clamped. Co-extensive across the
+    // abort / cancel / migrate paths that release a count.
+    st.fieldValidationCounts.delete(key)
+    st.fieldValidatingSince.delete(key)
+  } else {
+    st.fieldValidationCounts.set(key, next)
+  }
+}
+
+function incFieldTransform<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey
+): void {
+  // Stamp-before-bump, same bracket invariant as `incFieldValidation`:
+  // `transformingSince !== null` is the outer bracket around
+  // `count > 0`, so a reader landing between the two writes never sees
+  // a run as settled while the field still reads `transforming`.
+  st.fieldTransformingSince.set(key, st.ssr ? 0 : Date.now())
+  st.fieldTransformCounts.set(key, (st.fieldTransformCounts.get(key) ?? 0) + 1)
+}
+
+function decFieldTransform<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey
+): void {
+  const next = (st.fieldTransformCounts.get(key) ?? 0) - 1
+  if (next <= 0) {
+    st.fieldTransformCounts.delete(key)
+    st.fieldTransformingSince.delete(key)
+  } else {
+    st.fieldTransformCounts.set(key, next)
+  }
+}
+
+// Resolve every queued `settleTransforms` waiter that has gone idle —
+// a keyed waiter when its path count hits 0, a global waiter when
+// `activeTransforms` hits 0. Re-checks live state per waiter, so it is
+// safe to call from any `→ 0` edge (`endTransform` / cancel).
+function flushSettledTransformWaiters<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): void {
+  if (st.transformWaiters.length === 0) return
+  const globalIdle = st.activeTransforms.value === 0
+  for (let i = st.transformWaiters.length - 1; i >= 0; i--) {
+    const w = st.transformWaiters[i]
+    if (w === undefined) continue
+    const idle = w.key === null ? globalIdle : (st.fieldTransformCounts.get(w.key) ?? 0) === 0
+    if (idle) {
+      st.transformWaiters.splice(i, 1)
+      w.resolve()
+    }
+  }
+}
+
+// Synchronously tear down one run: latch the abort holder, abort its
+// controller if the chain ever reached for `ctx.signal`, and release
+// the counters. Idempotent via `released`, so a supersede / cancel
+// release and the run's own late `endTransform` don't double-count.
+// Does NOT remove the map entry — the caller decides that.
+function releaseTransformRun<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  run: TransformRun
+): void {
+  if (run.released) return
+  run.released = true
+  run.holder.aborted = true
+  run.holder.controller?.abort()
+  st.activeTransforms.value = Math.max(0, st.activeTransforms.value - 1)
+  decFieldTransform(st, key)
+}
+
+function beginTransform<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  holder: TransformAbortHolder
+): number {
+  // Supersede: a new input at the same path aborts + releases the
+  // prior run synchronously (so `field.transforming` reflects only the
+  // live run and the count stays 0/1 per path), then this run opens.
+  const prior = st.transformRuns.get(key)
+  if (prior !== undefined) releaseTransformRun(st, key, prior)
+  const token = ++st.transformTokenSeq
+  st.transformRuns.set(key, { token, holder, released: false })
+  incFieldTransform(st, key)
+  st.activeTransforms.value += 1
+  // A fresh run supersedes the prior verdict — drop any stale error so
+  // a recovered input doesn't keep showing the last failure.
+  if (st.transformErrors.has(key)) st.transformErrors.delete(key)
+  return token
+}
+
+function isCurrentTransform<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  token: number
+): boolean {
+  return st.transformRuns.get(key)?.token === token
+}
+
+function endTransform<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  token: number
+): void {
+  const run = st.transformRuns.get(key)
+  // Only the live run releases the counters and clears the entry. A
+  // superseded / cancelled run (token no longer matches, or already
+  // released) was released at teardown — its late `endTransform` only
+  // flushes waiters.
+  if (run?.token === token) {
+    if (!run.released) {
+      st.activeTransforms.value = Math.max(0, st.activeTransforms.value - 1)
+      decFieldTransform(st, key)
+    }
+    st.transformRuns.delete(key)
+  }
+  flushSettledTransformWaiters(st)
+}
+
+function setTransformError<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  err: Error
+): void {
+  st.transformErrors.set(key, err)
+}
+
+function cancelTransforms<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): void {
+  for (const [key, run] of [...st.transformRuns]) {
+    releaseTransformRun(st, key, run)
+    st.transformRuns.delete(key)
+  }
+  // A cleared form starts from a clean transform slate — drop
+  // normalization failures that have no in-flight run of their own.
+  if (st.transformErrors.size > 0) st.transformErrors.clear()
+  flushSettledTransformWaiters(st)
+}
+
+function cancelTransformsUnder<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  prefix: Path
+): void {
+  for (const [key, run] of [...st.transformRuns]) {
+    const segs = segmentsForPathKey(key)
+    if (segs === null) continue
+    if (!isPathPrefix(prefix, segs)) continue
+    releaseTransformRun(st, key, run)
+    st.transformRuns.delete(key)
+    st.transformErrors.delete(key)
+  }
+  flushSettledTransformWaiters(st)
+}
+
+function settleTransforms<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path?: string | Path
+): Promise<void> {
+  if (path === undefined) {
+    if (st.activeTransforms.value === 0) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      st.transformWaiters.push({ key: null, resolve })
+    })
+  }
+  const { key } = canonicalizePath(path)
+  if ((st.fieldTransformCounts.get(key) ?? 0) === 0) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    st.transformWaiters.push({ key, resolve })
+  })
+}
+
+function touchFieldRecord<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  pathKey: PathKey,
+  path: Path,
+  patch: Partial<Omit<FieldRecord, 'path'>>
+): void {
+  const current = st.fields.get(pathKey)
+  st.fields.set(pathKey, {
+    path,
+    updatedAt: patch.updatedAt ?? current?.updatedAt ?? null,
+    connected: patch.connected ?? current?.connected ?? false,
+    // focused/blurred use an explicit-undefined guard because
+    // patches legitimately carry `null` to mark a disconnect — the
+    // `??` operator would short-circuit on null and fall through to
+    // `current`, losing the intent. `!== undefined` honours an
+    // explicit null and preserves current only on absence.
+    focused: patch.focused !== undefined ? patch.focused : (current?.focused ?? null),
+    blurred: patch.blurred !== undefined ? patch.blurred : (current?.blurred ?? null),
+    // touched is plain `boolean`; `??` is equivalent to the explicit
+    // guard here because `false` is not nullish.
+    touched: patch.touched ?? current?.touched ?? false,
+    // interacted is sticky-true; a merge patch only ever sets it, so
+    // `??` preserves the current bit. It flips back to false solely
+    // through the reset paths, which reconstruct the record outright.
+    interacted: patch.interacted ?? current?.interacted ?? false,
+    blurredAfterInteraction:
+      patch.blurredAfterInteraction ?? current?.blurredAfterInteraction ?? false,
+  })
+}
+
+// Shared commit tail for every value mutation: stamp per-leaf field
+// metadata from the captured patches, then notify change listeners.
+// Runtime-added paths (e.g. `append('posts', {...})` introducing a new
+// array index) compare against `undefined` for `dirty` — appearing IS a
+// mutation; only `reset()` rebaselines the originals map, so this records
+// absence-as-original to keep the first appearance dirty. Listeners fire
+// after field bookkeeping (they must see a fully-updated form), and their
+// throws are isolated so one bad subscriber can't block the rest; `meta`
+// propagates the call-site's intent (e.g. an array op or hydration tag).
+function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  patches: readonly Patch[],
+  meta?: WriteMeta
+): void {
+  const now = new Date().toISOString()
+  for (const patch of patches) {
+    const { key } = canonicalizePath(patch.path)
+    if (patch.kind === 'added' && !st.originals.has(key)) {
+      st.originals.set(key, { segments: patch.path, value: undefined })
+    }
+    touchFieldRecord(st, key, patch.path, { updatedAt: now })
+  }
+  for (const listener of st.formChangeListeners) {
+    try {
+      listener(st.form.value, meta)
+    } catch (err) {
+      console.error('[attaform] onFormChange threw:', err)
+    }
+  }
+}
+
+function applyFormReplacementWithPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  next: F,
+  meta: WriteMeta | undefined,
+  arrayOpPath: Path | null
+): void {
+  const prev = st.form.value
+  if (Object.is(prev, next)) return
+  // Capture the diff before any mutation lands — `commitWritePatches`
+  // needs the per-leaf patches against the OLD shape, and
+  // `applyChangedKeys` consumes the same list to decide which keys to
+  // reassign, so every replacement pays exactly one content walk.
+  const patches: Patch[] = []
+  diffAndApply(prev, next, [], (patch) => {
+    patches.push(patch)
+  })
+  // Mutate `form.value` in place so Vue's deep-reactivity dependencies
+  // fire ONLY for the first-level keys whose subtree changed. A
+  // wholesale `form.value = next` would fire every deep watch (including
+  // watches on sub-trees that didn't change), which deadlocks the
+  // browser when a watcher reacts by writing back to the form (the
+  // canonical "same as pickup address" mirror pattern).
+  //
+  // On a top-level shape mismatch (object → array, etc.) fall back
+  // to wholesale replacement — that's the only case where in-place
+  // merging can't preserve existing reactive proxies anyway.
+  // The typed array helpers thread the mutated array's path (`arrayOpPath`);
+  // on those writes a changed container-valued key reconciles in place, keeping
+  // stable references for the mutated array AND every ancestor container on the
+  // path to it, at any depth. So a reorder fires only the moved indices and a
+  // nested-array append re-renders only that list, never the whole-array /
+  // whole-parent re-render. A non-helper replacement (`arrayOpPath` null:
+  // explicit setValue, reset, undo / redo, cross-tab, hydration, DU reshape)
+  // reassigns changed keys wholesale, so a container target gets a fresh ref.
+  if (!applyChangedKeys(prev, next, arrayOpPath, [], patches)) {
+    st.form.value = next
+  } else if (
+    patches.some(
+      (p) => p.path.length > 0 && typeof p.path[0] === 'string' && isShadowedKey(p.path[0])
+    )
+  ) {
+    // A root-level prototype-shadowed key (`hasOwnProperty`, `toString`,
+    // `valueOf`, …) changed. Its reactive readers descend through
+    // `safeOwnRead` (`Object.getOwnPropertyDescriptor`), which bypasses
+    // Vue's reactive get-trap, so they registered NO per-key dependency —
+    // they ride only on this ref's own dep. `applyChangedKeys` mutated the
+    // slot in place (the set-trap fires the key's dep, but nothing
+    // subscribed to it) and kept root identity stable, so `form.value` was
+    // not reassigned. Fire the ref explicitly to wake those readers; this
+    // is the coarse whole-`form`-ref signal the shadowed-descent path
+    // documents as its reactivity mechanism. Only fires for the rare write
+    // that touches a root-level shadowed field — every ordinary field keeps
+    // its fine-grained per-key dependency untouched.
+    triggerRef(st.form)
+  }
+  commitWritePatches(st, patches, meta)
+}
+
+// Public whole-value replacement (history restore, cross-tab merge, reset,
+// hydration, DU reshape, devtools, tests). Threads a null array path, so the
+// reconcile reassigns changed keys wholesale and a container target gets a
+// fresh reference. Only the targeted array-helper write path opts into the
+// stable-reference container reconcile, via `applyFormReplacementWithPath`.
+function applyFormReplacement<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  next: F,
+  meta?: WriteMeta
+): void {
+  applyFormReplacementWithPath(st, next, meta, null)
+}
+
+// Fast path for a single `setValue` whose target leaf already exists:
+// mutate that leaf's slot in place (O(depth)), preserving every ancestor
+// container's identity, then commit the exact per-leaf patches the
+// full-tree diff would have emitted (the old root diff only ever
+// descended this same subtree). Structural writes — a missing
+// intermediate, array growth, a new key, a container target, or a
+// prototype-shadowed segment — fall back to the copy-on-write
+// `applyFormReplacement`, which correctly re-references the grown
+// container. The contract: a container's reference changes IFF the write
+// targets it or alters its structure; a descendant-leaf edit preserves
+// every ancestor reference.
+function applyTargetedWrite<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path,
+  completedValue: unknown,
+  meta?: WriteMeta
+): void {
+  const result = tryInPlaceLeafWrite(st.form.value, path, completedValue)
+  if (!result.applied) {
+    // A structural write (array growth / reorder, a new key, a container
+    // target). For a typed array-helper op (`meta.arrayOp` set), `path` IS the
+    // mutated array's canonical path — thread it so the reconcile keeps every
+    // ancestor container on the way to it stable. Any other structural write
+    // passes null and reassigns changed keys wholesale.
+    applyFormReplacementWithPath(
+      st,
+      setAtPathWithSchemaFill(st.form.value, st.schema, path, completedValue) as F,
+      meta,
+      meta?.arrayOp !== undefined ? path : null
+    )
+    return
+  }
+  const patches: Patch[] = []
+  diffAndApply(result.old, completedValue, path, (patch) => {
+    patches.push(patch)
+  })
+  commitWritePatches(st, patches, meta)
+}
+
+/**
+ * The single write funnel: every value mutation (consumer `setValue`,
+ * directive assign, array op, DU variant reshape) lands here. Kept whole
+ * as deliberate complexity — it touches essentially all of the state
+ * record, and the ordering of its phases (the
+ * slim-primitive gate, DU reshape, structural fill, storage write, then
+ * blank / error bookkeeping and the change-listener notify) is itself
+ * the correctness. Splitting it into argument-passed helpers would
+ * scatter that ordering and trade a single source of truth for a
+ * fan-out of partial writers (net-negative).
+ *
+ * Its observable contracts are pinned by characterization suites rather
+ * than unit-tested internals: variant-memory restore + nested-DU stub
+ * correction (discriminated-union-variant-switch, du-variant-persistence),
+ * blank-path insertion-order stability (blank-paths-order-stability), and
+ * the same-tick value + schemaErrors commit / no-flicker reshape
+ * (du-variant-error-flicker).
+ */
+function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path,
+  value: unknown,
+  meta?: WriteMeta
+): boolean {
+  // Data-freeze gate: when the form is disabled (own `disabled` config
+  // or a wizard lock), every value write no-ops here — the single
+  // chokepoint all three write origins funnel through (programmatic
+  // `setValueImpl`, the directive's `setValueWithInternalPath`, and
+  // `setValueFromHost` including its `markBlank` path). The first
+  // blocked write dev-warns once; thereafter silent, never throws.
+  // `reset()` and hydration bypass this (they route through
+  // `applyFormReplacementWithPath`), so a frozen form can still be
+  // populated or cleared programmatically.
+  if (st.effectiveDisabled.value) {
+    if (__DEV__ && !st.warnedDisabledWrite) {
+      st.warnedDisabledWrite = true
+      console.warn(
+        `[attaform] Ignored a write to a disabled form ("${String(st.formKey)}"). ` +
+          `Value writes no-op while \`disabled\` resolves truthy. This warning fires once.`
+      )
+    }
+    return false
+  }
+  // Decode a structural array op into its index permutation exactly
+  // once, against the PRE-op array still live at `path`. Every
+  // consumer below derives from this one remap: the fresh-slot
+  // scoping (symbol strip, slim gate, structural completion,
+  // authoring) reads `remap.fresh`, and the post-write bookkeeping
+  // pass replays the whole permutation.
+  let arrayOpRemap: IndexRemap | null = null
+  if (meta?.arrayOp !== undefined) {
+    const preOpValue = getAtPath(st.form.value, path)
+    arrayOpRemap = remapForOp(meta.arrayOp, Array.isArray(preOpValue) ? preOpValue.length : 0)
+  }
+  // Drop any Symbol-keyed properties before the value flows through
+  // the gate, DU reshape, or storage. Form values are string-keyed
+  // by schema design and the consumer-side leak would otherwise
+  // surface in `Object.getOwnPropertySymbols(values.x)` and break
+  // downstream JSON serialization (persistence) + variant memory. On an
+  // array structural op only the fresh element(s) carry consumer input;
+  // existing elements were stripped when first written and only shift
+  // position here, so strip just the new slot(s) instead of deep-walking
+  // all N. The field-array helper owns this fresh array copy, so the
+  // in-place element strip is safe — the same scoping the slim gate,
+  // mergeStructural, and the authored walk apply below.
+  if (arrayOpRemap !== null && Array.isArray(value)) {
+    for (const idx of arrayOpRemap.fresh) {
+      value[idx] = stripSymbolsDeep(value[idx])
+    }
+  } else {
+    value = stripSymbolsDeep(value)
+  }
+  // Slim-primitive write gate: every leaf in the value must match
+  // the schema's slim primitive set at its sub-path. Refinement-level
+  // constraints (.email/.min/enum membership/etc.) are NOT enforced
+  // here — they're a validation concern. See ./slim-primitive-gate.ts.
+  // The gate short-circuits at `z.preprocess` / `z.coerce` wrappers
+  // so storage retains the consumer's raw input; the schema-side
+  // normalizers fire during `safeParse`, not at the write boundary.
+  let slimOk = true
+  if (arrayOpRemap !== null && Array.isArray(value)) {
+    // Array structural op: only the freshly-introduced element(s) carry new
+    // leaf values. Existing elements were gated when first written and only
+    // shift position here, so validate just the fresh slots, not all N.
+    for (const idx of arrayOpRemap.fresh) {
+      if (!isSlimPrimitiveValid(st.schema, st.form, [...path, idx], value[idx])) {
+        slimOk = false
+        break
+      }
+    }
+  } else {
+    slimOk = isSlimPrimitiveValid(st.schema, st.form, path, value)
+  }
+  if (!slimOk) {
+    return false
+  }
+  // Cross-variant write guard: walking the path, if any ancestor is
+  // a DU whose ACTIVE disc value resolves to a known variant that
+  // doesn't contain the next path segment, the write targets an
+  // inactive-variant key (e.g. `setValue('notify.number', ...)`
+  // while the active channel is 'email'). Or the ancestor is in
+  // stub state (disc isn't a known variant). Reject so foreign
+  // sibling-variant fields can't leak into form.values.
+  //
+  // The DU's own disc key is always reachable — writes to it
+  // recover the form from stub state by selecting a valid variant
+  // — so the guard skips when the next path segment IS the disc.
+  if (st.hasDU && path.length >= 2) {
+    for (let i = 0; i < path.length - 1; i++) {
+      const ancestorPath = path.slice(0, i + 1)
+      const du = st.schema.getUnionDiscriminatorAtPath(ancestorPath)
+      if (du === undefined) continue
+      const nextSeg = path[i + 1]
+      if (nextSeg === du.discriminatorKey) continue
+      const ancestorValue = getAtPath(st.form.value, ancestorPath)
+      if (!isPlainRecord(ancestorValue)) continue
+      const discValue = (ancestorValue as Record<string, unknown>)[du.discriminatorKey]
+      if (discValue === undefined) {
+        return false
+      }
+      if (!du.isVariantSelected(discValue)) {
+        return false
+      }
+      const variantDefault = du.getVariantDefault(discValue)
+      if (!isPlainRecord(variantDefault)) continue
+      if (typeof nextSeg !== 'string') continue
+      if (!(nextSeg in (variantDefault as Record<string, unknown>))) {
+        return false
+      }
+    }
+  }
+
+  // Latest-write-wins over the transform channel. The write has cleared
+  // the slim gate + cross-variant guards, so it WILL commit (here, via a
+  // DU reshape below, or the normal mutation) — a committed synchronous
+  // write to this path (or a container write above it) supersedes any
+  // in-flight async transform at or under it, whose eventual resolved
+  // value is now stale. Covers `setValueWithInternalPath`, `markBlank`,
+  // and `form.setValue` uniformly (all funnel through here). The deferred
+  // orchestrator releases its own run before committing, so a transform
+  // landing its own value is not caught. Guarded on `transformRuns.size`
+  // so the common no-transforms write stays allocation-free.
+  if (st.transformRuns.size !== 0) cancelTransformsUnder(st, path)
+
+  // Discriminated-union variant transitions. Writing a discriminator
+  // — whether as a leaf write to the discriminator key or as a
+  // wholesale write of the union value carrying a different
+  // discriminator — changes the schema's effective shape at the
+  // union's location. Old-variant keys (e.g. `address` on the email
+  // branch) become foreign once `channel: 'sms'` lands; new-variant
+  // required keys need their slim defaults populated so the
+  // errors-as-state pipeline sees the new shape. Two flavours, both
+  // routed through `reshapeUnionVariant`:
+  //
+  //   Case A — leaf write to the discriminator key
+  //   (`setValue('notify.channel', 'sms')`). Parent path is the
+  //   union; the new value names a variant directly.
+  //
+  //   Case B — wholesale write of the union itself
+  //   (`setValue('notify', { channel: 'sms', number: '...' })`).
+  //   Path is the union; the consumer's value carries the
+  //   discriminator. Layer the consumer's value on top of the
+  //   matched variant default so consumer-supplied keys win.
+  if (st.hasDU && meta?.skipDiscriminatorReshape !== true) {
+    // Case A: discriminator-key write.
+    if (path.length > 0) {
+      const last = path[path.length - 1]
+      if (typeof last === 'string') {
+        const parentPath = path.slice(0, -1)
+        const parentDU = st.schema.getUnionDiscriminatorAtPath(parentPath)
+        if (parentDU?.discriminatorKey === last) {
+          const oldValue = getAtPath(st.form.value, path)
+          if (!Object.is(oldValue, value)) {
+            const variantDefault = parentDU.getVariantDefault(value)
+            if (variantDefault !== undefined) {
+              return reshapeUnionVariant(
+                st,
+                parentPath,
+                oldValue,
+                value,
+                variantDefault,
+                undefined,
+                meta
+              )
+            }
+            // Disc value isn't a known variant literal. Storage at
+            // the union path becomes a stub holding only the disc
+            // key — prior variant body dropped, no first-variant-
+            // default leak. Validation surfaces the issue via Zod's
+            // natural invalid_union_discriminator at parentPath.
+            return reshapeUnionVariant(
+              st,
+              parentPath,
+              oldValue,
+              value,
+              { [last]: value },
+              undefined,
+              meta
+            )
+          }
+        }
+      }
+    }
+    // Case B: whole-union write.
+    if (isPlainRecord(value)) {
+      const selfDU = st.schema.getUnionDiscriminatorAtPath(path)
+      if (selfDU !== undefined) {
+        const valueRecord = value as Record<string, unknown>
+        const discKey = selfDU.discriminatorKey
+        const discValue = valueRecord[discKey]
+        const currentUnionValue = getAtPath(st.form.value, path)
+        const oldDiscValue = isPlainRecord(currentUnionValue)
+          ? (currentUnionValue as Record<string, unknown>)[discKey]
+          : undefined
+        if (discValue !== undefined) {
+          const variantDefault = selfDU.getVariantDefault(discValue)
+          if (variantDefault !== undefined && isPlainRecord(variantDefault)) {
+            return reshapeUnionVariant(
+              st,
+              path,
+              oldDiscValue,
+              discValue,
+              variantDefault,
+              valueRecord,
+              meta
+            )
+          }
+          // Consumer supplied a disc value that's not a known
+          // variant. Stub holds only the disc key; non-disc consumer
+          // keys are dropped (consumerOverrides = undefined) so
+          // foreign fields don't leak into form.values.
+          return reshapeUnionVariant(
+            st,
+            path,
+            oldDiscValue,
+            discValue,
+            { [discKey]: discValue },
+            undefined,
+            meta
+          )
+        }
+        // Consumer wrote a whole-union value with NO discriminator.
+        // The form is "between selections" — empty stub {} ; every
+        // consumer key is dropped (no auto-merge with the first-
+        // variant default).
+        return reshapeUnionVariant(st, path, oldDiscValue, undefined, {}, undefined, meta)
+      }
+    }
+  }
+
+  // Blank bookkeeping. `blank: true` adds the path
+  // to the set (the call site declares "this write represents an
+  // empty intent"); any other write removes the exact key. A
+  // container write also drops every descendant blank-mark under
+  // `path` (mirrors the DU-reshape path's `isPathKeyUnder` sweep) —
+  // a write to `addr` replaces every leaf beneath, so any prior
+  // "I'm blank" mark at `addr.zip` is now stale. The arrayOp branch
+  // skips the descendant sweep because `migrateArrayElementState`
+  // relocates per-element blank-marks across the operation's exact
+  // permutation downstream; sweeping ahead of it would delete the
+  // marks the migration needs to carry forward. The mark/unmark
+  // sit BEFORE the identity short-circuit so transitions that
+  // don't change storage value (e.g. typing 0 over slim-default 0)
+  // still update the visual / blank state correctly.
+  // Pre-write value at `path`, read once: `form.value` is not mutated
+  // until `applyFormReplacement` below, so the same read serves the
+  // descendant-sweep gate (just below) and the identity short-circuit.
+  const currentValue = getAtPath(st.form.value, path)
+  const pathKey = canonicalizePath(path).key
+  if (meta?.blank === true) {
+    st.blankPaths.add(pathKey)
+  } else {
+    if (st.blankPaths.has(pathKey)) st.blankPaths.delete(pathKey)
+    // Descendant sweep: a write replaces the whole subtree at `path`, so
+    // any blank-mark UNDER `path` is now stale. Only a container can have
+    // had descendants, so gate on the PRE-WRITE value being one. A scalar
+    // leaf write (the keystroke hot path) has no descendants; running the
+    // sweep there scans the entire blank set for nothing, O(F) per write.
+    // Clearing a container with a non-container (null / undefined) still
+    // sweeps, since `currentValue` was the container. `isPathKeyUnder`
+    // returns true at root for every non-empty key, so a root write still
+    // drops all marks.
+    if (
+      meta?.arrayOp === undefined &&
+      (isPlainRecord(currentValue) || Array.isArray(currentValue))
+    ) {
+      for (const existingKey of [...st.blankPaths]) {
+        if (isPathKeyUnder(existingKey, path)) st.blankPaths.delete(existingKey)
+      }
+    }
+  }
+
+  // Authored bookkeeping: a setValue is the consumer authoring `path`
+  // (and every sub-path inside `value`, if it's a container). The
+  // schema-error filter consults this set to distinguish "no consumer
+  // input at this preprocess / coerce leaf" from "consumer wrote
+  // undefined here." The latter must surface verdicts; the former
+  // is the runtime no-value-yet stub the filter exists to suppress.
+  // Marking before the identity short-circuit covers the
+  // setValue('url', undefined) over an already-undefined leaf case;
+  // the mark is cheap and consistent either way.
+  const wasAuthoredBefore = st.authoredPaths.has(pathKey)
+  if (arrayOpRemap !== null && Array.isArray(value)) {
+    // The array container itself is authored (the consumer wrote it via a
+    // field-array op), matching the whole-array walk this replaces. Existing
+    // elements keep their authored marks (relocated with the op by
+    // the structural-op bookkeeping), so only the fresh element(s) need a
+    // fresh walk.
+    if (path.length > 0) st.authoredPaths.add(pathKey)
+    for (const idx of arrayOpRemap.fresh) {
+      walkAuthoredFromConstraints(value[idx], [...path, idx], st.authoredPaths)
+    }
+  } else {
+    walkAuthoredFromConstraints(value, path, st.authoredPaths)
+  }
+  const newlyAuthored = !wasAuthoredBefore && st.authoredPaths.has(pathKey)
+
+  // Structural-completeness invariant: every write must leave the
+  // form satisfying the slim schema. Two ingress points to fill:
+  //   1. The target value (consumer may have passed a partial; the
+  //      schema's element default fills missing keys / array
+  //      elements via mergeStructural).
+  //   2. Intermediate gaps along the path (missing object property,
+  //      array length below target index — setAtPathWithSchemaFill
+  //      asks the schema for defaults at each gap site).
+  // The common case (write to existing slot with a complete value)
+  // hits no schema lookups: mergeStructural short-circuits on
+  // ref-equal sub-trees, and the fill walker only queries the
+  // schema at gap sites.
+  let completedValue: unknown
+  if (arrayOpRemap !== null && Array.isArray(value)) {
+    // Complete only the fresh element(s) against the schema element default;
+    // existing elements are already structurally complete from prior writes.
+    // Mutating the caller's fresh array copy in place is safe (the field-array
+    // helper builds and hands it off exactly once).
+    for (const idx of arrayOpRemap.fresh) {
+      value[idx] = mergeStructural(st.schema, [...path, idx], value[idx])
+    }
+    completedValue = value
+  } else {
+    completedValue = mergeStructural(st.schema, path, value)
+  }
+  // Identity short-circuit: if the path's current value already
+  // matches what we'd write, skip the replacement. Without this,
+  // every keystroke that produces an unchanged trimmed/cast value
+  // (e.g. typing a trailing space into a `.trim` input — trim → ""
+  // → form already at "") would still replace `form.value` with a
+  // new object identity, triggering Vue to re-render the input and
+  // patch the `:value` binding (which compares against the live
+  // DOM `el.value`, not the previous vnode prop). The patch
+  // overwrites the user's transient whitespace and the spacebar
+  // appears broken.
+  if (Object.is(currentValue, completedValue)) {
+    // Storage unchanged, skip the replacement to avoid spurious
+    // re-renders. Narrow exception: at a preprocess / coerce leaf,
+    // a write that newly authors the path changes the filter's
+    // verdict semantics. Prior validation passes were suppressed
+    // because the path wasn't authored yet; a fresh pass needs to
+    // fire so the verdict surfaces. The narrow scope (preprocess /
+    // coerce only) preserves the original short-circuit for plain
+    // primitives — `setValue('income', 0)` over a mount-time `0`
+    // stays a true no-op and doesn't kick off a validation cycle.
+    if (newlyAuthored && st.schema.isPreprocessOrCoerceLeaf(path)) {
+      const modeForAuthoringTransition = meta?.instance?.validateOn ?? st.fieldValidationMode
+      if (modeForAuthoringTransition === 'change') {
+        scheduleFieldValidation(st, path, false /* debounced */, {
+          ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
+          ...(meta?.instance?.debounceMs !== undefined
+            ? { debounceMs: meta.instance.debounceMs }
+            : {}),
+        })
+      }
+    }
+    return true
+  }
+  // For a wholesale array replacement (no `arrayOp` to follow), anchor the
+  // identity baseline at the PRE-write order before `applyTargetedWrite`
+  // resizes the array in place. On an array's first track this is the only
+  // chance to capture its baseline length: realigning only afterwards (below)
+  // would anchor the already-resized order, so a shrink — an element removal —
+  // on a never-rendered array would read structurally pristine and fail to
+  // dirty the form (#420). The post-write realign then advances the current
+  // order while the baseline stays put, so the length delta surfaces through
+  // `hasStructuralChangeUnder`. Idempotent once the array is tracked, and it
+  // mirrors what the `arrayOp` branch gets for free from the remap's
+  // recorded pre-op length.
+  if (arrayOpRemap === null && Array.isArray(value) && Array.isArray(currentValue)) {
+    st.arrayIdentity.realign(path)
+  }
+  applyTargetedWrite(st, path, completedValue, meta)
+  // Structural-mutation bookkeeping. The field-array helpers tag each
+  // op with an `arrayOp`; the remap decoded at funnel entry drives one
+  // engine pass — per-element state relocation, fresh-element seeding,
+  // derived-state eviction (schema verdicts + variant memory),
+  // in-flight validation aborts at vacated indices, and the identity
+  // replay. Runs after `applyFormReplacement` so it overwrites the
+  // placeholder originals replacement seeds at shifted destinations
+  // with each moved element's true baseline. Raw whole-array setValues
+  // (`setValue('events', [...])`) instead clear all memory under the
+  // array path because identity bookkeeping was lost wholesale —
+  // memory keyed by absolute index would otherwise bleed onto new
+  // occupants of those indices on a future variant switch.
+  if (arrayOpRemap !== null) {
+    st.arrayBookkeeping.applyStructuralOp(path, arrayOpRemap)
+  } else if (Array.isArray(value) && Array.isArray(currentValue)) {
+    st.variantMemory.clearUnderPath(path)
+    st.arrayIdentity.realign(path)
+  } else if (isContainer(currentValue) && !isContainer(value)) {
+    // A baseline-present container dropped to a non-container: record the path
+    // so the container dirty check still fires for the vanished subtree (see
+    // `removedSubtrees`). Gated on real baseline presence so removing an
+    // optional section that was empty at construction — added, then cleared
+    // again — lands back at pristine rather than reading dirty.
+    if (subtreeHadRealBaseline(st, path, currentValue)) {
+      st.removedSubtrees.add(canonicalizePath(path).key)
+    }
+  }
+  const effectiveModeAfterWrite = meta?.instance?.validateOn ?? st.fieldValidationMode
+  if (effectiveModeAfterWrite === 'change') {
+    scheduleFieldValidation(st, path, false /* debounced */, {
+      ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
+      ...(meta?.instance?.debounceMs !== undefined ? { debounceMs: meta.instance.debounceMs } : {}),
+    })
+  }
+  return true
+}
+
+/**
+ * Replace the union's parent storage with the activated variant's
+ * value, atomically. Two flavours fold into one machine:
+ *
+ *   - `oldDiscValue !== newDiscValue` is a TRUE switch. The
+ *     outgoing variant's subtree (deep-cloned) and its blank-path
+ *     bookkeeping under `parentPath` snapshot into `variantMemory`
+ *     keyed by the union's PathKey. Then memory is consulted for
+ *     `newDiscValue`: a hit restores the prior typed state; a miss
+ *     falls back to `variantDefault` (the adapter's slim default
+ *     for the matching `z.object`).
+ *   - `oldDiscValue === newDiscValue` is NOT a switch — the
+ *     reshape was entered via Case B with a partial whole-union
+ *     write. Skip memory I/O entirely (memory is for switches),
+ *     just merge `consumerOverrides` on top of `variantDefault`.
+ *
+ * `consumerOverrides` carries Case B's whole-union value (e.g.
+ * `setValue('notify', { channel: 'email', address: 'x' })`).
+ * Merge order: memory baseline (or `variantDefault`) first,
+ * consumer overrides on top — so a memory-restored `address`
+ * survives a partial write that doesn't override it. Case A
+ * passes `undefined` for `consumerOverrides`.
+ *
+ * Direct write — the resolved value IS structurally complete
+ * (from the adapter's `deriveDefault` or a matching prior
+ * snapshot). Routing through `mergeStructural` would re-add
+ * foreign keys from the FIRST variant (the union's
+ * `getDefaultAtPath` falls back to the first option), which is
+ * exactly what the reshape is meant to clear.
+ *
+ * Deliberate-complexity: the sync-ahead reshape (storage + schema
+ * errors committed in the same tick) is the no-flicker mitigation no
+ * unit test can verify in isolation, so it stays inline rather than
+ * fragmenting into argument-passed helpers. Its observable contracts
+ * are pinned by characterization suites — the same-tick no-flicker
+ * transition (du-variant-error-flicker), variant-memory restore
+ * (discriminated-union-variant-switch, du-variant-persistence), and
+ * blank-path order stability (blank-paths-order-stability).
+ */
+function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  parentPath: Path,
+  oldDiscValue: unknown,
+  newDiscValue: unknown,
+  variantDefault: unknown,
+  consumerOverrides: Record<string, unknown> | undefined,
+  meta?: WriteMeta
+): boolean {
+  const sameDisc = Object.is(oldDiscValue, newDiscValue)
+  const parentKey = canonicalizePath(parentPath).key
+
+  // Snapshot OUTGOING. Deep-clone the value: `getAtPath(form.value,
+  // parentPath)` returns a Vue reactive proxy into the live tree
+  // (form is `ref(initialData)`); after the upcoming `form.value =
+  // nextForm` overwrites the union path, the proxy still points to
+  // the orphaned raw target. `cloneVariantSnapshot` walks the
+  // subtree, calling `toRaw` at each level to bypass Vue reactivity
+  // and preserves `BigInt`, `Date`, `Map`, `Set` natively — types
+  // Zod schemas can validate at leaves but the prior `JSON.parse(
+  // JSON.stringify(...))` cycle either crashed on (BigInt) or
+  // silently degraded (Date → ISO string, Map/Set → `{}`).
+  // `structuredClone` won't work as a one-shot replacement: nested
+  // reactive children stored as Proxies cause `DataCloneError`.
+  // Skip when `oldDiscValue` is undefined (initial state had no
+  // discriminator) — nothing meaningful to remember.
+  let baseline: unknown = variantDefault
+  let restoredBlanks: PathKey[] | undefined
+  const effectiveRemember = meta?.instance?.rememberVariants ?? st.rememberVariants
+  if (effectiveRemember && !sameDisc) {
+    if (oldDiscValue !== undefined) {
+      const currentValue: unknown = cloneVariantSnapshot(getAtPath(st.form.value, parentPath))
+      const outgoingBlanks: PathKey[] = []
+      for (const k of st.blankPaths) {
+        if (isPathKeyUnder(k, parentPath)) outgoingBlanks.push(k)
+      }
+      st.variantMemory.recordOutgoing(parentKey, oldDiscValue, {
+        value: currentValue,
+        blankPaths: outgoingBlanks,
+      })
+    }
+    // Look up INCOMING. Stored value is already a deep clone — safe
+    // to use directly without re-cloning.
+    const restored = st.variantMemory.lookupIncoming(parentKey, newDiscValue)
+    if (restored !== undefined) {
+      baseline = restored.value
+      restoredBlanks = [...restored.blankPaths]
+    }
+  }
+
+  // Layer consumer overrides on top of the baseline (Case B).
+  // For Case A (`consumerOverrides === undefined`), the baseline
+  // is the final value.
+  const layered: unknown =
+    consumerOverrides !== undefined
+      ? { ...(baseline as Record<string, unknown>), ...consumerOverrides }
+      : baseline
+  // Stub-correct any nested DU paths inside `layered` whose disc
+  // value isn't a known variant — the consumer's Case B payload may
+  // carry a valid outer disc but a bad inner disc (e.g.
+  // `{step:'choose', inner:{kind:'BAD_INNER', a:'x'}}`). Without
+  // this, the inner mixed shape leaks through reshape; with it,
+  // every level ends in either a real variant or a disc-only stub.
+  const finalValue: unknown = applyDuStubs(st.schema as AbstractSchema<unknown, unknown>, layered, {
+    basePath: parentPath,
+  })
+
+  // New blanks: restored from memory (preserves the user's prior
+  // explicit blanks + numeric auto-marks together) or recomputed
+  // from the resolved `finalValue` (mount-time rule: storage /
+  // display divergence for `number` / `bigint` numeric leaves).
+  // Compute BEFORE the drop loop so we know which old keys survive
+  // — `Set.add` on a deleted-and-re-added key re-inserts at the END
+  // of insertion order, which would shift `derivedBlankErrors` (and
+  // therefore `form.meta.errors`) on every same-disc reshape even
+  // when nothing about the post-reshape shape actually changed.
+  let newBlankPaths: PathKey[]
+  if (restoredBlanks !== undefined) {
+    newBlankPaths = restoredBlanks
+  } else {
+    newBlankPaths = []
+    walkUnspecified(finalValue, [...parentPath], newBlankPaths)
+  }
+  const survivingBlankKeys = new Set<PathKey>(newBlankPaths)
+  // Drop blank-path bookkeeping under `parentPath` — those paths
+  // belong to the OLD variant's leaves and don't exist in the new
+  // effective shape. Skip keys present in `survivingBlankKeys`: the
+  // `add` below is a no-op for an existing Set member (preserves the
+  // original insertion slot).
+  for (const existingKey of [...st.blankPaths]) {
+    if (isPathKeyUnder(existingKey, parentPath) && !survivingBlankKeys.has(existingKey)) {
+      st.blankPaths.delete(existingKey)
+    }
+  }
+
+  const currentValue = getAtPath(st.form.value, parentPath)
+  if (Object.is(currentValue, finalValue)) {
+    // Apply the auto-marks even on no-op (the bookkeeping must
+    // catch up even when storage identity matches by coincidence).
+    for (const k of newBlankPaths) st.blankPaths.add(k)
+    return true
+  }
+  // `setAtPathWithSchemaFill` (not the plain `setAtPath`) so that
+  // writing to an array index past current length pads positions in
+  // between with the schema's element default — otherwise a
+  // `setValue('events.10', { type: 'text', value: 'far' })` on a
+  // length-1 array would leave `events[1..9]` as `undefined` holes,
+  // which break downstream iteration and validation.
+  const nextForm =
+    parentPath.length === 0
+      ? (finalValue as F)
+      : (setAtPathWithSchemaFill(st.form.value, st.schema, parentPath, finalValue) as F)
+  // Sync-validate AHEAD of the form mutation when the schema
+  // permits it. Both writes (schemaErrors + form.value) then land
+  // in the same Vue reactive batch, so a single render emits the
+  // fully-consistent post-reshape state. Without this, the render
+  // queued by `applyFormReplacement` runs BEFORE the async
+  // validation lands — the active-path filter hides the OLD
+  // variant's schemaErrors (their leaves vanished from form.value)
+  // and the NEW variant's haven't been written yet, producing a
+  // visible `{}` flicker between the two meaningful states.
+  //
+  // We pass `{ sync: true }` to opt into the adapter's sync arm.
+  // The adapter MAY still return a Promise (async refinements,
+  // async transforms / pipes — schemas where sync isn't possible);
+  // we detect that with `instanceof Promise` and fall through to
+  // the existing debounced async pipeline in that case.
+  let appliedSync = false
+  const reshapeMode = meta?.instance?.validateOn ?? st.fieldValidationMode
+  if (reshapeMode === 'change') {
+    const syncOrPromise = st.schema.validateAtPath(finalValue, parentPath, { sync: true })
+    if (!(syncOrPromise instanceof Promise)) {
+      const reStamped = syncOrPromise.success
+        ? []
+        : syncOrPromise.errors.map((err) => ({
+            ...err,
+            path: [...parentPath, ...(err.path as Segment[])],
+          }))
+      applySchemaErrorsForSubtree(st, parentPath, reStamped)
+      // Cancel any in-flight async validation at this path so a
+      // late-arriving result can't clobber the sync write.
+      const { key: parentKey } = canonicalizePath(parentPath)
+      const prevValidation = st.fieldValidationState.get(parentKey)
+      if (prevValidation !== undefined) {
+        if (prevValidation.timer !== null) clearTimeout(prevValidation.timer)
+        prevValidation.aborted = true
+        st.fieldValidationState.delete(parentKey)
+      }
+      appliedSync = true
+    }
+  }
+  applyFormReplacement(st, nextForm, meta)
+  for (const k of newBlankPaths) st.blankPaths.add(k)
+  if (reshapeMode === 'change' && !appliedSync) {
+    scheduleFieldValidation(st, parentPath, false /* debounced */, {
+      ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
+      ...(meta?.instance?.debounceMs !== undefined ? { debounceMs: meta.instance.debounceMs } : {}),
+    })
+  }
+  return true
+}
+
+/**
+ * Schedule (or kick off immediately) a field-level validation run
+ * for `path`. Per-path one-shot `aborted` latch: a new schedule
+ * cancels any prior in-flight run for the same path, so rapid
+ * successive writes don't pile up concurrent validations.
+ *
+ * The validation reads the current value at `path` from `form.value`
+ * AT THE TIME THE TIMER FIRES, not at schedule time. That's the
+ * correct semantics for a debounced change trigger: the user's
+ * latest-keystroke value is what matters, not whichever value
+ * tripped the timer scheduler N milliseconds ago.
+ */
+function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path,
+  immediate: boolean,
+  override?: { readonly mode?: ValidateOn; readonly debounceMs?: number }
+): void {
+  const effectiveMode = override?.mode ?? st.fieldValidationMode
+  if (effectiveMode === 'submit') return
+  const effectiveDebounce = override?.debounceMs ?? st.fieldValidationDebounceMs
+  const { key } = canonicalizePath(path)
+  const prev = st.fieldValidationState.get(key)
+  if (prev !== undefined) {
+    if (prev.timer !== null) clearTimeout(prev.timer)
+    prev.aborted = true
+  }
+  const fresh: FieldValidationEntry = {
+    aborted: false,
+    timer: null,
+    settled: false,
+    released: false,
+  }
+  st.fieldValidationState.set(key, fresh)
+  // Capture a fresh epoch at schedule time. Closed over by `run`
+  // below and re-checked at the commit site so a later-scheduled
+  // run that resolves first protects its verdict from clobber by
+  // an earlier-scheduled run that resolves later (PASS2-2).
+  const myEpoch = ++st.scheduleEpoch
+
+  const run = () => {
+    fresh.timer = null
+    if (fresh.aborted) return
+    // Defense-in-depth: the increments below trigger reactive
+    // subscribers (sync watchers on `api.meta.validating` or
+    // `api.fields.X.validating`). If one of those subscribers throws,
+    // the Promise chain whose `.finally` does the decrements never
+    // starts, leaking the per-path counter — `validating` would
+    // stay true forever, and the mount-gate's
+    // `pathHasAsyncValidation` would report a permanently-pending
+    // verdict. Roll back the increments that succeeded on a sync
+    // throw before letting the error propagate.
+    let activeIncremented = false
+    try {
+      st.activeValidations.value += 1
+      activeIncremented = true
+      incFieldValidation(st, key)
+    } catch (err) {
+      // `incFieldValidation` is the last statement above and is
+      // structurally a `Map.set` — if it throws, it threw before the
+      // map entry was written, so there's nothing to roll back on the
+      // field counter. The only rollback that matters is the global
+      // `activeValidations` increment that happened on the first line.
+      if (activeIncremented) {
+        st.activeValidations.value = Math.max(0, st.activeValidations.value - 1)
+      }
+      throw err
+    }
+    // Per-keystroke scope. When the schema carries no container or
+    // root refine (predicate returns `false` and the schedule is at
+    // a real path), every verdict it can produce lives at the
+    // edited subtree or below — a subtree-scoped pass is sufficient
+    // and the runtime avoids the O(N) whole-form parse on each
+    // keystroke. Predicate `true` (or missing — adapters that don't
+    // implement detection) keeps the conservative whole-form pass
+    // so ancestor refines (cross-field equality, sum constraints,
+    // etc.) still re-evaluate against the live form value. An
+    // empty `path` (root schedule, mount / reset / explicit
+    // whole-form) also folds to whole-form.
+    const subtreeScope = path.length > 0 && st.schema.hasContainerOrRootRefine?.() === false
+    const scopePath: Path | undefined = subtreeScope ? path : undefined
+    const dataAtScope: unknown = subtreeScope ? getAtPath(st.form.value, path) : st.form.value
+    const scopeKey: PathKey = subtreeScope ? canonicalizePath(path).key : ROOT_PATH_KEY
+    void Promise.resolve()
+      .then(() => st.schema.validateAtPath(dataAtScope, scopePath))
+      .then((response) => {
+        if (fresh.aborted) return
+        // Form-level epoch gate. If a later-scheduled run has
+        // already committed its verdict, dropping this stale
+        // commit prevents an asymmetric-latency race from
+        // overwriting the fresher result. `<=` is conservative
+        // — counter monotonicity makes equality impossible in
+        // practice, but a re-entrant commit at the same epoch
+        // would still be a no-op.
+        if (myEpoch <= st.lastCommittedEpoch) return
+        st.lastCommittedEpoch = myEpoch
+        // Record the value this pass validates so a later blur can
+        // recognise an unchanged form and skip. Blur-mode only: the
+        // blur guard is the sole reader, so change-mode never pays
+        // for the snapshot. Lives in the applied branch — an aborted
+        // run never advances the snapshot, so a later blur with
+        // nothing committed for this path still re-validates instead
+        // of falsely skipping against a stale-but-uncommitted anchor.
+        //
+        // Snapshot scope = validation scope: under subtree-scoped
+        // commits (CORE-P1a), only the subtree-at-`path` participates
+        // in the blur dedup, so cloning the whole form just to throw
+        // away unused branches is wasted work proportional to (form
+        // size − subtree size). Read the live subtree directly from
+        // `form.value` (matching the original "snapshot at commit
+        // time" semantics, where the post-async write may differ
+        // from `dataAtScope` captured before the await) and clone
+        // only that. The blur reader subtracts the snapshot's
+        // scope segments from the blur path to project back into
+        // the stored subtree. Whole-form scope (`scopePath ===
+        // undefined`) stores the full clone, identical to the
+        // prior behaviour for that branch.
+        if (effectiveMode === 'blur') {
+          const snapshotSource =
+            scopePath !== undefined ? getAtPath(st.form.value, scopePath) : st.form.value
+          st.pathSnapshots.set(scopeKey, structuralSnapshot(snapshotSource))
+        }
+        const errors = response.success ? [] : response.errors
+        // Drop schema verdicts at preprocess / coerce paths whose
+        // storage is undefined AND the consumer didn't author a
+        // starting value there. Under the no-write-mutation contract,
+        // a refine running against the preprocess sentinel for "no
+        // value" produces a verdict against state nobody authored —
+        // suppressing it keeps the construction-time async seed
+        // from flickering when the field is first touched. Authored
+        // paths (defaultValues OR schema `.default(...)`) skip the
+        // filter; their verdicts ARE legitimate.
+        const filtered = filterAuthoredErrors(st, errors)
+        // Subtree-scoped responses carry paths relative to the
+        // subtree; restamp with absolute paths so the storage
+        // convention holds. Whole-form responses are already
+        // absolute — pass through.
+        const restamped: ValidationError[] = subtreeScope
+          ? filtered.map((err) => ({
+              ...err,
+              path: [...path, ...(err.path as Segment[])],
+            }))
+          : filtered
+        applySchemaErrorsForSubtree(st, scopePath ?? [], restamped)
+      })
+      .catch(() => {
+        // Adapter contract forbids throws — swallow here so a misbehaving
+        // custom adapter doesn't surface as an uncaught rejection. The
+        // silent drop matches the reactive `validate()` ref's catch
+        // branch for adapter-level throws (see process-form.ts).
+      })
+      .finally(() => {
+        // Skip the decrements if an external release (a path-scoped reset)
+        // already did them — otherwise this late `.finally` would
+        // double-count against a run rescheduled at the same key after the
+        // release. Normal runs leave `released` false and decrement here.
+        if (!fresh.released) {
+          st.activeValidations.value = Math.max(0, st.activeValidations.value - 1)
+          decFieldValidation(st, key)
+        }
+        fresh.settled = true
+      })
+  }
+
+  // `debounceMs: 0` is the off switch — `setTimeout(fn, 0)` would
+  // punt to the next macrotask (browsers also clamp to ~4 ms), and
+  // the indirection serves no purpose when the consumer asked for
+  // "no debounce." Run synchronously like the `immediate` branch.
+  if (immediate || effectiveDebounce === 0) {
+    run()
+  } else {
+    fresh.timer = setTimeout(run, effectiveDebounce)
+  }
+}
+
+function cancelFieldValidation<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): void {
+  for (const [pkey, entry] of st.fieldValidationState) {
+    if (entry.timer !== null) {
+      // Debounce timer hasn't fired yet — run() never executed, so
+      // no `activeValidations` / `fieldValidationCounts` increment
+      // happened. Just clear the timer; nothing to roll back.
+      clearTimeout(entry.timer)
+    } else if (!entry.settled) {
+      // run() already fired and the chain is still in flight. Its
+      // own `.finally` will decrement when the chain settles, but
+      // the chain could outlive the caller (handleSubmit /
+      // a committing parse) that's cancelling us. Release the counters
+      // synchronously here so `meta.validating` reflects the cancel
+      // immediately; the late `.finally`'s `Math.max(0, ...)`
+      // clamps the duplicate decrement to zero.
+      st.activeValidations.value = Math.max(0, st.activeValidations.value - 1)
+      decFieldValidation(st, pkey)
+    }
+    // Settled entries left in the map (waiting for the next
+    // schedule to evict them) have already decremented in their
+    // own `.finally` — skip the counter touch entirely.
+    entry.aborted = true
+  }
+  st.fieldValidationState.clear()
+}
+
+// Path-scoped counterpart to `cancelFieldValidation`: abort and release only
+// the in-flight runs whose path sits at or under `prefix`, leaving sibling
+// fields' validations untouched. Used by `resetField` so resetting one field
+// tears down its own validation. Releases the count + streak anchor in
+// lockstep through `decFieldValidation` (preserving the bracket invariant)
+// and marks each entry `released` so the run's late `.finally` can't
+// double-decrement a run rescheduled at the same key (the change-mode restore
+// write that follows `resetField`'s call schedules exactly such a run).
+function cancelFieldValidationUnder<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  prefix: Path
+): void {
+  for (const [key, entry] of [...st.fieldValidationState]) {
+    const segs = segmentsForPathKey(key)
+    if (segs === null) continue
+    if (!isPathPrefix(prefix, segs)) continue
+    if (entry.timer !== null) {
+      clearTimeout(entry.timer)
+    } else if (!entry.settled && !entry.released) {
+      st.activeValidations.value = Math.max(0, st.activeValidations.value - 1)
+      decFieldValidation(st, key)
+      entry.released = true
+    }
+    entry.aborted = true
+    st.fieldValidationState.delete(key)
+  }
+}
+
+function onFormChange<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  listener: (next: F, meta?: WriteMeta) => void
+): () => void {
+  st.formChangeListeners.add(listener)
+  return () => {
+    st.formChangeListeners.delete(listener)
+  }
+}
+
+function onSubmitSuccess<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  listener: () => void
+): () => void {
+  st.submitSuccessListeners.add(listener)
+  return () => {
+    st.submitSuccessListeners.delete(listener)
+  }
+}
+
+function onReset<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  listener: () => void
+): () => void {
+  st.resetListeners.add(listener)
+  return () => {
+    st.resetListeners.delete(listener)
+  }
+}
+
+function emitSubmitSuccess<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): void {
+  for (const listener of st.submitSuccessListeners) {
+    try {
+      listener()
+    } catch (err) {
+      console.error('[attaform] onSubmitSuccess threw:', err)
+    }
+  }
+}
+
+function registerCleanup<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  fn: () => void
+): void {
+  st.cleanupHooks.push(fn)
+}
+
+function dispose<F extends GenericForm, G extends GenericForm = F>(st: FormState<F, G>): void {
+  // Run state-scoped teardowns BEFORE clearing listener sets, so a
+  // module that wants to flush something by emitting one last event
+  // from its cleanup (unlikely but harmless) doesn't find the
+  // listener set already empty. Each hook runs inside try/catch so
+  // one misbehaving module can't block the others.
+  for (const hook of st.cleanupHooks) {
+    try {
+      hook()
+    } catch (err) {
+      console.error('[attaform] cleanup threw:', err)
+    }
+  }
+  st.cleanupHooks.length = 0
+  st.modules.clear()
+  cancelFieldValidation(st)
+  cancelTransforms(st)
+  st.fieldValidatingSince.clear()
+  st.formChangeListeners.clear()
+  st.submitSuccessListeners.clear()
+  st.resetListeners.clear()
+}
+
+function getValueAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): unknown {
+  return getAtPath(st.form.value, path)
+}
+
+// --- Errors ---
+// One tagged store: each path's cell segregates the two sources that can
+// put an error there (`schema` = the validation pipeline, `user` =
+// setErrors). The three shared channel writers below are the only
+// mutation road; each replaces exactly one side of a cell, cells are
+// immutable, and a key exists iff a side is non-empty. Derived blank
+// entries stay a read-side synthesis (`derivedBlankErrors`); the merged
+// view is exposed via `getErrorsForPath` and the top-level `errors`
+// drillable Proxy in schema -> blank -> user order.
+
+type ErrorSource = 'schema' | 'user'
+
+const ERROR_SOURCES: readonly ErrorSource[] = ['schema', 'user']
+
+/**
+ * Shared channel writer 1 — replace one side of the cell at `key` with
+ * `entries` (the caller owns the array). The other side rides along
+ * unchanged; a cell whose sides are both empty leaves the map. Always
+ * sets a FRESH cell object, so Vue's per-key collection dep fires for
+ * either side's change.
+ */
+function setErrorChannelForKey<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  src: ErrorSource,
+  entries: readonly ValidationError[]
+): void {
+  const current = st.errorCells.get(key)
+  const schema = src === 'schema' ? entries : (current?.schema ?? NO_ERRORS)
+  const user = src === 'user' ? entries : (current?.user ?? NO_ERRORS)
+  if (schema.length === 0 && user.length === 0) {
+    if (current !== undefined) st.errorCells.delete(key)
+    return
+  }
+  st.errorCells.set(key, { schema, user })
+}
+
+/**
+ * Shared channel writer 2 — replace one source's entries wholesale
+ * across the form. Cells holding the OTHER source keep their map slot
+ * (that side must survive, and `Map.set` on an existing key updates in
+ * place); cells holding only `src` are deleted first so a re-written
+ * key re-inserts in this pass's entry order — the slotting the old
+ * clear-and-rebuild produced on a single-source map.
+ */
+function replaceErrorChannel<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  src: ErrorSource,
+  entries: readonly ValidationError[]
+): void {
+  const other: ErrorSource = src === 'schema' ? 'user' : 'schema'
+  const grouped = groupErrorsByKey(entries)
+  for (const [key, cell] of st.errorCells) {
+    if (cell[other].length === 0) {
+      st.errorCells.delete(key)
+      continue
+    }
+    const fresh = grouped.get(key)
+    if (fresh !== undefined) {
+      setErrorChannelForKey(st, key, src, fresh)
+      grouped.delete(key)
+    } else if (cell[src].length > 0) {
+      setErrorChannelForKey(st, key, src, NO_ERRORS)
+    }
+  }
+  for (const [key, list] of grouped) {
+    setErrorChannelForKey(st, key, src, list)
+  }
+}
+
+/**
+ * Shared channel writer 3 — clear one source at `path`, or everywhere
+ * when `path` is omitted (a whole-channel replace with nothing). Cells
+ * whose other side holds entries survive with `src` stripped; cells
+ * left empty leave the map.
+ */
+function clearErrorChannel<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  src: ErrorSource,
+  path?: Path
+): void {
+  if (path === undefined) {
+    replaceErrorChannel(st, src, NO_ERRORS)
+    return
+  }
+  setErrorChannelForKey(st, canonicalizePath(path).key, src, NO_ERRORS)
+}
+
+/**
+ * Replace the schema side of the subtree rooted at `path` with
+ * `entries`, keying each entry by its OWN absolute path rather than
+ * `path`. Used by `scheduleFieldValidation` so a re-validation of a
+ * container (e.g. a DU parent after reshape) lands every leaf-keyed
+ * issue at its canonical store key — `form.errors.<path>` reads
+ * hit, and stale entries from a previous variant don't survive.
+ *
+ * Insertion-order stability: `Map.set` on an EXISTING key updates the
+ * cell in place and preserves the slot's position; `Map.delete`
+ * followed by `Map.set` re-inserts at the END. `form.meta.errors`
+ * iterates this Map in insertion order, so a per-field
+ * re-validation that delete-then-sets the scheduled key flips the
+ * aggregate's order on every keystroke. The grouped pass below
+ * computes the surviving key set FIRST so only keys that genuinely
+ * drop out lose their schema side (an old DU-variant leaf the new
+ * pass doesn't write); keys that survive get an in-place cell swap
+ * that keeps their original slot. User sides ride along untouched.
+ */
+function applySchemaErrorsForSubtree<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path,
+  entries: ValidationError[]
+): void {
+  // The container being re-validated. A root-scope pass (path === [])
+  // of a schema with a top-level `.refine()` produces an entry at the
+  // empty path `[]`, which canonicalises to the same `'[]'` key as
+  // `parentKey`, so the surviving refine entry and the parent
+  // reconcile naturally without any rerouting.
+  const parentKey = canonicalizePath(path).key
+  const grouped = groupErrorsByKey(entries)
+  // Drop the parent key's schema side only if not in the new pass.
+  if (!grouped.has(parentKey)) setErrorChannelForKey(st, parentKey, 'schema', NO_ERRORS)
+  // Drop stale descendants: schema-bearing keys under `path` that the
+  // new pass doesn't write (DU-variant leaves that disappeared on
+  // reshape). Keys that DO appear in `grouped` stay where they are —
+  // the write below updates them in place. The parent key is exempt
+  // (handled just above), so a root-scope pass keeps its own `'[]'`
+  // refine entry rather than sweeping it into the descendant set.
+  for (const [existingKey, cell] of st.errorCells) {
+    if (existingKey === parentKey) continue
+    if (cell.schema.length === 0) continue
+    if (isPathKeyUnder(existingKey, path) && !grouped.has(existingKey)) {
+      setErrorChannelForKey(st, existingKey, 'schema', NO_ERRORS)
+    }
+  }
+  for (const [leafKey, group] of grouped) {
+    setErrorChannelForKey(st, leafKey, 'schema', group)
+  }
+}
+
+// --- History restore ---
+
+function restoreErrorCells<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  entries: ReadonlyArray<readonly [PathKey, ErrorCell]>
+): void {
+  st.errorCells.clear()
+  for (const [key, cell] of entries) {
+    if (cell.schema.length === 0 && cell.user.length === 0) continue
+    st.errorCells.set(key, { schema: [...cell.schema], user: [...cell.user] })
+  }
+}
+
+// --- Merged read ---
+
+function getErrorsForPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): ValidationError[] {
+  const { key } = canonicalizePath(path)
+  const cell = st.errorCells.get(key)
+  const blankForKey = st.derivedBlankErrors.value.get(key)
+  if (cell === undefined && blankForKey === undefined) {
+    return []
+  }
+  const result: ValidationError[] = []
+  if (cell !== undefined) result.push(...cell.schema)
+  if (blankForKey !== undefined) result.push(...blankForKey)
+  if (cell !== undefined) result.push(...cell.user)
+  return result
+}
+
+// --- DOM ---
+
+function noteDomConnected<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): void {
+  // Connect transition. Lift focused/blurred from `null`
+  // (no-element-meaningless) to optimistic booleans only when they
+  // are currently null; preserve existing booleans so a reconnect
+  // doesn't blow away DOM-truth from an autofocus event that landed
+  // before the registration.
+  const { key } = canonicalizePath(path)
+  const current = st.fields.get(key)
+  touchFieldRecord(st, key, path, {
+    connected: true,
+    focused: current?.focused ?? false,
+    blurred: current?.blurred ?? true,
+  })
+}
+
+function noteDomDisconnected<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): void {
+  // Disconnect transition. `focused` / `blurred` are DOM-state
+  // properties — with no element to be focused or blurred, the
+  // concepts don't apply, so flip back to `null`. `touched` is
+  // interaction history and is preserved across disconnects
+  // (a v-if'd-away field that was previously blurred stays
+  // touched).
+  const { key } = canonicalizePath(path)
+  touchFieldRecord(st, key, path, { connected: false, focused: null, blurred: null })
+}
+
+function markConnectedOptimistically<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): void {
+  // Client-side: the directive's `created` / `beforeUnmount` hooks are
+  // authoritative for `connected`, so this is a no-op there. SSR is
+  // the only environment where we can't observe the DOM and need an
+  // upfront hint that the field WILL be wired up after hydration.
+  if (!st.ssr) return
+  // Idempotent: a second SSR mark for an already-connected path leaves
+  // the record untouched. The lift itself (via `noteDomConnected`)
+  // never clobbers an existing focused/blurred boolean, since a prior
+  // `markFocused` may have landed ahead of the optimistic mark
+  // (uncommon but possible during SSR when a custom directive flips
+  // focus state up-front). Server-rendered FieldState then matches the
+  // post-hydration optimistic state (`focused: false, blurred: true`)
+  // without a flash from `null` on the first reactive tick after
+  // hydration; real focus state lands as soon as the browser fires a
+  // focus event — the directive's listener catches it and flips the
+  // booleans.
+  const { key } = canonicalizePath(path)
+  if (st.fields.get(key)?.connected === true) return
+  noteDomConnected(st, path)
+}
+
+function markFocused<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path,
+  focused: boolean,
+  meta?: { readonly instance?: WriteMeta['instance'] }
+): void {
+  // See `markInteracted`: a frozen form records no focus / blur
+  // lifecycle, so no stale `blurredAfterInteraction` survives a
+  // disable -> enable toggle. A disabled native input can't receive
+  // focus anyway; this covers component hosts and programmatic focus.
+  if (st.effectiveDisabled.value) return
+  const { key } = canonicalizePath(path)
+  const current = st.fields.get(key)
+  touchFieldRecord(st, key, path, {
+    focused,
+    blurred: !focused,
+    // `touched` flips to true on blur and stays true thereafter; while
+    // a field is currently focused we keep whatever value it held.
+    touched: focused ? (current?.touched ?? false) : true,
+    // `blurredAfterInteraction` flips true on the first blur that lands
+    // after a value edit and stays true. A tab-through blur before any
+    // edit leaves it false (`interacted` is still false at that blur),
+    // which is what keeps a clean tab-through from arming the gate.
+    blurredAfterInteraction:
+      !focused && current?.interacted === true ? true : (current?.blurredAfterInteraction ?? false),
+  })
+  // On blur (focused → false), `validateOn: 'blur'` fires an immediate
+  // (no-debounce) validation for this path. Ignored for change/submit modes
+  // so behaviour matches the declared config. Two reasons to run; else skip:
+  //
+  //   1. First interactive blur. The user edited the field and is leaving it
+  //      for the first time, so its verdict becomes visible now
+  //      (`blurredAfterInteraction` flips above). Run unconditionally: a
+  //      snapshot seeded before any interaction — e.g. the construction pass
+  //      over an unauthored initial value, whose verdict may have been
+  //      filtered out — must not suppress this first real verdict, even when
+  //      the value round-tripped back to its initial state.
+  //   2. The value changed since the last pass. Skipping an unchanged form
+  //      keeps a settled error from flickering through 'pending' on every
+  //      refocus; comparing the value (not a write count) keeps editing away
+  //      and back to the last-validated value quiet too.
+  const focusMode = meta?.instance?.validateOn ?? st.fieldValidationMode
+  if (!focused && focusMode === 'blur') {
+    const firstInteractiveBlur =
+      current?.interacted === true && current.blurredAfterInteraction !== true
+    // Walk from the blurred path up to the root and pick the first
+    // ancestor scope that's been committed at. The blur-dedup
+    // compares the SUBTREE-AT-PATH of that snapshot against the
+    // live subtree — a sibling-only edit between blurs leaves
+    // this path's subtree unchanged and the dedup correctly
+    // skips. Under whole-form scope today every commit lives at
+    // `ROOT_PATH_KEY`, so the walk falls through to that single
+    // entry; under subtree scope (CORE-P1a) the closest ancestor
+    // entry is the one this leaf was actually validated under.
+    let snapshot: unknown | undefined = undefined
+    let snapshotScopeLength = 0
+    for (let i = path.length; i >= 0; i--) {
+      const ancestorKey = canonicalizePath(path.slice(0, i)).key
+      const entry = st.pathSnapshots.get(ancestorKey)
+      if (entry !== undefined) {
+        snapshot = entry
+        snapshotScopeLength = i
+        break
+      }
+    }
+    let changed = true
+    if (!firstInteractiveBlur && snapshot !== undefined) {
+      // Extract the SUBTREE-AT-PATH on both sides — `diffAndApply`'s
+      // `prefix` only labels emitted patch paths, it doesn't scope
+      // the walk. Subtree extraction is what makes a sibling-only
+      // edit between blurs (this path unchanged) read as
+      // `changed === false`. The snapshot itself is already scoped
+      // to its commit's `scopePath` (length tracked above), so the
+      // blur path needs the scope prefix subtracted before
+      // descending into the stored subtree.
+      const relPath = path.slice(snapshotScopeLength)
+      const snapshotSubtree = getAtPath(snapshot, relPath)
+      const liveSubtree = getAtPath(st.form.value, path)
+      changed = false
+      diffAndApply(snapshotSubtree, liveSubtree, path, () => {
+        changed = true
+      })
+    }
+    if (changed) {
+      scheduleFieldValidation(st, path, true /* immediate */, {
+        ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
+        ...(meta?.instance?.debounceMs !== undefined
+          ? { debounceMs: meta.instance.debounceMs }
+          : {}),
+      })
+    }
+  }
+}
+
+function markInteracted<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): void {
+  // A frozen form records no interaction lifecycle: value writes no-op,
+  // so a stray host emit (`setValueFromHost` marks interacted before
+  // its gated write) or a direct `rv.markInteracted()` must not arm
+  // blur-validation or the reward-early display. Keeps interaction
+  // state clean across a disable -> enable toggle.
+  if (st.effectiveDisabled.value) return
+  const { key } = canonicalizePath(path)
+  // Fired per keystroke from the directive's input listeners; skip the
+  // reactive write once the bit is set so only the first edit notifies.
+  if (st.fields.get(key)?.interacted === true) return
+  touchFieldRecord(st, key, path, { interacted: true })
+}
+
+/**
+ * Walk every active-variant leaf under `segments` and flip its
+ * `touched` flag to `true`. Powers the public `form.touch(path?)`
+ * API: leaf path → exactly that leaf; container path → every
+ * descendant leaf; root path `[]` → every leaf in the form.
+ *
+ * Idempotent: leaves already touched are skipped (no reactive
+ * notification). Inactive DU-variant leaves are filtered via
+ * `hasAtPath` against the live form value — same gate the
+ * field-state aggregation walk uses, so touch never marks a leaf
+ * the consumer can't see.
+ *
+ * Dev-warns when no leaves resolve under the path (typo'd input,
+ * empty container, dead variant). Does NOT mutate value, focused,
+ * blurred, or trigger validation — touched is the single sticky
+ * flag this helper writes.
+ */
+/**
+ * Shared leaf walk behind `touchAtPath` / `interactAtPath`. Visits
+ * every active-variant leaf at or under `segments` and reports
+ * whether any resolved, so each caller can dev-warn on an empty
+ * path. Enumerates `originals` (the schema's leaf set) rather than
+ * `fields`, so it reaches leaves that were never mounted; inactive
+ * DU-variant leaves are filtered via `hasAtPath` against the live
+ * form value, the same gate the field-state aggregation walk uses.
+ */
+
+function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  segments: Path
+): void {
+  const formValue = st.form.value
+  let touchedAny = false
+  for (const [, entry] of st.originals) {
+    if (!isPathPrefix(segments, entry.segments)) continue
+    if (!hasAtPath(formValue, entry.segments)) continue
+    touchedAny = true
+    const leafKey = canonicalizePath(entry.segments).key
+    const current = st.fields.get(leafKey)
+    if (current?.touched === true) continue
+    touchFieldRecord(st, leafKey, entry.segments, { touched: true })
+  }
+  if (!touchedAny && __DEV__) {
+    console.warn(
+      `[attaform] form.touch(): no fields resolved at path ${JSON.stringify(segments)}. ` +
+        `Check the path matches an existing field or container.`
+    )
+  }
+}
+
+/**
+ * Walk every active-variant leaf under `segments` and flip the whole
+ * interaction ladder — `touched`, `interacted`, and
+ * `blurredAfterInteraction` — as though the user had focused, edited,
+ * and left each one. Powers the public `form.interact(path?)` API,
+ * whose job is to open the default display gate
+ * (`submissionAttempts > 0 || blurredAfterInteraction`) for a subtree
+ * without a form-wide submit.
+ *
+ * `interacted` is the load-bearing bit. Writing only `touched` /
+ * `blurred` reproduces the tab-through no-op the gate deliberately
+ * ignores, since `markFocused` flips `blurredAfterInteraction` solely
+ * on a blur that follows an edit. Setting the ladder outright is what
+ * lets the gate open through its front door, unchanged.
+ *
+ * Deliberately does NOT write `focused` / `blurred`: those are
+ * DOM-owned, and `null` is their documented "no element connected"
+ * value. Fabricating a blur on an unmounted leaf would lie about DOM
+ * history, and forcing `focused: false` on a leaf the user is
+ * currently typing in would desync the store from the live document.
+ * The display gate reads neither, so the simulation loses nothing.
+ *
+ * Walks `originals` rather than `fields`, so it reaches schema leaves
+ * that were never mounted or are currently `v-if`'d away; the flags
+ * are sticky, so such a subtree stays revealed when it remounts.
+ * Inactive DU-variant leaves are filtered via `hasAtPath` against the
+ * live form value, matching `touchAtPath`.
+ *
+ * Returns whether any leaf resolved. Validation is the caller's job:
+ * the store has no awaitable validation handle, and `form.interact()`
+ * resolves only once the subtree's errors are committed.
+ */
+function interactAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  segments: Path
+): boolean {
+  // A frozen form records no interaction lifecycle — same guard as
+  // `markFocused` / `markInteracted`. Arming the ladder here would
+  // survive a disable -> enable toggle and reveal errors on a subtree
+  // the consumer had deliberately taken out of play.
+  if (st.effectiveDisabled.value) return false
+  const formValue = st.form.value
+  let interactedAny = false
+  for (const [, entry] of st.originals) {
+    if (!isPathPrefix(segments, entry.segments)) continue
+    if (!hasAtPath(formValue, entry.segments)) continue
+    interactedAny = true
+    const leafKey = canonicalizePath(entry.segments).key
+    const current = st.fields.get(leafKey)
+    // Skip the reactive write once the whole ladder is already set —
+    // records are replaced wholesale, so an unconditional
+    // `fields.set` would notify for nothing.
+    if (
+      current?.touched === true &&
+      current.interacted === true &&
+      current.blurredAfterInteraction === true
+    ) {
+      continue
+    }
+    touchFieldRecord(st, leafKey, entry.segments, {
+      touched: true,
+      interacted: true,
+      blurredAfterInteraction: true,
+    })
+  }
+  if (!interactedAny && __DEV__) {
+    console.warn(
+      `[attaform] form.interact(): no fields resolved at path ${JSON.stringify(segments)}. ` +
+        `Check the path matches an existing field or container.`
+    )
+  }
+  return interactedAny
+}
+
+// --- Rehydrate ---
+// Imperative re-fire of the captured function-form `defaultValues`
+// factory. Lives on the store so every consumer of the shared key
+// sees one source of truth for `hydrating`. Mirrors the
+// construction-time settle path: factory result merges over the
+// current values via `mergeSparseHydration`, applies through
+// `applyFormReplacement({ hydration: true })` (history-module aware),
+// and triggers a post-hydration validation sweep. Does NOT clear
+// dirty / touched / submit state — chain `form.reset()` for that.
+
+function rehydrate<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): Promise<void> {
+  const factory = st.defaultValuesFactory.value
+  if (factory === undefined) {
+    // Sync throw — misuse should surface at the call site, not at
+    // await time. Mirrors the type-system contract: `rehydrate()`
+    // only makes sense after a function-form `defaultValues` was
+    // captured.
+    throw new Error(
+      __DEV__
+        ? '[attaform] form.rehydrate(): no defaultValues factory was captured. Configure useForm({ defaultValues: () => ... }) to enable rehydrate.'
+        : '[attaform] AF10 attaform.dev/e/af10'
+    )
+  }
+  return fireFactory(st, factory)
+}
+
+// Shared kickoff path for `activate` and `rehydrate`. Both fire the
+// captured factory, mark the form `activated`, and publish the
+// in-flight promise so concurrent `activate()` calls join rather
+// than double-fire. The promise self-clears on settle so a
+// subsequent refetch can publish a fresh one. The gating flips
+// (`activated`, `hydrating`) publish synchronously before the
+// orchestrator runs, so gated readers and `onServerPrefetch` (which
+// awaits the composed promise) observe a consistent in-flight state.
+// (A lazy-chunk split of the orchestrator was measured and declined:
+// the cross-chunk overhead outweighed the moved bytes — see
+// plans/size-teardown/P5-store-kernel.md.)
+function fireFactory<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  factory: () => unknown | Promise<unknown>
+): Promise<void> {
+  st.activated.value = true
+  st.hydrating.value = true
+  const promise = runFactoryAndApply(st, factory)
+  st.activationPromise.value = promise
+  void promise.finally(() => {
+    if (st.activationPromise.value === promise) st.activationPromise.value = undefined
+  })
+  return promise
+}
+
+// Idempotent activation. The new lazy-by-default model fires the
+// captured function-form `defaultValues` factory only via this
+// entrypoint — public getters/methods on the form API surface call
+// through to it so the first reactive interaction triggers the
+// factory. Concurrent callers share the in-flight promise so two
+// SSR consumers reading the same store await the same fetch. A
+// previously-rejected attempt leaves `activated === true` and
+// `defaultsResolved === false`; subsequent `activate()` calls are
+// no-ops so reading `form.hydrateError` doesn't replay the failure.
+// `form.rehydrate()` is the explicit replay primitive.
+function activate<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): Promise<void> {
+  // SSR coordination — enqueue intent first so the diff against any
+  // wizard skip / transform mark is consistent across resolved /
+  // dormant / mid-activation states. Then consult `shouldFire`: when
+  // a wizard skipped this key, the backstop wins even over an
+  // explicit consumer `form.activate()` call. The closure is bound
+  // to the registry at construction time and is absent on the
+  // client where the queue is never read.
+  if (st.ssrPrefetch !== undefined) {
+    st.ssrPrefetch.enqueue()
+    if (!st.ssrPrefetch.shouldFire()) return Promise.resolve()
+  }
+  if (st.defaultsResolved.value === true) return Promise.resolve()
+  if (st.activationPromise.value !== undefined) return st.activationPromise.value
+  if (st.activated.value === true) return Promise.resolve()
+  const factory = st.defaultValuesFactory.value
+  if (factory === undefined) return Promise.resolve()
+  return fireFactory(st, factory)
+}
+
+// --- Reset ---
+
+function reset<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  nextDefaultValues?: DeepPartial<WriteShape<F>>
+): void {
+  // Fall back to construction-time `defaultValues` when the caller
+  // doesn't provide a fresh override. Otherwise `reset()` produces
+  // schema-only defaults — losing the consumer's initial state from
+  // `useForm({ defaultValues: ... })`. The structural-completeness
+  // invariant covers post-write correctness; preserving construction
+  // defaults across reset is a separate semantic the consumer expects.
+  //
+  // `computeBaselineResponse` is the same primitive construction runs, so
+  // the construction and reset responses stay byte-equivalent for the
+  // same source (including the sparse-constraints pre-merge; see its
+  // JSDoc).
+  const resetSource = nextDefaultValues ?? st.defaultValues
+  const resetResponse = computeBaselineResponse(st.schema, st.strict, resetSource)
+  const next = resetResponse.data
+  // Rebuild authoredPaths against the post-reset baseline. Reset is
+  // "fresh start" semantics, so the prior authoring set is wiped and
+  // re-derived from (1) the reset's constraints argument (consumer
+  // authored those paths) and (2) the schema-default diff (schema-
+  // declared `.default(...)` paths, including `.default(undefined)`).
+  rebuildAuthoredPaths(st, resetSource, next)
+  // Replace form in one shot. `applyFormReplacement` emits diffAndApply
+  // patches and touches field records for every changed leaf. History
+  // still sees it via `formChangeListeners`.
+  applyFormReplacement(st, next)
+  // Re-anchor array identity baselines to the post-reset shape, so a
+  // reorder or removal made before this reset no longer reads as a
+  // structural change once the form is back at its baseline.
+  st.arrayIdentity.rebaselineAll()
+  // The post-reset value is the new baseline, so any subtree dropped before
+  // this reset is no longer a removal to flag.
+  st.removedSubtrees.clear()
+  // Rebuild originals from the new baseline. The set becomes the
+  // post-reset pristine reference — a subsequent dirty comparison
+  // returns false until the consumer mutates again. `ensureOrdinals`
+  // stays false: ordinals never reset, and a path a reset baseline
+  // introduces keeps the lazy first-encounter assignment.
+  seedOriginalsFromBaseline(st, next, false)
+  // Blank: with `nextDefaultValues` provided, both sets
+  // adopt the new baseline (commit 7 plugs the `unset`-symbol walker
+  // into this branch — for now the new defaults can't carry unset
+  // symbols at the type level, so the post-reset baseline is empty).
+  // With no args, restore `blankPaths` from the snapshot so
+  // construction-time membership returns; originalBlankPaths is
+  // preserved (the snapshot encodes the consumer's last declared
+  // baseline, which `reset()` should honour).
+  if (nextDefaultValues !== undefined) {
+    st.blankPaths.clear()
+    st.originalBlankPaths.clear()
+  } else {
+    st.blankPaths.clear()
+    for (const key of st.originalBlankPaths) {
+      st.blankPaths.add(key)
+    }
+  }
+  // Drop every recorded error — the form is a fresh surface again.
+  // Both sides clear: reset is "fresh start" semantics, so user-injected
+  // errors are not preserved across a reset (different from submit-success,
+  // which preserves them).
+  st.errorCells.clear()
+  // Re-derive schemaErrors from the post-reset state under strict mode,
+  // mirroring the construction-time seed. Without this,
+  // reset clears the error store but never re-runs validation — so a
+  // form mounted with invalid defaults (e.g. empty required strings)
+  // would surface as `valid: true` immediately after reset even though
+  // the values it landed back on are the same INVALID defaults it
+  // mounted with. `field.valid` aggregates over schemaErrors and would
+  // otherwise come up empty, flipping every leaf green.
+  //
+  // Gated on `strict` to honor the same opt-out construction uses:
+  // a non-strict form opted out of construction-time validation
+  // explicitly, and post-reset behaviour follows suit.
+  if (st.strict && !resetResponse.success) {
+    replaceErrorChannel(st, 'schema', resetResponse.errors)
+  }
+  // `getDefaultValues` strips refinements before parsing (see
+  // `adapters/zod-v4/default-values.ts:290`) — it produces usable
+  // starting data, not refinement-level verdicts. So `.min(1)` /
+  // `.email()` / etc. failures on the post-reset defaults DON'T
+  // surface via the sync re-derive above. Run a synchronous
+  // full-schema parse against the post-reset form value to populate
+  // refinement errors IMMEDIATELY (no flash where step titles flip
+  // green between reset() returning and the async pass landing).
+  // Async-only verdicts can't surface this way (adapter returns a
+  // Promise) — they're handled by the queueMicrotask below.
+  //
+  // Construction has the same gap mount-side, but the flash is
+  // invisible: the form mounts before the user is looking, errors
+  // land within a microtask, and the UI never has time to render
+  // the empty-errors state.
+  if (st.strict) {
+    const syncResult = st.schema.validateAtPath(st.form.value, undefined, { sync: true })
+    if (!(syncResult instanceof Promise) && !syncResult.success) {
+      applySchemaErrorsForSubtree(st, [], syncResult.errors)
+    }
+  }
+  // Restore the `firstValidationDone` gate to its construction-time
+  // value (`initialFirstValidationGate`, the same primitive that seeds
+  // the ref). Async-validating schemas init this flag to
+  // `false`, gating container `.valid` until the construction-time
+  // async pass completes. After mount the flag flips `true` via the
+  // watch on `activeValidations`. Across reset, leaving it `true`
+  // removes the gate AND clears errors AND the sync re-derive
+  // can't fill them (the zod-v4 adapter strips refinements in
+  // `getDefaultValues`, returns `success: true`; sync
+  // `validateAtPath` throws on schemas with always-running async
+  // refines and falls through to async-only). The window between
+  // `reset()` returning and the re-queued async pass landing reads
+  // `valid: true` for every container — the docs-site wizard
+  // demo's step titles turn green for ~600ms-1.5s. Restoring the
+  // gate keeps containers `valid: false` throughout that window.
+  st.firstValidationDone.value = initialFirstValidationGate(st.schema, st.strict)
+  // Re-queue the async validation pass through the same primitive
+  // construction uses (`queueInitialAsyncValidation`). Picks up
+  // async-only verdicts the sync pass above can't reach
+  // (`.refine(async ...)` on `pickup.postalCode`, etc.).
+  queueInitialAsyncValidation(st)
+  // Clear every field's interaction history, stamping a single `now`
+  // across the whole form (see `withClearedHistoryFlags` for which
+  // flags clear and which DOM-truth flags are preserved).
+  const now = new Date().toISOString()
+  for (const [pathKey, record] of st.fields) {
+    st.fields.set(pathKey, withClearedHistoryFlags(record, now))
+  }
+  // Clear submission lifecycle so a reset surface reports "nothing has
+  // been submitted yet" rather than holding on to the prior run's
+  // count. The generation counter is bumped first so any in-flight
+  // submission's catch block knows its error write would land on the
+  // post-reset state and skips it. `activeSubmissions` is zeroed
+  // unconditionally — the finally-block's Math.max clamps the
+  // decrement at zero, and `submitting` stays false afterwards
+  // because the clamped value never exceeds zero.
+  st.submissionGeneration.value += 1
+  st.submitting.value = false
+  st.activeSubmissions.value = 0
+  st.submissionAttempts.value = 0
+  st.submitted.value = false
+  st.submitError.value = null
+  st.departAttempts.value = 0
+  // Drop any pending field-validation timers / in-flight runs. Writes
+  // that reached the aborted branch resolve to a no-op, so
+  // the error store stays clean after the reset clears it above.
+  cancelFieldValidation(st)
+  // Abort + release any in-flight async transforms too, so a deferred
+  // commit from before the reset can't land on the cleared form (the
+  // run's token goes stale, so its resolve discards). Also clears
+  // `transformErrors`.
+  cancelTransforms(st)
+  // Drop any held spinner state so an in-flight min-visible hold can't
+  // outlive the reset; clear the streak anchors to match (the cancel above
+  // already released the counts, this wipes the parallel map wholesale).
+  st.displayEngine.clear()
+  st.fieldValidatingSince.clear()
+  // Reset the per-path blur-dedup snapshots and the form-level epoch
+  // counters. After `cancelFieldValidation` no in-flight run can
+  // commit, so clearing here can't be raced by a late commit
+  // re-populating the map. Survivor snapshots from before the reset
+  // would otherwise match a post-reset value that happens to mirror
+  // a pre-reset state and skip a real revalidation that the reset's
+  // cleared error stores need to repopulate.
+  st.pathSnapshots.clear()
+  st.scheduleEpoch = 0
+  st.lastCommittedEpoch = 0
+  // Variant memory is UX state — a fresh start drops the per-variant
+  // typed-data cache too. Without this, a post-reset switch would
+  // surface stale variant values from before the reset.
+  st.variantMemory.clear()
+  // Notify subscribers (history module clears its stack, persistence
+  // sees the reset via onFormChange already). Listener throws are
+  // isolated so one bad subscriber can't block the others.
+  for (const listener of st.resetListeners) {
+    try {
+      listener()
+    } catch (err) {
+      console.error('[attaform] onReset threw:', err)
+    }
+  }
+}
+
+function resetField<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): void {
+  const { key: targetKey, segments: targetSegments } = canonicalizePath(path)
+
+  // Variant memory: drop any union memory whose path equals or sits
+  // under `targetSegments`. Memory under the reset subtree is
+  // semantically "user's prior typed state at a discriminator that
+  // no longer corresponds to anything live"; preserving it would
+  // surface stale variants on a future switch. Memory ABOVE the
+  // reset subtree (e.g. union at ['notify'] for resetField('notify.address'))
+  // is intentionally preserved — the snapshot self-corrects on the
+  // next switch-out.
+  st.variantMemory.clearUnderPath(targetSegments)
+
+  // Tear down any in-flight validation for this subtree BEFORE the restore.
+  // Without this the run validating the pre-reset value outlives the reset:
+  // `validating` stays true on the field and, when it settles, it commits its
+  // verdict back over the errors cleared below. In change mode the restore
+  // write reschedules a fresh run for the restored value (the cancel's
+  // `released` flag keeps the orphan's late `.finally` off the new run's
+  // counters); in blur / submit mode no run follows and the field rests
+  // clean. Drop the subtree's blur-dedup snapshots too, so a post-reset blur
+  // re-validates instead of skipping against a pre-reset anchor.
+  cancelFieldValidationUnder(st, targetSegments)
+  // Same teardown for async transforms under the reset subtree, so a
+  // deferred commit can't land on the just-reset field.
+  cancelTransformsUnder(st, targetSegments)
+  for (const [snapKey] of [...st.pathSnapshots]) {
+    const segs = segmentsForPathKey(snapKey)
+    if (segs === null) continue
+    if (isPathPrefix(targetSegments, segs)) st.pathSnapshots.delete(snapKey)
+  }
+
+  // Storage restore: leaf > container > nothing.
+  //
+  // Leaf shortcut: direct originals hit means one setValueAtPath does
+  // it. A miss falls through to the container case, which assembles a
+  // subtree from every original under the prefix. When neither
+  // matches — e.g. `resetField('')` (the form-level error path, never
+  // a storage slot) or `resetField('unknownPath')` — storage stays
+  // untouched but the cleanup below still runs.
+  const leafEntry = st.originals.get(targetKey)
+  if (leafEntry !== undefined) {
+    const wrote = setValueAtPath(st, targetSegments, leafEntry.value)
+    if (!wrote) {
+      // Originals come from the construction-time pipeline, which
+      // guarantees primitive-correctness. A rejected reset write
+      // signals an invariant violation upstream.
+      console.error(
+        __DEV__
+          ? `[attaform] resetField: leaf write rejected for path '${targetKey}' — ` +
+              `originals contain a value that doesn't satisfy the slim primitive shape. ` +
+              `This is a bug in the construction pipeline.`
+          : `[attaform] AF11 attaform.dev/e/af11 '${targetKey}'`
+      )
+    }
+  } else {
+    // Container case — reconstruct the subtree by walking originals for
+    // every leaf whose path is a descendant of `targetSegments`. We assemble
+    // the subtree first, then apply it in one setValueAtPath so diffAndApply
+    // sees a single coherent replacement (rather than N mutations).
+    //
+    // The iteration reads `entry.segments` directly; the alternative
+    // (JSON.parse on the Map key) both allocates and pays a parse cost per
+    // entry even on cold paths.
+    let subtree: unknown = undefined
+    let anyMatch = false
+    for (const [, entry] of st.originals) {
+      const leafSegments = entry.segments
+      if (!isPathPrefix(targetSegments, leafSegments)) continue
+      if (leafSegments.length === targetSegments.length) continue // would have hit the leaf shortcut
+      anyMatch = true
+      const relative = leafSegments.slice(targetSegments.length)
+      if (subtree === undefined) {
+        // Seed root container type from the first relative segment. Numeric
+        // index → array; string key → plain object. setAtPath will stay
+        // consistent with that choice for the rest of the walk.
+        subtree = typeof relative[0] === 'number' ? [] : {}
+      }
+      subtree = setAtPath(subtree, relative, entry.value)
+    }
+    if (anyMatch) {
+      const wroteSubtree = setValueAtPath(st, targetSegments, subtree)
+      if (!wroteSubtree) {
+        console.error(
+          __DEV__
+            ? `[attaform] resetField: subtree write rejected at path '${targetKey}' — ` +
+                `originals contain values that don't satisfy the slim primitive shape. ` +
+                `This is a bug in the construction pipeline.`
+            : `[attaform] AF12 attaform.dev/e/af12 '${targetKey}'`
+        )
+      }
+    }
+  }
+
+  // Cleanup runs regardless of whether storage was restored. Clears
+  // errors and field-record flags for the target path AND every
+  // descendant. `deleteErrorsUnderPrefix` covers the exact-path entry
+  // too (an array is a prefix of itself), so a leaf reset clears the
+  // single matching entry and a container reset sweeps the subtree.
+  // Crucially, this also makes `resetField('')` a usable form-level-
+  // error wipe: there's no storage at `''`, but errors do live there,
+  // and a consumer who calls resetField on that path expects them
+  // cleared. Same reasoning applies to consumer-set errors at any
+  // path the schema doesn't model.
+  deleteErrorCellsUnderPrefix(st, targetSegments)
+  for (const [fieldKey, record] of Array.from(st.fields.entries())) {
+    if (isPathPrefix(targetSegments, record.path)) clearFieldRecordFlags(st, fieldKey)
+  }
+}
+
+function deleteErrorCellsUnderPrefix<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  prefix: readonly Segment[]
+): void {
+  // Judge each side by its own first entry's embedded path (entries at a
+  // key share the key's path), mirroring the per-map prefix delete this
+  // replaces: a side whose entries sit under `prefix` is stripped, the
+  // other side rides along, and a cell left empty leaves the map.
+  for (const [errorKey, cell] of st.errorCells) {
+    for (const src of ERROR_SOURCES) {
+      const first = cell[src][0]
+      if (first !== undefined && isPathPrefix(prefix, first.path)) {
+        setErrorChannelForKey(st, errorKey, src, NO_ERRORS)
+      }
+    }
+  }
+}
+
+function clearFieldRecordFlags<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  pathKey: PathKey
+): void {
+  const record = st.fields.get(pathKey)
+  if (record === undefined) return
+  // The name is historical: this clears only the interaction-history
+  // flags, not every flag (same as `reset()`'s field loop), but with a
+  // fresh `now` per path rather than one stamp across the form.
+  st.fields.set(pathKey, withClearedHistoryFlags(record, new Date().toISOString()))
+}
+
+// --- Derived ---
+
+function isPristineAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): boolean {
+  const { key, segments } = canonicalizePath(path)
+  return isPristineAtPathByKey(st, key, segments)
+}
+
+function isPristineAtPathByKey<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  segments: Path
+): boolean {
+  // Storage match is necessary but not sufficient: a primitive leaf
+  // toggled between "displayed empty" (blank + slim default)
+  // and "explicitly the slim default" carries the same storage value
+  // but differs visually. Compare both surfaces against the originals
+  // snapshot so the blank contract dirties when membership
+  // diverges.
+  if (st.blankPaths.has(key) !== st.originalBlankPaths.has(key)) return false
+  const entry = st.originals.get(key)
+  if (entry === undefined) return true
+  return Object.is(getAtPath(st.form.value, segments), entry.value)
+}
+
+function hasStructuralChangeUnder<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): boolean {
+  return st.arrayIdentity.hasStructuralChangeUnder(path)
+}
+
+// Did the subtree at `prefix` (its pre-write value in `removedValue`) hold any
+// leaf that was part of the construction / reset baseline — a real recorded
+// value, not an absence baseline seeded for a runtime-added path? Bounds the
+// check to the subtree being dropped by enumerating that subtree's own leaves,
+// so it only walks what `setValue` is removing, on the rare container ->
+// non-container write.
+function subtreeHadRealBaseline<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  prefix: Path,
+  removedValue: unknown
+): boolean {
+  let had = false
+  diffAndApply(removedValue, undefined, prefix, (patch) => {
+    if (had || patch.kind !== 'removed') return
+    const record = st.originals.get(canonicalizePath(patch.path).key)
+    if (record?.value !== undefined) had = true
+  })
+  return had
+}
+
+function hasRemovedSubtreeUnder<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  prefix: Path
+): boolean {
+  if (st.removedSubtrees.size === 0) return false
+  for (const key of st.removedSubtrees) {
+    const segments = segmentsForPathKey(key)
+    if (segments === null) continue
+    if (!isPathPrefix(prefix, segments)) continue
+    // Skip a recorded path that a later write refilled with a container: the
+    // present-leaf walk then judges it (an identical refill reads pristine, a
+    // changed one dirties), so only a still-absent subtree counts as removed
+    // here. Read raw — the accompanying write already fired the dirty walk's
+    // own dep on this path, so no reactive tracking is needed to re-run.
+    if (isContainer(getAtPath(toRaw(st.form.value), segments))) continue
+    return true
+  }
+  return false
+}
+
+function getFieldRecord<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): FieldRecord | undefined {
+  const { key } = canonicalizePath(path)
+  return st.fields.get(key)
+}
+
+function getOriginalAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): unknown {
+  const { key } = canonicalizePath(path)
+  return st.originals.get(key)?.value
+}
+
 export function createFormStore<F extends GenericForm, G extends GenericForm = F>(
   options: CreateFormStoreOptions<F, G>
 ): FormStore<F, G> {
@@ -1202,14 +3749,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     defaultValue: DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS,
   })
 
-  const fieldValidationState = new Map<PathKey, FieldValidationEntry>()
-
-  // Plain Sets (not reactive) — these fire imperative callbacks; no
-  // template should ever depend on "how many listeners are attached".
-  const formChangeListeners = new Set<(next: F, meta?: WriteMeta) => void>()
-  const submitSuccessListeners = new Set<() => void>()
-  const resetListeners = new Set<() => void>()
-
   // Resolve the coercion config to a concrete index ONCE per form.
   // The index is keyed by `${input}->${output}` for O(1) per-keystroke
   // dispatch. `register()` reads it via `state.coerceIndex` to bake
@@ -1221,10 +3760,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // function directly on every read.
   const resolvedGetDisplayState: GetDisplayState = resolveGetDisplayState(options.getDisplayState)
 
-  // State-scoped teardown hooks. History / any other
-  // per-state module registers its disposer here so the cleanup is
-  // bound to the FormStore's own lifetime (`dispose()` call at
-  // registry-eviction) and not the first consumer's effect scope.
+  // State-scoped teardown hooks. History / any other per-state module
+  // registers its disposer here so the cleanup is bound to the
+  // FormStore's own lifetime (`dispose()` call at registry-eviction)
+  // and not the first consumer's effect scope.
   const cleanupHooks: (() => void)[] = []
   const modules = new Map<string, unknown>()
 
@@ -1232,7 +3771,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // owns the clock and the single timer the timed `getDisplayState` reducer
   // needs; `fieldValidatingSince` records when each path's latest validation
   // run started (re-stamped on every run, cleared on the → 0 edge, in
-  // inc/decFieldValidation below). Disposed with the store so a held spinner
+  // inc/decFieldValidation). Disposed with the store so a held spinner
   // can't outlive eviction.
   //
   // Reactive: the display computed reads `validatingSince` but NOT the
@@ -1243,90 +3782,23 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // Reactivity ties the computed to the streak's start AND end.
   const fieldValidatingSince: Map<PathKey, number> = reactive(new Map<PathKey, number>())
   const displayEngine = createDisplayEngine(ssr)
-  registerCleanup(() => displayEngine.dispose())
+  cleanupHooks.push(() => displayEngine.dispose())
 
   // Schema is ALWAYS consulted: we need the schema-derived originals even
   // when hydrating, so pristine/dirty computation survives SSR round-trip.
   // The form's actual starting value, though, prefers hydration data.
-  //
-  // Run consumer-supplied `defaultValues` through `mergeStructural` first
-  // so partial constraints against tuple shapes (e.g. `coords: [42]` for
-  // `z.tuple([_, _, _])`) get padded with position defaults BEFORE the
-  // adapter's validate-then-fix loop sees them. Without this, the
-  // adapter's wholesale-replace fix-up would lose the consumer's data.
-  const completedConstraints =
-    defaultValues === undefined
-      ? undefined
-      : (mergeStructural(schema, [], defaultValues) as DeepPartial<WriteShape<F>>)
-  const schemaResponse: DefaultValuesResponse<F> = schema.getDefaultValues({
-    useDefaultSchemaValues: true,
-    constraints: completedConstraints,
+  const schemaResponse: DefaultValuesResponse<F> = computeBaselineResponse(
+    schema,
     strict,
-  })
+    defaultValues
+  )
   const schemaInitialData = schemaResponse.data
 
   // Paths the consumer or schema-author explicitly authored a starting
   // value at — used by the schema-error filter to distinguish "missing
-  // user input" from "consumer chose this starting state."
-  //
-  // Two contributions:
-  //   1. Every leaf in the consumer's `defaultValues` argument. Even
-  //      `{ url: undefined }` counts — the consumer named the path,
-  //      so any validation verdict against that undefined IS
-  //      verdict-worthy from their perspective.
-  //   2. Schema-declared `.default(value)` chains, detected by diffing
-  //      the with-defaults data against the schema's blank baseline
-  //      (`getEmptyValueAtPath([])`, the raw `deriveDefault(false)`
-  //      walk). Paths where the with-defaults data differs from that
-  //      baseline are positions the schema author declared a default
-  //      at, including `.default(undefined)`.
+  // user input" from "consumer chose this starting state." Populated by
+  // `rebuildAuthoredPaths` once the state record exists below.
   const authoredPaths = new Set<PathKey>()
-  /**
-   * Rebuild `authoredPaths` from a fresh constraints baseline + schema
-   * defaults. Used at construction AND at `reset()` time. Both moments
-   * replace the form's pristine reference, so the authoring set must
-   * track the new baseline. Idempotent: clears the Set first, then
-   * re-populates from (1) the constraints argument and (2) a diff of
-   * the schema's with-defaults data against its blank baseline.
-   */
-  function rebuildAuthoredPaths(constraints: unknown, schemaWithDefaultsData: unknown): void {
-    authoredPaths.clear()
-    if (constraints !== undefined) {
-      walkAuthoredFromConstraints(constraints, [], authoredPaths)
-    }
-    // The authored-default diff needs only the schema's BLANK baseline
-    // value tree (every `.default()` skipped), not a validated parse of
-    // it. `getEmptyValueAtPath([])` is the raw `deriveDefault(false)`
-    // walk — structurally identical to a full slim-mode
-    // `getDefaultValues({ useDefaultSchemaValues: false })` here (the
-    // blank tree round-trips through the slim parse unchanged), without
-    // the schema clone + double `safeParse` that pass pays. Locked by
-    // `test/core/authored-baseline-equivalence.test.ts`.
-    const slimBaseline = schema.getEmptyValueAtPath([])
-    walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimBaseline, [], authoredPaths)
-  }
-  rebuildAuthoredPaths(defaultValues, schemaInitialData)
-
-  /**
-   * Filter schema-source verdicts: drop issues at preprocess / coerce
-   * leaves whose storage is undefined AND whose path the consumer
-   * never authored. Form-level errors (`path.length === 0`) and
-   * verdicts at paths with non-undefined storage always pass through.
-   * Mount and field-validation pipelines run errors through this
-   * filter; `handleSubmit` does not (submit is the moment "you must
-   * have supplied all fields" applies, and the consumer should see
-   * every verdict).
-   */
-  function filterAuthoredErrors(errors: readonly ValidationError[]): ValidationError[] {
-    return errors.filter((err) => {
-      const pathSegments = err.path as Path
-      if (pathSegments.length === 0) return true
-      const value = getAtPath(form.value, pathSegments)
-      if (value !== undefined) return true
-      if (authoredPaths.has(canonicalizePath(pathSegments).key)) return true
-      return !schema.isPreprocessOrCoerceLeaf(pathSegments)
-    })
-  }
 
   // Clone per instance so two forms sharing a schema (or one form
   // re-mounted from the same schema cache) don't alias the same
@@ -1343,9 +3815,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // `defaultValues` (or hydration payload) carried a bad discriminator.
   // Mirrors the runtime stub-state contract `setValueAtPath` uses for
   // bad-disc Case A/B writes; emits a one-shot dev warning per bad path.
-  const stubbedInitialData = applyDuStubs(schema as AbstractSchema<unknown, unknown>, initialData, {
-    warn: true,
-  }) as F
+  // One clone walk: for a DU-carrying schema the stub walk's rebuild is
+  // itself a fresh tree, so the snapshot above stays the pre-stub view
+  // (field records seed from it) and the stub pass produces the storage
+  // tree. A schema with no discriminated unions skips the stub walk —
+  // the snapshot IS the storage tree.
+  const hasDU = schema.hasDiscriminatedUnions?.() !== false
+  const stubbedInitialData = hasDU
+    ? (applyDuStubs(schema as AbstractSchema<unknown, unknown>, initialData, {
+        warn: true,
+      }) as F)
+    : initialData
 
   const form = ref(stubbedInitialData) as Ref<F>
 
@@ -1369,91 +3849,30 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return Array.isArray(v) ? v.length : 0
   })
 
-  // FieldState.key: an array element (numeric last segment) carries its
-  // allocated identity token, which travels with the element across
-  // structural mutations so a keyed `v-for` survives reorders. Empty for
-  // any non-array-element path; a record entry's stable identity is its
-  // own key, surfaced through `form.record`, so it needs no token here.
-  function arrayElementKey(path: Path): string {
-    if (path.length === 0) return ''
-    const last = path[path.length - 1]
-    if (typeof last === 'number') return arrayIdentity.tokenAt(path.slice(0, -1), last)
-    return ''
-  }
-
   // Per-path state. `reactive(new Map())` uses Vue's collection handlers —
   // reads of specific keys track those keys only, so a change to one field
   // doesn't invalidate computeds watching another.
   const fields = reactive(new Map<PathKey, FieldRecord>()) as Map<PathKey, FieldRecord>
-  const elements = reactive(new Map<PathKey, ElementRecord>()) as Map<PathKey, ElementRecord>
 
-  // Per-element form-instance tag. WeakMap so detached elements GC
-  // freely — `deregisterElement` does an explicit `.delete()` defensively
-  // (in case the element is still strongly referenced elsewhere), but
-  // the WeakMap keeps cleanup correct even when the consumer drops the
-  // element without going through deregister.
-  //
-  // Read by `getFirstErrorElement` to scope focus/scroll targets to the
-  // calling `useForm()` instance — load-bearing when two forms share a
-  // `key` and both register into the same `elements` Map.
-  const elementToFormInstance = new WeakMap<HTMLElement, string>()
+  // The DOM slice (element registry, no-latch host anchors, DOM-order
+  // sort cache, focus listeners, first-error focus resolution) lives in
+  // `dom-binding.ts` inside the directive cluster's lazy graph, armed
+  // into this slot through `RegisterValue.ensureDomBinding` on first
+  // element use. `shallowRef` so eager readers (field-state's
+  // `element` / `elements`, the invalid-submit focus walk) re-run when
+  // the slot arms; `null` means nothing in this app ever registered an
+  // element, and every reader treats that as the empty registry it is.
+  const domBinding = shallowRef<AttaformDomBinding | null>(null)
 
-  // Focus-first-error anchors for no-latch `v-register` component hosts
-  // (composite widgets, multi-control or control-less hosts). Such a host
-  // binds a value but registers no single control, so it never enters
-  // `elements` and would be invisible to `getFirstErrorElement`. Keyed by
-  // canonical path key; the host root drives the DOM-order walk and resolves
-  // to a focusable descendant at submit time, and `formInstanceId` scopes it
-  // to the owning `useForm()` instance exactly as `elementToFormInstance`
-  // does for registered controls. A path holds at most one anchor, and never
-  // both an anchor and a registered element — `registerElement` drops the
-  // anchor when a control latches (e.g. a late self-heal supersede).
-  const hostTargets = new Map<
-    PathKey,
-    { path: Path; hostRoot: HTMLElement; formInstanceId: string }
-  >()
-
-  // Lazy DOM-order sort cache. Holds every registered element plus every
-  // no-latch host root flattened across paths, sorted by
-  // `compareDocumentPosition` (DOM-tree order). Invalidated to `null` on any
-  // register/deregister or host connect/disconnect; rebuilt on next
-  // `getFirstErrorElement` read. The cache amortises the sort across
-  // multiple submit failures between mutations — a 100-field form with
-  // 5 failed submits and no DOM changes pays one O(n log n) sort, not
-  // five.
-  //
-  // Note: `compareDocumentPosition` is DOM-tree order, NOT visual order.
-  // CSS `order:` flexbox/grid reorders visually but not in tree, so a
-  // child with `order: -1` will sort AFTER its tree-earlier siblings.
-  // Real visual order would need `getBoundingClientRect`, which forces
-  // sync layout per comparison and breaks under `display: none`. Tree-
-  // order is the right tradeoff for a hot path; the 99% case (semantic
-  // source-order rendering) works correctly.
-  let sortedRegistrationsCache: Array<{
-    path: Path
-    element: HTMLElement
-    host: boolean
-    formInstanceId: string
-  }> | null = null
-  // Errors are split by source so each writer touches exactly one slot.
-  // Schema validation owns `schemaErrors`; the `setErrors` / `clearErrors`
-  // API owns `userErrors`. The two stores merge on read via `getErrorsForPath` and
-  // the top-level `errors` drillable Proxy in build-form-api.
-  const schemaErrors = reactive(new Map<PathKey, ValidationError[]>()) as Map<
-    PathKey,
-    ValidationError[]
-  >
-  const userErrors = reactive(new Map<PathKey, ValidationError[]>()) as Map<
-    PathKey,
-    ValidationError[]
-  >
+  // The tagged error store. Each cell segregates its two sources so each
+  // writer touches exactly one side; schema validation owns the `schema`
+  // side, the `setErrors` / `clearErrors` API owns `user`. Reads merge via
+  // `getErrorsForPath` and the top-level `errors` drillable Proxy in
+  // build-form-api, schema -> blank -> user.
+  const errorCells = reactive(new Map<PathKey, ErrorCell>()) as Map<PathKey, ErrorCell>
 
   // Originals are captured at init and on first appearance of a path; never
-  // re-assigned. Not reactive — the set is append-only per form's lifetime.
-  // Value is a {segments, value} record so consumers iterating this Map
-  // (dirty, resetField's container loop) don't need to `JSON.parse(key)`
-  // to recover the canonical Path.
-  // Reactive: the dirty computed iterates this map AND accesses
+  // re-assigned. Reactive: the dirty computed iterates this map AND accesses
   // `form.value` per entry. With `applyFormReplacement` mutating
   // `form.value` in place (so deep watches fire only for genuinely-
   // changed paths), the form Ref's value-setter dep no longer fires
@@ -1532,16 +3951,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // same path returns to the SAME slot, so `meta.errors` doesn't
   // shuffle when the user fixes a field and breaks it again.
   const pathOrdinals = new Map<PathKey, number>()
-  let nextOrdinal = 0
-  function ensurePathOrdinal(key: PathKey): number {
-    let ordinal = pathOrdinals.get(key)
-    if (ordinal === undefined) {
-      ordinal = nextOrdinal
-      pathOrdinals.set(key, ordinal)
-      nextOrdinal += 1
-    }
-    return ordinal
-  }
 
   // Reactively-derived blank-required errors. Recomputes whenever
   // `blankPaths` mutates (Vue 3.5 reactive Set handlers track size + has).
@@ -1555,7 +3964,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       const segments = segmentsForPathKey(pathKey)
       if (segments === null) continue
       if (!schema.isRequiredAtPath(segments)) continue
-      result.set(pathKey, [makeBlankRequiredError(segments, formKey)])
+      result.set(pathKey, [makeBlankRequiredError(segments)])
     }
     return result
   })
@@ -1572,7 +3981,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const submitError = ref<Error | null>(null)
   // Counts wizard departures from this form. Bumped by `useWizard`
   // when `next` / `back` / `goTo` actually leaves this form; zeroed by
-  // `reset()` below. Introspection only — the library-default
+  // `reset()`. Introspection only — the library-default
   // `getDisplayState` reveals via `submissionAttempts`, not this.
   const departAttempts = ref(0)
   // Data-freeze channel. `externalLock` is written by `useWizard` to
@@ -1584,7 +3993,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // wizard lock stays authoritative regardless.
   const externalLock = ref(false)
   let warnedDisabledThrow = false
-  let warnedDisabledWrite = false
   const effectiveDisabled = computed<boolean>(() => {
     let own = false
     try {
@@ -1605,6 +4013,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   })
   const submissionGeneration = ref(0)
   const activeValidations = ref(0)
+
   // Per-path snapshots of `form.value` keyed by the canonical
   // PathKey of the SCOPE each blur-mode `run()` commits at. The
   // blur-dedup at path P walks from P up to the root and reads the
@@ -1624,23 +4033,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // Empty Map → no entry → first blur revalidates (matches the
   // pre-fix `null` initial state).
   const pathSnapshots = new Map<PathKey, unknown>()
-  // Form-level monotonic counters that guard cross-path async races.
-  // Per-path `aborted` latches cover same-path rapid typing (a fresh
-  // schedule cancels its predecessor at the same key), but they don't
-  // cross-invalidate runs scheduled at DIFFERENT paths — and every
-  // run commits a WHOLE-form replacement via
-  // `applySchemaErrorsForSubtree([], …)`. Without an epoch gate, two
-  // concurrent different-path runs both commit in resolution order;
-  // a slow earlier-scheduled run that lands AFTER a faster
-  // later-scheduled one would overwrite the fresher verdict with
-  // pre-edit state. Each `scheduleFieldValidation` call captures a
-  // fresh `myEpoch` from `scheduleEpoch`; the commit branch in `run()`
-  // re-checks `myEpoch > lastCommittedEpoch` before writing, dropping
-  // any run that a fresher one has already overtaken at the commit
-  // site. Plain `let`s — the counters are only read inside `run()`'s
-  // chained `.then`, never reactively.
-  let scheduleEpoch = 0
-  let lastCommittedEpoch = 0
+
   // Async-defaults lifecycle. `useAbstractForm` writes these on the
   // first call for this key: `defaultValuesFactory` captures the
   // function-form input, `hydrating` flips true until settle
@@ -1661,18 +4054,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // factory reads) share a single fetch.
   const activated = ref(false)
   const activationPromise = ref<Promise<void> | undefined>(undefined)
-  // Initial-validity gate. See `FormStore.firstValidationDone` JSDoc.
-  // Only ASYNC-validating strict schemas need the gate: sync schemas
-  // either surface refinement errors at construction (slim parse
-  // catches checks-style issues) or have nothing for the gate to
-  // wait on, so locking them at `false` would just deadlock
-  // `meta.valid` until the user touches a field. Async schemas are
-  // the genuine flash case — slim parse strips the async refine,
-  // construction sees no errors, the queued microtask runs a tick
-  // later. The watch flips the gate when `activeValidations`
-  // returns to 0 from a positive value (i.e. the construction-time
-  // queued validation completes).
-  const firstValidationDone = ref(!strict || schema.needsAsyncValidation?.() !== true)
+  // Initial-validity gate. See `FormStore.firstValidationDone` JSDoc and
+  // `initialFirstValidationGate` for why only async-validating strict
+  // schemas start gated. The watch flips the gate when
+  // `activeValidations` returns to 0 from a positive value (i.e. the
+  // construction-time queued validation completes).
+  const firstValidationDone = ref(initialFirstValidationGate(schema, strict))
   // `watch(source, cb)` only fires when the source CHANGES (no immediate
   // first-invocation), so `prev` is always the pre-transition value, typed
   // as `number`, never `undefined`.
@@ -1681,6 +4068,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       firstValidationDone.value = true
     }
   })
+
   // Per-path async-need cache. Keyed by canonical PathKey;
   // populated lazily so a form whose consumers only ever ask about
   // a few prefixes doesn't pay for a full schema walk. The cache is
@@ -1688,74 +4076,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // are bounded by the schema, and the FormStore itself is GC'd
   // when its last consumer disposes.
   const pathAsyncCache = new Map<PathKey, boolean>()
-  function pathHasAsyncValidation(path: Path): boolean {
-    const { key } = canonicalizePath(path)
-    return pathHasAsyncValidationByKey(key, path)
-  }
-  function pathHasAsyncValidationByKey(key: PathKey, segments: Path): boolean {
-    const cached = pathAsyncCache.get(key)
-    if (cached !== undefined) return cached
-    // `getSchemasAtPath` returns every candidate sub-schema (DU
-    // variants, intersections all surface here). Async work in any
-    // candidate means the prefix is "could be async" — be
-    // conservative and gate. Adapters that don't expose
-    // `needsAsyncValidation` are treated as `false`, matching the
-    // optional-method contract on AbstractSchema.
-    const candidates = schema.getSchemasAtPath(segments)
-    const hasAsync = candidates.some((sub) => sub.needsAsyncValidation?.() === true)
-    pathAsyncCache.set(key, hasAsync)
-    return hasAsync
-  }
+
   // Reactive per-path counter for `field.validating`. See JSDoc on
   // `FormStore.fieldValidationCounts` for semantics.
   const fieldValidationCounts: Map<PathKey, number> = reactive(new Map<PathKey, number>())
-  function incFieldValidation(key: PathKey): void {
-    // Stamp `validatingSince` BEFORE bumping the count so the two signals can
-    // never disagree mid-flight. The count drives `field.validating` (and so
-    // clamps `field.valid` to false for the duration of a run); `validatingSince`
-    // is what the display reducer reads to decide "settled vs in-flight". If the
-    // count led, a synchronous reader landing between the two writes would see
-    // `validating: true, validatingSince: null` — the reducer would read the run
-    // as settled and return the in-flight verdict (idle, because `valid` is
-    // clamped), flashing idle at the start of every re-validation. Stamping the
-    // anchor first makes `validatingSince !== null` an outer bracket around
-    // `count > 0` (it is cleared only AFTER the count reaches 0, in
-    // `decFieldValidation`), so the reducer never sees a run as settled while
-    // `valid` is still clamped.
-    //
-    // Re-anchored on every run start, not just the 0 → 1 edge: the anti-flash
-    // show-delay measures `now - validatingSince`, so a burst of keystrokes —
-    // each aborting the prior run and starting a new one — keeps pushing the
-    // anchor forward and the spinner stays suppressed until the user pauses.
-    // Anchoring only at the streak start would surface the spinner mid-typing:
-    // with `debounceMs: 0` the aborted run's `.finally` decrement lands a
-    // microtask AFTER the next run's increment, so the count oscillates
-    // 1 → 2 → 1 and never returns to 0 between fast keystrokes, pinning the
-    // stamp to the first keystroke. `ssr` never reaches here in practice (no
-    // field validation is scheduled server-side); the `0` keeps the stamp
-    // clock-free.
-    fieldValidatingSince.set(key, ssr ? 0 : Date.now())
-    const prevCount = fieldValidationCounts.get(key) ?? 0
-    fieldValidationCounts.set(key, prevCount + 1)
-  }
-  function decFieldValidation(key: PathKey): void {
-    const next = (fieldValidationCounts.get(key) ?? 0) - 1
-    if (next <= 0) {
-      // → 0 edge: clear the count FIRST (so `field.valid` is accurate again),
-      // THEN drop the anchor — the trailing edge of the bracket described in
-      // `incFieldValidation`. Whenever the reducer sees `validatingSince ===
-      // null` the count is already 0 and `valid` is settled, so a run is never
-      // read as settled while `valid` is still clamped. Co-extensive across the
-      // abort / cancel / migrate paths that release a count.
-      fieldValidationCounts.delete(key)
-      fieldValidatingSince.delete(key)
-    } else {
-      fieldValidationCounts.set(key, next)
-    }
-  }
+  const fieldValidationState = new Map<PathKey, FieldValidationEntry>()
 
-  // --- Async register-transform machinery — a near-mirror of the
-  // field-validation counters above. A `register({ transforms })` chain
+  // Plain Sets (not reactive) — these fire imperative callbacks; no
+  // template should ever depend on "how many listeners are attached".
+  const formChangeListeners = new Set<(next: F, meta?: WriteMeta) => void>()
+  const submitSuccessListeners = new Set<() => void>()
+  const resetListeners = new Set<() => void>()
+
+  // Async register-transform machinery — a near-mirror of the
+  // field-validation counters. A `register({ transforms })` chain
   // that returns a thenable defers its write; these counters drive the
   // busy/pending UX for the duration, the per-path run token enforces
   // latest-request-wins, and the waiters back `settleTransforms`. The
@@ -1766,158 +4100,182 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const fieldTransformingSince: Map<PathKey, number> = reactive(new Map<PathKey, number>())
   const transformErrors: Map<PathKey, Error | null> = reactive(new Map<PathKey, Error | null>())
   const activeTransforms = ref(0)
-  // Per-path live run: a monotonic `token` (globally unique via
-  // `transformTokenSeq`, so a superseded run can never collide with a
-  // future one even after the entry is deleted and recreated) plus the
-  // directive-owned abort `holder`. `released` guards the count so a
-  // synchronous cancel / supersede release isn't double-counted by the
-  // run's own late `endTransform`. Plain Map — internal bookkeeping, not
-  // a reactive surface.
-  type TransformRun = { token: number; holder: TransformAbortHolder; released: boolean }
   const transformRuns = new Map<PathKey, TransformRun>()
-  let transformTokenSeq = 0
   // Pending `settleTransforms` callers: `key === null` waits on the
   // whole form (`activeTransforms === 0`); a key waits on its own path.
   const transformWaiters: { key: PathKey | null; resolve: () => void }[] = []
 
-  function incFieldTransform(key: PathKey): void {
-    // Stamp-before-bump, same bracket invariant as `incFieldValidation`:
-    // `transformingSince !== null` is the outer bracket around
-    // `count > 0`, so a reader landing between the two writes never sees
-    // a run as settled while the field still reads `transforming`.
-    fieldTransformingSince.set(key, ssr ? 0 : Date.now())
-    fieldTransformCounts.set(key, (fieldTransformCounts.get(key) ?? 0) + 1)
-  }
-  function decFieldTransform(key: PathKey): void {
-    const next = (fieldTransformCounts.get(key) ?? 0) - 1
-    if (next <= 0) {
-      fieldTransformCounts.delete(key)
-      fieldTransformingSince.delete(key)
-    } else {
-      fieldTransformCounts.set(key, next)
-    }
-  }
-  // Resolve every queued `settleTransforms` waiter that has gone idle —
-  // a keyed waiter when its path count hits 0, a global waiter when
-  // `activeTransforms` hits 0. Re-checks live state per waiter, so it is
-  // safe to call from any `→ 0` edge (`endTransform` / cancel).
-  function flushSettledTransformWaiters(): void {
-    if (transformWaiters.length === 0) return
-    const globalIdle = activeTransforms.value === 0
-    for (let i = transformWaiters.length - 1; i >= 0; i--) {
-      const w = transformWaiters[i]
-      if (w === undefined) continue
-      const idle = w.key === null ? globalIdle : (fieldTransformCounts.get(w.key) ?? 0) === 0
-      if (idle) {
-        transformWaiters.splice(i, 1)
-        w.resolve()
-      }
-    }
-  }
-  // Synchronously tear down one run: latch the abort holder, abort its
-  // controller if the chain ever reached for `ctx.signal`, and release
-  // the counters. Idempotent via `released`, so a supersede / cancel
-  // release and the run's own late `endTransform` don't double-count.
-  // Does NOT remove the map entry — the caller decides that.
-  function releaseTransformRun(key: PathKey, run: TransformRun): void {
-    if (run.released) return
-    run.released = true
-    run.holder.aborted = true
-    run.holder.controller?.abort()
-    activeTransforms.value = Math.max(0, activeTransforms.value - 1)
-    decFieldTransform(key)
+  // Array-bookkeeping factory: relocate per-element field / error /
+  // blank / originals state, seed freshly created elements, drop stale
+  // schema verdicts at changed indices, abort in-flight validation at
+  // vacated indices. Owns no state of its own — every dep is a
+  // reference into the surrounding store, so the bookkeeping's
+  // lifecycle exactly matches the host.
+  const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
+    form,
+    fields,
+    errorCells,
+    originals,
+    blankPaths,
+    originalBlankPaths,
+    authoredPaths,
+    fieldValidationCounts,
+    fieldValidatingSince,
+    fieldValidationState,
+    activeValidations,
+    arrayIdentity,
+    variantMemory,
+    touchFieldRecord: (pathKey, path, patch) => touchFieldRecord(st, pathKey, path, patch),
+    decFieldValidation: (key) => decFieldValidation(st, key),
+  })
+
+  const st: FormState<F, G> = {
+    // --- public data (the FormStore contract's state members) ---
+    formKey,
+    form,
+    fields,
+    errorCells,
+    derivedBlankErrors,
+    originals,
+    schema,
+    ssr,
+    getDisplayState: resolvedGetDisplayState,
+    submitting,
+    activeSubmissions,
+    submissionAttempts,
+    submitted,
+    submitError,
+    departAttempts,
+    effectiveDisabled,
+    externalLock,
+    hydrating,
+    hydrateError,
+    defaultValuesFactory,
+    hasSsrPrefetch: ssrPrefetch !== undefined,
+    defaultsResolved,
+    activated,
+    activationPromise,
+    submissionGeneration,
+    activeValidations,
+    firstValidationDone,
+    fieldValidationCounts,
+    fieldValidatingSince,
+    fieldTransformCounts,
+    fieldTransformingSince,
+    transformErrors,
+    activeTransforms,
+    displayEngine,
+    domBinding,
+    modules,
+    coerceIndex,
+    blankPaths,
+    originalBlankPaths,
+
+    // --- kernel-internal state ---
+    strict,
+    defaultValues,
+    ssrPrefetch,
+    rememberVariants,
+    fieldValidationMode,
+    fieldValidationDebounceMs,
+    hasDU,
+    fieldValidationState,
+    formChangeListeners,
+    submitSuccessListeners,
+    resetListeners,
+    cleanupHooks,
+    authoredPaths,
+    arrayIdentity,
+    removedSubtrees,
+    variantMemory,
+    pathOrdinals,
+    pathSnapshots,
+    pathAsyncCache,
+    transformRuns,
+    transformWaiters,
+    arrayBookkeeping,
+    nextOrdinal: 0,
+    scheduleEpoch: 0,
+    lastCommittedEpoch: 0,
+    transformTokenSeq: 0,
+    warnedDisabledWrite: false,
+
+    // --- methods: thin per-instance skins over the module kernel ---
+    rehydrate: () => rehydrate(st),
+    activate: () => activate(st),
+    pathHasAsyncValidation: (path) => pathHasAsyncValidation(st, path),
+    pathHasAsyncValidationByKey: (key, segments) => pathHasAsyncValidationByKey(st, key, segments),
+    applyFormReplacement: (next, meta) => applyFormReplacement(st, next, meta),
+    setValueAtPath: (path, value, meta) => setValueAtPath(st, path, value, meta),
+    getValueAtPath: (path) => getValueAtPath(st, path),
+    arrayElementKey: (path) => arrayElementKey(st, path),
+    reset: (nextDefaultValues) => reset(st, nextDefaultValues),
+    resetField: (path) => resetField(st, path),
+    setSchemaErrorsForPath: (path, entries) =>
+      setErrorChannelForKey(
+        st,
+        canonicalizePath(path).key,
+        'schema',
+        entries.length === 0 ? NO_ERRORS : [...entries]
+      ),
+    setAllSchemaErrors: (entries) => replaceErrorChannel(st, 'schema', entries),
+    clearSchemaErrors: (path) => clearErrorChannel(st, 'schema', path),
+    applySchemaErrorsForSubtree: (path, entries) => applySchemaErrorsForSubtree(st, path, entries),
+    setAllUserErrors: (entries) => replaceErrorChannel(st, 'user', entries),
+    setUserErrorsForPath: (path, entries) =>
+      setErrorChannelForKey(
+        st,
+        canonicalizePath(path).key,
+        'user',
+        entries.length === 0 ? NO_ERRORS : [...entries]
+      ),
+    clearUserErrors: (path) => clearErrorChannel(st, 'user', path),
+    restoreErrorCells: (entries) => restoreErrorCells(st, entries),
+    getErrorsForPath: (path) => getErrorsForPath(st, path),
+    ensurePathOrdinal: (key) => ensurePathOrdinal(st, key),
+    noteDomConnected: (path) => noteDomConnected(st, path),
+    noteDomDisconnected: (path) => noteDomDisconnected(st, path),
+    markFocused: (path, focused, meta) => markFocused(st, path, focused, meta),
+    markInteracted: (path) => markInteracted(st, path),
+    touchAtPath: (segments) => touchAtPath(st, segments),
+    interactAtPath: (segments) => interactAtPath(st, segments),
+    markConnectedOptimistically: (path) => markConnectedOptimistically(st, path),
+    isPristineAtPath: (path) => isPristineAtPath(st, path),
+    isPristineAtPathByKey: (key, segments) => isPristineAtPathByKey(st, key, segments),
+    hasStructuralChangeUnder: (path) => hasStructuralChangeUnder(st, path),
+    hasRemovedSubtreeUnder: (path) => hasRemovedSubtreeUnder(st, path),
+    getFieldRecord: (path) => getFieldRecord(st, path),
+    getOriginalAtPath: (path) => getOriginalAtPath(st, path),
+    cancelFieldValidation: () => cancelFieldValidation(st),
+    beginTransform: (key, holder) => beginTransform(st, key, holder),
+    isCurrentTransform: (key, token) => isCurrentTransform(st, key, token),
+    endTransform: (key, token) => endTransform(st, key, token),
+    setTransformError: (key, err) => setTransformError(st, key, err),
+    cancelTransforms: () => cancelTransforms(st),
+    cancelTransformsUnder: (prefix) => cancelTransformsUnder(st, prefix),
+    settleTransforms: (path) => settleTransforms(st, path),
+    scheduleFieldValidation: (path, immediate, override) =>
+      scheduleFieldValidation(st, path, immediate, override),
+    onFormChange: (listener) => onFormChange(st, listener),
+    onSubmitSuccess: (listener) => onSubmitSuccess(st, listener),
+    onReset: (listener) => onReset(st, listener),
+    emitSubmitSuccess: () => emitSubmitSuccess(st),
+    registerCleanup: (fn) => registerCleanup(st, fn),
+    dispose: () => dispose(st),
   }
 
-  function beginTransform(key: PathKey, holder: TransformAbortHolder): number {
-    // Supersede: a new input at the same path aborts + releases the
-    // prior run synchronously (so `field.transforming` reflects only the
-    // live run and the count stays 0/1 per path), then this run opens.
-    const prior = transformRuns.get(key)
-    if (prior !== undefined) releaseTransformRun(key, prior)
-    const token = ++transformTokenSeq
-    transformRuns.set(key, { token, holder, released: false })
-    incFieldTransform(key)
-    activeTransforms.value += 1
-    // A fresh run supersedes the prior verdict — drop any stale error so
-    // a recovered input doesn't keep showing the last failure.
-    if (transformErrors.has(key)) transformErrors.delete(key)
-    return token
-  }
+  // --- Construction sequence (the reset-shared baseline + the
+  // construction-only seeding) ---
 
-  function isCurrentTransform(key: PathKey, token: number): boolean {
-    return transformRuns.get(key)?.token === token
-  }
-
-  function endTransform(key: PathKey, token: number): void {
-    const run = transformRuns.get(key)
-    // Only the live run releases the counters and clears the entry. A
-    // superseded / cancelled run (token no longer matches, or already
-    // released) was released at teardown — its late `endTransform` only
-    // flushes waiters.
-    if (run?.token === token) {
-      if (!run.released) {
-        activeTransforms.value = Math.max(0, activeTransforms.value - 1)
-        decFieldTransform(key)
-      }
-      transformRuns.delete(key)
-    }
-    flushSettledTransformWaiters()
-  }
-
-  function setTransformError(key: PathKey, err: Error): void {
-    transformErrors.set(key, err)
-  }
-
-  function cancelTransforms(): void {
-    for (const [key, run] of [...transformRuns]) {
-      releaseTransformRun(key, run)
-      transformRuns.delete(key)
-    }
-    // A cleared form starts from a clean transform slate — drop
-    // normalization failures that have no in-flight run of their own.
-    if (transformErrors.size > 0) transformErrors.clear()
-    flushSettledTransformWaiters()
-  }
-
-  function cancelTransformsUnder(prefix: Path): void {
-    for (const [key, run] of [...transformRuns]) {
-      const segs = segmentsForPathKey(key)
-      if (segs === null) continue
-      if (!isPathPrefix(prefix, segs)) continue
-      releaseTransformRun(key, run)
-      transformRuns.delete(key)
-      transformErrors.delete(key)
-    }
-    flushSettledTransformWaiters()
-  }
-
-  function settleTransforms(path?: string | Path): Promise<void> {
-    if (path === undefined) {
-      if (activeTransforms.value === 0) return Promise.resolve()
-      return new Promise<void>((resolve) => {
-        transformWaiters.push({ key: null, resolve })
-      })
-    }
-    const { key } = canonicalizePath(path)
-    if ((fieldTransformCounts.get(key) ?? 0) === 0) return Promise.resolve()
-    return new Promise<void>((resolve) => {
-      transformWaiters.push({ key, resolve })
-    })
-  }
+  rebuildAuthoredPaths(st, defaultValues, schemaInitialData)
 
   // Populate originals by diffing from empty-form to schema-initial. This is
   // always the schema's shape regardless of hydration, so pristine/dirty
   // comparisons are against what the form was supposed to start as.
-  // Same walk seeds `pathOrdinals` — `diffAndApply` visits every leaf in
-  // declaration order, so the ordinal map gets schema-declaration order
-  // for free with no extra traversal.
-  const initStamp = new Date().toISOString()
-  diffAndApply({}, schemaInitialData, [], (patch) => {
-    if (patch.kind !== 'added') return
-    const { key } = canonicalizePath(patch.path)
-    originals.set(key, { segments: patch.path, value: patch.newValue })
-    ensurePathOrdinal(key)
-  })
+  // The same walk seeds `pathOrdinals` (`ensureOrdinals: true`) —
+  // `diffAndApply` visits every leaf in declaration order, so the ordinal
+  // map gets schema-declaration order for free with no extra traversal.
+  seedOriginalsFromBaseline(st, schemaInitialData, true)
 
   // Populate fields from either the hydration payload (preserves exact
   // server-side timestamps and flags) or by walking initialData for leaves.
@@ -1939,16 +4297,17 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         warnMalformedHydration(formKey, 'schemaErrors', String(rawKey))
         continue
       }
-      schemaErrors.set(rawKey as PathKey, errs)
+      setErrorChannelForKey(st, rawKey as PathKey, 'schema', errs)
     }
     for (const [rawKey, errs] of hydration.userErrors) {
       if (typeof rawKey !== 'string' || !isHydratedValidationErrorArray(errs)) {
         warnMalformedHydration(formKey, 'userErrors', String(rawKey))
         continue
       }
-      userErrors.set(rawKey as PathKey, errs)
+      setErrorChannelForKey(st, rawKey as PathKey, 'user', errs)
     }
   } else {
+    const initStamp = new Date().toISOString()
     diffAndApply({}, initialData, [], (patch) => {
       if (patch.kind !== 'added') return
       const { key } = canonicalizePath(patch.path)
@@ -1970,2412 +4329,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // would surprise consumers who explicitly opted out via
     // `strict: false`.
     if (strict && !schemaResponse.success) {
-      setAllSchemaErrors(schemaResponse.errors)
+      replaceErrorChannel(st, 'schema', schemaResponse.errors)
     }
   }
 
-  // Async-only verdicts (e.g. zod's `.refine(async (v) => …)`) can't
+  // Async-only verdicts (e.g. zod's `.refine(async (v) => ...)`) can't
   // surface from `getDefaultValues` — that contract is sync, and the
   // adapter degrades to success when the schema's sync parse can't
-  // resolve them. When the adapter signals via `needsAsyncValidation`
-  // that there's verdicts only an async pass would surface, queue a
-  // one-shot full-form validation so the errors land on a later
-  // microtask instead of waiting for a user mutation.
-  //
-  // Two gates:
-  //   - SKIP on SSR. Microtasks don't get awaited before
-  //     `renderToString` serialises, so the async chain never
-  //     completes server-side; firing the schedule would only
-  //     increment `activeValidations` synchronously and stamp a
-  //     misleading `validating: true` into the SSR HTML, which
-  //     the client's hydration pass (taking the hydration branch
-  //     above) wouldn't reproduce — surface as a hydration
-  //     mismatch on the `validating…` indicator.
-  //   - `queueMicrotask` so the increment lands AFTER Vue's
-  //     synchronous hydration / first render. SSR HTML and the
-  //     client's first render both observe `activeValidations: 0`;
-  //     the validation kicks off only on the next microtask, by
-  //     which point hydration is done and Vue handles the reactive
-  //     re-render normally.
-  //
-  // Gated to strict mode AND to schemas that actually need async
-  // work — sync-only schemas would otherwise pay a redundant
-  // microtask + briefly flash `meta.validating: true` post-mount,
-  // misrepresenting "validation is running" when nothing is.
-  if (!ssr && strict && schema.needsAsyncValidation?.() === true) {
-    queueMicrotask(() => scheduleFieldValidation([], true /* immediate */))
-  }
-
-  function touchFieldRecord(
-    pathKey: PathKey,
-    path: Path,
-    patch: Partial<Omit<FieldRecord, 'path'>>
-  ): void {
-    const current = fields.get(pathKey)
-    fields.set(pathKey, {
-      path,
-      updatedAt: patch.updatedAt ?? current?.updatedAt ?? null,
-      connected: patch.connected ?? current?.connected ?? false,
-      // focused/blurred use an explicit-undefined guard because
-      // patches legitimately carry `null` to mark a disconnect — the
-      // `??` operator would short-circuit on null and fall through to
-      // `current`, losing the intent. `!== undefined` honours an
-      // explicit null and preserves current only on absence.
-      focused: patch.focused !== undefined ? patch.focused : (current?.focused ?? null),
-      blurred: patch.blurred !== undefined ? patch.blurred : (current?.blurred ?? null),
-      // touched is plain `boolean`; `??` is equivalent to the explicit
-      // guard here because `false` is not nullish.
-      touched: patch.touched ?? current?.touched ?? false,
-      // interacted is sticky-true; a merge patch only ever sets it, so
-      // `??` preserves the current bit. It flips back to false solely
-      // through the reset paths, which reconstruct the record outright.
-      interacted: patch.interacted ?? current?.interacted ?? false,
-      blurredAfterInteraction:
-        patch.blurredAfterInteraction ?? current?.blurredAfterInteraction ?? false,
-    })
-  }
-
-  // Array-bookkeeping factory: relocate per-element field / error /
-  // blank / originals state, seed freshly created elements, drop stale
-  // schema verdicts at changed indices, abort in-flight validation at
-  // vacated indices. Owns no state of its own — every dep is a
-  // reference into the surrounding store, so the bookkeeping's
-  // lifecycle exactly matches the host.
-  const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
-    form,
-    fields,
-    elements,
-    userErrors,
-    originals,
-    blankPaths,
-    originalBlankPaths,
-    authoredPaths,
-    fieldValidationCounts,
-    fieldValidatingSince,
-    fieldValidationState,
-    schemaErrors,
-    activeValidations,
-    arrayIdentity,
-    touchFieldRecord,
-    decFieldValidation,
-  })
-
-  // Shared commit tail for every value mutation: stamp per-leaf field
-  // metadata from the captured patches, then notify change listeners.
-  // Runtime-added paths (e.g. `append('posts', {...})` introducing a new
-  // array index) compare against `undefined` for `dirty` — appearing IS a
-  // mutation; only `reset()` rebaselines the originals map, so this records
-  // absence-as-original to keep the first appearance dirty. Listeners fire
-  // after field bookkeeping (they must see a fully-updated form), and their
-  // throws are isolated so one bad subscriber can't block the rest; `meta`
-  // propagates the call-site's intent (e.g. an array op or hydration tag).
-  function commitWritePatches(patches: readonly Patch[], meta?: WriteMeta): void {
-    const now = new Date().toISOString()
-    for (const patch of patches) {
-      const { key } = canonicalizePath(patch.path)
-      if (patch.kind === 'added' && !originals.has(key)) {
-        originals.set(key, { segments: patch.path, value: undefined })
-      }
-      touchFieldRecord(key, patch.path, { updatedAt: now })
-    }
-    for (const listener of formChangeListeners) {
-      try {
-        listener(form.value, meta)
-      } catch (err) {
-        console.error('[attaform] onFormChange threw:', err)
-      }
-    }
-  }
-
-  function applyFormReplacementWithPath(
-    next: F,
-    meta: WriteMeta | undefined,
-    arrayOpPath: Path | null
-  ): void {
-    const prev = form.value
-    if (Object.is(prev, next)) return
-    // Capture the diff before any mutation lands — `commitWritePatches`
-    // needs the per-leaf patches against the OLD shape.
-    const patches: Patch[] = []
-    diffAndApply(prev, next, [], (patch) => {
-      patches.push(patch)
-    })
-    // Mutate `form.value` in place so Vue's deep-reactivity dependencies
-    // fire ONLY for the first-level keys whose subtree changed. A
-    // wholesale `form.value = next` would fire every deep watch (including
-    // watches on sub-trees that didn't change), which deadlocks the
-    // browser when a watcher reacts by writing back to the form (the
-    // canonical "same as pickup address" mirror pattern).
-    //
-    // On a top-level shape mismatch (object → array, etc.) fall back
-    // to wholesale replacement — that's the only case where in-place
-    // merging can't preserve existing reactive proxies anyway.
-    // The typed array helpers thread the mutated array's path (`arrayOpPath`);
-    // on those writes a changed container-valued key reconciles in place, keeping
-    // stable references for the mutated array AND every ancestor container on the
-    // path to it, at any depth. So a reorder fires only the moved indices and a
-    // nested-array append re-renders only that list, never the whole-array /
-    // whole-parent re-render. A non-helper replacement (`arrayOpPath` null:
-    // explicit setValue, reset, undo / redo, cross-tab, hydration, DU reshape)
-    // reassigns changed keys wholesale, so a container target gets a fresh ref.
-    if (!applyChangedKeys(prev, next, arrayOpPath, [])) {
-      form.value = next
-    } else if (
-      patches.some(
-        (p) => p.path.length > 0 && typeof p.path[0] === 'string' && isShadowedKey(p.path[0])
-      )
-    ) {
-      // A root-level prototype-shadowed key (`hasOwnProperty`, `toString`,
-      // `valueOf`, …) changed. Its reactive readers descend through
-      // `safeOwnRead` (`Object.getOwnPropertyDescriptor`), which bypasses
-      // Vue's reactive get-trap, so they registered NO per-key dependency —
-      // they ride only on this ref's own dep. `applyChangedKeys` mutated the
-      // slot in place (the set-trap fires the key's dep, but nothing
-      // subscribed to it) and kept root identity stable, so `form.value` was
-      // not reassigned. Fire the ref explicitly to wake those readers; this
-      // is the coarse whole-`form`-ref signal the shadowed-descent path
-      // documents as its reactivity mechanism. Only fires for the rare write
-      // that touches a root-level shadowed field — every ordinary field keeps
-      // its fine-grained per-key dependency untouched.
-      triggerRef(form)
-    }
-    commitWritePatches(patches, meta)
-  }
-
-  // Public whole-value replacement (history restore, cross-tab merge, reset,
-  // hydration, DU reshape, devtools, tests). Threads a null array path, so the
-  // reconcile reassigns changed keys wholesale and a container target gets a
-  // fresh reference. Only the targeted array-helper write path opts into the
-  // stable-reference container reconcile, via `applyFormReplacementWithPath`.
-  function applyFormReplacement(next: F, meta?: WriteMeta): void {
-    applyFormReplacementWithPath(next, meta, null)
-  }
-
-  // Fast path for a single `setValue` whose target leaf already exists:
-  // mutate that leaf's slot in place (O(depth)), preserving every ancestor
-  // container's identity, then commit the exact per-leaf patches the
-  // full-tree diff would have emitted (the old root diff only ever
-  // descended this same subtree). Structural writes — a missing
-  // intermediate, array growth, a new key, a container target, or a
-  // prototype-shadowed segment — fall back to the copy-on-write
-  // `applyFormReplacement`, which correctly re-references the grown
-  // container. The contract: a container's reference changes IFF the write
-  // targets it or alters its structure; a descendant-leaf edit preserves
-  // every ancestor reference.
-  function applyTargetedWrite(path: Path, completedValue: unknown, meta?: WriteMeta): void {
-    const result = tryInPlaceLeafWrite(form.value, path, completedValue)
-    if (!result.applied) {
-      // A structural write (array growth / reorder, a new key, a container
-      // target). For a typed array-helper op (`meta.arrayOp` set), `path` IS the
-      // mutated array's canonical path — thread it so the reconcile keeps every
-      // ancestor container on the way to it stable. Any other structural write
-      // passes null and reassigns changed keys wholesale.
-      applyFormReplacementWithPath(
-        setAtPathWithSchemaFill(form.value, schema, path, completedValue) as F,
-        meta,
-        meta?.arrayOp !== undefined ? path : null
-      )
-      return
-    }
-    const patches: Patch[] = []
-    diffAndApply(result.old, completedValue, path, (patch) => {
-      patches.push(patch)
-    })
-    commitWritePatches(patches, meta)
-  }
-
-  /**
-   * The single write funnel: every value mutation (consumer `setValue`,
-   * directive assign, array op, DU variant reshape) lands here. Kept whole
-   * as deliberate complexity — it closes over essentially all of the
-   * store's reactive state, and the ordering of its phases (the
-   * slim-primitive gate, DU reshape, structural fill, storage write, then
-   * blank / error bookkeeping and the change-listener notify) is itself
-   * the correctness. Splitting it into argument-passed helpers would
-   * scatter that ordering and trade a single source of truth for a
-   * fan-out of partial writers (net-negative).
-   *
-   * Its observable contracts are pinned by characterization suites rather
-   * than unit-tested internals: variant-memory restore + nested-DU stub
-   * correction (discriminated-union-variant-switch, du-variant-persistence),
-   * blank-path insertion-order stability (blank-paths-order-stability), and
-   * the same-tick value + schemaErrors commit / no-flicker reshape
-   * (du-variant-error-flicker).
-   */
-  function setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean {
-    // Data-freeze gate: when the form is disabled (own `disabled` config
-    // or a wizard lock), every value write no-ops here — the single
-    // chokepoint all three write origins funnel through (programmatic
-    // `setValueImpl`, the directive's `setValueWithInternalPath`, and
-    // `setValueFromHost` including its `markBlank` path). The first
-    // blocked write dev-warns once; thereafter silent, never throws.
-    // `reset()` and hydration bypass this (they route through
-    // `applyFormReplacementWithPath`), so a frozen form can still be
-    // populated or cleared programmatically.
-    if (effectiveDisabled.value) {
-      if (__DEV__ && !warnedDisabledWrite) {
-        warnedDisabledWrite = true
-        console.warn(
-          `[attaform] Ignored a write to a disabled form ("${String(formKey)}"). ` +
-            `Value writes no-op while \`disabled\` resolves truthy. This warning fires once.`
-        )
-      }
-      return false
-    }
-    // Drop any Symbol-keyed properties before the value flows through
-    // the gate, DU reshape, or storage. Form values are string-keyed
-    // by schema design and the consumer-side leak would otherwise
-    // surface in `Object.getOwnPropertySymbols(values.x)` and break
-    // downstream JSON serialization (persistence) + variant memory. On an
-    // array structural op only the fresh element(s) carry consumer input;
-    // existing elements were stripped when first written and only shift
-    // position here, so strip just the new slot(s) instead of deep-walking
-    // all N. The field-array helper owns this fresh array copy, so the
-    // in-place element strip is safe — the same scoping the slim gate,
-    // mergeStructural, and the authored walk apply below.
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
-      for (const idx of freshElementIndices(meta.arrayOp)) {
-        value[idx] = stripSymbolsDeep(value[idx])
-      }
-    } else {
-      value = stripSymbolsDeep(value)
-    }
-    // Slim-primitive write gate: every leaf in the value must match
-    // the schema's slim primitive set at its sub-path. Refinement-level
-    // constraints (.email/.min/enum membership/etc.) are NOT enforced
-    // here — they're a validation concern. See ./slim-primitive-gate.ts.
-    // The gate short-circuits at `z.preprocess` / `z.coerce` wrappers
-    // so storage retains the consumer's raw input; the schema-side
-    // normalizers fire during `safeParse`, not at the write boundary.
-    let slimOk = true
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
-      // Array structural op: only the freshly-introduced element(s) carry new
-      // leaf values. Existing elements were gated when first written and only
-      // shift position here, so validate just the fresh slots, not all N.
-      for (const idx of freshElementIndices(meta.arrayOp)) {
-        if (!isSlimPrimitiveValid(schema, form, [...path, idx], value[idx])) {
-          slimOk = false
-          break
-        }
-      }
-    } else {
-      slimOk = isSlimPrimitiveValid(schema, form, path, value)
-    }
-    if (!slimOk) {
-      return false
-    }
-    // Cross-variant write guard: walking the path, if any ancestor is
-    // a DU whose ACTIVE disc value resolves to a known variant that
-    // doesn't contain the next path segment, the write targets an
-    // inactive-variant key (e.g. `setValue('notify.number', ...)`
-    // while the active channel is 'email'). Or the ancestor is in
-    // stub state (disc isn't a known variant). Reject so foreign
-    // sibling-variant fields can't leak into form.values.
-    //
-    // The DU's own disc key is always reachable — writes to it
-    // recover the form from stub state by selecting a valid variant
-    // — so the guard skips when the next path segment IS the disc.
-    if (path.length >= 2) {
-      for (let i = 0; i < path.length - 1; i++) {
-        const ancestorPath = path.slice(0, i + 1)
-        const du = schema.getUnionDiscriminatorAtPath(ancestorPath)
-        if (du === undefined) continue
-        const nextSeg = path[i + 1]
-        if (nextSeg === du.discriminatorKey) continue
-        const ancestorValue = getAtPath(form.value, ancestorPath)
-        if (!isPlainRecord(ancestorValue)) continue
-        const discValue = (ancestorValue as Record<string, unknown>)[du.discriminatorKey]
-        if (discValue === undefined) {
-          return false
-        }
-        if (!du.isVariantSelected(discValue)) {
-          return false
-        }
-        const variantDefault = du.getVariantDefault(discValue)
-        if (!isPlainRecord(variantDefault)) continue
-        if (typeof nextSeg !== 'string') continue
-        if (!(nextSeg in (variantDefault as Record<string, unknown>))) {
-          return false
-        }
-      }
-    }
-
-    // Latest-write-wins over the transform channel. The write has cleared
-    // the slim gate + cross-variant guards, so it WILL commit (here, via a
-    // DU reshape below, or the normal mutation) — a committed synchronous
-    // write to this path (or a container write above it) supersedes any
-    // in-flight async transform at or under it, whose eventual resolved
-    // value is now stale. Covers `setValueWithInternalPath`, `markBlank`,
-    // and `form.setValue` uniformly (all funnel through here). The deferred
-    // orchestrator releases its own run before committing, so a transform
-    // landing its own value is not caught. Guarded on `transformRuns.size`
-    // so the common no-transforms write stays allocation-free.
-    if (transformRuns.size !== 0) cancelTransformsUnder(path)
-
-    // Discriminated-union variant transitions. Writing a discriminator
-    // — whether as a leaf write to the discriminator key or as a
-    // wholesale write of the union value carrying a different
-    // discriminator — changes the schema's effective shape at the
-    // union's location. Old-variant keys (e.g. `address` on the email
-    // branch) become foreign once `channel: 'sms'` lands; new-variant
-    // required keys need their slim defaults populated so the
-    // errors-as-state pipeline sees the new shape. Two flavours, both
-    // routed through `reshapeUnionVariant`:
-    //
-    //   Case A — leaf write to the discriminator key
-    //   (`setValue('notify.channel', 'sms')`). Parent path is the
-    //   union; the new value names a variant directly.
-    //
-    //   Case B — wholesale write of the union itself
-    //   (`setValue('notify', { channel: 'sms', number: '...' })`).
-    //   Path is the union; the consumer's value carries the
-    //   discriminator. Layer the consumer's value on top of the
-    //   matched variant default so consumer-supplied keys win.
-    if (meta?.skipDiscriminatorReshape !== true) {
-      // Case A: discriminator-key write.
-      if (path.length > 0) {
-        const last = path[path.length - 1]
-        if (typeof last === 'string') {
-          const parentPath = path.slice(0, -1)
-          const parentDU = schema.getUnionDiscriminatorAtPath(parentPath)
-          if (parentDU?.discriminatorKey === last) {
-            const oldValue = getAtPath(form.value, path)
-            if (!Object.is(oldValue, value)) {
-              const variantDefault = parentDU.getVariantDefault(value)
-              if (variantDefault !== undefined) {
-                return reshapeUnionVariant(
-                  parentPath,
-                  oldValue,
-                  value,
-                  variantDefault,
-                  undefined,
-                  meta
-                )
-              }
-              // Disc value isn't a known variant literal. Storage at
-              // the union path becomes a stub holding only the disc
-              // key — prior variant body dropped, no first-variant-
-              // default leak. Validation surfaces the issue via Zod's
-              // natural invalid_union_discriminator at parentPath.
-              return reshapeUnionVariant(
-                parentPath,
-                oldValue,
-                value,
-                { [last]: value },
-                undefined,
-                meta
-              )
-            }
-          }
-        }
-      }
-      // Case B: whole-union write.
-      if (isPlainRecord(value)) {
-        const selfDU = schema.getUnionDiscriminatorAtPath(path)
-        if (selfDU !== undefined) {
-          const valueRecord = value as Record<string, unknown>
-          const discKey = selfDU.discriminatorKey
-          const discValue = valueRecord[discKey]
-          const currentUnionValue = getAtPath(form.value, path)
-          const oldDiscValue = isPlainRecord(currentUnionValue)
-            ? (currentUnionValue as Record<string, unknown>)[discKey]
-            : undefined
-          if (discValue !== undefined) {
-            const variantDefault = selfDU.getVariantDefault(discValue)
-            if (variantDefault !== undefined && isPlainRecord(variantDefault)) {
-              return reshapeUnionVariant(
-                path,
-                oldDiscValue,
-                discValue,
-                variantDefault,
-                valueRecord,
-                meta
-              )
-            }
-            // Consumer supplied a disc value that's not a known
-            // variant. Stub holds only the disc key; non-disc consumer
-            // keys are dropped (consumerOverrides = undefined) so
-            // foreign fields don't leak into form.values.
-            return reshapeUnionVariant(
-              path,
-              oldDiscValue,
-              discValue,
-              { [discKey]: discValue },
-              undefined,
-              meta
-            )
-          }
-          // Consumer wrote a whole-union value with NO discriminator.
-          // The form is "between selections" — empty stub {} ; every
-          // consumer key is dropped (no auto-merge with the first-
-          // variant default).
-          return reshapeUnionVariant(path, oldDiscValue, undefined, {}, undefined, meta)
-        }
-      }
-    }
-
-    // Blank bookkeeping. `blank: true` adds the path
-    // to the set (the call site declares "this write represents an
-    // empty intent"); any other write removes the exact key. A
-    // container write also drops every descendant blank-mark under
-    // `path` (mirrors the DU-reshape path's `isPathKeyUnder` sweep) —
-    // a write to `addr` replaces every leaf beneath, so any prior
-    // "I'm blank" mark at `addr.zip` is now stale. The arrayOp branch
-    // skips the descendant sweep because `migrateArrayElementState`
-    // relocates per-element blank-marks across the operation's exact
-    // permutation downstream; sweeping ahead of it would delete the
-    // marks the migration needs to carry forward. The mark/unmark
-    // sit BEFORE the identity short-circuit so transitions that
-    // don't change storage value (e.g. typing 0 over slim-default 0)
-    // still update the visual / blank state correctly.
-    // Pre-write value at `path`, read once: `form.value` is not mutated
-    // until `applyFormReplacement` below, so the same read serves the
-    // descendant-sweep gate (just below) and the identity short-circuit.
-    const currentValue = getAtPath(form.value, path)
-    const pathKey = canonicalizePath(path).key
-    if (meta?.blank === true) {
-      blankPaths.add(pathKey)
-    } else {
-      if (blankPaths.has(pathKey)) blankPaths.delete(pathKey)
-      // Descendant sweep: a write replaces the whole subtree at `path`, so
-      // any blank-mark UNDER `path` is now stale. Only a container can have
-      // had descendants, so gate on the PRE-WRITE value being one. A scalar
-      // leaf write (the keystroke hot path) has no descendants; running the
-      // sweep there scans the entire blank set for nothing, O(F) per write.
-      // Clearing a container with a non-container (null / undefined) still
-      // sweeps, since `currentValue` was the container. `isPathKeyUnder`
-      // returns true at root for every non-empty key, so a root write still
-      // drops all marks.
-      if (
-        meta?.arrayOp === undefined &&
-        (isPlainRecord(currentValue) || Array.isArray(currentValue))
-      ) {
-        for (const existingKey of [...blankPaths]) {
-          if (isPathKeyUnder(existingKey, path)) blankPaths.delete(existingKey)
-        }
-      }
-    }
-
-    // Authored bookkeeping: a setValue is the consumer authoring `path`
-    // (and every sub-path inside `value`, if it's a container). The
-    // schema-error filter consults this set to distinguish "no consumer
-    // input at this preprocess / coerce leaf" from "consumer wrote
-    // undefined here." The latter must surface verdicts; the former
-    // is the runtime no-value-yet stub the filter exists to suppress.
-    // Marking before the identity short-circuit covers the
-    // setValue('url', undefined) over an already-undefined leaf case;
-    // the mark is cheap and consistent either way.
-    const wasAuthoredBefore = authoredPaths.has(pathKey)
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
-      // The array container itself is authored (the consumer wrote it via a
-      // field-array op), matching the whole-array walk this replaces. Existing
-      // elements keep their authored marks (relocated with the op by
-      // migrateElementState), so only the fresh element(s) need a fresh walk.
-      if (path.length > 0) authoredPaths.add(pathKey)
-      for (const idx of freshElementIndices(meta.arrayOp)) {
-        walkAuthoredFromConstraints(value[idx], [...path, idx], authoredPaths)
-      }
-    } else {
-      walkAuthoredFromConstraints(value, path, authoredPaths)
-    }
-    const newlyAuthored = !wasAuthoredBefore && authoredPaths.has(pathKey)
-
-    // Structural-completeness invariant: every write must leave the
-    // form satisfying the slim schema. Two ingress points to fill:
-    //   1. The target value (consumer may have passed a partial; the
-    //      schema's element default fills missing keys / array
-    //      elements via mergeStructural).
-    //   2. Intermediate gaps along the path (missing object property,
-    //      array length below target index — setAtPathWithSchemaFill
-    //      asks the schema for defaults at each gap site).
-    // The common case (write to existing slot with a complete value)
-    // hits no schema lookups: mergeStructural short-circuits on
-    // ref-equal sub-trees, and the fill walker only queries the
-    // schema at gap sites.
-    let completedValue: unknown
-    if (meta?.arrayOp !== undefined && Array.isArray(value)) {
-      // Complete only the fresh element(s) against the schema element default;
-      // existing elements are already structurally complete from prior writes.
-      // Mutating the caller's fresh array copy in place is safe (the field-array
-      // helper builds and hands it off exactly once).
-      for (const idx of freshElementIndices(meta.arrayOp)) {
-        value[idx] = mergeStructural(schema, [...path, idx], value[idx])
-      }
-      completedValue = value
-    } else {
-      completedValue = mergeStructural(schema, path, value)
-    }
-    // Identity short-circuit: if the path's current value already
-    // matches what we'd write, skip the replacement. Without this,
-    // every keystroke that produces an unchanged trimmed/cast value
-    // (e.g. typing a trailing space into a `.trim` input — trim → ""
-    // → form already at "") would still replace `form.value` with a
-    // new object identity, triggering Vue to re-render the input and
-    // patch the `:value` binding (which compares against the live
-    // DOM `el.value`, not the previous vnode prop). The patch
-    // overwrites the user's transient whitespace and the spacebar
-    // appears broken.
-    if (Object.is(currentValue, completedValue)) {
-      // Storage unchanged, skip the replacement to avoid spurious
-      // re-renders. Narrow exception: at a preprocess / coerce leaf,
-      // a write that newly authors the path changes the filter's
-      // verdict semantics. Prior validation passes were suppressed
-      // because the path wasn't authored yet; a fresh pass needs to
-      // fire so the verdict surfaces. The narrow scope (preprocess /
-      // coerce only) preserves the original short-circuit for plain
-      // primitives — `setValue('income', 0)` over a mount-time `0`
-      // stays a true no-op and doesn't kick off a validation cycle.
-      if (newlyAuthored && schema.isPreprocessOrCoerceLeaf(path)) {
-        const modeForAuthoringTransition = meta?.instance?.validateOn ?? fieldValidationMode
-        if (modeForAuthoringTransition === 'change') {
-          scheduleFieldValidation(path, false /* debounced */, {
-            ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-            ...(meta?.instance?.debounceMs !== undefined
-              ? { debounceMs: meta.instance.debounceMs }
-              : {}),
-          })
-        }
-      }
-      return true
-    }
-    // Capture the array length BEFORE replacement: `applyTargetedWrite`
-    // mutates `form.value` in place, so the pre-op length has to be read off
-    // `currentValue` here, while it still reflects the array the operation
-    // acted on. Only the `arrayOp` branch reads it.
-    const oldArrayLength = Array.isArray(currentValue) ? currentValue.length : 0
-    // For a wholesale array replacement (no `arrayOp` to follow), anchor the
-    // identity baseline at the PRE-write order before `applyTargetedWrite`
-    // resizes the array in place. On an array's first track this is the only
-    // chance to capture its baseline length: realigning only afterwards (below)
-    // would anchor the already-resized order, so a shrink — an element removal —
-    // on a never-rendered array would read structurally pristine and fail to
-    // dirty the form (#420). The post-write realign then advances the current
-    // order while the baseline stays put, so the length delta surfaces through
-    // `hasStructuralChangeUnder`. Idempotent once the array is tracked, and it
-    // mirrors what the `arrayOp` branch already gets for free by reconstructing
-    // the pre-op length before replaying its permutation.
-    if (meta?.arrayOp === undefined && Array.isArray(value) && Array.isArray(currentValue)) {
-      arrayIdentity.realign(path)
-    }
-    applyTargetedWrite(path, completedValue, meta)
-    // Variant-memory bookkeeping for array structural mutations. The
-    // field-array helpers tag each op with an `arrayOp` describing
-    // which indices shifted; raw whole-array setValues (`setValue
-    // ('events', [...])`) clear all memory under the array path
-    // because identity bookkeeping was lost wholesale. Memory keyed
-    // by absolute index would otherwise bleed onto new occupants of
-    // those indices on a future variant switch.
-    if (meta?.arrayOp !== undefined) {
-      // Relocate non-derived per-element state along the operation's exact
-      // permutation, then register any freshly created element. Runs after
-      // `applyFormReplacement` so it overwrites the placeholder originals
-      // replacement seeds at shifted destinations with each moved element's
-      // true baseline.
-      const remap = remapForOp(meta.arrayOp, oldArrayLength)
-      arrayBookkeeping.migrateElementState(path, remap)
-      for (const freshIndex of remap.fresh) arrayBookkeeping.seedFreshElement(path, freshIndex)
-      arrayBookkeeping.dropSchemaErrorsAtChangedIndices(path, remap)
-      arrayBookkeeping.abortValidationAtVacatedIndices(path, remap)
-      variantMemory.applyArrayOp(path, meta.arrayOp)
-      arrayIdentity.applyOp(path, meta.arrayOp)
-    } else if (Array.isArray(value) && Array.isArray(currentValue)) {
-      variantMemory.clearUnderPath(path)
-      arrayIdentity.realign(path)
-    } else if (isContainer(currentValue) && !isContainer(value)) {
-      // A baseline-present container dropped to a non-container: record the path
-      // so the container dirty check still fires for the vanished subtree (see
-      // `removedSubtrees`). Gated on real baseline presence so removing an
-      // optional section that was empty at construction — added, then cleared
-      // again — lands back at pristine rather than reading dirty.
-      if (subtreeHadRealBaseline(path, currentValue)) {
-        removedSubtrees.add(canonicalizePath(path).key)
-      }
-    }
-    const effectiveModeAfterWrite = meta?.instance?.validateOn ?? fieldValidationMode
-    if (effectiveModeAfterWrite === 'change') {
-      scheduleFieldValidation(path, false /* debounced */, {
-        ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-        ...(meta?.instance?.debounceMs !== undefined
-          ? { debounceMs: meta.instance.debounceMs }
-          : {}),
-      })
-    }
-    return true
-  }
-
-  /**
-   * Replace the union's parent storage with the activated variant's
-   * value, atomically. Two flavours fold into one machine:
-   *
-   *   - `oldDiscValue !== newDiscValue` is a TRUE switch. The
-   *     outgoing variant's subtree (deep-cloned) and its blank-path
-   *     bookkeeping under `parentPath` snapshot into `variantMemory`
-   *     keyed by the union's PathKey. Then memory is consulted for
-   *     `newDiscValue`: a hit restores the prior typed state; a miss
-   *     falls back to `variantDefault` (the adapter's slim default
-   *     for the matching `z.object`).
-   *   - `oldDiscValue === newDiscValue` is NOT a switch — the
-   *     reshape was entered via Case B with a partial whole-union
-   *     write. Skip memory I/O entirely (memory is for switches),
-   *     just merge `consumerOverrides` on top of `variantDefault`.
-   *
-   * `consumerOverrides` carries Case B's whole-union value (e.g.
-   * `setValue('notify', { channel: 'email', address: 'x' })`).
-   * Merge order: memory baseline (or `variantDefault`) first,
-   * consumer overrides on top — so a memory-restored `address`
-   * survives a partial write that doesn't override it. Case A
-   * passes `undefined` for `consumerOverrides`.
-   *
-   * Direct write — the resolved value IS structurally complete
-   * (from the adapter's `deriveDefault` or a matching prior
-   * snapshot). Routing through `mergeStructural` would re-add
-   * foreign keys from the FIRST variant (the union's
-   * `getDefaultAtPath` falls back to the first option), which is
-   * exactly what the reshape is meant to clear.
-   *
-   * Deliberate-complexity: the sync-ahead reshape (storage + schema
-   * errors committed in the same tick) is the no-flicker mitigation no
-   * unit test can verify in isolation, so it stays inline rather than
-   * fragmenting into argument-passed helpers. Its observable contracts
-   * are pinned by characterization suites — the same-tick no-flicker
-   * transition (du-variant-error-flicker), variant-memory restore
-   * (discriminated-union-variant-switch, du-variant-persistence), and
-   * blank-path order stability (blank-paths-order-stability).
-   */
-  function reshapeUnionVariant(
-    parentPath: Path,
-    oldDiscValue: unknown,
-    newDiscValue: unknown,
-    variantDefault: unknown,
-    consumerOverrides: Record<string, unknown> | undefined,
-    meta?: WriteMeta
-  ): boolean {
-    const sameDisc = Object.is(oldDiscValue, newDiscValue)
-    const parentKey = canonicalizePath(parentPath).key
-
-    // Snapshot OUTGOING. Deep-clone the value: `getAtPath(form.value,
-    // parentPath)` returns a Vue reactive proxy into the live tree
-    // (form is `ref(initialData)`); after the upcoming `form.value =
-    // nextForm` overwrites the union path, the proxy still points to
-    // the orphaned raw target. `cloneVariantSnapshot` walks the
-    // subtree, calling `toRaw` at each level to bypass Vue reactivity
-    // and preserves `BigInt`, `Date`, `Map`, `Set` natively — types
-    // Zod schemas can validate at leaves but the prior `JSON.parse(
-    // JSON.stringify(...))` cycle either crashed on (BigInt) or
-    // silently degraded (Date → ISO string, Map/Set → `{}`).
-    // `structuredClone` won't work as a one-shot replacement: nested
-    // reactive children stored as Proxies cause `DataCloneError`.
-    // Skip when `oldDiscValue` is undefined (initial state had no
-    // discriminator) — nothing meaningful to remember.
-    let baseline: unknown = variantDefault
-    let restoredBlanks: PathKey[] | undefined
-    const effectiveRemember = meta?.instance?.rememberVariants ?? rememberVariants
-    if (effectiveRemember && !sameDisc) {
-      if (oldDiscValue !== undefined) {
-        const currentValue: unknown = cloneVariantSnapshot(getAtPath(form.value, parentPath))
-        const outgoingBlanks: PathKey[] = []
-        for (const k of blankPaths) {
-          if (isPathKeyUnder(k, parentPath)) outgoingBlanks.push(k)
-        }
-        variantMemory.recordOutgoing(parentKey, oldDiscValue, {
-          value: currentValue,
-          blankPaths: outgoingBlanks,
-        })
-      }
-      // Look up INCOMING. Stored value is already a deep clone — safe
-      // to use directly without re-cloning.
-      const restored = variantMemory.lookupIncoming(parentKey, newDiscValue)
-      if (restored !== undefined) {
-        baseline = restored.value
-        restoredBlanks = [...restored.blankPaths]
-      }
-    }
-
-    // Layer consumer overrides on top of the baseline (Case B).
-    // For Case A (`consumerOverrides === undefined`), the baseline
-    // is the final value.
-    const layered: unknown =
-      consumerOverrides !== undefined
-        ? { ...(baseline as Record<string, unknown>), ...consumerOverrides }
-        : baseline
-    // Stub-correct any nested DU paths inside `layered` whose disc
-    // value isn't a known variant — the consumer's Case B payload may
-    // carry a valid outer disc but a bad inner disc (e.g.
-    // `{step:'choose', inner:{kind:'BAD_INNER', a:'x'}}`). Without
-    // this, the inner mixed shape leaks through reshape; with it,
-    // every level ends in either a real variant or a disc-only stub.
-    const finalValue: unknown = applyDuStubs(schema as AbstractSchema<unknown, unknown>, layered, {
-      basePath: parentPath,
-    })
-
-    // New blanks: restored from memory (preserves the user's prior
-    // explicit blanks + numeric auto-marks together) or recomputed
-    // from the resolved `finalValue` (mount-time rule: storage /
-    // display divergence for `number` / `bigint` numeric leaves).
-    // Compute BEFORE the drop loop so we know which old keys survive
-    // — `Set.add` on a deleted-and-re-added key re-inserts at the END
-    // of insertion order, which would shift `derivedBlankErrors` (and
-    // therefore `form.meta.errors`) on every same-disc reshape even
-    // when nothing about the post-reshape shape actually changed.
-    let newBlankPaths: PathKey[]
-    if (restoredBlanks !== undefined) {
-      newBlankPaths = restoredBlanks
-    } else {
-      newBlankPaths = []
-      walkUnspecified(finalValue, [...parentPath], newBlankPaths)
-    }
-    const survivingBlankKeys = new Set<PathKey>(newBlankPaths)
-    // Drop blank-path bookkeeping under `parentPath` — those paths
-    // belong to the OLD variant's leaves and don't exist in the new
-    // effective shape. Skip keys present in `survivingBlankKeys`: the
-    // `add` below is a no-op for an existing Set member (preserves the
-    // original insertion slot).
-    for (const existingKey of [...blankPaths]) {
-      if (isPathKeyUnder(existingKey, parentPath) && !survivingBlankKeys.has(existingKey)) {
-        blankPaths.delete(existingKey)
-      }
-    }
-
-    const currentValue = getAtPath(form.value, parentPath)
-    if (Object.is(currentValue, finalValue)) {
-      // Apply the auto-marks even on no-op (the bookkeeping must
-      // catch up even when storage identity matches by coincidence).
-      for (const k of newBlankPaths) blankPaths.add(k)
-      return true
-    }
-    // `setAtPathWithSchemaFill` (not the plain `setAtPath`) so that
-    // writing to an array index past current length pads positions in
-    // between with the schema's element default — otherwise a
-    // `setValue('events.10', { type: 'text', value: 'far' })` on a
-    // length-1 array would leave `events[1..9]` as `undefined` holes,
-    // which break downstream iteration and validation.
-    const nextForm =
-      parentPath.length === 0
-        ? (finalValue as F)
-        : (setAtPathWithSchemaFill(form.value, schema, parentPath, finalValue) as F)
-    // Sync-validate AHEAD of the form mutation when the schema
-    // permits it. Both writes (schemaErrors + form.value) then land
-    // in the same Vue reactive batch, so a single render emits the
-    // fully-consistent post-reshape state. Without this, the render
-    // queued by `applyFormReplacement` runs BEFORE the async
-    // validation lands — the active-path filter hides the OLD
-    // variant's schemaErrors (their leaves vanished from form.value)
-    // and the NEW variant's haven't been written yet, producing a
-    // visible `{}` flicker between the two meaningful states.
-    //
-    // We pass `{ sync: true }` to opt into the adapter's sync arm.
-    // The adapter MAY still return a Promise (async refinements,
-    // async transforms / pipes — schemas where sync isn't possible);
-    // we detect that with `instanceof Promise` and fall through to
-    // the existing debounced async pipeline in that case.
-    let appliedSync = false
-    const reshapeMode = meta?.instance?.validateOn ?? fieldValidationMode
-    if (reshapeMode === 'change') {
-      const syncOrPromise = schema.validateAtPath(finalValue, parentPath, { sync: true })
-      if (!(syncOrPromise instanceof Promise)) {
-        const reStamped = syncOrPromise.success
-          ? []
-          : syncOrPromise.errors.map((err) => ({
-              ...err,
-              path: [...parentPath, ...(err.path as Segment[])],
-            }))
-        applySchemaErrorsForSubtree(parentPath, reStamped)
-        // Cancel any in-flight async validation at this path so a
-        // late-arriving result can't clobber the sync write.
-        const { key: parentKey } = canonicalizePath(parentPath)
-        const prevValidation = fieldValidationState.get(parentKey)
-        if (prevValidation !== undefined) {
-          if (prevValidation.timer !== null) clearTimeout(prevValidation.timer)
-          prevValidation.aborted = true
-          fieldValidationState.delete(parentKey)
-        }
-        appliedSync = true
-      }
-    }
-    applyFormReplacement(nextForm, meta)
-    for (const k of newBlankPaths) blankPaths.add(k)
-    if (reshapeMode === 'change' && !appliedSync) {
-      scheduleFieldValidation(parentPath, false /* debounced */, {
-        ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-        ...(meta?.instance?.debounceMs !== undefined
-          ? { debounceMs: meta.instance.debounceMs }
-          : {}),
-      })
-    }
-    return true
-  }
-
-  /**
-   * Schedule (or kick off immediately) a field-level validation run
-   * for `path`. Per-path one-shot `aborted` latch: a new schedule
-   * cancels any prior in-flight run for the same path, so rapid
-   * successive writes don't pile up concurrent validations.
-   *
-   * The validation reads the current value at `path` from `form.value`
-   * AT THE TIME THE TIMER FIRES, not at schedule time. That's the
-   * correct semantics for a debounced change trigger: the user's
-   * latest-keystroke value is what matters, not whichever value
-   * tripped the timer scheduler N milliseconds ago.
-   */
-  function scheduleFieldValidation(
-    path: Path,
-    immediate: boolean,
-    override?: { readonly mode?: ValidateOn; readonly debounceMs?: number }
-  ): void {
-    const effectiveMode = override?.mode ?? fieldValidationMode
-    if (effectiveMode === 'submit') return
-    const effectiveDebounce = override?.debounceMs ?? fieldValidationDebounceMs
-    const { key } = canonicalizePath(path)
-    const prev = fieldValidationState.get(key)
-    if (prev !== undefined) {
-      if (prev.timer !== null) clearTimeout(prev.timer)
-      prev.aborted = true
-    }
-    const fresh: FieldValidationEntry = {
-      aborted: false,
-      timer: null,
-      settled: false,
-      released: false,
-    }
-    fieldValidationState.set(key, fresh)
-    // Capture a fresh epoch at schedule time. Closed over by `run`
-    // below and re-checked at the commit site so a later-scheduled
-    // run that resolves first protects its verdict from clobber by
-    // an earlier-scheduled run that resolves later (PASS2-2).
-    const myEpoch = ++scheduleEpoch
-
-    const run = () => {
-      fresh.timer = null
-      if (fresh.aborted) return
-      // Defense-in-depth: the increments below trigger reactive
-      // subscribers (sync watchers on `api.meta.validating` or
-      // `api.fields.X.validating`). If one of those subscribers throws,
-      // the Promise chain whose `.finally` does the decrements never
-      // starts, leaking the per-path counter — `validating` would
-      // stay true forever, and the mount-gate's
-      // `pathHasAsyncValidation` would report a permanently-pending
-      // verdict. Roll back the increments that succeeded on a sync
-      // throw before letting the error propagate.
-      let activeIncremented = false
-      try {
-        activeValidations.value += 1
-        activeIncremented = true
-        incFieldValidation(key)
-      } catch (err) {
-        // `incFieldValidation` is the last statement above and is
-        // structurally a `Map.set` — if it throws, it threw before the
-        // map entry was written, so there's nothing to roll back on the
-        // field counter. The only rollback that matters is the global
-        // `activeValidations` increment that happened on the first line.
-        if (activeIncremented) {
-          activeValidations.value = Math.max(0, activeValidations.value - 1)
-        }
-        throw err
-      }
-      // Per-keystroke scope. When the schema carries no container or
-      // root refine (predicate returns `false` and the schedule is at
-      // a real path), every verdict it can produce lives at the
-      // edited subtree or below — a subtree-scoped pass is sufficient
-      // and the runtime avoids the O(N) whole-form parse on each
-      // keystroke. Predicate `true` (or missing — adapters that don't
-      // implement detection) keeps the conservative whole-form pass
-      // so ancestor refines (cross-field equality, sum constraints,
-      // etc.) still re-evaluate against the live form value. An
-      // empty `path` (root schedule, mount / reset / explicit
-      // whole-form) also folds to whole-form.
-      const subtreeScope = path.length > 0 && schema.hasContainerOrRootRefine?.() === false
-      const scopePath: Path | undefined = subtreeScope ? path : undefined
-      const dataAtScope: unknown = subtreeScope ? getAtPath(form.value, path) : form.value
-      const scopeKey: PathKey = subtreeScope ? canonicalizePath(path).key : ROOT_PATH_KEY
-      void Promise.resolve()
-        .then(() => schema.validateAtPath(dataAtScope, scopePath))
-        .then((response) => {
-          if (fresh.aborted) return
-          // Form-level epoch gate. If a later-scheduled run has
-          // already committed its verdict, dropping this stale
-          // commit prevents an asymmetric-latency race from
-          // overwriting the fresher result. `<=` is conservative
-          // — counter monotonicity makes equality impossible in
-          // practice, but a re-entrant commit at the same epoch
-          // would still be a no-op.
-          if (myEpoch <= lastCommittedEpoch) return
-          lastCommittedEpoch = myEpoch
-          // Record the value this pass validates so a later blur can
-          // recognise an unchanged form and skip. Blur-mode only: the
-          // blur guard is the sole reader, so change-mode never pays
-          // for the snapshot. Lives in the applied branch — an aborted
-          // run never advances the snapshot, so a later blur with
-          // nothing committed for this path still re-validates instead
-          // of falsely skipping against a stale-but-uncommitted anchor.
-          //
-          // Snapshot scope = validation scope: under subtree-scoped
-          // commits (CORE-P1a), only the subtree-at-`path` participates
-          // in the blur dedup, so cloning the whole form just to throw
-          // away unused branches is wasted work proportional to (form
-          // size − subtree size). Read the live subtree directly from
-          // `form.value` (matching the original "snapshot at commit
-          // time" semantics, where the post-async write may differ
-          // from `dataAtScope` captured before the await) and clone
-          // only that. The blur reader subtracts the snapshot's
-          // scope segments from the blur path to project back into
-          // the stored subtree. Whole-form scope (`scopePath ===
-          // undefined`) stores the full clone, identical to the
-          // prior behaviour for that branch.
-          if (effectiveMode === 'blur') {
-            const snapshotSource =
-              scopePath !== undefined ? getAtPath(form.value, scopePath) : form.value
-            pathSnapshots.set(scopeKey, structuralSnapshot(snapshotSource))
-          }
-          const errors = response.success ? [] : response.errors
-          // Drop schema verdicts at preprocess / coerce paths whose
-          // storage is undefined AND the consumer didn't author a
-          // starting value there. Under the no-write-mutation contract,
-          // a refine running against the preprocess sentinel for "no
-          // value" produces a verdict against state nobody authored —
-          // suppressing it keeps the construction-time async seed
-          // from flickering when the field is first touched. Authored
-          // paths (defaultValues OR schema `.default(...)`) skip the
-          // filter; their verdicts ARE legitimate.
-          const filtered = filterAuthoredErrors(errors)
-          // Subtree-scoped responses carry paths relative to the
-          // subtree; restamp with absolute paths so the storage
-          // convention holds. Whole-form responses are already
-          // absolute — pass through.
-          const restamped: ValidationError[] = subtreeScope
-            ? filtered.map((err) => ({
-                ...err,
-                path: [...path, ...(err.path as Segment[])],
-              }))
-            : filtered
-          applySchemaErrorsForSubtree(scopePath ?? [], restamped)
-        })
-        .catch(() => {
-          // Adapter contract forbids throws — swallow here so a misbehaving
-          // custom adapter doesn't surface as an uncaught rejection. The
-          // silent drop matches the reactive `validate()` ref's catch
-          // branch for adapter-level throws (see process-form.ts).
-        })
-        .finally(() => {
-          // Skip the decrements if an external release (a path-scoped reset)
-          // already did them — otherwise this late `.finally` would
-          // double-count against a run rescheduled at the same key after the
-          // release. Normal runs leave `released` false and decrement here.
-          if (!fresh.released) {
-            activeValidations.value = Math.max(0, activeValidations.value - 1)
-            decFieldValidation(key)
-          }
-          fresh.settled = true
-        })
-    }
-
-    // `debounceMs: 0` is the off switch — `setTimeout(fn, 0)` would
-    // punt to the next macrotask (browsers also clamp to ~4 ms), and
-    // the indirection serves no purpose when the consumer asked for
-    // "no debounce." Run synchronously like the `immediate` branch.
-    if (immediate || effectiveDebounce === 0) {
-      run()
-    } else {
-      fresh.timer = setTimeout(run, effectiveDebounce)
-    }
-  }
-
-  function cancelFieldValidation(): void {
-    for (const [pkey, entry] of fieldValidationState) {
-      if (entry.timer !== null) {
-        // Debounce timer hasn't fired yet — run() never executed, so
-        // no `activeValidations` / `fieldValidationCounts` increment
-        // happened. Just clear the timer; nothing to roll back.
-        clearTimeout(entry.timer)
-      } else if (!entry.settled) {
-        // run() already fired and the chain is still in flight. Its
-        // own `.finally` will decrement when the chain settles, but
-        // the chain could outlive the caller (handleSubmit /
-        // validateAsync) that's cancelling us. Release the counters
-        // synchronously here so `meta.validating` reflects the cancel
-        // immediately; the late `.finally`'s `Math.max(0, ...)`
-        // clamps the duplicate decrement to zero.
-        activeValidations.value = Math.max(0, activeValidations.value - 1)
-        decFieldValidation(pkey)
-      }
-      // Settled entries left in the map (waiting for the next
-      // schedule to evict them) have already decremented in their
-      // own `.finally` — skip the counter touch entirely.
-      entry.aborted = true
-    }
-    fieldValidationState.clear()
-  }
-
-  // Path-scoped counterpart to `cancelFieldValidation`: abort and release only
-  // the in-flight runs whose path sits at or under `prefix`, leaving sibling
-  // fields' validations untouched. Used by `resetField` so resetting one field
-  // tears down its own validation. Releases the count + streak anchor in
-  // lockstep through `decFieldValidation` (preserving the bracket invariant)
-  // and marks each entry `released` so the run's late `.finally` can't
-  // double-decrement a run rescheduled at the same key (the change-mode restore
-  // write that follows `resetField`'s call schedules exactly such a run).
-  function cancelFieldValidationUnder(prefix: Path): void {
-    for (const [key, entry] of [...fieldValidationState]) {
-      const segs = segmentsForPathKey(key)
-      if (segs === null) continue
-      if (!isPathPrefix(prefix, segs)) continue
-      if (entry.timer !== null) {
-        clearTimeout(entry.timer)
-      } else if (!entry.settled && !entry.released) {
-        activeValidations.value = Math.max(0, activeValidations.value - 1)
-        decFieldValidation(key)
-        entry.released = true
-      }
-      entry.aborted = true
-      fieldValidationState.delete(key)
-    }
-  }
-
-  function onFormChange(listener: (next: F, meta?: WriteMeta) => void): () => void {
-    formChangeListeners.add(listener)
-    return () => {
-      formChangeListeners.delete(listener)
-    }
-  }
-
-  function onSubmitSuccess(listener: () => void): () => void {
-    submitSuccessListeners.add(listener)
-    return () => {
-      submitSuccessListeners.delete(listener)
-    }
-  }
-
-  function onReset(listener: () => void): () => void {
-    resetListeners.add(listener)
-    return () => {
-      resetListeners.delete(listener)
-    }
-  }
-
-  function emitSubmitSuccess(): void {
-    for (const listener of submitSuccessListeners) {
-      try {
-        listener()
-      } catch (err) {
-        console.error('[attaform] onSubmitSuccess threw:', err)
-      }
-    }
-  }
-
-  function registerCleanup(fn: () => void): void {
-    cleanupHooks.push(fn)
-  }
-
-  const drainHooks: (() => Promise<void>)[] = []
-
-  function registerDrain(fn: () => Promise<void>): void {
-    drainHooks.push(fn)
-  }
-
-  async function awaitPendingWrites(): Promise<void> {
-    if (drainHooks.length === 0) return
-    // Run drains in parallel — each owns its own retry / failure
-    // semantics; we just need to know when all have settled.
-    await Promise.allSettled(drainHooks.map((fn) => fn()))
-  }
-
-  function dispose(): void {
-    // Run state-scoped teardowns BEFORE clearing listener sets, so a
-    // module that wants to flush something by emitting one last event
-    // from its cleanup (unlikely but harmless) doesn't find the
-    // listener set already empty. Each hook runs inside try/catch so
-    // one misbehaving module can't block the others.
-    for (const hook of cleanupHooks) {
-      try {
-        hook()
-      } catch (err) {
-        console.error('[attaform] cleanup threw:', err)
-      }
-    }
-    cleanupHooks.length = 0
-    drainHooks.length = 0
-    modules.clear()
-    cancelFieldValidation()
-    cancelTransforms()
-    fieldValidatingSince.clear()
-    formChangeListeners.clear()
-    submitSuccessListeners.clear()
-    resetListeners.clear()
-  }
-
-  function getValueAtPath(path: Path): unknown {
-    return getAtPath(form.value, path)
-  }
-
-  // --- Errors ---
-  // Two source-segregated stores: `schemaErrors` (validation-owned) and
-  // `userErrors` (API-injected). Writers below are strict — each function
-  // touches exactly one Map. The merged view is exposed via
-  // `getErrorsForPath` and the top-level `errors` drillable Proxy.
-
-  /**
-   * Append every entry in `entries` to its target Map at the canonical
-   * path key. Existing entries at that key are preserved (merge-append),
-   * so a single `replaceErrorsIn` pass lands multiple errors at the same
-   * path. Allocates a fresh array per target key to keep the reactive
-   * trigger surface
-   * obvious — Vue's collection handlers fire on `.set`, not on in-place
-   * push.
-   *
-   * Form-level (global) errors arrive with `err.path: []` and store at
-   * the root key `'[]'` directly, no rerouting. Aggregate reads
-   * (`errors()`, `meta.errors`) surface them; `errors([])` returns the
-   * root bucket alone, while `errors('')` reads the unrelated literal
-   * `''` field at key `'[""]'`.
-   */
-  function appendErrorsTo(
-    map: Map<PathKey, ValidationError[]>,
-    entries: readonly ValidationError[]
-  ): void {
-    for (const raw of entries) {
-      const { key } = canonicalizePath(raw.path as Path)
-      const current = map.get(key)
-      if (current === undefined) {
-        map.set(key, [raw])
-      } else {
-        map.set(key, [...current, raw])
-      }
-    }
-  }
-
-  /**
-   * Clear `map` and rebuild it from `entries`. Two reactive notifications
-   * fire (one for `.clear`, one per `.set`), but Vue's microtask batching
-   * collapses the burst so subscribers see one re-render. A diff-and-patch
-   * variant is a deferred follow-up — profile first.
-   */
-  function replaceErrorsIn(
-    map: Map<PathKey, ValidationError[]>,
-    entries: readonly ValidationError[]
-  ): void {
-    map.clear()
-    appendErrorsTo(map, entries)
-  }
-
-  function clearErrorsIn(map: Map<PathKey, ValidationError[]>, path: Path | undefined): void {
-    if (path === undefined) {
-      map.clear()
-      return
-    }
-    const { key } = canonicalizePath(path)
-    map.delete(key)
-  }
-
-  // --- Schema writers (validation pipeline + handleSubmit + history/hydration) ---
-
-  function setSchemaErrorsForPath(path: Path, entries: ValidationError[]): void {
-    const { key } = canonicalizePath(path)
-    if (entries.length === 0) {
-      schemaErrors.delete(key)
-      return
-    }
-    schemaErrors.set(key, [...entries])
-  }
-
-  /**
-   * Replace the schemaErrors subtree rooted at `path` with `entries`,
-   * keying each entry by its OWN absolute path rather than `path`.
-   * Used by `scheduleFieldValidation` so a re-validation of a
-   * container (e.g. a DU parent after reshape) lands every leaf-keyed
-   * issue at its canonical store key — `form.errors.<path>` reads
-   * hit, and stale entries from a previous variant don't survive.
-   *
-   * Insertion-order stability: `Map.set` on an EXISTING key updates the
-   * value in place and preserves the slot's position; `Map.delete`
-   * followed by `Map.set` re-inserts at the END. `form.meta.errors`
-   * iterates this Map in insertion order, so a per-field
-   * re-validation that delete-then-sets the scheduled key flips the
-   * aggregate's order on every keystroke. The grouped pass below
-   * computes the surviving key set FIRST so we only delete keys that
-   * genuinely drop out (an old DU-variant leaf that the new pass
-   * doesn't write); keys that survive get an in-place `set` that keeps
-   * their original slot.
-   */
-  function applySchemaErrorsForSubtree(path: Path, entries: ValidationError[]): void {
-    // The container being re-validated. A root-scope pass (path === [])
-    // of a schema with a top-level `.refine()` produces an entry at the
-    // empty path `[]`, which canonicalises to the same `'[]'` key as
-    // `parentKey`, so the surviving refine entry and the parent
-    // reconcile naturally without any rerouting.
-    const parentKey = canonicalizePath(path).key
-    // Group by each error's own canonical storage key FIRST so we know
-    // which keys survive this pass. Multiple issues at the same path
-    // (e.g. two refinements failing the same leaf) merge into one
-    // array — preserves adapter ordering within the leaf.
-    const grouped = new Map<PathKey, ValidationError[]>()
-    for (const raw of entries) {
-      const { key } = canonicalizePath(raw.path as Path)
-      const list = grouped.get(key)
-      if (list === undefined) grouped.set(key, [raw])
-      else list.push(raw)
-    }
-    // Drop the parent key only if not in the new pass.
-    if (!grouped.has(parentKey)) schemaErrors.delete(parentKey)
-    // Drop stale descendants: existing keys under `path` that the new
-    // pass doesn't write (DU-variant leaves that disappeared on
-    // reshape). Keys that DO appear in `grouped` stay where they are —
-    // the `set` below updates them in place. The parent key is exempt
-    // (handled just above), so a root-scope pass keeps its own `'[]'`
-    // refine entry rather than sweeping it into the descendant set.
-    for (const existingKey of [...schemaErrors.keys()]) {
-      if (existingKey === parentKey) continue
-      if (isPathKeyUnder(existingKey, path) && !grouped.has(existingKey)) {
-        schemaErrors.delete(existingKey)
-      }
-    }
-    for (const [leafKey, group] of grouped) {
-      schemaErrors.set(leafKey, group)
-    }
-  }
-
-  function setAllSchemaErrors(entries: readonly ValidationError[]): void {
-    replaceErrorsIn(schemaErrors, entries)
-  }
-
-  function clearSchemaErrors(path?: Path): void {
-    clearErrorsIn(schemaErrors, path)
-  }
-
-  // --- User writers (setErrors / clearErrors + history/hydration) ---
-
-  function setAllUserErrors(entries: readonly ValidationError[]): void {
-    replaceErrorsIn(userErrors, entries)
-  }
-
-  /**
-   * Replace the user-error bucket at exactly `path` with `entries`,
-   * leaving every other path untouched. Backs the path-scoped
-   * `form.setErrors(path, …)`. Empty `entries` deletes the bucket.
-   * Mirrors `setSchemaErrorsForPath` on the validation side.
-   */
-  function setUserErrorsForPath(path: Path, entries: readonly ValidationError[]): void {
-    const { key } = canonicalizePath(path)
-    if (entries.length === 0) {
-      userErrors.delete(key)
-      return
-    }
-    userErrors.set(key, [...entries])
-  }
-
-  function clearUserErrors(path?: Path): void {
-    clearErrorsIn(userErrors, path)
-  }
-
-  // --- Merged read ---
-
-  function getErrorsForPath(path: Path): ValidationError[] {
-    const { key } = canonicalizePath(path)
-    const schemaForKey = schemaErrors.get(key)
-    const userForKey = userErrors.get(key)
-    const blankForKey = derivedBlankErrors.value.get(key)
-    if (schemaForKey === undefined && userForKey === undefined && blankForKey === undefined) {
-      return []
-    }
-    const result: ValidationError[] = []
-    if (schemaForKey !== undefined) result.push(...schemaForKey)
-    if (blankForKey !== undefined) result.push(...blankForKey)
-    if (userForKey !== undefined) result.push(...userForKey)
-    return result
-  }
-
-  // --- DOM ---
-
-  function registerElement(path: Path, element: HTMLElement, formInstanceId: string): boolean {
-    const { key } = canonicalizePath(path)
-    const record = elements.get(key)
-    // `markRaw` keeps HTMLElement out of Vue's auto-proxy machinery
-    // (DOM nodes have circular refs and external state that fight
-    // reactivity, and consumers comparing `===` against the original
-    // ref expect to get back what they registered). The Set itself
-    // is reactive so add/delete on an existing record fires
-    // FieldState's `element` / `elements` accessors.
-    const raw = markRaw(element)
-    if (record === undefined) {
-      elements.set(key, { path, elements: reactive(new Set([raw])) })
-    } else {
-      if (record.elements.has(raw)) return false
-      record.elements.add(raw)
-    }
-    elementToFormInstance.set(element, formInstanceId)
-    // A real control now owns this path's focus target, so drop any no-latch
-    // host anchor for it: a late self-heal supersede (a single control that
-    // rendered after mount) latches here after `markHostConnected` recorded
-    // the root. The two focus channels are mutually exclusive per path.
-    hostTargets.delete(key)
-    sortedRegistrationsCache = null
-    // Connect transition. Lift focused/blurred from `null`
-    // (no-element-meaningless) to optimistic booleans only when they
-    // are currently null; preserve existing booleans so a reconnect
-    // doesn't blow away DOM-truth from an autofocus event that landed
-    // before this directive's registration.
-    const current = fields.get(key)
-    touchFieldRecord(key, path, {
-      connected: true,
-      focused: current?.focused ?? false,
-      blurred: current?.blurred ?? true,
-    })
-    return true
-  }
-
-  function deregisterElement(path: Path, element: HTMLElement): number {
-    const { key } = canonicalizePath(path)
-    const record = elements.get(key)
-    if (record === undefined) return 0
-    const removed = record.elements.delete(element)
-    if (removed) {
-      elementToFormInstance.delete(element)
-      sortedRegistrationsCache = null
-    }
-    const remaining = record.elements.size
-    if (remaining === 0) {
-      elements.delete(key)
-      // Disconnect transition. `focused` / `blurred` are DOM-state
-      // properties — with no element to be focused or blurred, the
-      // concepts don't apply, so flip back to `null`. `touched` is
-      // interaction history and is preserved across disconnects
-      // (a v-if'd-away field that was previously blurred stays
-      // touched).
-      touchFieldRecord(key, path, { connected: false, focused: null, blurred: null })
-      // The last binding for this path just unmounted: abort any
-      // in-flight async transform so its late resolve can't commit to a
-      // detached field. Gated on `remaining === 0`, so a sibling element
-      // still bound to the same path keeps its run alive.
-      if (transformRuns.size !== 0) cancelTransformsUnder(path)
-    }
-    return remaining
-  }
-
-  function markConnectedOptimistically(path: Path): void {
-    // Client-side: the directive's `created` / `beforeUnmount` hooks are
-    // authoritative for `connected`, so this is a no-op there. SSR is
-    // the only environment where we can't observe the DOM and need an
-    // upfront hint that the field WILL be wired up after hydration.
-    if (!ssr) return
-    const { key } = canonicalizePath(path)
-    const current = fields.get(key)
-    if (current?.connected === true) return
-    // Lift focused/blurred from `null` to optimistic booleans alongside
-    // `connected: true`. Only when currently `null` — never clobber an
-    // existing boolean, since a prior `markFocused` may have landed
-    // ahead of the optimistic mark (uncommon but possible during SSR
-    // when a custom directive flips focus state up-front). Server-
-    // rendered FieldState then matches the post-hydration optimistic
-    // state (`focused: false, blurred: true`) without a flash from
-    // `null` on the first reactive tick after hydration; real focus
-    // state lands as soon as the browser fires a focus event
-    // (autofocus / programmatic / user) — the directive's listener
-    // catches it and flips the booleans.
-    touchFieldRecord(key, path, {
-      connected: true,
-      focused: current?.focused ?? false,
-      blurred: current?.blurred ?? true,
-    })
-  }
-
-  function markHostConnected(
-    path: Path,
-    connected: boolean,
-    hostEl: HTMLElement,
-    formInstanceId: string
-  ): void {
-    // Client-side connected marking for a `v-register` component host that
-    // binds value through the v-model channel but exposes no single inner
-    // control to latch (a composite widget, or none discovered). Distinct
-    // from the SSR-only `markConnectedOptimistically`: the directive calls
-    // this from its mount / unmount on the client, so it is the
-    // authoritative connect/disconnect for a no-latch host -- there's no
-    // element-Set entry to carry `connected` for it.
-    const { key } = canonicalizePath(path)
-    const current = fields.get(key)
-    if (connected) {
-      // Record the host root as this path's focus-first-error anchor even if
-      // `connected` is already true (a re-mark): the element may have changed.
-      // Skipped when a real control already owns the path (`registerElement`
-      // dropped any anchor and owns the focus target now).
-      if (!elements.has(key)) {
-        hostTargets.set(key, { path, hostRoot: hostEl, formInstanceId })
-        sortedRegistrationsCache = null
-      }
-      if (current?.connected === true) return
-      // Connect transition, mirroring `registerElement`: lift focused /
-      // blurred from null to optimistic booleans only when currently null.
-      touchFieldRecord(key, path, {
-        connected: true,
-        focused: current?.focused ?? false,
-        blurred: current?.blurred ?? true,
-      })
-    } else {
-      // Drop the focus anchor first, unconditionally: the host root is
-      // detaching regardless of whether the field record still reads
-      // connected (a latch supersede may have flipped it via the element Set).
-      if (hostTargets.delete(key)) sortedRegistrationsCache = null
-      if (current?.connected !== true) return
-      // Disconnect transition, mirroring `deregisterElement`'s empty-Set
-      // branch: focused / blurred are DOM-state and meaningless with nothing
-      // connected, so flip them back to null.
-      touchFieldRecord(key, path, { connected: false, focused: null, blurred: null })
-    }
-  }
-
-  function markFocused(
-    path: Path,
-    focused: boolean,
-    meta?: { readonly instance?: WriteMeta['instance'] }
-  ): void {
-    // See `markInteracted`: a frozen form records no focus / blur
-    // lifecycle, so no stale `blurredAfterInteraction` survives a
-    // disable -> enable toggle. A disabled native input can't receive
-    // focus anyway; this covers component hosts and programmatic focus.
-    if (effectiveDisabled.value) return
-    const { key } = canonicalizePath(path)
-    const current = fields.get(key)
-    touchFieldRecord(key, path, {
-      focused,
-      blurred: !focused,
-      // `touched` flips to true on blur and stays true thereafter; while
-      // a field is currently focused we keep whatever value it held.
-      touched: focused ? (current?.touched ?? false) : true,
-      // `blurredAfterInteraction` flips true on the first blur that lands
-      // after a value edit and stays true. A tab-through blur before any
-      // edit leaves it false (`interacted` is still false at that blur),
-      // which is what keeps a clean tab-through from arming the gate.
-      blurredAfterInteraction:
-        !focused && current?.interacted === true
-          ? true
-          : (current?.blurredAfterInteraction ?? false),
-    })
-    // On blur (focused → false), `validateOn: 'blur'` fires an immediate
-    // (no-debounce) validation for this path. Ignored for change/submit modes
-    // so behaviour matches the declared config. Two reasons to run; else skip:
-    //
-    //   1. First interactive blur. The user edited the field and is leaving it
-    //      for the first time, so its verdict becomes visible now
-    //      (`blurredAfterInteraction` flips above). Run unconditionally: a
-    //      snapshot seeded before any interaction — e.g. the construction pass
-    //      over an unauthored initial value, whose verdict may have been
-    //      filtered out — must not suppress this first real verdict, even when
-    //      the value round-tripped back to its initial state.
-    //   2. The value changed since the last pass. Skipping an unchanged form
-    //      keeps a settled error from flickering through 'pending' on every
-    //      refocus; comparing the value (not a write count) keeps editing away
-    //      and back to the last-validated value quiet too.
-    const focusMode = meta?.instance?.validateOn ?? fieldValidationMode
-    if (!focused && focusMode === 'blur') {
-      const firstInteractiveBlur =
-        current?.interacted === true && current.blurredAfterInteraction !== true
-      // Walk from the blurred path up to the root and pick the first
-      // ancestor scope that's been committed at. The blur-dedup
-      // compares the SUBTREE-AT-PATH of that snapshot against the
-      // live subtree — a sibling-only edit between blurs leaves
-      // this path's subtree unchanged and the dedup correctly
-      // skips. Under whole-form scope today every commit lives at
-      // `ROOT_PATH_KEY`, so the walk falls through to that single
-      // entry; under subtree scope (CORE-P1a) the closest ancestor
-      // entry is the one this leaf was actually validated under.
-      let snapshot: unknown | undefined = undefined
-      let snapshotScopeLength = 0
-      for (let i = path.length; i >= 0; i--) {
-        const ancestorKey = canonicalizePath(path.slice(0, i)).key
-        const entry = pathSnapshots.get(ancestorKey)
-        if (entry !== undefined) {
-          snapshot = entry
-          snapshotScopeLength = i
-          break
-        }
-      }
-      let changed = true
-      if (!firstInteractiveBlur && snapshot !== undefined) {
-        // Extract the SUBTREE-AT-PATH on both sides — `diffAndApply`'s
-        // `prefix` only labels emitted patch paths, it doesn't scope
-        // the walk. Subtree extraction is what makes a sibling-only
-        // edit between blurs (this path unchanged) read as
-        // `changed === false`. The snapshot itself is already scoped
-        // to its commit's `scopePath` (length tracked above), so the
-        // blur path needs the scope prefix subtracted before
-        // descending into the stored subtree.
-        const relPath = path.slice(snapshotScopeLength)
-        const snapshotSubtree = getAtPath(snapshot, relPath)
-        const liveSubtree = getAtPath(form.value, path)
-        changed = false
-        diffAndApply(snapshotSubtree, liveSubtree, path, () => {
-          changed = true
-        })
-      }
-      if (changed) {
-        scheduleFieldValidation(path, true /* immediate */, {
-          ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-          ...(meta?.instance?.debounceMs !== undefined
-            ? { debounceMs: meta.instance.debounceMs }
-            : {}),
-        })
-      }
-    }
-  }
-
-  function markInteracted(path: Path): void {
-    // A frozen form records no interaction lifecycle: value writes no-op,
-    // so a stray host emit (`setValueFromHost` marks interacted before
-    // its gated write) or a direct `rv.markInteracted()` must not arm
-    // blur-validation or the reward-early display. Keeps interaction
-    // state clean across a disable -> enable toggle.
-    if (effectiveDisabled.value) return
-    const { key } = canonicalizePath(path)
-    // Fired per keystroke from the directive's input listeners; skip the
-    // reactive write once the bit is set so only the first edit notifies.
-    if (fields.get(key)?.interacted === true) return
-    touchFieldRecord(key, path, { interacted: true })
-  }
-
-  /**
-   * Walk every active-variant leaf under `segments` and flip its
-   * `touched` flag to `true`. Powers the public `form.touch(path?)`
-   * API: leaf path → exactly that leaf; container path → every
-   * descendant leaf; root path `[]` → every leaf in the form.
-   *
-   * Idempotent: leaves already touched are skipped (no reactive
-   * notification). Inactive DU-variant leaves are filtered via
-   * `hasAtPath` against the live form value — same gate the
-   * field-state aggregation walk uses, so touch never marks a leaf
-   * the consumer can't see.
-   *
-   * Dev-warns when no leaves resolve under the path (typo'd input,
-   * empty container, dead variant). Does NOT mutate value, focused,
-   * blurred, or trigger validation — touched is the single sticky
-   * flag this helper writes.
-   */
-  /**
-   * Shared leaf walk behind `touchAtPath` / `interactAtPath`. Visits
-   * every active-variant leaf at or under `segments` and reports
-   * whether any resolved, so each caller can dev-warn on an empty
-   * path. Enumerates `originals` (the schema's leaf set) rather than
-   * `fields`, so it reaches leaves that were never mounted; inactive
-   * DU-variant leaves are filtered via `hasAtPath` against the live
-   * form value, the same gate the field-state aggregation walk uses.
-   */
-
-  function touchAtPath(segments: Path): void {
-    const formValue = form.value
-    let touchedAny = false
-    for (const [, entry] of originals) {
-      if (!isPathPrefix(segments, entry.segments)) continue
-      if (!hasAtPath(formValue, entry.segments)) continue
-      touchedAny = true
-      const leafKey = canonicalizePath(entry.segments).key
-      const current = fields.get(leafKey)
-      if (current?.touched === true) continue
-      touchFieldRecord(leafKey, entry.segments, { touched: true })
-    }
-    if (!touchedAny && __DEV__) {
-      console.warn(
-        `[attaform] form.touch(): no fields resolved at path ${JSON.stringify(segments)}. ` +
-          `Check the path matches an existing field or container.`
-      )
-    }
-  }
-
-  /**
-   * Walk every active-variant leaf under `segments` and flip the whole
-   * interaction ladder — `touched`, `interacted`, and
-   * `blurredAfterInteraction` — as though the user had focused, edited,
-   * and left each one. Powers the public `form.interact(path?)` API,
-   * whose job is to open the default display gate
-   * (`submissionAttempts > 0 || blurredAfterInteraction`) for a subtree
-   * without a form-wide submit.
-   *
-   * `interacted` is the load-bearing bit. Writing only `touched` /
-   * `blurred` reproduces the tab-through no-op the gate deliberately
-   * ignores, since `markFocused` flips `blurredAfterInteraction` solely
-   * on a blur that follows an edit. Setting the ladder outright is what
-   * lets the gate open through its front door, unchanged.
-   *
-   * Deliberately does NOT write `focused` / `blurred`: those are
-   * DOM-owned, and `null` is their documented "no element connected"
-   * value. Fabricating a blur on an unmounted leaf would lie about DOM
-   * history, and forcing `focused: false` on a leaf the user is
-   * currently typing in would desync the store from the live document.
-   * The display gate reads neither, so the simulation loses nothing.
-   *
-   * Walks `originals` rather than `fields`, so it reaches schema leaves
-   * that were never mounted or are currently `v-if`'d away; the flags
-   * are sticky, so such a subtree stays revealed when it remounts.
-   * Inactive DU-variant leaves are filtered via `hasAtPath` against the
-   * live form value, matching `touchAtPath`.
-   *
-   * Returns whether any leaf resolved. Validation is the caller's job:
-   * the store has no awaitable validation handle, and `form.interact()`
-   * resolves only once the subtree's errors are committed.
-   */
-  function interactAtPath(segments: Path): boolean {
-    // A frozen form records no interaction lifecycle — same guard as
-    // `markFocused` / `markInteracted`. Arming the ladder here would
-    // survive a disable -> enable toggle and reveal errors on a subtree
-    // the consumer had deliberately taken out of play.
-    if (effectiveDisabled.value) return false
-    const formValue = form.value
-    let interactedAny = false
-    for (const [, entry] of originals) {
-      if (!isPathPrefix(segments, entry.segments)) continue
-      if (!hasAtPath(formValue, entry.segments)) continue
-      interactedAny = true
-      const leafKey = canonicalizePath(entry.segments).key
-      const current = fields.get(leafKey)
-      // Skip the reactive write once the whole ladder is already set —
-      // records are replaced wholesale, so an unconditional
-      // `fields.set` would notify for nothing.
-      if (
-        current?.touched === true &&
-        current.interacted === true &&
-        current.blurredAfterInteraction === true
-      ) {
-        continue
-      }
-      touchFieldRecord(leafKey, entry.segments, {
-        touched: true,
-        interacted: true,
-        blurredAfterInteraction: true,
-      })
-    }
-    if (!interactedAny && __DEV__) {
-      console.warn(
-        `[attaform] form.interact(): no fields resolved at path ${JSON.stringify(segments)}. ` +
-          `Check the path matches an existing field or container.`
-      )
-    }
-    return interactedAny
-  }
-
-  // --- Rehydrate ---
-  // Imperative re-fire of the captured function-form `defaultValues`
-  // factory. Lives on the store so every consumer of the shared key
-  // sees one source of truth for `hydrating`. Mirrors the
-  // construction-time settle path: factory result merges over the
-  // current values via `mergeSparseHydration`, applies through
-  // `applyFormReplacement({ hydration: true })` (history-module aware),
-  // and triggers a post-hydration validation sweep. Does NOT clear
-  // dirty / touched / submit state — chain `form.reset()` for that.
-
-  function rehydrate(): Promise<void> {
-    const factory = defaultValuesFactory.value
-    if (factory === undefined) {
-      // Sync throw — misuse should surface at the call site, not at
-      // await time. Mirrors the type-system contract: `rehydrate()`
-      // only makes sense after a function-form `defaultValues` was
-      // captured.
-      throw new Error(
-        '[attaform] form.rehydrate(): no defaultValues factory was captured. Configure useForm({ defaultValues: () => ... }) to enable rehydrate.'
-      )
-    }
-    return fireFactory(factory)
-  }
-
-  // Shared kickoff path for `activate` and `rehydrate`. Both fire the
-  // captured factory, mark the form `activated`, and publish the
-  // in-flight promise so concurrent `activate()` calls join rather
-  // than double-fire. The promise self-clears on settle so a
-  // subsequent refetch can publish a fresh one.
-  function fireFactory(factory: () => unknown | Promise<unknown>): Promise<void> {
-    activated.value = true
-    const promise = runFactoryAndApply(factory)
-    activationPromise.value = promise
-    void promise.finally(() => {
-      if (activationPromise.value === promise) activationPromise.value = undefined
-    })
-    return promise
-  }
-
-  // Idempotent activation. The new lazy-by-default model fires the
-  // captured function-form `defaultValues` factory only via this
-  // entrypoint — public getters/methods on the form API surface call
-  // through to it so the first reactive interaction triggers the
-  // factory. Concurrent callers share the in-flight promise so two
-  // SSR consumers reading the same store await the same fetch. A
-  // previously-rejected attempt leaves `activated === true` and
-  // `defaultsResolved === false`; subsequent `activate()` calls are
-  // no-ops so reading `form.hydrateError` doesn't replay the failure.
-  // `form.rehydrate()` is the explicit replay primitive.
-  function activate(): Promise<void> {
-    // SSR coordination — enqueue intent first so the diff against any
-    // wizard skip / transform mark is consistent across resolved /
-    // dormant / mid-activation states. Then consult `shouldFire`: when
-    // a wizard skipped this key, the backstop wins even over an
-    // explicit consumer `form.activate()` call. The closure is bound
-    // to the registry at construction time and is absent on the
-    // client where the queue is never read.
-    if (ssrPrefetch !== undefined) {
-      ssrPrefetch.enqueue()
-      if (!ssrPrefetch.shouldFire()) return Promise.resolve()
-    }
-    if (defaultsResolved.value === true) return Promise.resolve()
-    if (activationPromise.value !== undefined) return activationPromise.value
-    if (activated.value === true) return Promise.resolve()
-    const factory = defaultValuesFactory.value
-    if (factory === undefined) return Promise.resolve()
-    return fireFactory(factory)
-  }
-
-  async function runFactoryAndApply(factory: () => unknown | Promise<unknown>): Promise<void> {
-    hydrating.value = true
-    // Stale-while-revalidate: keep any prior `HydrationFailed` entry
-    // visible until the new attempt settles. Same contract field
-    // errors follow under `field.validating === true` — the surface
-    // shouldn't flicker to empty during the retry. The entry is
-    // replaced on failure or cleared on success in the branches
-    // below.
-    try {
-      const value = await factory()
-      // The factory's resolved value is the consumer's late-bound
-      // `defaultValues`. Mark every leaf inside it as authored so the
-      // schema-error filter surfaces verdicts at preprocess / coerce
-      // paths the factory named with explicit undefined (same contract
-      // as the sync `defaultValues` argument applied at construction).
-      walkAuthoredFromConstraints(value, [], authoredPaths)
-      const full = mergeSparseHydration(
-        toRaw(form.value) as F,
-        value,
-        schema as unknown as Parameters<typeof mergeSparseHydration>[2]
-      )
-      applyFormReplacement(full, { hydration: true })
-      scheduleFieldValidation([], true /* immediate */)
-      // Success: drop the previous attempt's error (if any) from both
-      // surfaces. New attempt's verdict has landed; the stale entry
-      // would now mis-narrate the state.
-      clearHydrationFailedEntry()
-      hydrateError.value = null
-      defaultsResolved.value = true
-    } catch (error) {
-      // Failure: replace (clear-then-append) so a repeat failure
-      // produces a single fresh entry rather than accumulating dupes.
-      // Single ValidationError covers both surfaces: the dedicated
-      // `hydrateError` ref AND the standard `schemaErrors` channel
-      // that feeds `form.meta.errors`. SSR factory rejections cross
-      // the wire through `schemaErrors`; the local `hydrateError`
-      // ref points to the same entry so the shape is identical at
-      // every read site.
-      clearHydrationFailedEntry()
-      hydrateError.value = appendHydrationFailedEntry(error)
-    } finally {
-      hydrating.value = false
-    }
-  }
-
-  function clearHydrationFailedEntry(): void {
-    const existing = schemaErrors.get(ROOT_PATH_KEY)
-    if (existing === undefined) return
-    const filtered = existing.filter((e) => e.code !== AttaformErrorCode.HydrationFailed)
-    if (filtered.length === 0) {
-      schemaErrors.delete(ROOT_PATH_KEY)
-    } else {
-      schemaErrors.set(ROOT_PATH_KEY, filtered)
-    }
-  }
-
-  function appendHydrationFailedEntry(error: unknown): ValidationError {
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'string'
-          ? error
-          : 'Hydration failed'
-    const entry: ValidationError = {
-      message,
-      path: [...ROOT_PATH],
-      formKey,
-      code: AttaformErrorCode.HydrationFailed,
-    }
-    const existing = schemaErrors.get(ROOT_PATH_KEY) ?? []
-    schemaErrors.set(ROOT_PATH_KEY, [...existing, entry])
-    return entry
-  }
-
-  // --- Reset ---
-
-  function reset(nextDefaultValues?: DeepPartial<WriteShape<F>>): void {
-    // Fall back to construction-time `defaultValues` when the caller
-    // doesn't provide a fresh override. Otherwise `reset()` produces
-    // schema-only defaults — losing the consumer's initial state from
-    // `useForm({ defaultValues: ... })`. The structural-completeness
-    // invariant covers post-write correctness; preserving construction
-    // defaults across reset is a separate semantic the consumer expects.
-    //
-    // Pre-merge sparse constraints through `mergeStructural` BEFORE
-    // calling `getDefaultValues`, MIRRORING construction (line ~999).
-    // Without this, a sparse `defaultValues` like `{ pickup: { country:
-    // 'US' } }` reaches the adapter without its sibling-fill, and the
-    // adapter's `useDefaultSchemaValues` branch returns
-    // `success: true` even though the FILLED form
-    // (`{ pickup: { country: 'US', line1: '', city: '', ... } }`)
-    // violates `.min(1)` refinements on those siblings. Construction
-    // pre-fills, so it sees `success: false` correctly. Reset must
-    // do the same to keep the two responses byte-equivalent.
-    const resetSource = nextDefaultValues ?? defaultValues
-    const completedResetConstraints =
-      resetSource === undefined
-        ? undefined
-        : (mergeStructural(schema, [], resetSource) as DeepPartial<WriteShape<F>>)
-    const resetResponse = schema.getDefaultValues({
-      useDefaultSchemaValues: true,
-      constraints: completedResetConstraints,
-      strict,
-    })
-    const next = resetResponse.data
-    // Rebuild authoredPaths against the post-reset baseline. Reset is
-    // "fresh start" semantics, so the prior authoring set is wiped and
-    // re-derived from (1) the reset's constraints argument (consumer
-    // authored those paths) and (2) the schema-default diff (schema-
-    // declared `.default(...)` paths, including `.default(undefined)`).
-    rebuildAuthoredPaths(resetSource, next)
-    // Replace form in one shot. `applyFormReplacement` emits diffAndApply
-    // patches and touches field records for every changed leaf. History
-    // still sees it via `formChangeListeners`.
-    applyFormReplacement(next)
-    // Re-anchor array identity baselines to the post-reset shape, so a
-    // reorder or removal made before this reset no longer reads as a
-    // structural change once the form is back at its baseline.
-    arrayIdentity.rebaselineAll()
-    // The post-reset value is the new baseline, so any subtree dropped before
-    // this reset is no longer a removal to flag.
-    removedSubtrees.clear()
-    // Rebuild originals from the new baseline. The set becomes the
-    // post-reset pristine reference — a subsequent dirty comparison
-    // returns false until the consumer mutates again.
-    originals.clear()
-    diffAndApply({}, next, [], (patch) => {
-      if (patch.kind !== 'added') return
-      const { key } = canonicalizePath(patch.path)
-      originals.set(key, { segments: patch.path, value: patch.newValue })
-    })
-    // Blank: with `nextDefaultValues` provided, both sets
-    // adopt the new baseline (commit 7 plugs the `unset`-symbol walker
-    // into this branch — for now the new defaults can't carry unset
-    // symbols at the type level, so the post-reset baseline is empty).
-    // With no args, restore `blankPaths` from the snapshot so
-    // construction-time membership returns; originalBlankPaths is
-    // preserved (the snapshot encodes the consumer's last declared
-    // baseline, which `reset()` should honour).
-    if (nextDefaultValues !== undefined) {
-      blankPaths.clear()
-      originalBlankPaths.clear()
-    } else {
-      blankPaths.clear()
-      for (const key of originalBlankPaths) {
-        blankPaths.add(key)
-      }
-    }
-    // Drop every recorded error — the form is a fresh surface again.
-    // Both stores clear: reset is "fresh start" semantics, so user-injected
-    // errors are not preserved across a reset (different from submit-success,
-    // which preserves them).
-    schemaErrors.clear()
-    userErrors.clear()
-    // Re-derive schemaErrors from the post-reset state under strict mode,
-    // mirroring construction-time validation (line ~1338). Without this,
-    // reset clears the error store but never re-runs validation — so a
-    // form mounted with invalid defaults (e.g. empty required strings)
-    // would surface as `valid: true` immediately after reset even though
-    // the values it landed back on are the same INVALID defaults it
-    // mounted with. `field.valid` aggregates over schemaErrors and would
-    // otherwise come up empty, flipping every leaf green.
-    //
-    // Gated on `strict` to honor the same opt-out construction uses:
-    // a non-strict form opted out of construction-time validation
-    // explicitly, and post-reset behaviour follows suit.
-    if (strict && !resetResponse.success) {
-      setAllSchemaErrors(resetResponse.errors)
-    }
-    // `getDefaultValues` strips refinements before parsing (see
-    // `adapters/zod-v4/default-values.ts:290`) — it produces usable
-    // starting data, not refinement-level verdicts. So `.min(1)` /
-    // `.email()` / etc. failures on the post-reset defaults DON'T
-    // surface via the sync re-derive above. Run a synchronous
-    // full-schema parse against the post-reset form value to populate
-    // refinement errors IMMEDIATELY (no flash where step titles flip
-    // green between reset() returning and the async pass landing).
-    // Async-only verdicts can't surface this way (adapter returns a
-    // Promise) — they're handled by the queueMicrotask below.
-    //
-    // Construction has the same gap mount-side, but the flash is
-    // invisible: the form mounts before the user is looking, errors
-    // land within a microtask, and the UI never has time to render
-    // the empty-errors state.
-    if (strict) {
-      const syncResult = schema.validateAtPath(form.value, undefined, { sync: true })
-      if (!(syncResult instanceof Promise) && !syncResult.success) {
-        applySchemaErrorsForSubtree([], syncResult.errors)
-      }
-    }
-    // Restore the `firstValidationDone` gate to its construction-time
-    // value (line ~1233). Async-validating schemas init this flag to
-    // `false`, gating container `.valid` until the construction-time
-    // async pass completes. After mount the flag flips `true` via the
-    // watch on `activeValidations`. Across reset, leaving it `true`
-    // removes the gate AND clears errors AND the sync re-derive
-    // can't fill them (the zod-v4 adapter strips refinements in
-    // `getDefaultValues`, returns `success: true`; sync
-    // `validateAtPath` throws on schemas with always-running async
-    // refines and falls through to async-only). The window between
-    // `reset()` returning and the re-queued async pass landing reads
-    // `valid: true` for every container — the docs-site wizard
-    // demo's step titles turn green for ~600ms-1.5s. Restoring the
-    // gate keeps containers `valid: false` throughout that window.
-    firstValidationDone.value = !strict || schema.needsAsyncValidation?.() !== true
-    // Re-queue the async validation pass on the same gate construction
-    // uses (line ~1371). Picks up async-only verdicts the sync pass
-    // above can't reach (`.refine(async ...)` on
-    // `pickup.postalCode`, etc.). SSR skip mirrors construction —
-    // microtasks don't await before `renderToString` and would stamp
-    // `validating: true` into HTML the client won't reproduce.
-    const needsAsync = !ssr && strict && schema.needsAsyncValidation?.() === true
-    if (needsAsync) {
-      queueMicrotask(() => scheduleFieldValidation([], true /* immediate */))
-    }
-    // Clear every field's interaction history, stamping a single `now`
-    // across the whole form (see `withClearedHistoryFlags` for which
-    // flags clear and which DOM-truth flags are preserved).
-    const now = new Date().toISOString()
-    for (const [pathKey, record] of fields) {
-      fields.set(pathKey, withClearedHistoryFlags(record, now))
-    }
-    // Clear submission lifecycle so a reset surface reports "nothing has
-    // been submitted yet" rather than holding on to the prior run's
-    // count. The generation counter is bumped first so any in-flight
-    // submission's catch block knows its error write would land on the
-    // post-reset state and skips it. `activeSubmissions` is zeroed
-    // unconditionally — the finally-block's Math.max clamps the
-    // decrement at zero, and `submitting` stays false afterwards
-    // because the clamped value never exceeds zero.
-    submissionGeneration.value += 1
-    submitting.value = false
-    activeSubmissions.value = 0
-    submissionAttempts.value = 0
-    submitted.value = false
-    submitError.value = null
-    departAttempts.value = 0
-    // Drop any pending field-validation timers / in-flight runs. Writes
-    // that reached the aborted branch resolve to a no-op, so
-    // the error store stays clean after the reset clears it above.
-    cancelFieldValidation()
-    // Abort + release any in-flight async transforms too, so a deferred
-    // commit from before the reset can't land on the cleared form (the
-    // run's token goes stale, so its resolve discards). Also clears
-    // `transformErrors`.
-    cancelTransforms()
-    // Drop any held spinner state so an in-flight min-visible hold can't
-    // outlive the reset; clear the streak anchors to match (the cancel above
-    // already released the counts, this wipes the parallel map wholesale).
-    displayEngine.clear()
-    fieldValidatingSince.clear()
-    // Reset the per-path blur-dedup snapshots and the form-level epoch
-    // counters. After `cancelFieldValidation` no in-flight run can
-    // commit, so clearing here can't be raced by a late commit
-    // re-populating the map. Survivor snapshots from before the reset
-    // would otherwise match a post-reset value that happens to mirror
-    // a pre-reset state and skip a real revalidation that the reset's
-    // cleared error stores need to repopulate.
-    pathSnapshots.clear()
-    scheduleEpoch = 0
-    lastCommittedEpoch = 0
-    // Variant memory is UX state — a fresh start drops the per-variant
-    // typed-data cache too. Without this, a post-reset switch would
-    // surface stale variant values from before the reset.
-    variantMemory.clear()
-    // Notify subscribers (history module clears its stack, persistence
-    // sees the reset via onFormChange already). Listener throws are
-    // isolated so one bad subscriber can't block the others.
-    for (const listener of resetListeners) {
-      try {
-        listener()
-      } catch (err) {
-        console.error('[attaform] onReset threw:', err)
-      }
-    }
-  }
-
-  function resetField(path: Path): void {
-    const { key: targetKey, segments: targetSegments } = canonicalizePath(path)
-
-    // Variant memory: drop any union memory whose path equals or sits
-    // under `targetSegments`. Memory under the reset subtree is
-    // semantically "user's prior typed state at a discriminator that
-    // no longer corresponds to anything live"; preserving it would
-    // surface stale variants on a future switch. Memory ABOVE the
-    // reset subtree (e.g. union at ['notify'] for resetField('notify.address'))
-    // is intentionally preserved — the snapshot self-corrects on the
-    // next switch-out.
-    variantMemory.clearUnderPath(targetSegments)
-
-    // Tear down any in-flight validation for this subtree BEFORE the restore.
-    // Without this the run validating the pre-reset value outlives the reset:
-    // `validating` stays true on the field and, when it settles, it commits its
-    // verdict back over the errors cleared below. In change mode the restore
-    // write reschedules a fresh run for the restored value (the cancel's
-    // `released` flag keeps the orphan's late `.finally` off the new run's
-    // counters); in blur / submit mode no run follows and the field rests
-    // clean. Drop the subtree's blur-dedup snapshots too, so a post-reset blur
-    // re-validates instead of skipping against a pre-reset anchor.
-    cancelFieldValidationUnder(targetSegments)
-    // Same teardown for async transforms under the reset subtree, so a
-    // deferred commit can't land on the just-reset field.
-    cancelTransformsUnder(targetSegments)
-    for (const [snapKey] of [...pathSnapshots]) {
-      const segs = segmentsForPathKey(snapKey)
-      if (segs === null) continue
-      if (isPathPrefix(targetSegments, segs)) pathSnapshots.delete(snapKey)
-    }
-
-    // Storage restore: leaf > container > nothing.
-    //
-    // Leaf shortcut: direct originals hit means one setValueAtPath does
-    // it. A miss falls through to the container case, which assembles a
-    // subtree from every original under the prefix. When neither
-    // matches — e.g. `resetField('')` (the form-level error path, never
-    // a storage slot) or `resetField('unknownPath')` — storage stays
-    // untouched but the cleanup below still runs.
-    const leafEntry = originals.get(targetKey)
-    if (leafEntry !== undefined) {
-      const wrote = setValueAtPath(targetSegments, leafEntry.value)
-      if (!wrote) {
-        // Originals come from the construction-time pipeline, which
-        // guarantees primitive-correctness. A rejected reset write
-        // signals an invariant violation upstream.
-        console.error(
-          `[attaform] resetField: leaf write rejected for path '${targetKey}' — ` +
-            `originals contain a value that doesn't satisfy the slim primitive shape. ` +
-            `This is a bug in the construction pipeline.`
-        )
-      }
-    } else {
-      // Container case — reconstruct the subtree by walking originals for
-      // every leaf whose path is a descendant of `targetSegments`. We assemble
-      // the subtree first, then apply it in one setValueAtPath so diffAndApply
-      // sees a single coherent replacement (rather than N mutations).
-      //
-      // The iteration reads `entry.segments` directly; the alternative
-      // (JSON.parse on the Map key) both allocates and pays a parse cost per
-      // entry even on cold paths.
-      let subtree: unknown = undefined
-      let anyMatch = false
-      for (const [, entry] of originals) {
-        const leafSegments = entry.segments
-        if (!isPathPrefix(targetSegments, leafSegments)) continue
-        if (leafSegments.length === targetSegments.length) continue // would have hit the leaf shortcut
-        anyMatch = true
-        const relative = leafSegments.slice(targetSegments.length)
-        if (subtree === undefined) {
-          // Seed root container type from the first relative segment. Numeric
-          // index → array; string key → plain object. setAtPath will stay
-          // consistent with that choice for the rest of the walk.
-          subtree = typeof relative[0] === 'number' ? [] : {}
-        }
-        subtree = setAtPath(subtree, relative, entry.value)
-      }
-      if (anyMatch) {
-        const wroteSubtree = setValueAtPath(targetSegments, subtree)
-        if (!wroteSubtree) {
-          console.error(
-            `[attaform] resetField: subtree write rejected at path '${targetKey}' — ` +
-              `originals contain values that don't satisfy the slim primitive shape. ` +
-              `This is a bug in the construction pipeline.`
-          )
-        }
-      }
-    }
-
-    // Cleanup runs regardless of whether storage was restored. Clears
-    // errors and field-record flags for the target path AND every
-    // descendant. `deleteErrorsUnderPrefix` covers the exact-path entry
-    // too (an array is a prefix of itself), so a leaf reset clears the
-    // single matching entry and a container reset sweeps the subtree.
-    // Crucially, this also makes `resetField('')` a usable form-level-
-    // error wipe: there's no storage at `''`, but errors do live there,
-    // and a consumer who calls resetField on that path expects them
-    // cleared. Same reasoning applies to consumer-set errors at any
-    // path the schema doesn't model.
-    deleteErrorsUnderPrefix(schemaErrors, targetSegments)
-    deleteErrorsUnderPrefix(userErrors, targetSegments)
-    for (const [fieldKey, record] of Array.from(fields.entries())) {
-      if (isPathPrefix(targetSegments, record.path)) clearFieldRecordFlags(fieldKey)
-    }
-  }
-
-  function deleteErrorsUnderPrefix(
-    map: Map<PathKey, ValidationError[]>,
-    prefix: readonly Segment[]
-  ): void {
-    for (const [errorKey, errs] of Array.from(map.entries())) {
-      const first = errs[0]
-      if (first === undefined) continue
-      if (isPathPrefix(prefix, first.path as readonly Segment[])) {
-        map.delete(errorKey)
-      }
-    }
-  }
-
-  function clearFieldRecordFlags(pathKey: PathKey): void {
-    const record = fields.get(pathKey)
-    if (record === undefined) return
-    // The name is historical: this clears only the interaction-history
-    // flags, not every flag (same as `reset()`'s field loop), but with a
-    // fresh `now` per path rather than one stamp across the form.
-    fields.set(pathKey, withClearedHistoryFlags(record, new Date().toISOString()))
-  }
-
-  // --- Derived ---
-
-  function isPristineAtPath(path: Path): boolean {
-    const { key, segments } = canonicalizePath(path)
-    return isPristineAtPathByKey(key, segments)
-  }
-  function isPristineAtPathByKey(key: PathKey, segments: Path): boolean {
-    // Storage match is necessary but not sufficient: a primitive leaf
-    // toggled between "displayed empty" (blank + slim default)
-    // and "explicitly the slim default" carries the same storage value
-    // but differs visually. Compare both surfaces against the originals
-    // snapshot so the blank contract dirties when membership
-    // diverges.
-    if (blankPaths.has(key) !== originalBlankPaths.has(key)) return false
-    const entry = originals.get(key)
-    if (entry === undefined) return true
-    return Object.is(getAtPath(form.value, segments), entry.value)
-  }
-
-  function hasStructuralChangeUnder(path: Path): boolean {
-    return arrayIdentity.hasStructuralChangeUnder(path)
-  }
-
-  // Did the subtree at `prefix` (its pre-write value in `removedValue`) hold any
-  // leaf that was part of the construction / reset baseline — a real recorded
-  // value, not an absence baseline seeded for a runtime-added path? Bounds the
-  // check to the subtree being dropped by enumerating that subtree's own leaves,
-  // so it only walks what `setValue` is removing, on the rare container ->
-  // non-container write.
-  function subtreeHadRealBaseline(prefix: Path, removedValue: unknown): boolean {
-    let had = false
-    diffAndApply(removedValue, undefined, prefix, (patch) => {
-      if (had || patch.kind !== 'removed') return
-      const record = originals.get(canonicalizePath(patch.path).key)
-      if (record?.value !== undefined) had = true
-    })
-    return had
-  }
-
-  function hasRemovedSubtreeUnder(prefix: Path): boolean {
-    if (removedSubtrees.size === 0) return false
-    for (const key of removedSubtrees) {
-      const segments = segmentsForPathKey(key)
-      if (segments === null) continue
-      if (!isPathPrefix(prefix, segments)) continue
-      // Skip a recorded path that a later write refilled with a container: the
-      // present-leaf walk then judges it (an identical refill reads pristine, a
-      // changed one dirties), so only a still-absent subtree counts as removed
-      // here. Read raw — the accompanying write already fired the dirty walk's
-      // own dep on this path, so no reactive tracking is needed to re-run.
-      if (isContainer(getAtPath(toRaw(form.value), segments))) continue
-      return true
-    }
-    return false
-  }
-
-  function getFieldRecord(path: Path): FieldRecord | undefined {
-    const { key } = canonicalizePath(path)
-    return fields.get(key)
-  }
-
-  function getOriginalAtPath(path: Path): unknown {
-    const { key } = canonicalizePath(path)
-    return originals.get(key)?.value
-  }
-
-  function getFirstErrorElement(
-    formInstanceId: string
-  ): { path: Path; element: HTMLElement } | null {
-    // Single-pass DOM-order walk over every registered element plus every
-    // no-latch host root. The sort cache is rebuilt lazily on the first read
-    // after a register/deregister or host connect/disconnect; subsequent
-    // calls amortise to O(n) until the next mutation.
-    sortedRegistrationsCache ??= rebuildSortedRegistrations()
-
-    for (const entry of sortedRegistrationsCache) {
-      // Scope to this form instance — when two `useForm()` calls share
-      // a key, both write into `elements` / `hostTargets`; this filter keeps
-      // each form's submit from focusing the other's field. The instance tag
-      // is denormalised onto the entry at rebuild time.
-      if (entry.formInstanceId !== formInstanceId) continue
-
-      // `el.isConnected` covers "component was unmounted, element
-      // removed from DOM" cases that lag the FieldRecord.connected
-      // flag. `el.offsetParent === null` catches `display:none` and
-      // its ancestor chain — the browser won't focus or scroll to a
-      // hidden element anyway, so we keep walking. For a host entry the
-      // element is the host root; a hidden host is skipped the same way.
-      if (!entry.element.isConnected) continue
-      if (entry.element.offsetParent === null) continue
-
-      // Route through the canonical merged read so focus / scroll target
-      // exactly the paths that surface an error in `form.errors` /
-      // `field.errors`. The blank-required class lives only in
-      // `derivedBlankErrors` (never `schemaErrors`), so consulting the
-      // schema / user stores alone silently skipped the first empty
-      // required field — the very class this policy exists to jump to
-      // (#468). `getErrorsForPath` folds in all three channels, keeping the
-      // focus target and the visible error set from ever drifting apart.
-      if (getErrorsForPath(entry.path).length === 0) continue
-
-      // A registered control is its own focus target. A no-latch host owns
-      // no single control, so resolve its root to the first focusable
-      // descendant (the tab stop a user entering the widget would land on);
-      // the resolver falls back to the root itself, keeping scroll-to-error
-      // a target even when nothing inside can take focus.
-      const element = entry.host ? resolveHostFocusTarget(entry.element) : entry.element
-      return { path: entry.path, element }
-    }
-    return null
-  }
-
-  function rebuildSortedRegistrations(): Array<{
-    path: Path
-    element: HTMLElement
-    host: boolean
-    formInstanceId: string
-  }> {
-    const flat: Array<{ path: Path; element: HTMLElement; host: boolean; formInstanceId: string }> =
-      []
-    for (const [, record] of elements) {
-      for (const el of record.elements) {
-        flat.push({
-          path: record.path,
-          element: el,
-          host: false,
-          formInstanceId: elementToFormInstance.get(el) ?? '',
-        })
-      }
-    }
-    // No-latch host roots. `registerElement` drops the anchor when a control
-    // latches, so a path is never in both maps; guard anyway so a rebuild
-    // between a latch and the anchor delete never double-lists a path.
-    for (const [key, target] of hostTargets) {
-      if (elements.has(key)) continue
-      flat.push({
-        path: target.path,
-        element: target.hostRoot,
-        host: true,
-        formInstanceId: target.formInstanceId,
-      })
-    }
-    // `compareDocumentPosition` returns a bitmask. The
-    // `DOCUMENT_POSITION_FOLLOWING` bit (0x04) is set when the argument
-    // node FOLLOWS the receiver in document order, which means the
-    // receiver comes first → return -1 to keep `a` before `b`. A host root
-    // and a control are distinct elements across fields (a no-latch host has
-    // no registered descendant), so the comparison is always a clean
-    // before/after, never a containment tie.
-    flat.sort((a, b) =>
-      a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
-    )
-    return flat
-  }
-
-  return {
-    formKey,
-    form,
-    fields,
-    elements,
-    schemaErrors,
-    userErrors,
-    derivedBlankErrors,
-    originals,
-    schema,
-    ssr,
-    getDisplayState: resolvedGetDisplayState,
-    submitting,
-    activeSubmissions,
-    submissionAttempts,
-    submitted,
-    submitError,
-    departAttempts,
-    effectiveDisabled,
-    externalLock,
-    hydrating,
-    hydrateError,
-    defaultValuesFactory,
-    hasSsrPrefetch: ssrPrefetch !== undefined,
-    defaultsResolved,
-    activated,
-    activationPromise,
-    rehydrate,
-    activate,
-    submissionGeneration,
-    activeValidations,
-    firstValidationDone,
-    pathHasAsyncValidation,
-    pathHasAsyncValidationByKey,
-    fieldValidationCounts,
-    fieldValidatingSince,
-    fieldTransformCounts,
-    fieldTransformingSince,
-    transformErrors,
-    activeTransforms,
-    displayEngine,
-
-    applyFormReplacement,
-    setValueAtPath,
-    getValueAtPath,
-    arrayElementKey,
-
-    reset,
-    resetField,
-
-    setSchemaErrorsForPath,
-    setAllSchemaErrors,
-    clearSchemaErrors,
-    applySchemaErrorsForSubtree,
-    setAllUserErrors,
-    setUserErrorsForPath,
-    clearUserErrors,
-    getErrorsForPath,
-    ensurePathOrdinal,
-
-    registerElement,
-    deregisterElement,
-    markFocused,
-    markInteracted,
-    touchAtPath,
-    interactAtPath,
-    markConnectedOptimistically,
-    markHostConnected,
-
-    isPristineAtPath,
-    isPristineAtPathByKey,
-    hasStructuralChangeUnder,
-    hasRemovedSubtreeUnder,
-    getFieldRecord,
-    getOriginalAtPath,
-    getFirstErrorElement,
-    cancelFieldValidation,
-    beginTransform,
-    isCurrentTransform,
-    endTransform,
-    setTransformError,
-    cancelTransforms,
-    cancelTransformsUnder,
-    settleTransforms,
-    scheduleFieldValidation,
-    onFormChange,
-    onSubmitSuccess,
-    onReset,
-    emitSubmitSuccess,
-    registerCleanup,
-    registerDrain,
-    awaitPendingWrites,
-    modules,
-    coerceIndex,
-    blankPaths,
-    originalBlankPaths,
-    dispose,
-  }
+  // resolve them. Queue the one-shot full-form validation pass so the
+  // errors land on a later microtask instead of waiting for a user
+  // mutation; see `queueInitialAsyncValidation` for the SSR and strict
+  // gates.
+  queueInitialAsyncValidation(st)
+
+  return st
 }
 
 export type { Path, PathKey, Segment }

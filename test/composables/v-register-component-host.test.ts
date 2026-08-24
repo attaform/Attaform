@@ -20,6 +20,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { useRegister } from '../../src/runtime/composables/use-register'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildRegister } from '../../src/runtime/core/register-api'
+import { armDomBinding } from '../../src/runtime/core/dom-binding'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import type { GetDisplayState, RegisterValue } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
@@ -48,7 +49,7 @@ import { awaitSettle, waitUntil } from '../utils/form-harness'
 type F = { email: string; name: string }
 
 function elementCount(state: ReturnType<typeof createFormStore<F>>, path: string[]): number {
-  return state.elements.get(canonicalizePath(path).key)?.elements.size ?? 0
+  return state.domBinding.value?.elements.get(canonicalizePath(path).key)?.elements.size ?? 0
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +75,18 @@ describe('v-register component host: element discovery (store-level)', () => {
       schema: fakeSchema<F>({ email: '', name: '' }),
       ssr: false,
     })
-    return { state, register: buildRegister(state, 'host:inst') }
+    const register = buildRegister(state, 'host:inst')
+    // This harness drives the directive's `mounted` directly (Vue runs
+    // `created` first in production, and that hook arms the store's DOM
+    // binding). Arm each produced RV up front so hook-level calls and
+    // the manual `rv.registerElement` pre-registrations below land in a
+    // live element registry.
+    const armedRegister: typeof register = (path, options) => {
+      const rv = register(path, options)
+      armDomBinding(rv)
+      return rv
+    }
+    return { state, register: armedRegister }
   }
 
   type FakeVNode = { props: Record<string, unknown> }

@@ -15,9 +15,9 @@ import { isRegisterValue } from './register-protocol'
  *   - RV → RV (same path + same form): skip the deregister side so
  *     the `connected` flag doesn't thrash false → true on every
  *     parent re-render. STILL call `registerElement` on the new RV:
- *     `register('foo')` returns a fresh handle per render, and
- *     `state.registerElement(path, el)` is idempotent — a single Set
- *     membership check on the path's element record.
+ *     `register('foo')` returns a fresh handle per render, and the
+ *     DOM binding's attach is idempotent — a single Set membership
+ *     check on the path's element record.
  *   - RV → RV (different path or different form): deregister old,
  *     register new. Covers dynamic-path templates
  *     (`v-register="form.register(\`item.${i}\`)"`) and the
@@ -32,9 +32,9 @@ export function syncElementRegistration(el: HTMLElement, value: unknown, oldValu
   // Same path + same store: skip the deregister-then-register sequence
   // so the `connected` flag doesn't thrash false-true on every parent
   // re-render. But STILL call `registerElement` on the freshly closed-
-  // over RV — `register()` returns a new RV per render, and
-  // `state.registerElement` is idempotent on (path, element) so the
-  // re-call is a single Set membership check.
+  // over RV — `register()` returns a new RV per render, and the DOM
+  // binding's attach is idempotent on (path, element) so the re-call
+  // is a single Set membership check.
   const samePathAndStore =
     wasRegistered &&
     isRegistered &&

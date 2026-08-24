@@ -1,5 +1,10 @@
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import type { FieldMetaPayload } from './field-meta'
+import {
+  fieldMetaStore,
+  installFieldMetaPathMapBuilder,
+  type FieldMetaStore,
+} from './field-meta-store'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 
 /**
@@ -25,6 +30,30 @@ export interface FieldMetaWalkServices<Schema> {
   intro: SchemaIntrospector<Schema>
   peelAllWrappers: (schema: Schema) => Schema
   getFieldMetaList: (schema: Schema) => readonly FieldMetaPayload[]
+}
+
+/**
+ * The store the public registration surfaces (`withMeta` / `fieldMeta`
+ * on every entry) write through. `add` installs `getFieldMetaPathMap`
+ * into the store's builder slot before delegating, so the path-walk
+ * resolver's bytes ride the consumer's own registration import:
+ * registering metadata is the only way a payload can exist, hence the
+ * walk is installed before any lookup could need it. Reads and removes
+ * delegate straight through — they can't create a payload, so they
+ * don't need the walk.
+ */
+export const installingFieldMetaStore: FieldMetaStore = {
+  add(schema, payload) {
+    installFieldMetaPathMapBuilder(getFieldMetaPathMap)
+    fieldMetaStore.add(schema, payload)
+    return installingFieldMetaStore
+  },
+  get: (schema) => fieldMetaStore.get(schema),
+  has: (schema) => fieldMetaStore.has(schema),
+  remove: (schema) => {
+    fieldMetaStore.remove(schema)
+    return installingFieldMetaStore
+  },
 }
 
 // Per-rootSchema cache of path -> payload maps, shared across adapters.

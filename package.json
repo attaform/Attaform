@@ -1,10 +1,13 @@
 {
   "name": "attaform",
   "version": "0.27.6",
-  "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "files": [
     "dist",
+    "!dist/**/*.map",
+    "!dist/**/*.cjs",
+    "!dist/**/*.d.cts",
+    "!dist/**/*.d.ts",
     "skills",
     "bin"
   ],
@@ -35,7 +38,7 @@
     "lint:fix": "eslint --cache --concurrency=auto --fix . && pnpm format",
     "format": "prettier --write '**/*.{ts,js,vue,css,scss,md,json,yml,yaml}'",
     "format:check": "prettier --check '**/*.{ts,js,vue,css,scss,md,json,yml,yaml}'",
-    "check": "pnpm lint && pnpm typecheck && pnpm check:site && pnpm test && pnpm test:nuxt-ui && pnpm check:size && pnpm check:eager && pnpm check:bench && pnpm check:coverage",
+    "check": "pnpm lint && pnpm typecheck && pnpm check:site && pnpm test && pnpm test:nuxt-ui && pnpm check:size && pnpm check:tarball && pnpm check:eager && pnpm check:bench && pnpm check:coverage",
     "fix": "pnpm lint:fix",
     "typecheck": "tsc --noEmit",
     "prepack": "unbuild",
@@ -47,6 +50,7 @@
     "test:watch": "node scripts/run-with-webstorage-flag.mjs vitest watch",
     "bench": "node scripts/run-with-webstorage-flag.mjs vitest bench --run",
     "check:size": "pnpm prepack && size-limit",
+    "check:tarball": "node scripts/check-tarball-size.mjs",
     "check:eager": "node scripts/check-eager-size.mjs",
     "check:coverage": "node scripts/run-with-webstorage-flag.mjs vitest run --coverage",
     "check:bench": "node scripts/check-bench.mjs",
@@ -65,12 +69,12 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
+      "development": "./dist/dev/index.mjs",
       "import": "./dist/index.mjs"
     },
     "./nuxt": {
       "types": "./dist/nuxt.d.mts",
-      "import": "./dist/nuxt.mjs",
-      "require": "./dist/nuxt.cjs"
+      "import": "./dist/nuxt.mjs"
     },
     "./vite": {
       "types": "./dist/vite.d.mts",
@@ -101,22 +105,33 @@
     },
     "./zod": {
       "types": "./dist/zod.d.mts",
+      "development": "./dist/dev/zod.mjs",
       "import": "./dist/zod.mjs"
     },
     "./zod-v3": {
       "types": "./dist/zod-v3.d.mts",
+      "development": "./dist/dev/zod-v3.mjs",
       "import": "./dist/zod-v3.mjs"
     },
     "./zod-v4": {
       "types": "./dist/zod-v4.d.mts",
+      "development": "./dist/dev/zod-v4.mjs",
       "import": "./dist/zod-v4.mjs"
     },
     "./abstract": {
       "types": "./dist/abstract.d.mts",
+      "development": "./dist/dev/abstract.mjs",
       "import": "./dist/abstract.mjs"
     },
-    "./types": {
-      "types": "./dist/index.d.mts"
+    "./directive": {
+      "types": "./dist/directive.d.mts",
+      "development": "./dist/dev/directive.mjs",
+      "import": "./dist/directive.mjs"
+    },
+    "./history": {
+      "types": "./dist/history.d.mts",
+      "development": "./dist/dev/history.mjs",
+      "import": "./dist/history.mjs"
     },
     "./package.json": "./package.json"
   },

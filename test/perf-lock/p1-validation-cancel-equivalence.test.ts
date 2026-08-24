@@ -20,9 +20,10 @@
  *   2. create-form-store.ts:2558 — DU variant-reshape: a late async result
  *      can't clobber the sync write
  *   3. create-form-store.ts:2772 — cancelFieldValidation (cancel-all: reset,
- *      handleSubmit, validateAsync, destroy)
+ *      handleSubmit, parse({ commit: true }), destroy)
  *   4. create-form-store.ts:2797 — cancelFieldValidationUnder (resetField)
- *   5. array-bookkeeping.ts:238   — abortValidationAtVacatedIndices (array remove)
+ *   5. array-engine.ts (abortValidationAtVacatedIndices, inside
+ *      applyStructuralOp) — array remove
  * Read at create-form-store.ts:2618 (pre-parse) and :2662 (post-resolve).
  *
  * WHY THIS HARNESS EXISTS: the existing field-validation suite only
@@ -47,18 +48,18 @@
  * reset even zeroes lastCommittedEpoch — so a no-op abort lets the stale
  * `async-invalid` COMMIT onto the just-reset field.
  *
- * The supersede (:2601), array-remove (array-bookkeeping.ts:238) and DU
+ * The supersede (:2601), array-remove (array-engine's vacated-abort) and DU
  * variant-reshape (:2558) cases are co-guarded behavioral locks, kept because
  * they drive the same :2662 read through their own abort site:
  *   - supersede: the newer run wins on the epoch gate regardless of the abort.
  *   - array-remove / DU: a SECOND guard removes the target leaf, so a stale
  *     verdict can't surface in `meta.errors` even with the abort no-op'd.
- *     Array-remove: the vacated index is cleared by dropSchemaErrorsAtChangedIndices
- *     (create-form-store.ts:2355). DU: the variant reshape replaces notify.token
+ *     Array-remove: the vacated index is cleared by the engine's
+ *     schema-verdict eviction. DU: the variant reshape replaces notify.token
  *     with the sync variant's shape. Verified — both stay green with BOTH the
  *     :2662 drop AND the :2670 epoch gate neutered, so neither isolates the
  *     abort; they lock the integration. (The abort is still load-bearing there
- *     for counter bookkeeping — released explicitly at array-bookkeeping.ts:236 —
+ *     for counter bookkeeping — released explicitly by the vacated-abort —
  *     and as defense-in-depth against a future reshape that stops clearing.)
  */
 import { afterEach, describe, expect, it } from 'vitest'
@@ -215,7 +216,7 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
     expect(hasInvalid(api)).toBe(false)
   })
 
-  it('abortValidationAtVacatedIndices via remove() drops an in-flight run (array-bookkeeping.ts:227)', async () => {
+  it('the vacated-index abort via remove() drops an in-flight run (array-engine applyStructuralOp)', async () => {
     const gate = makeGate()
     const schema = z.object({
       rows: z.array(

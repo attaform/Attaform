@@ -11,7 +11,7 @@
  * The v3-only sibling fixture guards the same root through the v3 path.
  */
 import { z } from 'zod'
-import { useForm } from '../../../dist/zod'
+import { useForm } from 'attaform/zod'
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false

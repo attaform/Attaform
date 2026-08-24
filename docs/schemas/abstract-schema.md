@@ -34,7 +34,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
   getDefaultAtPath(path: Path): unknown
 
   // Shape introspection
-  arrayShapeAtPath(path: Path): number | null | undefined
+  arrayShapeAtPath(path: Path): number | null
   isLeafAtPath(path: Path): boolean
   isRequiredAtPath(path: Path): boolean
   getSchemasAtPath(path: Path): AbstractSchema<unknown, GetValueFormType>[]
@@ -89,13 +89,12 @@ Return `undefined` for paths that don't exist in the schema. Must NOT throw; the
 
 ## Shape introspection
 
-### `arrayShapeAtPath(path: Path): number | null | undefined`
+### `arrayShapeAtPath(path: Path): number | null`
 
-- `number`: tuple's fixed length.
-- `null`: unbounded array.
-- `undefined`: non-array path.
+- `number`: tuple's fixed length. The runtime pads array writes to this length with per-position defaults.
+- `null`: not a tuple. Covers unbounded arrays (the runtime follows the consumer's length and reuses one element default) and paths that don't resolve to an array at all.
 
-The runtime caches the answer to skip per-write probe loops on array writes.
+The answer is definitive: the runtime consults it on every structural write that descends into an array branch and never second-guesses it, so returning `null` for a real tuple silently loses the per-position padding.
 
 ### `isLeafAtPath(path: Path): boolean`
 
@@ -194,6 +193,27 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       return leaf?.isRequired ?? false
     },
 
+    getEmptyValueAtPath(path) {
+      // The "clear this field" value. Whatever your library treats as
+      // the leaf's blank state; `undefined` is always safe.
+      return walkSchemaToDefault(schema, path)
+    },
+
+    isFixedObjectAtPath(path) {
+      // True only for closed, declared-key object shapes. Open
+      // containers (records, unions) return false so the runtime
+      // falls back to live keys.
+      const kinds = walkSchemaToSlimPrimitives(schema, path)
+      return kinds !== undefined && kinds.has('object')
+    },
+
+    isPreprocessOrCoerceLeaf() {
+      // True where a schema-side input normalizer (a coercing or
+      // preprocessing node) should accept raw writes verbatim. Return
+      // false if your library has no such construct.
+      return false
+    },
+
     getSchemasAtPath() {
       return []
     },
@@ -210,14 +230,13 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       const result = path !== undefined ? schema.parseAtPath(data, path) : schema.parse(data)
 
       if (result.success) {
-        return { success: true, data: result.data, errors: [], formKey: '' }
+        return { success: true, data: result.data, errors: undefined, formKey: '' }
       }
 
       const errors: ValidationError[] = result.issues.map((issue) => ({
         path: issue.path,
         message: issue.message,
         code: `my-lib:${issue.code ?? 'unknown'}`,
-        formKey: '',
       }))
 
       return { success: false, errors, data: undefined, formKey: '' }

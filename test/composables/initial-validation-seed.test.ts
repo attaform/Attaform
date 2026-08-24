@@ -14,7 +14,7 @@ import { waitUntil } from '../utils/form-harness'
  * Initial validation seed: when a form is constructed in strict mode
  * and its default values fail schema validation, `schemaErrors` is
  * populated immediately at construction time (without requiring a user
- * mutation or an explicit `validateAsync` call).
+ * mutation or an explicit `parse({ commit: true })` call).
  *
  * Three invariants locked here:
  *   1. STRICT mode + invalid defaults  → seed populates schemaErrors.
@@ -558,7 +558,7 @@ describe('initial validation seed — hydration takes precedence', () => {
       },
     })
 
-    expect(state.schemaErrors.size).toBe(0)
+    expect(state.errorCells.size).toBe(0)
   })
 
   it('replays hydrated schema errors verbatim, ignoring the seed', () => {
@@ -609,7 +609,7 @@ describe('initial validation seed — hydration takes precedence', () => {
       },
     })
 
-    expect(state.schemaErrors.size).toBe(1)
-    expect(state.schemaErrors.get(emailKey)?.[0]?.message).toBe('server email rejection')
+    expect(state.errorCells.size).toBe(1)
+    expect(state.errorCells.get(emailKey)?.schema[0]?.message).toBe('server email rejection')
   })
 })

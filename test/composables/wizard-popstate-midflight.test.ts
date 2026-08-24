@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { useForm } from '../../src/zod'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { waitUntil } from '../utils/form-harness'
 
 /**
  * Mid-flight popstate safety. The wizard's one-shot activation contract
@@ -67,11 +68,9 @@ describe('useWizard — popstate mid-flight safety', () => {
       }
     })
     apps.push(app)
-    for (let i = 0; i < 16; i += 1) {
-      await Promise.resolve()
-      await nextTick()
-      if (factoryCalls > 0) break
-    }
+    // The activation orchestrator is a lazy chunk; poll on real time so
+    // the module load (a macrotask in the test transform pipeline) fits.
+    await waitUntil(() => (factoryCalls > 0 ? true : null))
     expect(factoryCalls).toBe(1)
     expect(result.b.hydrating).toBe(true)
 
@@ -122,11 +121,9 @@ describe('useWizard — popstate mid-flight safety', () => {
       })
     })
     apps.push(app)
-    for (let i = 0; i < 16; i += 1) {
-      await Promise.resolve()
-      await nextTick()
-      if (factoryCalls > 0) break
-    }
+    // The activation orchestrator is a lazy chunk; poll on real time so
+    // the module load (a macrotask in the test transform pipeline) fits.
+    await waitUntil(() => (factoryCalls > 0 ? true : null))
     expect(factoryCalls).toBe(1)
     for (const key of ['mf-deref-b', 'mf-deref-a', 'mf-deref-b', 'mf-deref-a']) {
       restoreRef.value = key

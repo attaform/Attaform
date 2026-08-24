@@ -156,15 +156,16 @@ describe('zod v3 adapter — ZodCatch fallback', () => {
     expect(result.data).toEqual({ role: 'guest' })
   })
 
-  it('surfaces the catch fallback even when useDefaultSchemaValues is false', () => {
+  it('skips the catch fallback when useDefaultSchemaValues is false (v4 parity)', () => {
     const schema = z.object({
       handle: z.string().catch('anonymous'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({ useDefaultSchemaValues: false })
-    // .catch() is an explicit consumer statement; suppressing schema
-    // defaults shouldn't suppress it.
-    expect((result.data as { handle: string }).handle).toBe('anonymous')
+    // Aligned with v4 (size-teardown P7): `useDefaultSchemaValues:
+    // false` means "show the leaf empty" — `.catch()` is a
+    // default-like wrapper, so the inner leaf's bare empty wins.
+    expect((result.data as { handle: string }).handle).toBe('')
   })
 
   it('walks getDefaultAtPath through a ZodCatch on an object', () => {

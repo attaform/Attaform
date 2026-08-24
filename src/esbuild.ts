@@ -21,7 +21,12 @@
  * transforms that `attaform/vite` wires (load-bearing for SSR initial
  * render) are `@vitejs/plugin-vue`-specific and do not transfer; a
  * non-Vite consumer that needs them wires `attaform/transforms` into
- * their Vue compiler separately.
+ * their Vue compiler separately. The `v-register` directive itself is
+ * also delivered by the Vite plugin's compile-time binding, so outside
+ * that pipeline register it once per app:
+ *
+ *   import { installVRegister } from 'attaform/directive'
+ *   installVRegister(app)
  *
  * Zero-dep: the plugin imports nothing from `esbuild` (the bundler injects
  * its plugin API at the consumer's build); the structural types below are

@@ -67,7 +67,6 @@ describe('setErrors — global / form-level errors at []', () => {
     expect(entries[0]).toMatchObject({
       message: 'Capacity exceeded',
       path: [],
-      formKey: api.key,
       code: 'atta:user-error',
     })
   })
@@ -180,7 +179,6 @@ describe('setErrors — global / form-level errors at []', () => {
     expect(api.errors.email?.[0]).toMatchObject({
       message: 'taken',
       path: ['email'],
-      formKey: api.key,
       code: 'api:duplicate',
     })
     const entries = formLevel(api.meta.errors)
@@ -188,7 +186,6 @@ describe('setErrors — global / form-level errors at []', () => {
     expect(entries[0]).toMatchObject({
       message: 'Capacity exceeded',
       path: [],
-      formKey: api.key,
       code: 'api:capacity',
     })
   })

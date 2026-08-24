@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Recipe
   - label: Built on
-    value: watch · validateAsync
+    value: watch · parse
     kind: code
   - label: Returns
     value: status · isSaving · runWithoutAutosave
@@ -55,7 +55,7 @@ export function useAutosave<Form extends GenericForm>(
   async function run(path: FlatPath<Form>, value: unknown, signal: AbortSignal) {
     try {
       const gate = typeof gateOnValidity === 'function' ? gateOnValidity(path) : gateOnValidity
-      if (gate && !(await form.validateAsync(path)).success) {
+      if (gate && !(await form.parse(path, { commit: true })).success) {
         status[path] = 'idle'
         return
       }
@@ -102,7 +102,7 @@ export function useAutosave<Form extends GenericForm>(
 }
 ```
 
-The path and form type helpers (`FlatPath`, `GenericForm`, `UseFormReturnType`) come from the core `attaform` entry. The composable is adapter-agnostic: it works against a Zod v3, Zod v4, or any other adapter's form, since it only reaches for `form.toRef` and `validateAsync`.
+The path and form type helpers (`FlatPath`, `GenericForm`, `UseFormReturnType`) come from the core `attaform` entry. The composable is adapter-agnostic: it works against a Zod v3, Zod v4, or any other adapter's form, since it only reaches for `form.toRef` and the committing `parse`.
 
 ## What it gives you back
 
@@ -148,7 +148,7 @@ Each path gets its own `watch(form.toRef(path), ...)`. `form.toRef('email')` is 
 
 ## Gating on validity
 
-This is where validation and persistence meet. `gateOnValidity` (on by default) runs `form.validateAsync(path)` before each save and skips the write when the field is invalid, so a value that fails validation never reaches the server, and the field's [async refinements](/docs/validation/async-refinements) run as part of that same check.
+This is where validation and persistence meet. `gateOnValidity` (on by default) runs `form.parse(path, { commit: true })` before each save and skips the write when the field is invalid, so a value that fails validation never reaches the server, and the field's [async refinements](/docs/validation/async-refinements) run as part of that same check.
 
 `.refine` decides whether a value is allowed; the autosave decides whether to persist it. Composing them gives you "save only what passes" without either concern leaking into the other. Turn the gate off (`{ gateOnValidity: false }`) when you want a true draft autosave that captures even invalid in-progress state.
 

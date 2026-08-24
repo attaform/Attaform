@@ -19,7 +19,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  *   1. setValue alone does NOT clear schemaErrors at the write path.
  *      Render reflects the prior verdict until validation runs.
- *   2. validateAsync REPLACES the verdict (not clear-then-re-add)
+ *   2. parse({ commit: true }) REPLACES the verdict (not clear-then-re-add)
  *      when the new value is still invalid. Same path, different
  *      message — no empty window in between.
  */
@@ -121,7 +121,7 @@ describe('schema-source errors follow a stale-while-revalidate pattern across wr
     // 'change' (default) drives the schema through one more validation
     // pass; in production the directive's blur / change listener does
     // the same.
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
     expect(api.errors.url[0]?.message).toBe('https://apple.com is taken.')
   })

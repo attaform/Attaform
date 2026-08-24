@@ -1,6 +1,10 @@
+// @vitest-environment jsdom
+// jsdom because the element-registry tests below drive the DOM binding,
+// which attaches real focus/blur listeners at attach time.
 import { describe, expect, it } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
+import { createDomBinding } from '../../src/runtime/core/dom-binding'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
 
@@ -26,6 +30,12 @@ function makeAccessor() {
     state,
     getFieldState: buildFieldStateAccessor(state, 'test-instance', getFormMetaBase),
   }
+}
+
+// Arm (or reuse) the store's DOM binding — the element registry the
+// field-state accessors read through.
+function armed(state: ReturnType<typeof makeAccessor>['state']) {
+  return (state.domBinding.value ??= createDomBinding(state))
 }
 
 describe('buildFieldStateAccessor', () => {
@@ -76,7 +86,7 @@ describe('buildFieldStateAccessor', () => {
     const { state, getFieldState } = makeAccessor()
     state.setSchemaErrorsForPath(
       ['email'],
-      [{ message: 'bad', path: ['email'], formKey: 'fs', code: 'atta:test-fixture' }]
+      [{ message: 'bad', path: ['email'], code: 'atta:test-fixture' }]
     )
     expect(getFieldState(['email']).value.errors).toHaveLength(1)
   })
@@ -90,15 +100,12 @@ describe('buildFieldStateAccessor', () => {
   })
 
   it('connected flips to true when an element registers, back to false when all deregister', () => {
-    // @vitest-environment jsdom is not active here; use a minimal element stub.
-    // The state layer doesn't touch DOM, only stores HTMLElement references in a Set.
     const { state, getFieldState } = makeAccessor()
-    // structuredClone approach would need HTMLElement — simplest: cast a plain object.
-    // We accept the cast here at the boundary between DOM and state test.
-    const pretend = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-    state.registerElement(['email'], pretend, 'test:inst')
+    const dom = armed(state)
+    const el = document.createElement('input')
+    dom.attach(['email'], el, 'test:inst', undefined)
     expect(getFieldState(['email']).value.connected).toBe(true)
-    state.deregisterElement(['email'], pretend)
+    dom.detach(['email'], el)
     expect(getFieldState(['email']).value.connected).toBe(false)
   })
 
@@ -168,7 +175,7 @@ describe('buildFieldStateAccessor', () => {
       // Errors present → valid false even when not in-flight.
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'bad', path: ['email'], formKey: 'fs', code: 'atta:test-fixture' }]
+        [{ message: 'bad', path: ['email'], code: 'atta:test-fixture' }]
       )
       expect(s.value.errors).toHaveLength(1)
       expect(s.value.valid).toBe(false)
@@ -209,8 +216,8 @@ describe('buildFieldStateAccessor', () => {
     it('first registration populates both — element is the first by registration order', () => {
       const { state, getFieldState } = makeAccessor()
       const s = getFieldState(['email'])
-      const a = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-      state.registerElement(['email'], a, 'inst')
+      const a = document.createElement('input')
+      armed(state).attach(['email'], a, 'inst', undefined)
       expect(s.value.element).toBe(a)
       expect(s.value.elements).toEqual([a])
     })
@@ -218,10 +225,10 @@ describe('buildFieldStateAccessor', () => {
     it('multiple registrations to the same path preserve insertion order; element stays first', () => {
       const { state, getFieldState } = makeAccessor()
       const s = getFieldState(['email'])
-      const a = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-      const b = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-      state.registerElement(['email'], a, 'inst')
-      state.registerElement(['email'], b, 'inst')
+      const a = document.createElement('input')
+      const b = document.createElement('input')
+      armed(state).attach(['email'], a, 'inst', undefined)
+      armed(state).attach(['email'], b, 'inst', undefined)
       expect(s.value.elements).toEqual([a, b])
       expect(s.value.element).toBe(a)
     })
@@ -229,11 +236,11 @@ describe('buildFieldStateAccessor', () => {
     it('deregistering the first element promotes the second to element', () => {
       const { state, getFieldState } = makeAccessor()
       const s = getFieldState(['email'])
-      const a = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-      const b = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-      state.registerElement(['email'], a, 'inst')
-      state.registerElement(['email'], b, 'inst')
-      state.deregisterElement(['email'], a)
+      const a = document.createElement('input')
+      const b = document.createElement('input')
+      armed(state).attach(['email'], a, 'inst', undefined)
+      armed(state).attach(['email'], b, 'inst', undefined)
+      armed(state).detach(['email'], a)
       expect(s.value.elements).toEqual([b])
       expect(s.value.element).toBe(b)
     })
@@ -241,9 +248,9 @@ describe('buildFieldStateAccessor', () => {
     it('deregistering all elements returns the accessors to null / []', () => {
       const { state, getFieldState } = makeAccessor()
       const s = getFieldState(['email'])
-      const a = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-      state.registerElement(['email'], a, 'inst')
-      state.deregisterElement(['email'], a)
+      const a = document.createElement('input')
+      armed(state).attach(['email'], a, 'inst', undefined)
+      armed(state).detach(['email'], a)
       expect(s.value.element).toBe(null)
       expect(s.value.elements).toEqual([])
     })
@@ -252,8 +259,8 @@ describe('buildFieldStateAccessor', () => {
       const { state, getFieldState } = makeAccessor()
       const email = getFieldState(['email'])
       const name = getFieldState('profile.name')
-      const a = { nodeType: 1, tagName: 'INPUT' } as unknown as HTMLElement
-      state.registerElement(['email'], a, 'inst')
+      const a = document.createElement('input')
+      armed(state).attach(['email'], a, 'inst', undefined)
       expect(email.value.elements).toEqual([a])
       expect(name.value.elements).toEqual([])
     })
@@ -364,11 +371,11 @@ describe('buildFieldStateAccessor — container aggregation', () => {
     const pickup = getFieldState(['pickup'])
     state.setSchemaErrorsForPath(
       ['pickup', 'city'],
-      [{ message: 'missing city', path: ['pickup', 'city'], formKey: 'cont', code: 'atta:test' }]
+      [{ message: 'missing city', path: ['pickup', 'city'], code: 'atta:test' }]
     )
     state.setSchemaErrorsForPath(
       ['pickup', 'zip'],
-      [{ message: 'missing zip', path: ['pickup', 'zip'], formKey: 'cont', code: 'atta:test' }]
+      [{ message: 'missing zip', path: ['pickup', 'zip'], code: 'atta:test' }]
     )
     expect(pickup.value.errors.map((e) => e.message)).toEqual(['missing city', 'missing zip'])
   })
@@ -379,7 +386,7 @@ describe('buildFieldStateAccessor — container aggregation', () => {
     expect(pickup.value.valid).toBe(true)
     state.setSchemaErrorsForPath(
       ['pickup', 'city'],
-      [{ message: 'bad', path: ['pickup', 'city'], formKey: 'cont', code: 'atta:test' }]
+      [{ message: 'bad', path: ['pickup', 'city'], code: 'atta:test' }]
     )
     expect(pickup.value.valid).toBe(false)
   })

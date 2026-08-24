@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 import type { DisplayCtx, DisplayMachine, GetDisplayState } from '../types/types-api'
+import { __DEV__ } from './dev'
 import type { PathKey } from './paths'
 
 /**
@@ -56,12 +57,12 @@ export type DisplayEngine = {
   clear(): void
   /** Tear down for good: `clear()` plus detaching the visibility listener. */
   dispose(): void
-  /** Introspection for tests: count of retained machines. */
-  size(): number
-  /** Introspection for tests: whether a path currently has a retained machine. */
-  has(key: PathKey): boolean
-  /** Introspection for tests: whether a deadline timer is currently armed. */
-  hasTimer(): boolean
+  /** Introspection for tests: count of retained machines. Dev builds only. */
+  size?(): number
+  /** Introspection for tests: whether a path has a retained machine. Dev builds only. */
+  has?(key: PathKey): boolean
+  /** Introspection for tests: whether a deadline timer is armed. Dev builds only. */
+  hasTimer?(): boolean
 }
 
 const IDLE: DisplayMachine = Object.freeze({ display: 'idle' })
@@ -180,12 +181,13 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
     }
   }
 
-  return {
-    resolve,
-    clear,
-    dispose,
-    size: () => machines.size,
-    has: (key) => machines.has(key),
-    hasTimer: () => timer !== null,
+  const engine: DisplayEngine = { resolve, clear, dispose }
+  if (__DEV__) {
+    // Introspection hooks the test suites read; the prod flavor drops
+    // them with the flag.
+    engine.size = () => machines.size
+    engine.has = (key) => machines.has(key)
+    engine.hasTimer = () => timer !== null
   }
+  return engine
 }

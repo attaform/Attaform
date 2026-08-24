@@ -434,6 +434,9 @@ export default [
       '**/.data/**',
       '**/dist/**',
       '**/coverage/**',
+      // Size-teardown program reference material: preserved audit
+      // evidence and measurement sketches, not project code.
+      'plans/size-teardown/reference/**',
       // REPL bundle output: 1MB+ minified ESM + sourcemaps regenerated
       // every site dev/build. Linting them stalls eslint for minutes.
       'apps/site/public/lib/**',

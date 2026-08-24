@@ -91,12 +91,12 @@ describe('getDefaultValuesFromZodSchema — discriminated unions', () => {
 })
 
 describe('getDefaultValuesFromZodSchema — refinement-heavy schemas', () => {
-  it('strips refinements (slim schema is for derivation, not enforcement)', () => {
+  it('never evaluates refinements (the fix walk is structural, not enforcement)', () => {
     // The helper's job is to produce usable starting data — refinement
     // enforcement lives at the adapter layer (see the next describe).
-    // The slim schema has refinements stripped; this also avoids
-    // `safeParse` throwing synchronously when the schema contains an
-    // async refine.
+    // The structural fix walk checks slim-primitive kinds only, so a
+    // refinement-violating '' passes through verbatim, no user fn ever
+    // runs at construction, and `success` reports structural coherence.
     const schema = z.object({ email: z.string().email() })
     const result = run(schema)
     expect(result.data.email).toBe('')
@@ -126,7 +126,7 @@ describe('zodAdapter.getDefaultValues — strict-mode refinement enforcement', (
     // on them. The adapter catches the throw and returns success so the
     // form still mounts. Async refines fire on first user mutation via
     // `validateAtPath` (which uses `safeParseAsync`), or via an explicit
-    // `validateAsync()` call after mount.
+    // `parse({ commit: true })` call after mount.
     const schema = z.object({
       email: z.email().refine(async () => Promise.resolve(true), 'taken'),
     })

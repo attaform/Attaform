@@ -2,7 +2,75 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Breaking
+
+- **A minimal form ships 29% less JavaScript, and the package is 80%
+  smaller on disk.** The size-teardown program closed with the measured
+  eager cost of a minimal `useForm` consumer down from 46,477 to 33,004
+  gzipped bytes and the npm tarball down from 1.8 MB across 182 files to
+  364.9 kB across 88. The wins below are the observable pieces of that
+  program; the full ledger, including every refused arm and its
+  arithmetic, lives in `plans/size-teardown/00-program.md` and the landed
+  appendix in `SIZE-TEARDOWN.md`. (#561)
+- **`v-register` is delivered where it is used, not welded into every
+  bundle.** `createAttaform()` registers no app-wide directive anymore. A
+  form that never renders `v-register` never ships the directive cluster,
+  which was the program's largest single lever. Under `attaform/vite` or
+  `attaform/nuxt` nothing changes: the bundler plugin now binds the
+  directive into each compiled template automatically. Setups without a
+  bundler plugin (webpack-family, runtime-compiled templates) call
+  `installVRegister(app)` from `attaform/directive` once at startup. (#561)
+- **Undo/redo is an opt-in plugin from the new `attaform/history` entry.**
+  The config-only `history: true | { max }` form is gone; opt-in is
+  `useForm({ schema, history: historyPlugin({ max: 200 }) })`. One plugin
+  instance across N forms yields N independent chains, so sharing it
+  through `createAttaform({ defaults: { history } })` shares
+  configuration, never state. A form that never opts in no longer carries
+  the history runtime at all. (#561)
+- **`form.parse(path?, { commit? })` absorbs `validateAsync`, which is
+  deleted.** `parse` stays the pure read by default, and `{ commit: true }`
+  makes the run authoritative with exactly the absorbed method's
+  semantics: it cancels in-flight per-field runs, writes the verdict to
+  the error store at the parsed scope, and composes blanks, while still
+  returning the parsed data. The overloads mirror the `setErrors`
+  first-arg idiom (`parse(path?, options?)` and `parse(options)`), and the
+  new `ParseOptions` type is public. (#561)
+- **`ValidationError` drops its per-entry `formKey`.** Identity is
+  envelope-level: `ValidationResponse` and submit results keep theirs.
+  Internally the two per-source error maps collapsed into one tagged
+  store; every pinned observable invariant (leaf order schema then blank
+  then user, authored schema messages leading `firstError` on submit, the
+  `''` vs `[]` boundary, `errors([])` as the aggregate) held verbatim. (#561)
+- **`.catch()` under `useDefaultSchemaValues: false` now means "show the
+  leaf empty" on both Zod majors.** Zod v3 previously preserved the catch
+  fallback where v4 recursed into the inner type; v3 now matches v4, and
+  with one behavior left the internal compatibility knob is deleted.
+  `useDefaultSchemaValues: true` still surfaces the catch fallback on
+  both majors, unchanged. (#561)
+
+### Changed
+
+- **Production builds ship a pre-stripped dist, and production warnings
+  became stable codes.** The package now builds two flavors: bundlers
+  resolve the `development` exports condition to the dev flavor with
+  every diagnostic intact, while the default (production) flavor is
+  pre-stripped of dev-only mass at package build. What remains of a
+  diagnostic in production is a stable pointer, `[attaform] AF##
+  attaform.dev/e/af##`, and the docs now host `/e/af01` through `/e/af14`
+  with the full prose, causes, and fixes for each code. (#561)
+- **`hydrateAttaformState` accepts an `unknown` payload.** The SSR
+  wire-read no longer needs a cast: the helper narrows through an
+  envelope guard and safely skips anything that is not a hydratable
+  Attaform payload. (#561)
+- **The benchmark's bundle dimension now measures code-split builds, and
+  the Attaform entry is the shipping default.** Each cohort row's figure
+  is the entry chunk plus its static-import closure, the JavaScript that
+  executes before the form is interactive; code a library defers behind a
+  dynamic `import()` is reported separately and rendered as a deferred
+  note on the comparison page. The Attaform entry drops its
+  `createAttaform()` call, since `useForm` lazy-installs the registry,
+  and the page's bundle prose now describes exactly what is inside the
+  figure. (#561)
 
 ## v0.27.6
 ### Added

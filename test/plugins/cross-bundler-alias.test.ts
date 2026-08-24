@@ -135,7 +135,6 @@ describe('rewritable-specifier matcher', () => {
     'attaform/rspack',
     'attaform/transforms',
     'attaform/devtools-panel',
-    'attaform/types',
     // near-misses the anchors must reject
     'attaformx',
     'xattaform',

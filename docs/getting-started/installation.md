@@ -12,9 +12,9 @@ Install Attaform and Zod, and you're set.
 ::ui-install-command{:show-quick-start="false"}
 ::
 
-That's it for most apps. `useForm` and the `v-register` directive are ready to use as soon as the package is installed. Everything below this section is opt-in.
+`useForm` bootstraps itself the moment the package lands: no plugin call, no provider wrapper. The [Nuxt module](#nuxt-module) and the [Vite plugin](#vite-plugin-bare-vue-3--vite) complete the picture by binding `v-register` into your templates at compile time; building without either, the [one-liner below](#no-build-plugin) delivers the directive instead.
 
-## Optional: Nuxt module
+## Nuxt module
 
 If you're on Nuxt, we recommend installing the module:
 
@@ -25,9 +25,9 @@ export default defineNuxtConfig({
 })
 ```
 
-What this gets you: the form composables as auto-imports (`useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`; see [Auto-imports](#auto-imports)), the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
+What this gets you: the form composables as auto-imports (`useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`; see [Auto-imports](#auto-imports)), `v-register` bound into every template that uses it, the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
 
-## Optional: Vue 3 plugin
+## Optional: Vue 3 plugin (app-wide defaults)
 
 For app-wide defaults (`validateOn`, `debounceMs`, etc.) or explicit control over plugin registration on bare Vue 3, install the plugin in your app entry:
 
@@ -43,7 +43,7 @@ createApp(App)
 
 What this gets you: `createAttaform({ defaults })` for app-wide settings that every `useForm` call inherits.
 
-## Optional: Vite plugin
+## Vite plugin (bare Vue 3 + Vite)
 
 If you're on bare Vue 3 + Vite (not Nuxt), add the plugin to `vite.config.ts`:
 
@@ -57,7 +57,23 @@ export default defineConfig({
 })
 ```
 
-What this gets you: SSR-rendered `v-register` bindings that match the client-rendered output on initial HTML (no flicker between server paint and hydration), and a leaner production bundle (one Zod adapter shipped instead of both).
+What this gets you: `v-register` bound into every template that uses it (no app-level registration to write), SSR-rendered `v-register` bindings that match the client-rendered output on initial HTML (no flicker between server paint and hydration), and a leaner production bundle (one Zod adapter shipped instead of both).
+
+## No build plugin?
+
+Building with a webpack-family bundler, importing from a CDN, or compiling templates at runtime? Register the directive once per app and everything else works the same:
+
+```ts
+import { createApp } from 'vue'
+import { installVRegister } from 'attaform/directive'
+import App from './App.vue'
+
+const app = createApp(App)
+installVRegister(app)
+app.mount('#app')
+```
+
+The bundler plugins at `attaform/webpack`, `attaform/rspack`, `attaform/rollup`, and `attaform/esbuild` still handle the single-Zod-adapter rewrite for their pipelines; `installVRegister` covers the directive.
 
 ## Auto-imports
 

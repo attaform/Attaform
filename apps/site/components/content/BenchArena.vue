@@ -41,6 +41,9 @@
     version: string
     validator: string
     gzBytes: number
+    // Code a library defers behind a dynamic import, shipped on demand.
+    // Absent in results generated before the code-split measurement.
+    asyncGzBytes?: number
     ratio: number
   }
   interface TimedRow {
@@ -670,6 +673,12 @@
                   />
                 </span>
                 <span class="font-mono text-fg">{{ fmtKb(row.gzBytes) }}</span>
+                <span
+                  v-if="row.asyncGzBytes"
+                  class="font-mono text-xs whitespace-nowrap text-fg-subtle"
+                >
+                  +{{ fmtKb(row.asyncGzBytes) }} deferred
+                </span>
               </div>
             </td>
             <td class="px-3 py-2 font-mono text-xs text-fg-muted">{{ fmtRatio(row.ratio) }}</td>
@@ -680,8 +689,9 @@
       <p class="px-3 py-2 text-xs text-fg-subtle">
         Each row is the same minimal real form (one text field, one email field, schema-validated, a
         submit handler) in that library's idiomatic API, with its validator weighed in. Vue is
-        external, since every app ships it once. Attaform's figure is its full bundle; with
-        route-level code-splitting a first paint pulls less.
+        external, since every app ships it once. Builds are code-split the way a real bundler ships
+        them: each figure is the JavaScript that executes before the form is interactive, and code a
+        library defers behind a dynamic import loads on demand instead of on first paint.
       </p>
     </div>
 

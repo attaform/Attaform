@@ -4,6 +4,7 @@ import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { isUnset, unset, useForm } from '../../src/zod'
+import { historyPlugin } from '../../src/history'
 import type { UseFormReturn } from '../../src/zod'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
@@ -209,7 +210,7 @@ describe('discriminated-union variant switch — error reactivity', () => {
     expect(api.errors('notify.number')).toHaveLength(1)
   })
 
-  it('validateAsync reflects the new variant in the returned response', async () => {
+  it('parse({ commit: true }) reflects the new variant in the returned response', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -218,7 +219,7 @@ describe('discriminated-union variant switch — error reactivity', () => {
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    const response = await api.validateAsync()
+    const response = await api.parse({ commit: true })
     expect(response.success).toBe(false)
     expect(response.errors?.some((e) => e.path.join('.') === 'notify.number')).toBe(true)
   })
@@ -1646,7 +1647,7 @@ describe('variant memory — history (undo/redo) interaction', () => {
           schema: profileSchema,
           key: `du-variant-memory-history-${Math.random().toString(36).slice(2)}`,
           defaultValues: { name: '', notify: { channel: 'email', address: '' } },
-          history: true,
+          history: historyPlugin(),
         }) as unknown as ProfileApi
         return () => h('div')
       },
@@ -1927,7 +1928,7 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
     // -100 violates min(-30); drive validation explicitly so the leaf
     // lights up regardless of debounce timing.
     api.setValue('cargo.tempMinC', -100)
-    const result = await api.validateAsync()
+    const result = await api.parse({ commit: true })
     expect(result.success).toBe(false)
     await nextTick()
 

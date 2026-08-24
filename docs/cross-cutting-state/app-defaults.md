@@ -106,7 +106,7 @@ type AttaformDefaults = {
   validateOn?: 'change' | 'blur' | 'submit'
   debounceMs?: number
   onInvalidSubmit?: 'none' | 'focus-first-error' | 'scroll-to-first-error' | 'both'
-  history?: true | { max?: number }
+  history?: HistoryPlugin
   rememberVariants?: boolean
   coerce?: boolean | CoercionRegistry
   getDisplayState?: GetDisplayState
@@ -115,6 +115,8 @@ type AttaformDefaults = {
 ```
 
 `getDisplayState` resolves `field.displayState` and its `show*` projections: the centralized "what should this field surface right now?" reducer, returning one of idle, pending, error, or success. Set it once at the app level so every form follows the same convention. To keep the default behavior but retune the anti-flash spinner timing, pass `makeDefaultDisplayState({ showDelay, minVisible })`. See [Display state and showing errors](/docs/validation/showing-errors) for the full contract.
+
+`history` takes a `historyPlugin()` instance from the `attaform/history` entry. One instance set here is a shared configuration, and every form still gets its own independent undo/redo chain. See [Undo & redo](/docs/cross-cutting-state/undo-redo).
 
 ## What's NOT supported (and why)
 
@@ -162,16 +164,20 @@ If you need defaults but don't want to touch the plugin (third-party component l
 import { useForm as attaformUseForm } from 'attaform'
 import type { z } from 'zod'
 
-export function useAppForm<S extends z.ZodObject>(opts: Parameters<typeof attaformUseForm<S>>[0]) {
+export function useAppForm<S extends z.ZodObject<z.ZodRawShape>>(
+  schema: S,
+  defaultValues: z.input<S>
+) {
   return attaformUseForm({
+    schema,
+    defaultValues,
     validateOn: 'change',
     debounceMs: 100,
-    ...opts,
   })
 }
 ```
 
-Fully equivalent for the consumer; every `useAppForm` call gets your defaults; per-form options still win via the spread. The plugin-level approach is idiomatic for first-party apps; the wrapper is right when you can't (or shouldn't) influence the plugin config from your call site.
+Every `useAppForm(schema, defaults)` call gets your app-wide settings, and inference still flows from the schema. Forward more options the same way, as named parameters the wrapper assembles into the configuration. Keep the wrapper in this shape rather than typing one passthrough options bag under the generic: TypeScript relates `schema: S` and `defaultValues: z.input<S>` to `useForm`'s slots directly, while a whole-bag parameter forces an instantiation cascade that Zod v4's types push past the compiler's depth limit. The plugin-level approach is idiomatic for first-party apps; the wrapper is right when you can't (or shouldn't) influence the plugin config from your call site.
 
 ## Where to next
 

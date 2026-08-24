@@ -61,14 +61,16 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
       // Strict-mode getDefaultValues may surface errors for refinements that
       // a derived blank shape doesn't satisfy. Since we don't generate
       // refinements the success path is the common outcome, but if the
-      // adapter ever produces errors here they must carry our key.
+      // adapter ever produces errors here, the response envelope must
+      // carry our key and every entry must be well-formed.
       const result = adapter.getDefaultValues({
         useDefaultSchemaValues: true,
         strict: true,
       })
+      expect(result.formKey).toBe(formKey)
       if (!result.success) {
         for (const err of result.errors) {
-          expect(err.formKey).toBe(formKey)
+          expect(typeof err.code).toBe('string')
         }
       }
     }

@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Reference
   - label: Entry points
-    value: 14
+    value: 16
   - label: Recommended entry
     value: attaform
     kind: code
@@ -21,7 +21,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-New projects pick `attaform`. The other subpaths cover explicit Zod pins, the bring-your-own-adapter escape hatch, the Nuxt and Vite integrations, the compiler internals, the DevTools panel, and the type-only surface.
+New projects pick `attaform`. The other subpaths cover explicit Zod pins, the bring-your-own-adapter escape hatch, the `v-register` delivery entry, the undo/redo plugin, the Nuxt and Vite integrations, the compiler internals, the DevTools panel, and the type-only surface.
 
 ## `attaform`: the recommended entry
 
@@ -81,6 +81,30 @@ import { useAbstractForm } from 'attaform/abstract'
 ```
 
 Ships `useAbstractForm`, the `AbstractSchema` contract type, `FieldMetaPayload`, and the same framework-agnostic toolkit every entry carries. There is deliberately no `useForm` alias here: a same-named wrong-variant export fails deep at the first schema call instead of at the import site, and removing that footgun is the whole reason the escape hatch is its own entry. This is a lower-level surface than the Zod entries; reach for it only when you're integrating a schema library Attaform doesn't ship an adapter for.
+
+## `attaform/directive`: the `v-register` delivery entry
+
+The directive and its app-level installer, on their own subpath so an app that never renders `v-register` never ships its DOM machinery. Most projects never import it: the Vite plugin and the Nuxt module bind `v-register` into each compiled template automatically. Everywhere else (a webpack-family bundler, a no-build page, runtime-compiled templates), one line per app delivers it:
+
+```ts
+import { installVRegister } from 'attaform/directive'
+
+installVRegister(app)
+```
+
+Ships `installVRegister`, plus the directive objects `vRegister` and `vRegisterFile` for advanced integrations that bind them locally (a `<script setup>` binding or a manual `withDirectives` render function). When no delivery ran, Vue's own development warning `Failed to resolve directive: register` names the miss.
+
+## `attaform/history`: the undo/redo plugin
+
+The history runtime, on its own subpath so a form that never opts in never ships it. Create the plugin and pass it via `useForm({ history })`:
+
+```ts
+import { historyPlugin } from 'attaform/history'
+
+const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
+```
+
+Ships `historyPlugin` and its types (`HistoryPlugin`, `HistoryPluginOptions`). One plugin instance is a reusable configuration — pass it to several forms, or set it once via `createAttaform({ defaults: { history: historyPlugin() } })`, and every form keeps its own independent chain. The [Undo & redo](/docs/cross-cutting-state/undo-redo) page covers the `form.history` namespace it unlocks.
 
 ## The framework-agnostic toolkit
 
@@ -152,7 +176,7 @@ After installing, `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMe
 
 ## `attaform/vite`
 
-The Vite plugin. Required under bare Vue + Vite for SSR-correct `v-register` bindings, and the piece that rewrites `attaform` / `attaform/zod` to a single Zod adapter at build time.
+The Vite plugin. The piece that binds `v-register` into each compiled template that uses it, keeps SSR-rendered `v-register` bindings byte-identical with the client render, and rewrites `attaform` / `attaform/zod` to a single Zod adapter at build time. Under bare Vue + Vite, this is the one-plugin setup for the whole compile-time story.
 
 ```ts
 // vite.config.ts
@@ -179,30 +203,31 @@ import { vRegisterHintTransform, vRegisterPreambleTransform } from 'attaform/tra
 
 The DevTools panel internals. The [Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel) is auto-wired by `attaform/nuxt`; this entry is exposed for advanced consumers building their own panel hosts.
 
-## `attaform/types`
+## One import line, two builds
 
-Type-only subpath. Re-exports every type from the runtime, useful when you want types in a `.d.ts` consumer file without pulling in the runtime barrel:
+Every runtime subpath above ships twice in the published package. The production flavor is the default resolution target: development-only diagnostics are already stripped from it when Attaform is built, so production bundles ship lean with zero bundler configuration. The development flavor carries the full diagnostic surface (the misuse warnings, warning call-site capture, and the DevTools bridge) and is selected automatically through the `development` export condition, which Vite's dev server, webpack's development mode, and Nuxt's dev tooling all set out of the box.
 
-```ts
-import type { UseFormReturnType, FieldState, ValidationError } from 'attaform/types'
-```
+Two consequences worth knowing:
 
-For runtime imports under typical app code, import directly from `attaform`; the type re-exports there are equivalent.
+- A toolchain that never sets the `development` condition resolves the production flavor everywhere. Attaform behaves identically; the development-time warnings simply stay silent. Importing straight from a browser CDN lands in the same place.
+- The Node-side tooling subpaths (`attaform/nuxt`, `attaform/vite`, the bundler plugins, `attaform/transforms`) are single-flavor: they run inside your build, not in your app bundle, so there is nothing to strip.
 
 ## Which subpath for which job?
 
-| You want to…                                          | Import from         |
-| ----------------------------------------------------- | ------------------- |
-| Build a form in a Vue 3 / Nuxt app (Zod v3 or v4)     | `attaform`          |
-| Pin the Zod v3 adapter explicitly                     | `attaform/zod-v3`   |
-| Pin the Zod v4 adapter explicitly                     | `attaform/zod-v4`   |
-| Wire a custom or non-Zod schema library               | `attaform/abstract` |
-| Install the Nuxt module                               | `attaform/nuxt`     |
-| Install the Vite plugin under bare Vue + Vite         | `attaform/vite`     |
-| Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`          |
-| Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`          |
-| Catch an Attaform-thrown error by class               | `attaform`          |
-| Type-only imports in a `.d.ts` file                   | `attaform/types`    |
+| You want to…                                          | Import from          |
+| ----------------------------------------------------- | -------------------- |
+| Build a form in a Vue 3 / Nuxt app (Zod v3 or v4)     | `attaform`           |
+| Pin the Zod v3 adapter explicitly                     | `attaform/zod-v3`    |
+| Pin the Zod v4 adapter explicitly                     | `attaform/zod-v4`    |
+| Wire a custom or non-Zod schema library               | `attaform/abstract`  |
+| Install the Nuxt module                               | `attaform/nuxt`      |
+| Install the Vite plugin under bare Vue + Vite         | `attaform/vite`      |
+| Deliver `v-register` without a build plugin           | `attaform/directive` |
+| Enable undo/redo (`historyPlugin`)                    | `attaform/history`   |
+| Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`           |
+| Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`           |
+| Catch an Attaform-thrown error by class               | `attaform`           |
+| Type-only imports in a `.d.ts` file                   | `attaform`           |
 
 ## The Zod-default story
 

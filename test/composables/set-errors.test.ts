@@ -100,7 +100,6 @@ function setErrorsContract(make: () => TestForm): void {
       message: 'boom',
       path: [],
       code: 'atta:user-error',
-      formKey: form.key,
     })
   })
 
@@ -128,11 +127,19 @@ function setErrorsContract(make: () => TestForm): void {
     expect(globals(form)[0]?.data).toEqual(data)
   })
 
-  it('always restamps formKey with this form, ignoring any provided', () => {
+  it('strips foreign fields from input entries (no smuggled identity)', () => {
     const form = make()
-    form.setErrors([{ path: ['email'], message: 'taken', formKey: 'someone-else' }])
+    // A wider payload (e.g. a server reply that still carries a formKey
+    // field) pipes structurally; the normalizer builds a fresh entry, so
+    // foreign fields never reach the store.
+    const foreign: { path: (string | number)[]; message: string; formKey: string }[] = [
+      { path: ['email'], message: 'taken', formKey: 'someone-else' },
+    ]
+    form.setErrors(foreign)
 
-    expect(field(form, 'email')[0]?.formKey).toBe(form.key)
+    const entry = field(form, 'email')[0]
+    expect(entry?.message).toBe('taken')
+    expect(entry !== undefined && 'formKey' in entry).toBe(false)
   })
 
   it('whole-layer replace clobbers the prior layer (global included)', () => {
@@ -157,7 +164,7 @@ function setErrorsContract(make: () => TestForm): void {
     form.setErrors('email', [{ message: 'taken', path: ['ignored'] }])
 
     const [entry] = field(form, 'email')
-    expect(entry).toMatchObject({ message: 'taken', path: ['email'], formKey: form.key })
+    expect(entry).toMatchObject({ message: 'taken', path: ['email'] })
     expect(form.errors('ignored')).toEqual([])
   })
 

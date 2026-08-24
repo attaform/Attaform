@@ -1,6 +1,7 @@
 import type { AbstractSchema } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
+import { isPlainRecord } from './path-walker'
 import { safeAssign } from './safe-assign'
 import { isUnset } from './unset'
 
@@ -381,4 +382,28 @@ export function expandUnsetAt(
     result[key] = expandUnsetAt([...segments, key], schema, paths)
   }
   return result
+}
+
+/**
+ * Walk the consumer's `defaultValues` argument and stamp every leaf path
+ * as "consumer-authored." Even an explicit `undefined` at a leaf counts:
+ * the consumer named the path, so any verdict against that undefined IS
+ * one they had a chance to provoke and should see.
+ *
+ * Plain records and arrays descend; non-record leaves (primitives, Date,
+ * Map, class instances) mark their own path and stop.
+ */
+export function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<PathKey>): void {
+  if (prefix.length > 0) out.add(canonicalizePath(prefix).key)
+  if (isPlainRecord(value)) {
+    for (const k of Object.keys(value)) {
+      walkAuthoredFromConstraints((value as Record<string, unknown>)[k], [...prefix, k], out)
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      walkAuthoredFromConstraints(value[i], [...prefix, i], out)
+    }
+  }
 }

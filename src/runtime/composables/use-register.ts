@@ -68,6 +68,7 @@ import {
 } from 'vue'
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
+import { armDomBinding } from '../core/dom-binding'
 import { REGISTER_OWNER_MARKER, V_REGISTER_MARKER } from '../core/register-protocol'
 import { ensureAttaformInstalled } from '../core/plugin'
 import type { RegisterValue } from '../types/types-api'
@@ -164,13 +165,13 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
     return makeRegisterValueProxy<V>(shallowRef<RegisterValue<V> | undefined>(undefined))
   }
 
-  // Lazy-install: even though `useRegister` doesn't read the registry
-  // directly, it's a public setup-context entry point and its template
-  // typically renders `<input v-register="rv" />` — the directive must
-  // be registered on the app at render time. Without auto-install, a
-  // wrapper component used in isolation (no `useForm` ancestor, no
-  // `createAttaform()`) hits Vue's "Failed to resolve directive"
-  // warning. Idempotent — explicit installs win when they ran first.
+  // Lazy-install the registry: `useRegister` is a public setup-context
+  // entry point, and a wrapper component used in isolation (no `useForm`
+  // ancestor, no `createAttaform()`) should still find an attached
+  // registry. Idempotent — explicit installs win when they ran first.
+  // The `v-register` in the wrapper's own template is delivered
+  // separately: the Vite / Nuxt plugin binds it at compile time, and
+  // no-build setups call `installVRegister(app)` once.
   ensureAttaformInstalled(instance.appContext.app)
 
   // Capture the bridge `registerValue` from instance.attrs into a
@@ -217,6 +218,12 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
     if ('registerValue' in rawAttrs) {
       capturedRegisterValue.value = rawAttrs['registerValue'] as RegisterValue<V> | undefined
       delete rawAttrs['registerValue']
+      // Arm the store's DOM binding as soon as an RV lands: the wrapper
+      // author may call `rv.registerElement(el)` through the proxy
+      // (manual integration, no inner v-register), and that delegate
+      // needs the binding live. Optional-member call, no-op for a
+      // hand-rolled RV.
+      if (capturedRegisterValue.value !== undefined) armDomBinding(capturedRegisterValue.value)
     } else {
       // Fallback path: no compile-time transform ran, so the bridge
       // attr never appeared. Read the directive binding directly off
@@ -237,6 +244,9 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
           ]
           if (marked === true) {
             capturedRegisterValue.value = dir.value as RegisterValue<V> | undefined
+            // Same arming as the bridge-attr path above.
+            if (capturedRegisterValue.value !== undefined)
+              armDomBinding(capturedRegisterValue.value)
             break
           }
         }

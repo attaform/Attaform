@@ -453,9 +453,13 @@ async function unifyAttaformBrandedTypes() {
   // and the regex needs a look. Any OTHER block that happens to match
   // is stripped too (harmless: the re-import restores one identity).
   await unifyBrandedTypesIn('attaform/zod.d.ts', ['Unset', 'PathKey'])
-  // history.d.ts inlines PathKey via the HistoryKernel maps/sets; it
-  // has no Unset on its surface.
-  await unifyBrandedTypesIn('attaform/history.d.ts', ['PathKey'])
+  // history.d.ts reaches PathKey through the HistoryKernel maps/sets,
+  // but the roll now emits it as `import type { PathKey } from
+  // './index'` — already the unified identity this step exists to
+  // produce — so no inline block is expected there. If a future roll
+  // regresses to inlining, the block is still stripped and re-imported
+  // by the shared pass; nothing is `expected`, so no warning either way.
+  await unifyBrandedTypesIn('attaform/history.d.ts', [])
 }
 
 async function unifyBrandedTypesIn(relPath, expected) {

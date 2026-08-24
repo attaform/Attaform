@@ -381,7 +381,26 @@ export async function measureEager(define = PROD_DEFINE) {
 // near-identical shells to almost nothing: folding textual twins buys
 // little; only deleting structurally redundant logic moves this number.
 // Budget tightened 36_200 -> 36_050 (the ~430 B headroom convention).
-const BUDGET_GZ = 36_050
+//
+// P8 RATCHET (surface program, 2026-08-24): callable-tree.ts replaced the
+// seven-module proxy zoo (surface-proxy, errors-proxy, field-state-proxy,
+// values-proxy, callable-readonly-snapshot-proxy [now wizard-only],
+// plus the two helper modules staying as imports); fields leaf views and
+// call-form terminals unified onto one cached per-path view over the
+// shared field-state accessor; errors toJSON trees memoised in
+// per-container computeds; the two build-form-api meta getter forests
+// loop-generated over FIELD_STATE_KEYS with a once-per-form shared
+// FormMetaBase bag (rollup computed-memoised); pickDefined collapsed the
+// conditional-spread stacks. The exotic-name schema-authority
+// arbitration is dropped (sign-off 8); the root call/apply/bind invoke
+// shims are RESTORED after the playground finding (sucrase downlevels
+// the documented `surface(path)?.x` idiom into a `.call`-reading helper
+// — no-uncaught-exceptions outranks the size sign-off). Measured
+// 34,530 B gz (down 1,091 from 35,621). Refused with measurement: the
+// leaf/container field-state builder fold (twin-tail-only, P6 gzip
+// discount), the activation-getter loop (+15 B), the useForm layer
+// collapse (type-weight only). Budget tightened 36_050 -> 34_950.
+const BUDGET_GZ = 34_950
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

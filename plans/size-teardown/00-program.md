@@ -10,8 +10,9 @@ attribution tables, verifier measurement scripts, the P8 replacement sketches).
 - Baseline: main @ fb532ad9, v0.27.6. Ratchet metric 46,477 B gz
   (minimal useForm, zod-v4, prod; `scripts/check-eager-size.mjs`).
 - Program target: ORIGINAL plan-of-record 25,960 B gz — SUPERSEDED by the
-  post-P5 re-anchor (2026-08-23): re-derived landing ~31.6 kB, honest range
-  30.5-32.5 kB (see the ruling note under the ledger). Tarball: 1.8 MB packed
+  post-P5 re-anchor (2026-08-23), re-derived again at the P8 boundary
+  (2026-08-24): landing ~32.3 kB, honest range 31.5-33.2 kB (see the
+  ruling note + addenda under the ledger). Tarball: 1.8 MB packed
   to 330-430 kB (unchanged; P0/P1a already banked most of it).
 
 ## Status ledger
@@ -30,11 +31,11 @@ number on the phase's merge commit, not an estimate.
 | P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted        |
 | P5    | store kernel                          | done    | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase     |
 | P6    | validation shell fold (re-scoped)     | done    | 35,621             | 2026-08-23 | -147 (under band); sign-off 4 retired           |
-| P8    | surface program                       | pending | ~33,700 exp.       |            | next; rep re-measured -1,937 on current tree    |
-| P7    | zod-core + probe packs                | pending | ~33,200 exp.       |            | 3rd; central band -300..-900 + barrel win       |
-| P1b   | error codes + prose diet              | pending | ~32,300 exp.       |            | 4th; build /e/AF## pages in the same PR         |
-| P9    | paths + walkers (re-scoped)           | pending | ~32,000 exp.       |            | 5th; trie + node(); reconcile merge = rep-first |
-| P10   | sweep and lock                        | pending | ~31,600 exp.       |            | last                                            |
+| P8    | surface program                       | done    | 34,530             | 2026-08-24 | -1,091; callable-tree; shims restored (+131)    |
+| P7    | zod-core + probe packs                | pending | ~33,900 exp.       |            | next; central band -300..-900 + barrel win      |
+| P1b   | error codes + prose diet              | pending | ~33,000 exp.       |            | 3rd; build /e/AF## pages in the same PR         |
+| P9    | paths + walkers (re-scoped)           | pending | ~32,700 exp.       |            | 4th; trie + node(); reconcile merge = rep-first |
+| P10   | sweep and lock                        | pending | ~32,300 exp.       |            | last                                            |
 
 > **RE-ANCHOR RULING (Oswald, 2026-08-23, post-P5): CONTINUE, re-scoped.**
 > His words: push wherever more is achievable without triggering
@@ -70,6 +71,18 @@ number on the phase's merge commit, not an estimate.
 >    gates (doc-snippets, bundled-types) must run against a fresh
 >    `pnpm exec unbuild` — the stale-dist trap has now bitten three
 >    times.
+> 6. P8 addendum (measured -1,091 vs -1,400..-2,200; 61%
+>    mid-realization): rep sketches price the LEAN ceiling — the pinned
+>    contract claws back real bytes; scale remaining rep-backed credits
+>    by ~0.6. NEW STANDING ITEM for Oswald: sign-off 8's sucrase-shim
+>    drop was REVERSED on evidence (+131 B) — the docs playground's
+>    @vue/repl compiles TS with sucrase WITHOUT disableESTransforms, so
+>    the documented `surface(path)?.x` idiom downlevels into a
+>    `.call`-reading helper that crashed post-drop
+>    (no-uncaught-exceptions outranks the size sign-off). Re-drop only
+>    with a P10 ruling that accepts the playground + sub-ES2020
+>    breakage or lands a compiler-side fix. Landing re-derived ~32.3 kB
+>    (honest range 31.5-33.2 kB).
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

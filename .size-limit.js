@@ -353,7 +353,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '56 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '55.25 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -579,7 +583,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '56 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '55.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -750,7 +758,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '49.75 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '49 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1000,7 +1012,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '51 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '50.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1047,7 +1063,11 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '40.25 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '39.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1266,7 +1286,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '42.5 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '41.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1326,7 +1350,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '36.5 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '35.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1406,7 +1434,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '38 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '36.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1525,7 +1557,11 @@ export default [
     // P6 (validation shell fold): tightened for the measured drop (-147 B
     // eager: one activeValidations shell, validateAsync absorbed into
     // parse's commit mode, micro-dedups, dev-gated engine hooks).
-    limit: '42.5 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '41.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1595,7 +1631,11 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '27.75 KB',
+    // P8 (surface program): tightened for the measured drop (callable-tree
+    // replaced the proxy zoo, meta getter forests loop-generated over
+    // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
+    // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
+    limit: '26.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

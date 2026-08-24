@@ -9,7 +9,7 @@
  *   - All three `setErrors` call forms type-check (whole-layer replace,
  *     functional updater, path-scoped), including the path-scoped updater.
  *   - The updater's `prev` is a firm `ValidationError[]`.
- *   - `formKey` is accepted but ignored (the form stamps its own), so
+ *   - Foreign fields are stripped during normalization, so
  *     `ValidationError` is a subtype of `ErrorInput` and read-back errors
  *     round-trip as input.
  *   - `clearErrors` accepts no arg, a string path, or a segment array.
@@ -48,15 +48,12 @@ form.clearErrors('email')
 form.clearErrors(['email'])
 form.clearErrors([])
 
-// formKey is accepted but ignored — the form stamps its own. A
-// ValidationError read off the form is therefore valid input: the output
-// type is a subtype of the input type, no excess-property friction.
-form.setErrors([{ message: 'x', formKey: 'nope' }])
+// A ValidationError read off the form is valid input: the output type
+// is a subtype of the input type, no excess-property friction.
 const roundTrip: ValidationError = {
   message: 'taken',
   path: ['email'],
   code: 'api:dup',
-  formKey: 'set-errors-fixture',
 }
 const asInput: ErrorInput = roundTrip
 form.setErrors([roundTrip])

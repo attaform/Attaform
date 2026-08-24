@@ -91,7 +91,7 @@ type FormWithInteract = {
   meta: { validating: boolean; submissionAttempts: number; showErrors: boolean }
   setValue: (path: string, value: unknown) => boolean
   values: (path?: string | readonly (string | number)[]) => unknown
-  validateAsync: (path?: string) => Promise<unknown>
+  parse: (path?: string | { commit?: boolean }, options?: { commit?: boolean }) => Promise<unknown>
   reset: () => void
 }
 
@@ -257,7 +257,7 @@ for (const { name, makeForm } of ADAPTERS) {
       await form.interact('email')
       expect(form.fields('email').showErrors).toBe(true)
       form.setValue('email', 'real@example.com')
-      await form.validateAsync()
+      await form.parse({ commit: true })
       await nextTick()
       expect(form.fields('email').showErrors).toBe(false)
     })

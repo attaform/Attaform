@@ -21,7 +21,7 @@ export function useAutosave<Form extends GenericForm>(
   async function run(path: FlatPath<Form>, value: unknown, signal: AbortSignal) {
     try {
       const gate = typeof gateOnValidity === 'function' ? gateOnValidity(path) : gateOnValidity
-      if (gate && !(await form.validateAsync(path)).success) {
+      if (gate && !(await form.parse(path, { commit: true })).success) {
         status[path] = 'idle'
         return
       }

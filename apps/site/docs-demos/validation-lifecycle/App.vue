@@ -23,10 +23,10 @@
       : `form.validate() → ${s.success ? '✓ valid' : '✗ invalid'}`
   }
 
-  async function runValidateAsync() {
-    lastResult.value = 'form.validateAsync() → awaiting…'
-    const res = await form.validateAsync()
-    lastResult.value = `form.validateAsync() → ${res.success ? '✓ valid' : '✗ invalid'}`
+  async function runCommittingParse() {
+    lastResult.value = 'form.parse({ commit: true }) → awaiting…'
+    const res = await form.parse({ commit: true })
+    lastResult.value = `form.parse({ commit: true }) → ${res.success ? '✓ valid' : '✗ invalid'}`
   }
 
   async function runParse() {
@@ -54,7 +54,9 @@
 
     <div class="actions mono">
       <button type="button" @click="runValidate">form.validate() (sync)</button>
-      <button type="button" @click="runValidateAsync">form.validateAsync() (awaited)</button>
+      <button type="button" @click="runCommittingParse"
+        >form.parse({ commit: true }) (awaited)</button
+      >
       <button type="button" @click="runParse">form.parse() (parsed payload)</button>
     </div>
 

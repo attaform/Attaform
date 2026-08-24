@@ -214,6 +214,7 @@ export type {
   ValidationError,
   ValidationResponse,
   ValidationResponseWithoutValue,
+  ParseOptions,
   WriteMeta,
 } from './types/types-api'
 

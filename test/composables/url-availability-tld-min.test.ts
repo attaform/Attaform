@@ -85,7 +85,7 @@ describe('URL-availability demo: TLD must be at least two characters', () => {
     unmounts.push(unmount)
 
     api.setValue('url', 'a.b')
-    await api.validateAsync('url')
+    await api.parse('url', { commit: true })
 
     expect(api.errors.url[0]?.message).toBe("That doesn't look like a URL.")
   })
@@ -95,7 +95,7 @@ describe('URL-availability demo: TLD must be at least two characters', () => {
     unmounts.push(unmount)
 
     api.setValue('url', 'ersdg')
-    await api.validateAsync('url')
+    await api.parse('url', { commit: true })
 
     expect(api.errors.url[0]?.message).toBe("That doesn't look like a URL.")
   })
@@ -105,7 +105,7 @@ describe('URL-availability demo: TLD must be at least two characters', () => {
     unmounts.push(unmount)
 
     api.setValue('url', 'something.co')
-    await api.validateAsync('url')
+    await api.parse('url', { commit: true })
 
     // Either no error (available) or the "taken" message — never the
     // "doesn't look like a URL" branch.
@@ -117,7 +117,7 @@ describe('URL-availability demo: TLD must be at least two characters', () => {
     unmounts.push(unmount)
 
     api.setValue('url', 'project.engineering')
-    await api.validateAsync('url')
+    await api.parse('url', { commit: true })
 
     expect(api.errors.url[0]?.message).not.toBe("That doesn't look like a URL.")
   })

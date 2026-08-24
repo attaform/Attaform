@@ -23,7 +23,7 @@ import type {
  * The architecture:
  *
  *   ┌─ Lives directly on `api` ───────────────────────────────┐
- *   │  setValue, handleSubmit, validateAsync, parse, reset,   │
+ *   │  setValue, handleSubmit, parse, reset,                  │
  *   │  resetField, register, fields, errors, values, key,     │
  *   │  meta, history, …                                       │
  *   └─────────────────────────────────────────────────────────┘
@@ -129,8 +129,9 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.reset).toBe('function')
     expect(typeof api.resetField).toBe('function')
     expect(typeof api.handleSubmit).toBe('function')
-    expect(typeof api.validateAsync).toBe('function')
     expect(typeof api.parse).toBe('function')
+    // validateAsync was absorbed by parse(path?, { commit: true }).
+    expect('validateAsync' in api).toBe(false)
     // The interaction-flag pair. They are siblings on purpose:
     // `touch` writes the descriptive `touched` flag, `interact`
     // simulates a full focus -> edit -> blur and drives the default

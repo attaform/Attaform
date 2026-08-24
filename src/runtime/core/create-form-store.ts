@@ -401,7 +401,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly submissionGeneration: Ref<number>
   /**
    * Counts in-flight validation calls across every `validate()` ref and
-   * every `validateAsync(...)` / `handleSubmit` pre-check. `validating`
+   * every committing `parse(...)` / `handleSubmit` pre-check. `validating`
    * on the public API mirrors `activeValidations.value > 0`. Tracked
    * separately from submissions because a validate-while-submitting
    * (e.g. a debounced field check overlapping a submit) needs to show
@@ -461,7 +461,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * call) and decremented in the matching `.finally` — so the per-path
    * bookkeeping is exactly co-extensive with the form-wide counter for
    * the field-scheduled branch. Whole-form `validate()` /
-   * `validateAsync()` runs touch `activeValidations` only; they don't
+   * `parse()` runs touch `activeValidations` only; they don't
    * have a single field path and so don't contribute here.
    *
    * Counter (not Set) because two runs for the same path can briefly
@@ -570,7 +570,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   /**
    * Replace `schemaErrors` under `path` with `errors`, keying each
    * error by its OWN absolute path. Used by validation pipelines
-   * (scheduleFieldValidation, validateAsync, handleSubmit, reset)
+   * (scheduleFieldValidation, the committing parse, handleSubmit, reset)
    * to commit a parse result wholesale — entries not in the new
    * pass get dropped from the subtree, surviving keys update in
    * place to preserve insertion order. Pass `path === []` for the
@@ -2655,7 +2655,7 @@ function cancelFieldValidation<F extends GenericForm, G extends GenericForm = F>
       // run() already fired and the chain is still in flight. Its
       // own `.finally` will decrement when the chain settles, but
       // the chain could outlive the caller (handleSubmit /
-      // validateAsync) that's cancelling us. Release the counters
+      // a committing parse) that's cancelling us. Release the counters
       // synchronously here so `meta.validating` reflects the cancel
       // immediately; the late `.finally`'s `Math.max(0, ...)`
       // clamps the duplicate decrement to zero.

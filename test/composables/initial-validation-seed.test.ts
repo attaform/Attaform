@@ -14,7 +14,7 @@ import { waitUntil } from '../utils/form-harness'
  * Initial validation seed: when a form is constructed in strict mode
  * and its default values fail schema validation, `schemaErrors` is
  * populated immediately at construction time (without requiring a user
- * mutation or an explicit `validateAsync` call).
+ * mutation or an explicit `parse({ commit: true })` call).
  *
  * Three invariants locked here:
  *   1. STRICT mode + invalid defaults  → seed populates schemaErrors.

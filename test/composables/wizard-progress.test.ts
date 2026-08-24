@@ -63,7 +63,7 @@ describe('useWizard — progress', () => {
       }
     })
     apps.push(app)
-    await result.a.validateAsync()
+    await result.a.parse({ commit: true })
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       await nextTick()
@@ -124,7 +124,7 @@ describe('useWizard — progress', () => {
       }
     })
     apps.push(app)
-    await result.a.validateAsync()
+    await result.a.parse({ commit: true })
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       await nextTick()
@@ -132,7 +132,7 @@ describe('useWizard — progress', () => {
     }
     expect(result.wizard.progress).toBe(1)
     result.b.setValue('value', 'ok')
-    await result.b.validateAsync()
+    await result.b.parse({ commit: true })
     for (let i = 0; i < 16; i += 1) {
       await Promise.resolve()
       await nextTick()

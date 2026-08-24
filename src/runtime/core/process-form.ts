@@ -9,7 +9,6 @@ import type {
   SubmitHandler,
   ValidationError,
   ValidationResponse,
-  ValidationResponseWithoutValue,
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
@@ -197,22 +196,18 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * Shared shell for the imperative validation paths (`validateAsync`,
-   * `process`). Handles the path-segment resolution, the
-   * `activeValidations` increment/decrement (Math.max-guarded against
-   * a sync watcher throw between increment and refinement), the
+   * Shared shell for the imperative validation path (`parse`, both
+   * modes). Handles the path-segment resolution, the
+   * `activeValidations` lifecycle (via `withActiveValidation`), the
    * adapter-throw → structured-failure translation, and the optional
    * pre-validate cancellation + post-validate schema-error commit
-   * that distinguishes `validateAsync` from `process`. Callers
-   * post-process the refinement themselves (the blank-class
-   * composition, the data strip — both unique to their public
-   * contract).
+   * that `commit: true` switches on. The caller composes the
+   * blank class into the refinement itself.
    *
-   * The discriminated `ok` branch lets each caller preserve the
-   * exact behavior on adapter throw: `validateAsync` and `process`
-   * historically returned the adapter-throw response verbatim, never
-   * folding `derivedBlankErrors` into it, so the helper returns the
-   * raw `adapterThrowResponse` for the failure leg.
+   * The discriminated `ok` branch preserves the exact behavior on
+   * adapter throw: the adapter-throw response is returned verbatim,
+   * never folding `derivedBlankErrors` into it, so the helper returns
+   * the raw `adapterThrowResponse` for the failure leg.
    */
   type ImperativeValidationOptions = {
     cancelInFlight: boolean
@@ -279,76 +274,56 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * Imperative one-shot validation. Doesn't subscribe to form reactivity;
-   * each call runs validation once against the current form snapshot.
-   * Used by consumers who want to `await` a single validation run — the
-   * debounced field-level path in 5.7, server-side round-trips, tests.
+   * Imperative one-shot parse. Doesn't subscribe to form reactivity;
+   * each call runs the full pipeline once against the current form
+   * snapshot — refinements, `.transform()`s, blank-required
+   * composition — and RETAINS the parsed data. Returns what
+   * `form.values` WOULD be if every refinement passed and every
+   * transform fired: storage holds the pre-transform "honest input
+   * view" (Attaform runs preprocess at write time, never
+   * `.transform()`), and `parse` is the on-demand read of the
+   * post-transform output. handleSubmit's callback receives this same
+   * shape.
    *
-   * Cancels any in-flight per-field validation (mirroring `handleSubmit`)
-   * so a late SFV resolution can't clobber this call's authoritative
-   * result, and writes the parsed refinement back to `schemaErrors` at
-   * the validated scope — `await validateAsync(path)` therefore lands
-   * a deterministic view of `form.errors.<path>` regardless of the
-   * background SFV race.
-   */
-  async function validateAsync(
-    pathInput?: string | Path
-  ): Promise<ValidationResponseWithoutValue<F>> {
-    const result = await runImperativeValidation(pathInput, {
-      cancelInFlight: true,
-      commitToSchemaErrors: true,
-    })
-    if (!result.ok) return result.error
-    return stripData(composeWithDerivedBlank(result.refinement, result.segments))
-  }
-
-  /**
-   * Imperative one-shot parse — same pipeline as `validateAsync` but
-   * RETAINS the parsed data. Returns what `form.values` WOULD be if
-   * every refinement passed and every transform fired. Useful when
-   * the form's storage holds the pre-transform input view (the
-   * "honest input view" — Attaform doesn't run `.transform()` at
-   * write time, only preprocess) and the consumer wants the
-   * post-transform output on demand.
+   * `commit: false` is a PURE read: no store write, no effect on
+   * in-flight field validation — "what would the parsed form look
+   * like right now", independent of the live `form.errors` surface.
    *
-   * For a schema like `z.object({ email: z.string().transform(v =>
-   * v.length > 10) })`, `form.values.email` is the string the user
-   * wrote, while `(await form.parse()).data?.email` is the boolean
-   * the transform produces. handleSubmit's callback already receives
-   * this same shape (it's what the parse pipeline emits before
-   * onSubmit runs); `parse()` is the standalone read-only form.
+   * `commit: true` makes the run authoritative: cancels any in-flight
+   * per-field validation (mirroring `handleSubmit`) so a late SFV
+   * resolution can't clobber the result, and writes the refinement
+   * verdict back to `schemaErrors` at the validated scope — `await
+   * parse(path, { commit: true })` lands a deterministic view of
+   * `form.errors.<path>` regardless of the background SFV race.
    *
    * Always async, and there is no synchronous variant by design. A
    * schema can carry async refinements (`.refine(async ...)`) or async
    * transforms, so a sync parse would silently miss them the moment
    * one is added — a latent correctness bug. One always-awaited `parse`
-   * closes that category entirely. The path-scoped variant mirrors
-   * `validateAsync(path?)` — `parse('email')` returns the parsed value
-   * at that path only.
+   * closes that category entirely. `parse('email', ...)` scopes the
+   * run to that path only.
    *
-   * Unlike `validateAsync`, `parse` does NOT cancel in-flight field
-   * validation and does NOT commit the parsed result to `schemaErrors`
-   * — `parse` is a pure read of "what would the parsed form look like
-   * right now", independent of the live `form.errors` surface.
-   *
-   * Like `validateAsync`, this never rejects on adapter misbehavior:
-   * a throwing adapter (or any pipeline failure) lands in the
-   * response as a `success: false, errors: [{ code: AdapterThrew }]`
-   * shape so the library stays robust against a bad adapter.
+   * Never rejects on adapter misbehavior: a throwing adapter (or any
+   * pipeline failure) lands in the response as a `success: false,
+   * errors: [{ code: AdapterThrew }]` shape so the library stays
+   * robust against a bad adapter.
    */
-  async function parse(pathInput?: string | Path): Promise<ValidationResponse<Out>> {
+  async function parse(
+    pathInput: string | Path | undefined,
+    options: { commit: boolean }
+  ): Promise<ValidationResponse<Out>> {
     const result = await runImperativeValidation(pathInput, {
-      cancelInFlight: false,
-      commitToSchemaErrors: false,
+      cancelInFlight: options.commit,
+      commitToSchemaErrors: options.commit,
     })
     if (!result.ok) return result.error
     return composeWithDerivedBlank(result.refinement, result.segments)
   }
 
   /**
-   * Build an adapter-threw failure response. Shared between
-   * `validateAsync`, `parse`, and the reactive `validate()`'s
-   * kickoff so every imperative validation surface presents the same
+   * Build an adapter-threw failure response. Shared between `parse`
+   * and the reactive `validate()`'s kickoff so every validation
+   * surface presents the same
    * shape on adapter misbehavior: `{ success: false, errors: [{ code
    * AdapterThrew, message: adapterThrowMessage(err), path: [] }],
    * formKey }`. The `data` field is `undefined` so the
@@ -687,7 +662,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     return submitHandler
   }
 
-  return { validate, validateAsync, parse, handleSubmit }
+  return { validate, parse, handleSubmit }
 }
 
 function toSegments(pathInput: string | Path): Path {
@@ -701,15 +676,6 @@ function settled<F extends GenericForm>(
     return { pending: false, errors: undefined, success: true, formKey: response.formKey }
   }
   return { pending: false, errors: response.errors, success: false, formKey: response.formKey }
-}
-
-function stripData<F extends GenericForm>(
-  response: ValidationResponse<F>
-): ValidationResponseWithoutValue<F> {
-  if (response.success) {
-    return { errors: undefined, success: true, formKey: response.formKey }
-  }
-  return { errors: response.errors, success: false, formKey: response.formKey }
 }
 
 function adapterThrowMessage(err: unknown): string {
@@ -758,7 +724,7 @@ function collectScopedBlankErrors<F extends GenericForm>(
 
 /**
  * `true` if `target`'s segments start with `prefix`. Used to honour the
- * per-path scope of `validate(path)` / `validateAsync(path)` — only
+ * per-path scope of `validate(path)` / `parse(path, ...)` — only
  * blank paths inside the validated subtree contribute. An empty prefix
  * matches every path.
  */

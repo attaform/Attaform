@@ -16,7 +16,7 @@ import type {
   ValidateOn,
   ValidationError,
   ValidationResponse,
-  ValidationResponseWithoutValue,
+  ParseOptions,
   WriteMeta,
 } from '../types/types-api'
 import type { DeepPartial, DefaultValuesInput, GenericForm } from '../types/types-core'
@@ -326,7 +326,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     options.onInvalidSubmit ?? 'focus-first-error'
   const {
     validate: validateBuilt,
-    validateAsync: validateAsyncBuilt,
     parse: parseBuilt,
     handleSubmit,
   } = buildProcessForm<Form, GetValueFormType>(state, formInstanceId, processOptions)
@@ -334,11 +333,18 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const validate = (pathInput?: string) =>
     validateBuilt(pathInput) as Ref<ReactiveValidationStatus<Form>>
 
-  const validateAsync = (pathInput?: string) =>
-    validateAsyncBuilt(pathInput) as Promise<ValidationResponseWithoutValue<Form>>
-
-  const parse = (pathInput?: string) =>
-    parseBuilt(pathInput) as Promise<ValidationResponse<GetValueFormType>>
+  // Two public call forms, mirroring `setErrors`' first-arg dispatch:
+  // `parse(path?, options?)` and `parse(options)` — a path-shaped first
+  // arg (string) scopes the run, a lone options bag applies to the
+  // whole form. `commit` defaults false (the pure read).
+  const parse = (arg1?: string | ParseOptions, arg2?: ParseOptions) => {
+    const isPathArg = typeof arg1 === 'string' || Array.isArray(arg1)
+    const pathInput = isPathArg ? (arg1 as string) : undefined
+    const options = isPathArg ? arg2 : (arg1 as ParseOptions | undefined)
+    return parseBuilt(pathInput, { commit: options?.commit === true }) as Promise<
+      ValidationResponse<GetValueFormType>
+    >
+  }
 
   // --- toRef escape hatch — Readonly<Ref<...>> for the rare case
   // a consumer needs ref-shaped interop (external composables that
@@ -964,10 +970,10 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     // form (which legitimately resolves nothing) stays quiet.
     if (!state.interactAtPath(segments)) return
     try {
-      await validateAsyncBuilt(pathInput === undefined ? undefined : segments)
+      await parseBuilt(pathInput === undefined ? undefined : segments, { commit: true })
     } catch {
-      // `validateAsync` reports failure through its return value; a
-      // throw here means the adapter itself blew up. The flags are
+      // The committing parse reports failure through its return value;
+      // a throw here means the adapter itself blew up. The flags are
       // already set, so the gate is open either way — swallow rather
       // than reject into the consumer's app.
     }
@@ -1160,10 +1166,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     },
     setValue: gated(setValueImpl) as UseFormReturnType<Form, GetValueFormType>['setValue'],
     validate: gated(validate) as UseFormReturnType<Form, GetValueFormType>['validate'],
-    validateAsync: gated(validateAsync) as UseFormReturnType<
-      Form,
-      GetValueFormType
-    >['validateAsync'],
     parse: gated(parse) as UseFormReturnType<Form, GetValueFormType>['parse'],
     settleTransforms: gated(state.settleTransforms) as UseFormReturnType<
       Form,

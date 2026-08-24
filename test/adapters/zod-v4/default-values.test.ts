@@ -126,7 +126,7 @@ describe('zodAdapter.getDefaultValues — strict-mode refinement enforcement', (
     // on them. The adapter catches the throw and returns success so the
     // form still mounts. Async refines fire on first user mutation via
     // `validateAtPath` (which uses `safeParseAsync`), or via an explicit
-    // `validateAsync()` call after mount.
+    // `parse({ commit: true })` call after mount.
     const schema = z.object({
       email: z.email().refine(async () => Promise.resolve(true), 'taken'),
     })

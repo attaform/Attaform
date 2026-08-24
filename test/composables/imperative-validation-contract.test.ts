@@ -73,7 +73,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     const api = mount({ schema: schema(), validateOn: 'blur' })
     api.setValue('email', 'not-an-email')
 
-    const failing = await api.validateAsync('email')
+    const failing = await api.parse('email', { commit: true })
     expect(failing.success).toBe(false)
     // The verdict landed in the store: the aggregate now carries the
     // refinement entry at the validated scope.
@@ -86,7 +86,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     // Re-running against a now-valid value REPLACES the stale entry —
     // the committed scope drops to clean.
     api.setValue('email', 'alice@example.com')
-    const passing = await api.validateAsync('email')
+    const passing = await api.parse('email', { commit: true })
     expect(passing.success).toBe(true)
     const remaining = api.meta.errors.filter(
       (e: { code?: string }) => e.code !== 'atta:no-value-supplied'
@@ -114,7 +114,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     // Path-scoped to the OTHER field, whose refinement is sync — but the
     // imperative call cancels ALL in-flight field runs (mirroring
     // handleSubmit), so username's gated run is dropped, not awaited.
-    const response = await api.validateAsync('password')
+    const response = await api.parse('password', { commit: true })
     expect(response.success).toBe(false) // min(8) fails on ''
     expect(api.fields.username.validating).toBe(false)
 
@@ -130,7 +130,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     const numeric = z.object({ age: z.number(), score: z.number() })
     const api = mount({ schema: numeric, validateOn: 'blur' })
 
-    const whole = await api.validateAsync()
+    const whole = await api.parse({ commit: true })
     expect(whole.success).toBe(false)
     const wholeBlanks = (whole.errors ?? []).filter(
       (e: { code?: string }) => e.code === 'atta:no-value-supplied'
@@ -139,7 +139,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     expect(wholePaths).toContain('age')
     expect(wholePaths).toContain('score')
 
-    const scoped = await api.validateAsync('age')
+    const scoped = await api.parse('age', { commit: true })
     expect(scoped.success).toBe(false)
     const scopedBlanks = (scoped.errors ?? []).filter(
       (e: { code?: string }) => e.code === 'atta:no-value-supplied'
@@ -150,7 +150,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
 
   it('meta.validating flips for the imperative run and settles false', async () => {
     const api = mount({ schema: schema(), validateOn: 'blur' })
-    const pending = api.validateAsync()
+    const pending = api.parse({ commit: true })
     await Promise.resolve()
     expect(api.meta.validating).toBe(true)
     await pending

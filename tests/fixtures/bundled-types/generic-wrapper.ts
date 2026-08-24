@@ -19,6 +19,7 @@
 import { z } from 'zod'
 import { useForm } from 'attaform/zod'
 import { useForm as useFormV4 } from 'attaform/zod-v4'
+import type { FlatPath, GenericForm, UseFormReturnType } from 'attaform'
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
@@ -60,6 +61,23 @@ function _neverInvoked() {
   // inflates instantiation depth artificially (a single such call in
   // isolation compiles fine). This fixture stays focused on its job — proving
   // the generic wrappers compile against the bundled `.d.ts` without TS2589.
+
+  // ---- parse call forms under a free generic form (the autosave shape) ----
+  // Both public shapes must resolve against the bundled overloads with the
+  // path slot still generic: `parse(path, options)` and the lone options
+  // bag. A regression here is exactly what a generic composable (autosave,
+  // step guards) hits first.
+  async function parseForms<Form extends GenericForm>(
+    form: UseFormReturnType<Form>,
+    path: FlatPath<Form>
+  ) {
+    await form.parse(path, { commit: true })
+    await form.parse({ commit: true })
+    await form.parse()
+    await form.parse(path)
+    return form
+  }
+  void parseForms
 
   return [unified, v4] as const
 }

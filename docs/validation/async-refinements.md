@@ -96,11 +96,11 @@ Two rapid edits before the first probe returns: the directive cancels the stale 
 
 An async refinement's job is to return a verdict: it reads a value and answers "is this allowed?". Writing to your server inside that same loop (saving the value while you check it) is tempting, but it tangles two concerns, validity and persistence, into one predicate. Keep the refinement a pure read, and persist on change through an [autosave](/docs/cross-cutting-state/autosave) instead.
 
-The two compose cleanly. An [autosave](/docs/cross-cutting-state/autosave) handler can gate its write on `await form.validateAsync(path)`, so the refinement you wrote here decides whether the save fires. One value check, reused for both the error message and the save gate.
+The two compose cleanly. An [autosave](/docs/cross-cutting-state/autosave) handler can gate its write on `await form.parse(path, { commit: true })`, so the refinement you wrote here decides whether the save fires. One value check, reused for both the error message and the save gate.
 
 ## Where to next
 
 - [Autosave](/docs/cross-cutting-state/autosave): the watch-based recipe for persisting values as they change.
-- [The validation lifecycle](/docs/validation/lifecycle): the imperative `validateAsync()` for non-submit code paths.
+- [The validation lifecycle](/docs/validation/lifecycle): the imperative committing `parse` for non-submit code paths.
 - [When validation runs](/docs/validation/when-validation-runs): the `validateOn` cadence knob.
 - [`handleSubmit`](/docs/submitting/handle-submit): the dispatch surface that awaits async refinements.

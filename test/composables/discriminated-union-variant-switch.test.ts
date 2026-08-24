@@ -210,7 +210,7 @@ describe('discriminated-union variant switch — error reactivity', () => {
     expect(api.errors('notify.number')).toHaveLength(1)
   })
 
-  it('validateAsync reflects the new variant in the returned response', async () => {
+  it('parse({ commit: true }) reflects the new variant in the returned response', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -219,7 +219,7 @@ describe('discriminated-union variant switch — error reactivity', () => {
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    const response = await api.validateAsync()
+    const response = await api.parse({ commit: true })
     expect(response.success).toBe(false)
     expect(response.errors?.some((e) => e.path.join('.') === 'notify.number')).toBe(true)
   })
@@ -1928,7 +1928,7 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
     // -100 violates min(-30); drive validation explicitly so the leaf
     // lights up regardless of debounce timing.
     api.setValue('cargo.tempMinC', -100)
-    const result = await api.validateAsync()
+    const result = await api.parse({ commit: true })
     expect(result.success).toBe(false)
     await nextTick()
 

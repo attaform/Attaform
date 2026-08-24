@@ -8,14 +8,14 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Read-half parity: `validateAsync` and `handleSubmit` must await async
+ * Read-half parity: `parse({ commit: true })` and `handleSubmit` must await async
  * `.refine` predicates identically on the v3 and v4 adapters.
  *
  * This is the validation half of the autosave story. The write half (a
  * `watch` on `form.values`) persists a value; the read half decides
  * whether that value is allowed; the autosave gate composes them through
- * `await form.validateAsync(path)`. That gate only holds if the per-field
- * `validateAsync(path)` awaits the field's async refine on both adapters,
+ * `await form.parse(path, { commit: true })`. That gate only holds if the per-field
+ * `parse(path, { commit: true })` awaits the field's async refine on both adapters,
  * so this file pins it on both, row for row.
  *
  * `async-validation.test.ts` exercises the same surface through the
@@ -43,7 +43,7 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
 
   // `username` carries an async uniqueness refine; `password` a sync
   // min length. Lax mode keeps the mount clean so every test drives the
-  // async path explicitly through validateAsync / handleSubmit rather
+  // async path explicitly through parse({ commit: true }) / handleSubmit rather
   // than the construction-time strict seed.
   const schema = z.object({
     username: z.string().refine(async (value: string) => {
@@ -72,12 +72,12 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
     return handle.api
   }
 
-  describe('validateAsync() — whole form', () => {
+  describe('parse({ commit: true }) — whole form', () => {
     it('resolves success when the async refine passes', async () => {
       const api = mountForm()
       api.setValue('username', 'free')
       api.setValue('password', 'very-secret')
-      const result = await api.validateAsync()
+      const result = await api.parse({ commit: true })
       expect(result.success).toBe(true)
       expect(result.errors).toBeUndefined()
     })
@@ -86,7 +86,7 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
       const api = mountForm()
       api.setValue('username', 'taken')
       api.setValue('password', 'very-secret')
-      const result = await api.validateAsync()
+      const result = await api.parse({ commit: true })
       expect(result.success).toBe(false)
       const message = result.errors?.find(
         (e: { path: PropertyKey[]; message: string }) => e.path[0] === 'username'
@@ -95,20 +95,20 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
     })
   })
 
-  describe('validateAsync(path) — per-field subtree (the autosave gate)', () => {
+  describe('parse(path, { commit: true }) — per-field subtree (the autosave gate)', () => {
     it('resolves success for a valid field even when a sibling is invalid', async () => {
       const api = mountForm()
       api.setValue('username', 'free')
       // Sibling fails `min(8)`; per-field scoping must ignore it.
       api.setValue('password', '')
-      const result = await api.validateAsync('username')
+      const result = await api.parse('username', { commit: true })
       expect(result.success).toBe(true)
     })
 
     it('resolves failure when the field-scoped async refine rejects', async () => {
       const api = mountForm()
       api.setValue('username', 'taken')
-      const result = await api.validateAsync('username')
+      const result = await api.parse('username', { commit: true })
       expect(result.success).toBe(false)
       // A path-scoped call surfaces the message on the reactive
       // `errors.<path>` bucket (the consumer-facing read); `result.errors`

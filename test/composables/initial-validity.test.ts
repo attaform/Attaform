@@ -134,7 +134,7 @@ describe('initial validity gating — async-refinement schema (the demo case)', 
     expect(valid(api, ['reference'])).toBe(true)
   })
 
-  it('flips to true after a manual validateAsync resolves with no errors', async () => {
+  it('flips to true after a manual parse({ commit: true }) resolves with no errors', async () => {
     const handle: { api?: AsyncApi } = {}
     const App = defineComponent({
       setup() {
@@ -152,7 +152,7 @@ describe('initial validity gating — async-refinement schema (the demo case)', 
     apps.push(app)
 
     expect(handle.api?.meta.valid).toBe(false) // gate, not errors
-    await handle.api?.validateAsync()
+    await handle.api?.parse({ commit: true })
     await nextTick()
     expect(handle.api?.meta.valid).toBe(true)
     expect(valid(handle.api, [[]])).toBe(true)

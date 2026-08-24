@@ -2,7 +2,7 @@
 /**
  * PASS2-3 — `run()` wrote `lastValidatedSnapshot` at run-START,
  * BEFORE the post-resolve abort re-check. A path-scoped
- * `validateAsync(other)` calls `cancelFieldValidation()`
+ * `parse(other, { commit: true })` calls `cancelFieldValidation()`
  * synchronously, aborting the in-flight blur run for the
  * interactively-blurred path — but the snapshot had already
  * advanced. The blur-dedup at the next focus/blur cycle then
@@ -18,9 +18,9 @@
  * Repro forces the race deterministically with async refines:
  *   1. Type into A so the directive flips `interacted`, then
  *      blur A. `run()` queues the validate microtask.
- *   2. SYNCHRONOUSLY call `validateAsync('b')` —
+ *   2. SYNCHRONOUSLY call `parse('b', { commit: true })` —
  *      `cancelFieldValidation()` aborts A's pending run before
- *      its `.then` ever fires; `validateAsync` writes for B only.
+ *      its `.then` ever fires; `parse({ commit: true })` writes for B only.
  *   3. Refocus A, blur unchanged. Without the fix, the snapshot
  *      from step 1 makes the dedup skip → A shows success.
  */
@@ -112,10 +112,10 @@ describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSche
     // the post-resolve abort check. The validate microtask is queued.
     aInput.dispatchEvent(new FocusEvent('blur'))
 
-    // Synchronously interleave a path-scoped `validateAsync('b')` so
+    // Synchronously interleave a path-scoped `parse('b', { commit: true })` so
     // `cancelFieldValidation()` aborts A's pending run before its
-    // `.then` ever fires. `validateAsync('b')` writes only B's bucket.
-    void api.validateAsync('b')
+    // `.then` ever fires. `parse('b', { commit: true })` writes only B's bucket.
+    void api.parse('b', { commit: true })
 
     await drainMicrotasks()
     // Sanity — A's verdict was aborted, so A's bucket stays empty.

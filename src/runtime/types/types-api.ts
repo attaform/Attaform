@@ -75,7 +75,7 @@ interface JsonObject {
  * merge lists across forms (the wizard) stamp their own envelope. The
  * optional `data` slot carries an arbitrary server payload.
  *
- * Returned by `validate()` / `validateAsync()` / `handleSubmit`'s
+ * Returned by `validate()` / `parse()` / `handleSubmit`'s
  * `onError` callback, and accepted (leniently, as `ErrorInput`) by
  * `form.setErrors`.
  */
@@ -205,10 +205,20 @@ export type DefaultValuesResponse<TData> =
 
 /**
  * Trimmed `ValidationResponse` that omits the `data` payload. Used by
- * `validate()` / `validateAsync()` since consumers usually only need
- * the success flag and error list at those entry points.
+ * the reactive `validate()` status, whose consumers only need the
+ * success flag and error list.
  */
 export type ValidationResponseWithoutValue<Form> = Omit<ValidationResponse<Form>, 'data'>
+
+/**
+ * Options bag for `form.parse`. `commit: true` turns the pure read
+ * into an authoritative run: the verdict is committed to the error
+ * store at the parsed scope and in-flight per-field validation runs
+ * are cancelled first. Default `false`.
+ */
+export type ParseOptions = {
+  readonly commit?: boolean
+}
 
 /**
  * Sync-or-async return shape for `AbstractSchema.validateAtPath`. The
@@ -377,7 +387,7 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * the gate accepts the consumer's raw value verbatim and stops
    * walking children — storage holds the user's input, and the
    * normalizer fires during `safeParse` (handleSubmit / validate /
-   * validateAsync), not at `setValue` time.
+   * parse), not at `setValue` time.
    *
    * Path-prefix semantic: returns true if ANY ancestor of `path`
    * resolves to such a wrapper, so descendants under a preprocess-
@@ -841,7 +851,7 @@ export type OnInvalidSubmitPolicy = 'none' | 'focus-first-error' | 'scroll-to-fi
  *   registered field. No debounce — `debounceMs` is rejected by the
  *   type.
  * - `'submit'`: no live validation. `handleSubmit` and explicit
- *   `validate()` / `validateAsync()` calls are the only validation
+ *   `validate()` / `parse()` calls are the only validation
  *   surfaces. `debounceMs` is rejected by the type.
  */
 export type ValidateOn = 'change' | 'blur' | 'submit'
@@ -1492,7 +1502,7 @@ export type AttaformDefaults = {
    *
    * "Permissive fallback" means storage and reads keep working at any
    * depth; only the per-write type gate stops checking past the cap.
-   * Full schema validation (`validateAsync`, `handleSubmit`) still runs
+   * Full schema validation (`parse`, `handleSubmit`) still runs
    * against the real schema, so refinement errors at any depth still
    * surface — the cap only affects the *write-time gate*.
    *
@@ -2903,7 +2913,7 @@ export type FieldState<Value = unknown> = {
    * `true` while a per-field validation run is in flight at this path.
    * Reflects field-level debounced runs (`validate-on-change`) and
    * cross-field re-validations targeting this path. Whole-form
-   * `validate()` / `validateAsync()` calls drive `form.meta.validating`
+   * `validate()` / `parse()` calls drive `form.meta.validating`
    * only — they don't flip per-field flags.
    *
    * Per-field analogue of `form.meta.validating`. Use for a tight
@@ -3972,19 +3982,6 @@ export type UseFormReturnType<
   validate: (path?: FlatPath<Form>) => Readonly<Ref<ReactiveValidationStatus<Form>>>
 
   /**
-   * Run validation once and return the result. Unlike `validate()`,
-   * this does not subscribe to form reactivity.
-   *
-   * ```ts
-   * const result = await form.validateAsync()
-   * if (!result.success) showErrors(result.errors)
-   * ```
-   *
-   * Pass a path to validate a subtree. `state.validating` flips
-   * `true` while the promise is in flight.
-   */
-  validateAsync: (path?: FlatPath<Form>) => Promise<ValidationResponseWithoutValue<Form>>
-  /**
    * Resolve once every in-flight async `register({ transforms })` run
    * has settled — globally, or (with `path`) only at-or-under that path.
    * Resolve-never-reject: a transform that throws still settles the
@@ -4005,9 +4002,9 @@ export type UseFormReturnType<
    */
   settleTransforms: (path?: FlatPath<Form>) => Promise<void>
   /**
-   * Imperative one-shot parse. Same pipeline as `validateAsync` —
-   * runs refinements, applies `.transform()`s, composes blank-required
-   * errors — but RETAINS the parsed data instead of stripping it.
+   * Imperative one-shot parse. Runs the full pipeline — refinements,
+   * `.transform()`s, blank-required composition — against the current
+   * form snapshot and RETAINS the parsed data.
    *
    * Storage holds the "honest input view" — values you wrote, with
    * preprocess normalization applied but `.transform()` deferred. For
@@ -4025,16 +4022,31 @@ export type UseFormReturnType<
    * }
    * ```
    *
+   * By default the call is a PURE read: nothing is written to
+   * `form.errors`, and in-flight per-field validation runs are left
+   * alone. Pass `{ commit: true }` to make the run authoritative —
+   * the verdict is committed to the error store at the parsed scope
+   * and any in-flight per-field runs are cancelled first (mirroring
+   * `handleSubmit`), so `await form.parse('email', { commit: true })`
+   * lands a deterministic view of `form.errors.email`:
+   *
+   * ```ts
+   * const result = await form.parse({ commit: true })
+   * if (!result.success) showErrors(result.errors)
+   * ```
+   *
    * Always async, and there is no synchronous variant by design: a
    * schema can carry async refinements or transforms, so a sync parse
    * would silently miss them the moment one is added. One always-
    * awaited `parse` closes that category of bug entirely. The returned
    * promise never rejects (a thrown adapter lands as a `success: false`
    * response). Pass a path to parse a subtree only. `meta.validating`
-   * flips `true` while the promise is in flight (shared with
-   * validateAsync).
+   * flips `true` while the promise is in flight.
    */
-  parse: (path?: FlatPath<Form>) => Promise<ValidationResponse<GetValueFormType>>
+  parse: {
+    (path?: FlatPath<Form>, options?: ParseOptions): Promise<ValidationResponse<GetValueFormType>>
+    (options: ParseOptions): Promise<ValidationResponse<GetValueFormType>>
+  }
   /**
    * Bind a path to a native input via `v-register`. Returns a
    * `RegisterValue` carrying the live ref and event handlers the

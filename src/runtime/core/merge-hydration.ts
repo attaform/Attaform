@@ -75,7 +75,7 @@ function mergeDeep(
  *   2. source's disc is unknown to the schema → collapse to a
  *      disc-only stub `{ [discKey]: discValue }` (mirrors the
  *      runtime stub-state contract; validation surfaces the
- *      mismatch on first validateAsync).
+ *      mismatch on the first committing parse).
  *   3. source carries foreign keys (sibling-variant fields the
  *      active variant doesn't declare) → drop them; the merge only
  *      keeps source keys that exist in the matched variant default.

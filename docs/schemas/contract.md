@@ -98,7 +98,7 @@ z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string())
 z.string().transform((s) => s.toLowerCase())
 ```
 
-Both fire at parse time (`handleSubmit`, `validate`, `validateAsync`); storage holds the consumer's raw input verbatim. [How values are stored](/docs/schemas/storage-shape) walks the implications.
+Both fire at parse time (`handleSubmit`, `validate`, `parse`); storage holds the consumer's raw input verbatim. [How values are stored](/docs/schemas/storage-shape) walks the implications.
 
 ### Metadata
 

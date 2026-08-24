@@ -148,7 +148,7 @@ const entries: SmokeEntry[] = [
   {
     // Type an invalid email and blur — the field's per-field
     // validation pipeline renders the schema's error message under
-    // the input. The button-driven `validateAsync()` flow is the
+    // the input. The button-driven `parse({ commit: true })` flow is the
     // demo's pedagogical centerpiece but its result settles via a
     // dynamic adapter import that doesn't resolve under jsdom +
     // vite-served modules in CI; the per-field error path is the

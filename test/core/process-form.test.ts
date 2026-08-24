@@ -131,19 +131,22 @@ describe('buildProcessForm', () => {
     })
   })
 
-  describe('validateAsync', () => {
-    it('resolves to a settled response for the full form', async () => {
+  describe('parse — commit mode', () => {
+    it('resolves to a settled response for the full form, data retained', async () => {
       const state = alwaysValid()
-      const { validateAsync } = buildProcessForm(state, 'test:inst')
-      const response = await validateAsync()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const response = await parse(undefined, { commit: true })
       expect(response.success).toBe(true)
       expect(response.errors).toBeUndefined()
+      if (response.success) {
+        expect(response.data).toEqual({ email: 'a@b', password: 'secret1!' })
+      }
     })
 
     it('resolves to a failure response when the schema rejects', async () => {
       const state = alwaysInvalid()
-      const { validateAsync } = buildProcessForm(state, 'test:inst')
-      const response = await validateAsync()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      const response = await parse(undefined, { commit: true })
       expect(response.success).toBe(false)
       expect(response.errors).toEqual([
         {
@@ -156,10 +159,10 @@ describe('buildProcessForm', () => {
 
     it('decrements activeValidations back to 0 on completion', async () => {
       const state = alwaysValid()
-      const { validateAsync } = buildProcessForm(state, 'test:inst')
-      // validateAsync runs synchronously to the first await — its
-      // counter bump happens before the returned promise resolves.
-      const pending = validateAsync()
+      const { parse } = buildProcessForm(state, 'test:inst')
+      // The committing parse runs synchronously to the first await —
+      // its counter bump happens before the returned promise resolves.
+      const pending = parse(undefined, { commit: true })
       expect(state.activeValidations.value).toBe(1)
       await pending
       expect(state.activeValidations.value).toBe(0)
@@ -178,9 +181,9 @@ describe('buildProcessForm', () => {
         formKey: 'pf',
         schema: fakeSchema<Signup>({ email: '', password: '' }, throwingValidator),
       })
-      const { validateAsync } = buildProcessForm(state, 'test:inst')
+      const { parse } = buildProcessForm(state, 'test:inst')
 
-      const response = await validateAsync()
+      const response = await parse(undefined, { commit: true })
       expect(response.success).toBe(false)
       expect(response.errors?.[0]?.code).toBe('atta:adapter-threw')
       expect(response.errors?.[0]?.message).toContain('adapter boom')
@@ -193,7 +196,7 @@ describe('buildProcessForm', () => {
     it('resolves with the parsed data on success', async () => {
       const state = alwaysValid()
       const { parse } = buildProcessForm(state, 'test:inst')
-      const response = await parse()
+      const response = await parse(undefined, { commit: false })
       expect(response.success).toBe(true)
       if (response.success) {
         expect(response.data).toEqual({ email: 'a@b', password: 'secret1!' })
@@ -203,7 +206,7 @@ describe('buildProcessForm', () => {
     it('resolves with a failure response when the schema rejects (errors + no data)', async () => {
       const state = alwaysInvalid()
       const { parse } = buildProcessForm(state, 'test:inst')
-      const response = await parse()
+      const response = await parse(undefined, { commit: false })
       expect(response.success).toBe(false)
       expect(response.errors).toEqual([
         {
@@ -215,8 +218,8 @@ describe('buildProcessForm', () => {
     })
 
     it('translates an adapter throw into an AdapterThrew failure response (does NOT reject)', async () => {
-      // Symmetric with validateAsync's adapter-throw test. parse()
-      // must also defend against bad adapters — a throwing adapter
+      // Symmetric with commit mode's adapter-throw test. The pure
+      // read must also defend against bad adapters — a throwing adapter
       // can't be allowed to wreck consumer await chains, especially
       // when parse() is invoked imperatively from UI handlers.
       const throwingValidator = (_data: unknown, _path: Path | undefined): never => {
@@ -228,7 +231,7 @@ describe('buildProcessForm', () => {
       })
       const { parse } = buildProcessForm(state, 'test:inst')
 
-      const response = await parse()
+      const response = await parse(undefined, { commit: false })
       expect(response.success).toBe(false)
       expect(response.errors?.[0]?.code).toBe('atta:adapter-threw')
       expect(response.errors?.[0]?.message).toContain('parse adapter boom')
@@ -241,7 +244,7 @@ describe('buildProcessForm', () => {
     it('decrements activeValidations back to 0 on completion', async () => {
       const state = alwaysValid()
       const { parse } = buildProcessForm(state, 'test:inst')
-      const pending = parse()
+      const pending = parse(undefined, { commit: false })
       expect(state.activeValidations.value).toBe(1)
       await pending
       expect(state.activeValidations.value).toBe(0)

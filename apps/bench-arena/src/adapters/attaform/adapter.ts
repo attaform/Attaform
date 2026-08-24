@@ -215,12 +215,13 @@ export const attaformAdapter: BenchAdapter = {
       async validateAll() {
         // A wizard's cross-step aggregate is every step's form validated (the
         // same set a final-step submit runs); a single form validates itself.
-        if (stepForms !== undefined) await Promise.all(stepForms.map((sf) => sf.validateAsync()))
-        else await form?.validateAsync()
+        if (stepForms !== undefined)
+          await Promise.all(stepForms.map((sf) => sf.parse({ commit: true })))
+        else await form?.parse({ commit: true })
         await flush()
       },
       async validateField(index) {
-        await form?.validateAsync(shape.paths[index])
+        await form?.parse(shape.paths[index], { commit: true })
         await flush()
       },
       async arrayOp(op: ArrayOp, a?: number, b?: number) {

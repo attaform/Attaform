@@ -182,7 +182,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       const form = handle.api as Api
 
       // Trigger schema error on the email variant.
-      await form.validateAsync()
+      await form.parse({ commit: true })
       await nextTick()
 
       // Switch to the sms variant. The schema error at notify.address

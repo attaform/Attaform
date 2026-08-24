@@ -768,13 +768,13 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
     expectTypeOf(setNotes).toBeFunction()
   })
 
-  // `validate` / `validateAsync` resolve to a `ValidationResponse<Form>`
-  // — the success branch carries the full Form shape (via the read-side
+  // `validate` / `parse` resolve to a `ValidationResponse<Form>` —
+  // the success branch carries the full Form shape (via the read-side
   // `data`). Pinning the return-type wrapper here forces the chain to
   // stay within tsserver's hover budget on deep schemas.
-  it('validate / validateAsync resolve without TS2589', () => {
+  it('validate / parse resolve without TS2589', () => {
     expectTypeOf(formT.validate).toBeFunction()
-    expectTypeOf(formT.validateAsync).toBeFunction()
+    expectTypeOf(formT.parse).toBeFunction()
     expectTypeOf(formT.validate()).toBeObject()
   })
 

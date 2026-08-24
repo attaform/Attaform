@@ -20,7 +20,7 @@
  *   2. create-form-store.ts:2558 — DU variant-reshape: a late async result
  *      can't clobber the sync write
  *   3. create-form-store.ts:2772 — cancelFieldValidation (cancel-all: reset,
- *      handleSubmit, validateAsync, destroy)
+ *      handleSubmit, parse({ commit: true }), destroy)
  *   4. create-form-store.ts:2797 — cancelFieldValidationUnder (resetField)
  *   5. array-engine.ts (abortValidationAtVacatedIndices, inside
  *      applyStructuralOp) — array remove

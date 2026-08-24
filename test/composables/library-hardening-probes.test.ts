@@ -150,14 +150,14 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     expect(api.values.notify).toEqual({ channel: 'wat' })
   })
 
-  it('surfaces a discriminator-mismatch error via validateAsync after an invalid write', async () => {
+  it('surfaces a discriminator-mismatch error via a committing parse after an invalid write', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
     api.setValue('notify.channel', 'wat')
     await nextTick()
 
-    const result = await api.validateAsync()
+    const result = await api.parse({ commit: true })
     expect(result.success).toBe(false)
     // The error should be reported on a stable path callers can bind
     // to. Either `notify` (the union) or `notify.channel` (the
@@ -173,7 +173,7 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     apps.push(app)
 
     api.setValue('notify.channel', 'wat')
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
 
     const atUnion = api.errors('notify')
@@ -190,7 +190,7 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     expect(api.errors('notify.address')).toEqual([])
 
     api.setValue('notify.channel', 'wat')
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
 
     // The address leaf is now in storage but no longer sits under any
@@ -216,7 +216,7 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     apps.push(app)
 
     api.setValue('notify.channel', 'wat')
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
 
     // Model P: a container's own rolled-up state reads through the
@@ -275,12 +275,12 @@ describe('DU hardening — Case B invalid whole-union write', () => {
     // collapses to `{}` (no discriminator to hold, every consumer key
     // dropped — no auto-merge with the first-variant default).
     // Validation surfaces the issue via Zod's natural invalid-union-
-    // discriminator on the next validateAsync.
+    // discriminator on the next committing parse.
     const ok = api.setValue('notify', { address: 'a@b.io' })
     await nextTick()
     expect(ok).toBe(true)
     expect(api.values.notify).toEqual({})
-    const result = await api.validateAsync()
+    const result = await api.parse({ commit: true })
     expect(result.success).toBe(false)
   })
 })
@@ -450,10 +450,10 @@ describe('DU hardening — construction with invalid discriminator in defaultVal
     // any variant default — storage is exactly `{channel:'wat'}`,
     // foreign-variant fields are not invented. A one-shot dev warning
     // (assertable separately) flags the bad disc; validation surfaces
-    // the mismatch on next validateAsync.
+    // the mismatch on next committing parse.
     const notify = api.values.notify as AnyNotify
     expect(notify).toEqual({ channel: 'wat' })
-    const result = await api.validateAsync()
+    const result = await api.parse({ commit: true })
     expect(result.success).toBe(false)
   })
 })
@@ -1010,7 +1010,7 @@ describe('DU hardening — invalid OUTER discriminator with valid inner state', 
     // Stub-state contract: outer collapses to a disc-only stub
     // `{step:'BAD_OUTER'}` — the prior variant's `inner` subtree is
     // dropped, so no orphan island survives under a non-variant
-    // parent. Validation flags the bad disc on next validateAsync.
+    // parent. Validation flags the bad disc on next committing parse.
     const flow = api.values.flow as AnyFlow
     const isStub = Object.keys(flow).length === 1 && flow.step === 'BAD_OUTER'
     const valid =
@@ -1130,7 +1130,7 @@ describe('DU hardening — field metadata side-effects of an invalid discriminat
     apps.push(app)
 
     api.setValue('notify.channel', 'wat')
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
 
     // Container proxies aren't leaf-views — `api.fields.notify.valid`
@@ -1151,7 +1151,7 @@ describe('DU hardening — field metadata side-effects of an invalid discriminat
     apps.push(app)
 
     api.setValue('notify.channel', 'wat')
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
 
     const channelField = (
@@ -1167,7 +1167,7 @@ describe('DU hardening — field metadata side-effects of an invalid discriminat
     apps.push(app)
 
     api.setValue('notify.channel', 'wat')
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
 
     expect(api.meta.valid).toBe(false)
@@ -1711,7 +1711,7 @@ describe('DU hardening — array element invalid disc: container-level error rep
     const api = handle.api as ArrayApi
 
     api.setValue('events.1.type', 'BAD')
-    await api.validateAsync()
+    await api.parse({ commit: true })
     await nextTick()
 
     // The array container's `firstError` should reflect that one of
@@ -2045,7 +2045,7 @@ describe('chaos — NaN at the discriminator', () => {
     expect(api.setValue('payload.kind', Number.NaN)).toBe(true)
     await nextTick()
     // Stub holds the consumer's NaN; validation flags the mismatch
-    // (no NaN literal in any variant) on next validateAsync.
+    // (no NaN literal in any variant) on next committing parse.
     expect(api.values.payload).toEqual({ kind: Number.NaN })
   })
 })
@@ -3767,8 +3767,8 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(api.meta.validating).toBe(false)
   })
 
-  it('a sync watcher on meta.validating that throws does not desync validateAsync', async () => {
-    // Same defense-in-depth invariant for the imperative validateAsync
+  it('a sync watcher on meta.validating that throws does not desync the committing parse', async () => {
+    // Same defense-in-depth invariant for the imperative committing parse
     // path. Its single counter increment (`activeValidations.value +=
     // 1`) sits before the try block in the original code; a sync
     // watcher on meta.validating that throws at that setter would
@@ -3810,16 +3810,16 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     await nextTick()
 
     type Api = {
-      validateAsync: () => Promise<unknown>
+      parse: (options: { commit: boolean }) => Promise<unknown>
       meta: { validating: boolean }
     }
     const api = handle.api as Api
     const watcherFired = handle.watcherFired as { count: number }
 
-    // Fire validateAsync — the watcher throws when validating flips
+    // Fire the committing parse — the watcher throws when validating flips
     // true. Counter must clear regardless of where the throw surfaces.
     try {
-      await api.validateAsync()
+      await api.parse({ commit: true })
     } catch {
       // accepted
     }
@@ -3827,8 +3827,8 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(watcherFired.count).toBeGreaterThanOrEqual(1)
     expect(api.meta.validating).toBe(false)
 
-    // Subsequent validateAsync MUST work — the counter recovered.
-    const response = await api.validateAsync()
+    // A subsequent committing parse MUST work — the counter recovered.
+    const response = await api.parse({ commit: true })
     await nextTick()
     expect(api.meta.validating).toBe(false)
     expect(response).toBeDefined()
@@ -3972,7 +3972,7 @@ describe('non-discriminated z.union with literal variants', () => {
     // Validation surfaces the literal-set mismatch — the consumer
     // path: bind on `form.errors.role` (or `fields.role.errors`)
     // and the user sees the actionable error.
-    const result = await api.validateAsync('role')
+    const result = await api.parse('role', { commit: true })
     expect(result.success).toBe(false)
 
     // Writing a value that IS in the literal set clears the error
@@ -3980,7 +3980,7 @@ describe('non-discriminated z.union with literal variants', () => {
     expect(api.setValue('role', 'viewer')).toBe(true)
     await nextTick()
     expect(api.values.role).toBe('viewer')
-    const cleared = await api.validateAsync('role')
+    const cleared = await api.parse('role', { commit: true })
     expect(cleared.success).toBe(true)
   })
 })
@@ -4559,7 +4559,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
     expect(api.values.events[1]).toEqual({ type: 'text', value: 'second' })
   })
 
-  it('undo while a validateAsync is in-flight does not commit stale errors', async () => {
+  it('undo while a committing parse is in-flight does not commit stale errors', async () => {
     const { app, api } = mountWithHistory()
     apps.push(app)
 
@@ -4567,7 +4567,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
     api.setValue('notify.channel', 'sms') // schema requires number.min(7) — '' fails
     await nextTick()
 
-    const pending = api.validateAsync()
+    const pending = api.parse({ commit: true })
     api.history.undo() // back to email/email-default; the in-flight validation is for the sms state
     await pending
     await nextTick()
@@ -4987,14 +4987,14 @@ describe('chaos — installing createAttaform twice on one app', () => {
   })
 })
 
-// -------------------- 11.6 Concurrent handleSubmit + validateAsync --------------------
-describe('chaos — concurrent handleSubmit and validateAsync', () => {
+// -------------------- 11.6 Concurrent handleSubmit + committing parse --------------------
+describe('chaos — concurrent handleSubmit and committing parse', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('does not commit stale errors when validateAsync resolves AFTER a submit clears state', async () => {
+  it('does not commit stale errors when a committing parse resolves AFTER a submit clears state', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -5002,8 +5002,8 @@ describe('chaos — concurrent handleSubmit and validateAsync', () => {
     api.setValue('notify', { channel: 'sms', number: '5551234' })
     await nextTick()
 
-    // Trigger validateAsync on the current (valid) state.
-    const validation = api.validateAsync()
+    // Trigger a committing parse on the current (valid) state.
+    const validation = api.parse({ commit: true })
 
     // Mid-flight, mutate to an invalid state. Then await the original
     // validation. The original should reflect the state at the time
@@ -5409,7 +5409,7 @@ describe('chaos — empty z.object({}) schema', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('mounts a form with z.object({}) and accepts validateAsync', async () => {
+  it('mounts a form with z.object({}) and accepts a committing parse', async () => {
     const schema = z.object({})
     let api: UseFormReturn<typeof schema> | undefined
     const App = defineComponent({
@@ -5434,7 +5434,7 @@ describe('chaos — empty z.object({}) schema', () => {
     // proxies as functions, so compare against the called form which
     // returns the readonly root.
     expect(api.values()).toEqual({})
-    const result = await api.validateAsync()
+    const result = await api.parse({ commit: true })
     expect(result.success).toBe(true)
   })
 })

@@ -4,6 +4,7 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { SubmitErrorHandlerError } from '../../src/runtime/core/errors'
 import type { Path } from '../../src/runtime/core/paths'
 import { buildProcessForm } from '../../src/runtime/core/process-form'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 import type {
   ReactiveValidationStatus,
   ValidationResponse,
@@ -56,7 +57,6 @@ describe('buildProcessForm', () => {
         {
           message: 'Enter a valid email',
           path: ['email'],
-          formKey: 'pf',
           code: 'atta:test-fixture',
         },
       ],
@@ -109,7 +109,6 @@ describe('buildProcessForm', () => {
         {
           message: 'Enter a valid email',
           path: ['email'],
-          formKey: 'pf',
           code: 'atta:test-fixture',
         },
       ])
@@ -150,7 +149,6 @@ describe('buildProcessForm', () => {
         {
           message: 'Enter a valid email',
           path: ['email'],
-          formKey: 'pf',
           code: 'atta:test-fixture',
         },
       ])
@@ -211,7 +209,6 @@ describe('buildProcessForm', () => {
         {
           message: 'Enter a valid email',
           path: ['email'],
-          formKey: 'pf',
           code: 'atta:test-fixture',
         },
       ])
@@ -273,7 +270,7 @@ describe('buildProcessForm', () => {
       const { handleSubmit } = buildProcessForm(state, 'test:inst')
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'stale', path: ['email'], formKey: 'pf', code: 'atta:test-fixture' }]
+        [{ message: 'stale', path: ['email'], code: 'atta:test-fixture' }]
       )
 
       await handleSubmit(async () => {})()
@@ -583,14 +580,14 @@ describe('buildProcessForm', () => {
       // overwrite reset's empty schemaErrors.
       releaseValidate({
         data: undefined,
-        errors: [{ message: 'Invalid', path: ['email'], formKey: 'pf', code: 'atta:test-fixture' }],
+        errors: [{ message: 'Invalid', path: ['email'], code: 'atta:test-fixture' }],
         success: false,
         formKey: 'pf',
       })
       await submitPromise.catch(() => undefined)
 
       // Reset's empty error store wins — no stale write.
-      expect(state.schemaErrors.size).toBe(0)
+      expect(state.errorCells.size).toBe(0)
     })
 
     it('submit-success after reset() does NOT clear schemaErrors set by post-reset writers', async () => {
@@ -611,7 +608,7 @@ describe('buildProcessForm', () => {
       state.reset()
       // Consumer writes a fresh schema error after reset.
       state.setAllSchemaErrors([
-        { message: 'Server-rejected', path: ['email'], formKey: 'pf', code: 'api:validation' },
+        { message: 'Server-rejected', path: ['email'], code: 'api:validation' },
       ])
       // Validation now resolves SUCCESS; pre-fix the success path would
       // call clearSchemaErrors and erase the entry above.
@@ -624,7 +621,7 @@ describe('buildProcessForm', () => {
       })
       await submitPromise.catch(() => undefined)
 
-      expect(state.schemaErrors.size).toBe(1)
+      expect(state.errorCells.get(canonicalizePath(['email']).key)?.schema).toHaveLength(1)
     })
   })
 

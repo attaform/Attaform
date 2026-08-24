@@ -72,7 +72,7 @@ A whole-layer `setErrors` is a full replace: any path absent from the new list i
 
 ## The error shape
 
-What you read back is firm: every `ValidationError` has a `message`, a `path`, a `code`, and a `formKey`. What you pass in is loose, so a server response rarely needs massaging:
+What you read back is firm: every `ValidationError` has a `message`, a `path`, and a `code`. What you pass in is loose, so a server response rarely needs massaging:
 
 ```ts
 type ErrorInput =
@@ -82,7 +82,6 @@ type ErrorInput =
       path?: (string | number)[]
       code?: string
       data?: Json | null
-      formKey?: FormKey
     }
 ```
 
@@ -90,7 +89,8 @@ type ErrorInput =
 - **`path`** defaults to `[]` (form level). The scoped `setErrors(path, ...)` form stamps the path for you and ignores any path on the entry.
 - **`code`** defaults to `atta:user-error`. Set your own (`auth:locked`, `api:duplicate`) to branch on it in the UI.
 - **`data`** is an opaque `Json` payload Attaform never inspects. It rides along untouched, so a lockout can carry its unlock time, a challenge its captcha token, a step-up its MFA descriptor.
-- **`formKey`** is accepted but ignored: the form always stamps its own. So a `ValidationError` you read back (from `form.errors()`, or a server that already speaks the shape) is itself valid input, with no mapping required.
+
+Because every field is optional, a `ValidationError` you read back (from `form.errors()`, or a server that already speaks the shape) is itself valid input, with no mapping required. The normalizer builds fresh entries, so unknown fields on a wider server payload are dropped rather than smuggled into the store.
 
 Reading `data` where you render the error is how the lockout banner in the demo knows when to unlock:
 

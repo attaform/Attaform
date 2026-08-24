@@ -69,9 +69,11 @@ interface JsonObject {
  * structured array — `['user', 'address', 0, 'line1']` for a nested
  * field, `[]` (the root path) for a form-level error (root `.refine()`
  * messages, `setErrors` entries with no path, hydration failures,
- * server-emitted form banners). `formKey` identifies which form
- * produced the error so a single error list can be routed to multiple
- * forms. The optional `data` slot carries an arbitrary server payload.
+ * server-emitted form banners). Which form produced an error is
+ * envelope-level identity: the `ValidationResponse` / submit result
+ * that carries the list stamps `formKey` once, and aggregators that
+ * merge lists across forms (the wizard) stamp their own envelope. The
+ * optional `data` slot carries an arbitrary server payload.
  *
  * Returned by `validate()` / `validateAsync()` / `handleSubmit`'s
  * `onError` callback, and accepted (leniently, as `ErrorInput`) by
@@ -88,8 +90,6 @@ export type ValidationError = {
    * literal empty-key field.
    */
   path: (string | number)[]
-  /** Identifies which form produced this error. */
-  formKey: FormKey
   /**
    * Stable machine identifier for the failure, scoped by prefix:
    *
@@ -113,6 +113,24 @@ export type ValidationError = {
 }
 
 /**
+ * One path's slot in the form's tagged error store. The two sources
+ * that can put an error at a path stay segregated inside the cell:
+ * `schema` holds the validation pipeline's verdicts, `user` holds
+ * `setErrors` entries (and their history / SSR replays). Reads merge
+ * schema -> derived-blank -> user; each writer replaces exactly its
+ * own side. Cells are immutable — every write replaces the whole cell
+ * (or deletes the key when both sides empty), so Vue's per-key Map
+ * tracking fires for any side's change. An empty side is the shared
+ * frozen `NO_ERRORS` array, never a fresh allocation.
+ *
+ * @internal
+ */
+export type ErrorCell = {
+  readonly schema: readonly ValidationError[]
+  readonly user: readonly ValidationError[]
+}
+
+/**
  * The lenient input shape `form.setErrors` accepts: a real `Error`, or
  * a partial `ValidationError` where every field is optional.
  *
@@ -121,13 +139,11 @@ export type ValidationError = {
  *   the path-scoped `setErrors(path, …)` form, which stamps its own.
  * - `code`: defaults to `atta:user-error`.
  * - `data`: forwarded verbatim onto the produced `ValidationError`.
- * - `formKey`: accepted but ignored — the form always stamps its own.
  *
- * Because every field is optional and `formKey` is accepted-and-ignored,
- * `ValidationError` is a subtype of `ErrorInput`: a `ValidationError[]`
- * you read back, or a server response that already emits the shape, pipes
- * straight into `form.setErrors` with no adapter and no excess-property
- * friction.
+ * Because every field is optional, `ValidationError` is a subtype of
+ * `ErrorInput`: a `ValidationError[]` you read back, or a server
+ * response that already emits the shape, pipes straight into
+ * `form.setErrors` with no adapter.
  */
 export type ErrorInput =
   | Error
@@ -136,7 +152,6 @@ export type ErrorInput =
       path?: (string | number)[]
       code?: string
       data?: Json | null
-      formKey?: FormKey
     }
 
 /** Settled validation result when the form (or subtree) parsed successfully. */
@@ -946,12 +961,10 @@ export type WriteMeta = {
 export type HistoryKernel = {
   readonly form: Ref<unknown>
   readonly blankPaths: Set<PathKey>
-  readonly schemaErrors: Map<PathKey, ValidationError[]>
-  readonly userErrors: Map<PathKey, ValidationError[]>
+  readonly errorCells: Map<PathKey, ErrorCell>
   onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
   applyFormReplacement(next: unknown): void
-  setAllSchemaErrors(errors: readonly ValidationError[]): void
-  setAllUserErrors(errors: readonly ValidationError[]): void
+  restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
 }
 
 /**

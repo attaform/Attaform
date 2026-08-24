@@ -309,8 +309,7 @@ function buildV4Services<
     isLeafRequired: (schema) => isLeafRequired(schema),
     resolveFieldMetaAtPath: (schema, path, maxRecursionDepth) =>
       resolveFieldMetaAtPath(schema, path, maxRecursionDepth),
-    issuesToValidationErrors: (issues, fk) =>
-      zodIssuesToValidationErrors(issues as z.core.$ZodIssue[], fk),
+    issuesToValidationErrors: (issues) => zodIssuesToValidationErrors(issues as z.core.$ZodIssue[]),
     safeParseSync: (schema, data) => {
       const result = schema.safeParse(data) as z.ZodSafeParseResult<unknown>
       return result.success
@@ -390,7 +389,7 @@ function runStrictGetDefaultsV4<Form>(
     }
     return {
       data,
-      errors: zodIssuesToValidationErrors(strictResult.error.issues, formKey),
+      errors: zodIssuesToValidationErrors(strictResult.error.issues),
       success: false,
       formKey,
     }
@@ -443,7 +442,7 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
       }
       return {
         data: undefined,
-        errors: zodIssuesToValidationErrors(result.error.issues, formKey),
+        errors: zodIssuesToValidationErrors(result.error.issues),
         success: false,
         formKey,
       }

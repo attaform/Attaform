@@ -1,7 +1,7 @@
 import type { z } from 'zod'
 import { __DEV__ } from '../../core/dev'
 import { AttaformError } from '../../core/errors'
-import type { FormKey, ValidationError } from '../../types/types-api'
+import type { ValidationError } from '../../types/types-api'
 
 let warnedZodCodeMissing = false
 
@@ -17,8 +17,7 @@ let warnedZodCodeMissing = false
  * `'zod:unknown'` and dev-warn once per process.
  */
 export function zodIssuesToValidationErrors(
-  issues: readonly z.core.$ZodIssue[],
-  formKey: FormKey
+  issues: readonly z.core.$ZodIssue[]
 ): ValidationError[] {
   return issues.map((issue) => {
     let code: string
@@ -42,7 +41,6 @@ export function zodIssuesToValidationErrors(
       // to absolutise, then routes form-level (absolute path length 0)
       // entries to the empty-string bucket at storage time.
       path: issue.path.map((seg) => (typeof seg === 'number' ? seg : String(seg))),
-      formKey,
       code,
     }
   })

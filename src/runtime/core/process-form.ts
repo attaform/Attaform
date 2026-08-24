@@ -1,7 +1,6 @@
 import { getCurrentScope, onScopeDispose, ref, watchEffect, type Ref } from 'vue'
 import type {
   ErrorInput,
-  FormKey,
   HandleSubmit,
   OnError,
   OnInvalidSubmitPolicy,
@@ -60,21 +59,18 @@ function isErrorInputLike(value: unknown): value is ErrorInput {
  * fallback (consistent with `setErrors`), and reports `messageless` so
  * the caller can nudge the dev in development.
  */
-function deriveSubmitErrors(
-  err: unknown,
-  formKey: FormKey
-): { entries: ValidationError[]; messageless: boolean } {
+function deriveSubmitErrors(err: unknown): { entries: ValidationError[]; messageless: boolean } {
   if (Array.isArray(err) && err.length > 0 && err.every(isErrorInputLike)) {
     return {
       entries: err.map((item) =>
-        normalizeErrorInput(item, undefined, formKey, AttaformErrorCode.SubmitError)
+        normalizeErrorInput(item, undefined, AttaformErrorCode.SubmitError)
       ),
       messageless: false,
     }
   }
   if (isErrorInputLike(err)) {
     return {
-      entries: [normalizeErrorInput(err, undefined, formKey, AttaformErrorCode.SubmitError)],
+      entries: [normalizeErrorInput(err, undefined, AttaformErrorCode.SubmitError)],
       messageless: false,
     }
   }
@@ -84,7 +80,7 @@ function deriveSubmitErrors(
   // `Unknown error` fallback, not a bespoke submit string. `toError`'s raw
   // diagnostic still lands on `submitError`; this is the consistent projection.
   return {
-    entries: [normalizeErrorInput({}, undefined, formKey, AttaformErrorCode.SubmitError)],
+    entries: [normalizeErrorInput({}, undefined, AttaformErrorCode.SubmitError)],
     messageless: true,
   }
 }
@@ -166,7 +162,6 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
             {
               message: adapterThrowMessage(err),
               path: [],
-              formKey: state.formKey,
               code: AttaformErrorCode.AdapterThrew,
             },
           ],
@@ -351,8 +346,8 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
    * `validateAsync`, `parse`, and the reactive `validate()`'s
    * kickoff so every imperative validation surface presents the same
    * shape on adapter misbehavior: `{ success: false, errors: [{ code
-   * AdapterThrew, message: adapterThrowMessage(err), path: [],
-   * formKey }] }`. The `data` field is `undefined` so the
+   * AdapterThrew, message: adapterThrowMessage(err), path: [] }],
+   * formKey }`. The `data` field is `undefined` so the
    * ValidationResponse union resolves to ErrorWithoutData.
    */
   function adapterThrowResponse(err: unknown): ValidationResponse<Out> {
@@ -363,7 +358,6 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         {
           message: adapterThrowMessage(err),
           path: [],
-          formKey: state.formKey,
           code: AttaformErrorCode.AdapterThrew,
         },
       ],
@@ -594,7 +588,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // already ruled the submit valid; the dev's own `setErrors` is a
         // state write, not a re-verdict, so it must not route back through
         // the `onError` arm.
-        if (state.userErrors.size > 0) {
+        if (hasUserErrorEntries(state)) {
           if (state.submissionGeneration.value === genAtEntry) {
             applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
           }
@@ -644,7 +638,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           // it stays a pure `submitError` diagnostic and is never shown as
           // a form error.
           if (!(err instanceof SubmitErrorHandlerError)) {
-            const { entries, messageless } = deriveSubmitErrors(err, state.formKey)
+            const { entries, messageless } = deriveSubmitErrors(err)
             // Group by path so a thrown array spanning several fields writes
             // one bucket per path. Per-path writes MERGE: a bucket the
             // callback set at another path via `setErrors` before it threw
@@ -734,6 +728,14 @@ function adapterThrowMessage(err: unknown): string {
  * the validation/submit response. Mutating the returned array is safe;
  * the store's computed builds a fresh map per recompute.
  */
+/** `true` when any cell in the tagged store holds consumer-set (user-side) entries. */
+function hasUserErrorEntries<F extends GenericForm>(state: FormStore<F, GenericForm>): boolean {
+  for (const cell of state.errorCells.values()) {
+    if (cell.user.length > 0) return true
+  }
+  return false
+}
+
 function collectScopedBlankErrors<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   scope: Path | undefined

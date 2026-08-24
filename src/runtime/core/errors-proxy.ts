@@ -1,6 +1,7 @@
 import type { ValidationError } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import { cellEntriesFor } from './errors'
 import { aggregateErrorsAt } from './field-state-api'
 import { getAtPath, hasAtPath } from './path-walker'
 import {
@@ -30,7 +31,8 @@ import { buildSurfaceProxy, type SurfaceProxy } from './surface-proxy'
  *                                      // root bucket alone: meta.ownErrors
  *
  * Specialises `buildSurfaceProxy` (see surface-proxy.ts) with:
- * - `resolveLeaf`: merges schemaErrors + derivedBlankErrors + userErrors
+ * - `resolveLeaf`: merges the cell's schema side + derivedBlankErrors +
+ *   its user side
  *   at the canonical PathKey, FILTERED by `hasAtPath` (the active-path
  *   filter from commit 1fbb8bb stays). Returns `undefined` when no
  *   errors at the path OR the path isn't reachable through the live
@@ -78,14 +80,13 @@ export function buildErrorsProxy<F extends GenericForm>(
       const isContainerSelfAccess = path.length > 1 && path[path.length - 1] === ''
 
       const collectAtKey = (key: PathKey, active: boolean, into: ValidationError[]): void => {
+        const cell = state.errorCells.get(key)
         if (active) {
-          const s = state.schemaErrors.get(key)
           const b = state.derivedBlankErrors.value.get(key)
-          if (s !== undefined) into.push(...s)
+          if (cell !== undefined) into.push(...cell.schema)
           if (b !== undefined) into.push(...b)
         }
-        const u = state.userErrors.get(key)
-        if (u !== undefined) into.push(...u)
+        if (cell !== undefined) into.push(...cell.user)
       }
 
       const merged: ValidationError[] = []
@@ -190,7 +191,7 @@ function errorAwareContainerKeys<F extends GenericForm>(
   const keys = new Set<string>(liveKeysAtPath(state, segments))
   const formValue = state.form.value
   const walk = (
-    store: ReadonlyMap<PathKey, ValidationError[]>,
+    store: Iterable<readonly [PathKey, readonly ValidationError[]]>,
     applyActivePathFilter: boolean
   ): void => {
     for (const [pathKey, errors] of store) {
@@ -212,9 +213,12 @@ function errorAwareContainerKeys<F extends GenericForm>(
       keys.add(typeof nextSeg === 'number' ? String(nextSeg) : nextSeg)
     }
   }
-  walk(state.schemaErrors, true)
+  // Two passes over the one map preserve the merged view's source
+  // order: schema-bearing keys enumerate first, then blank, then
+  // user-bearing keys.
+  walk(cellEntriesFor(state.errorCells, 'schema'), true)
   walk(state.derivedBlankErrors.value, true)
-  walk(state.userErrors, false)
+  walk(cellEntriesFor(state.errorCells, 'user'), false)
   return [...keys]
 }
 
@@ -285,7 +289,7 @@ function materializeErrors<F extends GenericForm>(
   // every entry regardless of `hasAtPath`, otherwise unknown server
   // keys / form-level messages get silently swallowed.
   const collect = (
-    store: ReadonlyMap<PathKey, ValidationError[]>,
+    store: Iterable<readonly [PathKey, readonly ValidationError[]]>,
     applyActivePathFilter: boolean
   ): void => {
     entries: for (const [pathKey, errors] of store) {
@@ -350,9 +354,9 @@ function materializeErrors<F extends GenericForm>(
     }
   }
 
-  collect(state.schemaErrors, true)
+  collect(cellEntriesFor(state.errorCells, 'schema'), true)
   collect(state.derivedBlankErrors.value, true)
-  collect(state.userErrors, false)
+  collect(cellEntriesFor(state.errorCells, 'user'), false)
   return tree
 }
 
@@ -367,7 +371,7 @@ function materializeErrors<F extends GenericForm>(
 function placeAt(
   tree: Record<string, unknown> | unknown[],
   path: readonly Segment[],
-  errors: ValidationError[]
+  errors: readonly ValidationError[]
 ): void {
   if (path.length === 0) return
   let cursor: Record<string, unknown> | unknown[] = tree

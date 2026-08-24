@@ -25,8 +25,8 @@ const PENDING_AT = (shownAt: number): DisplayMachine => ({
   pendingShownAt: shownAt,
 })
 
-const ownError: ValidationError = { path: ['x'], message: 'm', formKey: 'k', code: 'c' }
-const descendantError: ValidationError = { path: ['x', 'y'], message: 'm', formKey: 'k', code: 'c' }
+const ownError: ValidationError = { path: ['x'], message: 'm', code: 'c' }
+const descendantError: ValidationError = { path: ['x', 'y'], message: 'm', code: 'c' }
 
 function field(over: Record<string, unknown> = {}): DisplayCtx['field'] {
   return {

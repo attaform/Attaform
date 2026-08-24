@@ -216,7 +216,6 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
         path: issue.path,
         message: issue.message,
         code: `my-lib:${issue.code ?? 'unknown'}`,
-        formKey: '',
       }))
 
       return { success: false, errors, data: undefined, formKey: '' }

@@ -577,23 +577,21 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return store?.defaultsResolved.value === true
   }
 
-  // Lift a per-form error into the wizard's aggregate shape. `err`
-  // may arrive without `formKey` (e.g. entries from `form.meta.errors`,
-  // which are pre-scoped to the form) or with it (`ValidationError`
-  // entries from `processOne`'s result). Centralising the lift dedups
-  // the construction shared by `allErrors` and `collectErrors`
-  // (W-DUP-1).
+  // Lift a per-form error into the wizard's aggregate shape. Which form
+  // an entry belongs to is envelope-level identity — the wizard knows
+  // the step it is processing and stamps that key onto the aggregate
+  // entry. Centralising the lift dedups the construction shared by
+  // `allErrors` and `collectErrors` (W-DUP-1).
   function toWizardAggregateError(
     err: {
       readonly path: ReadonlyArray<string | number>
       readonly message: string
       readonly code?: string
-      readonly formKey?: FormKey
     },
-    fallbackKey: FormKey
+    stepKey: FormKey
   ): WizardAggregateError {
     const entry: { -readonly [P in keyof WizardAggregateError]: WizardAggregateError[P] } = {
-      formKey: err.formKey ?? fallbackKey,
+      formKey: stepKey,
       path: err.path,
       message: err.message,
     }
@@ -1493,7 +1491,6 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         data: undefined,
         errors: [
           {
-            formKey: form.key,
             path: [],
             message: `Form '${form.key}' failed to activate: ${activationFailure}`,
             code: AttaformErrorCode.ActivationFailed,
@@ -1528,8 +1525,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     for (const key of keys) {
       const store = registry.forms.get(key)
       if (store === undefined) continue
-      for (const errs of store.userErrors.values()) {
-        for (const err of errs) out.push(toWizardAggregateError(err, key))
+      for (const cell of store.errorCells.values()) {
+        for (const err of cell.user) out.push(toWizardAggregateError(err, key))
       }
     }
     return out

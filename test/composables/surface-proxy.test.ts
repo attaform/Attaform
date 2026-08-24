@@ -212,7 +212,7 @@ describe('form.errors — callable form', () => {
     const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
     form.setErrors([{ path: ['email'], message: 'taken', code: 'api:validation' }])
     expect((form.errors as unknown as (p: string) => unknown)('email')).toEqual([
-      { path: ['email'], message: 'taken', formKey: form.key, code: 'api:validation' },
+      { path: ['email'], message: 'taken', code: 'api:validation' },
     ])
   })
 
@@ -230,9 +230,7 @@ describe('form.errors — callable form', () => {
     form.setErrors([{ path: ['address', 'city'], message: 'bad', code: 'api:validation' }])
     // Container materialisation: the underlying nested error tree, not `{}`.
     expect(JSON.parse(JSON.stringify(form.errors.address))).toEqual({
-      city: [
-        { path: ['address', 'city'], message: 'bad', formKey: form.key, code: 'api:validation' },
-      ],
+      city: [{ path: ['address', 'city'], message: 'bad', code: 'api:validation' }],
     })
     // Drilling still reaches the leaf.
     expect(form.errors.address.city?.[0]?.message).toBe('bad')
@@ -1030,7 +1028,6 @@ describe('surface materialisation — predictable representations + complex erro
       {
         path: ['contacts', 0, 'number'],
         message: 'Alice number bad',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])
@@ -1039,7 +1036,6 @@ describe('surface materialisation — predictable representations + complex erro
       {
         path: ['contacts', 2, 'name'],
         message: 'Carol name bad',
-        formKey: form.key,
         code: 'api:validation',
       },
     ])

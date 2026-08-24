@@ -4897,26 +4897,29 @@ describe('chaos — setErrors at edge paths', () => {
     expect(api.values.notify.channel).toBe('email')
   })
 
-  it('stamps the form key on setErrors entries (input formKey is not a filter)', async () => {
+  it('surfaces setErrors entries regardless of foreign identity fields', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
-    api.setErrors([
-      {
-        path: ['name'],
-        message: 'server error',
-        code: 'test:server',
-        formKey: 'some-other-form',
-      },
-    ])
+    // A payload that still carries a formKey field (e.g. an older server
+    // shape) pipes structurally; there is no cross-form filter, and the
+    // normalizer builds fresh entries so the foreign field is dropped.
+    const foreign: { path: (string | number)[]; message: string; code: string; formKey: string }[] =
+      [
+        {
+          path: ['name'],
+          message: 'server error',
+          code: 'test:server',
+          formKey: 'some-other-form',
+        },
+      ]
+    api.setErrors(foreign)
     await nextTick()
 
-    // setErrors does not filter by formKey — the entry surfaces at its
-    // path, stamped with THIS form's own key. The form owns whatever it
-    // is handed; there is no cross-form rejection.
     const errs = api.errors('name') ?? []
     expect(errs).toHaveLength(1)
-    expect(errs[0]?.formKey).toBe(api.key)
+    expect(errs[0]?.message).toBe('server error')
+    expect(errs[0] !== undefined && 'formKey' in errs[0]).toBe(false)
   })
 
   it('survives an error object with a circular reference in `cause`', async () => {

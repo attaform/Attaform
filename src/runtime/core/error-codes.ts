@@ -1,5 +1,5 @@
 import type { Path } from './paths'
-import type { FormKey, ValidationError } from '../types/types-api'
+import type { ValidationError } from '../types/types-api'
 
 /**
  * Stable identifiers for library-emitted `ValidationError` codes.
@@ -99,11 +99,17 @@ export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof Attaform
  * different reactive channels (the whole-form blank Map vs. a leaf's own
  * `blankPaths.has(key)`) but must produce the same `ValidationError`.
  */
-export function makeBlankRequiredError(segments: Path, formKey: FormKey): ValidationError {
+export function makeBlankRequiredError(segments: Path): ValidationError {
   return {
     message: 'No value supplied',
     path: [...segments],
-    formKey,
     code: AttaformErrorCode.NoValueSupplied,
   }
 }
+
+/**
+ * The shared frozen empty error list. An `ErrorCell` side with no
+ * entries references this single array, so cell writers never allocate
+ * for absence and readers can `length === 0` / spread it freely.
+ */
+export const NO_ERRORS: readonly ValidationError[] = Object.freeze([])

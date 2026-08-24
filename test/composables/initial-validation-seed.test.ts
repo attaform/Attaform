@@ -558,7 +558,7 @@ describe('initial validation seed — hydration takes precedence', () => {
       },
     })
 
-    expect(state.schemaErrors.size).toBe(0)
+    expect(state.errorCells.size).toBe(0)
   })
 
   it('replays hydrated schema errors verbatim, ignoring the seed', () => {
@@ -609,7 +609,7 @@ describe('initial validation seed — hydration takes precedence', () => {
       },
     })
 
-    expect(state.schemaErrors.size).toBe(1)
-    expect(state.schemaErrors.get(emailKey)?.[0]?.message).toBe('server email rejection')
+    expect(state.errorCells.size).toBe(1)
+    expect(state.errorCells.get(emailKey)?.schema[0]?.message).toBe('server email rejection')
   })
 })

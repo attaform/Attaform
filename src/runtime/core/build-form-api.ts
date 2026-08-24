@@ -537,11 +537,11 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // covers both.
   //
   // Input is lenient (`ErrorInput`): a real `Error`, a partial
-  // `{ message?, path?, code?, data? }`, or an array of either. The form
-  // always stamps its own `formKey` and defaults a missing `code`; a
-  // missing or empty message coerces to "Unknown error" rather than
-  // throwing (library code never throws into the consumer app). What the
-  // store holds is always a firm `ValidationError`.
+  // `{ message?, path?, code?, data? }`, or an array of either. A
+  // missing `code` defaults; a missing or empty message coerces to
+  // "Unknown error" rather than throwing (library code never throws
+  // into the consumer app). What the store holds is always a firm
+  // `ValidationError`.
   type SetErrorsArg =
     | ErrorInput
     | ErrorInput[]
@@ -549,7 +549,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   function flattenUserErrors(): ValidationError[] {
     const all: ValidationError[] = []
-    for (const errs of state.userErrors.values()) all.push(...errs)
+    for (const cell of state.errorCells.values()) all.push(...cell.user)
     return all
   }
 
@@ -565,18 +565,16 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       const { segments, key } = canonicalizePath(arg1 as string | Path)
       const input = arg2 as SetErrorsArg
       const resolved =
-        typeof input === 'function' ? input((state.userErrors.get(key) ?? []).slice()) : input
+        typeof input === 'function' ? input([...(state.errorCells.get(key)?.user ?? [])]) : input
       state.setUserErrorsForPath(
         segments,
-        normalizeErrorInputs(resolved, segments, state.formKey, AttaformErrorCode.UserError)
+        normalizeErrorInputs(resolved, segments, AttaformErrorCode.UserError)
       )
       return
     }
     const input = arg1 as SetErrorsArg
     const resolved = typeof input === 'function' ? input(flattenUserErrors()) : input
-    state.setAllUserErrors(
-      normalizeErrorInputs(resolved, undefined, state.formKey, AttaformErrorCode.UserError)
-    )
+    state.setAllUserErrors(normalizeErrorInputs(resolved, undefined, AttaformErrorCode.UserError))
   }
 
   function clearErrors(path?: string | (string | number)[]): void {
@@ -627,8 +625,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const valid = computed<boolean>(
     () =>
       state.firstValidationDone.value &&
-      state.schemaErrors.size === 0 &&
-      state.userErrors.size === 0 &&
+      state.errorCells.size === 0 &&
       state.derivedBlankErrors.value.size === 0 &&
       !validating.value
   )

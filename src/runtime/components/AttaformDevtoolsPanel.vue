@@ -72,14 +72,18 @@
     void updateTick.value
     const form = activeForm.value
     if (form === null) return []
-    return Array.from(form.schemaErrors.entries())
+    return Array.from(form.errorCells.entries())
+      .filter(([, cell]) => cell.schema.length > 0)
+      .map(([key, cell]) => [key, cell.schema] as const)
   })
 
   const userErrorRows = computed(() => {
     void updateTick.value
     const form = activeForm.value
     if (form === null) return []
-    return Array.from(form.userErrors.entries())
+    return Array.from(form.errorCells.entries())
+      .filter(([, cell]) => cell.user.length > 0)
+      .map(([key, cell]) => [key, cell.user] as const)
   })
 
   const aggregates = computed(() => {
@@ -217,14 +221,11 @@
         value = (value as Record<string | number, unknown>)[seg]
       }
 
+      const cell = form.errorCells.get(canonicalKey)
       const schemaEntries =
-        (form.schemaErrors.get(canonicalKey) as
-          | ReadonlyArray<{ message: string; code: string }>
-          | undefined) ?? []
+        (cell?.schema as ReadonlyArray<{ message: string; code: string }> | undefined) ?? []
       const userEntries =
-        (form.userErrors.get(canonicalKey) as
-          | ReadonlyArray<{ message: string; code: string }>
-          | undefined) ?? []
+        (cell?.user as ReadonlyArray<{ message: string; code: string }> | undefined) ?? []
 
       return {
         record,

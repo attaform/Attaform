@@ -228,8 +228,7 @@ function buildV3Services<
     isLeafRequired: (schema) => isLeafRequiredV3(schema),
     resolveFieldMetaAtPath: (schema, path, maxRecursionDepth) =>
       resolveFieldMetaAtPathV3(schema as z.ZodSchema, path, maxRecursionDepth),
-    issuesToValidationErrors: (issues, formKey) =>
-      zodIssuesToValidationErrors(issues as z.ZodIssue[], formKey),
+    issuesToValidationErrors: (issues) => zodIssuesToValidationErrors(issues as z.ZodIssue[]),
     safeParseSync: (schema, data) => {
       const result = schema.safeParse(data)
       return result.success
@@ -257,7 +256,7 @@ function buildV3Services<
   }
 }
 
-function zodIssuesToValidationErrors(issues: z.ZodIssue[], formKey: FormKey): ValidationError[] {
+function zodIssuesToValidationErrors(issues: z.ZodIssue[]): ValidationError[] {
   const validationErrors: ValidationError[] = []
   for (const issue of issues) {
     let code: string
@@ -288,7 +287,6 @@ function zodIssuesToValidationErrors(issues: z.ZodIssue[], formKey: FormKey): Va
       // to absolutise, then routes form-level (absolute path length 0)
       // entries to the empty-string bucket at storage time.
       path: coercePathSegments(issue.path),
-      formKey: formKey,
       code,
     })
   }
@@ -1321,7 +1319,7 @@ function runStrictGetDefaultsV3<Form>(
       }
       return {
         data: rawDefaultValues as Form,
-        errors: zodIssuesToValidationErrors(strictResult.error.issues, formKey),
+        errors: zodIssuesToValidationErrors(strictResult.error.issues),
         success: false,
         formKey,
       }
@@ -1348,7 +1346,7 @@ function runStrictGetDefaultsV3<Form>(
           }
           return {
             data: rawDefaultValues as Form,
-            errors: zodIssuesToValidationErrors(strippedResult.error.issues, formKey),
+            errors: zodIssuesToValidationErrors(strippedResult.error.issues),
             success: false,
             formKey,
           }

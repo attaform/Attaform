@@ -16,6 +16,7 @@ import type {
   AbstractSchema,
   AttaformDomBinding,
   CoercionRegistry,
+  ErrorCell,
   FormKey,
   DefaultValuesResponse,
   GetDisplayState,
@@ -43,7 +44,7 @@ import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
-import { AttaformErrorCode, makeBlankRequiredError } from './error-codes'
+import { AttaformErrorCode, makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import {
   canonicalizePath,
   coerceToPathKey,
@@ -144,7 +145,6 @@ function isHydratedValidationErrorArray(value: unknown): value is ValidationErro
     const e = entry as Partial<ValidationError>
     if (typeof e.message !== 'string') return false
     if (!Array.isArray(e.path)) return false
-    if (typeof e.formKey !== 'string') return false
     if (typeof e.code !== 'string') return false
     // `data` is an opaque JSON passthrough: it arrived via JSON.parse,
     // so it is structurally JSON by construction. Don't hard-validate
@@ -166,18 +166,20 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly form: Ref<F>
   readonly fields: Map<PathKey, FieldRecord>
   /**
-   * Schema-driven errors. Written ONLY by the schema validation pipeline:
-   * `scheduleFieldValidation`, `handleSubmit`, the construction-time seed,
-   * history restore, and hydration. Cleared by `reset` / `resetField` and by
-   * a successful submit. `setErrors` / `clearErrors` do NOT touch this Map.
-   */
-  readonly schemaErrors: Map<PathKey, ValidationError[]>
-  /**
-   * User-injected errors. Written ONLY by the `setErrors` / `clearErrors`
-   * API surface (and history / hydration replay). Survives schema revalidation and
+   * The tagged error store: one cell per error-bearing path, each cell
+   * segregating its two sources. The `schema` side is written ONLY by
+   * the validation pipeline (`scheduleFieldValidation`, `handleSubmit`,
+   * the construction-time seed, history restore, hydration) and cleared
+   * by `reset` / `resetField` and a successful submit; the `user` side
+   * is written ONLY by the `setErrors` / `clearErrors` API surface (and
+   * history / hydration replay) and survives schema revalidation and
    * successful submits — the consumer owns its lifetime explicitly.
+   * A key exists iff a side is non-empty; cells are replaced, never
+   * mutated, so Vue's per-key Map tracking fires for either side's
+   * change. Derived blank entries are NOT stored here — they synthesize
+   * at read (`derivedBlankErrors`).
    */
-  readonly userErrors: Map<PathKey, ValidationError[]>
+  readonly errorCells: Map<PathKey, ErrorCell>
   /**
    * Reactively-derived "No value supplied" errors. Pure function of
    * `(blankPaths, schema.isRequiredAtPath)` — no writers, no clears.
@@ -584,10 +586,19 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   clearUserErrors(path?: Path): void
 
   /**
-   * Merged read — returns `[...st.schemaErrors[path], ...st.userErrors[path]]`.
-   * Schema errors come first (structural validation before business logic),
-   * matching the iteration order for `getFirstErrorElement` and the
-   * top-level `errors` drillable Proxy.
+   * Rebuild the whole tagged store from a snapshot's `[key, cell]`
+   * entries — the history ring buffer's restore road. Entry arrays are
+   * cloned in, so the snapshot stays detached from the live store;
+   * cells with both sides empty are skipped.
+   */
+  restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
+
+  /**
+   * Merged read — the cell at `path` in schema -> blank -> user order.
+   * Schema errors come first (structural validation before business
+   * logic), the derived blank entry synthesizes between, and user
+   * entries close, matching the iteration order for
+   * `getFirstErrorElement` and the top-level `errors` drillable Proxy.
    */
   getErrorsForPath(path: Path): ValidationError[]
 
@@ -2697,97 +2708,131 @@ function getValueAtPath<F extends GenericForm, G extends GenericForm = F>(
 }
 
 // --- Errors ---
-// Two source-segregated stores: `schemaErrors` (validation-owned) and
-// `userErrors` (API-injected). Writers below are strict — each function
-// touches exactly one Map. The merged view is exposed via
-// `getErrorsForPath` and the top-level `errors` drillable Proxy.
+// One tagged store: each path's cell segregates the two sources that can
+// put an error there (`schema` = the validation pipeline, `user` =
+// setErrors). The three shared channel writers below are the only
+// mutation road; each replaces exactly one side of a cell, cells are
+// immutable, and a key exists iff a side is non-empty. Derived blank
+// entries stay a read-side synthesis (`derivedBlankErrors`); the merged
+// view is exposed via `getErrorsForPath` and the top-level `errors`
+// drillable Proxy in schema -> blank -> user order.
+
+type ErrorSource = 'schema' | 'user'
+
+const ERROR_SOURCES: readonly ErrorSource[] = ['schema', 'user']
 
 /**
- * Append every entry in `entries` to its target Map at the canonical
- * path key. Existing entries at that key are preserved (merge-append),
- * so a single `replaceErrorsIn` pass lands multiple errors at the same
- * path. Allocates a fresh array per target key to keep the reactive
- * trigger surface
- * obvious — Vue's collection handlers fire on `.set`, not on in-place
- * push.
- *
- * Form-level (global) errors arrive with `err.path: []` and store at
- * the root key `'[]'` directly, no rerouting. Aggregate reads
- * (`errors()`, `meta.errors`) surface them; `errors([])` returns the
- * root bucket alone, while `errors('')` reads the unrelated literal
+ * Group `entries` by each error's own canonical storage key, preserving
+ * entry order within a key (adapter ordering for multiple issues at the
+ * same leaf). Form-level (global) errors arrive with `err.path: []` and
+ * group under the root key `'[]'` directly, no rerouting: aggregate
+ * reads (`errors()`, `meta.errors`) surface them, `errors([])` returns
+ * the root bucket alone, while `errors('')` reads the unrelated literal
  * `''` field at key `'[""]'`.
  */
-function appendErrorsTo(
-  map: Map<PathKey, ValidationError[]>,
-  entries: readonly ValidationError[]
-): void {
+function groupErrorsByKey(entries: readonly ValidationError[]): Map<PathKey, ValidationError[]> {
+  const grouped = new Map<PathKey, ValidationError[]>()
   for (const raw of entries) {
     const { key } = canonicalizePath(raw.path as Path)
-    const current = map.get(key)
-    if (current === undefined) {
-      map.set(key, [raw])
-    } else {
-      map.set(key, [...current, raw])
-    }
+    const list = grouped.get(key)
+    if (list === undefined) grouped.set(key, [raw])
+    else list.push(raw)
   }
+  return grouped
 }
 
 /**
- * Clear `map` and rebuild it from `entries`. Two reactive notifications
- * fire (one for `.clear`, one per `.set`), but Vue's microtask batching
- * collapses the burst so subscribers see one re-render. A diff-and-patch
- * variant is a deferred follow-up — profile first.
+ * Shared channel writer 1 — replace one side of the cell at `key` with
+ * `entries` (the caller owns the array). The other side rides along
+ * unchanged; a cell whose sides are both empty leaves the map. Always
+ * sets a FRESH cell object, so Vue's per-key collection dep fires for
+ * either side's change.
  */
-function replaceErrorsIn(
-  map: Map<PathKey, ValidationError[]>,
+function setErrorChannelForKey<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  src: ErrorSource,
   entries: readonly ValidationError[]
 ): void {
-  map.clear()
-  appendErrorsTo(map, entries)
-}
-
-function clearErrorsIn(map: Map<PathKey, ValidationError[]>, path: Path | undefined): void {
-  if (path === undefined) {
-    map.clear()
+  const current = st.errorCells.get(key)
+  const schema = src === 'schema' ? entries : (current?.schema ?? NO_ERRORS)
+  const user = src === 'user' ? entries : (current?.user ?? NO_ERRORS)
+  if (schema.length === 0 && user.length === 0) {
+    if (current !== undefined) st.errorCells.delete(key)
     return
   }
-  const { key } = canonicalizePath(path)
-  map.delete(key)
-}
-
-// --- Schema writers (validation pipeline + handleSubmit + history/hydration) ---
-
-function setSchemaErrorsForPath<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path,
-  entries: ValidationError[]
-): void {
-  const { key } = canonicalizePath(path)
-  if (entries.length === 0) {
-    st.schemaErrors.delete(key)
-    return
-  }
-  st.schemaErrors.set(key, [...entries])
+  st.errorCells.set(key, { schema, user })
 }
 
 /**
- * Replace the schemaErrors subtree rooted at `path` with `entries`,
- * keying each entry by its OWN absolute path rather than `path`.
- * Used by `scheduleFieldValidation` so a re-validation of a
+ * Shared channel writer 2 — replace one source's entries wholesale
+ * across the form. Cells holding the OTHER source keep their map slot
+ * (that side must survive, and `Map.set` on an existing key updates in
+ * place); cells holding only `src` are deleted first so a re-written
+ * key re-inserts in this pass's entry order — the slotting the old
+ * clear-and-rebuild produced on a single-source map.
+ */
+function replaceErrorChannel<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  src: ErrorSource,
+  entries: readonly ValidationError[]
+): void {
+  const other: ErrorSource = src === 'schema' ? 'user' : 'schema'
+  const grouped = groupErrorsByKey(entries)
+  for (const [key, cell] of st.errorCells) {
+    if (cell[other].length === 0) {
+      st.errorCells.delete(key)
+      continue
+    }
+    const fresh = grouped.get(key)
+    if (fresh !== undefined) {
+      setErrorChannelForKey(st, key, src, fresh)
+      grouped.delete(key)
+    } else if (cell[src].length > 0) {
+      setErrorChannelForKey(st, key, src, NO_ERRORS)
+    }
+  }
+  for (const [key, list] of grouped) {
+    setErrorChannelForKey(st, key, src, list)
+  }
+}
+
+/**
+ * Shared channel writer 3 — clear one source at `path`, or everywhere
+ * when `path` is omitted (a whole-channel replace with nothing). Cells
+ * whose other side holds entries survive with `src` stripped; cells
+ * left empty leave the map.
+ */
+function clearErrorChannel<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  src: ErrorSource,
+  path?: Path
+): void {
+  if (path === undefined) {
+    replaceErrorChannel(st, src, NO_ERRORS)
+    return
+  }
+  setErrorChannelForKey(st, canonicalizePath(path).key, src, NO_ERRORS)
+}
+
+/**
+ * Replace the schema side of the subtree rooted at `path` with
+ * `entries`, keying each entry by its OWN absolute path rather than
+ * `path`. Used by `scheduleFieldValidation` so a re-validation of a
  * container (e.g. a DU parent after reshape) lands every leaf-keyed
  * issue at its canonical store key — `form.errors.<path>` reads
  * hit, and stale entries from a previous variant don't survive.
  *
  * Insertion-order stability: `Map.set` on an EXISTING key updates the
- * value in place and preserves the slot's position; `Map.delete`
+ * cell in place and preserves the slot's position; `Map.delete`
  * followed by `Map.set` re-inserts at the END. `form.meta.errors`
  * iterates this Map in insertion order, so a per-field
  * re-validation that delete-then-sets the scheduled key flips the
  * aggregate's order on every keystroke. The grouped pass below
- * computes the surviving key set FIRST so we only delete keys that
- * genuinely drop out (an old DU-variant leaf that the new pass
- * doesn't write); keys that survive get an in-place `set` that keeps
- * their original slot.
+ * computes the surviving key set FIRST so only keys that genuinely
+ * drop out lose their schema side (an old DU-variant leaf the new
+ * pass doesn't write); keys that survive get an in-place cell swap
+ * that keeps their original slot. User sides ride along untouched.
  */
 function applySchemaErrorsForSubtree<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
@@ -2800,83 +2845,38 @@ function applySchemaErrorsForSubtree<F extends GenericForm, G extends GenericFor
   // `parentKey`, so the surviving refine entry and the parent
   // reconcile naturally without any rerouting.
   const parentKey = canonicalizePath(path).key
-  // Group by each error's own canonical storage key FIRST so we know
-  // which keys survive this pass. Multiple issues at the same path
-  // (e.g. two refinements failing the same leaf) merge into one
-  // array — preserves adapter ordering within the leaf.
-  const grouped = new Map<PathKey, ValidationError[]>()
-  for (const raw of entries) {
-    const { key } = canonicalizePath(raw.path as Path)
-    const list = grouped.get(key)
-    if (list === undefined) grouped.set(key, [raw])
-    else list.push(raw)
-  }
-  // Drop the parent key only if not in the new pass.
-  if (!grouped.has(parentKey)) st.schemaErrors.delete(parentKey)
-  // Drop stale descendants: existing keys under `path` that the new
-  // pass doesn't write (DU-variant leaves that disappeared on
+  const grouped = groupErrorsByKey(entries)
+  // Drop the parent key's schema side only if not in the new pass.
+  if (!grouped.has(parentKey)) setErrorChannelForKey(st, parentKey, 'schema', NO_ERRORS)
+  // Drop stale descendants: schema-bearing keys under `path` that the
+  // new pass doesn't write (DU-variant leaves that disappeared on
   // reshape). Keys that DO appear in `grouped` stay where they are —
-  // the `set` below updates them in place. The parent key is exempt
+  // the write below updates them in place. The parent key is exempt
   // (handled just above), so a root-scope pass keeps its own `'[]'`
   // refine entry rather than sweeping it into the descendant set.
-  for (const existingKey of [...st.schemaErrors.keys()]) {
+  for (const [existingKey, cell] of st.errorCells) {
     if (existingKey === parentKey) continue
+    if (cell.schema.length === 0) continue
     if (isPathKeyUnder(existingKey, path) && !grouped.has(existingKey)) {
-      st.schemaErrors.delete(existingKey)
+      setErrorChannelForKey(st, existingKey, 'schema', NO_ERRORS)
     }
   }
   for (const [leafKey, group] of grouped) {
-    st.schemaErrors.set(leafKey, group)
+    setErrorChannelForKey(st, leafKey, 'schema', group)
   }
 }
 
-function setAllSchemaErrors<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  entries: readonly ValidationError[]
-): void {
-  replaceErrorsIn(st.schemaErrors, entries)
-}
+// --- History restore ---
 
-function clearSchemaErrors<F extends GenericForm, G extends GenericForm = F>(
+function restoreErrorCells<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
-  path?: Path
+  entries: ReadonlyArray<readonly [PathKey, ErrorCell]>
 ): void {
-  clearErrorsIn(st.schemaErrors, path)
-}
-
-// --- User writers (setErrors / clearErrors + history/hydration) ---
-
-function setAllUserErrors<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  entries: readonly ValidationError[]
-): void {
-  replaceErrorsIn(st.userErrors, entries)
-}
-
-/**
- * Replace the user-error bucket at exactly `path` with `entries`,
- * leaving every other path untouched. Backs the path-scoped
- * `form.setErrors(path, …)`. Empty `entries` deletes the bucket.
- * Mirrors `setSchemaErrorsForPath` on the validation side.
- */
-function setUserErrorsForPath<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path,
-  entries: readonly ValidationError[]
-): void {
-  const { key } = canonicalizePath(path)
-  if (entries.length === 0) {
-    st.userErrors.delete(key)
-    return
+  st.errorCells.clear()
+  for (const [key, cell] of entries) {
+    if (cell.schema.length === 0 && cell.user.length === 0) continue
+    st.errorCells.set(key, { schema: [...cell.schema], user: [...cell.user] })
   }
-  st.userErrors.set(key, [...entries])
-}
-
-function clearUserErrors<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path?: Path
-): void {
-  clearErrorsIn(st.userErrors, path)
 }
 
 // --- Merged read ---
@@ -2886,16 +2886,15 @@ function getErrorsForPath<F extends GenericForm, G extends GenericForm = F>(
   path: Path
 ): ValidationError[] {
   const { key } = canonicalizePath(path)
-  const schemaForKey = st.schemaErrors.get(key)
-  const userForKey = st.userErrors.get(key)
+  const cell = st.errorCells.get(key)
   const blankForKey = st.derivedBlankErrors.value.get(key)
-  if (schemaForKey === undefined && userForKey === undefined && blankForKey === undefined) {
+  if (cell === undefined && blankForKey === undefined) {
     return []
   }
   const result: ValidationError[] = []
-  if (schemaForKey !== undefined) result.push(...schemaForKey)
+  if (cell !== undefined) result.push(...cell.schema)
   if (blankForKey !== undefined) result.push(...blankForKey)
-  if (userForKey !== undefined) result.push(...userForKey)
+  if (cell !== undefined) result.push(...cell.user)
   return result
 }
 
@@ -3320,13 +3319,11 @@ async function runFactoryAndApply<F extends GenericForm, G extends GenericForm =
 function clearHydrationFailedEntry<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>
 ): void {
-  const existing = st.schemaErrors.get(ROOT_PATH_KEY)
-  if (existing === undefined) return
+  const existing = st.errorCells.get(ROOT_PATH_KEY)?.schema
+  if (existing === undefined || existing.length === 0) return
   const filtered = existing.filter((e) => e.code !== AttaformErrorCode.HydrationFailed)
-  if (filtered.length === 0) {
-    st.schemaErrors.delete(ROOT_PATH_KEY)
-  } else {
-    st.schemaErrors.set(ROOT_PATH_KEY, filtered)
+  if (filtered.length !== existing.length) {
+    setErrorChannelForKey(st, ROOT_PATH_KEY, 'schema', filtered)
   }
 }
 
@@ -3339,11 +3336,10 @@ function appendHydrationFailedEntry<F extends GenericForm, G extends GenericForm
   const entry: ValidationError = {
     message,
     path: [...ROOT_PATH],
-    formKey: st.formKey,
     code: AttaformErrorCode.HydrationFailed,
   }
-  const existing = st.schemaErrors.get(ROOT_PATH_KEY) ?? []
-  st.schemaErrors.set(ROOT_PATH_KEY, [...existing, entry])
+  const existing = st.errorCells.get(ROOT_PATH_KEY)?.schema ?? NO_ERRORS
+  setErrorChannelForKey(st, ROOT_PATH_KEY, 'schema', [...existing, entry])
   return entry
 }
 
@@ -3408,11 +3404,10 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
     }
   }
   // Drop every recorded error — the form is a fresh surface again.
-  // Both stores clear: reset is "fresh start" semantics, so user-injected
+  // Both sides clear: reset is "fresh start" semantics, so user-injected
   // errors are not preserved across a reset (different from submit-success,
   // which preserves them).
-  st.schemaErrors.clear()
-  st.userErrors.clear()
+  st.errorCells.clear()
   // Re-derive schemaErrors from the post-reset state under strict mode,
   // mirroring the construction-time seed. Without this,
   // reset clears the error store but never re-runs validation — so a
@@ -3426,7 +3421,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // a non-strict form opted out of construction-time validation
   // explicitly, and post-reset behaviour follows suit.
   if (st.strict && !resetResponse.success) {
-    setAllSchemaErrors(st, resetResponse.errors)
+    replaceErrorChannel(st, 'schema', resetResponse.errors)
   }
   // `getDefaultValues` strips refinements before parsing (see
   // `adapters/zod-v4/default-values.ts:290`) — it produces usable
@@ -3635,22 +3630,26 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   // and a consumer who calls resetField on that path expects them
   // cleared. Same reasoning applies to consumer-set errors at any
   // path the schema doesn't model.
-  deleteErrorsUnderPrefix(st.schemaErrors, targetSegments)
-  deleteErrorsUnderPrefix(st.userErrors, targetSegments)
+  deleteErrorCellsUnderPrefix(st, targetSegments)
   for (const [fieldKey, record] of Array.from(st.fields.entries())) {
     if (isPathPrefix(targetSegments, record.path)) clearFieldRecordFlags(st, fieldKey)
   }
 }
 
-function deleteErrorsUnderPrefix(
-  map: Map<PathKey, ValidationError[]>,
+function deleteErrorCellsUnderPrefix<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
   prefix: readonly Segment[]
 ): void {
-  for (const [errorKey, errs] of Array.from(map.entries())) {
-    const first = errs[0]
-    if (first === undefined) continue
-    if (isPathPrefix(prefix, first.path as readonly Segment[])) {
-      map.delete(errorKey)
+  // Judge each side by its own first entry's embedded path (entries at a
+  // key share the key's path), mirroring the per-map prefix delete this
+  // replaces: a side whose entries sit under `prefix` is stripped, the
+  // other side rides along, and a cell left empty leaves the map.
+  for (const [errorKey, cell] of st.errorCells) {
+    for (const src of ERROR_SOURCES) {
+      const first = cell[src][0]
+      if (first !== undefined && isPathPrefix(prefix, first.path)) {
+        setErrorChannelForKey(st, errorKey, src, NO_ERRORS)
+      }
     }
   }
 }
@@ -3886,18 +3885,12 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // element, and every reader treats that as the empty registry it is.
   const domBinding = shallowRef<AttaformDomBinding | null>(null)
 
-  // Errors are split by source so each writer touches exactly one slot.
-  // Schema validation owns `schemaErrors`; the `setErrors` / `clearErrors`
-  // API owns `userErrors`. The two stores merge on read via `getErrorsForPath` and
-  // the top-level `errors` drillable Proxy in build-form-api.
-  const schemaErrors = reactive(new Map<PathKey, ValidationError[]>()) as Map<
-    PathKey,
-    ValidationError[]
-  >
-  const userErrors = reactive(new Map<PathKey, ValidationError[]>()) as Map<
-    PathKey,
-    ValidationError[]
-  >
+  // The tagged error store. Each cell segregates its two sources so each
+  // writer touches exactly one side; schema validation owns the `schema`
+  // side, the `setErrors` / `clearErrors` API owns `user`. Reads merge via
+  // `getErrorsForPath` and the top-level `errors` drillable Proxy in
+  // build-form-api, schema -> blank -> user.
+  const errorCells = reactive(new Map<PathKey, ErrorCell>()) as Map<PathKey, ErrorCell>
 
   // Originals are captured at init and on first appearance of a path; never
   // re-assigned. Reactive: the dirty computed iterates this map AND accesses
@@ -3992,7 +3985,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       const segments = segmentsForPathKey(pathKey)
       if (segments === null) continue
       if (!schema.isRequiredAtPath(segments)) continue
-      result.set(pathKey, [makeBlankRequiredError(segments, formKey)])
+      result.set(pathKey, [makeBlankRequiredError(segments)])
     }
     return result
   })
@@ -4142,7 +4135,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
     form,
     fields,
-    userErrors,
+    errorCells,
     originals,
     blankPaths,
     originalBlankPaths,
@@ -4150,7 +4143,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     fieldValidationCounts,
     fieldValidatingSince,
     fieldValidationState,
-    schemaErrors,
     activeValidations,
     arrayIdentity,
     variantMemory,
@@ -4163,8 +4155,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     formKey,
     form,
     fields,
-    schemaErrors,
-    userErrors,
+    errorCells,
     derivedBlankErrors,
     originals,
     schema,
@@ -4241,13 +4232,26 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     arrayElementKey: (path) => arrayElementKey(st, path),
     reset: (nextDefaultValues) => reset(st, nextDefaultValues),
     resetField: (path) => resetField(st, path),
-    setSchemaErrorsForPath: (path, entries) => setSchemaErrorsForPath(st, path, entries),
-    setAllSchemaErrors: (entries) => setAllSchemaErrors(st, entries),
-    clearSchemaErrors: (path) => clearSchemaErrors(st, path),
+    setSchemaErrorsForPath: (path, entries) =>
+      setErrorChannelForKey(
+        st,
+        canonicalizePath(path).key,
+        'schema',
+        entries.length === 0 ? NO_ERRORS : [...entries]
+      ),
+    setAllSchemaErrors: (entries) => replaceErrorChannel(st, 'schema', entries),
+    clearSchemaErrors: (path) => clearErrorChannel(st, 'schema', path),
     applySchemaErrorsForSubtree: (path, entries) => applySchemaErrorsForSubtree(st, path, entries),
-    setAllUserErrors: (entries) => setAllUserErrors(st, entries),
-    setUserErrorsForPath: (path, entries) => setUserErrorsForPath(st, path, entries),
-    clearUserErrors: (path) => clearUserErrors(st, path),
+    setAllUserErrors: (entries) => replaceErrorChannel(st, 'user', entries),
+    setUserErrorsForPath: (path, entries) =>
+      setErrorChannelForKey(
+        st,
+        canonicalizePath(path).key,
+        'user',
+        entries.length === 0 ? NO_ERRORS : [...entries]
+      ),
+    clearUserErrors: (path) => clearErrorChannel(st, 'user', path),
+    restoreErrorCells: (entries) => restoreErrorCells(st, entries),
     getErrorsForPath: (path) => getErrorsForPath(st, path),
     ensurePathOrdinal: (key) => ensurePathOrdinal(st, key),
     noteDomConnected: (path) => noteDomConnected(st, path),
@@ -4316,14 +4320,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         warnMalformedHydration(formKey, 'schemaErrors', String(rawKey))
         continue
       }
-      schemaErrors.set(rawKey as PathKey, errs)
+      setErrorChannelForKey(st, rawKey as PathKey, 'schema', errs)
     }
     for (const [rawKey, errs] of hydration.userErrors) {
       if (typeof rawKey !== 'string' || !isHydratedValidationErrorArray(errs)) {
         warnMalformedHydration(formKey, 'userErrors', String(rawKey))
         continue
       }
-      userErrors.set(rawKey as PathKey, errs)
+      setErrorChannelForKey(st, rawKey as PathKey, 'user', errs)
     }
   } else {
     const initStamp = new Date().toISOString()
@@ -4348,7 +4352,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // would surprise consumers who explicitly opted out via
     // `strict: false`.
     if (strict && !schemaResponse.success) {
-      setAllSchemaErrors(st, schemaResponse.errors)
+      replaceErrorChannel(st, 'schema', schemaResponse.errors)
     }
   }
 

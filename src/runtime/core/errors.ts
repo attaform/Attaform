@@ -10,8 +10,8 @@
  * keeps working.
  */
 
-import type { ErrorInput, FormKey, ValidationError } from '../types/types-api'
-import type { Path } from './paths'
+import type { ErrorCell, ErrorInput, ValidationError } from '../types/types-api'
+import type { Path, PathKey } from './paths'
 
 /**
  * Base for every error class thrown by `attaform`. Sets
@@ -93,10 +93,10 @@ export function toError(value: unknown): Error {
 /**
  * Coerce one lenient `ErrorInput` (a real `Error`, or a partial
  * `{ message?, path?, code?, data? }`) into a firm `ValidationError`.
- * The form always stamps its own `formKey`; a missing or empty `message`
- * coerces to `"Unknown error"` and a missing or empty `code` to
- * `defaultCode`, so the result is always well-formed — library code
- * never throws into the consumer app over a malformed error input.
+ * A missing or empty `message` coerces to `"Unknown error"` and a
+ * missing or empty `code` to `defaultCode`, so the result is always
+ * well-formed — library code never throws into the consumer app over a
+ * malformed error input.
  *
  * `scope` pins the path: pass the canonical segments for a path-scoped
  * write (`setErrors(path, …)`), or `undefined` to honor the input's own
@@ -108,14 +108,12 @@ export function toError(value: unknown): Error {
 export function normalizeErrorInput(
   item: ErrorInput,
   scope: Path | undefined,
-  formKey: FormKey,
   defaultCode: string
 ): ValidationError {
   if (item instanceof Error) {
     return {
       message: item.message.length > 0 ? item.message : 'Unknown error',
       path: scope !== undefined ? [...scope] : [],
-      formKey,
       code: defaultCode,
     }
   }
@@ -123,7 +121,6 @@ export function normalizeErrorInput(
     message:
       typeof item.message === 'string' && item.message.length > 0 ? item.message : 'Unknown error',
     path: scope !== undefined ? [...scope] : Array.isArray(item.path) ? [...item.path] : [],
-    formKey,
     code: typeof item.code === 'string' && item.code.length > 0 ? item.code : defaultCode,
   }
   if (item.data !== undefined) entry.data = item.data
@@ -132,17 +129,32 @@ export function normalizeErrorInput(
 
 /**
  * Normalize a single `ErrorInput` or an array of them into a
- * `ValidationError[]`, applying `normalizeErrorInput` to each. See it for
- * the `scope` / `formKey` / `defaultCode` semantics.
+ * `ValidationError[]`, applying `normalizeErrorInput` to each. See it
+ * for the `scope` / `defaultCode` semantics.
  */
 export function normalizeErrorInputs(
   input: ErrorInput | ErrorInput[],
   scope: Path | undefined,
-  formKey: FormKey,
   defaultCode: string
 ): ValidationError[] {
   const items = Array.isArray(input) ? input : [input]
-  return items.map((item) => normalizeErrorInput(item, scope, formKey, defaultCode))
+  return items.map((item) => normalizeErrorInput(item, scope, defaultCode))
+}
+
+/**
+ * Iterate one side of the tagged error store: yields `[key, entries]`
+ * for every cell whose `side` is non-empty, in the map's insertion
+ * order. The uniform per-source view the enumeration walks, aggregate
+ * collectors, and serialization all read through.
+ */
+export function* cellEntriesFor(
+  cells: ReadonlyMap<PathKey, ErrorCell>,
+  side: 'schema' | 'user'
+): IterableIterator<readonly [PathKey, readonly ValidationError[]]> {
+  for (const [key, cell] of cells) {
+    const list = cell[side]
+    if (list.length > 0) yield [key, list] as const
+  }
 }
 
 /**

@@ -382,7 +382,7 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    * `ValidationError[]` shape. v3 and v4 have slightly different
    * `ZodIssue` payloads; each adapter knows how to map its own.
    */
-  issuesToValidationErrors(issues: readonly unknown[], formKey: FormKey): ValidationError[]
+  issuesToValidationErrors(issues: readonly unknown[]): ValidationError[]
   /**
    * Run a sync `safeParse` against the schema. Returns a tagged result
    * the factory aggregates into a `ValidationResponse`. MAY throw when
@@ -723,7 +723,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           ? { data: result.data as GetValueFormType, errors: undefined, success: true, formKey }
           : {
               data: undefined,
-              errors: services.issuesToValidationErrors(result.issues, formKey),
+              errors: services.issuesToValidationErrors(result.issues),
               success: false,
               formKey,
             }
@@ -794,7 +794,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
             {
               message,
               path: [...errPath],
-              formKey,
               code: AttaformErrorCode.ValidatorThrew,
             },
           ],
@@ -810,7 +809,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
             {
               message: `Path '${p.join(PATH_SEPARATOR)}' did not resolve to any schema`,
               path: [...p],
-              formKey,
               code: AttaformErrorCode.PathNotFound,
             },
           ],

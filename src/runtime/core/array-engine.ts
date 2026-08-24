@@ -1,5 +1,6 @@
 import { toRaw, type Ref } from 'vue'
-import type { ValidationError, WriteMeta } from '../types/types-api'
+import type { ErrorCell, WriteMeta } from '../types/types-api'
+import { NO_ERRORS } from './error-codes'
 import { diffAndApply } from './diff-apply'
 import { getAtPath } from './path-walker'
 import {
@@ -261,6 +262,29 @@ export function migrateSetSubtree(set: Set<PathKey>, arrayPath: Path, remap: Ind
     const relocated = hit.segments.slice()
     relocated[idxPos] = target
     set.add(canonicalizePath(relocated).key)
+  }
+}
+
+/**
+ * Drop the SCHEMA side of every cell whose element index is in
+ * `indices` — stale verdicts describing a prior occupant. User sides
+ * survive (already relocated by the cell migration in
+ * `migrateElementState`); a cell left empty leaves the map, including
+ * the empty husk a relocated schema-only cell leaves at its
+ * destination (every relocation destination is a changed index).
+ */
+function evictSchemaVerdictsAtIndices(
+  errorCells: Map<PathKey, ErrorCell>,
+  arrayPath: Path,
+  indices: ReadonlySet<number>
+): void {
+  for (const hit of collectKeysAtIndices([...errorCells.keys()], arrayPath, (index) =>
+    indices.has(index)
+  )) {
+    const cell = errorCells.get(hit.key)
+    if (cell === undefined) continue
+    if (cell.user.length === 0) errorCells.delete(hit.key)
+    else if (cell.schema.length > 0) errorCells.set(hit.key, { schema: NO_ERRORS, user: cell.user })
   }
 }
 
@@ -600,7 +624,7 @@ export type FieldValidationEntry = {
 export type ArrayBookkeepingDeps = {
   readonly form: Ref<unknown>
   readonly fields: Map<PathKey, FieldRecord>
-  readonly userErrors: Map<PathKey, ValidationError[]>
+  readonly errorCells: Map<PathKey, ErrorCell>
   readonly originals: Map<PathKey, OriginalsRecord>
   readonly blankPaths: Set<PathKey>
   readonly originalBlankPaths: Set<PathKey>
@@ -608,7 +632,6 @@ export type ArrayBookkeepingDeps = {
   readonly fieldValidationCounts: Map<PathKey, number>
   readonly fieldValidatingSince: Map<PathKey, number>
   readonly fieldValidationState: Map<PathKey, FieldValidationEntry>
-  readonly schemaErrors: Map<PathKey, ValidationError[]>
   readonly activeValidations: Ref<number>
   readonly arrayIdentity: ArrayIdentity
   readonly variantMemory: VariantMemory
@@ -666,7 +689,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
   const {
     form,
     fields,
-    userErrors,
+    errorCells,
     originals,
     blankPaths,
     originalBlankPaths,
@@ -674,7 +697,6 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     fieldValidationCounts,
     fieldValidatingSince,
     fieldValidationState,
-    schemaErrors,
     activeValidations,
     arrayIdentity,
     variantMemory,
@@ -688,9 +710,14 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       ...record,
       path: segments,
     }))
-    migrateMapSubtree(userErrors, arrayPath, remap, (errors, segments) =>
-      errors.map((error) => ({ ...error, path: [...segments] }))
-    )
+    // A cell's USER side follows its element (paths re-stamped); the
+    // SCHEMA side is derived state describing the prior occupant, so a
+    // relocated cell lands schema-empty and the eviction pass below
+    // clears stale verdicts (and any empty husk) at every changed index.
+    migrateMapSubtree(errorCells, arrayPath, remap, (cell, segments) => ({
+      schema: NO_ERRORS,
+      user: cell.user.map((error) => ({ ...error, path: [...segments] })),
+    }))
     migrateMapSubtree(originals, arrayPath, remap, (record, segments) => ({
       segments,
       value: record.value,
@@ -748,12 +775,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       migrateElementState(arrayPath, remap)
       for (const freshIndex of remap.fresh) seedFreshElement(arrayPath, freshIndex)
       const changed = changedIndices(remap)
-      deleteKeysAtIndices(
-        [...schemaErrors.keys()],
-        (key) => schemaErrors.delete(key),
-        arrayPath,
-        changed
-      )
+      evictSchemaVerdictsAtIndices(errorCells, arrayPath, changed)
       abortValidationAtVacatedIndices(arrayPath, remap)
       variantMemory.dropAtIndices(arrayPath, changed)
       arrayIdentity.applyOp(arrayPath, remap)

@@ -56,8 +56,15 @@ export function renderAttaformState(app: App): SerializedAttaformState {
       key,
       {
         form: state.form.value,
-        schemaErrors: Array.from(state.schemaErrors.entries()),
-        userErrors: Array.from(state.userErrors.entries()),
+        // The wire shape stays two per-source arrays; the tagged store
+        // splits at the boundary and the client replays each side into
+        // its cell half.
+        schemaErrors: [...state.errorCells.entries()]
+          .filter(([, cell]) => cell.schema.length > 0)
+          .map(([key, cell]) => [key, cell.schema] as const),
+        userErrors: [...state.errorCells.entries()]
+          .filter(([, cell]) => cell.user.length > 0)
+          .map(([key, cell]) => [key, cell.user] as const),
         fields: Array.from(state.fields.entries()),
         ...(transientList.length > 0 ? { blankPaths: transientList } : {}),
       },

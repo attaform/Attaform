@@ -86,7 +86,7 @@ describe('buildFieldStateAccessor', () => {
     const { state, getFieldState } = makeAccessor()
     state.setSchemaErrorsForPath(
       ['email'],
-      [{ message: 'bad', path: ['email'], formKey: 'fs', code: 'atta:test-fixture' }]
+      [{ message: 'bad', path: ['email'], code: 'atta:test-fixture' }]
     )
     expect(getFieldState(['email']).value.errors).toHaveLength(1)
   })
@@ -175,7 +175,7 @@ describe('buildFieldStateAccessor', () => {
       // Errors present → valid false even when not in-flight.
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'bad', path: ['email'], formKey: 'fs', code: 'atta:test-fixture' }]
+        [{ message: 'bad', path: ['email'], code: 'atta:test-fixture' }]
       )
       expect(s.value.errors).toHaveLength(1)
       expect(s.value.valid).toBe(false)
@@ -371,11 +371,11 @@ describe('buildFieldStateAccessor — container aggregation', () => {
     const pickup = getFieldState(['pickup'])
     state.setSchemaErrorsForPath(
       ['pickup', 'city'],
-      [{ message: 'missing city', path: ['pickup', 'city'], formKey: 'cont', code: 'atta:test' }]
+      [{ message: 'missing city', path: ['pickup', 'city'], code: 'atta:test' }]
     )
     state.setSchemaErrorsForPath(
       ['pickup', 'zip'],
-      [{ message: 'missing zip', path: ['pickup', 'zip'], formKey: 'cont', code: 'atta:test' }]
+      [{ message: 'missing zip', path: ['pickup', 'zip'], code: 'atta:test' }]
     )
     expect(pickup.value.errors.map((e) => e.message)).toEqual(['missing city', 'missing zip'])
   })
@@ -386,7 +386,7 @@ describe('buildFieldStateAccessor — container aggregation', () => {
     expect(pickup.value.valid).toBe(true)
     state.setSchemaErrorsForPath(
       ['pickup', 'city'],
-      [{ message: 'bad', path: ['pickup', 'city'], formKey: 'cont', code: 'atta:test' }]
+      [{ message: 'bad', path: ['pickup', 'city'], code: 'atta:test' }]
     )
     expect(pickup.value.valid).toBe(false)
   })

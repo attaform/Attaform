@@ -87,7 +87,7 @@ describe('createFormStore', () => {
       const stateB = makeState({ formKey: 'formB' })
       stateA.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'bad', path: ['email'], formKey: 'formA', code: 'atta:test-fixture' }]
+        [{ message: 'bad', path: ['email'], code: 'atta:test-fixture' }]
       )
       expect(stateA.getErrorsForPath(['email'])).toHaveLength(1)
       expect(stateB.getErrorsForPath(['email'])).toHaveLength(0)
@@ -165,7 +165,7 @@ describe('createFormStore', () => {
     it('setSchemaErrorsForPath stores and clears per path', () => {
       const state = makeState()
       const errs: ValidationError[] = [
-        { message: 'bad', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
+        { message: 'bad', path: ['email'], code: 'atta:test-fixture' },
       ]
       state.setSchemaErrorsForPath(['email'], errs)
       expect(state.getErrorsForPath(['email'])).toEqual(errs)
@@ -177,22 +177,20 @@ describe('createFormStore', () => {
       const state = makeState()
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'old', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'old', path: ['email'], code: 'atta:test-fixture' }]
       )
-      state.setAllSchemaErrors([
-        { message: 'new', path: ['password'], formKey: 'test', code: 'atta:test-fixture' },
-      ])
+      state.setAllSchemaErrors([{ message: 'new', path: ['password'], code: 'atta:test-fixture' }])
       expect(state.getErrorsForPath(['email'])).toEqual([])
       expect(state.getErrorsForPath(['password'])).toEqual([
-        { message: 'new', path: ['password'], formKey: 'test', code: 'atta:test-fixture' },
+        { message: 'new', path: ['password'], code: 'atta:test-fixture' },
       ])
     })
 
     it('setAllUserErrors buckets multiple entries at the same path', () => {
       const state = makeState()
       state.setAllUserErrors([
-        { message: 'first', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-        { message: 'second', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
+        { message: 'first', path: ['email'], code: 'atta:test-fixture' },
+        { message: 'second', path: ['email'], code: 'atta:test-fixture' },
       ])
       expect(state.getErrorsForPath(['email'])).toHaveLength(2)
     })
@@ -200,12 +198,12 @@ describe('createFormStore', () => {
     it('setUserErrorsForPath replaces only the targeted bucket', () => {
       const state = makeState()
       state.setAllUserErrors([
-        { message: 'e', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-        { message: 'p', path: ['password'], formKey: 'test', code: 'atta:test-fixture' },
+        { message: 'e', path: ['email'], code: 'atta:test-fixture' },
+        { message: 'p', path: ['password'], code: 'atta:test-fixture' },
       ])
       state.setUserErrorsForPath(
         ['email'],
-        [{ message: 'e2', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'e2', path: ['email'], code: 'atta:test-fixture' }]
       )
       expect(state.getErrorsForPath(['email']).map((x) => x.message)).toEqual(['e2'])
       expect(state.getErrorsForPath(['password']).map((x) => x.message)).toEqual(['p'])
@@ -213,9 +211,7 @@ describe('createFormStore', () => {
 
     it('setUserErrorsForPath with an empty list deletes the bucket', () => {
       const state = makeState()
-      state.setAllUserErrors([
-        { message: 'e', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-      ])
+      state.setAllUserErrors([{ message: 'e', path: ['email'], code: 'atta:test-fixture' }])
       state.setUserErrorsForPath(['email'], [])
       expect(state.getErrorsForPath(['email'])).toEqual([])
     })
@@ -224,11 +220,11 @@ describe('createFormStore', () => {
       const state = makeState()
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'a', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'a', path: ['email'], code: 'atta:test-fixture' }]
       )
       state.setSchemaErrorsForPath(
         ['password'],
-        [{ message: 'b', path: ['password'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'b', path: ['password'], code: 'atta:test-fixture' }]
       )
       state.clearSchemaErrors()
       expect(state.getErrorsForPath(['email'])).toEqual([])
@@ -239,11 +235,11 @@ describe('createFormStore', () => {
       const state = makeState()
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'a', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'a', path: ['email'], code: 'atta:test-fixture' }]
       )
       state.setSchemaErrorsForPath(
         ['password'],
-        [{ message: 'b', path: ['password'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'b', path: ['password'], code: 'atta:test-fixture' }]
       )
       state.clearSchemaErrors(['email'])
       expect(state.getErrorsForPath(['email'])).toEqual([])
@@ -251,65 +247,62 @@ describe('createFormStore', () => {
     })
 
     // --- Source-isolation locks ---
-    // The whole point of the schemaErrors / userErrors split: each
-    // writer touches exactly one Map. The asserts below fail loudly if
-    // a future refactor accidentally cross-routes a writer.
+    // The whole point of the tagged store's per-cell split: each writer
+    // replaces exactly one side of a cell. The asserts below fail
+    // loudly if a future refactor accidentally cross-routes a writer.
 
-    it('setSchemaErrorsForPath does NOT touch userErrors', () => {
+    const emailKey = canonicalizePath(['email']).key
+    const cellSides = (state: ReturnType<typeof makeState>) => {
+      const cell = state.errorCells.get(emailKey)
+      return {
+        schema: [...(cell?.schema ?? [])].map((e) => e.message),
+        user: [...(cell?.user ?? [])].map((e) => e.message),
+      }
+    }
+
+    it('setSchemaErrorsForPath does NOT touch the user side', () => {
       const state = makeState()
-      state.setAllUserErrors([
-        { message: 'user', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-      ])
+      state.setAllUserErrors([{ message: 'user', path: ['email'], code: 'atta:test-fixture' }])
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'schema', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'schema', path: ['email'], code: 'atta:test-fixture' }]
       )
-      expect(state.userErrors.size).toBe(1)
-      expect(state.schemaErrors.size).toBe(1)
+      expect(cellSides(state)).toEqual({ schema: ['schema'], user: ['user'] })
       // Merged read returns schema first, then user (per the documented
       // ordering invariant exercised throughout the public API).
       expect(state.getErrorsForPath(['email']).map((e) => e.message)).toEqual(['schema', 'user'])
     })
 
-    it('setAllUserErrors does NOT touch schemaErrors', () => {
+    it('setAllUserErrors does NOT touch the schema side', () => {
       const state = makeState()
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'schema', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'schema', path: ['email'], code: 'atta:test-fixture' }]
       )
-      state.setAllUserErrors([
-        { message: 'user', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-      ])
-      expect(state.schemaErrors.size).toBe(1)
-      expect(state.userErrors.size).toBe(1)
+      state.setAllUserErrors([{ message: 'user', path: ['email'], code: 'atta:test-fixture' }])
+      expect(cellSides(state)).toEqual({ schema: ['schema'], user: ['user'] })
     })
 
-    it('clearSchemaErrors leaves userErrors intact', () => {
+    it('clearSchemaErrors leaves the user side intact', () => {
       const state = makeState()
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'schema', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'schema', path: ['email'], code: 'atta:test-fixture' }]
       )
-      state.setAllUserErrors([
-        { message: 'user', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-      ])
+      state.setAllUserErrors([{ message: 'user', path: ['email'], code: 'atta:test-fixture' }])
       state.clearSchemaErrors()
-      expect(state.schemaErrors.size).toBe(0)
-      expect(state.userErrors.size).toBe(1)
+      expect(cellSides(state)).toEqual({ schema: [], user: ['user'] })
     })
 
-    it('clearUserErrors leaves schemaErrors intact', () => {
+    it('clearUserErrors leaves the schema side intact', () => {
       const state = makeState()
       state.setSchemaErrorsForPath(
         ['email'],
-        [{ message: 'schema', path: ['email'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'schema', path: ['email'], code: 'atta:test-fixture' }]
       )
-      state.setAllUserErrors([
-        { message: 'user', path: ['email'], formKey: 'test', code: 'atta:test-fixture' },
-      ])
+      state.setAllUserErrors([{ message: 'user', path: ['email'], code: 'atta:test-fixture' }])
       state.clearUserErrors()
-      expect(state.userErrors.size).toBe(0)
-      expect(state.schemaErrors.size).toBe(1)
+      expect(cellSides(state)).toEqual({ schema: ['schema'], user: [] })
     })
   })
 
@@ -396,7 +389,7 @@ describe('createFormStore', () => {
       const state = makeState()
       state.setSchemaErrorsForPath(
         ['profile', 'name'],
-        [{ message: 'x', path: ['profile', 'name'], formKey: 'test', code: 'atta:test-fixture' }]
+        [{ message: 'x', path: ['profile', 'name'], code: 'atta:test-fixture' }]
       )
       // Reading via any canonical-equivalent path returns the same entry.
       expect(state.getErrorsForPath(['profile', 'name'])).toHaveLength(1)
@@ -409,7 +402,7 @@ describe('createFormStore', () => {
       const state = createFormStore({ formKey: 'odd', schema: oddSchema })
       state.setSchemaErrorsForPath(
         ['profile.name'],
-        [{ message: 'x', path: ['profile.name'], formKey: 'odd', code: 'atta:test-fixture' }]
+        [{ message: 'x', path: ['profile.name'], code: 'atta:test-fixture' }]
       )
       expect(state.getErrorsForPath(['profile.name'])).toHaveLength(1)
       expect(state.getErrorsForPath(['profile', 'name'])).toHaveLength(0)

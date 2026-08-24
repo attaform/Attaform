@@ -68,9 +68,10 @@ describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
       // Use a value guaranteed to fail shape-check — null — so we're on
       // the error branch of validateAtPath.
       const result = await adapter.validateAtPath(null, undefined)
+      expect(result.formKey).toBe(formKey)
       if (!result.success) {
         for (const err of result.errors) {
-          expect(err.formKey).toBe(formKey)
+          expect(typeof err.code).toBe('string')
         }
       }
     }

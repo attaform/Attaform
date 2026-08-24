@@ -30,11 +30,9 @@ describe('renderAttaformState', () => {
     // populate userErrors; here we test both round-trip independently.
     state.setSchemaErrorsForPath(
       ['email'],
-      [{ message: 'taken', path: ['email'], formKey: 'signup', code: 'atta:test-fixture' }]
+      [{ message: 'taken', path: ['email'], code: 'atta:test-fixture' }]
     )
-    state.setAllUserErrors([
-      { message: 'banned-domain', path: ['email'], formKey: 'signup', code: 'api:validation' },
-    ])
+    state.setAllUserErrors([{ message: 'banned-domain', path: ['email'], code: 'api:validation' }])
     const payload = renderAttaformState(app)
     expect(payload.forms).toHaveLength(1)
     const entry = payload.forms[0]
@@ -210,11 +208,10 @@ describe('hydration shape guard', () => {
       hydration,
     })
 
-    // Only the valid 'email' entry made it into each error map.
-    expect(state.schemaErrors.size).toBe(1)
-    expect(state.schemaErrors.get(emailKey)?.[0]?.message).toBe('taken')
-    expect(state.userErrors.size).toBe(1)
-    expect(state.userErrors.get(emailKey)?.[0]?.message).toBe('taken')
+    // Only the valid 'email' entry made it into each side of the store.
+    expect(state.errorCells.size).toBe(1)
+    expect(state.errorCells.get(emailKey)?.schema[0]?.message).toBe('taken')
+    expect(state.errorCells.get(emailKey)?.user[0]?.message).toBe('taken')
   })
 
   it('warns once per malformed entry in dev mode', () => {

@@ -52,7 +52,6 @@ describe('ValidationError.data — serialise / hydrate round-trip', () => {
       {
         message: 'verify',
         path: ['email'],
-        formKey: 'data-rt',
         code: 'api:captcha',
         data: challenge,
       },
@@ -63,7 +62,6 @@ describe('ValidationError.data — serialise / hydrate round-trip', () => {
         {
           message: 'weak',
           path: ['password'],
-          formKey: 'data-rt',
           code: 'atta:test',
           data: { score: 1 },
         },
@@ -102,8 +100,8 @@ describe('ValidationError.data — serialise / hydrate round-trip', () => {
     registry.forms.set('data-null', state)
 
     state.setAllUserErrors([
-      { message: 'with', path: ['email'], formKey: 'data-null', code: 'c', data: null },
-      { message: 'without', path: ['password'], formKey: 'data-null', code: 'c' },
+      { message: 'with', path: ['email'], code: 'c', data: null },
+      { message: 'without', path: ['password'], code: 'c' },
     ])
 
     const payload = JSON.parse(JSON.stringify(renderAttaformState(serverApp)))

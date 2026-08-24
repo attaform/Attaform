@@ -3,7 +3,7 @@ import type {
   HistoryKernel,
   HistoryModule,
   HistoryPlugin,
-  ValidationError,
+  ErrorCell,
   WriteMeta,
 } from '../types/types-api'
 import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './defaults'
@@ -52,18 +52,19 @@ export type HistoryPluginOptions = {
   max?: number
 }
 
-type ErrorEntries = ReadonlyArray<readonly [PathKey, ValidationError[]]>
+type ErrorCellEntries = ReadonlyArray<readonly [PathKey, ErrorCell]>
 
 type HistorySnapshot = {
   readonly form: unknown
   readonly blankPaths: ReadonlyArray<PathKey>
-  readonly schemaErrors: ErrorEntries
-  readonly userErrors: ErrorEntries
+  readonly errorCells: ErrorCellEntries
 }
 
-function captureErrorEntries(map: Map<PathKey, ValidationError[]>): ErrorEntries {
-  const out: Array<readonly [PathKey, ValidationError[]]> = []
-  for (const [k, v] of map) out.push([k, [...v]] as const)
+function captureErrorCells(map: Map<PathKey, ErrorCell>): ErrorCellEntries {
+  const out: Array<readonly [PathKey, ErrorCell]> = []
+  for (const [k, cell] of map) {
+    out.push([k, { schema: [...cell.schema], user: [...cell.user] }] as const)
+  }
   return out
 }
 
@@ -78,8 +79,7 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     return {
       form: structuralSnapshot(kernel.form.value),
       blankPaths: [...kernel.blankPaths],
-      schemaErrors: captureErrorEntries(kernel.schemaErrors),
-      userErrors: captureErrorEntries(kernel.userErrors),
+      errorCells: captureErrorCells(kernel.errorCells),
     }
   }
 
@@ -135,10 +135,10 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     // into the live form in place, and a shared reference would let a
     // later mutation silently rewrite the stored position.
     kernel.applyFormReplacement(structuralSnapshot(snap.form))
-    // Rebuild both error stores from the snapshot. Each writer clears +
-    // repopulates its own Map; the two sources stay isolated.
-    kernel.setAllSchemaErrors(snap.schemaErrors.flatMap(([, errs]) => errs))
-    kernel.setAllUserErrors(snap.userErrors.flatMap(([, errs]) => errs))
+    // Rebuild the tagged store from the snapshot. The restore writer
+    // clones the entry arrays in, so the ring stays detached; the two
+    // sources stay isolated inside each cell.
+    kernel.restoreErrorCells(snap.errorCells)
   }
 
   function stepTo(nextCursor: number): boolean {

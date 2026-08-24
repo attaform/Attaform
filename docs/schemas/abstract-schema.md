@@ -193,6 +193,27 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       return leaf?.isRequired ?? false
     },
 
+    getEmptyValueAtPath(path) {
+      // The "clear this field" value. Whatever your library treats as
+      // the leaf's blank state; `undefined` is always safe.
+      return walkSchemaToDefault(schema, path)
+    },
+
+    isFixedObjectAtPath(path) {
+      // True only for closed, declared-key object shapes. Open
+      // containers (records, unions) return false so the runtime
+      // falls back to live keys.
+      const kinds = walkSchemaToSlimPrimitives(schema, path)
+      return kinds !== undefined && kinds.has('object')
+    },
+
+    isPreprocessOrCoerceLeaf() {
+      // True where a schema-side input normalizer (a coercing or
+      // preprocessing node) should accept raw writes verbatim. Return
+      // false if your library has no such construct.
+      return false
+    },
+
     getSchemasAtPath() {
       return []
     },
@@ -209,7 +230,7 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       const result = path !== undefined ? schema.parseAtPath(data, path) : schema.parse(data)
 
       if (result.success) {
-        return { success: true, data: result.data, errors: [], formKey: '' }
+        return { success: true, data: result.data, errors: undefined, formKey: '' }
       }
 
       const errors: ValidationError[] = result.issues.map((issue) => ({

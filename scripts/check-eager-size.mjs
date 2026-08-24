@@ -382,6 +382,19 @@ export async function measureEager(define = PROD_DEFINE) {
 // little; only deleting structurally redundant logic moves this number.
 // Budget tightened 36_200 -> 36_050 (the ~430 B headroom convention).
 //
+// P7 RATCHET (2026-08-24): 34,530 -> 33,999 measured (-531). Sign-off 7
+// landed: the slim-schema rebuild (getSlimSchema + stripRefinements +
+// walkSlim) is DELETED on both majors in favor of the shared DU-aware
+// structural fix walk (core/walk-fix-structural.ts) that never parses
+// and never runs user refines/transforms at construction; introspect's
+// kindOf switch became an alias table + identity set and walkSchemaTree
+// descent went data-driven; the catchOnUseDefaultFalse knob died when
+// v3 aligned to v4's recurse-inner semantics. Exhaustive-case lint
+// tails cost +49 back; the core-walk genericization cost +98 on this
+// metric and bought -2,260 on the plugin-less barrel (41,080 ->
+// 38,820). Sign-off 6's factory absorption was REFUSED on rep evidence
+// (+17 gz). Budget 34_950 -> 34_400 (~0.4 kB headroom).
+//
 // P8 RATCHET (surface program, 2026-08-24): callable-tree.ts replaced the
 // seven-module proxy zoo (surface-proxy, errors-proxy, field-state-proxy,
 // values-proxy, callable-readonly-snapshot-proxy [now wizard-only],
@@ -400,7 +413,7 @@ export async function measureEager(define = PROD_DEFINE) {
 // leaf/container field-state builder fold (twin-tail-only, P6 gzip
 // discount), the activation-getter loop (+15 B), the useForm layer
 // collapse (type-weight only). Budget tightened 36_050 -> 34_950.
-const BUDGET_GZ = 34_950
+const BUDGET_GZ = 34_400
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

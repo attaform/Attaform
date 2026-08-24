@@ -32,10 +32,10 @@ number on the phase's merge commit, not an estimate.
 | P5    | store kernel                          | done    | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase     |
 | P6    | validation shell fold (re-scoped)     | done    | 35,621             | 2026-08-23 | -147 (under band); sign-off 4 retired           |
 | P8    | surface program                       | done    | 34,530             | 2026-08-24 | -1,091; callable-tree; shims restored (+131)    |
-| P7    | zod-core + probe packs                | pending | ~33,900 exp.       |            | next; central band -300..-900 + barrel win      |
-| P1b   | error codes + prose diet              | pending | ~33,000 exp.       |            | 3rd; build /e/AF## pages in the same PR         |
-| P9    | paths + walkers (re-scoped)           | pending | ~32,700 exp.       |            | 4th; trie + node(); reconcile merge = rep-first |
-| P10   | sweep and lock                        | pending | ~32,300 exp.       |            | last                                            |
+| P7    | zod-core + probe packs                | done    | 33,999             | 2026-08-24 | -531; fix walk; barrel -2,260; s/o 6 refused    |
+| P1b   | error codes + prose diet              | pending | ~33,100 exp.       |            | next; build /e/AF## pages in the same PR        |
+| P9    | paths + walkers (re-scoped)           | pending | ~32,800 exp.       |            | 4th; trie + node(); reconcile merge = rep-first |
+| P10   | sweep and lock                        | pending | ~32,400 exp.       |            | last                                            |
 
 > **RE-ANCHOR RULING (Oswald, 2026-08-23, post-P5): CONTINUE, re-scoped.**
 > His words: push wherever more is achievable without triggering
@@ -83,6 +83,18 @@ number on the phase's merge commit, not an estimate.
 >    with a P10 ruling that accepts the playground + sub-ES2020
 >    breakage or lands a compiler-side fix. Landing re-derived ~32.3 kB
 >    (honest range 31.5-33.2 kB).
+> 7. P7 addendum (measured -531 vs plan -400..-600 realized; rep armD
+>    -834 realized at 64% before the +98 genericization tax): the
+>    rep-first rule REFUSED sign-off 6's factory absorption on
+>    measurement (+17 gz — the services indirection was fully
+>    gzip-pre-discounted; a shared class weighs what the shared factory
+>    weighs on the barrel too). Its `node()` SPI item moves to P9. The
+>    barrel prize landed larger than the ratchet win: plugin-less
+>    `zod: { useForm }` 41,080 -> 38,760 and the v4-gap penalty 6,104
+>    -> ~4,360. Construction perf came back with the deletion: v4 cold
+>    init +26/+42/+81% (F=5/50/500) vs the P5 reference — the P8
+>    cold-init residual is repaid with interest. Landing estimate holds
+>    ~32.4 kB.
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

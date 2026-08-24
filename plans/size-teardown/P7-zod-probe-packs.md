@@ -1,4 +1,68 @@
-# P7: zod-core + probe packs (detailed 2026-08-24 at the P8 boundary)
+# P7: zod-core + probe packs — DONE 2026-08-24
+
+**OUTCOME: measured 33,999 B gz, -531 against the plan's -400..-600
+realized band; the barrel prize overshot: plugin-less `zod: { useForm }`
+41,080 -> 38,760 (-2,320), v4-gap penalty 6,104 -> ~4,360.**
+Full suite 4,689 green both majors at every slice; typecheck clean;
+both dist-typed gates green against fresh unbuilds; all 22 size-limit
+caps tightened and passing; perf gate PASSED with a construction WIN.
+Commits: 8356ec5a (7a re-baseline + rep), e3a943f9 (7b fix walk v4 +
+introspect diet), bdf7adef (7c seed pin), 323b7e1a + 9928113b (7d v3
+unification + catch alignment), + the boundary gates commit.
+
+## Findings
+
+- **Sign-off 7 delivered the phase.** The slim-schema rebuild
+  (getSlimSchema / walkSlim / stripRefinements and v3's
+  getSlimSchema / stripRootSchema / stripRefinements /
+  clone-schema.ts / the slim-root projection cache) is gone on BOTH
+  majors, replaced by ONE shared DU-aware structural fix walk
+  (`core/walk-fix-structural.ts`) over the SchemaIntrospector: no
+  schema is ever rebuilt at construction and nothing parses, so user
+  refinements and transforms can never fire during
+  `getDefaultValues` (the perf-lock p1 suites pin exactly that via a
+  sync refine returning a Promise — the pin that killed the naive
+  parse-against-original rewire mid-slice).
+- **The DU foreign-key strip was load-bearing.** The old slim parse
+  silently dropped keys foreign to a DU value's selected variant
+  (Zod's unknown-key stripping); the variant-memory / reshape
+  machinery depends on that. The fix walk now does it DU-scoped by
+  design, so undeclared keys at plain objects survive (the sign-off 7
+  preservation) while DU residue is still cleaned. Caught by the DU
+  hardening probes, not by theory.
+- **Sign-off 6 REFUSED on rep evidence (+17 gz)**: the
+  createAbstractSchema + services double-dispatch was fully
+  gzip-pre-discounted; a class port GROWS the bundle and a shared
+  class weighs what the shared factory weighs on the barrel. The
+  factory stays; `node()` moves to P9.
+- **Construction perf came back with the deletion**: v4 cold init
+  +26% / +42% / +81% (flat F=5/50/500) vs the P5 reference — the P8
+  -2..-5% residual repaid with interest. Keystroke arms noise-to-
+  positive; the flagged array N=1000 batch collapse re-ran +1.8%
+  solo (the known positional-GC artifact class).
+- **v3 catch-under-useDefault:false aligned to v4** (recurse-inner);
+  the `catchOnUseDefaultFalse` knob deleted from the core walker —
+  with one behavior there is nothing to configure.
+- **stripAsyncChecks revisit trigger ANSWERED (keep)**: seeds are
+  user-visible on first paint via meta.valid / meta.errors /
+  errors(path) while the field UI stays gated — pinned in
+  `test/composables/construction-seed-visibility.test.ts`.
+- **En-route docs traps fixed** (gate was green; these were the
+  tolerated eyeball list): two success-arm snippets predating P5's
+  `errors: undefined` tightening, and the custom-adapter example in
+  two pages missing getEmptyValueAtPath / isFixedObjectAtPath /
+  isPreprocessOrCoerceLeaf. REMAINING eyeball items: coercion.md's
+  elided-entry TS2345 and app-defaults.md's generic-wrapper TS2589
+  cluster (the known #443-space TS limitation). RECOMMENDATION for
+  Oswald: widen `hydrateAttaformState(app, payload)` to
+  `payload: unknown` — the body already runtime-validates the
+  envelope and its own docblock example doesn't compile against the
+  declared signature; reverted here pending a ruling (public API).
+- Gates moved: BUDGET_GZ 34_950 -> 34_400; caps tightened
+  (index/zod 52.75, zod-v4 48.25, zod-v3 49, scoped zod 39.25 /
+  zod-v4 34.75 / zod-v3 35.5, barrel 39.25). Attribution: zod-v4 dir
+  5,410 -> 4,051 gz; strip.ts and default-values.ts are thin
+  bindings now.
 
 ## 7a findings (2026-08-24) — re-baseline done, claim re-anchored
 

@@ -21,6 +21,7 @@ import type {
 } from '../types/types-api'
 import type { DeepPartial, DefaultValuesInput, GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import { pickDefined } from './defaults'
 import { structuralSnapshot } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
 import { normalizeErrorInputs } from './errors'
@@ -137,17 +138,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // / `rememberVariants` honor THIS instance's config. Sibling
   // instances sharing the same FormStore (modal + main) carry their
   // own instanceMeta in their own buildFormApi closure.
-  const instanceMeta: WriteMeta['instance'] | undefined = (() => {
-    const bag: {
-      -readonly [K in keyof NonNullable<WriteMeta['instance']>]: NonNullable<
-        WriteMeta['instance']
-      >[K]
-    } = {}
-    if (options.validateOn !== undefined) bag.validateOn = options.validateOn
-    if (options.debounceMs !== undefined) bag.debounceMs = options.debounceMs
-    if (options.rememberVariants !== undefined) bag.rememberVariants = options.rememberVariants
-    return Object.keys(bag).length > 0 ? bag : undefined
-  })()
+  const instanceBag = pickDefined({
+    validateOn: options.validateOn,
+    debounceMs: options.debounceMs,
+    rememberVariants: options.rememberVariants,
+  })
+  const instanceMeta: WriteMeta['instance'] | undefined =
+    Object.keys(instanceBag).length > 0 ? instanceBag : undefined
   // Helper used by every internal `state.setValueAtPath` call below to
   // splice the instance bag into the forwarded WriteMeta. Identity
   // when no instance overrides are active.
@@ -244,19 +241,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     getRootFieldStateAt(segments).value.displayState
 
   const registerConfig = {
-    ...(instanceMeta !== undefined ? { instanceMeta } : {}),
-    ...(options.coerce !== undefined ? { coerce: options.coerce } : {}),
-    ...(options.autoAria !== undefined ? { autoAria: options.autoAria } : {}),
+    ...pickDefined({ instanceMeta, coerce: options.coerce, autoAria: options.autoAria }),
     getDisplayStateAt,
   }
   const register = buildRegister(state, formInstanceId, registerConfig) as (
     path: string | Path
   ) => RegisterValue<unknown>
-  // Don't set `onInvalidSubmit: undefined` — exactOptionalPropertyTypes
-  // treats an explicit-undefined value differently from an omitted
-  // property. Only pass the key when the consumer opted in.
-  const processOptions =
-    options.onInvalidSubmit !== undefined ? { onInvalidSubmit: options.onInvalidSubmit } : {}
+  const processOptions = pickDefined({ onInvalidSubmit: options.onInvalidSubmit })
   const defaultInvalidSubmitPolicy: OnInvalidSubmitPolicy =
     options.onInvalidSubmit ?? 'focus-first-error'
   const {

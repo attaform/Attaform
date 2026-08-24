@@ -203,3 +203,20 @@ export function normalizeNumericOption(config: NormalizeNumericOptionConfig): nu
   }
   return Math.max(min, Math.floor(value))
 }
+
+/**
+ * Copy of `bag` with every `undefined`-valued key dropped. The
+ * config-assembly archetype under `exactOptionalPropertyTypes`: an
+ * omitted optional property and an explicit `undefined` differ, so
+ * option bags are assembled by resolving each candidate value and
+ * keeping only the defined ones.
+ */
+export function pickDefined<T extends Record<string, unknown>>(
+  bag: T
+): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(bag)) {
+    if (bag[key] !== undefined) out[key] = bag[key]
+  }
+  return out as { [K in keyof T]?: Exclude<T[K], undefined> }
+}

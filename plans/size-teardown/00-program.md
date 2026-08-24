@@ -10,7 +10,7 @@ attribution tables, verifier measurement scripts, the P8 replacement sketches).
 - Baseline: main @ fb532ad9, v0.27.6. Ratchet metric 46,477 B gz
   (minimal useForm, zod-v4, prod; `scripts/check-eager-size.mjs`).
 - Program target: ORIGINAL plan-of-record 25,960 B gz — SUPERSEDED by the
-  post-P5 re-anchor (2026-08-23): re-derived landing ~31.4 kB, honest range
+  post-P5 re-anchor (2026-08-23): re-derived landing ~31.6 kB, honest range
   30.5-32.5 kB (see the ruling note under the ledger). Tarball: 1.8 MB packed
   to 330-430 kB (unchanged; P0/P1a already banked most of it).
 
@@ -29,12 +29,12 @@ number on the phase's merge commit, not an estimate.
 | P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer     |
 | P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted        |
 | P5    | store kernel                          | done    | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase     |
-| P6    | validation shell fold (re-scoped)     | pending | ~35,400 exp.       |            | next; band -250..-500; sign-off 4               |
-| P8    | surface program                       | pending | ~33,500 exp.       |            | 2nd; prototype-backed, band -1,500..-2,300      |
-| P7    | zod-core + probe packs                | pending | ~33,000 exp.       |            | 3rd; central band -300..-900 + barrel win       |
-| P1b   | error codes + prose diet              | pending | ~32,100 exp.       |            | 4th; build /e/AF## pages in the same PR         |
-| P9    | paths + walkers (re-scoped)           | pending | ~31,800 exp.       |            | 5th; trie + node(); reconcile merge = rep-first |
-| P10   | sweep and lock                        | pending | ~31,400 exp.       |            | last                                            |
+| P6    | validation shell fold (re-scoped)     | done    | 35,621             | 2026-08-23 | -147 (under band); sign-off 4 retired           |
+| P8    | surface program                       | pending | ~33,700 exp.       |            | next; rep re-measured -1,937 on current tree    |
+| P7    | zod-core + probe packs                | pending | ~33,200 exp.       |            | 3rd; central band -300..-900 + barrel win       |
+| P1b   | error codes + prose diet              | pending | ~32,300 exp.       |            | 4th; build /e/AF## pages in the same PR         |
+| P9    | paths + walkers (re-scoped)           | pending | ~32,000 exp.       |            | 5th; trie + node(); reconcile merge = rep-first |
+| P10   | sweep and lock                        | pending | ~31,600 exp.       |            | last                                            |
 
 > **RE-ANCHOR RULING (Oswald, 2026-08-23, post-P5): CONTINUE, re-scoped.**
 > His words: push wherever more is achievable without triggering
@@ -62,6 +62,14 @@ number on the phase's merge commit, not an estimate.
 >    rewrite; module merges count zero unless they delete duplicated
 >    logic; a lazy chunk needs >~1 kB of genuinely-cold moved code.
 >    P5's full account: P5-store-kernel.md findings.
+> 5. P6 addendum (measured -147 vs -250..-500): gzip pre-discounts
+>    TEXTUAL duplication — folding near-identical shells moves little
+>    because they were each other's best compression context. Discount
+>    twin-fold credits to near zero; only structurally-redundant logic
+>    deletion counts. Landing re-derived ~31.6 kB. Also: BOTH dist-typed
+>    gates (doc-snippets, bundled-types) must run against a fresh
+>    `pnpm exec unbuild` — the stale-dist trap has now bitten three
+>    times.
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

@@ -350,7 +350,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '56.25 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '56 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -573,7 +576,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '56.25 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '56 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -741,7 +747,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '50 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '49.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -988,7 +997,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '51.25 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '51 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1251,7 +1263,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '42.75 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '42.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1308,7 +1323,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '36.75 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '36.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1385,7 +1403,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '38.25 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '38 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1501,7 +1522,10 @@ export default [
     // kernel record + tagged error store + capability flag; the phase's value
     // landed in perf + API shape, not bytes — see plans/size-teardown/
     // P5-store-kernel.md findings).
-    limit: '42.75 KB',
+    // P6 (validation shell fold): tightened for the measured drop (-147 B
+    // eager: one activeValidations shell, validateAsync absorbed into
+    // parse's commit mode, micro-dedups, dev-gated engine hooks).
+    limit: '42.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

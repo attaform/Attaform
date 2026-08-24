@@ -1,4 +1,45 @@
-# P6: validation shell fold (re-scoped post-re-anchor)
+# P6: validation shell fold — DONE 2026-08-23
+
+**OUTCOME: measured 35,621 B gz, -147 against the -250..-500 band.** All
+three slices shipped behavior-verbatim plus the one approved API change
+(sign-off 4 retired); full suite 4,727 green, typecheck clean,
+bundled-types both majors, doc-snippet gate at its 7 pre-existing
+tolerated mismatches, perf spot-check PASSED. Commits: 8d1c059c (pin),
+17df55d4 (6a), fd450d96 (6b), 419aa3c8 (6c), + the boundary gates commit.
+
+## Findings
+
+- **Delta -147 vs the -250..-500 band — and the reason is a standing
+  lesson**: gzip already compresses near-identical code to almost
+  nothing, so folding TEXTUAL twins (the three counter/throw shells were
+  each other's best compression context) buys far less than source-line
+  counting suggests. Only deleting structurally redundant logic moves
+  the ratchet. This is now a program rule alongside P5's split-overhead
+  and semantics-preservation discounts.
+- 6a shipped a real correctness win beyond dedup: the old handleSubmit
+  finally-branch could decrement a CONCURRENT validate() run's
+  `activeValidations` count when a throw landed before its own inline
+  increment (counter theft). `withActiveValidation` pairs the decrement
+  lexically with its increment; the path is gone.
+- 6b's blast radius was the docs, not the runtime: 10 docs pages (the
+  validation-lifecycle page restructured around two entry points), both
+  demos, the llms template, bench-arena's three adapter files, ~26 test
+  files. The bundled-types gate then surfaced TWO latent items the
+  fresh dist exposed: the set-errors fixture still exercised P5's
+  deleted per-entry formKey (fixed), and the doc-snippet gate had been
+  typing docs against a STALE dist (the P5 stale-dist trap, third
+  sighting — both gates type against dist/, rebuild before trusting
+  either). A new generic-wrapper fixture arm now locks the parse
+  overloads under a free generic form (the autosave shape).
+- Perf spot-check vs reference/p5-bench-after.json: flat +1..+8%, deep
+  D=3/8/16 +11/+5.7/+0.7%, array N +3..+6%, submit cycle within noise;
+  the blank-flat F=50 one-run collapse re-ran isolated at +3.5% (the
+  known GC artifact class from P5).
+- Gates moved: BUDGET_GZ 36_200 -> 36_050 (recorded in-script); 8
+  size-limit caps tightened with P6 notes (index/zod 56, zod-v4 49.75,
+  zod-v3 51, scoped 42.5/36.5/38, barrel 42.5).
+- The two refuted items below stayed refuted; no code motion happened
+  for either.
 
 Detailed 2026-08-23 against anchor 35,768 B gz (P5 final, commit b996a725),
 under the re-anchor ruling in 00-program.md. Expected band **-250..-500 B gz**

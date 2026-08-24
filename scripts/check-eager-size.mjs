@@ -370,13 +370,24 @@ export async function measureEager(define = PROD_DEFINE) {
 // plans/size-teardown/reference/p5-bench-after.json), one construction
 // tree-copy dropped, per-entry formKey off the SSR wire, and the
 // characterization discipline. Budget 35_650 -> 36_200.
-const BUDGET_GZ = 36_200
+//
+// P6 RATCHET (validation shell fold, 2026-08-23): one activeValidations
+// shell (withActiveValidation) across the reactive kickoff, the
+// imperative path, and handleSubmit; parse(path?, { commit? }) absorbed
+// validateAsync (sign-off 4); pathStartsWith / groupErrorsByKey /
+// submit-throw grouping deduped; display-engine introspection hooks
+// dev-gated. Measured 35,621 B gz (down 147 from 35,768) — under the
+// -250..-500 expectation band because gzip already compresses
+// near-identical shells to almost nothing: folding textual twins buys
+// little; only deleting structurally redundant logic moves this number.
+// Budget tightened 36_200 -> 36_050 (the ~430 B headroom convention).
+const BUDGET_GZ = 36_050
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {
   const { eagerGz, asyncGz } = await measureEager()
   const kb = (b) => (b / 1024).toFixed(2)
-  console.log(`eager (minimal useForm, zod-v4, prod): ${kb(eagerGz)} kB gz`)
+  console.log(`eager (minimal useForm, zod-v4, prod): ${kb(eagerGz)} kB gz (${eagerGz} B)`)
   console.log(`async (lazy chunks):                   ${kb(asyncGz)} kB gz`)
   console.log(`budget:                                ${kb(BUDGET_GZ)} kB gz`)
   if (eagerGz > BUDGET_GZ) {

@@ -23,7 +23,7 @@
  * in the tree cannot poison the rebuild.
  *
  * Shallow by design: the children passed in are already processed, so
- * unlike `cloneSchemaDeep` there is no recursive descent here. The
+ * there is no recursive descent here. The
  * field names written below are the same ones `introspect.ts` reads.
  */
 import type { z } from 'zod-v3'
@@ -170,18 +170,6 @@ export function rebuildWrapperInner<T extends z.ZodTypeAny>(original: T, inner: 
 /** Rebuild a `ZodLazy` whose getter resolves to an already-processed target (`_def.getter`). */
 export function rebuildLazy(original: z.ZodTypeAny, target: z.ZodTypeAny): z.ZodLazy<z.ZodTypeAny> {
   return rebuildWithDef(original, { getter: () => target }) as unknown as z.ZodLazy<z.ZodTypeAny>
-}
-
-/**
- * Clear a primitive leaf's refinement checks (`_def.checks`) while
- * preserving everything else on the def. Notably `_def.coerce` carries
- * through: a coercing slim leaf is strictly more permissive on the
- * lenient slim pass, and the write gate short-circuits coerce leaves
- * before they reach this shape, so keeping the flag is both safe and
- * more faithful than dropping it (which a fresh `z.string()` would).
- */
-export function stripLeafChecks<T extends z.ZodTypeAny>(original: T): T {
-  return rebuildWithDef(original, { checks: [] })
 }
 
 /**

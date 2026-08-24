@@ -50,9 +50,16 @@ import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
  *   swaps the shape at a path mints a freshly-targeted node.
  *
  * Schema fields literally named after built-ins (`toString`,
- * `valueOf`, `hasOwnProperty`, `call`, `apply`, `bind`) are not
- * reachable through dot access on these surfaces (sign-off 8); the
- * call form (`surface(path)`) addresses any path regardless of name.
+ * `valueOf`, `hasOwnProperty`) are not reachable through dot access on
+ * these surfaces (sign-off 8); the call form (`surface(path)`)
+ * addresses any path regardless of name. `call` / `apply` / `bind` on
+ * the ROOT resolve invoke shims (see `callableInvokeShim`) because a
+ * transpiler that downlevels optional chaining compiles the documented
+ * `surface(path)?.x` idiom into a helper that reads `.call` off the
+ * surface and invokes it — without the shim that documented pattern
+ * throws under sucrase (the docs playground's in-browser compiler) and
+ * any sub-ES2020 build target. Below the root the three names are
+ * ordinary keys through the truthful gate.
  */
 
 /**
@@ -61,6 +68,9 @@ import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
  * canonical segments as a dotted-string call.
  */
 const INTEGER_SEGMENT = /^(?:0|[1-9]\d*)$/
+
+/** Inert descent target for an invoke shim over a non-existent field. */
+const EMPTY_DESCENT: Readonly<Record<string, never>> = Object.freeze({})
 
 function keyToSegment(key: string): Segment {
   return INTEGER_SEGMENT.test(key) ? Number(key) : key
@@ -90,6 +100,45 @@ function vueSigilRead(key: string): boolean | undefined {
 
 /** Public runtime shape of a built surface; per-surface types in types-api narrow it. */
 export type CallableSurface = ((path?: string | Path) => unknown) & Record<string, unknown>
+
+/**
+ * Callable shim returned for `call` / `apply` / `bind` read off a
+ * callable ROOT surface. A transpiler that downlevels optional
+ * chaining — sucrase (what the docs playground strips TS with), or any
+ * bundler targeting below ES2020 — compiles `surface(path)?.x` into a
+ * helper that READS `.call` off the surface and invokes the result to
+ * call the surface. The shim is invokable as the matching
+ * `Function.prototype` method against the surface, so the downleveled
+ * call lands in the surface's `apply` trap, and it forwards every
+ * other proxy operation to the descent value so a schema field
+ * literally named `call` stays reachable through it. The descent
+ * resolves lazily — the invoke-only path (the common one) touches no
+ * child node.
+ */
+function callableInvokeShim(
+  method: 'call' | 'apply' | 'bind',
+  surface: CallableSurface,
+  getDescent: () => unknown
+): CallableSurface {
+  const fnMethod = Reflect.get(Function.prototype, method) as (
+    this: unknown,
+    ...args: unknown[]
+  ) => unknown
+  return new Proxy((() => {}) as unknown as CallableSurface, {
+    apply: (_target, _thisArg, args) => Reflect.apply(fnMethod, surface, args),
+    get: (_target, key) => Reflect.get(getDescent() as object, key),
+    has: (_target, key) => Reflect.has(getDescent() as object, key),
+    ownKeys: () => Reflect.ownKeys(getDescent() as object),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(getDescent() as object, key)
+      // The fresh arrow-function target owns no matching property, so a
+      // descriptor forwarded from the descent must be reported
+      // configurable to satisfy the Proxy own-property invariant.
+      if (descriptor !== undefined) descriptor.configurable = true
+      return descriptor
+    },
+  })
+}
 
 /**
  * Per-surface configuration for the shared schema-aware node builder.
@@ -205,6 +254,24 @@ function buildTree(spec: TreeSpec): CallableSurface {
         // so `surface.hasOwnProperty(k)` agrees with `Object.keys`.
         if (key === 'hasOwnProperty') return Object.prototype.hasOwnProperty
         const childSegs = [...segments, keyToSegment(key)]
+        // Root-only invoke shims: downleveled `surface(path)?.x` reads
+        // `.call` off the surface to invoke it — see callableInvokeShim.
+        // Non-root nodes are not callable, so a nested `call` field
+        // keeps plain gated descent.
+        if (isRoot && (key === 'call' || key === 'apply' || key === 'bind')) {
+          return callableInvokeShim(key, proxy, () => {
+            if (
+              spec.isTerminal(childSegs) ||
+              (isFixedObject && schemaHasPath(childSegs)) ||
+              spec.hasOwn(segments, key)
+            ) {
+              return descend(childSegs)
+            }
+            // No such field: the shim stays invokable and its field
+            // reads resolve against an empty descent (never a throw).
+            return EMPTY_DESCENT
+          })
+        }
         // Truthful descend gate — see the module docblock.
         if (
           spec.isTerminal(childSegs) ||

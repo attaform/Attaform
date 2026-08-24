@@ -34,11 +34,6 @@ export function deriveDefault(
     // v4 has an exhaustive switch against `SchemaIntrospector.kindOf`;
     // unknown kinds genuinely shouldn't appear, so return undefined.
     unsupportedKindFallback: () => undefined,
-    // v4 historically recurses into the inner on `useDefault=false`
-    // so a `.catch(v)` slot returns the leaf empty rather than the
-    // fallback. Pinned by `test/adapters/zod-v4/unsupported-kinds.test.ts`
-    // (`z.catch falls through to inner leaf default when useDefault=false`).
-    catchOnUseDefaultFalse: 'recurseInner',
   })
 }
 

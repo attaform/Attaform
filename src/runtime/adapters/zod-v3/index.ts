@@ -675,11 +675,6 @@ function getDefaultValuesFromZodSchema<
       )
       return null
     },
-    // v3 historically surfaces the `.catch(v)` fallback even when
-    // `useDefaultSchemaValues=false`. Pinned by
-    // `test/adapters/zod-v3/wrappers.test.ts` ('surfaces the catch
-    // fallback even when useDefaultSchemaValues is false').
-    catchOnUseDefaultFalse: 'preserveCatch',
   }) as Form
 }
 

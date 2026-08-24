@@ -3280,7 +3280,9 @@ function rehydrate<F extends GenericForm, G extends GenericForm = F>(
     // only makes sense after a function-form `defaultValues` was
     // captured.
     throw new Error(
-      '[attaform] form.rehydrate(): no defaultValues factory was captured. Configure useForm({ defaultValues: () => ... }) to enable rehydrate.'
+      __DEV__
+        ? '[attaform] form.rehydrate(): no defaultValues factory was captured. Configure useForm({ defaultValues: () => ... }) to enable rehydrate.'
+        : '[attaform] AF10 attaform.dev/e/AF10'
     )
   }
   return fireFactory(st, factory)
@@ -3578,9 +3580,11 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
       // guarantees primitive-correctness. A rejected reset write
       // signals an invariant violation upstream.
       console.error(
-        `[attaform] resetField: leaf write rejected for path '${targetKey}' — ` +
-          `originals contain a value that doesn't satisfy the slim primitive shape. ` +
-          `This is a bug in the construction pipeline.`
+        __DEV__
+          ? `[attaform] resetField: leaf write rejected for path '${targetKey}' — ` +
+              `originals contain a value that doesn't satisfy the slim primitive shape. ` +
+              `This is a bug in the construction pipeline.`
+          : `[attaform] AF11 attaform.dev/e/AF11 '${targetKey}'`
       )
     }
   } else {
@@ -3612,9 +3616,11 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
       const wroteSubtree = setValueAtPath(st, targetSegments, subtree)
       if (!wroteSubtree) {
         console.error(
-          `[attaform] resetField: subtree write rejected at path '${targetKey}' — ` +
-            `originals contain values that don't satisfy the slim primitive shape. ` +
-            `This is a bug in the construction pipeline.`
+          __DEV__
+            ? `[attaform] resetField: subtree write rejected at path '${targetKey}' — ` +
+                `originals contain values that don't satisfy the slim primitive shape. ` +
+                `This is a bug in the construction pipeline.`
+            : `[attaform] AF12 attaform.dev/e/AF12 '${targetKey}'`
         )
       }
     }

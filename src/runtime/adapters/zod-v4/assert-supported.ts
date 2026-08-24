@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { __DEV__ } from '../../core/dev'
 import { UnsupportedSchemaError } from './errors'
 import {
   getArrayElement,
@@ -71,7 +72,9 @@ export function assertSupportedKinds(
 
   if (UNSUPPORTED.includes(kind)) {
     throw new UnsupportedSchemaError(
-      `[attaform/zod] unsupported kind '${kind}' at '${labelPath(path)}'`
+      __DEV__
+        ? `[attaform/zod] unsupported kind '${kind}' at '${labelPath(path)}'`
+        : `[attaform] AF02 attaform.dev/e/AF02 '${kind}' at '${labelPath(path)}'`
     )
   }
 
@@ -172,7 +175,11 @@ export function assertSupportedKinds(
       return
     default: {
       const _exhaustive: never = kind
-      throw new Error(`assertSupportedKinds: unhandled ZodKind '${_exhaustive as string}'`)
+      throw new Error(
+        __DEV__
+          ? `assertSupportedKinds: unhandled ZodKind '${_exhaustive as string}'`
+          : `[attaform] AF03 attaform.dev/e/AF03 '${_exhaustive as string}'`
+      )
     }
   }
 }

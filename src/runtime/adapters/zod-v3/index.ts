@@ -667,11 +667,14 @@ function getDefaultValuesFromZodSchema<
   // 64-cap so the dedup preserves the prior behavior.
   return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64, {
     unsupportedKindFallback: (schema) => {
+      const kindName =
+        (schema as { constructor?: { name?: string } }).constructor?.name ?? 'unknown'
       console.warn(
-        `[attaform] zod-v3 adapter: unsupported schema kind ` +
-          `'${(schema as { constructor?: { name?: string } }).constructor?.name ?? 'unknown'}' ` +
-          `on form '${formKey}'. Defaulting the field to null. ` +
-          `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
+        __DEV__
+          ? `[attaform] zod-v3 adapter: unsupported schema kind '${kindName}' ` +
+              `on form '${formKey}'. Defaulting the field to null. ` +
+              `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
+          : `[attaform] AF13 attaform.dev/e/AF13 '${kindName}' on '${formKey}'`
       )
       return null
     },

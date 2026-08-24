@@ -51,28 +51,21 @@ const DEV_STACK_TRACE_MODULE = 'src/runtime/core/dev-stack-trace.ts'
 
 /**
  * The intentional production `[attaform]` messages on the minimal-useForm
- * (zod-v4) eager path: thrown invariants, the no-uncaught-exceptions
- * "callback threw" guards, and the two write-rejection notices. Everything
- * else is dev-flavor-only. P1b converts most of these to AF## codes with
- * attaform.dev/e URLs, shrinking this list — additions here are reviewed,
- * never incidental.
+ * (zod-v4) eager path. Since P1b, every prose diagnostic ships as an AF##
+ * code with its attaform.dev/e URL — the `'[attaform] AF'` prefix covers
+ * all of them — plus the short no-uncaught-exceptions "callback threw"
+ * breadcrumbs and the transform gate-rejection message. Everything else
+ * is dev-flavor-only. Additions here are reviewed, never incidental.
  *
  * Prefix-matched against the minified eager output (non-ASCII characters
  * appear as \uXXXX escapes there, so prefixes stop before any).
  */
 const PROD_PROSE_ALLOWLIST = [
-  '[attaform] useForm received an invalid configuration',
-  '[attaform] No registry attached to this Vue app',
-  '[attaform] useForm / injectForm called outside Vue setup()',
-  '[attaform] Form key ',
+  '[attaform] AF',
   '[attaform] onFormChange threw:',
   '[attaform] onSubmitSuccess threw:',
   '[attaform] cleanup threw:',
   '[attaform] onReset threw:',
-  '[attaform] form.rehydrate(): no defaultValues factory was captured',
-  '[attaform] resetField: leaf write rejected for path ',
-  '[attaform] resetField: subtree write rejected at path ',
-  '[attaform] transform error',
   '[attaform] transform result for path ',
 ]
 

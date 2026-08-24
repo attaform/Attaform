@@ -71,27 +71,19 @@ function closureFiles(baseDir: string): string[] {
 
 /**
  * The intentional production `[attaform]` messages across the WHOLE prod
- * runtime closure: the eager-path list from dev-dce.test.ts plus the two
- * zod-v3 walker invariants that only the v3/unified entries reach. P1b
- * converts most of these to AF## codes — additions here are reviewed,
- * never incidental.
+ * runtime closure. Since P1b, every prose diagnostic ships as an AF##
+ * code with its attaform.dev/e URL — the `'[attaform] AF'` prefix covers
+ * all of them, on every entry — plus the short no-uncaught-exceptions
+ * "callback threw" breadcrumbs and the transform gate-rejection message.
+ * Additions here are reviewed, never incidental.
  */
 const PROD_PROSE_ALLOWLIST = [
-  '[attaform] useForm received an invalid configuration',
-  '[attaform] No registry attached to this Vue app',
-  '[attaform] useForm / injectForm called outside Vue setup()',
-  '[attaform] Form key ',
+  '[attaform] AF',
   '[attaform] onFormChange threw:',
   '[attaform] onSubmitSuccess threw:',
   '[attaform] cleanup threw:',
   '[attaform] onReset threw:',
-  '[attaform] form.rehydrate(): no defaultValues factory was captured',
-  '[attaform] resetField: leaf write rejected for path ',
-  '[attaform] resetField: subtree write rejected at path ',
-  '[attaform] transform error',
   '[attaform] transform result for path ',
-  '[attaform] zod-v3 adapter: no schema at path ',
-  '[attaform] zod-v3 adapter: unsupported schema kind ',
 ]
 
 describe.skipIf(!isRealBuild)('packaging: dev/prod flavor split', () => {

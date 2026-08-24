@@ -11,6 +11,7 @@
  */
 
 import type { ErrorCell, ErrorInput, ValidationError } from '../types/types-api'
+import { __DEV__ } from './dev'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 
 /**
@@ -54,10 +55,12 @@ export class InvalidPathError extends AttaformError {}
 export class InvalidUseFormConfigError extends AttaformError {
   constructor() {
     super(
-      '[attaform] useForm received an invalid configuration (a schema directly, no argument, ' +
-        'or no `schema` field). Pass it as `useForm({ schema })` — the schema is one of several ' +
-        'configuration options. See https://attaform.dev/docs/reading-the-form/the-form for the full ' +
-        'configuration shape.'
+      __DEV__
+        ? '[attaform] useForm received an invalid configuration (a schema directly, no argument, ' +
+            'or no `schema` field). Pass it as `useForm({ schema })` — the schema is one of several ' +
+            'configuration options. See https://attaform.dev/docs/reading-the-form/the-form for the full ' +
+            'configuration shape.'
+        : '[attaform] AF04 attaform.dev/e/AF04'
     )
   }
 }
@@ -174,11 +177,13 @@ export function* cellEntriesFor(
 export class RegistryNotInstalledError extends AttaformError {
   constructor() {
     super(
-      '[attaform] No registry attached to this Vue app. Component-level useForm / injectForm / ' +
-        'useRegister auto-install the registry, but SSR helpers (renderAttaformState, ' +
-        'hydrateAttaformState) run outside setup and require an explicit ' +
-        '`app.use(createAttaform())` at server-render time. Add it to your SSR entry, before ' +
-        '`renderToString`.'
+      __DEV__
+        ? '[attaform] No registry attached to this Vue app. Component-level useForm / injectForm / ' +
+            'useRegister auto-install the registry, but SSR helpers (renderAttaformState, ' +
+            'hydrateAttaformState) run outside setup and require an explicit ' +
+            '`app.use(createAttaform())` at server-render time. Add it to your SSR entry, before ' +
+            '`renderToString`.'
+        : '[attaform] AF07 attaform.dev/e/AF07'
     )
   }
 }
@@ -194,8 +199,10 @@ export class RegistryNotInstalledError extends AttaformError {
 export class OutsideSetupError extends AttaformError {
   constructor() {
     super(
-      '[attaform] useForm / injectForm called outside Vue setup(). ' +
-        'Move into setup or mount a child component to trigger from an event.'
+      __DEV__
+        ? '[attaform] useForm / injectForm called outside Vue setup(). ' +
+            'Move into setup or mount a child component to trigger from an event.'
+        : '[attaform] AF06 attaform.dev/e/AF06'
     )
   }
 }
@@ -209,9 +216,11 @@ export class OutsideSetupError extends AttaformError {
 export class ReservedFormKeyError extends AttaformError {
   constructor(key: string) {
     super(
-      `[attaform] Form key "${key}" uses the reserved "__atta:" namespace. ` +
-        `Use a different prefix — "__atta:" is for library-internal synthetic keys ` +
-        `(anonymous useForm() calls without an explicit key).`
+      __DEV__
+        ? `[attaform] Form key "${key}" uses the reserved "__atta:" namespace. ` +
+            `Use a different prefix — "__atta:" is for library-internal synthetic keys ` +
+            `(anonymous useForm() calls without an explicit key).`
+        : `[attaform] AF05 attaform.dev/e/AF05 "${key}"`
     )
   }
 }

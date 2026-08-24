@@ -1,4 +1,5 @@
 import type { z } from 'zod-v3'
+import { __DEV__ } from '../../core/dev'
 import { UnsupportedSchemaError } from './errors'
 import { isZodSchemaType } from './helpers'
 import {
@@ -57,7 +58,9 @@ export function assertSupportedKinds(
   const typeName = getTypeName(schema)
   if (typeName !== undefined && UNSUPPORTED_TYPE_NAMES.has(typeName)) {
     throw new UnsupportedSchemaError(
-      `[attaform/zod-v3] unsupported kind '${typeName}' at '${labelPath(path)}'`
+      __DEV__
+        ? `[attaform/zod-v3] unsupported kind '${typeName}' at '${labelPath(path)}'`
+        : `[attaform] AF02 attaform.dev/e/AF02 '${typeName}' at '${labelPath(path)}'`
     )
   }
 

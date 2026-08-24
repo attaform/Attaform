@@ -12,6 +12,7 @@
  * shape-based pattern matching on `_def`.
  */
 import type { z } from 'zod-v3'
+import { __DEV__ } from '../../core/dev'
 import { isZodSchemaType } from './helpers'
 
 // Shared cap for every wrapper-peeling helper. Pathological schemas
@@ -216,11 +217,13 @@ export function assertZodVersion(schema: unknown): void {
   const def = readDef(schema)
   if (def?.typeName === undefined) {
     throw new Error(
-      '[attaform/zod-v3] Schema is not a Zod v3 schema. The `attaform/zod-v3` adapter requires ' +
-        'zod@^3. Either: (a) install zod@^3 in your project; (b) import from `attaform/zod`, ' +
-        'which auto-detects the Zod version (and tree-shakes to a single adapter when the ' +
-        '`attaform/vite` plugin is active); or (c) import from `attaform/zod-v4` if you are ' +
-        'on Zod v4.'
+      __DEV__
+        ? '[attaform/zod-v3] Schema is not a Zod v3 schema. The `attaform/zod-v3` adapter requires ' +
+            'zod@^3. Either: (a) install zod@^3 in your project; (b) import from `attaform/zod`, ' +
+            'which auto-detects the Zod version (and tree-shakes to a single adapter when the ' +
+            '`attaform/vite` plugin is active); or (c) import from `attaform/zod-v4` if you are ' +
+            'on Zod v4.'
+        : '[attaform] AF01 attaform.dev/e/AF01'
     )
   }
 }

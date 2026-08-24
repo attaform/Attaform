@@ -9,6 +9,7 @@
  * `def`.
  */
 import type { z } from 'zod'
+import { __DEV__ } from '../../core/dev'
 
 /**
  * Stable kind discriminant for a Zod v4 schema. Returned by
@@ -397,11 +398,13 @@ export function assertZodVersion(schema: unknown): void {
   const def = readDef(schema)
   if (def?.type === undefined) {
     throw new Error(
-      '[attaform/zod-v4] Schema is not a Zod v4 schema. The `attaform/zod-v4` adapter requires ' +
-        'zod@^4. Either: (a) install zod@^4 in your project; (b) import from `attaform/zod`, ' +
-        'which auto-detects the Zod version (and tree-shakes to a single adapter when the ' +
-        '`attaform/vite` plugin is active); or (c) import from `attaform/zod-v3` if you are ' +
-        'staying on Zod v3.'
+      __DEV__
+        ? '[attaform/zod-v4] Schema is not a Zod v4 schema. The `attaform/zod-v4` adapter requires ' +
+            'zod@^4. Either: (a) install zod@^4 in your project; (b) import from `attaform/zod`, ' +
+            'which auto-detects the Zod version (and tree-shakes to a single adapter when the ' +
+            '`attaform/vite` plugin is active); or (c) import from `attaform/zod-v3` if you are ' +
+            'staying on Zod v3.'
+        : '[attaform] AF01 attaform.dev/e/AF01'
     )
   }
 }

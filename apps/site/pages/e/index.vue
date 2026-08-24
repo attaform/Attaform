@@ -48,6 +48,8 @@
     )
   })
 
+  const { attaformVersion } = useRuntimeConfig().public
+
   useHead({ title: 'Error codes' })
   useSeoMeta({
     description:
@@ -127,39 +129,44 @@
     <p class="mt-3 text-sm text-fg-muted">
       Codes are stable identifiers. A retired code is never reassigned, and the message text around
       a code can evolve without notice; branch on the error class or the code, never on the prose.
+      Each page describes the current release, v{{ attaformVersion }}: the code's meaning holds
+      across versions, while the quoted development message and the fix guidance track the latest
+      code.
     </p>
 
-    <div class="relative mt-8">
-      <Search
-        class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-fg-subtle"
-        :stroke-width="2"
-      />
-      <input
-        v-model="query"
-        type="text"
-        autocomplete="off"
-        autocorrect="off"
-        autocapitalize="off"
-        spellcheck="false"
-        aria-label="Search error codes"
-        placeholder="Search by code or message text…"
-        class="w-full rounded-md border border-border bg-bg py-2 pr-9 pl-9 text-sm text-fg shadow-xs transition-colors duration-(--duration-fast) placeholder:text-fg-subtle focus:border-accent focus:ring-4 focus:ring-accent-ring focus:outline-none"
-      />
-      <button
-        v-if="query"
-        type="button"
-        aria-label="Clear search"
-        class="absolute top-1/2 right-2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle transition-colors duration-(--duration-fast) hover:bg-surface hover:text-fg"
-        @click="query = ''"
-      >
-        <X class="h-4 w-4" :stroke-width="2" />
-      </button>
+    <div class="sticky top-16 z-30 mt-6 bg-bg/85 py-3 backdrop-blur">
+      <div class="relative">
+        <Search
+          class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-fg-subtle"
+          :stroke-width="2"
+        />
+        <input
+          v-model="query"
+          type="text"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-label="Search error codes"
+          placeholder="Search by code or message text…"
+          class="w-full rounded-md border border-border bg-bg py-2 pr-9 pl-9 text-sm text-fg shadow-xs transition-colors duration-(--duration-fast) placeholder:text-fg-subtle focus:border-accent focus:ring-4 focus:ring-accent-ring focus:outline-none"
+        />
+        <button
+          v-if="query"
+          type="button"
+          aria-label="Clear search"
+          class="absolute top-1/2 right-2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle transition-colors duration-(--duration-fast) hover:bg-surface hover:text-fg"
+          @click="query = ''"
+        >
+          <X class="h-4 w-4" :stroke-width="2" />
+        </button>
+      </div>
+      <p class="mt-2.5 text-xs text-fg-subtle" aria-live="polite">{{ countLabel }}</p>
     </div>
-    <p class="mt-3 text-xs text-fg-subtle" aria-live="polite">{{ countLabel }}</p>
 
     <ul
       v-if="hits.length > 0"
-      class="mt-4 divide-y divide-border overflow-hidden rounded-xl border bg-bg shadow-xs"
+      class="mt-2 divide-y divide-border overflow-hidden rounded-xl border bg-bg shadow-xs"
     >
       <li v-for="hit in hits" :key="hit.row.path">
         <NuxtLink

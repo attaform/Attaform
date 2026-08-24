@@ -219,6 +219,12 @@ number on the phase's merge commit, not an estimate.
 >     dual-dist growth deliberate). Wizard when-used 5,175 B gz eager
 >     over useForm (banked baseline). Async lazy chunks 1,327 B gz.
 
+> 11. P10 rulings (Oswald, 2026-08-24): BOTH standing items resolved.
+>     Sign-off 12 d.ts Tier-A cap: Option A, keep every docblock (the
+>     hover surface stays whole; tarball 364.9 kB passes the 450 budget
+>     with room). Sucrase shims: KEEP (+131 B stands; the playground
+>     outranks the bytes). The program has no open items.
+
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.
 
@@ -240,7 +246,10 @@ APPROVED (11):
    sucrase shims dropped. 9. SSR helpers move to `attaform/ssr`; hydration payload
    version stamp. 10. Form-less wizard affordance steps. 11. Packaging (no maps, no
    CJS, single .d.mts, ./types + legacy main dropped). 12\*. d.ts two-tier comment
-   policy (mechanism approved; Tier-A cap is Oswald's call at P10).
+   policy (mechanism approved; Tier-A cap is Oswald's call at P10). RULED at
+   P10 close (2026-08-24): Option A, keep every docblock; the two-tier
+   mechanism is not exercised. The shared-chunk d.ts are the public hover
+   surface and the tarball passes its budget with room (364.9 vs 450 kB).
 
 DECLINED (1): the stripAsyncChecks deletion (the separate ~500 B rider attached to
 decision 7). SSR construction-seed parity is kept. Evidence-based revisit trigger

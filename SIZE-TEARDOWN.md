@@ -324,7 +324,10 @@ What the numbers cost and taught:
   headroom), 24 size-limit caps re-baselined to fresh actuals, tarball
   budget 450 kB (364.9 actual), attribution snapshots (v4, index, v3)
   regenerated in `plans/size-teardown/reference/`.
-- Open rulings (Oswald): sign-off 12's d.ts Tier-A cap (options priced
-  in addendum 10) and the sucrase-shim re-drop (P8 evidence stands).
+- Final rulings (Oswald, 2026-08-24): sign-off 12's d.ts Tier-A cap
+  ruled Option A, keep every docblock (the hover surface is the
+  product; the tarball passes its budget with room), and the sucrase
+  shims stay (+131 B; the playground outranks the bytes). The program
+  closed with no open items.
 - The do-not-do list in section 7 was reconfirmed at close; nothing on
   it was re-attempted.

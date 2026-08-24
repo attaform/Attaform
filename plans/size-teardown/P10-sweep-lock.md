@@ -114,3 +114,7 @@ green. Program totals: eager 46,477 -> 33,004 (-29.0%); barrel 36,587
 at close; tarball 1.8 MB -> 364.9 kB (-80%); wizard when-used 5,175 B
 gz banked; async lazy 1,327 B gz. SIZE-TEARDOWN.md carries the landed
 appendix.
+
+Rulings (Oswald, 2026-08-24): item 4 = Option A, keep every docblock
+(the two-tier mechanism is not exercised); item 7 = keep the shims
+(+131 B stands). Nothing in the program remains open.

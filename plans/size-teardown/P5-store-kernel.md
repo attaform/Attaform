@@ -1,9 +1,18 @@
-# P5: store kernel (detailed 2026-08-23, post-P4; the correctness core)
+# P5: store kernel — DONE 2026-08-23 (size-negative; perf + API phase)
 
-Delivers ~-2,700 B gz (landing expectation ~32,500 from the 35,207 anchor;
-ratchet is the only authority). This is the highest-risk phase: it rewrites the
-store's inner structure while every observable behavior holds verbatim. One
-phase, one PR (or a small stack of commits inside it), characterization FIRST.
+OUTCOME, measured: eager 35,207 -> 35,768 B gz (**+561**, against the
+plan's ~-2,700). The phase's value landed in performance, API shape, and
+architecture, not bytes — the full findings section at the bottom is the
+honest account, and the audit-model store-lazy credits it refutes matter
+for every remaining phase's expectation. Behavior held verbatim
+throughout: the 5a characterization battery (47 files / 569 tests) and
+the full suite stayed green on every slice commit.
+
+Original brief (for the record): deliver ~-2,700 B gz (landing
+expectation ~32,500 from the 35,207 anchor; ratchet is the only
+authority). Highest-risk phase: rewrites the store's inner structure
+while every observable behavior holds verbatim. One phase, one stack of
+commits, characterization FIRST.
 
 Fresh anchor (2026-08-23, post-P4): eager 35,207 B gz. Attribution
 (reference/attribution-v4.txt, regenerated on the P4 commit):
@@ -138,3 +147,87 @@ floor. AFTER run: same machine, same command
 (`pnpm bench bench/matrix.bench.ts bench/keystroke.bench.ts`); the hard
 gate is the 3x check-bench floor plus no-regression on init + keystroke
 outside run noise (~10%).
+
+## Findings (2026-08-23, phase complete)
+
+Commits: 5a pin b6e9704f -> 5b kernel record 61c1df17 -> 5c one-diff
+9bf1e7ea -> 5d tagged store 9c7ccf64 -> 5e+5f capability/stamp a944885e
+-> phase-final gates commit. Per-slice eager deltas, all measured on the
+check:eager ratchet methodology:
+
+| slice | delta (B gz) | what it was                                        |
+| ----- | ------------ | -------------------------------------------------- |
+| 5b    | +265         | state record + module functions + method skins     |
+| 5c    | -41          | double-diff delete (patches feed applyChangedKeys) |
+| 5d    | +219         | tagged error store, net of the formKey drops       |
+| 5e    | +56          | DU capability flag + du-stubs fold + one-clone     |
+| 5f    | +62          | payload stamp + form-activation module split       |
+| net   | **+561**     | 35,207 -> 35,768                                   |
+
+**Why the size promise failed.** Three audit assumptions did not survive
+measurement. (1) The kernel-record conversion is an enabler, not a
+saving: the ~50 per-instance method skins cost ~265 B that a closure
+body didn't. (2) The tagged error store's semantics-preserving machinery
+(slot-stability rules, two-pass source-ordered enumeration, per-side
+stripping) costs more than two thin maps — the formKey drops across both
+adapters, the normalizers, and the hydration validator paid most of it
+back but not all. (3) The activation lazy-chunk split is gzip-NEGATIVE
+under the per-chunk consumer model: implemented and measured, the
+cross-chunk import glue plus the loss of shared gzip context (~880 B)
+exceeded the ~570 B of orchestrator + merge-hydration it moved out, and
+a runtime import cycle between the kernel and the chunk cost a further
+~340 B until broken. The split was REVERTED; `fireFactory` keeps the
+orchestrator eager with the sync gating flips. This is a standing
+lesson for P6-P10: a lazy move only pays when the moved bytes clearly
+exceed ~0.5-1 kB of split overhead, and the audit's remaining
+expectations (P6 ~31,400 ... P10 ~25,870) need re-anchoring from
+35,768 with that discount applied.
+
+**What the phase delivered instead.**
+
+- Perf (reference/p5-bench-before.json vs p5-bench-after.json, same
+  machine/command): keystroke deep D=3/8/16 **+14.5% / +26% / +50%**
+  (the hasDU skip retired the per-write ancestor DU probes), keystroke
+  array N=10/100/1000 +8-12% (one content diff per structural write),
+  flat F=5 +8%; init within run noise; no scenario regressed beyond its
+  established variance; check-bench 3.0x floors comfortably green.
+- Construction takes ONE clone walk instead of two (non-DU forms skip
+  the stub walk outright; DU forms keep the pre-stub snapshot for field
+  seeding, per today's semantics).
+- API (sign-off 5): `ValidationError` dropped per-entry `formKey`
+  (envelope-level identity; every serialized SSR error entry is one key
+  string lighter on the wire), `ErrorInput` dropped the
+  accepted-and-ignored member, the store collapsed to one tagged
+  `errorCells` map with three shared channel writers, and
+  `HistoryKernel` snapshots cells via `restoreErrorCells`.
+- SPI: optional `hasDiscriminatedUnions?()` capability probe (both
+  adapters answer via their shared tree walks; absent reads true;
+  undocumented on the adapter pages, matching hasContainerOrRootRefine's
+  perf-hint treatment).
+- Correctness: the hydration envelope carries a version stamp
+  (ATTAFORM_STATE_VERSION; mismatch skips hydration wholesale with a
+  dev warning — sign-off 9's stamp half).
+- Construction = reset run through four shared primitives
+  (computeBaselineResponse, seedOriginalsFromBaseline,
+  initialFirstValidationGate, queueInitialAsyncValidation); reset keeps
+  its lazy ordinal assignment (`ensureOrdinals: false`).
+
+**Deviations from the brief.** hasTransforms/hasArrays capability flags
+NOT built: transforms register per-`register()` call (the existing
+`transformRuns.size` guard IS the correct dynamic gate) and the array
+paths were already meta-gated. The write funnel's gate/strip/complete/
+authored walks stay separate functions: for the scalar keystroke hot
+path each is O(1), and a fused walker would be net-new code. The
+"one module" DU fold landed as du-stubs folding INTO the kernel (its
+only consumer); reshape + guard already live there post-5b.
+scheduleFieldValidation/applyFormReplacement remain kernel-internal
+(the skins carry the store contract; no consumer call sites changed in
+this phase).
+
+**Gates moved (this commit).** check:eager 35_650 -> 36_200 (measured
+35,768 — the one RAISE in the program, reasons recorded in the script);
+size-limit: whole-entry index/zod 55.5 -> 56.25 (@55.63), zod-v4
+49.5 -> 50 (@49.52), zod-v3 50.75 -> 51.25 (@50.77), abstract
+39.75 -> 40.25 (@39.81); scoped zod/barrel {useForm} 42.25 -> 42.75
+(@42.25), zod-v4 36.25 -> 36.75 (@36.19), zod-v3 37.75 -> 38.25
+(@37.62), abstract 27.25 -> 27.75 (@27.36).

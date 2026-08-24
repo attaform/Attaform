@@ -355,7 +355,22 @@ export async function measureEager(define = PROD_DEFINE) {
 // path-walker's high-index probe loop died. Measured at 35,207 B gz (down
 // 569 from 35,776). Budget tightened 36_250 → 35_650; dev-dce S4 now also
 // asserts walk-field-meta.ts off the eager inputs.
-const BUDGET_GZ = 35_650
+//
+// P5 RATCHET (store kernel, 2026-08-23): the one phase that RAISED this
+// number, recorded honestly. The kernel rewrite (plain state record +
+// store-first-arg functions + method skins), the tagged error store
+// (semantics-preserving cell machinery net of the per-entry formKey
+// drops), and the DU capability flag cost more bytes than the phase's
+// deletions (double diff, du-stubs fold, one-clone construction) saved:
+// measured 35,768 B gz, +561 over P4. The audit's store-lazy credits did
+// not survive measurement — the activation-chunk split was implemented
+// and DECLINED (cross-chunk glue + per-chunk gzip loss exceeded the
+// moved bytes). The phase's value landed elsewhere: keystroke deep
+// +14/+26/+50%, array writes +8-12% (see
+// plans/size-teardown/reference/p5-bench-after.json), one construction
+// tree-copy dropped, per-entry formKey off the SSR wire, and the
+// characterization discipline. Budget 35_650 -> 36_200.
+const BUDGET_GZ = 36_200
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

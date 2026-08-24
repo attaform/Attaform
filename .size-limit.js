@@ -346,7 +346,11 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 54.95 KB.
-    limit: '55.5 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '56.25 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -565,7 +569,11 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 54.95 KB.
-    limit: '55.5 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '56.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -729,7 +737,11 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 48.81 KB.
-    limit: '49.5 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '50 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -972,7 +984,11 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 50.09 KB.
-    limit: '50.75 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '51.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1015,7 +1031,11 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 39.24 KB.
-    limit: '39.75 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '40.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1227,7 +1247,11 @@ export default [
     // store's builder slot) instead of the adapters, and the definitive
     // `arrayShapeAtPath` contract killed path-walker's high-index probe
     // loop. Measured at 41.71 KB.
-    limit: '42.25 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '42.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1280,7 +1304,11 @@ export default [
     // `arrayShapeAtPath` contract killed path-walker's high-index probe
     // loop. Measured at 35.59 KB — this scoped scenario mirrors the
     // check-eager-size ratchet.
-    limit: '36.25 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '36.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1353,7 +1381,11 @@ export default [
     // store's builder slot) instead of the adapters, and the definitive
     // `arrayShapeAtPath` contract killed path-walker's high-index probe
     // loop. Measured at 37.06 KB.
-    limit: '37.75 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '38.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1465,7 +1497,11 @@ export default [
     // store's builder slot) instead of the adapters, and the definitive
     // `arrayShapeAtPath` contract killed path-walker's high-index probe
     // loop. Measured at 41.71 KB.
-    limit: '42.25 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '42.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1531,7 +1567,11 @@ export default [
     // the abstract entry carries no zod field-meta walk, so only the
     // definitive `arrayShapeAtPath` contract (path-walker's high-index
     // probe loop died) lands here. Measured at 26.85 KB.
-    limit: '27.25 KB',
+    // P5 (store kernel): raised for the phase's measured net (+561 B eager:
+    // kernel record + tagged error store + capability flag; the phase's value
+    // landed in perf + API shape, not bytes — see plans/size-teardown/
+    // P5-store-kernel.md findings).
+    limit: '27.75 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

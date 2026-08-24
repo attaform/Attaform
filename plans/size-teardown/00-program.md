@@ -26,12 +26,26 @@ number on the phase's merge commit, not an estimate.
 | P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed     |
 | P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer |
 | P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted    |
-| P5    | store kernel                          | pending | ~32,500 exp.       |            | suites pinned first                         |
-| P6    | validation/display fold               | pending | ~31,400 exp.       |            | after P5                                    |
+| P5    | store kernel                          | done    | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase |
+| P6    | validation/display fold               | pending | RE-ANCHOR          |            | after P5                                    |
 | P7    | zod-core + probe packs                | pending | ~30,500 exp.       |            | independent                                 |
 | P8    | surface program                       | pending | ~27,850 exp.       |            | after P5                                    |
 | P9    | paths + walkers + schema-io           | pending | ~26,350 exp.       |            | after P5                                    |
 | P10   | sweep and lock                        | pending | ~25,870 exp.       |            | last                                        |
+
+> **RE-ANCHOR REQUIRED (2026-08-23, post-P5).** P5 measured **+561** against
+> a ~-2,700 promise: the kernel-record enabler, the semantics-preserving
+> tagged-store machinery, and the capability flag cost more than the
+> phase's deletions saved, and the activation lazy-chunk split proved
+> gzip-NEGATIVE (~880 B of cross-chunk glue + per-chunk gzip loss vs
+> ~570 B moved) — implemented, measured, reverted. Two consequences for
+> P6-P10 before any further execution: (1) every remaining expectation
+> column is stale — the true anchor is 35,768; (2) the audit's lazy-move
+> credits need a split-overhead discount (~0.5-1 kB per new chunk) and
+> its consolidation credits need a semantics-preservation discount.
+> Oswald decides whether the remaining phases run as scoped, get
+> re-audited, or the program closes with P5's perf/API wins banked. P5's
+> full account: P5-store-kernel.md findings.
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

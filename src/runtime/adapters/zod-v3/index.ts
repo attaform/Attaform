@@ -27,10 +27,14 @@ import {
   peelEmbeddedDefault,
   NO_EMBEDDED_DEFAULT,
 } from '../../core/walk-derive-default'
+import {
+  buildFieldMetaPathMap,
+  getFieldMetaForSchema,
+  getFieldMetaListForSchema,
+} from '../../core/field-meta-store'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path } from '../../core/paths'
 import { slimKindOf } from '../../core/slim-primitive-gate'
-import { getFieldMeta, getFieldMetaList } from './field-meta'
 import { cloneSchemaDeep } from './clone-schema'
 import {
   rebuildArray,
@@ -119,7 +123,6 @@ import {
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 import { stripAsyncChecks } from './strip-async'
-import { getFieldMetaPathMap } from '../../core/walk-field-meta'
 import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
@@ -1189,18 +1192,21 @@ function resolveFieldMetaAtPathV3(
   }
   // Path-keyed payload map (built once per rootSchema) disambiguates
   // shared schemas registered at multiple paths. Falls back to the
-  // schema-keyed registry for paths not visited by the walker.
-  const pathMap = getFieldMetaPathMap(rootSchema as z.ZodTypeAny, {
+  // schema-keyed registry for paths not visited by the walker. The
+  // walk itself lives behind the store's builder slot — installed by
+  // the registration surfaces (`withMeta` / `fieldMeta.add`), absent
+  // (and the map with it) when the consumer never registers metadata.
+  const pathMap = buildFieldMetaPathMap(rootSchema as z.ZodTypeAny, {
     intro: V3_INTROSPECTOR,
     peelAllWrappers: peelAllV3Wrappers,
-    getFieldMetaList,
+    getFieldMetaList: getFieldMetaListForSchema,
   })
   const pathKey = canonicalizePath(path).key
   const peeled = peelV3Wrappers(target)
   const payload =
-    pathMap.get(pathKey) ??
-    getFieldMeta(target) ??
-    (peeled !== target ? getFieldMeta(peeled) : undefined)
+    pathMap?.get(pathKey) ??
+    getFieldMetaForSchema(target) ??
+    (peeled !== target ? getFieldMetaForSchema(peeled) : undefined)
   const targetDescription =
     typeof (target as { description?: unknown }).description === 'string'
       ? ((target as { description?: string }).description as string)

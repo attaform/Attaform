@@ -91,12 +91,13 @@ export function fakeSchema<F extends GenericForm>(
       return undefined
     },
     arrayShapeAtPath(path) {
-      // fakeSchema can't model element schemas — return `undefined` so
-      // the runtime falls back to the legacy probe loop, matching the
-      // old behaviour. Tests needing tuple/array shape semantics
-      // override this on the returned object.
+      // fakeSchema can't model element schemas — report every path as
+      // "not a tuple" (`null`). `getDefaultAtPath` yields no element
+      // defaults under arrays, so merges pass consumer arrays through
+      // unchanged. Tests needing tuple shape semantics override this
+      // on the returned object.
       void path
-      return undefined
+      return null
     },
     isFixedObjectAtPath(path) {
       // Data-keyed: a fixed object is a plain (non-array) object in the

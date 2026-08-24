@@ -550,14 +550,17 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     arrayShapeAtPath(path) {
-      if (path.length === 0) return undefined
+      // Definitive per the contract: `null` is "not a tuple" — an
+      // unbounded array, a path that doesn't resolve, or a non-array
+      // kind (the root included). Callers only consult this while
+      // descending an array branch and treat `null` as consumer
+      // length + one shared element default.
+      if (path.length === 0) return null
       const [first] = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
-      if (first === undefined) return undefined
+      if (first === undefined) return null
       const peeled = services.peelAllWrappers(first)
-      const kind = intro.kindOf(peeled)
-      if (kind === 'tuple') return intro.getTupleItems(peeled).length
-      if (kind === 'array') return null
-      return undefined
+      if (intro.kindOf(peeled) === 'tuple') return intro.getTupleItems(peeled).length
+      return null
     },
 
     isFixedObjectAtPath(path) {

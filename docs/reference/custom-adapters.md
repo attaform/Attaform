@@ -34,7 +34,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
   getDefaultAtPath(path: Path): unknown
 
   // Shape introspection
-  arrayShapeAtPath(path: Path): number | null | undefined
+  arrayShapeAtPath(path: Path): number | null
   isLeafAtPath(path: Path): boolean
   isRequiredAtPath(path: Path): boolean
   getSchemasAtPath(path: Path): AbstractSchema<unknown, GetValueFormType>[]
@@ -86,13 +86,12 @@ Return `undefined` for paths that don't exist in the schema. Must NOT throw; the
 
 ## Shape introspection
 
-### `arrayShapeAtPath(path: Path): number | null | undefined`
+### `arrayShapeAtPath(path: Path): number | null`
 
-- `number`: tuple's fixed length.
-- `null`: unbounded array.
-- `undefined`: non-array path.
+- `number`: tuple's fixed length. The runtime pads array writes to this length with per-position defaults.
+- `null`: not a tuple. Covers unbounded arrays (the runtime follows the consumer's length and reuses one element default) and paths that don't resolve to an array at all.
 
-The runtime caches the answer to skip per-write probe loops on array writes.
+The answer is definitive: the runtime consults it on every structural write that descends into an array branch and never second-guesses it, so returning `null` for a real tuple silently loses the per-position padding.
 
 ### `isLeafAtPath(path: Path): boolean`
 

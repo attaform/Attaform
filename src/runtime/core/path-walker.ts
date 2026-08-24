@@ -11,23 +11,23 @@ import { isShadowedKey, safeAssign, safeOwnHas, safeOwnRead } from './safe-assig
 export type SchemaForFill = {
   getDefaultAtPath(path: Path): unknown
   /**
-   * Distinguish tuple (number — structural length) from unbounded
-   * array (null) at `path`. `undefined` signals "fall back to the
-   * runtime's index-probe loop" for adapters that can't introspect.
-   * See `AbstractSchema.arrayShapeAtPath` for the full contract.
+   * Distinguish tuple (number — structural length) from everything
+   * else (null: unbounded array, or no array at `path` at all). The
+   * answer is definitive. See `AbstractSchema.arrayShapeAtPath` for
+   * the full contract.
    */
-  arrayShapeAtPath(path: Path): number | null | undefined
+  arrayShapeAtPath(path: Path): number | null
   /**
    * Slim primitive set at `path`. Used by `mergeStructural` to
    * distinguish "consumer omitted this key from a partial" (fill from
    * schema default) from "consumer explicitly wrote undefined into a
-   * path that admits undefined" (preserve undefined). Returns `null`
-   * when the adapter can't introspect — callers fall back to the
-   * legacy fill-with-default behavior.
+   * path that admits undefined" (preserve undefined). An empty set
+   * (path unknown to the schema) never contains `'undefined'`, so
+   * unknown paths keep the fill-with-default behavior.
    * See `AbstractSchema.getSlimPrimitiveTypesAtPath` for the full
    * contract.
    */
-  getSlimPrimitiveTypesAtPath?: (path: Path) => ReadonlySet<string>
+  getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<string>
 }
 
 /**
@@ -275,41 +275,6 @@ export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): 
  * relative to defaults the function returns `consumer` by reference,
  * so common-case writes (consumer already complete) allocate nothing.
  */
-/**
- * Resolve the array shape at `scratch`. Returns the tuple's
- * structural length, `null` for unbounded arrays, or `undefined`
- * if the adapter doesn't support `arrayShapeAtPath` (signalling
- * the fallback probe loop).
- *
- * The fallback probes at index `1_000_000` (tuple → `undefined`;
- * array → element default), then probes sequentially up to the cap
- * to discover the tuple length. Built-in zod adapters return a
- * definitive shape so this never fires for them; the fallback
- * exists for third-party adapters that haven't implemented the
- * method.
- */
-function resolveArrayShape(schema: SchemaForFill, scratch: Segment[]): number | null | undefined {
-  const shape = schema.arrayShapeAtPath(scratch)
-  if (shape !== undefined) return shape
-  // Legacy probe: high-index lookup distinguishes tuple from array.
-  const TUPLE_PROBE_INDEX = 1_000_000
-  scratch.push(TUPLE_PROBE_INDEX)
-  const probe = schema.getDefaultAtPath(scratch)
-  scratch.pop()
-  if (probe !== undefined) return null // unbounded array
-  // Tuple-like: walk forward to find the structural length. Cap at
-  // 1024 to protect against pathological recursive lazies.
-  let n = 0
-  while (n < 1024) {
-    scratch.push(n)
-    const v = schema.getDefaultAtPath(scratch)
-    scratch.pop()
-    if (v === undefined) break
-    n++
-  }
-  return n
-}
-
 export function mergeStructural(
   schema: SchemaForFill,
   path: Path,
@@ -347,7 +312,7 @@ function mergeStructuralImpl(
   // `.nullable().optional()`), defeating the schema-aware DOM-clear
   // mapping.
   if (consumer === undefined) {
-    if (schema.getSlimPrimitiveTypesAtPath?.(scratch).has('undefined') === true) {
+    if (schema.getSlimPrimitiveTypesAtPath(scratch).has('undefined')) {
       return undefined
     }
     return defaultValue
@@ -402,7 +367,7 @@ function mergeStructuralArray(
   scratch: Segment[],
   consumer: readonly unknown[]
 ): unknown {
-  const shape = resolveArrayShape(schema, scratch)
+  const shape = schema.arrayShapeAtPath(scratch)
   const isTuple = typeof shape === 'number'
   const targetLen = isTuple ? shape : consumer.length
   // Unbounded array: every position resolves to the same element
@@ -548,15 +513,14 @@ function setAtPathWithSchemaFillImpl(
     const arr = Array.isArray(root) ? [...root] : []
     const prefix = fullPath.slice(0, startIdx)
     // Pad with element defaults if extending past length. Tuple-vs-
-    // array detection mirrors mergeStructural: probe at a high index
-    // — tuples return `undefined` (out of range), unbounded arrays
-    // return the element default. The previous heuristic (compare two
-    // adjacent defaults via Object.is) gave wrong answers for arrays
+    // array detection comes from the schema's definitive
+    // `arrayShapeAtPath` — a value-based heuristic (compare two
+    // adjacent defaults via Object.is) gives wrong answers for arrays
     // of objects (each call yields a fresh object, identity differs)
     // AND for tuples of identical primitives (Object.is(0, 0) === true).
     if (arr.length < head) {
       const scratch: Segment[] = prefix.slice() as Segment[]
-      const shape = resolveArrayShape(schema, scratch)
+      const shape = schema.arrayShapeAtPath(scratch)
       const tupleLike = typeof shape === 'number'
       // For unbounded arrays, every position resolves to the same
       // element default — cache the lookup once. For tuples, query

@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { z as z4 } from 'zod'
 import { z as z3 } from 'zod-v3'
 import { fieldMeta, withMeta } from '../../src/runtime/adapters/unified/field-meta'
-import { getFieldMeta as getFieldMetaV4 } from '../../src/runtime/adapters/zod-v4/field-meta'
-import { getFieldMeta as getFieldMetaV3 } from '../../src/runtime/adapters/zod-v3/field-meta'
+import { getFieldMetaForSchema } from '../../src/runtime/core/field-meta-store'
+
+// Both majors read through the same schema-keyed store — the aliases
+// keep the per-major assertion sites legible.
+const getFieldMetaV4 = getFieldMetaForSchema
+const getFieldMetaV3 = getFieldMetaForSchema
 
 describe('Unified fieldMeta store — cross-adapter storage', () => {
   it('round-trips a payload on a Zod 4 schema via withMeta', () => {

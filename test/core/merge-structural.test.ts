@@ -15,9 +15,9 @@ import type { Path } from '../../src/runtime/core/paths'
 
 /**
  * Schema-stub builder. Defines a literal "default at path" map; any
- * other path returns undefined. For arrays, returning element defaults
- * at indices 0..big simulates a Zod array; returning per-position
- * values at exactly N indices simulates a Zod tuple of length N.
+ * other path returns undefined. `arrayShapeAtPath` answers
+ * definitively: keys configured via `tupleAt` report their length,
+ * everything else reports `null` (not a tuple).
  */
 function buildSchema(
   defaults: Record<string, unknown>,
@@ -73,19 +73,24 @@ function buildSchema(
       }
       return current
     },
-    arrayShapeAtPath(path: Path): number | null | undefined {
+    arrayShapeAtPath(path: Path): number | null {
       // Tuple keys configured via `options.tupleAt` resolve to that
-      // position's count; an `arr` key with `arrayElementDefault`
-      // configured is an unbounded array. Anything else falls back
-      // to the legacy probe in mergeStructural's resolver.
+      // position's count; anything else — including the `arr` key's
+      // unbounded array — is definitively "not a tuple" (`null`).
       if (path.length === 1 && typeof path[0] === 'string') {
         const key = path[0]
         if (options?.tupleAt?.[key] !== undefined) {
           return options.tupleAt[key].length
         }
-        if (key === 'arr' && options?.arrayElementDefault !== undefined) return null
       }
-      return undefined
+      return null
+    },
+    getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<string> {
+      // The stub models no `.optional()` leaves — an empty set keeps
+      // `mergeStructural`'s undefined-consumer branch on the
+      // fill-with-default arm for every path.
+      void path
+      return new Set()
     },
   }
 }
@@ -146,7 +151,7 @@ describe('mergeStructural', () => {
   })
 
   describe('arrays — unbounded (array-like)', () => {
-    it('uses consumer length, fills nothing when probe returns element default', () => {
+    it('uses consumer length, fills nothing beyond it', () => {
       const schema = buildSchema({ arr: [] }, { arrayElementDefault: 'def' })
       const result = mergeStructural(schema, ['arr'], ['a', 'b'])
       expect(result).toEqual(['a', 'b'])

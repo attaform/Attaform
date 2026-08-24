@@ -344,7 +344,18 @@ export async function measureEager(define = PROD_DEFINE) {
 // (down 1,434 from 37,210: ~1,240 history un-weld + ~195 arrays engine).
 // Budget tightened 37_700 → 36_250; dev-dce S4 now also asserts history.ts
 // off the eager inputs.
-const BUDGET_GZ = 36_250
+//
+// RATCHET (size-teardown P4, field-meta walk un-weld + probe delete): the
+// path-walking field-meta resolver (walk-field-meta.ts) rides the
+// registration surface now — `withMeta` / `fieldMeta.add` install it into
+// the shared store's builder slot, the adapters read the slot, and a
+// consumer that never registers metadata resolves labels through the
+// `.describe()` / humanize fallbacks without shipping the walk. And
+// `arrayShapeAtPath` became definitive (`number | null`, sign-off 6), so
+// path-walker's high-index probe loop died. Measured at 35,207 B gz (down
+// 569 from 35,776). Budget tightened 36_250 → 35_650; dev-dce S4 now also
+// asserts walk-field-meta.ts off the eager inputs.
+const BUDGET_GZ = 35_650
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

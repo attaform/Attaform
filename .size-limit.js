@@ -1220,7 +1220,14 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 42.3 KB.
-    limit: '43 KB',
+    //
+    // Tightened 43 -> 42.25 KB on the size-teardown P4 field-meta walk
+    // un-weld + probe delete: walk-field-meta.ts rides the registration
+    // surface (`withMeta` / `fieldMeta.add` install it into the shared
+    // store's builder slot) instead of the adapters, and the definitive
+    // `arrayShapeAtPath` contract killed path-walker's high-index probe
+    // loop. Measured at 41.71 KB.
+    limit: '42.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1265,7 +1272,15 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 36.18 KB.
-    limit: '37 KB',
+    //
+    // Tightened 37 -> 36.25 KB on the size-teardown P4 field-meta walk
+    // un-weld + probe delete: walk-field-meta.ts rides the registration
+    // surface (`withMeta` / `fieldMeta.add` install it into the shared
+    // store's builder slot) instead of the adapters, and the definitive
+    // `arrayShapeAtPath` contract killed path-walker's high-index probe
+    // loop. Measured at 35.59 KB — this scoped scenario mirrors the
+    // check-eager-size ratchet.
+    limit: '36.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1331,7 +1346,14 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 37.62 KB.
-    limit: '38.25 KB',
+    //
+    // Tightened 38.25 -> 37.75 KB on the size-teardown P4 field-meta walk
+    // un-weld + probe delete: walk-field-meta.ts rides the registration
+    // surface (`withMeta` / `fieldMeta.add` install it into the shared
+    // store's builder slot) instead of the adapters, and the definitive
+    // `arrayShapeAtPath` contract killed path-walker's high-index probe
+    // loop. Measured at 37.06 KB.
+    limit: '37.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1436,7 +1458,14 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 42.3 KB.
-    limit: '43 KB',
+    //
+    // Tightened 43 -> 42.25 KB on the size-teardown P4 field-meta walk
+    // un-weld + probe delete: walk-field-meta.ts rides the registration
+    // surface (`withMeta` / `fieldMeta.add` install it into the shared
+    // store's builder slot) instead of the adapters, and the definitive
+    // `arrayShapeAtPath` contract killed path-walker's high-index probe
+    // loop. Measured at 41.71 KB.
+    limit: '42.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1497,7 +1526,12 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 26.91 KB.
-    limit: '27.5 KB',
+    //
+    // Tightened 27.5 -> 27.25 KB on the size-teardown P4 probe delete:
+    // the abstract entry carries no zod field-meta walk, so only the
+    // definitive `arrayShapeAtPath` contract (path-walker's high-index
+    // probe loop died) lands here. Measured at 26.85 KB.
+    limit: '27.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

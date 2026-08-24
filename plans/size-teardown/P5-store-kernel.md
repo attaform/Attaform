@@ -1,22 +1,111 @@
-# P5: store kernel (STUB, detail at boundary; the correctness core)
+# P5: store kernel (detailed 2026-08-23, post-P4; the correctness core)
 
-Delivers ~-2,700 B gz. Scope: create-form-store's closure becomes a plain FormState
-record + store-first-arg module functions + ordered hook arrays; construction = reset
-(one initialize sequence); single-walk write funnel (gate + strip-check + complete +
-author + patch-emit) feeding patches straight to applyChangedKeys (deletes the
-verified double diff at create-form-store.ts:2100 vs diff-apply.ts:309); ONE tagged
-error store (src schema|user, blank derived at read) with three shared writers;
-capability flags (hasDU/hasTransforms/hasArrays) skip pipeline stages; DU stack
-(reshape + du-stubs + variant memory + ancestor guard) consolidated to one module +
-one clone walk; activation/rehydrate lazy behind activate() with SYNC gating flips
-(hydrating/activated/activationPromise published synchronously; onServerPrefetch
-awaits the composed promise); SSR replay moves behind the registry payload path with
-a version stamp; async-transform: bookkeeping STAYS EAGER, only the assigner
-then-body commit orchestrator defers (see do-not-do list).
-HARD GATE before starting: pin characterization suites green on BOTH majors for:
-write-funnel phase ordering (blank/authored marks before identity short-circuit),
-same-tick DU reshape (no flicker), blur-revalidation value-equality dedup, error
-order schema-first, reset/resetField, transforms latching, hydration replay.
-Perf gate: bench-arena mount + keystroke benches must not regress; expect improvement
-(~115 closures + 32 Maps/Sets per form become shared functions + plain records).
-Detail this file at the P4 boundary; re-slice using the fresh attribution map.
+Delivers ~-2,700 B gz (landing expectation ~32,500 from the 35,207 anchor;
+ratchet is the only authority). This is the highest-risk phase: it rewrites the
+store's inner structure while every observable behavior holds verbatim. One
+phase, one PR (or a small stack of commits inside it), characterization FIRST.
+
+Fresh anchor (2026-08-23, post-P4): eager 35,207 B gz. Attribution
+(reference/attribution-v4.txt, regenerated on the P4 commit):
+create-form-store.ts 6,463 gz / 20,850 raw (the mover — 18% of eager);
+build-form-api.ts 2,744; field-state-api.ts 1,812; array-engine.ts 1,803
+(P3's consolidation — P5 touches its call sites, not its internals);
+process-form.ts 1,558; surface-proxy.ts 1,175; diff-apply.ts 789;
+errors.ts 591 + errors-proxy.ts 594; du-stubs.ts + store-records.ts +
+merge-hydration.ts 222 in the long tail.
+
+## Scope (from the audit + sign-off 5; judge guards apply)
+
+1. **Kernel record.** create-form-store's ~115-closure body becomes a plain
+   `FormState` record + store-first-arg module functions + ordered hook
+   arrays. Construction = reset: ONE initialize sequence runs at both
+   construction and `reset()` (today they are two hand-synced paths).
+   Required-internal-params memory applies: the extracted functions take the
+   state record as a required first argument, no optional plumbing.
+2. **Single-walk write funnel.** Gate + strip-check + structural complete +
+   authored walk + patch-emit in ONE tree walk, emitting patches straight to
+   `applyChangedKeys` (diff-apply.ts:288). Deletes the verified double diff:
+   today the funnel diffs to decide what changed and `applyChangedKeys`
+   re-diffs per top-level key (diff-apply's content-diff at ~line 217+).
+   P4 note: the funnel's `arrayOpRemap` hoist and
+   `arrayBookkeeping.applyStructuralOp` orchestration (P3) sit INSIDE this
+   funnel — preserve the exact post-write order (migrate -> seed fresh ->
+   drop verdicts -> abort vacated -> evict variant memory -> replay
+   identity).
+3. **One tagged error store** (sign-off 5). `schemaErrors` + `userErrors`
+   maps collapse to a single map of tagged entries (src: schema|user); blank
+   derives at read (`atta:no-value-supplied` synthesis stays a read-side
+   augmentation). Three shared writers replace the per-channel write paths.
+   `ValidationError` drops per-entry `formKey` (the form stamps envelope-
+   level identity). INVARIANTS that cannot move: error order
+   schema -> blank -> user with authored schema messages leading firstError
+   on submit; `getErrorsForPath` stays the one "has error at path" road;
+   `''` vs `[]` boundary; `errors([])` = full aggregate; ownErrors exact-path
+   semantics. HistoryKernel (P3) reaches `schemaErrors` / `userErrors` /
+   `setAllSchemaErrors` / `setAllUserErrors` structurally — the kernel slice
+   in types-api and history.ts's capture/restore move WITH this change (the
+   ring buffer snapshots the tagged store instead of two maps).
+4. **Capability flags.** hasDU / hasTransforms / hasArrays computed once at
+   construction; write-funnel stages and per-write guards skip disabled
+   pipelines instead of re-probing per write.
+5. **DU stack fold.** Reshape + du-stubs + ancestor guard consolidate to one
+   module + ONE clone walk. Variant MEMORY stays in array-engine.ts (P3
+   landed it there; do not re-split — the fold consumes its API).
+6. **Activation/rehydrate lazy behind activate()** with SYNC gating flips:
+   hydrating/activated/activationPromise published synchronously,
+   onServerPrefetch awaits the composed promise. JUDGE GUARD: the
+   merge-hydration bytes live EAGER in the P9 reconcile engine — this move
+   credits ~480, not 600.
+7. **SSR replay behind the registry payload path** with a version stamp on
+   the hydration payload (sign-off 9's stamp half; the attaform/ssr entry
+   split itself is P8's surface program).
+8. **Async transforms:** bookkeeping STAYS EAGER (sync supersede, per-path
+   counts, cancel inside the funnel); ONLY the assigner then-body commit
+   orchestrator defers (the re-verified #361 decline, do-not-do list).
+
+NOT in P5 (counted elsewhere): invalid-submit focus-policy lazy move (P6);
+errors.ts prose strings (P1b); assigner-pipeline (left with P2).
+
+## HARD GATE: pin these suites green on BOTH majors before the rewrite
+
+Run and record green as the first commit of the phase (no source changes):
+
+- Write funnel ordering + gates: set-value.test.ts,
+  set-value-schema-fill-regression.test.ts, coerce-write-boundary.test.ts,
+  preprocess-write-boundary.test.ts, slim-primitive-write-gate (v3 property),
+  blank-mark-descendants.test.ts, blank-paths-order-stability.test.ts.
+- Same-tick DU reshape (no flicker): du-variant-error-flicker.test.ts,
+  du-variant-error-regressions.test.ts,
+  discriminated-union-variant-switch.test.ts, discriminated-union-lift /
+  -root.test.ts.
+- Blur-revalidation value-equality dedup: blur-revalidation.test.ts,
+  aborted-blur-snapshot.test.ts, blank-numeric-blur-preservation.test.ts.
+- Error order schema-first + channels: errors.test.ts,
+  meta-errors-order-stability.test.ts, errors-proxy-enumeration.test.ts,
+  error-data.test.ts, submit-related suites (submit success semantics #490).
+- Reset / resetField: reset.test.ts, reset-clears-snapshot.test.ts,
+  default-values-history-skip.test.ts (history plugin construction-subscribe
+  rides reset paths).
+- Transforms latching: async-transforms.test.ts, async-transform-display /
+  -dom-sync / -file / -override.test.ts.
+- Hydration replay: default-values-rehydrate.test.ts, ssr-bare-vue/
+  round-trip.test.ts + runtime-form-state-ssr.test.ts +
+  optimistic-connected.test.ts, multi-select-hydration.test.ts.
+- Perf-lock: perf-lock/behavior-lock.test.ts + golden captures +
+  p1-validation-cancel-equivalence.test.ts (10/10 through array-engine).
+
+Perf gate: bench mount + keystroke must not regress (expect improvement —
+~115 closures + 32 Maps/Sets per form become shared functions + plain
+records); run `pnpm bench` floors before and after.
+
+## Suggested slicing (each lands green; one PR / small stack)
+
+5a characterization pin (test-only commit) -> 5b kernel record + construction
+= reset -> 5c single-walk funnel + double-diff delete -> 5d tagged error
+store (+ HistoryKernel slice move) -> 5e DU fold + capability flags -> 5f
+activation/SSR-replay lazy + stamp. Ratchet + caps move in the LAST commit
+with the phase's total.
+
+## Entry criteria
+
+P2/P3/P4 landed (met). No docs-page gate. Both majors on every commit.

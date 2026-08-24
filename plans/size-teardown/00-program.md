@@ -25,8 +25,8 @@ number on the phase's merge commit, not an estimate.
 | P1b   | error codes + prose diet              | pending | ~42,800 exp.       |            | GATED on attaform.dev/e/\* pages            |
 | P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed     |
 | P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer |
-| P4    | field-meta install + SPI probe delete | pending | ~34,750 exp.       |            |                                             |
-| P5    | store kernel                          | pending | ~32,050 exp.       |            | suites pinned first                         |
+| P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted    |
+| P5    | store kernel                          | pending | ~32,500 exp.       |            | suites pinned first                         |
 | P6    | validation/display fold               | pending | ~31,400 exp.       |            | after P5                                    |
 | P7    | zod-core + probe packs                | pending | ~30,500 exp.       |            | independent                                 |
 | P8    | surface program                       | pending | ~27,850 exp.       |            | after P5                                    |

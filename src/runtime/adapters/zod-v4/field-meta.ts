@@ -31,11 +31,8 @@
  */
 import type { z } from 'zod'
 import type { FieldMetaPayload } from '../../core/field-meta'
-import {
-  fieldMetaStore,
-  getFieldMetaForSchema,
-  getFieldMetaListForSchema,
-} from '../../core/field-meta-store'
+import { getFieldMetaForSchema } from '../../core/field-meta-store'
+import { installingFieldMetaStore } from '../../core/walk-field-meta'
 
 // `$ZodRegistry` isn't surfaced under zod's classic external `z`
 // namespace, but `z.registry()` returns one — `ReturnType<typeof
@@ -81,21 +78,13 @@ type ZodFieldMetaRegistry = ReturnType<typeof z.registry<FieldMetaPayload>>
  * `schema.register(fieldMeta, payload)` chains type-check at the call
  * site — Zod 4's `.register()` only calls `.add(this, payload)`
  * structurally, so the cast is sound at runtime.
- */
-export const fieldMeta = fieldMetaStore as unknown as ZodFieldMetaRegistry
-
-/**
- * Read the list of payloads registered against `schema`, in
- * registration order. Empty list when nothing has been registered.
  *
- * Used by the v4 adapter's path-resolver to disambiguate per
- * occurrence when a schema is shared across multiple form paths.
- * Most consumers won't need this — use `fieldMeta.get(schema)` for
- * the single-payload case.
+ * Backed by `installingFieldMetaStore`: every `add` also installs the
+ * path-walking resolver into the shared store's builder slot, so the
+ * walk's bytes ride this module's import instead of the adapter. A
+ * consumer that never registers metadata never ships the walk.
  */
-export function getFieldMetaList(schema: z.ZodType): readonly FieldMetaPayload[] {
-  return getFieldMetaListForSchema(schema as object)
-}
+export const fieldMeta = installingFieldMetaStore as unknown as ZodFieldMetaRegistry
 
 /**
  * Attach `payload` to `schema` in the shared `fieldMeta` registry
@@ -127,18 +116,6 @@ export function withMeta<S extends z.ZodType>(schema: S, payload: FieldMetaPaylo
   // keeps both keys.
   const existing = getFieldMetaForSchema(schema as object) ?? {}
   const cloned = schema.clone() as S
-  fieldMetaStore.add(cloned as object, { ...existing, ...payload })
+  installingFieldMetaStore.add(cloned as object, { ...existing, ...payload })
   return cloned
-}
-
-/**
- * Read the registered payload for a schema. Returns `undefined`
- * when nothing has been registered — callers apply their own
- * fallbacks (humanize for label, `.describe()` for description).
- *
- * Internal helper used by the v4 adapter's `getFieldMetaAtPath`.
- * Not part of the public `attaform/zod` surface.
- */
-export function getFieldMeta(schema: z.ZodType): FieldMetaPayload | undefined {
-  return getFieldMetaForSchema(schema as object)
 }

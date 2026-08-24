@@ -179,8 +179,8 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     // synthetic [0] index) so a single registration on lineItemSchema
     // populates the path-meta map at index 0 only. Runtime accesses
     // via [1], [2], … rely on the resolver's fallback: when the path
-    // map misses, getFieldMeta(schema) on the schema reference still
-    // returns the registered payload. Together that means every
+    // map misses, the schema-keyed store read on the schema reference
+    // still returns the registered payload. Together that means every
     // array index reads the same metadata from one .register() call —
     // the canonical "every line item shares the schema" pattern.
     const lineItemSchema = zV4
@@ -238,10 +238,10 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     // onto that clone appends to its registration list. Both writes
     // target the SAME clone instance, so the walker visits one path
     // exactly once and would normally pick only list[0]. The
-    // resolver's fallback to fieldMeta.get(schema) returns Zod's
-    // native single-slot value (last-write-wins) — so chained
-    // registrations on a single path resolve via the OR-fallback in
-    // resolveFieldMetaAtPath: pathMap.get(...) ?? getFieldMeta(...).
+    // resolver's fallback to the schema-keyed store returns the
+    // single-slot value (last-write-wins) — so chained registrations
+    // on a single path resolve via the OR-fallback in
+    // resolveFieldMetaAtPath: pathMap.get(...) ?? store read.
     // Net effect: label survives via the path map, description
     // survives via the native single-slot read.
     const schema = zV4.object({

@@ -14,7 +14,8 @@
  */
 import type { z } from 'zod'
 import type { FieldMetaPayload } from '../../core/field-meta'
-import { fieldMetaStore, getFieldMetaForSchema } from '../../core/field-meta-store'
+import { getFieldMetaForSchema } from '../../core/field-meta-store'
+import { installingFieldMetaStore } from '../../core/walk-field-meta'
 
 // Zod v4's `$ZodRegistry` class isn't surfaced under the `z` namespace
 // of the classic external entry, but `z.registry()` returns one — so
@@ -33,8 +34,13 @@ type ZodFieldMetaRegistry = ReturnType<typeof z.registry<FieldMetaPayload>>
  * `schema.register(fieldMeta, payload)` chain type-checks for v4
  * users; the runtime call only needs `.add` structurally, which the
  * shared store provides.
+ *
+ * Backed by `installingFieldMetaStore`: every `add` also installs the
+ * path-walking resolver into the shared store's builder slot, so the
+ * walk's bytes ride this module's import instead of the adapters. A
+ * consumer that never registers metadata never ships the walk.
  */
-export const fieldMeta = fieldMetaStore as unknown as ZodFieldMetaRegistry
+export const fieldMeta = installingFieldMetaStore as unknown as ZodFieldMetaRegistry
 
 /**
  * Attach `payload` to `schema` in the shared registry and return a
@@ -55,7 +61,7 @@ export function withMeta<S>(schema: S, payload: FieldMetaPayload): S {
   const target = schema as object
   const existing = getFieldMetaForSchema(target) ?? {}
   const cloned = cloneSchema(schema)
-  fieldMetaStore.add(cloned as object, { ...existing, ...payload })
+  installingFieldMetaStore.add(cloned as object, { ...existing, ...payload })
   return cloned
 }
 

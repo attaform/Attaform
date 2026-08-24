@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
-  fieldMeta,
-  getFieldMeta,
-  getFieldMetaList,
-  withMeta,
-} from '../../src/runtime/adapters/zod-v4/field-meta'
+  getFieldMetaForSchema as getFieldMeta,
+  getFieldMetaListForSchema as getFieldMetaList,
+} from '../../src/runtime/core/field-meta-store'
+import { fieldMeta, withMeta } from '../../src/runtime/adapters/zod-v4/field-meta'
 
 describe('Zod 4 — fieldMeta registry + withMeta helper', () => {
   it('round-trips a payload via the native schema.register chain', () => {

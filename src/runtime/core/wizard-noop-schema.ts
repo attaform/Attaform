@@ -57,7 +57,7 @@ export function buildNoopWizardSchema(
     getDefaultAtPath: () => undefined,
     getEmptyValueAtPath: () => undefined,
     isPreprocessOrCoerceLeaf: () => false,
-    arrayShapeAtPath: () => undefined,
+    arrayShapeAtPath: () => null,
     isFixedObjectAtPath: (path) => path.length === 0,
     getSchemasAtPath: () => [],
     validateAtPath: (): MaybePromise<ValidationResponse<Record<string, never>>> => success,

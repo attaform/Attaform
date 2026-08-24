@@ -53,9 +53,10 @@ field-read and errors-materialization benches specifically).
 
 - P5 kernel + P6 shells in place (done).
 - Pin FIRST (test-only commit): surface-proxy, values-storage-shape,
-  api-surface-contract, errors materialization/order suites, display-state
-  - display-reducer, own-errors/first-error, docs-demos smoke. These are
-    the enumeration/tojson/identity contracts the rewrite must hold.
+  api-surface-contract, errors materialization/order suites, the
+  display-state and display-reducer suites, own-errors/first-error,
+  docs-demos smoke. These are the enumeration/tojson/identity contracts
+  the rewrite must hold.
 - REPL playground pinned + verified per
   reference_playground_repl_debugging (the in-browser Volar worker is
   separate from CLI types — `bundle:repl` + Playwright on localhost).

@@ -413,7 +413,18 @@ export async function measureEager(define = PROD_DEFINE) {
 // leaf/container field-state builder fold (twin-tail-only, P6 gzip
 // discount), the activation-getter loop (+15 B), the useForm layer
 // collapse (type-weight only). Budget tightened 36_050 -> 34_950.
-const BUDGET_GZ = 34_400
+// P1b RATCHET (error codes + prose diet, 2026-08-24): 33,999 -> 33,124
+// measured (-875). Every prod-surviving prose diagnostic (14 sites)
+// now ships as `[attaform] AF## attaform.dev/e/af##` (+ the dynamic
+// detail where load-bearing) while the dev flavor keeps the full
+// prose via call-site `__DEV__` ternaries the dual-dist split folds
+// per flavor. No shared helper on purpose: 14 near-identical literals
+// gzip to almost nothing and each site stays greppable by its code.
+// The /e/af## reference pages ship in the same PR (docs/e/ ->
+// attaform.dev/e via the site's `errors` content collection), so the
+// URL in every prod message resolves from day one. Budget
+// 34_400 -> 33_550 (~0.43 kB headroom).
+const BUDGET_GZ = 33_550
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

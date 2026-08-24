@@ -25,7 +25,7 @@ number on the phase's merge commit, not an estimate.
 | --    | baseline                              | --      | 46,477             | 2026-08-23 | main fb532ad9                                   |
 | P0    | packaging config                      | done    | 46,477 (unchanged) | 2026-08-23 | 282.2 kB packed, 60 files (was 1.8 MB, 182)     |
 | P1a   | dev/prod dual dist                    | done    | 43,741             | 2026-08-23 | 377.6 kB packed, 75 files; dev boot e2e ok      |
-| P1b   | error codes + prose diet              | pending | ~42,800 exp.       |            | GATED on attaform.dev/e/\* pages                |
+| P1b   | error codes + prose diet              | moved   | --                 |            | re-sequenced after P7 (re-anchor ruling item 2) |
 | P2    | directive un-weld                     | done    | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed         |
 | P3    | history plugin + arrays engine        | done    | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer     |
 | P4    | field-meta install + SPI probe delete | done    | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted        |
@@ -33,7 +33,7 @@ number on the phase's merge commit, not an estimate.
 | P6    | validation shell fold (re-scoped)     | done    | 35,621             | 2026-08-23 | -147 (under band); sign-off 4 retired           |
 | P8    | surface program                       | done    | 34,530             | 2026-08-24 | -1,091; callable-tree; shims restored (+131)    |
 | P7    | zod-core + probe packs                | done    | 33,999             | 2026-08-24 | -531; fix walk; barrel -2,260; s/o 6 refused    |
-| P1b   | error codes + prose diet              | pending | ~33,100 exp.       |            | next; build /e/AF## pages in the same PR        |
+| P1b   | error codes + prose diet              | done    | 33,124             | 2026-08-24 | -875; 14 AF codes; /e/af## pages same PR        |
 | P9    | paths + walkers (re-scoped)           | pending | ~32,800 exp.       |            | 4th; trie + node(); reconcile merge = rep-first |
 | P10   | sweep and lock                        | pending | ~32,400 exp.       |            | last                                            |
 
@@ -95,6 +95,25 @@ number on the phase's merge commit, not an estimate.
 >    init +26/+42/+81% (F=5/50/500) vs the P5 reference — the P8
 >    cold-init residual is repaid with interest. Landing estimate holds
 >    ~32.4 kB.
+> 8. P1b addendum (measured -875 vs the stub's ~-900; the re-derived
+>    entry catalogue was 2,295 raw chars across 18 literals, 16
+>    convertible sites + 2 majors-twins = 14 codes): unique long prose
+>    carries almost NO gzip pre-discount — the twin-fold discount
+>    applies to structural twins, not to one-off English strings, so
+>    prose deletion realizes near its raw estimate. No shared
+>    codedMessage helper on purpose (14 near-identical literals gzip to
+>    ~nothing; call sites stay greppable by code). URL slugs are
+>    LOWERCASE (`attaform.dev/e/af10`) because Nuxt Content lowercases
+>    content routes and the link checker warns on uppercase links; the
+>    code token in the message stays `AF10`. Two latent traps found and
+>    fixed on the way: the site's vite resolve.alias regex array lacked
+>    `attaform/directive` + `attaform/history` rules, so this branch's
+>    P2 compile-time-injected directive import fell through to the bare
+>    `attaform` string alias and broke the whole docs build
+>    (src/index.ts/directive); and the dist-flavors allowlist still
+>    carried the P7-deleted `zod-v3 adapter: no schema at path` entry.
+>    Both packaging allowlists now collapse to the `'[attaform] AF'`
+>    prefix + the short callback-threw breadcrumbs.
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.
@@ -163,7 +182,7 @@ recorded in the P7 plan; do not re-propose without that evidence.
   never amend.
 - Characterization-first for P5+: the suites named in each phase file are pinned green
   on both majors BEFORE the rewrite starts.
-- Docs: pages that error codes point at (attaform.dev/e/AF##) land before P1b ships.
+- Docs: pages that error codes point at (attaform.dev/e/af##) landed inside P1b's PR.
 
 ## Compaction protocol
 

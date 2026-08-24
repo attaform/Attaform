@@ -357,7 +357,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '52.75 KB',
+    limit: '52 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -587,7 +587,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '52.75 KB',
+    limit: '52 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -762,7 +762,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '48.25 KB',
+    limit: '47.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1016,7 +1016,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '49 KB',
+    limit: '48.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1067,7 +1067,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '39.25 KB',
+    limit: '38.75 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1082,7 +1082,7 @@ export default [
     // guards against core modules leaking INTO the cluster's graph (a
     // jump here without a matching directive-side feature means the
     // entry started dragging kernel weight along). Measured at 7.17 KB.
-    limit: '8 KB',
+    limit: '7.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1290,7 +1290,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '39.25 KB',
+    limit: '38.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1354,7 +1354,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '34.75 KB',
+    limit: '34 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1438,7 +1438,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '35.5 KB',
+    limit: '35 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1480,7 +1480,7 @@ export default [
     // deleteAtPath died with the delta model), and the five array/variant
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 15.15 KB.
-    limit: '15.75 KB',
+    limit: '14.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1561,7 +1561,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '39.25 KB',
+    limit: '38.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1635,7 +1635,7 @@ export default [
     // replaced the proxy zoo, meta getter forests loop-generated over
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
-    limit: '26.5 KB',
+    limit: '26 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

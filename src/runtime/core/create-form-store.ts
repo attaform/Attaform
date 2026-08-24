@@ -1640,7 +1640,9 @@ function applyFormReplacementWithPath<F extends GenericForm, G extends GenericFo
   const prev = st.form.value
   if (Object.is(prev, next)) return
   // Capture the diff before any mutation lands — `commitWritePatches`
-  // needs the per-leaf patches against the OLD shape.
+  // needs the per-leaf patches against the OLD shape, and
+  // `applyChangedKeys` consumes the same list to decide which keys to
+  // reassign, so every replacement pays exactly one content walk.
   const patches: Patch[] = []
   diffAndApply(prev, next, [], (patch) => {
     patches.push(patch)
@@ -1663,7 +1665,7 @@ function applyFormReplacementWithPath<F extends GenericForm, G extends GenericFo
   // whole-parent re-render. A non-helper replacement (`arrayOpPath` null:
   // explicit setValue, reset, undo / redo, cross-tab, hydration, DU reshape)
   // reassigns changed keys wholesale, so a container target gets a fresh ref.
-  if (!applyChangedKeys(prev, next, arrayOpPath, [])) {
+  if (!applyChangedKeys(prev, next, arrayOpPath, [], patches)) {
     st.form.value = next
   } else if (
     patches.some(

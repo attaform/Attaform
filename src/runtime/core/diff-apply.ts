@@ -214,12 +214,22 @@ function diffObjectsLockstep(
 
 /**
  * Apply `source`'s changes to `target` by reassigning only the
- * top-level keys whose subtrees CONTENT-differ. Uses `diffAndApply`'s
- * structural walk (not `Object.is`) to decide which keys changed,
- * because reactive proxies and copy-on-write spreads routinely produce
+ * top-level keys whose subtrees CONTENT-differ. Which keys changed
+ * comes from `patches` — the caller's single `diffAndApply(target,
+ * source, [], ...)` pass over the same pair — rather than a second
+ * structural walk of its own, so every write pays exactly one
+ * content diff. Content (not `Object.is`) is the right gate because
+ * reactive proxies and copy-on-write spreads routinely produce
  * reference-different but content-equal subtrees that we don't want
  * to reassign — reassigning fires Vue's property dep and re-triggers
  * deep watches on that subtree.
+ *
+ * `patches` carries absolute paths and must be the content diff of
+ * exactly this `(target, source)` pair, scoped at or under
+ * `currentPath` (the root call passes the full list with
+ * `currentPath: []`; recursion filters per child). A patch landing AT
+ * `currentPath` itself is the container-level shape mismatch the diff
+ * emits for object ↔ array flips — the un-reconcilable case.
  *
  * Returns `true` on success. Returns `false` when `target` and
  * `source` have incompatible shapes (e.g. object ↔ array, or one
@@ -289,30 +299,25 @@ export function applyChangedKeys(
   target: unknown,
   source: unknown,
   arrayOpPath: Path | null,
-  currentPath: Path
+  currentPath: Path,
+  patches: readonly Patch[]
 ): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false
   const targetIsArray = Array.isArray(target)
   const sourceIsArray = Array.isArray(source)
   if (targetIsArray !== sourceIsArray) return false
 
-  // Find the unique first segments where target and source differ in
-  // CONTENT. A root-level patch (path.length === 0) signals an
-  // un-recoverable shape mismatch: tell the caller to wholesale-replace.
-  // Tracking a sentinel inside `changedFirstSegments` itself rather
-  // than a separate flag — keeps eslint's narrowing from declaring
-  // the flag dead code (the visitor callback is opaque to its flow
-  // analysis).
-  const ROOT_SENTINEL = Symbol.for('attaform.applyChangedKeys.rootMismatch')
-  const changedFirstSegments = new Set<string | number | symbol>()
-  diffAndApply(target, source, [], (patch) => {
-    if (patch.path.length === 0) {
-      changedFirstSegments.add(ROOT_SENTINEL)
-      return
-    }
-    changedFirstSegments.add(patch.path[0] as string | number)
-  })
-  if (changedFirstSegments.has(ROOT_SENTINEL)) return false
+  // The unique child segments where target and source differ in
+  // CONTENT, read off the caller's patch list at this node's depth. A
+  // patch landing AT this node (path length === depth) is the diff's
+  // container-level shape-mismatch marker: tell the caller to
+  // wholesale-replace. No mutation has happened yet at that point.
+  const depth = currentPath.length
+  const changedFirstSegments = new Set<Segment>()
+  for (const patch of patches) {
+    if (patch.path.length === depth) return false
+    changedFirstSegments.add(patch.path[depth] as Segment)
+  }
 
   if (targetIsArray) {
     const t = target as unknown[]
@@ -329,7 +334,6 @@ export function applyChangedKeys(
       // would content-copy and break that identity.
       if (t.length > s.length) t.length = s.length
       for (const idx of changedFirstSegments) {
-        if (typeof idx === 'symbol') continue
         const i = typeof idx === 'number' ? idx : Number(idx)
         // Skip slots the length cut already dropped. On a shrink, diffAndApply
         // emits a 'removed' patch at every truncated index, so those land in
@@ -346,7 +350,6 @@ export function applyChangedKeys(
       // selects the one on-path element; anything else reference-assigns
       // defensively (no length change, so no truncation here).
       for (const idx of changedFirstSegments) {
-        if (typeof idx === 'symbol') continue
         const i = typeof idx === 'number' ? idx : Number(idx)
         if (i >= s.length) continue
         const childPath = appendSegment(currentPath, i)
@@ -356,7 +359,13 @@ export function applyChangedKeys(
           isPathPrefix(childPath, arrayOpPath) &&
           isDescendable(curEl) &&
           isDescendable(nextEl) &&
-          applyChangedKeys(curEl, nextEl, arrayOpPath, childPath)
+          applyChangedKeys(
+            curEl,
+            nextEl,
+            arrayOpPath,
+            childPath,
+            patches.filter((p) => isPathPrefix(childPath, p.path))
+          )
         ) {
           continue
         }
@@ -371,7 +380,6 @@ export function applyChangedKeys(
       if (!sourceKeys.has(k)) delete t[k]
     }
     for (const k of changedFirstSegments) {
-      if (typeof k === 'symbol') continue
       const key = String(k)
       const nextVal = safeOwnRead(s, key)
       // On an array helper op (arrayOpPath non-null), reconcile a changed
@@ -386,10 +394,17 @@ export function applyChangedKeys(
       // or a non-helper write (arrayOpPath null), which replaces the reference.
       if (arrayOpPath !== null) {
         const curVal = safeOwnRead(t, key)
+        const childPath = appendSegment(currentPath, key)
         if (
           isDescendable(curVal) &&
           isDescendable(nextVal) &&
-          applyChangedKeys(curVal, nextVal, arrayOpPath, appendSegment(currentPath, key))
+          applyChangedKeys(
+            curVal,
+            nextVal,
+            arrayOpPath,
+            childPath,
+            patches.filter((p) => isPathPrefix(childPath, p.path))
+          )
         ) {
           continue
         }

@@ -34,8 +34,8 @@ number on the phase's merge commit, not an estimate.
 | P8    | surface program                       | done    | 34,530             | 2026-08-24 | -1,091; callable-tree; shims restored (+131)    |
 | P7    | zod-core + probe packs                | done    | 33,999             | 2026-08-24 | -531; fix walk; barrel -2,260; s/o 6 refused    |
 | P1b   | error codes + prose diet              | done    | 33,124             | 2026-08-24 | -875; 14 AF codes; /e/af## pages same PR        |
-| P9    | paths + walkers (re-scoped)           | pending | ~32,800 exp.       |            | 4th; trie + node(); reconcile merge = rep-first |
-| P10   | sweep and lock                        | pending | ~32,400 exp.       |            | last                                            |
+| P9    | paths + walkers (re-scoped)           | done    | 33,124             | 2026-08-24 | 0 of 4 arms survived rep pricing; -10B exhibit  |
+| P10   | sweep and lock                        | pending | ~33,000 exp. eager |            | last; value = tarball + wizard when-used        |
 
 > **RE-ANCHOR RULING (Oswald, 2026-08-23, post-P5): CONTINUE, re-scoped.**
 > His words: push wherever more is achievable without triggering
@@ -92,7 +92,7 @@ number on the phase's merge commit, not an estimate.
 >    barrel prize landed larger than the ratchet win: plugin-less
 >    `zod: { useForm }` 41,080 -> 38,760 and the v4-gap penalty 6,104
 >    -> ~4,360. Construction perf came back with the deletion: v4 cold
->    init +26/+42/+81% (F=5/50/500) vs the P5 reference — the P8
+>    init +26/+42/+81% (F=5/50/500) vs the P5 reference: the P8
 >    cold-init residual is repaid with interest. Landing estimate holds
 >    ~32.4 kB.
 > 8. P1b addendum (measured -875 vs the stub's ~-900; the re-derived
@@ -114,6 +114,43 @@ number on the phase's merge commit, not an estimate.
 >    carried the P7-deleted `zod-v3 adapter: no schema at path` entry.
 >    Both packaging allowlists now collapse to the `'[attaform] AF'`
 >    prefix + the short callback-threw breadcrumbs.
+> 9. P9 addendum (0 of 4 arms executed; ratchet unchanged at 33,124):
+>    the post-P7 tree had already harvested this ground: every arm
+>    priced at or below noise against its risk and was REFUSED under
+>    the rep-first rule. Calibration exhibit: collapsing
+>    walk-path-segments' five perfect-twin wrapper tails (467 raw
+>    chars) measured -10 B gz, a 2% realization. Perfect minified
+>    twins are gzip-priced at ~nothing, below even P6's 15-25%
+>    twin-fold band; the probe was reverted (a nested 5-way ternary is
+>    not worth -10 B). Arm prices: (a) trie: the 128-entry string
+>    cache IS the hot read path (39.9M hz benched), so an interned
+>    trie must keep a string->node map and deletes nothing;
+>    call-site destructuring is byte-identical either way; the 2 ByKey
+>    twins (isPristineAtPathByKey / pathHasAsyncValidationByKey) are
+>    perf infrastructure behind the canonicalizePath call-count gate,
+>    not dupes. (b) node() SPI: of the five shared walkers only
+>    path-segments delegates purely (walk-field-meta has no eager
+>    attribution row; derive-default, slim-primitives, fix-structural
+>    wrapper arms are semantic: optional->undefined, nullable->null,
+>    kind-set contributions, accept-sets), so the SPI's collapsible
+>    eager ground is the -10 B exhibit itself, minus new node-type +
+>    WeakMap machinery. (c) reconcile: the six write-side walks share
+>    only ~15-20 skeleton lines each; key policy (consumer-only vs
+>    synthesized vs variant-filtered vs fill-missing), undefined/null
+>    semantics, DU awareness, tuple defaults and identity preservation
+>    all differ per mode, so the fold prices at twin levels MINUS
+>    full-price mode-flag branching (plausibly net POSITIVE) on the
+>    library's most safety-critical ground (pollution + identity
+>    suites). (4) cache consolidation: the "parallel path-keyed
+>    caches" are three Map declarations in abstract-schema-factory
+>    plus the store's pathAsyncCache in a different lifetime; each
+>    8-line memo pattern survives consolidation, only declarations
+>    fold: ~net 0. Entry criteria stay banked for P10: 82-file battery
+>    green (1,148 tests; reference/p9-battery.txt), bench baseline
+>    committed (reference/p9-bench-baseline/\*.json; known-noisy
+>    outlier: keystroke array N=100). Lesson locked: a dedup arm needs
+>    a measured UNIQUE-bytes core to price above noise;
+>    structural-twin folds on this tree are already spent.
 
 "exp." columns assume mid realization; they are planning aids, never authority.
 Only the ratchet output is authority.

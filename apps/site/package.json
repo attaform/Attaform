@@ -31,7 +31,7 @@
     "attaform-bench-arena": "workspace:*",
     "better-sqlite3": "^12.9.0",
     "lucide-vue-next": "^1.0.0",
-    "primevue": "^4.5.5",
+    "primevue": "^5.0.0",
     "reka-ui": "^2.9.10",
     "satori": "^0.26.0",
     "shiki": "^4.0.2",

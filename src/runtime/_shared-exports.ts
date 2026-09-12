@@ -235,6 +235,8 @@ export type {
   NestedType,
   PartialFlatPath,
   Primitive,
+  RecordPath,
+  RecordValue,
   ValueOfUnion,
   WriteShape,
 } from './types/types-core'

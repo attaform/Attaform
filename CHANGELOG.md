@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+### Added
+
+- **`RecordPath<Form>` and `RecordValue<Form, Path>` are exported.**
+  `ArrayPath` and `ArrayItem` were already public, so `form.list` had
+  nameable path and element types while `form.record`, an equally
+  first-class API, had neither. Both now ship from every entry point
+  and appear in the types reference beside their array halves. (#603)
+
 ### Fixed
 
 - **Every array is a field-array path, optional or not.** The seven

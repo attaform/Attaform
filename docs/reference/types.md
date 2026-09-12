@@ -77,6 +77,7 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 | `FlatPath<Form>`               | runtime/types/types-core | Every reachable dotted path through the form.                  |
 | `PartialFlatPath<Form>`        | runtime/types/types-core | Same but allowing partial-prefix paths.                        |
 | `ArrayPath<Form>`              | runtime/types/types-core | Every reachable path whose value is an array, optional or not. |
+| `RecordPath<Form>`             | runtime/types/types-core | Every reachable path whose value is an open-keyed record.      |
 | `JoinSegments<Segments>`       | runtime/types/types-core | Type-level join of a segment tuple into a dotted string.       |
 | `Path` / `PathKey` / `Segment` | runtime/core/paths       | Canonicalized runtime path representation.                     |
 
@@ -91,6 +92,7 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 | `NestedReadType<T, P>` / `NestedType<T, P>`                       | runtime/types/types-core | Walk a type to the value at a path.                              |
 | `LiftedValueShape<T>`                                             | runtime/types/types-core | Helper for variant-memory and discriminated-union plumbing.      |
 | `ArrayItem<T>`                                                    | runtime/types/types-core | Element type of an array.                                        |
+| `RecordValue<T, P>`                                               | runtime/types/types-core | Value type of a record.                                          |
 | `IsTuple<T>` / `IsUnion<T>` / `KeyofUnion<T>` / `ValueOfUnion<T>` | runtime/types/types-core | Type-level predicates and unions over generic values.            |
 | `Primitive`                                                       | runtime/types/types-core | The base primitive set.                                          |
 

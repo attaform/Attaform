@@ -100,10 +100,15 @@ overrides:
   #   fast-xml-parser ^5.10.1
   #                    clears GHSA-8r6m-32jq-jx6q (high, repeated DOCTYPE
   #                    declarations reset entity expansion limits).
-  #   js-yaml ^4.3.1   clears GHSA-h67p-54hq-rp68 and -52cp-r559-cp3m (both
-  #                    quadratic CPU via merge-key chains) plus
+  #   js-yaml ^4.3.2   clears GHSA-2883-xcg3-v3hh (high, `maxTotalMergeKeys`
+  #                    does not count empty mappings, so repeatedly merging
+  #                    a long sequence of them costs O(N*K) CPU without ever
+  #                    reaching the configured limit) on top of
+  #                    GHSA-h67p-54hq-rp68 and -52cp-r559-cp3m (both
+  #                    quadratic CPU via merge-key chains) and
   #                    -5p4m-2wfm-xmqj (high, quadratic CPU in !!omap
-  #                    resolution).
+  #                    resolution) that the ^4.3.1 floor answered. Pulled by
+  #                    @nuxt/content's JSON-schema ref parser (docs site).
   #   postcss ^8.5.23  clears GHSA-r28c-9q8g-f849 and its incomplete-fix
   #                    follow-up GHSA-fxqj-rqcc-2cmp: attacker-controlled
   #                    sourceMappingURL reads arbitrary .map files.
@@ -156,7 +161,7 @@ overrides:
   fast-uri: ^3.1.6
   fflate: ^0.7.5
   fast-xml-parser: ^5.10.1
-  js-yaml: ^4.3.1
+  js-yaml: ^4.3.2
   postcss: ^8.5.23
   sharp: ^0.35.4
   shell-quote: ^1.9.0

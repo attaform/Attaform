@@ -173,12 +173,7 @@ export type WizardCtx = {
  * to drop the position from the compiled list.
  */
 export type SlotResolution<Ctx = WizardCtx> =
-  | AnyForm
-  | string
-  | null
-  | undefined
-  | LazyMarker<Ctx>
-  | GateMarker
+  AnyForm | string | null | undefined | LazyMarker<Ctx> | GateMarker
 
 /**
  * Internal phantom brand for `LazyMarker`. The runtime brand symbol

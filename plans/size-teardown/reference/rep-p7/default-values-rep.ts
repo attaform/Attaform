@@ -73,8 +73,7 @@ export function getDefaultValuesFromZodSchema<Form>(
   let fixedData = merged as Record<string, unknown>
   for (const issue of firstParse.error.issues) {
     const pathSegments = issue.path.map((seg) => (typeof seg === 'number' ? seg : String(seg))) as (
-      | string
-      | number
+      string | number
     )[]
     const candidates = getNestedZodSchemasAtPath(schema, pathSegments, maxRecursionDepth)
     const candidate = candidates[0]

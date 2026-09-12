@@ -22,8 +22,7 @@ export type StorageShape<S extends z.ZodTypeAny> =
   S extends z.ZodObject<infer Shape>
     ? {
         [K in keyof Shape]-?: Shape[K] extends
-          | z.ZodEffects<z.ZodTypeAny>
-          | z.ZodPipeline<z.ZodTypeAny, z.ZodTypeAny>
+          z.ZodEffects<z.ZodTypeAny> | z.ZodPipeline<z.ZodTypeAny, z.ZodTypeAny>
           ? z.input<Shape[K]>
           : z.output<Shape[K]>
       }

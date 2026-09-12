@@ -483,9 +483,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // into the consumer app). What the store holds is always a firm
   // `ValidationError`.
   type SetErrorsArg =
-    | ErrorInput
-    | ErrorInput[]
-    | ((prev: ValidationError[]) => ErrorInput | ErrorInput[])
+    ErrorInput | ErrorInput[] | ((prev: ValidationError[]) => ErrorInput | ErrorInput[])
 
   function flattenUserErrors(): ValidationError[] {
     const all: ValidationError[] = []

@@ -1,8 +1,8 @@
 # P10: sweep and lock (detailed 2026-08-24 at the P9 boundary)
 
-Anchor 33,124 B gz. The stub's ~-480 eager claim predates the P7-P9
+Anchor 33,124 B gz. The stub's ~~-480 eager claim predates the P7-P9
 realization data; re-derived eager expectation is **-50..-150**, and
-the phase's real value is the tarball (~-80 kB packed claimed), the
+the phase's real value is the tarball (~~-80 kB packed claimed), the
 wizard when-used path (~-2.9 kB claimed; re-price at entry), and
 program close-out. P9's pricing law governs every item: dedup-shaped
 work realizes at ~2-15% of raw on this tree; only unique deletions

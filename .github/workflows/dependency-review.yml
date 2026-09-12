@@ -121,7 +121,22 @@ jobs:
           # consumer's install. Pulled in transitively by @nuxtjs/seo's
           # og-image module (see #452). Add new platform purls here if sharp's
           # native platform set changes.
+          #
+          # rollup-plugin-dts is LGPL-3.0-only and always has been (every
+          # release since 6.1.0). It sat in the tree unnoticed because this
+          # gate only evaluates dependencies a PR *changes*, so the first
+          # version bump since the gate landed is what surfaced it, not any
+          # new exposure. The same reasoning as sharp applies and is if
+          # anything stronger: it is a build-time devDependency that reads
+          # .d.ts files and emits a bundled .d.ts. Its own code is never
+          # emitted, so nothing a consumer installs or bundles contains it,
+          # and the published `attaform` tarball carries generated type text
+          # rather than plugin code. The strong-copyleft exclusion above
+          # guards against LGPL *JS that a consumer bundles statically*; a
+          # type bundler that runs only in this repo's build is not that.
+          # If it ever stops being build-only, remove this entry.
           allow-dependencies-licenses: >-
+            pkg:npm/rollup-plugin-dts,
             pkg:npm/@img/sharp-libvips-darwin-arm64,
             pkg:npm/@img/sharp-libvips-darwin-x64,
             pkg:npm/@img/sharp-libvips-linux-arm,

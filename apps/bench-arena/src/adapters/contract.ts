@@ -13,13 +13,7 @@
 
 /** The practical form shapes the suite stress-tests. */
 export type ScenarioId =
-  | 'flat'
-  | 'nested'
-  | 'arrays'
-  | 'grid'
-  | 'discriminated-union'
-  | 'massive'
-  | 'wizard'
+  'flat' | 'nested' | 'arrays' | 'grid' | 'discriminated-union' | 'massive' | 'wizard'
 
 /** What a given (scenario, dimension) cell measures. */
 export type DimensionId =

@@ -442,7 +442,22 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
       // drive `onSuccess` twice and duplicate side-effects (POSTs, etc).
       // `preventDefault` already ran above, so a duplicate browser submit
       // is suppressed even when this branch returns early.
+      //
+      // The swallow is deliberate, and silent for a DOM-driven double
+      // submit: a second click is user input the guard exists to absorb,
+      // and there is nothing for the consumer to fix. A call carrying NO
+      // event is code, though, and code that silently does nothing is the
+      // worst shape to debug: no callback, no `submitting` flip, no error,
+      // no `firstOwnError`. Name it in dev so the loss is visible.
       if (state.activeSubmissions.value > 0) {
+        if (__DEV__ && event === undefined) {
+          console.warn(
+            `[attaform] handleSubmit: a submit is already in flight on form ` +
+              `"${String(state.formKey)}", so this call was ignored; its callback ` +
+              `never ran. Await the first submit before starting another, or move ` +
+              `the work into that submit's callback.`
+          )
+        }
         return
       }
       // Track in-flight via a counter (not a flag) so that a generation

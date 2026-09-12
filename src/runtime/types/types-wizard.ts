@@ -639,6 +639,12 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    `back()` does not pop; the trail is the audit
  *                    log, not the back-stack.
  *  - `next/back/goTo` — pure navigation. Refuses while `submitting`.
+ *                    The one exception is `next()` on an UNCLEARED
+ *                    `gate()` step, which behaves as `tryNext()` so
+ *                    wiring Next straight to it can never skip the
+ *                    gate's confirmation. Once that gate clears, `next()`
+ *                    is plain navigation again and does not re-submit to
+ *                    re-confirm.
  *  - `tryNext()`   — submit the active step, and once that submit
  *                    resolves clean, advance; invalid input keeps the pin
  *                    put under the form's standard error reveal (first
@@ -648,6 +654,13 @@ export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm
  *                    (`@click="wizard.tryNext()"`); resolves to whether
  *                    the pin moved. No-ops to `false` on a degenerate or
  *                    final-step wizard (finish via `handleSubmit`).
+ *                    Called while the active step's form already has a
+ *                    submit in flight (the usual case being from inside
+ *                    that form's own callback), it rides that submit
+ *                    rather than starting a second one, so one action
+ *                    costs one submission. The pin has not moved by the
+ *                    time it resolves, so the answer is `false`; the
+ *                    advance lands with the in-flight submit.
  *  - `handleSubmit(onSubmit, onError?)` — always validates the entire
  *                    step list, from any step, and never advances the
  *                    pin: on success it latches `done`; on any error it

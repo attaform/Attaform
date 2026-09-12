@@ -61,6 +61,7 @@ import type {
   ValidationResponse,
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
+import type { FormStore } from '../core/create-form-store'
 
 /** Default URL search param when the consumer doesn't supply a custom
  *  `restore` / `persist` pair. */
@@ -1323,6 +1324,46 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     moveTo(target.key)
   }
 
+  // Ride an in-flight submit rather than firing a second one.
+  //
+  // A submit already running on the active step's form means the caller is
+  // inside that form's own submit callback (the documented
+  // `activeForm.handleSubmit(() => wizard.next())` composition) or racing
+  // an autosave. Submitting again would hit `handleSubmit`'s re-entry
+  // guard, come back swallowed, and read as "not clean", so the advance
+  // was lost with nothing reported anywhere. Advancing when the in-flight
+  // submit resolves clean applies the same condition `tryNext` advances
+  // on, and costs the consumer's server no second POST.
+  //
+  // Pinned twice so a stale deferral can never move the pin on its own:
+  // to the submission it rode (`submissionAttempts` is bumped in that
+  // submission's `finally`, AFTER the success signal, so an unchanged
+  // count proves this is still that submission) and to the step it was
+  // requested from. One deferral at a time; a fresh request replaces it.
+  let cancelDeferredAdvance: (() => void) | null = null
+  function advanceWhenInFlightSubmitLands(store: FormStore<GenericForm>, key: FormKey): void {
+    cancelDeferredAdvance?.()
+    const attemptsAtRequest = store.submissionAttempts.value
+    const off = store.onSubmitSuccess(() => {
+      off()
+      cancelDeferredAdvance = null
+      if (store.submissionAttempts.value !== attemptsAtRequest) return
+      if (activeKey.value !== key) return
+      advanceOne()
+    })
+    cancelDeferredAdvance = off
+  }
+
+  // The active step's store when it has a submit in flight, else
+  // `undefined`. Reading `activeSubmissions` (not `submitting`) matches
+  // `handleSubmit`'s own re-entry guard exactly, so the two never disagree
+  // about whether a second submit would be swallowed.
+  function inFlightActiveStore(): FormStore<GenericForm> | undefined {
+    const store = registry.forms.get(activeKey.value)
+    if (store === undefined || store.activeSubmissions.value === 0) return undefined
+    return store
+  }
+
   async function next(): Promise<void> {
     if (submitting.value) {
       if (__DEV__) {
@@ -1349,10 +1390,26 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return
     }
     // A gate step advances only through its own submit: a bare `next()` on
-    // a gate behaves like `tryNext()`, so wiring Next straight to `next()`
-    // can never skip the gate's confirmation.
+    // an UNCLEARED gate behaves like `tryNext()`, so wiring Next straight
+    // to `next()` can never skip the gate's confirmation.
+    //
+    // Two carve-outs, both of which exist so one user action costs exactly
+    // one submission of the member form:
+    //
+    //  - An already-CLEARED gate has nothing left to confirm, so `next()`
+    //    is plain navigation again. Re-submitting a cleared gate to
+    //    re-confirm it would run the whole submit lifecycle a second time
+    //    (`submissionAttempts`, `onSubmitSuccess`, every consumer
+    //    subscriber) for an answer the latch already holds.
+    //  - A submit already in flight on this form IS the confirmation this
+    //    call is waiting for. Ride it instead of firing a second one.
     const active = list[idx]
-    if (active !== undefined && active.isGate) {
+    if (active !== undefined && active.isGate && !clearedGates.has(active.key)) {
+      const inFlight = inFlightActiveStore()
+      if (inFlight !== undefined) {
+        advanceWhenInFlightSubmitLands(inFlight, activeKey.value)
+        return
+      }
       await tryNext()
       return
     }
@@ -1396,18 +1453,31 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
     const form = activeForm.value
     if (form === undefined) return false
+    const before = activeKey.value
+    // A submit already in flight on this form is the submit this call
+    // would otherwise start. Ride it rather than firing a second one that
+    // `handleSubmit`'s re-entry guard would swallow. The pin has not moved
+    // by the time this resolves, so the answer is `false`; the advance
+    // lands when the in-flight submit does.
+    const inFlight = inFlightActiveStore()
+    if (inFlight !== undefined) {
+      advanceWhenInFlightSubmitLands(inFlight, before)
+      return false
+    }
     // Confirm the submit ran clean, THEN advance. A `gate()` on the active
     // step only clears after its submit callback resolves, so advancing
     // from inside the callback would read pre-clear lock state and refuse.
     // Marking success in the callback and advancing afterward lets a gate
     // clear on its own completion. Advance through `advanceOne()`, not
     // `next()`, so a gate step doesn't loop back into `tryNext`.
-    const before = activeKey.value
     let ranClean = false
     await asHandleSubmitSource(form).handleSubmit(() => {
       ranClean = true
     })()
-    if (ranClean) advanceOne()
+    // Pinned to the step this call started from: a deferred advance queued
+    // by a concurrent `next()` / `tryNext()` may already have moved the
+    // pin off it, and advancing again would skip a step.
+    if (ranClean && activeKey.value === before) advanceOne()
     return activeKey.value !== before
   }
 
@@ -1809,6 +1879,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     onScopeDispose(() => {
       historyHandle.dispose()
       lazyNoopScope.stop()
+      cancelDeferredAdvance?.()
     })
   }
 

@@ -29,7 +29,7 @@
     "@vue/repl": "^4.7.2",
     "attaform": "workspace:*",
     "attaform-bench-arena": "workspace:*",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^13.0.3",
     "lucide-vue-next": "^1.0.0",
     "primevue": "4.5.5",
     "reka-ui": "^2.9.10",

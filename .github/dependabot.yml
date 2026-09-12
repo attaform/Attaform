@@ -53,6 +53,55 @@ updates:
     commit-message:
       prefix: 'chore(deps)'
       prefix-development: 'chore(deps-dev)'
+    # Frozen by license, not by caution. PrimeVue 4.x is MIT; 5.0.0
+    # (2026-07-15) relicensed the entire vendor cluster to
+    # `SEE LICENSE IN LICENSE.md` and added a license manager, so it is
+    # no longer OSI-licensed and cannot sit in an MIT library's tree.
+    # The same relicense landed simultaneously on @primeuix/themes 3.0.0,
+    # @primeuix/styles 3.0.0, @primeuix/styled 1.0.0, @primeuix/utils
+    # 0.8.0 and @primevue/{core,icons} 5.0.0. That is PrimeTek's call to
+    # make; ours is to stop tracking them. See the closed PR #559.
+    #
+    # 4.5.5 (2026-04-08) is the terminal 4.x release. npm's `v4-stable`
+    # dist-tag points at it and nothing has shipped on the branch since.
+    # So the manifests carry exact versions (`4.5.5`, `2.0.3`) rather
+    # than carets. That is a different control from the `ignore` below,
+    # not a duplicate of it: a caret would accept a back-ported 4.x
+    # silently at install time, with no PR and nothing to review, while
+    # the exact pin forces every move through a Dependabot PR where the
+    # license gate and a human both get a look. The cluster edges are
+    # already fenced by their own caret bounds (primevue depends on
+    # @primeuix/utils `^0.6.2`, @primeuix/styled `^0.7.4`, @primeuix/styles
+    # `^2.0.3`), none of which can reach a relicensed version.
+    #
+    # Patch updates stay OPEN on purpose. An outright ignore also
+    # suppresses a dependency's Dependabot security PRs, and a security
+    # back-port is the only 4.x release likely to appear now, which is
+    # exactly the one worth having. Patch cannot cross into 5.x, so the
+    # license refusal is untouched, and a 4.5.6 published under the new
+    # terms would still fail dependency-review.yml's `allow-licenses`
+    # gate the way #559 did. Major and minor are what get dropped: on a
+    # branch this dead, both lead only to v5.
+    #
+    # Blast radius, for scale: PrimeVue is a devDependency of the root
+    # package (which has no `dependencies` at all) and of the private
+    # `attaform-site` app. It powers exactly one docs demo
+    # (`docs-demos/third-party-primevue`) and the cross-library
+    # `v-register` test matrix. It is absent from the published tarball
+    # and never reaches a consumer install.
+    #
+    # Revisit if PrimeTek relicenses back to OSI terms, or when the
+    # demo moves to a different batteries-included kit; deleting this
+    # block and relaxing the pins is the whole undo.
+    ignore:
+      - dependency-name: 'primevue'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
+      - dependency-name: '@primeuix/themes'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
     labels:
       - 'dependencies'
 

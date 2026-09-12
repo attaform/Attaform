@@ -36,6 +36,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
   // Shape introspection
   arrayShapeAtPath(path: Path): number | null
   isLeafAtPath(path: Path): boolean
+  isOpaqueLeafAtPath(path: Path): boolean
   isRequiredAtPath(path: Path): boolean
   getSchemasAtPath(path: Path): AbstractSchema<unknown, GetValueFormType>[]
   getSlimPrimitiveTypesAtPath(path: Path): Set<SlimPrimitiveKind>
@@ -96,6 +97,10 @@ The answer is definitive: the runtime consults it on every structural write that
 ### `isLeafAtPath(path: Path): boolean`
 
 `true` for primitive paths, `false` for object / array / map / set containers. Drives the proxy's descend-vs-terminate decision; reserved leaf-prop names (`dirty`, `errors`, `valid`, `label`, …) inject only at the FieldState terminal.
+
+### `isOpaqueLeafAtPath(path: Path): boolean`
+
+`true` when the schema declares a value at `path` without describing its shape, the way Zod's `any` / `unknown` / `custom` do. The write gate then accepts the value whole rather than walking into it to check sub-paths the schema never declared, which is what lets a consumer store a `File`, a `Map`, or any class instance at a leaf. Return `false` throughout if every leaf in your library has a known shape.
 
 ### `isRequiredAtPath(path: Path): boolean`
 
@@ -208,6 +213,15 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       // True where a schema-side input normalizer (a coercing or
       // preprocessing node) should accept raw writes verbatim. Return
       // false if your library has no such construct.
+      return false
+    },
+
+    isOpaqueLeafAtPath() {
+      // True where the schema declares a value without describing its
+      // shape (Zod's `any` / `unknown` / `custom`). The write gate then
+      // accepts the value whole instead of walking into it looking for
+      // sub-paths the schema never declared. Return false if every leaf
+      // in your library has a known shape.
       return false
     },
 

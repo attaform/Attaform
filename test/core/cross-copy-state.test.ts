@@ -8,6 +8,11 @@ import {
   type FieldMetaState,
 } from '../../src/runtime/core/field-meta-store'
 import { fieldMeta } from '../../src/runtime/adapters/zod-v4/field-meta'
+import {
+  isDefaultDisplayState,
+  makeDefaultDisplayState,
+} from '../../src/runtime/core/display-state'
+import type { GetDisplayState } from '../../src/runtime/types/types-api'
 
 /**
  * Standing guard on the cross-copy invariant (#577).
@@ -30,6 +35,7 @@ import { fieldMeta } from '../../src/runtime/adapters/zod-v4/field-meta'
  */
 
 const FIELD_META_KEY = Symbol.for('attaform:field-meta-state')
+const DISPLAY_FAMILY_KEY = Symbol.for('attaform:default-display-state-family')
 
 function claimed<T>(key: symbol, owner: string): T {
   return crossCopyState<T>(key, () => {
@@ -92,5 +98,18 @@ describe('field-meta state is cross-copy (#577)', () => {
     // on a cross-copy carrier is opaque to that analysis.
     z.string().register(fieldMeta, { label: 'Given name' })
     expect(slot.pathMapBuilder).not.toBeNull()
+  })
+})
+
+describe('default display-state family is cross-copy (#577)', () => {
+  it('records reducers in the shared slot so isDefaultDisplayState answers across copies', () => {
+    const slot = claimed<WeakSet<GetDisplayState>>(DISPLAY_FAMILY_KEY, 'display-state')
+    // `makeDefaultDisplayState` is a public export, so a consumer can
+    // build their reducer in a module that lands in a different graph
+    // from the page. Split the WeakSet and the container error rollup
+    // silently stops applying.
+    const reducer = makeDefaultDisplayState({ showDelay: 50, minVisible: 200 })
+    expect(slot.has(reducer)).toBe(true)
+    expect(isDefaultDisplayState(reducer)).toBe(true)
   })
 })

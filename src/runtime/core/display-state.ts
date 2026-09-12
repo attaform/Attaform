@@ -1,4 +1,5 @@
 import type { DisplayCtx, GetDisplayState } from '../types/types-api'
+import { crossCopyState } from './cross-copy-state'
 
 /**
  * The settled half of the display verdict: the value a field should show
@@ -128,8 +129,18 @@ export const FOCUS_OUT_GRACE = 16
  * and at `form.meta`) is a behavior of the library default, applied around the
  * reducer rather than inside it, so a fully custom `getDisplayState` owns
  * container verdicts outright. WeakSet so it never pins a reducer against GC.
+ *
+ * Cross-copy because `makeDefaultDisplayState` is a public export: a
+ * consumer who builds their reducer in a module that lands in a
+ * different bundler graph from the page (Nuxt's `shared/`, the #577
+ * topology) would otherwise register it in one copy's WeakSet and have
+ * `isDefaultDisplayState` answer from another's, silently dropping the
+ * container rollup with no error and no log.
  */
-const defaultFamily = new WeakSet<GetDisplayState>()
+const defaultFamily = crossCopyState<WeakSet<GetDisplayState>>(
+  Symbol.for('attaform:default-display-state-family'),
+  () => new WeakSet<GetDisplayState>()
+)
 
 /** True for any reducer built by {@link makeDefaultDisplayState}. */
 export function isDefaultDisplayState(fn: GetDisplayState): boolean {

@@ -45,6 +45,32 @@ overrides:
   # patch/minor rather than a breaking jump. Revisit when the source dep
   # floats past the range on its own and the override becomes a no-op.
   #
+  # An override here is a request, not a guarantee: pnpm can record the
+  # floor and still leave a locked snapshot on the vulnerable version (see
+  # @tiptap/core below). `pnpm check:security-floors` walks the installed
+  # tree and fails if any copy sits below its floor; it runs first in
+  # `pnpm check`. Trust that gate, not the presence of a line here.
+  #
+  #   @tiptap/core ^3.30.4
+  #                    clears GHSA-cp6q-959q-f8rh (mergeAttributes turns an
+  #                    own `__proto__` key into inherited executable DOM
+  #                    attributes). Reaches the tree only as a @nuxt/ui
+  #                    dependency+peer (demo components) and via @nuxtjs/seo's
+  #                    devtools layer; no docs page mounts an editor. The
+  #                    floor alone did NOT clear it: @nuxt/ui declares
+  #                    @tiptap/core in BOTH `dependencies` and
+  #                    `peerDependencies`, and pnpm rewrote the recorded peer
+  #                    range while leaving the already-locked snapshot on the
+  #                    vulnerable 3.23.6, a version that does not even
+  #                    satisfy @nuxt/ui 4.9.0's own declared ^3.26.1, so the
+  #                    lockfile was internally inconsistent. `pnpm install`
+  #                    reported "Already up to date" and `--force` changed
+  #                    nothing. What did work: set this entry to the exact
+  #                    version (`'@tiptap/core': 3.31.3`), run `pnpm install`
+  #                    to force the cluster to re-resolve, then relax it back
+  #                    to the caret floor. The resolution sticks. Use that
+  #                    two-step whenever `pnpm check:security-floors` reports
+  #                    a violation an override should already have fixed.
   #   brace-expansion@^2 ^2.1.2 / brace-expansion@^5 ^5.0.7
   #                    the same exponential-time `{}` expansion DoS
   #                    (GHSA-3jxr-9vmj-r5cp, high) landed in both majors
@@ -56,10 +82,21 @@ overrides:
   #                    maintainer, not just a theoretical). Also pins the
   #                    minifier's minor so the eager-bundle bytes stay
   #                    predictable across installs.
-  #   fast-uri ^3.1.5  clears GHSA-v2hh-gcrm-f6hx and -7p8r-x3mc-p8w7 (both
-  #                    high, host confusion via a backslash authority
-  #                    delimiter / introducer) on top of the two earlier
-  #                    highs the original ^3.1.2 floor answered.
+  #   fast-uri ^3.1.6  clears four more highs (GHSA-jqff-g426-hqxp and
+  #                    -5jgf-p345-68v8, host confusion via percent-encoded
+  #                    scheme normalization / skipped IDN canonicalization;
+  #                    GHSA-f65p-4m7j-42xc and -fph4-wmhf-6fwf, SSRF via
+  #                    malformed IPv6 normalization / repeated hostname
+  #                    percent-decoding) on top of the two the ^3.1.5 floor
+  #                    answered and the two before that. Pulled by ajv >
+  #                    commitlint. 4.x exists but is a breaking major.
+  #   fflate ^0.7.5    clears GHSA-px8p-9vwx-vf98 (infinite loop in
+  #                    unzipSync on a malformed ZIP64 archive). Held to
+  #                    0.7.x: the only consumer, satori's opentype.js fork,
+  #                    declares ^0.7.3, and the patch landed in that line.
+  #                    Satori renders OG images from this repo's own
+  #                    templates at prerender time, so no attacker-supplied
+  #                    archive reaches it.
   #   fast-xml-parser ^5.10.1
   #                    clears GHSA-8r6m-32jq-jx6q (high, repeated DOCTYPE
   #                    declarations reset entity expansion limits).
@@ -70,6 +107,12 @@ overrides:
   #   postcss ^8.5.23  clears GHSA-r28c-9q8g-f849 and its incomplete-fix
   #                    follow-up GHSA-fxqj-rqcc-2cmp: attacker-controlled
   #                    sourceMappingURL reads arbitrary .map files.
+  #   sharp ^0.35.4    clears GHSA-rgj7-g3m4-5g8c (high, the bundled libheif
+  #                    carries GHSA-g89c-p67h-r497 and -2jg2-4ch7-h545).
+  #                    Pulled by nuxt-seo-utils > @nuxtjs/seo to resize OG
+  #                    images at prerender time; same SSG reasoning as
+  #                    image-size below, floored anyway because a patch
+  #                    exists.
   #   shell-quote ^1.9.0
   #                    clears GHSA-395f-4hp3-45gv (high,
   #                    quadratic-complexity DoS in `parse()`).
@@ -77,8 +120,13 @@ overrides:
   #                    clears GHSA-2m8v-j782-fhvr (high, zero-attachment
   #                    memory exhaustion). Pulled by socket.io-client >
   #                    @nuxt/content (docs site).
-  #   svgo ^4.0.2      clears GHSA-2p49-hgcm-8545 (high, the removeScripts
-  #                    plugin leaves some executable scripts intact).
+  #   svgo ^4.1.0      clears GHSA-w27v-7q3p-w38r (high, removeScripts lets
+  #                    executable links through via namespace and
+  #                    control-character bypasses) and GHSA-4vpr-x523-8j87
+  #                    (incomplete sanitization of executable HTML inside
+  #                    `foreignObject`), on top of the -2p49-hgcm-8545 high
+  #                    the ^4.0.2 floor answered. Pulled by cssnano across
+  #                    unbuild and the Nuxt vite builder.
   #   tar ^7.5.18      clears GHSA-w8wr-v893-vjvp (process crash via PAX
   #                    numeric path type confusion).
   #   undici ^7.29.0   clears GHSA-4cwx-7wf7-3272 (high, cross-user
@@ -101,16 +149,19 @@ overrides:
   # site is pure SSG (`nitro.preset: 'static'`), so no runtime path feeds it
   # bytes at all. Both alerts are dismissed as tolerable risk on GitHub;
   # add a floor here the moment image-size ships one.
+  '@tiptap/core': ^3.30.4
   'brace-expansion@^2': ^2.1.2
   'brace-expansion@^5': ^5.0.7
   esbuild: ^0.28.1
-  fast-uri: ^3.1.5
+  fast-uri: ^3.1.6
+  fflate: ^0.7.5
   fast-xml-parser: ^5.10.1
   js-yaml: ^4.3.1
   postcss: ^8.5.23
+  sharp: ^0.35.4
   shell-quote: ^1.9.0
   socket.io-parser: ^4.2.7
-  svgo: ^4.0.2
+  svgo: ^4.1.0
   tar: ^7.5.18
   undici: ^7.29.0
   ws: ^8.21.0

@@ -258,14 +258,20 @@ export function slimPrimitivesWalk<Schema>(
     }
     case 'never':
       return EMPTY_KINDS
+    // Opaque leaves: the schema says nothing about the value's shape,
+    // so every kind is admissible. `custom` is the kind
+    // `z.instanceof(X)` and `z.custom<T>()` compile to on v4 (#542);
+    // it belongs with `any` / `unknown` rather than in the defensive
+    // fallthrough, because it reaches here through the public surface.
     case 'any':
     case 'unknown':
+    case 'custom':
       return PERMISSIVE_SLIM_KINDS
-    // Opaque / unsupported kinds: be permissive so legitimate writes
-    // aren't false-rejected. The unsupported kinds (`map` / `symbol` /
-    // `function` / `promise`) are rejected at adapter construction by
-    // `assertSupportedKinds`; this fallthrough keeps the walker
-    // defensive in case construction is skipped.
+    // Unsupported kinds: be permissive so legitimate writes aren't
+    // false-rejected. `map` / `symbol` / `function` / `promise` are
+    // rejected at adapter construction by `assertSupportedKinds`; this
+    // fallthrough keeps the walker defensive in case construction is
+    // skipped.
     default:
       return PERMISSIVE_SLIM_KINDS
   }

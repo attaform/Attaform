@@ -405,22 +405,28 @@ export function deriveDefaultWalk<Schema>(
       return null
     case 'any':
     case 'unknown':
+    case 'custom':
     case 'void':
     case 'never':
     case 'promise':
-    case 'custom':
     case 'template-literal':
     case 'transform':
     case 'map':
     case 'symbol':
     case 'function':
-      // `promise` / `custom` / `template-literal` / `map` / `symbol` /
-      // `function` are rejected by `assertSupportedKinds` at adapter
-      // construction, so these branches are unreachable through the
-      // public surface. `transform` is the input side of a
-      // `z.preprocess(fn, inner)` and has no own default — callers
-      // walk to `inner` via the surrounding pipe / effects. Kept for
-      // exhaustive switch safety.
+      // `any` / `unknown` / `custom` are opaque leaves: the schema
+      // states nothing about the value's shape, so there is no blank
+      // to derive and the slot stays absent until the consumer writes
+      // one. `custom` is the kind `z.instanceof(File)` compiles to on
+      // v4, and it lands here rather than on `file`'s `null` because
+      // the predicate need not describe a File at all (#542).
+      //
+      // `promise` / `template-literal` / `map` / `symbol` / `function`
+      // are rejected by `assertSupportedKinds` at adapter construction,
+      // so those branches are unreachable through the public surface.
+      // `transform` is the input side of a `z.preprocess(fn, inner)`
+      // and has no own default: callers walk to `inner` via the
+      // surrounding pipe / effects. Kept for exhaustive switch safety.
       return undefined
     default:
       return ctx.unsupportedKindFallback(schema, kind)

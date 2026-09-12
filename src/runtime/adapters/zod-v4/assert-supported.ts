@@ -22,28 +22,30 @@ import {
 /**
  * Kinds the adapter does not implement.
  *
- * - `z.promise(...)`, `z.custom(...)`, and `z.templateLiteral(...)` carry
- *   no form-representable initial value: Promise-valued fields have no
- *   meaningful starting state, custom predicates have no derivable
- *   default, and template-literal schemas parse strings against a
- *   pattern that has no obvious "empty" form.
+ * - `z.promise(...)` and `z.templateLiteral(...)` carry no
+ *   form-representable initial value: Promise-valued fields have no
+ *   meaningful starting state, and template-literal schemas parse
+ *   strings against a pattern that has no obvious "empty" form.
  * - `z.map(...)`, `z.symbol()`, and `z.function(...)` are equally
  *   unrepresentable: Maps have no obvious form encoding, symbols are
  *   not JSON-serialisable so persistence and SSR round-trip would
  *   silently drop them, and functions have no meaningful initial state.
  *   Matches the v3 adapter's symmetric rejection list.
  *
- * The adapter rejects all six at construction so the failure surfaces
- * at `useForm(...)` rather than as a mystery `undefined` at render time.
+ * `z.custom(...)` is deliberately absent. It is the kind both
+ * `z.instanceof(X)` and `z.custom<T>()` compile to, and it is opaque
+ * by definition: nothing descends into it, so the adapter carries the
+ * value as-is and lets the predicate run at parse time, exactly as it
+ * already does for `z.unknown()`. Rejecting it broke parity with the
+ * v3 adapter, which compiles both spellings to `ZodEffects` /
+ * `ZodAny` and never listed them, and it made a `File` leaf
+ * unexpressible on v4 outside of v4's own `z.file()` (#542).
+ *
+ * The adapter rejects the remaining five at construction so the
+ * failure surfaces at `useForm(...)` rather than as a mystery
+ * `undefined` at render time.
  */
-const UNSUPPORTED: readonly ZodKind[] = [
-  'promise',
-  'custom',
-  'template-literal',
-  'map',
-  'symbol',
-  'function',
-]
+const UNSUPPORTED: readonly ZodKind[] = ['promise', 'template-literal', 'map', 'symbol', 'function']
 
 function labelPath(path: readonly string[]): string {
   return path.length === 0 ? '<root>' : path.join('.')

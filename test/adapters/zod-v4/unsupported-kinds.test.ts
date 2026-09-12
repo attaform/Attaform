@@ -23,17 +23,6 @@ describe('zod-v4 adapter — unsupported kinds rejected at construction', () => 
     }
   })
 
-  it('z.custom throws UnsupportedSchemaError', () => {
-    const schema = z.object({ thing: z.custom<string>((v) => typeof v === 'string') })
-    expect(() => zodV4Adapter(schema)).toThrow(UnsupportedSchemaError)
-    try {
-      zodV4Adapter(schema)
-    } catch (err) {
-      expect((err as Error).message).toContain("'custom'")
-      expect((err as Error).message).toContain("'thing'")
-    }
-  })
-
   it('z.templateLiteral throws UnsupportedSchemaError', () => {
     const schema = z.object({ greeting: z.templateLiteral(['hello ', z.string()]) })
     expect(() => zodV4Adapter(schema)).toThrow(UnsupportedSchemaError)
@@ -173,7 +162,7 @@ describe('zod-v4 adapter — deep schemas surface the offending path', () => {
 
   it('union branch with unsupported kind surfaces with a branch index', () => {
     const schema = z.object({
-      mixed: z.union([z.string(), z.custom<number>((v) => typeof v === 'number')]),
+      mixed: z.union([z.string(), z.promise(z.number())]),
     })
     try {
       zodV4Adapter(schema)
@@ -188,7 +177,10 @@ describe('zod-v4 adapter — deriveDefault fallback on unsupported leaves', () =
   it('returns undefined rather than crashing on promise/custom/template-literal', () => {
     // `deriveDefault` is the internal walker; it's kept defensive so
     // downstream code paths that bypass the constructor guard don't
-    // explode. Callers using the public adapter never hit this branch.
+    // explode. `promise` / `template-literal` are unreachable through
+    // the public adapter. `custom` IS reachable (#542) and `undefined`
+    // is its real answer, not a fallback: an opaque leaf has no
+    // derivable blank, exactly as for `z.unknown()`.
     expect(deriveDefault(z.promise(z.string()), false, 64)).toBeUndefined()
     expect(
       deriveDefault(
@@ -197,6 +189,8 @@ describe('zod-v4 adapter — deriveDefault fallback on unsupported leaves', () =
         64
       )
     ).toBeUndefined()
+    expect(deriveDefault(z.instanceof(File), false, 64)).toBeUndefined()
+    expect(deriveDefault(z.unknown(), false, 64)).toBeUndefined()
     expect(deriveDefault(z.templateLiteral(['x ', z.string()]), false, 64)).toBeUndefined()
   })
 })

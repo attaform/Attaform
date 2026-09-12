@@ -458,18 +458,36 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     expect(form.blankPaths.value.has('count')).toBe(true)
   })
 
-  it('reset(args) auto-marks unspecified leaves in the new defaults', () => {
+  it('reset(args) leaves unmentioned leaves alone, value AND blank mark', () => {
     const { app, form } = setupForm(z.object({ name: z.string(), age: z.number() }), {
       name: 'alice',
       age: 30,
     })
     apps.push(app)
     expect(form.blankPaths.value.size).toBe(0)
-    // Reset with a partial — `age` is omitted, so it gets auto-marked.
+    // `next` is sparse: it names `name` and says nothing about `age`, so
+    // `age` keeps the default it already had. It is NOT zeroed, and it is
+    // NOT auto-marked blank: the consumer supplied 30 and never withdrew
+    // it. Auto-marking omitted leaves here was correct when reset(args)
+    // replaced the defaults wholesale; under merge it would turn every
+    // unmentioned key into an explicit "no value supplied" (#576).
     form.reset({ name: 'bob' })
     expect(form.blankPaths.value.has('name')).toBe(false)
-    expect(form.blankPaths.value.has('age')).toBe(true)
+    expect(form.blankPaths.value.has('age')).toBe(false)
     expect(form.values.name).toBe('bob')
+    expect(form.values.age).toBe(30)
+  })
+
+  it('reset(args) can still withdraw a value explicitly via unset', () => {
+    const { app, form } = setupForm(z.object({ name: z.string(), age: z.number() }), {
+      name: 'alice',
+      age: 30,
+    })
+    apps.push(app)
+    // Merge semantics never strand the consumer: `unset` is the explicit
+    // signal for "this path has no value", and it still marks blank.
+    form.reset({ name: 'bob', age: unset })
+    expect(form.blankPaths.value.has('age')).toBe(true)
     expect(form.values.age).toBe(0)
   })
 

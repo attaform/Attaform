@@ -53,6 +53,40 @@ After this call, the new object IS the form's defaults for any subsequent `reset
 
 The argument is a `Partial<DefaultValuesInput<Form>>`. Fields you don't mention pick up the previous defaults. Pass `{}` to reset with no changes to the defaults.
 
+Arrays are replaced wholesale rather than merged element-wise, so `form.reset({ tags: ['x'] })` leaves one tag, not four. To withdraw a value instead of changing it, pass [`unset`](/docs/writing-and-mutating/unset) at that path.
+
+### Save, then discard
+
+This is the shape most forms that save end up in. After a successful save, the values on screen should be what actually persisted, so reset from the resource the server returned:
+
+```ts
+const schema = z.object({ city: z.string(), state: z.string() })
+const form = useForm({ schema, defaultValues: address })
+
+async function save() {
+  const saved = await api.updateAddress(form.values())
+  form.reset(toValues(saved))
+}
+```
+
+Discard is then the plain `form.reset()`, with nothing to track on your side:
+
+```ts
+const discard = () => form.reset()
+```
+
+Because `reset(nextDefaults)` re-seats the defaults, Discard returns to the last save. It does not roll back across it, and `dirty` stays honest against the saved values, so an unsaved-changes bar appears exactly when there is something to save.
+
+### Defaults that arrive late
+
+A function-form `defaultValues` resolves the same way. Whatever the factory returns becomes the form's defaults, so `form.reset()` lands on the fetched resource, and a form is pristine the moment its data arrives:
+
+```ts
+const form = useForm({ schema, defaultValues: () => api.getAddress(id) })
+```
+
+`form.rehydrate()` re-seats them again with the refetched values. See [async defaults](/docs/schemas/defaults).
+
 ## `resetField(path)` restores one path
 
 ```ts

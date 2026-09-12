@@ -117,6 +117,57 @@ describe('async-defaults SSR + hydration', () => {
     expect(api.values.email).toBe('server@example.com')
     expect(api.values.name).toBe('Ada')
   })
+
+  it('the hydrated payload becomes the defaults, so the client starts pristine', async () => {
+    // Third surface of #576. The payload stands in for the factory the
+    // client never fires, so it has to be adopted as the defaults the
+    // same way a client-side factory result is. Without that, the store
+    // held no defaults at all on the client: `dirty` read true the
+    // moment the page hydrated, before anyone had touched the form, and
+    // `form.reset()` threw the server-fetched resource away for
+    // schema-slim values.
+    const ServerApp = defineComponent({
+      setup() {
+        const form = useForm({
+          schema,
+          key: 'ssr-async-adopts-payload',
+          defaultValues: () => Promise.resolve({ email: 'server@example.com', name: 'Ada' }),
+        })
+        void (form as { activate: () => Promise<void> }).activate()
+        return () => h('div')
+      },
+    })
+    const ssrApp = createSSRApp(ServerApp).use(createAttaform({ ssr: true }))
+    await renderToString(ssrApp)
+    const payload = renderAttaformState(ssrApp)
+
+    const clientHandle: { api?: UseFormReturnType<{ email: string; name: string }> } = {}
+    const ClientApp = defineComponent({
+      setup() {
+        clientHandle.api = useForm({
+          schema,
+          key: 'ssr-async-adopts-payload',
+          defaultValues: () =>
+            Promise.resolve({ email: 'client-would-fetch@example.com', name: 'Hopper' }),
+        }) as unknown as UseFormReturnType<{ email: string; name: string }>
+        return () => h('div')
+      },
+    })
+    const clientApp = createApp(ClientApp).use(createAttaform())
+    hydrateAttaformState(clientApp, payload)
+    clientApp.config.warnHandler = () => {}
+    clientApp.mount(document.createElement('div'))
+
+    const api = clientHandle.api
+    expect(api).toBeDefined()
+    if (api === undefined) return
+    expect(api.meta.dirty).toBe(false)
+
+    api.setValue('email', 'typed@example.com')
+    expect(api.meta.dirty).toBe(true)
+    api.reset()
+    expect(api.values()).toEqual({ email: 'server@example.com', name: 'Ada' })
+  })
 })
 
 /**

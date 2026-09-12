@@ -705,13 +705,20 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // Walk the consumer's overrides for `unset` symbols, replacing
       // them with the schema's slim defaults and capturing the marked
       // paths. The cleaned values land in form storage via state.reset;
-      // the marked paths get added back via direct setValueAtPath
-      // calls AFTER the reset so the FormStore's own reset (which
-      // clears the blank set in the args branch) doesn't
-      // wipe them.
-      const walked = walkUnsetSentinels(
+      // the marked paths get added back below, after the reset.
+      //
+      // The trust-the-caller walker, NOT `walkUnsetSentinels`: `next` is
+      // sparse and folds over the defaults already in force, so it has
+      // to STAY sparse on the way down. `walkUnsetSentinels` synthesizes
+      // the schema keys the caller omitted and auto-marks them blank,
+      // which was right when `reset(next)` replaced the defaults
+      // wholesale but is wrong now that it merges: it would turn every
+      // key the caller didn't mention into an explicit "no value here",
+      // overriding the default that key already had (#576).
+      const walked = substituteUnsetSentinels(
         nextDefaultValues,
-        state.schema as unknown as Parameters<typeof walkUnsetSentinels>[1]
+        [],
+        state.schema as unknown as Parameters<typeof substituteUnsetSentinels>[2]
       )
       // After the walker, `cleanedValues` has had every `unset` symbol
       // replaced with the schema's slim default — the result is

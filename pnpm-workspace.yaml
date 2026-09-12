@@ -46,9 +46,16 @@ overrides:
   # independent of the @nuxt/ui major. Verified both directions in a
   # clean-room install while bumping @nuxt/ui to 4.11.1, which is what
   # first floated a second vite into the tree.
-  # `pnpm check:security-floors` fails if this pin ever stops deduping.
-  # Bump this in lockstep with rollup.
-  vite: 8.3.0
+  #
+  # `$vite` rather than a literal version, unlike rollup below: vite IS
+  # a root devDependency, so the root manifest can stay the single
+  # source of truth. Every dependent gets rewritten to the spec
+  # package.json declares, which is what makes them resolve together.
+  # Dependabot then bumps vite the ordinary way and this entry follows,
+  # with no hand-edit here and no security patch gated behind one.
+  # rollup cannot do the same only because it is not a root dependency.
+  # `pnpm check:security-floors` fails if this ever stops deduping.
+  vite: $vite
   # Pin devframe's h3 to Nitro's stable v1 line. devframe (transitive of
   # @nuxtjs/seo via @unhead/bundler > @vitejs/devtools-kit) carries a
   # pre-release h3 v2; when Nitro bundles the prerender server, the

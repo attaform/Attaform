@@ -202,7 +202,7 @@
     "typescript": "6.0.3",
     "typescript-eslint": "^8.59.0",
     "unbuild": "^3.6.1",
-    "vite": "^8.0.10",
+    "vite": "^8.3.0",
     "vitest": "^4.1.11",
     "vue": "^3.5.33",
     "vue-eslint-parser": "^10.4.0",

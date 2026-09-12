@@ -17,16 +17,26 @@
  * disagrees. The 2026-09 sweep hit exactly that and it took a disk-level
  * check to see it. This gate is that disk-level check, standing.
  *
- * The same gate also enforces the other override shape: an EXACT pin
- * (`rollup: 4.61.1`, `vite: 8.3.0`) exists to guarantee the dev tree
- * carries exactly one copy, because two copies of a build tool give
- * `tsc` two structurally distinct versions of the same type. Those
- * failures surface far from the cause: two vite minors in the tree
- * produced `TS2321: Excessive stack depth` pointing at
- * `defineNuxtConfig` in the docs site, naming neither vite nor the key
- * involved. A pin that silently fails to dedupe is the same class of
- * invisible regression as a floor that silently fails to apply, so it
- * gets the same standing check.
+ * The same gate also enforces the other override shape: a UNIFYING
+ * override exists to guarantee the dev tree carries exactly one copy,
+ * because two copies of a build tool give `tsc` two structurally
+ * distinct versions of the same type. Those failures surface far from
+ * the cause: two vite minors in the tree produced `TS2321: Excessive
+ * stack depth` pointing at `defineNuxtConfig` in the docs site, naming
+ * neither vite nor the key involved. An override that silently fails to
+ * dedupe is the same class of invisible regression as a floor that
+ * silently fails to apply, so it gets the same standing check.
+ *
+ * Two spellings unify:
+ *   - a literal version (`rollup: 4.61.1`) — one copy, AND that exact
+ *     version. Used where the package is not a root dependency, so
+ *     there is no manifest entry to track.
+ *   - a `$pkg` alias (`vite: $vite`, `'@nuxt/kit': $nuxt`) — one copy,
+ *     at whatever the root manifest declares for `pkg`. Preferred when
+ *     the package IS a root dependency: the manifest stays the single
+ *     source of truth, Dependabot can bump it the ordinary way, and a
+ *     security patch is not gated behind hand-editing this file. The
+ *     version is derived, so only the single-copy half is assertable.
  *
  * Usage:
  *   pnpm check:security-floors
@@ -220,10 +230,16 @@ for (const [rawKey, spec] of overrides) {
   // checkable here.
   if (rawKey.includes('>')) continue
 
-  // An exact pin means "exactly one copy, at this version". Collect it
-  // for the dedupe pass below.
+  // Two override shapes mean "the tree carries exactly one copy":
+  //   - an exact version (`rollup: 4.61.1`), which also fixes WHICH one
+  //   - a `$pkg` alias (`vite: $vite`, `'@nuxt/kit': $nuxt`), which
+  //     rewrites every dependent to the spec the root manifest declares
+  //     for `pkg`, so they all resolve together. The version is derived,
+  //     so only the single-copy half is assertable.
+  // Collect both for the dedupe pass below.
   if (!spec.startsWith('^')) {
-    if (/^\d+\.\d+\.\d+/.test(spec)) pins.push({ name: rawKey, spec })
+    if (/^\d+\.\d+\.\d+/.test(spec)) pins.push({ name: rawKey, spec, expect: spec })
+    else if (/^\$[\w@/-]+$/.test(spec)) pins.push({ name: rawKey, spec, expect: null })
     continue
   }
 
@@ -280,17 +296,19 @@ for (const [rawKey, spec] of overrides) {
   })
 }
 
-// Exact pins: assert exactly one reachable copy, at the pinned version.
+// Unifying overrides: assert exactly one reachable copy, and for a
+// literal pin that it is the pinned version. A `$pkg` alias derives its
+// version from the root manifest, so only the single-copy half applies.
 const pinProblems = []
 const pinReport = []
-for (const { name, spec } of pins) {
+for (const { name, spec, expect } of pins) {
   const copies = installed.get(name)
   const versions = copies === undefined ? [] : [...copies.keys()].sort()
   pinReport.push({ name, spec, versions })
   if (versions.length === 0) continue
   if (versions.length > 1) {
     pinProblems.push({ name, spec, versions, kind: 'duplicate' })
-  } else if (versions[0] !== spec) {
+  } else if (expect !== null && versions[0] !== expect) {
     pinProblems.push({ name, spec, versions, kind: 'mismatch' })
   }
 }
@@ -304,7 +322,7 @@ console.log('Security floors declared in pnpm-workspace.yaml overrides:\n')
 for (const entry of checked) console.log(label(entry))
 
 if (pinReport.length > 0) {
-  console.log('\nExact pins (must resolve to exactly one copy):\n')
+  console.log('\nUnifying overrides (must resolve to exactly one copy):\n')
   for (const p of pinReport) {
     console.log(
       `  ${p.name.padEnd(22)} ${p.spec.padEnd(10)} ${p.versions.join(', ') || 'not installed'}`
@@ -336,14 +354,13 @@ if (violations.length > 0) {
       '  3. set it back to the caret floor (^3.30.4) and pnpm install again\n' +
       '  4. re-run this gate\n'
   )
-  process.exit(1)
 }
 
 if (pinProblems.length > 0) {
-  console.error(`\nFAIL: ${pinProblems.length} exact pin(s) did not dedupe the tree.\n`)
+  console.error(`\nFAIL: ${pinProblems.length} unifying override(s) did not dedupe the tree.\n`)
   for (const p of pinProblems) {
     if (p.kind === 'duplicate') {
-      console.error(`  ${p.name} is pinned to ${p.spec} but ${p.versions.length} copies are`)
+      console.error(`  ${p.name} is unified by ${p.spec} but ${p.versions.length} copies are`)
       console.error(`  reachable: ${p.versions.join(', ')}`)
     } else {
       console.error(`  ${p.name} is pinned to ${p.spec} but resolves to ${p.versions[0]}`)
@@ -358,9 +375,12 @@ if (pinProblems.length > 0) {
       'Fix by moving the pin to the version the tree wants, then `pnpm install`.\n' +
       'Check who pulls the odd copy with `pnpm why -r <name>`.\n'
   )
-  process.exit(1)
 }
 
+// One exit after BOTH passes have reported. Reporting only the first
+// class would hide the second until the next run.
+if (violations.length > 0 || pinProblems.length > 0) process.exit(1)
+
 console.log(
-  `\nPASS: ${checked.length} floor(s) honoured, ${pinReport.length} pin(s) deduped.`
+  `\nPASS: ${checked.length} floor(s) honoured, ${pinReport.length} override(s) deduped.`
 )

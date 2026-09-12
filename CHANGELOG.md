@@ -13,14 +13,14 @@
   `dirty` read `false` over those stale values, so nothing offered to
   re-save them and the next submit built on the stale set. `reset()`,
   `resetField(path)`, `dirty`, and the blank set now all read one set of
-  defaults and cannot disagree about what "initial" means. (#576)
+  defaults and cannot disagree about what "initial" means. (#600)
 - **`reset(nextDefaults)` merges instead of replacing.** Paths the
   argument does not name keep the value, and the blank mark, they already
   had, and `reset({})` changes nothing. This is what the docs have
   described all along; the implementation was replacing, so a partial
   reset silently zeroed every field it did not mention. Arrays are still
   replaced wholesale rather than merged element-wise, and `unset` still
-  withdraws a value at a path. (#576)
+  withdraws a value at a path. (#600)
 - **A form whose `defaultValues` arrive from a factory starts pristine
   and resets to what it fetched.** The resolved payload was applied to
   the form and nowhere else, so `dirty` read `true` the instant the data
@@ -30,7 +30,7 @@
   what `rehydrate()` had just loaded. The payload is now adopted as the
   defaults on every path that produces one, including the client half of
   an SSR render, where it stands in for the factory that never fires.
-  (#576)
+  (#600)
 
 ## v0.28.0
 ### Breaking

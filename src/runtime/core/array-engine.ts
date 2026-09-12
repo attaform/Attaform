@@ -2,7 +2,7 @@ import { toRaw, type Ref } from 'vue'
 import type { ErrorCell, WriteMeta } from '../types/types-api'
 import { NO_ERRORS } from './error-codes'
 import { diffAndApply } from './diff-apply'
-import { getAtPath } from './path-walker'
+import { getAtPath, isPlainRecord } from './path-walker'
 import {
   canonicalizePath,
   isPathPrefix,
@@ -548,6 +548,17 @@ export function createVariantMemory(): VariantMemory {
  * recurses through plain arrays + objects. Detached from the form's
  * reactive graph, so a later `form.value = nextForm` doesn't mutate
  * the snapshot.
+ *
+ * Anything that is not a plain object or array is carried by
+ * REFERENCE. The key-by-key rebuild below only reaches own enumerable
+ * properties, and a `File`, `Blob`, `URL`, typed array, or any class
+ * instance keeps its state behind prototype accessors or internal
+ * slots — so cloning one produced an empty `{}` and silently destroyed
+ * the value on a variant switch (#542). Holding the reference is safe
+ * because the form never reaches into an opaque value: a write
+ * replaces the whole leaf. This is the same failure the named `Date` /
+ * `Map` / `Set` branches above were added to prevent, generalised to
+ * the types nobody thought to name.
  */
 export function cloneVariantSnapshot(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return value
@@ -569,6 +580,7 @@ export function cloneVariantSnapshot(value: unknown): unknown {
     for (let i = 0; i < raw.length; i++) out[i] = cloneVariantSnapshot(raw[i])
     return out
   }
+  if (!isPlainRecord(raw)) return raw
   const src = raw as Record<string, unknown>
   // Variant snapshots restore back into `form.values` on union-switch
   // reshape; the container carries `Object.prototype` so the

@@ -1048,18 +1048,17 @@ function walkDuStubs(
   warned: Set<string> | undefined
 ): unknown {
   if (value === null || value === undefined || typeof value !== 'object') return value
-  if (
-    value instanceof Date ||
-    value instanceof RegExp ||
-    value instanceof Map ||
-    value instanceof Set ||
-    typeof value === 'function'
-  ) {
-    return value
-  }
   if (Array.isArray(value)) {
     return value.map((item, i) => walkDuStubs(schema, item, [...path, i], warned))
   }
+  // Only plain records are descended into. A discriminated-union
+  // variant always is one, and the key-by-key rebuild below reaches
+  // own enumerable properties only — so a `File`, `Blob`, `URL` or any
+  // other class instance would come back as an empty `{}`. Testing the
+  // prototype covers every such type; the `Date` / `RegExp` / `Map` /
+  // `Set` list this replaced covered four of them and destroyed the
+  // rest (#542). Same guard as `stripSymbolsDeep` below.
+  if (!isPlainRecord(value)) return value
   const rec = value as Record<string, unknown>
   const du = schema.getUnionDiscriminatorAtPath(path)
   if (du !== undefined) {

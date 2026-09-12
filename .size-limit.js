@@ -765,7 +765,17 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 46.92 KB.
-    limit: '47.25 KB',
+    //
+    // Raised 47.25 -> 47.5 KB on the opaque-leaves branch (#542). P10's
+    // lock left ~330 B of slack and main had spent all but 50 B of it
+    // before this branch, so the step is a quarter kB rather than the
+    // whole-kB moves above. The ~100 B buys `isOpaqueLeafAtPath` on
+    // AbstractSchema plus its per-path cache in the factory, which is
+    // what lets the write gate stop at a leaf the schema declares
+    // without describing. Two of the three defects it ships with were
+    // silent data loss (a container write no-oping, a class instance
+    // rebuilt into `{}`). Measured at 47.3 KB.
+    limit: '47.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

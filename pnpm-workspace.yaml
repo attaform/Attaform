@@ -28,6 +28,27 @@ overrides:
   # unbuild's plugin array under `exactOptionalPropertyTypes`. One version
   # makes the types identical. Bump this in lockstep with vite/rollup.
   rollup: 4.61.1
+  # Same reasoning one layer up: pin a single vite. The Nuxt ecosystem
+  # floats vite independently across @nuxt/content, @nuxt/fonts,
+  # @nuxt/icon, @nuxt/devtools-kit and friends, and once a release lands
+  # them on two different 8.x minors the dev tree carries both. `tsc`
+  # then sees two distinct `UserConfig` types, and comparing the docs
+  # site's `vite:` block against the one Nuxt expects overflows the
+  # instantiation-depth limit:
+  #
+  #   nuxt.config.ts(314,16): error TS2321: Excessive stack depth
+  #   comparing types '{ modules: ... }' and
+  #   'InputConfig<NuxtConfig, ConfigLayerMeta>'
+  #
+  # The error points at `defineNuxtConfig` and names neither vite nor the
+  # offending key, so it reads as a Nuxt or @nuxt/ui problem. It is
+  # neither: one vite version makes it go away, two brings it back,
+  # independent of the @nuxt/ui major. Verified both directions in a
+  # clean-room install while bumping @nuxt/ui to 4.11.1, which is what
+  # first floated a second vite into the tree.
+  # `pnpm check:security-floors` fails if this pin ever stops deduping.
+  # Bump this in lockstep with rollup.
+  vite: 8.3.0
   # Pin devframe's h3 to Nitro's stable v1 line. devframe (transitive of
   # @nuxtjs/seo via @unhead/bundler > @vitejs/devtools-kit) carries a
   # pre-release h3 v2; when Nitro bundles the prerender server, the

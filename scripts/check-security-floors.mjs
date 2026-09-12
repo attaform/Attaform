@@ -17,6 +17,17 @@
  * disagrees. The 2026-09 sweep hit exactly that and it took a disk-level
  * check to see it. This gate is that disk-level check, standing.
  *
+ * The same gate also enforces the other override shape: an EXACT pin
+ * (`rollup: 4.61.1`, `vite: 8.3.0`) exists to guarantee the dev tree
+ * carries exactly one copy, because two copies of a build tool give
+ * `tsc` two structurally distinct versions of the same type. Those
+ * failures surface far from the cause: two vite minors in the tree
+ * produced `TS2321: Excessive stack depth` pointing at
+ * `defineNuxtConfig` in the docs site, naming neither vite nor the key
+ * involved. A pin that silently fails to dedupe is the same class of
+ * invisible regression as a floor that silently fails to apply, so it
+ * gets the same standing check.
+ *
  * Usage:
  *   pnpm check:security-floors
  *
@@ -201,13 +212,20 @@ const violations = []
 const checked = []
 const unenforceable = []
 
+const pins = []
+
 for (const [rawKey, spec] of overrides) {
-  // Only caret floors are advisory floors. Exact pins ('@nuxt/devtools':
-  // 3.4.1), alias values ($nuxt) and path-scoped keys (devframe>h3) are
-  // compatibility pins with their own rationale, enforced by resolution
-  // rather than by a minimum.
+  // Path-scoped keys (devframe>h3) constrain one edge, not the tree, and
+  // alias values ($nuxt) carry no version of their own. Neither is
+  // checkable here.
   if (rawKey.includes('>')) continue
-  if (!spec.startsWith('^')) continue
+
+  // An exact pin means "exactly one copy, at this version". Collect it
+  // for the dedupe pass below.
+  if (!spec.startsWith('^')) {
+    if (/^\d+\.\d+\.\d+/.test(spec)) pins.push({ name: rawKey, spec })
+    continue
+  }
 
   // A key may carry its own range selector: `brace-expansion@^2` floors
   // only the v2 line, because the v5 line has a separate patch.
@@ -262,6 +280,21 @@ for (const [rawKey, spec] of overrides) {
   })
 }
 
+// Exact pins: assert exactly one reachable copy, at the pinned version.
+const pinProblems = []
+const pinReport = []
+for (const { name, spec } of pins) {
+  const copies = installed.get(name)
+  const versions = copies === undefined ? [] : [...copies.keys()].sort()
+  pinReport.push({ name, spec, versions })
+  if (versions.length === 0) continue
+  if (versions.length > 1) {
+    pinProblems.push({ name, spec, versions, kind: 'duplicate' })
+  } else if (versions[0] !== spec) {
+    pinProblems.push({ name, spec, versions, kind: 'mismatch' })
+  }
+}
+
 const label = (e) =>
   `  ${e.name.padEnd(22)} ${e.spec.padEnd(10)} ${
     e.stale ? 'no copy in range (override is a no-op)' : e.versions.join(', ')
@@ -269,6 +302,15 @@ const label = (e) =>
 
 console.log('Security floors declared in pnpm-workspace.yaml overrides:\n')
 for (const entry of checked) console.log(label(entry))
+
+if (pinReport.length > 0) {
+  console.log('\nExact pins (must resolve to exactly one copy):\n')
+  for (const p of pinReport) {
+    console.log(
+      `  ${p.name.padEnd(22)} ${p.spec.padEnd(10)} ${p.versions.join(', ') || 'not installed'}`
+    )
+  }
+}
 
 if (unenforceable.length > 0) {
   console.log('\nNot enforceable by this gate:')
@@ -297,4 +339,28 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log(`\nPASS: ${checked.length} floor(s) honoured by the installed tree.`)
+if (pinProblems.length > 0) {
+  console.error(`\nFAIL: ${pinProblems.length} exact pin(s) did not dedupe the tree.\n`)
+  for (const p of pinProblems) {
+    if (p.kind === 'duplicate') {
+      console.error(`  ${p.name} is pinned to ${p.spec} but ${p.versions.length} copies are`)
+      console.error(`  reachable: ${p.versions.join(', ')}`)
+    } else {
+      console.error(`  ${p.name} is pinned to ${p.spec} but resolves to ${p.versions[0]}`)
+    }
+  }
+  console.error(
+    '\nThese pins exist to keep exactly one copy in the dev tree. Two copies of a\n' +
+      'build tool give `tsc` two structurally distinct versions of the same type,\n' +
+      'and the resulting error points somewhere else entirely: two vite minors\n' +
+      'surfaced as "TS2321: Excessive stack depth" on the docs site\'s\n' +
+      '`defineNuxtConfig`, naming neither vite nor the offending key.\n\n' +
+      'Fix by moving the pin to the version the tree wants, then `pnpm install`.\n' +
+      'Check who pulls the odd copy with `pnpm why -r <name>`.\n'
+  )
+  process.exit(1)
+}
+
+console.log(
+  `\nPASS: ${checked.length} floor(s) honoured, ${pinReport.length} pin(s) deduped.`
+)

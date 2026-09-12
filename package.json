@@ -168,7 +168,7 @@
     "@nuxt/kit": "^4.4.2",
     "@nuxt/schema": "^4.4.2",
     "@nuxt/test-utils": "^4.0.2",
-    "@nuxt/ui": "^4.8.0",
+    "@nuxt/ui": "^4.11.1",
     "@rollup/plugin-alias": "^6.0.0",
     "@size-limit/preset-small-lib": "^12.1.0",
     "@types/jsdom": "^28.0.1",

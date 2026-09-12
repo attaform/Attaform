@@ -60,6 +60,18 @@ How a gate clears depends on what it wraps.
 
 A **form gate** (`gate(consent)`) clears when its form submits clean. Wire the step's Next button to `wizard.tryNext()`, which submits the active step and advances once that submit settles, so a gate on the active step clears and advances in a single click. A bare `wizard.next()` on a gate step does the same thing: it cannot skip the confirmation.
 
+When clearing the gate means work of your own, not just a valid form, put that work in the member form's submit callback and advance from inside it:
+
+```ts
+const confirm = consent.handleSubmit(async () => {
+  const receipt = await api.recordConsent(consent.values())
+  if (receipt === null) throw new Error('consent was not recorded')
+  wizard.next()
+})
+```
+
+The gate clears on the clean resolve and the pin moves with it. A throw anywhere in that callback leaves the gate sealed and surfaces the message on `consent.meta.firstOwnError`, so the advance and the confirmation can never disagree. Every route to the advance costs `consent` exactly one submission: `next()` called from inside the callback rides the submit already running rather than starting a second one, and `next()` called later, once the gate is cleared, is plain navigation.
+
 An **affordance gate** (`gate('terms')`, a bare string) clears when the user acknowledges it by advancing. Because that acknowledgment is ephemeral, an affordance gate re-prompts every session, which is what you want for a "you have read this" screen.
 
 A form gate can also start **cleared** when the server already recorded this prerequisite for the session. Seed it through the wizard rather than the form: `useWizard({ defaultStatuses: { consent: { gate: 'cleared' } } })` latches the gate cleared at mount, so the flow renders open from the first frame and a deep link into a downstream step is honored. The seed is a deliberate assertion, decoupled from whatever the member form's values happen to be. That decoupling is the point: a prerequisite is confirmed or it is not, and "the values validate" is a separate fact that must not stand in for confirmation.

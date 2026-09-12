@@ -3,6 +3,36 @@
 ## Unreleased
 ### Fixed
 
+- **Advancing from inside a step's own submit now works on a `gate()`
+  step.** `wizard.activeForm.handleSubmit(() => wizard.next())` is the
+  documented composition for custom valid or invalid handling, and the
+  docs describe it as what `tryNext()` is shorthand for. On a gate step
+  it was neither: `next()` re-routes into `tryNext()`, which submitted a
+  form that was already submitting, so the re-entry guard swallowed it,
+  the swallowed submit read back as "not clean", and the advance was
+  dropped. The Next button went dead with no error, no `firstOwnError`
+  and nothing on the console, and the same code on an ungated step
+  advanced fine, so the failure appeared only once a step was gated.
+  `next()` and `tryNext()` now ride an in-flight submit instead of
+  starting a second one, and advance when it resolves clean. A callback
+  that throws after calling `next()` still leaves the gate sealed and the
+  pin in place. (#601)
+- **One user action costs the member form one submission.** `next()` on
+  an already-cleared gate re-submitted the form to re-confirm a gate the
+  latch already held, running the whole submit lifecycle a second time:
+  `submissionAttempts`, `onSubmitSuccess`, and every consumer subscriber
+  behind them. That assumes an idempotent endpoint and double-counts any
+  analytics keyed on the submit lifecycle. A cleared gate has nothing
+  left to confirm, so `next()` on one is plain navigation again. (#601)
+- **A programmatic submit swallowed by the re-entry guard now says so in
+  dev.** A `handleSubmit` call that arrives while another submission is
+  in flight is dropped, which is what stops a double-click from POSTing
+  twice, but the drop was silent: no callback, no `submitting` flip, no
+  error and no `firstOwnError`, which is the hardest shape of failure to
+  find. A swallowed call that carries no event is code rather than a
+  second click, so it is named on the console. A DOM-driven double submit
+  stays silent, since there is nothing there for the consumer to fix.
+  (#601)
 - **`reset(nextDefaults)` is now the form's defaults, not a one-shot
   override.** It moved the dirty baseline to `nextDefaults` but left the
   reset baseline on the values `useForm` was constructed with, so a form

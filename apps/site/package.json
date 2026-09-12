@@ -33,7 +33,7 @@
     "lucide-vue-next": "^1.0.0",
     "primevue": "^4.5.5",
     "reka-ui": "^2.9.10",
-    "satori": "^0.26.0",
+    "satori": "^0.33.4",
     "shiki": "^4.0.2",
     "vue-sonner": "^2.0.9"
   },

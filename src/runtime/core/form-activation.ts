@@ -43,6 +43,14 @@ export async function runFactoryAndApply<F extends GenericForm, G extends Generi
       st.schema as unknown as Parameters<typeof mergeSparseHydration>[2]
     )
     st.applyFormReplacement(full, { hydration: true })
+    // The resolved value is the consumer's defaults, arriving late.
+    // Adopting it re-seats `reset()`'s destination and re-seeds the
+    // dirty baseline, so the form settles pristine on first activation
+    // and `form.reset()` lands on the fetched resource instead of
+    // discarding it. Note the ORDER: the form value is merged over the
+    // live form (edits survive a `rehydrate()`) while the baseline is
+    // rebuilt from the defaults alone, so unsaved edits stay dirty.
+    st.adoptResolvedDefaults(value)
     st.scheduleFieldValidation([], true /* immediate */)
     // Success: drop the previous attempt's error (if any) from both
     // surfaces. New attempt's verdict has landed; the stale entry

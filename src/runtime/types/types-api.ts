@@ -4165,8 +4165,12 @@ export type UseFormReturnType<
    *
    * Resolves after `hydrating` flips back to `false`. Throws
    * synchronously when the form was constructed with a plain-value
-   * `defaultValues` (nothing to re-fire). Does NOT clear dirty /
-   * touched / submit state — chain `form.reset()` for that.
+   * `defaultValues` (nothing to re-fire).
+   *
+   * The payload becomes the form's defaults, the same way a
+   * `reset(next)` argument does, so `form.reset()` afterwards lands on
+   * the values just fetched. Does NOT clear touched / submit state;
+   * chain `form.reset()` for that.
    */
   rehydrate(): Promise<void>
 
@@ -4314,10 +4318,10 @@ export type UseFormReturnType<
   // --- Reset ---
 
   /**
-   * Restore the form to its initial state. Without arguments,
-   * re-applies the schema defaults (and any `defaultValues` passed
-   * to `useForm`). Pass `nextDefaultValues` to seed the reset with
-   * a fresh set of overrides.
+   * Restore the form to its defaults. Without arguments, re-applies
+   * whatever the defaults currently are: `useForm({ defaultValues })`
+   * on a fresh form, or the last values a `reset(next)` or an async
+   * `defaultValues` factory settled on.
    *
    * Resets:
    *   - the form value back to defaults;
@@ -4326,6 +4330,26 @@ export type UseFormReturnType<
    *   - touched / focused / blurred per-field flags;
    *   - submission state (`submitting` / `submissionAttempts` /
    *     `submitted` / `submitError`).
+   *
+   * `nextDefaultValues` RE-SEATS the defaults rather than applying for
+   * one call, so the form has a single set of defaults that `reset()`,
+   * `resetField(path)`, and `dirty` all read. That is what makes the
+   * save-then-discard shape work: reset from the resource the server
+   * returned, and a later Discard returns to the save instead of
+   * rolling back across it.
+   *
+   * ```ts
+   * const saved = await api.save(form.values())
+   * form.reset(toValues(saved))   // the saved resource is now the baseline
+   * // …later…
+   * form.reset()                  // back to the saved resource
+   * ```
+   *
+   * The argument is sparse: it folds over the defaults already in
+   * force, so paths it does not name keep the value they had, and
+   * `reset({})` changes nothing. Arrays are replaced wholesale rather
+   * than merged element-wise. Pass `unset` at a path to withdraw its
+   * value and mark it blank.
    */
   reset: (nextDefaultValues?: DefaultValuesInput<Form>) => void
 

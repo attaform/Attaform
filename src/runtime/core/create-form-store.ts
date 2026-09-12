@@ -46,6 +46,7 @@ import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from '
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import { groupErrorsByKey } from './errors'
 import { runFactoryAndApply } from './form-activation'
+import { mergeSparseHydration } from './merge-hydration'
 import {
   canonicalizePath,
   coerceToPathKey,
@@ -388,10 +389,22 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * Resolves after `hydrating` flips back to `false`; consumers can
    * `await form.rehydrate()` to gate UI on the fresh load.
    *
-   * Does NOT touch dirty / touched / submit state — chain
-   * `form.reset()` if you want a clean baseline.
+   * Does NOT touch touched / submit state; chain `form.reset()` if you
+   * want a clean surface. It DOES re-seat the defaults (see
+   * `adoptResolvedDefaults`), so dirty afterwards means "differs from
+   * what the factory just returned", and `form.reset()` lands on the
+   * fresh values rather than throwing them away.
    */
   rehydrate(): Promise<void>
+  /**
+   * Adopt a resolved async-defaults value as the form's durable
+   * defaults and re-seed the dirty baseline from it. Called by the
+   * activate / rehydrate orchestrator once its factory settles.
+   * Exposed on the store (rather than imported) because
+   * `form-activation` is imported BY this module; a value import back
+   * the other way would close a cycle.
+   */
+  adoptResolvedDefaults(value: unknown): void
   /**
    * Incremented by every `reset()` call. The submit wrapper captures
    * this at entry and skips writing `submitError` from a catch that
@@ -1193,10 +1206,19 @@ type TransformRun = { token: number; holder: TransformAbortHolder; released: boo
  * shared module functions.
  */
 export type FormState<F extends GenericForm, G extends GenericForm = F> = FormStore<F, G> & {
-  // --- resolved configuration (fixed at construction) ---
+  // --- resolved configuration (fixed at construction, except
+  // `defaultValues`, which the form re-seats as it learns them) ---
   readonly strict: boolean
-  /** Construction-time `defaultValues`, kept as `reset()`'s fallback source. */
-  readonly defaultValues: DeepPartial<WriteShape<F>> | undefined
+  /**
+   * The form's CURRENT defaults, and the single source both baselines
+   * read. Seeded from `useForm({ defaultValues })`, then re-seated by
+   * `reset(next)` and by the async-defaults factory. Deliberately
+   * mutable: when this only ever held the construction argument, the
+   * reset baseline and the dirty baseline could drift apart, and a
+   * `reset()` after a `reset(next)` rolled the form back across a save
+   * while reporting `dirty: false` over the stale values (#576).
+   */
+  defaultValues: DeepPartial<WriteShape<F>> | undefined
   readonly ssrPrefetch: CreateFormStoreOptions<F, G>['ssrPrefetch']
   readonly rememberVariants: boolean
   readonly fieldValidationMode: ValidateOn
@@ -3311,24 +3333,90 @@ function activate<F extends GenericForm, G extends GenericForm = F>(
   return fireFactory(st, factory)
 }
 
+// --- Async-defaults adoption ---
+
+// A function-form `defaultValues` IS the consumer's defaults; it just
+// arrives late. Before this existed the resolved value was applied to
+// the form and nowhere else, which left `st.defaultValues` undefined
+// for the whole life of an async form. Two things fell out of that:
+// `form.reset()` discarded the fetched resource and landed on
+// schema-slim values (the documented `rehydrate()` then `reset()`
+// chain destroyed exactly what `rehydrate()` had just loaded), and
+// `dirty` read `true` the instant the factory resolved, because the
+// fetched values were being compared against a baseline that had never
+// heard of them. Same root cause as #576 on the sync path.
+//
+// The baseline is seeded from the DEFAULTS, not from the post-merge
+// form value. On first activation the two agree, so the form settles
+// pristine. On a `rehydrate()` over unsaved edits they deliberately do
+// not: the edits survive in the form value (`mergeSparseHydration`
+// folds the factory result over the live form) while the baseline
+// holds the server's version, so `dirty` stays true at exactly the
+// paths the consumer still has unsaved. Seeding from the merged form
+// value instead would bake those unsaved edits into the baseline and
+// report `dirty: false` over them, which is the very failure #576 is
+// about.
+function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  value: unknown
+): void {
+  st.defaultValues = structuralSnapshot(
+    mergeSparseHydration(
+      st.defaultValues,
+      value,
+      st.schema as unknown as Parameters<typeof mergeSparseHydration>[2]
+    )
+  ) as DeepPartial<WriteShape<F>>
+  seedOriginalsFromBaseline(
+    st,
+    computeBaselineResponse(st.schema, st.strict, st.defaultValues).data,
+    false
+  )
+}
+
 // --- Reset ---
 
 function reset<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   nextDefaultValues?: DeepPartial<WriteShape<F>>
 ): void {
-  // Fall back to construction-time `defaultValues` when the caller
-  // doesn't provide a fresh override. Otherwise `reset()` produces
-  // schema-only defaults — losing the consumer's initial state from
-  // `useForm({ defaultValues: ... })`. The structural-completeness
-  // invariant covers post-write correctness; preserving construction
-  // defaults across reset is a separate semantic the consumer expects.
+  // `next` is sparse: it names the paths the caller wants re-seated and
+  // says nothing about the rest, so it folds OVER the defaults already
+  // in force rather than replacing them. `mergeSparseHydration` is the
+  // same primitive the activate / rehydrate path uses for exactly this
+  // shape, which keeps the two ways of re-seating defaults agreeing on
+  // arrays (replaced wholesale) and on discriminated unions (rebased on
+  // the incoming variant instead of deep-merged into a both-variants
+  // ghost shape). With no argument the current defaults are the source,
+  // so a bare `reset()` restores whatever the last `reset(next)` or
+  // factory settled on.
   //
   // `computeBaselineResponse` is the same primitive construction runs, so
   // the construction and reset responses stay byte-equivalent for the
   // same source (including the sparse-constraints pre-merge; see its
   // JSDoc).
-  const resetSource = nextDefaultValues ?? st.defaultValues
+  const resetSource =
+    nextDefaultValues === undefined
+      ? st.defaultValues
+      : (mergeSparseHydration(
+          st.defaultValues,
+          nextDefaultValues,
+          st.schema as unknown as Parameters<typeof mergeSparseHydration>[2]
+        ) as DeepPartial<WriteShape<F>>)
+  // Durable adoption. Without this the reset baseline stayed pinned to
+  // the construction argument while the dirty baseline (`originals`,
+  // re-seeded below), `resetField`, and the blank set all followed
+  // `next`, so `reset()` and `resetField(path)` disagreed about what
+  // "initial" meant on the same form in the same instant, and a Discard
+  // button rolled the form back across a save it had already made (#576).
+  //
+  // Snapshot, so the stored defaults share no structure with what lands
+  // in form storage below (`computeBaselineResponse` hands back the
+  // source by reference when it is already structurally complete, and
+  // `setValue` writes leaves IN PLACE). Without the copy, the first edit
+  // to an array or nested object after a reset would mutate the very
+  // baseline the next `reset()` restores from.
+  st.defaultValues = structuralSnapshot(resetSource)
   const resetResponse = computeBaselineResponse(st.schema, st.strict, resetSource)
   const next = resetResponse.data
   // Rebuild authoredPaths against the post-reset baseline. Reset is
@@ -3354,22 +3442,24 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // stays false: ordinals never reset, and a path a reset baseline
   // introduces keeps the lazy first-encounter assignment.
   seedOriginalsFromBaseline(st, next, false)
-  // Blank: with `nextDefaultValues` provided, both sets
-  // adopt the new baseline (commit 7 plugs the `unset`-symbol walker
-  // into this branch — for now the new defaults can't carry unset
-  // symbols at the type level, so the post-reset baseline is empty).
-  // With no args, restore `blankPaths` from the snapshot so
-  // construction-time membership returns; originalBlankPaths is
-  // preserved (the snapshot encodes the consumer's last declared
-  // baseline, which `reset()` should honour).
+  // Blank follows the same merge rule the values do. `originalBlankPaths`
+  // is the durable record of which paths the consumer declared blank;
+  // `blankPaths` is the live mirror of it. A path `next` NAMES has its
+  // membership re-decided by `next`, so it drops out here and the public
+  // `reset` wrapper re-adds it if the caller marked it `unset`. A path
+  // `next` says nothing about keeps the membership it already had.
+  //
+  // Clearing both sets wholesale on the args branch used to drop
+  // construction-time blank membership permanently, so a later bare
+  // `reset()` restored the values but not the blanks (#576).
   if (nextDefaultValues !== undefined) {
-    st.blankPaths.clear()
-    st.originalBlankPaths.clear()
-  } else {
-    st.blankPaths.clear()
-    for (const key of st.originalBlankPaths) {
-      st.blankPaths.add(key)
-    }
+    const mentioned = new Set<PathKey>()
+    walkAuthoredFromConstraints(nextDefaultValues, [], mentioned)
+    for (const key of mentioned) st.originalBlankPaths.delete(key)
+  }
+  st.blankPaths.clear()
+  for (const key of st.originalBlankPaths) {
+    st.blankPaths.add(key)
   }
   // Drop every recorded error — the form is a fresh surface again.
   // Both sides clear: reset is "fresh start" semantics, so user-injected
@@ -4173,7 +4263,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
     // --- kernel-internal state ---
     strict,
-    defaultValues,
+    // Defensive copy, not a fix for an observed alias: today
+    // `getDefaultValues` happens to build a fresh tree, so form storage
+    // does not currently share structure with the consumer's object.
+    // That is an adapter implementation detail rather than a contract,
+    // and this field is now durable state that every `reset()` reads, so
+    // it should not depend on it. The copy also means a consumer who
+    // keeps a reference to the literal they passed cannot mutate the
+    // form's defaults from outside. `reset()` snapshots for a harder
+    // reason (see there) where an alias IS reachable.
+    defaultValues: structuralSnapshot(defaultValues),
     ssrPrefetch,
     rememberVariants,
     fieldValidationMode,
@@ -4203,6 +4302,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // --- methods: thin per-instance skins over the module kernel ---
     rehydrate: () => rehydrate(st),
     activate: () => activate(st),
+    adoptResolvedDefaults: (value) => adoptResolvedDefaults(st, value),
     pathHasAsyncValidation: (path) => pathHasAsyncValidation(st, path),
     pathHasAsyncValidationByKey: (key, segments) => pathHasAsyncValidationByKey(st, key, segments),
     applyFormReplacement: (next, meta) => applyFormReplacement(st, next, meta),

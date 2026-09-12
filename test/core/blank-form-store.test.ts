@@ -150,15 +150,22 @@ describe('FormStore — reset', () => {
     expect(state.originalBlankPaths.has(incomeKey)).toBe(true)
   })
 
-  it('reset(args) clears both sets (commit 7 wires the unset walker)', () => {
+  it('reset(args) drops the blank mark only at the paths args mention', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-11',
       schema: fakeSchema(defaults),
       initialBlankPaths: ['income', 'name'],
     })
     state.reset({ income: 5 })
-    expect(state.blankPaths.size).toBe(0)
-    expect(state.originalBlankPaths.size).toBe(0)
+    // `income` is named, so its membership is re-decided by the args and
+    // a concrete value withdraws the mark. `name` is not named, so it
+    // keeps the mark it had. Clearing both sets wholesale here dropped
+    // construction-time membership permanently on the first partial
+    // reset, so a later bare reset() restored values but not blanks (#576).
+    expect(state.blankPaths.has(incomeKey)).toBe(false)
+    expect(state.blankPaths.has(nameKey)).toBe(true)
+    expect(state.originalBlankPaths.has(incomeKey)).toBe(false)
+    expect(state.originalBlankPaths.has(nameKey)).toBe(true)
   })
 
   it('after reset(args) followed by reset(), the post-reset(args) baseline returns', () => {

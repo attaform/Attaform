@@ -4,6 +4,7 @@ import {
   onScopeDispose,
   onServerPrefetch,
   provide,
+  toRaw,
   useId,
 } from 'vue'
 import { buildFormApi } from '../core/build-form-api'
@@ -225,8 +226,17 @@ export function useAbstractForm<
     state.defaultValuesFactory.value = factory
     if (hadPendingHydration) {
       // Server already resolved the factory; client just consumed the
-      // payload at `buildFreshState`. Skip the re-fetch — and the
-      // resolved payload IS the effective default state.
+      // payload at `buildFreshState`. Skip the re-fetch, and adopt the
+      // payload as the defaults: it IS the effective default state, and
+      // the store has to be told so, or the client half of an SSR'd
+      // async form behaves as if its defaults never arrived. That was
+      // the third surface of #576: `dirty` read true the moment the
+      // page hydrated, and `form.reset()` discarded the server-fetched
+      // resource for schema-slim values. This is the client-side
+      // counterpart of the `adoptResolvedDefaults` call the factory
+      // path makes; here the payload already sits in form storage, so
+      // it is read back rather than re-derived.
+      state.adoptResolvedDefaults(toRaw(state.form.value))
       state.hydrating.value = false
       state.defaultsResolved.value = true
     } else if (registry.ssr) {

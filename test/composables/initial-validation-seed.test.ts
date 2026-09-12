@@ -8,7 +8,7 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { fakeSchema } from '../utils/fake-schema'
-import { waitUntil } from '../utils/form-harness'
+import { assertNeverSettles } from '../utils/form-harness'
 
 /**
  * Initial validation seed: when a form is constructed in strict mode
@@ -224,9 +224,15 @@ describe('initial validation seed — async-refine schema', () => {
     const api = handle.api
     if (api === undefined) throw new Error('unreachable')
     // Lax mode must NOT fire the construction-time async seed. Poll on
-    // the would-fire signal (errors landing) — waitUntil times out
-    // (returns null) when it never happens, which is the contract.
-    await waitUntil(() => (api.errors.email !== undefined ? true : null), 50)
+    // the would-fire signal and fail if it ever lands. The signal is a
+    // NON-EMPTY errors array: a field with no errors reads `[]`, not
+    // `undefined`, so an `!== undefined` probe here is true on the
+    // first poll and waits for nothing.
+    await assertNeverSettles(
+      () => (api.errors.email?.length ?? 0) > 0,
+      50,
+      'lax mode fired the construction-time async seed (errors landed)'
+    )
     expect(api.errors.email).toEqual([])
     expect(api.meta.valid).toBe(true)
   })
@@ -270,11 +276,13 @@ describe('initial validation seed — async-refine schema', () => {
     // Synchronously: no async seed scheduled, no indicator flash.
     expect(api.meta.validating).toBe(false)
     // SSR must NOT schedule the async seed. Poll on the would-fire
-    // signal (validating flipping true OR errors landing) — waitUntil
-    // times out when neither happens, which is the contract.
-    await waitUntil(
-      () => (api.meta.validating === true || api.errors.email !== undefined ? true : null),
-      50
+    // signal (validating flipping true OR errors landing) and fail if
+    // either ever does. Errors land as a non-empty array; see the lax
+    // case above for why `!== undefined` is not the signal.
+    await assertNeverSettles(
+      () => api.meta.validating === true || (api.errors.email?.length ?? 0) > 0,
+      50,
+      'SSR scheduled the async seed (validating flipped or errors landed)'
     )
     expect(api.meta.validating).toBe(false)
     expect(api.errors.email).toEqual([])

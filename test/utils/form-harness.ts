@@ -26,14 +26,37 @@ export async function wait(ms: number): Promise<void> {
 }
 
 /**
- * Poll `predicate` until it returns a non-null / non-undefined value
- * or the timeout elapses. Returns the resolved value, or `null` if
- * the deadline passed.
+ * Render a predicate's own source for a timeout message. The source
+ * text is what identifies which wait expired, and it costs the caller
+ * nothing: no label argument to thread through hundreds of call sites.
+ * Collapsed to one line and capped so a long arrow body cannot bury
+ * the rest of the failure output.
+ */
+function describePredicate(predicate: () => unknown): string {
+  const source = predicate.toString().replace(/\s+/g, ' ').trim()
+  return source.length > 240 ? `${source.slice(0, 240)}…` : source
+}
+
+/**
+ * Poll `predicate` until it returns a non-null / non-undefined value.
+ * Returns the resolved value, and THROWS when the deadline passes.
  *
  * Use this for any wait-then-assert pattern that depends on async
  * I/O — async Zod refinements and other deferred work. The classic alternative
  * (`await wait(40); expect(...)`) silently flakes when the chain
  * exceeds the fixed budget under CI contention.
+ *
+ * Expiry throws rather than returning `null` because a silent give-up
+ * reports as the wrong failure. `docs-demos-smoke`'s async-refinement
+ * case read `expected '' to contain 'taken'`, which describes a value
+ * that never arrived as though the pipeline had produced a wrong one,
+ * and that mis-signal cost two rounds of ceiling-raising (2000 ms, then
+ * 5000 ms) before anyone questioned the budget. A timeout must be
+ * legible AS a timeout, naming the budget it blew and the predicate it
+ * was polling.
+ *
+ * To assert that a signal never fires, reach for `assertNeverSettles`.
+ * It is the deliberate negative, and it says so at the call site.
  *
  * The default 1000 ms timeout covers in-process work, dynamic-imported
  * adapters, and short async-refinement chains. Raise it for tests
@@ -44,12 +67,62 @@ export async function waitUntil<T>(
   predicate: () => T | null | undefined,
   timeoutMs = 1000,
   intervalMs = 5
-): Promise<T | null> {
-  const deadline = Date.now() + timeoutMs
+): Promise<T> {
+  const startedAt = Date.now()
+  const deadline = startedAt + timeoutMs
+  let polls = 0
   for (;;) {
     const v = predicate()
+    polls += 1
     if (v !== null && v !== undefined) return v
-    if (Date.now() >= deadline) return null
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `waitUntil: timed out after ${Date.now() - startedAt}ms ` +
+          `(budget ${timeoutMs}ms, ${polls} polls) waiting for: ` +
+          `${describePredicate(predicate)}`
+      )
+    }
+    await wait(intervalMs)
+  }
+}
+
+/**
+ * The deliberate negative: poll `predicate` for `windowMs` and throw
+ * the moment it produces a value. Resolving quietly means the signal
+ * never fired, which is the contract under test.
+ *
+ * This is the case `waitUntil` used to serve by returning `null` on
+ * expiry, where the timeout WAS the pass condition. Splitting it out
+ * lets `waitUntil` treat expiry as the failure it almost always is,
+ * and it reads better besides: the call site now states that the
+ * signal must not fire instead of leaving that to a comment. It also
+ * fails at the moment of the violation rather than at a later
+ * assertion, so the error names what fired and when.
+ *
+ * `label` is required. There is no useful stack at the moment a signal
+ * fires early, and the predicate source alone rarely says what the
+ * signal MEANS (compare `() => api.errors.email !== undefined` with
+ * "lax mode fires the construction-time async seed").
+ *
+ * Prefer `awaitSettle` when there is no signal to poll on at all.
+ */
+export async function assertNeverSettles(
+  predicate: () => unknown,
+  windowMs: number,
+  label: string,
+  intervalMs = 5
+): Promise<void> {
+  const startedAt = Date.now()
+  const deadline = startedAt + windowMs
+  for (;;) {
+    const v = predicate()
+    if (v !== null && v !== undefined && v !== false) {
+      throw new Error(
+        `assertNeverSettles: ${label} fired after ${Date.now() - startedAt}ms ` +
+          `(window ${windowMs}ms). Predicate: ${describePredicate(predicate)}`
+      )
+    }
+    if (Date.now() >= deadline) return
     await wait(intervalMs)
   }
 }

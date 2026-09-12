@@ -396,11 +396,47 @@ export type NestedReadType<RootValue, FlattenedPath extends string> = NestedType
 >
 
 /**
+ * The array a path actually addresses, nullish stripped, or `never`
+ * when the path does not address an array. Shared by `ArrayPath`
+ * (membership) and `ArrayItem` (element type) so the filter and the
+ * extractor cannot disagree about what counts as one.
+ *
+ * The strip is the load-bearing part. `Form` is the schema's INPUT
+ * shape, so `z.array(row).default([])` resolves to `row[] | undefined`,
+ * and `NestedType` tags a discriminated union's per-variant keys the
+ * same way on purpose: that tagging is what keeps `NestedType` in
+ * lockstep with `FlatPath`, so every path `FlatPath` offers resolves to
+ * a useful value type. A bare `extends readonly unknown[]` predicate
+ * read the tag as "not an array", which is how every optional,
+ * defaulted, nullable, and DU-variant array fell out of the field-array
+ * helpers while the runtime went on accepting all of them (#541).
+ *
+ * `extends infer Leaf` binds the stripped leaf once so the guards below
+ * do not re-instantiate `NestedType`, and the tuple wraps suppress
+ * distribution so a union leaf is judged whole: `A[] | B[]` is an
+ * array, `A[] | string` is not.
+ *
+ * Exported so `rollup-plugin-dts` keeps it as a named alias in the
+ * bundled `.d.ts` instead of inlining the body at every reference.
+ * Consumers reach for `ArrayPath` / `ArrayItem`; this alias is not part
+ * of the stable surface.
+ */
+export type ArrayLeafOf<Form, P extends string> =
+  Exclude<NestedType<Form, P>, undefined | null> extends infer Leaf
+    ? [Leaf] extends [never]
+      ? never
+      : [Leaf] extends [readonly unknown[]]
+        ? Leaf
+        : never
+    : never
+
+/**
  * Filter FlatPath<Form> down to the subset of paths whose resolved leaf
  * is an array. Used by the typed field-array helpers (append / remove /
  * swap / ...) so those helpers only accept paths that actually address
  * an array — calling `append('email', ...)` on a `{ email: string }`
- * is a compile error.
+ * is a compile error. Optionality is not a disqualifier; see
+ * `ArrayLeafOf` for what "is an array" means here.
  *
  * `P extends string` re-triggers distribution over the `FlatPath<Form>`
  * union so the conditional evaluates per member. Without it, the
@@ -408,17 +444,50 @@ export type NestedReadType<RootValue, FlattenedPath extends string> = NestedType
  * `never` whenever a single member failed the predicate.
  */
 export type ArrayPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P extends string
-  ? NestedType<Form, P> extends readonly unknown[]
-    ? P
-    : never
+  ? [ArrayLeafOf<Form, P>] extends [never]
+    ? never
+    : P
   : never
 
 /**
  * Extract the element type of the array addressed by `Path`. Callers
  * constrain `Path extends ArrayPath<Form>` so this is always well-defined.
+ * Rides on `ArrayLeafOf`, the same alias `ArrayPath` admits the path
+ * with, so an accepted path never hands its helper a `never` value slot.
  */
 export type ArrayItem<Form, Path extends ArrayPath<Form>> =
-  NestedType<Form, Path> extends ReadonlyArray<infer Item> ? Item : never
+  ArrayLeafOf<Form, Path> extends ReadonlyArray<infer Item> ? Item : never
+
+/**
+ * The record a path actually addresses, nullish stripped, or `never`
+ * when the path does not address one. Shared by `RecordPath`
+ * (membership) and `RecordValue` (value type).
+ *
+ * `string extends keyof Leaf` is the index-signature probe: it holds for
+ * `Record<string, V>` (`keyof` is `string`) and fails for a fixed object
+ * (`keyof` is the literal key union). The leading array guard keeps
+ * arrays (which also satisfy the object check) out of the record set.
+ *
+ * Nullish is stripped first for the reason `ArrayLeafOf` gives, with an
+ * extra bite here: `keyof (Record<string, V> | undefined)` is `never`,
+ * so on a `.default({})` or `.optional()` record the probe could not
+ * fire at all and `form.record(path)` rejected the path (#541).
+ *
+ * Exported for the same `.d.ts` reason as `ArrayLeafOf`, and equally
+ * not part of the stable surface.
+ */
+export type RecordLeafOf<Form, P extends string> =
+  Exclude<NestedType<Form, P>, undefined | null> extends infer Leaf
+    ? [Leaf] extends [never]
+      ? never
+      : [Leaf] extends [readonly unknown[]]
+        ? never
+        : [Leaf] extends [Record<string, unknown>]
+          ? string extends keyof Leaf
+            ? Leaf
+            : never
+          : never
+    : never
 
 /**
  * Companion to `ArrayPath`: filter `FlatPath<Form>` down to the subset
@@ -426,30 +495,22 @@ export type ArrayItem<Form, Path extends ArrayPath<Form>> =
  * string-keyed index signature, e.g. `z.record(z.string(), V)`). A
  * fixed-shape object (`z.object({ ... })`) is excluded — its keys are
  * statically known, so it has no `string` index signature.
- *
- * `string extends keyof T` is the index-signature probe: it holds for
- * `Record<string, V>` (`keyof` is `string`) and fails for a fixed object
- * (`keyof` is the literal key union). The leading array guard keeps
- * arrays (which also satisfy the object check) out of the record set.
  */
 export type RecordPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P extends string
-  ? NestedType<Form, P> extends readonly unknown[]
+  ? [RecordLeafOf<Form, P>] extends [never]
     ? never
-    : NestedType<Form, P> extends Record<string, unknown>
-      ? string extends keyof NestedType<Form, P>
-        ? P
-        : never
-      : never
+    : P
   : never
 
 /**
  * Value type of the record addressed by `Path` — the `V` in a
  * `Record<string, V>`. Callers constrain `Path extends RecordPath<Form>`,
  * so the leaf is always an open string-keyed record and this is
- * well-defined.
+ * well-defined. Rides on `RecordLeafOf`, the same alias `RecordPath`
+ * admits the path with, so the two cannot disagree.
  */
 export type RecordValue<Form, Path extends RecordPath<Form>> =
-  NestedType<Form, Path> extends Record<string, infer Value> ? Value : never
+  RecordLeafOf<Form, Path> extends Record<string, infer Value> ? Value : never
 
 /**
  * Widens primitive-literal leaves to their primitive supertype to

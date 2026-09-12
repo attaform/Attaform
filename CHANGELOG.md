@@ -1,7 +1,39 @@
 # Changelog
 
 ## Unreleased
+### Added
+
+- **`RecordPath<Form>` and `RecordValue<Form, Path>` are exported.**
+  `ArrayPath` and `ArrayItem` were already public, so `form.list` had
+  nameable path and element types while `form.record`, an equally
+  first-class API, had neither. Both now ship from every entry point
+  and appear in the types reference beside their array halves. (#603)
+
 ### Fixed
+
+- **Every array is a field-array path, optional or not.** The seven
+  field-array helpers and `form.list` are typed against
+  `ArrayPath<Form>`, which tested the leaf with a bare
+  `extends readonly unknown[]`. `Form` is the schema's input shape, so
+  one `.default([])`, `.optional()` or `.nullable()` made that leaf
+  `T[] | undefined` and the path left the union, as did every array
+  reached through a `z.discriminatedUnion` variant. A schema with a
+  plain array beside a defaulted one offered exactly one appendable
+  path. `form.record` had the same hole on a defaulted or optional
+  record, where `keyof (Record<string, V> | undefined)` is `never` and
+  the index-signature probe could never fire. The engine accepted all of
+  these all along, so the only way through was a cast. Both filters now
+  strip nullish before the predicate and share the stripped leaf with
+  `ArrayItem` / `RecordValue`, so an admitted path cannot hand its
+  helper a `never` value slot. Non-arrays, fixed-shape objects, records
+  read as arrays and arrays read as records stay rejected. (#603)
+- **The interior discriminated union's variant sub-paths are pinned.**
+  The other half of the same report, `setValue('income.exists', …)` on a
+  union-typed field, was fixed between zod 4.3.6 and 4.4.3 with
+  Attaform's path walker unchanged, and nothing here was checking it. A
+  type suite now pins those sub-paths, through an array element too, so
+  a zod release that walks a union differently fails the build rather
+  than a consumer's editor. (#603)
 
 - **`useRegister` is auto-imported under Nuxt and the Vite preset.** It
   is the only API for a custom input wrapper, the pattern the

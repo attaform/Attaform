@@ -26,6 +26,13 @@ overrides:
   # the newest version the cooldown already allows, with nothing to
   # hand-maintain and no exclude entry.
   '@nuxt/devtools': $@nuxt/devtools
+  # Types packages are global: two copies of @types/node put two sets of
+  # ambient Node declarations into the same program, and `tsc` resolves
+  # whichever it reaches first. Bumping the root devDep to ^26 split the
+  # tree, because @types/jsdom and chrome-launcher hold the 25 line. Same
+  # unifying treatment as the build tools above, tracking the root
+  # manifest so a Dependabot bump carries this with it.
+  '@types/node': $@types/node
   '@nuxt/kit': $nuxt
   '@nuxt/schema': $nuxt
   # Pin a single rollup so the dev tree never carries two copies. vite and

@@ -3,6 +3,15 @@
 ## Unreleased
 ### Added
 
+- **`AbstractSchema` gains `isOpaqueLeafAtPath(path)`.** It reports a
+  path whose schema declares a value without describing its shape, and
+  the write gate uses it to accept such a value whole instead of
+  walking into it. The member is required, so a hand-rolled adapter
+  against `attaform/abstract` needs to add it; returning `false`
+  throughout preserves the previous behaviour and is correct for any
+  library whose every leaf has a known shape. Both adapter-author docs
+  pages carry it. (#605)
+
 - **`RecordPath<Form>` and `RecordValue<Form, Path>` are exported.**
   `ArrayPath` and `ArrayItem` were already public, so `form.list` had
   nameable path and element types while `form.record`, an equally

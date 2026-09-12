@@ -19,22 +19,22 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@nuxt/content": "^3.13.0",
+    "@nuxt/content": "^3.16.0",
     "@nuxtjs/color-mode": "^4.0.0",
-    "@nuxtjs/seo": "^5.1.3",
+    "@nuxtjs/seo": "^5.3.14",
     "@primeuix/themes": "2.0.3",
     "@resvg/resvg-js": "^2.6.2",
-    "@shikijs/twoslash": "^4.0.2",
+    "@shikijs/twoslash": "^4.4.3",
     "@tailwindcss/typography": "^0.5.19",
     "@vue/repl": "^4.7.2",
     "attaform": "workspace:*",
     "attaform-bench-arena": "workspace:*",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^13.0.3",
     "lucide-vue-next": "^1.0.0",
     "primevue": "4.5.5",
-    "reka-ui": "^2.9.10",
+    "reka-ui": "^2.10.4",
     "satori": "^0.33.4",
-    "shiki": "^4.0.2",
+    "shiki": "^4.4.3",
     "vue-sonner": "^2.0.9"
   },
   "devDependencies": {

@@ -57,6 +57,7 @@ export function buildNoopWizardSchema(
     getDefaultAtPath: () => undefined,
     getEmptyValueAtPath: () => undefined,
     isPreprocessOrCoerceLeaf: () => false,
+    isOpaqueLeafAtPath: () => false,
     arrayShapeAtPath: () => null,
     isFixedObjectAtPath: (path) => path.length === 0,
     getSchemasAtPath: () => [],

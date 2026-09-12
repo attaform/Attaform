@@ -395,6 +395,28 @@ export type AbstractSchema<Form, GetValueFormType> = {
    */
   isPreprocessOrCoerceLeaf(path: Path): boolean
   /**
+   * Reports whether `path` resolves to an opaque leaf: a schema that
+   * declares a value without describing its shape. In Zod v4 that's
+   * `z.any()`, `z.unknown()`, and `z.custom(...)` (the kind both
+   * `z.instanceof(X)` and `z.custom<T>()` compile to); in Zod v3 it's
+   * `z.any()` / `z.unknown()`, with `z.instanceof(X)` peeling through
+   * `ZodEffects` to `ZodAny`.
+   *
+   * Consulted by the slim-primitive write gate. An opaque leaf admits
+   * every kind, INCLUDING containers, and it declares no sub-paths.
+   * Without this the gate accepts an array at the leaf and then walks
+   * into it, checking `files.0` against a schema that never declared
+   * that path; the empty accept set there reads as "not in your
+   * schema" and no-ops the whole write (#542).
+   *
+   * Exact-path semantic, unlike `isPreprocessOrCoerceLeaf`: it answers
+   * for the node at `path` only. Descendants stay unwritable on their
+   * own, because the schema genuinely does not declare them and
+   * fabricating them would put phantom nodes on `form.fields`. Writing
+   * the whole value at the opaque leaf is the supported move.
+   */
+  isOpaqueLeafAtPath(path: Path): boolean
+  /**
    * Distinguish a tuple (fixed-length, position-typed) from an
    * unbounded array at `path`. The runtime calls this on every
    * `mergeStructural` / `setAtPathWithSchemaFill` write that descends

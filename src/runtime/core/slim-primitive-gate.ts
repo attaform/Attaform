@@ -107,6 +107,10 @@ function isLeafValue(value: unknown): boolean {
  *   — they don't go through this branch.
  * - The value AT the write path is also checked: writing `'oops'`
  *   to a path expecting `'object'` is rejected at the top-level.
+ * - An opaque leaf (`any` / `unknown` / `custom`) accepts its value
+ *   whole and the walk stops there. Its interior is not the schema's
+ *   business, and it declares no sub-paths to check the interior
+ *   against.
  * - For wrappers like `.optional()` / `.nullable()`, the adapter's
  *   accept set already includes `'undefined'` / `'null'` — no
  *   special-casing here.
@@ -149,6 +153,13 @@ function walk(
     reportRejection(store, path, kind, accepted)
     return false
   }
+
+  // An opaque leaf (`z.any()` / `z.unknown()` / `z.custom(...)`)
+  // declares no sub-paths, so there is nothing below to check and the
+  // value is accepted whole. Descending would test `files.0` against a
+  // schema that never declared it; the empty accept set there reads as
+  // "not in your schema" and no-ops the entire write (#542).
+  if (schema.isOpaqueLeafAtPath(path)) return true
 
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {

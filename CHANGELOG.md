@@ -1,8 +1,36 @@
 # Changelog
 
 ## Unreleased
+### Fixed
 
-_No unreleased changes yet._
+- **`reset(nextDefaults)` is now the form's defaults, not a one-shot
+  override.** It moved the dirty baseline to `nextDefaults` but left the
+  reset baseline on the values `useForm` was constructed with, so a form
+  carried two baselines that disagreed and a later bare `reset()` went
+  back to the older one. In the save-then-discard shape that most forms
+  that save end up in, reset from the saved resource then Discard rolled
+  the form back across a save the reader had already been told about, and
+  `dirty` read `false` over those stale values, so nothing offered to
+  re-save them and the next submit built on the stale set. `reset()`,
+  `resetField(path)`, `dirty`, and the blank set now all read one set of
+  defaults and cannot disagree about what "initial" means. (#576)
+- **`reset(nextDefaults)` merges instead of replacing.** Paths the
+  argument does not name keep the value, and the blank mark, they already
+  had, and `reset({})` changes nothing. This is what the docs have
+  described all along; the implementation was replacing, so a partial
+  reset silently zeroed every field it did not mention. Arrays are still
+  replaced wholesale rather than merged element-wise, and `unset` still
+  withdraws a value at a path. (#576)
+- **A form whose `defaultValues` arrive from a factory starts pristine
+  and resets to what it fetched.** The resolved payload was applied to
+  the form and nowhere else, so `dirty` read `true` the instant the data
+  landed, firing unsaved-changes guards on untouched forms, and
+  `form.reset()` discarded the fetched resource for schema-slim values.
+  The documented `rehydrate()` then `reset()` chain destroyed exactly
+  what `rehydrate()` had just loaded. The payload is now adopted as the
+  defaults on every path that produces one, including the client half of
+  an SSR render, where it stands in for the factory that never fires.
+  (#576)
 
 ## v0.28.0
 ### Breaking

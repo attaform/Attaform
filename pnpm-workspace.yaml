@@ -9,15 +9,23 @@ overrides:
   # through the root @nuxt/devtools-kit devDep. Two copies each register
   # @vitejs/devtools' runtime client, and the second registration runs
   # against a session the first has already closed, so the panel dies with
-  # "Failed to retrieve the current RPC session" (#168). One exact version
-  # means one client and one RPC session. Held at the newest 3.x that is
-  # past the .npmrc `minimumReleaseAge` cooldown, so the pin also clears
-  # GHSA-279x-mwfv-vcqv (critical: unauthenticated DevTools RPC allows
-  # arbitrary command execution on the developer's host), first patched in
-  # 3.3.1. Bumping to a same-day release makes pnpm write a
-  # `minimumReleaseAgeExclude` entry, which punches a hole in the cooldown
-  # gate; stay a patch behind instead.
-  '@nuxt/devtools': 3.4.1
+  # "Failed to retrieve the current RPC session" (#168). One version means
+  # one client and one RPC session.
+  #
+  # The advisory floor moved with it: GHSA-279x-mwfv-vcqv (critical,
+  # unauthenticated DevTools RPC allows arbitrary command execution on the
+  # developer's host) is first patched in 3.3.1, and the root spec is
+  # ^3.4.2. That floor now lives in package.json, so do not lower it
+  # there. Dependabot guards it the same way it guards every other
+  # devDependency.
+  #
+  # This used to be a literal pin, hand-held at "the newest 3.x past the
+  # .npmrc cooldown" because setting it to a same-day release made pnpm
+  # write a `minimumReleaseAgeExclude` entry and punch a hole in the
+  # cooldown gate. The alias does that by itself: a range lets pnpm pick
+  # the newest version the cooldown already allows, with nothing to
+  # hand-maintain and no exclude entry.
+  '@nuxt/devtools': $@nuxt/devtools
   '@nuxt/kit': $nuxt
   '@nuxt/schema': $nuxt
   # Pin a single rollup so the dev tree never carries two copies. vite and
@@ -26,8 +34,12 @@ overrides:
   # `Plugin` / `PluginContext` types (vite augments `PluginContext` with
   # `environment`) and rejects `build.config.ts`'s aliasPlugin against
   # unbuild's plugin array under `exactOptionalPropertyTypes`. One version
-  # makes the types identical. Bump this in lockstep with vite/rollup.
-  rollup: 4.61.1
+  # makes the types identical.
+  #
+  # `$rollup` tracks the root devDependency, same as vite below, so a
+  # bump is an ordinary package.json change and the two stay in lockstep
+  # without either being hand-edited here.
+  rollup: $rollup
   # Same reasoning one layer up: pin a single vite. The Nuxt ecosystem
   # floats vite independently across @nuxt/content, @nuxt/fonts,
   # @nuxt/icon, @nuxt/devtools-kit and friends, and once a release lands
@@ -53,7 +65,7 @@ overrides:
   # package.json declares, which is what makes them resolve together.
   # Dependabot then bumps vite the ordinary way and this entry follows,
   # with no hand-edit here and no security patch gated behind one.
-  # rollup cannot do the same only because it is not a root dependency.
+  # Every unifying override in this block now works that way.
   # `pnpm check:security-floors` fails if this ever stops deduping.
   vite: $vite
   # Pin devframe's h3 to Nitro's stable v1 line. devframe (transitive of

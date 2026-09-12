@@ -325,7 +325,7 @@ if (pinReport.length > 0) {
   console.log('\nUnifying overrides (must resolve to exactly one copy):\n')
   for (const p of pinReport) {
     console.log(
-      `  ${p.name.padEnd(22)} ${p.spec.padEnd(10)} ${p.versions.join(', ') || 'not installed'}`
+      `  ${p.name.padEnd(22)} ${p.spec.padEnd(16)} ${p.versions.join(', ') || 'not installed'}`
     )
   }
 }

@@ -3,6 +3,23 @@
 ## Unreleased
 ### Fixed
 
+- **`useRegister` is auto-imported under Nuxt and the Vite preset.** It
+  is the only API for a custom input wrapper, the pattern the
+  third-party-component docs and the agent skill both teach, and it opens
+  with `getCurrentInstance()`, so a component's `setup` is the one place
+  it can be called at all. It was still excluded from the manifest,
+  bucketed with `createAttaform` (app bootstrap) and `useAbstractForm`
+  (adapter escape hatch), which are the opposite case. So the documented
+  wrapper was the single snippet in the docs that needed a hand-written
+  import in a Nuxt app, and `injectForm` on the next line did not.
+  (#602)
+- **The docs name the auto-imported set correctly.** `gate` joined the
+  manifest in v0.27.2 and none of the four sentences that enumerate the
+  set had listed it since, while the skill's import block listed
+  `useRegister`, which was not auto-imported. Both are corrected, and a
+  new suite pins every enumeration to the manifest so the next addition
+  fails the build until the prose follows it. (#602)
+
 - **Advancing from inside a step's own submit now works on a `gate()`
   step.** `wizard.activeForm.handleSubmit(() => wizard.next())` is the
   documented composition for custom valid or invalid handling, and the

@@ -24,6 +24,7 @@ import {
   fieldMeta,
   withMeta,
   lazy,
+  gate,
 } from 'attaform'
 ```
 

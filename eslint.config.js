@@ -223,6 +223,16 @@ export default [
     },
   },
 
+  // Nuxt e2e fixtures follow the same framework filename conventions as
+  // the site: `app.vue`, and pages that map to routes (`index.vue`).
+  // Same exemption, same reason.
+  {
+    files: ['test/fixtures/**/*.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
+  },
+
   // Bench-arena harness components are path-namespaced inside each adapter
   // directory (`tanstack/Field.vue`, `vee-validate/Field.vue`, ...) and
   // deliberately mirror the name of each library's own field-rendering

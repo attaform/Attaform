@@ -27,6 +27,7 @@
  *   schema instance is bound at multiple form paths.
  */
 
+import { crossCopyState } from './cross-copy-state'
 import type { FieldMetaPayload } from './field-meta'
 import type { PathKey } from './paths'
 import type { FieldMetaWalkServices } from './walk-field-meta'
@@ -45,26 +46,50 @@ export type FieldMetaStore = {
   remove(schema: object): FieldMetaStore
 }
 
-const store = new WeakMap<object, FieldMetaPayload>()
-const lists = new WeakMap<object, FieldMetaPayload[]>()
+/**
+ * Everything the field-meta surface keeps between a registration and a
+ * lookup, held in one instance per process. Both halves of this had to
+ * move off module scope (#577): the maps because Nuxt's `shared/`
+ * slice and the page that reads them are compiled into separate
+ * graphs, so `.register(fieldMeta, ...)` wrote one pair of maps and
+ * the resolver read another; the builder slot because a write to a
+ * module-scoped `let` with no reader in its own graph is a dead store,
+ * and Rollup dropped the install call together with the whole walk.
+ * See `cross-copy-state` for the full reasoning. Exported so the
+ * cross-copy regression test can assert the slot's shape.
+ */
+export type FieldMetaState = {
+  /** Last-write-wins single payload per schema reference. */
+  store: WeakMap<object, FieldMetaPayload>
+  /** Every registration in order, per schema reference. */
+  lists: WeakMap<object, FieldMetaPayload[]>
+  /** The installed path-map walk; see `installFieldMetaPathMapBuilder`. */
+  pathMapBuilder: FieldMetaPathMapBuilder | null
+}
+
+const state = crossCopyState<FieldMetaState>(Symbol.for('attaform:field-meta-state'), () => ({
+  store: new WeakMap<object, FieldMetaPayload>(),
+  lists: new WeakMap<object, FieldMetaPayload[]>(),
+  pathMapBuilder: null,
+}))
 
 const registry: FieldMetaStore = {
   add(schema, payload) {
-    store.set(schema, payload)
-    const list = lists.get(schema) ?? []
+    state.store.set(schema, payload)
+    const list = state.lists.get(schema) ?? []
     list.push(payload)
-    lists.set(schema, list)
+    state.lists.set(schema, list)
     return registry
   },
   get(schema) {
-    return store.get(schema)
+    return state.store.get(schema)
   },
   has(schema) {
-    return store.has(schema)
+    return state.store.has(schema)
   },
   remove(schema) {
-    store.delete(schema)
-    lists.delete(schema)
+    state.store.delete(schema)
+    state.lists.delete(schema)
     return registry
   },
 }
@@ -82,7 +107,7 @@ export const fieldMetaStore: FieldMetaStore = registry
  * `undefined` if nothing has been registered.
  */
 export function getFieldMetaForSchema(schema: object): FieldMetaPayload | undefined {
-  return store.get(schema)
+  return state.store.get(schema)
 }
 
 /**
@@ -92,7 +117,7 @@ export function getFieldMetaForSchema(schema: object): FieldMetaPayload | undefi
  * schema instance is bound at multiple form paths.
  */
 export function getFieldMetaListForSchema(schema: object): readonly FieldMetaPayload[] {
-  return lists.get(schema) ?? []
+  return state.lists.get(schema) ?? []
 }
 
 /**
@@ -108,8 +133,6 @@ export type FieldMetaPathMapBuilder = <Schema extends object>(
   services: FieldMetaWalkServices<Schema>
 ) => Map<PathKey, FieldMetaPayload>
 
-let pathMapBuilder: FieldMetaPathMapBuilder | null = null
-
 /**
  * Install the path-map walk. The registration surfaces call this on
  * every metadata write (idempotent — always the same function), which
@@ -117,7 +140,7 @@ let pathMapBuilder: FieldMetaPathMapBuilder | null = null
  * it: registering is the only way a payload can exist.
  */
 export function installFieldMetaPathMapBuilder(builder: FieldMetaPathMapBuilder): void {
-  pathMapBuilder = builder
+  state.pathMapBuilder = builder
 }
 
 /**
@@ -131,5 +154,6 @@ export function buildFieldMetaPathMap<Schema extends object>(
   rootSchema: Schema,
   services: FieldMetaWalkServices<Schema>
 ): Map<PathKey, FieldMetaPayload> | undefined {
-  return pathMapBuilder === null ? undefined : pathMapBuilder(rootSchema, services)
+  const builder = state.pathMapBuilder
+  return builder === null ? undefined : builder(rootSchema, services)
 }

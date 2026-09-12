@@ -5,6 +5,9 @@ node_modules
 # exports map (Node self-reference stops at the fixture's own
 # package.json, so a plain walk-up would never find the package).
 !test/fixtures/dist-flavor/node_modules
+# Same for the shared-slice-meta fixture (#577): its e2e needs a real
+# production build resolving attaform through the exports map.
+!test/fixtures/shared-slice-meta/node_modules
 
 # Claude Code workspace state (auto-memory, scheduled-task locks, etc.)
 .claude

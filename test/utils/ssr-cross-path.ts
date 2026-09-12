@@ -85,14 +85,7 @@ export function compileToRender(template: string): (this: unknown, ctx: unknown)
 }
 
 export type Variant =
-  | 'text'
-  | 'email'
-  | 'number'
-  | 'textarea'
-  | 'checkbox'
-  | 'radio'
-  | 'select'
-  | 'file'
+  'text' | 'email' | 'number' | 'textarea' | 'checkbox' | 'radio' | 'select' | 'file'
 
 // The canonical form-state signal, normalised across both paths:
 //   - text / email / number / textarea -> the element's effective value

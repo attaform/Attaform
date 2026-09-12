@@ -64,10 +64,7 @@ export function isRewritableZodSpecifier(source: string): boolean {
 }
 
 export type ZodMajorDetection =
-  | { major: 3 }
-  | { major: 4 }
-  | { major: 'missing' }
-  | { major: 'unknown' }
+  { major: 3 } | { major: 4 } | { major: 'missing' } | { major: 'unknown' }
 
 /**
  * Read the consumer's installed Zod major by resolving

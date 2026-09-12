@@ -163,9 +163,7 @@ const form = useForm({ schema: z.object({ email: z.string() }) })
 `
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (handler as any).call({}, sfc, '/abs/path/to/example.vue') as
-      | { code: string }
-      | null
-      | undefined
+      { code: string } | null | undefined
     expect(result).not.toBeNull()
     expect(result).not.toBeUndefined()
     expect(result?.code).toContain('__ssrAccessed: true')

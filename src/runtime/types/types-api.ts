@@ -200,8 +200,7 @@ export type ValidationResponse<TData> =
  * failures from validating those defaults against the schema.
  */
 export type DefaultValuesResponse<TData> =
-  | ValidationResponseSuccess<TData>
-  | ValidationResponseErrorWithData<TData>
+  ValidationResponseSuccess<TData> | ValidationResponseErrorWithData<TData>
 
 /**
  * Trimmed `ValidationResponse` that omits the `data` payload. Used by
@@ -2789,7 +2788,7 @@ export type PathSetValuePayload<Leaf> =
       any
     : unknown extends Leaf
       ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-          ({} | null | undefined) | ((prev: unknown) => unknown)
+        ({} | null | undefined) | ((prev: unknown) => unknown)
       : SetValuePayload<DefaultValuesShape<Leaf>, NonNullable<WriteShape<Leaf>>>
 
 /**

@@ -38,14 +38,12 @@
 
   const { data: rows } = await useAsyncData('errors-index', async () => {
     const pages = await queryCollection('errors').order('path', 'ASC').all()
-    return pages.map(
-      (page): ErrorRow => ({
-        code: page.title ?? page.path.slice('/e/'.length).toUpperCase(),
-        path: page.path,
-        condition: page.condition,
-        text: `${page.description} ${flattenText(page.body.value)}`.replace(/\s+/g, ' ').trim(),
-      })
-    )
+    return pages.map((page): ErrorRow => ({
+      code: page.title ?? page.path.slice('/e/'.length).toUpperCase(),
+      path: page.path,
+      condition: page.condition,
+      text: `${page.description} ${flattenText(page.body.value)}`.replace(/\s+/g, ' ').trim(),
+    }))
   })
 
   const { attaformVersion } = useRuntimeConfig().public

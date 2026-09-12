@@ -46,10 +46,9 @@ export type FlatPathBuilder<
         ? Value extends Array<infer ArrayItem>
           ? IsObjectOrArray<ArrayItem> extends true
             ? Mode extends 'partial'
-              ?
-                  | `${Key}`
-                  | `${Key}.${number}`
-                  | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+              ? | `${Key}`
+                | `${Key}.${number}`
+                | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
               : `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
             : `${Key}` | `${Key}.${number}`
           : Value extends GenericForm
@@ -59,17 +58,16 @@ export type FlatPathBuilder<
             : `${Key}`
         : never
       : Key extends number
-        ?
-            | `${Key}`
-            | (Form[Key] extends GenericForm
-                ? `${Key}.${FlatPathBuilder<Form[Key], Mode>}`
-                : Form[Key] extends Array<infer ArrayItem>
-                  ? IsObjectOrArray<ArrayItem> extends true
-                    ? Mode extends 'partial'
-                      ? `${Key}.${number}` | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
-                      : `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
-                    : `${Key}.${number}`
-                  : never)
+        ? | `${Key}`
+          | (Form[Key] extends GenericForm
+              ? `${Key}.${FlatPathBuilder<Form[Key], Mode>}`
+              : Form[Key] extends Array<infer ArrayItem>
+                ? IsObjectOrArray<ArrayItem> extends true
+                  ? Mode extends 'partial'
+                    ? `${Key}.${number}` | `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+                    : `${Key}.${number}.${FlatPathBuilder<ArrayItem, Mode>}`
+                  : `${Key}.${number}`
+                : never)
         : never
     : never
 
@@ -683,7 +681,4 @@ export type AcceptableDefaults<Form, SchemaInput> = AcceptableDefaultsOf<
   SchemaInput
 >
 type AcceptableDefaultsOf<DVI, SchemaInput> =
-  | DVI
-  | SchemaInput
-  | (() => DVI | SchemaInput)
-  | (() => Promise<DVI | SchemaInput>)
+  DVI | SchemaInput | (() => DVI | SchemaInput) | (() => Promise<DVI | SchemaInput>)

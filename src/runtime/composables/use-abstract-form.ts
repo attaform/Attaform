@@ -221,8 +221,7 @@ export function useAbstractForm<
   }
   if (existing === undefined && resolvedDefaults.kind === 'async') {
     const factory = resolvedDefaults.factory as () =>
-      | DefaultValuesInput<Form>
-      | Promise<DefaultValuesInput<Form>>
+      DefaultValuesInput<Form> | Promise<DefaultValuesInput<Form>>
     state.defaultValuesFactory.value = factory
     if (hadPendingHydration) {
       // Server already resolved the factory; client just consumed the

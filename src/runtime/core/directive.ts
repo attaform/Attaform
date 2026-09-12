@@ -1239,12 +1239,13 @@ function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
   // self-registered before this host mounted, so a registered element is
   // contained in the host). That control owns value + FieldState and the
   // injected v-model is inert; leave it be.
-  if (rv.hasRegisteredDescendant(el))
-    return // Case B: a third-party component. Value binds via the transform's v-model
-    // desugar, so this binding is never a no-op -- claim ownership of the root so
-    // the deferred "no-op" warn skips. A host root that is ITSELF an interactive
-    // control was registered by the per-tag variant (callModelHook) and taken by
-    // the Case-A return above.
+  if (rv.hasRegisteredDescendant(el)) return
+
+  // Case B: a third-party component. Value binds via the transform's v-model
+  // desugar, so this binding is never a no-op -- claim ownership of the root so
+  // the deferred "no-op" warn skips. A host root that is ITSELF an interactive
+  // control was registered by the per-tag variant (callModelHook) and taken by
+  // the Case-A return above.
   ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
 
   // Strip the bridge `registerValue` attribute the transform injects on the

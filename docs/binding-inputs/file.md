@@ -64,6 +64,19 @@ form.values.attachments // readonly File[]
 
 Every file in the picker selection lands in the array, in picker order. Re-selecting replaces the array; the input never accumulates across picks.
 
+## Zod v3, and `z.instanceof(File)`
+
+`z.file()` is a Zod v4 kind. On Zod v3 the spelling is `z.instanceof(File)`, which works identically through the directive and is also accepted by the v4 adapter, so a schema written this way runs unchanged on both majors:
+
+```ts
+const schema = z.object({
+  avatar: z.instanceof(File).nullable(),
+  attachments: z.array(z.instanceof(File)),
+})
+```
+
+The trade-off is refinements. `z.file()` understands `.min(size)`, `.max(size)`, and `.mime([...])`; `z.instanceof(File)` is an opaque leaf, so size and type rules go in a `.refine(...)` you write yourself. Prefer `z.file()` when you are on v4 and not sharing the schema with a v3 codebase.
+
 ## Uploading via FormData
 
 Live `File` handles work directly with the upload pipelines you'd reach for anyway:
@@ -71,7 +84,7 @@ Live `File` handles work directly with the upload pipelines you'd reach for anyw
 ```ts
 const onSubmit = form.handleSubmit(async (values) => {
   const body = new FormData()
-  body.append('avatar', values.avatar!)
+  if (values.avatar) body.append('avatar', values.avatar)
   for (const file of values.attachments) {
     body.append('attachments', file)
   }
@@ -79,7 +92,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 })
 ```
 
-The schema's `z.file()` leaf type carries the constraint through validation; refinements like `.min(size)`, `.max(size)`, `.mime([...])` surface in `form.errors.<path>` like any other validator.
+The handles Attaform gives back are the originals, not copies, so they append straight to `FormData`. The schema's `z.file()` leaf type carries the constraint through validation; refinements like `.min(size)`, `.max(size)`, `.mime([...])` surface in `form.errors.<path>` like any other validator.
 
 ## Reset behavior
 

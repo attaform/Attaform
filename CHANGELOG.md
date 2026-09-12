@@ -11,6 +11,33 @@
 
 ### Fixed
 
+- **`z.instanceof(File)` and `z.custom<T>()` mount on the Zod v4
+  adapter.** Both compile to kind `custom`, which v4 rejected at
+  construction with `unsupported kind 'custom'`. Zod v3 compiles the
+  same two spellings to `ZodEffects` / `ZodAny` and never rejected
+  them, so the same schema mounted on one adapter and threw on the
+  other. Since `File` has no spelling besides `z.instanceof(File)`
+  outside of v4's own `z.file()`, a file-input field was modellable on
+  v3 and not on v4. `custom` is now an opaque leaf alongside `any` and
+  `unknown`: the value is carried as written, the predicate runs at
+  parse, and no sub-paths are exposed under it. (#605)
+- **A container written to an opaque leaf lands instead of vanishing.**
+  The slim-primitive write gate accepted an array or object at an
+  opaque leaf and then walked into it, checking `files.0` against a
+  schema that never declared that path. The empty accept set there
+  reads as "this path is not in your schema", so the whole write
+  no-oped behind a warning that named a typo as the cause. That fired
+  for `z.unknown()` and `z.any()` on both adapters. The gate now stops
+  at an opaque leaf, whose interior is not the schema's business.
+  (#605)
+- **A class instance survives a discriminated-union round-trip.** The
+  variant-memory cloner and the union-stub walker both rebuilt values
+  key by key, guarded by a hand-written `Date` / `RegExp` / `Map` /
+  `Set` list. Anything the list did not name was rebuilt from its own
+  enumerable keys, and a `File` has none of those, so parking one in a
+  variant and switching away and back returned `{}`. This was live for
+  the already-supported `z.file()`, on both adapters. Both walkers now
+  test the prototype, matching the two walkers that always did. (#605)
 - **Every array is a field-array path, optional or not.** The seven
   field-array helpers and `form.list` are typed against
   `ArrayPath<Form>`, which tested the leaf with a bare

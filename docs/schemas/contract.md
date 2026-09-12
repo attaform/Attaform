@@ -141,6 +141,42 @@ import { useForm } from 'attaform'
 
 `attaform/zod` is the same surface named explicitly, and `attaform/zod-v3` / `attaform/zod-v4` pin one adapter with no detection. For projects still on Zod v3, `attaform/zod-v3` is the pin. The consumer-facing surface is identical across all four; the parsing engine and metadata walker differ to match each major's internals.
 
+### What the adapters accept
+
+Attaform carries a value it cannot describe rather than refusing it. Anything Zod can express as a **value** is a leaf Attaform will hold, validate, and hand back by identity, including types it has no structural knowledge of.
+
+Opaque leaves are the clearest case. `z.instanceof(File)`, `z.custom<T>()`, `z.unknown()`, and `z.any()` all declare a value without describing its shape, so Attaform stores whatever you write, runs the schema's own predicate at validate time, and exposes no sub-paths under it. `z.instanceof(File)` is how you model a file field on Zod v3; on v4 you can use either that or the native `z.file()`, which additionally understands `.min(size)`, `.max(size)`, and `.mime([...])`.
+
+```ts
+const schema = z.object({
+  // opaque leaf: Attaform holds the File, Zod checks it
+  avatar: z.instanceof(File),
+  attachments: z.array(z.instanceof(File)).min(1, 'Attach at least one'),
+})
+```
+
+Containers behave the same way at every level: `z.set(...)` holds a real `Set`, `z.record(...)` a dictionary, `z.map(...)` is the one container shape still on the refused list below.
+
+A short list of kinds is refused, and hitting one raises [AF02](/e/af02) at `useForm(...)` with the offending path rather than failing later at render:
+
+| Kind                                                 | Why                                                                                                                                                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `z.promise(...)`                                     | A pending box, not data. Nothing binds to it, no blank exists for it, and validation cannot read it synchronously. Await the value before it enters the form. |
+| `z.function(...)`                                    | A callback is behaviour, not form state. Keep it in your component, outside the schema.                                                                       |
+| `z.map(...)`, `z.symbol()`, `z.templateLiteral(...)` | Representable in principle, not yet modelled. Reshape a `Map` to a `z.record(...)`, and a template literal to a `z.string()` with a `.regex(...)`.            |
+
+### Class instances and reactivity
+
+Form values live in a reactive tree, and Vue wraps a plain class instance in a proxy on the way out. The instance stays intact: `instanceof` holds and every public method works. Exotic built-ins (`File`, `Blob`, `Date`, `URL`) are handed back untouched, because Vue declines to wrap them.
+
+The one sharp edge is a class whose methods read `#private` fields. Those are keyed to the instance itself, so calling through the proxy throws. Wrap the instance in Vue's `markRaw` before you store it:
+
+```ts
+import { markRaw } from 'vue'
+
+form.setValue('session', markRaw(new Session(token)))
+```
+
 ## Schema-agnostic core
 
 Underneath the Zod entries, the core doesn't know about Zod at all. It consumes any object that implements `AbstractSchema`, a small contract covering identity, defaults, shape introspection, and validation. `attaform/abstract` exposes that core directly through `useAbstractForm`, which takes an `AbstractSchema` adapter instead of a Zod schema. The Zod adapters cover the bulk of real-world schemas; reach for [`AbstractSchema`](/docs/schemas/abstract-schema) and `attaform/abstract` when you're wiring Valibot, ArkType, Effect Schema, or a hand-rolled validator.

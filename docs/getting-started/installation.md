@@ -25,7 +25,7 @@ export default defineNuxtConfig({
 })
 ```
 
-What this gets you: the form composables as auto-imports (`useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`; see [Auto-imports](#auto-imports)), `v-register` bound into every template that uses it, the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
+What this gets you: the form composables as auto-imports (`useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`, `gate`, and `useRegister`; see [Auto-imports](#auto-imports)), `v-register` bound into every template that uses it, the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
 
 ## Optional: Vue 3 plugin (app-wide defaults)
 
@@ -77,7 +77,7 @@ The bundler plugins at `attaform/webpack`, `attaform/rspack`, `attaform/rollup`,
 
 ## Auto-imports
 
-Both the Nuxt module and the Vite plugin can register Attaform's form composables as auto-imports, so a component reaches for them inside `<script setup>` with no `import` line. The set is the same either way: `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, and `lazy`.
+Both the Nuxt module and the Vite plugin can register Attaform's form composables as auto-imports, so a component reaches for them inside `<script setup>` with no `import` line. The set is the same either way: `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`, `gate`, and `useRegister`.
 
 Under Nuxt, the module registers them for you. Toggle the whole set with the `autoImports` option:
 
@@ -105,7 +105,7 @@ export default defineConfig({
 })
 ```
 
-Everything outside that set stays an explicit import: the plugin (`createAttaform`), the custom-input composable (`useRegister`), and the bring-your-own-adapter `useAbstractForm` from `attaform/abstract`. A registered auto-import always loses to an explicit or local binding of the same name, so opting out is only needed when you'd rather keep the names out of global scope entirely.
+Everything outside that set stays an explicit import: the plugin (`createAttaform`), the `unset` sentinel and its `isUnset` guard, and the bring-your-own-adapter `useAbstractForm` from `attaform/abstract`. Those have no component affinity: they read the same in a store, a util module, or a server route, so they do not earn a slot in every component's scope. A registered auto-import always loses to an explicit or local binding of the same name, so opting out is only needed when you'd rather keep the names out of global scope entirely.
 
 ## Optional: Agent skill
 

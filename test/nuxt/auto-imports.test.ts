@@ -20,6 +20,7 @@ describe('attaformAutoImports manifest', () => {
         'injectWizard',
         'lazy',
         'useForm',
+        'useRegister',
         'useWizard',
         'withMeta',
       ].sort()
@@ -44,10 +45,21 @@ describe('attaformAutoImports manifest', () => {
   it('keeps setup-level and escape-hatch surface out of component scope', () => {
     // Auto-importing any of these would drop names into every
     // `<script setup>` that only make sense at plugin-install or
-    // advanced-adapter level.
-    for (const excluded of ['createAttaform', 'useRegister', 'useAbstractForm']) {
+    // advanced-adapter level, or that carry no component affinity at all
+    // (`unset` is a bare symbol, as usable in a store or a server route).
+    for (const excluded of ['createAttaform', 'useAbstractForm', 'unset', 'isUnset']) {
       expect(names).not.toContain(excluded)
     }
+  })
+
+  it('includes the one composable that can only be called from a component setup', () => {
+    // `useRegister` opens with `getCurrentInstance()`, so a component's
+    // `setup` is the only place it can run. It is also the sole API for a
+    // custom input wrapper, the pattern every third-party-component page
+    // teaches. Excluding it (through v0.28.0) made that documented wrapper
+    // the one snippet in the docs that needed a hand-written import in a
+    // Nuxt app. See #573.
+    expect(names).toContain('useRegister')
   })
 
   it('declares each name once', () => {

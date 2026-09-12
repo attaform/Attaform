@@ -19,16 +19,25 @@
  * the auto-imports at `/zod` costs the consumer nothing and earns the
  * lean bundle for free.
  *
+ * The bar for a slot: a form author calls it directly from inside a
+ * component's `setup`. That is why `useRegister` is here. It is the only
+ * way to write a custom input wrapper, and it opens with
+ * `getCurrentInstance()`, so a component's `setup` is the one place it
+ * can be called at all.
+ *
  * Deliberately absent (reach for these with an explicit import):
  *   - `useAbstractForm` — the schema-agnostic escape hatch on
  *     `attaform/abstract`, an advanced surface, not the default form.
  *   - `createAttaform` — the plugin install, a setup-level one-liner that
  *     belongs beside the app bootstrap, not in every component's scope.
- *   - `useRegister` and the serialize helpers — low-level plumbing.
+ *   - `unset` / `isUnset` and the serialize helpers: plain values and
+ *     functions with no component affinity, equally at home in a store, a
+ *     util module, or a server route. `unset` is also too generic a name
+ *     to spend on every app's global scope.
  *
- * A name earns a slot here only if a form author calls it directly on a
- * normal page. The manifest test pins the set so a casual addition of a
- * setup-level symbol to the global scope fails loudly.
+ * The manifest test pins the set so a casual addition of a setup-level
+ * symbol to the global scope fails loudly, and `auto-import-docs.test.ts`
+ * pins the prose that enumerates it.
  */
 
 /**
@@ -53,6 +62,7 @@ export const attaformAutoImports: AttaformAutoImport[] = [
   { name: 'withMeta', from: 'attaform/zod' },
   { name: 'lazy', from: 'attaform/zod' },
   { name: 'gate', from: 'attaform/zod' },
+  { name: 'useRegister', from: 'attaform/zod' },
 ]
 
 /**

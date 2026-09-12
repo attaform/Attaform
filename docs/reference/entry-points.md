@@ -172,7 +172,7 @@ export default defineNuxtConfig({
 })
 ```
 
-After installing, `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, and `lazy` are all global auto-imports (toggle with the module's `autoImports` option). `useAbstractForm`, `createAttaform`, and `useRegister` stay explicit imports by design. See [Installation](/docs/getting-started/installation#auto-imports) for the full setup and [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt) for the server wiring.
+After installing, `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`, `gate`, and `useRegister` are all global auto-imports (toggle with the module's `autoImports` option). `useAbstractForm`, `createAttaform`, `unset`, and `isUnset` stay explicit imports by design. See [Installation](/docs/getting-started/installation#auto-imports) for the full setup and [SSR hydration: Nuxt](/docs/server-and-ssr/ssr-nuxt) for the server wiring.
 
 ## `attaform/vite`
 

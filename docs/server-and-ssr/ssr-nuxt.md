@@ -54,7 +54,7 @@ The client-side form is identical to the server one; no second round of validati
 
 ## Auto-imports
 
-The Nuxt module auto-imports the form composables you reach for inside `<script setup>`: `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, and `lazy`. No `import` statement needed:
+The Nuxt module auto-imports the form composables you reach for inside `<script setup>`: `useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`, `gate`, and `useRegister`. No `import` statement needed:
 
 ```vue
 <script setup lang="ts">

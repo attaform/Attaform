@@ -54,6 +54,8 @@ form.remove('checkpoints', 2)
 
 The path string autocompletes to every array path in the schema. Nested arrays work the same way: `register('teams.0.players')` for an inner array, and the helpers take the same form.
 
+Every array counts, including the ones that may be absent at runtime: `z.array(...).optional()`, `.default([])`, `.nullable()`, and an array that lives inside a `z.discriminatedUnion` variant. Adding to one that is absent creates it, reordering or removing while it is absent is a no-op, and [`form.list`](/docs/reading-the-form/list) reads it as empty.
+
 ## Stable per-item identity
 
 Every helper preserves the existing items' reactive identity, and an item's full state travels with it to its new index:

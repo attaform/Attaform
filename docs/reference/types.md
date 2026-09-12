@@ -72,13 +72,13 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Path types
 
-| Type                           | Source                   | Purpose                                                  |
-| ------------------------------ | ------------------------ | -------------------------------------------------------- |
-| `FlatPath<Form>`               | runtime/types/types-core | Every reachable dotted path through the form.            |
-| `PartialFlatPath<Form>`        | runtime/types/types-core | Same but allowing partial-prefix paths.                  |
-| `ArrayPath<Form>`              | runtime/types/types-core | Every reachable path whose value is an array.            |
-| `JoinSegments<Segments>`       | runtime/types/types-core | Type-level join of a segment tuple into a dotted string. |
-| `Path` / `PathKey` / `Segment` | runtime/core/paths       | Canonicalized runtime path representation.               |
+| Type                           | Source                   | Purpose                                                        |
+| ------------------------------ | ------------------------ | -------------------------------------------------------------- |
+| `FlatPath<Form>`               | runtime/types/types-core | Every reachable dotted path through the form.                  |
+| `PartialFlatPath<Form>`        | runtime/types/types-core | Same but allowing partial-prefix paths.                        |
+| `ArrayPath<Form>`              | runtime/types/types-core | Every reachable path whose value is an array, optional or not. |
+| `JoinSegments<Segments>`       | runtime/types/types-core | Type-level join of a segment tuple into a dotted string.       |
+| `Path` / `PathKey` / `Segment` | runtime/core/paths       | Canonicalized runtime path representation.                     |
 
 ## Shape helpers
 

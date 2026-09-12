@@ -48,7 +48,7 @@ Declare the record on your schema, then iterate `form.record` by its key. The ke
 </template>
 ```
 
-`record` is typed against every record path in the schema (a `z.record(...)`, not a fixed-shape `z.object({ ... })`), so the path autocompletes to records only, and each entry's type narrows to the record's value shape.
+`record` is typed against every record path in the schema (a `z.record(...)`, not a fixed-shape `z.object({ ... })`), so the path autocompletes to records only, and each entry's type narrows to the record's value shape. An optional or defaulted record is still a record path; while its value is absent, `record` reads it as an empty object.
 
 ## Each entry is a live FieldState
 

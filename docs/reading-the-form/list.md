@@ -47,7 +47,7 @@ Reach for `list` wherever you render a repeating field. Pair it with the array i
 </template>
 ```
 
-`list` is typed against every array path in the schema, so the path autocompletes to arrays only, and each entry's type narrows to the element shape.
+`list` is typed against every array path in the schema, so the path autocompletes to arrays only, and each entry's type narrows to the element shape. An optional, defaulted, nullable, or discriminated-union-variant array is still an array path; while its value is absent, `list` reads it as an empty array.
 
 ## Why key by `row.key`
 

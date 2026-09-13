@@ -537,9 +537,12 @@ export type AbstractSchema<Form, GetValueFormType> = {
    */
   getSlimPrimitiveTypesAtPath(path: Path): Set<SlimPrimitiveKind>
   /**
-   * Return `true` iff `path` resolves to a **leaf** in the schema — a
-   * path whose slim primitive set contains only primitive kinds (no
-   * `object`, `array`, `map`, `set`). The runtime proxies (`form.values`,
+   * Return `true` iff `path` resolves to a **leaf** in the schema: a
+   * path the schema declares no sub-paths under. That is every path
+   * whose slim primitive set contains only primitive kinds (no
+   * `object`, `array`, `map`, `set`), plus the opaque leaves, which
+   * admit every kind and are classified by kind instead (below). The
+   * runtime proxies (`form.values`,
    * `form.errors`, `form.fields`) query this at every step to decide
    * between **descend into a sub-proxy** (container) and **terminate
    * with a leaf value** (leaf).
@@ -557,6 +560,14 @@ export type AbstractSchema<Form, GetValueFormType> = {
    *   date/function) → `true`. `'date'` counts as a leaf (don't drill
    *   into `Date`). `'function'` is a leaf for the same reason — opaque
    *   value.
+   * - **Opaque leaf** (`z.any()`, `z.unknown()`, `z.custom()`, and the
+   *   `z.instanceof(X)` that compiles to it) → `true`, and it answers
+   *   ahead of the kind test. An opaque leaf admits every kind
+   *   INCLUDING the container ones, so reading it off the slim
+   *   primitive set alone classifies it as a container and puts
+   *   phantom nodes under it on `form.fields` — see
+   *   `isOpaqueLeafAtPath`. What leafness asks is whether the schema
+   *   declares sub-paths here, and an opaque leaf declares none.
    * - **Optional / Nullable / Default / Catch** wrappers transparent —
    *   adds `'null'` / `'undefined'` to the inner kind set without
    *   changing the leaf classification.

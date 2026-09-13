@@ -48,6 +48,23 @@
 
 ### Fixed
 
+- **An opaque leaf reads the same through both spellings.** For a
+  `z.any()`, `z.unknown()`, `z.custom()`, or `z.instanceof(X)` field,
+  `form.fields.<path>` and `form.errors.<path>` resolved a container
+  instead of the leaf, so every `FieldState` key on them read
+  `undefined` and `form.errors.<path>` was not an array. The call form
+  (`form.fields('avatar')`) was unaffected, so the same field read
+  correctly through one documented spelling and silently wrong through
+  the other. A server error set on a file field was stored, reached
+  `form.meta.errors`, and never surfaced through
+  `form.errors.avatar.length` or `form.fields.avatar.showErrors`. That
+  hit Zod v3 file uploads hardest, where `z.instanceof(File)` is the
+  documented spelling. An opaque leaf admits every kind including the
+  container ones, so classifying it off the slim primitive set alone
+  read it as a container; leafness asks whether the schema declares
+  sub-paths, and an opaque leaf declares none. `z.map` and `z.set` are
+  unchanged and remain containers. (#613)
+
 - **`form.values()` returns a snapshot, which is what it always
   claimed to be.** It handed back the live readonly proxy, so a
   captured result kept changing underneath whoever held it:

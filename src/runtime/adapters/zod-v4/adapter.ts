@@ -19,7 +19,6 @@ import {
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path } from '../../core/paths'
 import type { DeepPartial, GenericForm } from '../../types/types-core'
-import { assertSupportedKinds } from './assert-supported'
 import { unwrapToDiscriminatedUnion } from './discriminator'
 import { zodIssuesToValidationErrors } from './errors'
 import { deriveDefault, getDefaultValuesFromZodSchema } from './default-values'
@@ -252,11 +251,6 @@ export function zodV4Adapter<
   rootSchema: FormSchema
 ): (formKey: FormKey, options: SchemaFactoryOptions) => AbstractSchema<Form, GetValueFormType> {
   assertZodVersion(rootSchema)
-  // Fail fast at adapter construction if the schema uses kinds we can't
-  // represent (z.promise / z.custom / z.templateLiteral). Errors carry
-  // the dotted path to the offending node. Recursive lazies pass — the
-  // runtime walks cap their descent via `maxRecursionDepth`.
-  assertSupportedKinds(rootSchema)
 
   return (formKey: FormKey, options: SchemaFactoryOptions) =>
     createAbstractSchema<z.ZodType, Form, GetValueFormType>(

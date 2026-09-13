@@ -46,7 +46,6 @@ import type { TypeWithNullableDynamicKeys } from './types-zod'
 // authors. Phase 7's introspect chokepoint means the v3 adapter no
 // longer reads `_def` directly inline; the public type stays available
 // for downstream consumers writing adapter-shaped code.
-import { assertSupportedKinds } from './assert-supported'
 import { isZodSchemaType } from './helpers'
 import {
   containsAsyncTransform,
@@ -85,12 +84,6 @@ export function zodAdapter<
 >(
   zodSchema: FormSchema
 ): (formKey: FormKey, options: SchemaFactoryOptions) => AbstractSchema<Form, GetValueFormType> {
-  // Walk the original schema (not the stripped one) so the assert
-  // descends through user-declared wrappers (`.optional()`,
-  // `.nullable()`, `.default()`) before checking each leaf. Throws
-  // for kinds we can't represent — `z.promise`, `z.function`,
-  // `z.map`, `z.symbol` — and for self-referencing `z.lazy(...)`.
-  assertSupportedKinds(zodSchema)
   const peeledRoot = peelAllV3Wrappers(zodSchema)
   if (
     !isZodSchemaType(peeledRoot, 'ZodObject') &&

@@ -30,7 +30,16 @@ const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
  * URL), it is never reassigned, and it must be listed here the moment
  * its last call site goes away.
  */
-const RETIRED_CODES = new Set<string>([])
+const RETIRED_CODES = new Set<string>([
+  // Both retired together when the construction-time supported-kind
+  // audit was deleted. AF02 refused a short list of Zod kinds; AF03
+  // refused any kind the audit had never heard of, which made the next
+  // Zod minor a mount-time crash for anyone using its new kind. Every
+  // downstream walker already carried an unknown kind opaquely, so
+  // nothing is refused now and neither code has a call site.
+  'AF02',
+  'AF03',
+])
 
 function walkFiles(dir: string, out: string[]): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

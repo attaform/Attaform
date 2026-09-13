@@ -1,6 +1,5 @@
 import type { z } from 'zod'
 import { __DEV__ } from '../../core/dev'
-import { AttaformError } from '../../core/errors'
 import type { ValidationError } from '../../types/types-api'
 
 let warnedZodCodeMissing = false
@@ -45,17 +44,3 @@ export function zodIssuesToValidationErrors(
     }
   })
 }
-
-/**
- * Thrown when a Zod schema includes a kind the form library cannot
- * represent: `z.promise`, `z.custom`, or `z.templateLiteral`.
- *
- * The error message includes the dotted path of the offending node
- * so you can locate it without traversing the whole schema.
- *
- * Recursive `z.lazy(...)` is supported, not unsupported: the
- * construction-time walk stops descending on the second encounter
- * of the same getter, and downstream walks cap their descent via
- * `maxRecursionDepth`.
- */
-export class UnsupportedSchemaError extends AttaformError {}

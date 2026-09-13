@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
-import { UnsupportedSchemaError } from '../../../src/runtime/adapters/zod-v3/errors'
 
 /**
  * The v3 adapter is the pre-rewrite implementation moved verbatim in
@@ -500,29 +499,18 @@ describe('zod v3 adapter — stripRefinements (lax mode)', () => {
   })
 })
 
-describe('zod v3 adapter — assertSupportedKinds', () => {
-  it('throws UnsupportedSchemaError for z.promise(...)', () => {
-    const schema = z.object({ pending: z.promise(z.string()) })
-    expect(() => zodAdapter(schema)('f', { maxRecursionDepth: 64 })).toThrow(UnsupportedSchemaError)
-  })
-
-  it('throws UnsupportedSchemaError for z.function()', () => {
-    const schema = z.object({ cb: z.function() })
-    expect(() => zodAdapter(schema)('f', { maxRecursionDepth: 64 })).toThrow(UnsupportedSchemaError)
-  })
-
-  it('throws UnsupportedSchemaError for z.map(...)', () => {
-    const schema = z.object({ index: z.map(z.string(), z.number()) })
-    expect(() => zodAdapter(schema)('f', { maxRecursionDepth: 64 })).toThrow(UnsupportedSchemaError)
-  })
-
-  it('throws UnsupportedSchemaError for z.symbol()', () => {
-    const schema = z.object({ tag: z.symbol() })
-    expect(() => zodAdapter(schema)('f', { maxRecursionDepth: 64 })).toThrow(UnsupportedSchemaError)
+describe('zod v3 adapter — construction accepts every kind', () => {
+  it.each([
+    ['z.promise', () => z.object({ pending: z.promise(z.string()) })],
+    ['z.function', () => z.object({ cb: z.function() })],
+    ['z.map', () => z.object({ index: z.map(z.string(), z.number()) })],
+    ['z.symbol', () => z.object({ tag: z.symbol() })],
+  ])('mounts a schema containing %s', (_label, make) => {
+    expect(() => zodAdapter(make())('f', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
   it('mounts a self-referencing z.lazy(...) — runtime walks cap descent via maxRecursionDepth', () => {
-    // Pre-B2 this threw `UnsupportedSchemaError`. Post-B2 recursive
+    // Pre-B2 this threw at construction. Post-B2 recursive
     // schemas are supported; v3's downstream walks already carry their
     // own `MAX_UNWRAP_STEPS` cap, so depth is bounded regardless.
     type Node = { value: string; child: Node }
@@ -531,9 +519,9 @@ describe('zod v3 adapter — assertSupportedKinds', () => {
     expect(() => zodAdapter(schema)('f', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
-  it('descends through wrappers — z.promise nested in .optional() still throws', () => {
+  it('mounts a z.promise nested inside .optional()', () => {
     const schema = z.object({ pending: z.promise(z.string()).optional() })
-    expect(() => zodAdapter(schema)('f', { maxRecursionDepth: 64 })).toThrow(UnsupportedSchemaError)
+    expect(() => zodAdapter(schema)('f', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
   it('accepts non-recursive z.lazy(...) without throwing', () => {

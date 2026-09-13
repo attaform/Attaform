@@ -26,6 +26,8 @@ import {
   getLiteralValues,
   getNativeEnumValues,
   getObjectShape,
+  getMapKeyType,
+  getMapValueType,
   getRecordKeyType,
   getRecordValueType,
   getSetValueType,
@@ -68,6 +70,8 @@ export const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
     kindOf(schema) === 'record' ? getRecordKeyType(schema) : undefined,
   getRecordValueType: (schema) =>
     kindOf(schema) === 'record' ? getRecordValueType(schema) : undefined,
+  getMapKeyType: (schema) => (kindOf(schema) === 'map' ? getMapKeyType(schema) : undefined),
+  getMapValueType: (schema) => (kindOf(schema) === 'map' ? getMapValueType(schema) : undefined),
   getUnionOptions,
   getIntersectionLeft,
   getIntersectionRight,

@@ -441,7 +441,17 @@ export async function measureEager(define = PROD_DEFINE) {
 // all three sit in the shared core a minimal useForm pulls in. The budget had
 // ~0.07 kB left before this, which is why 114 B tripped it. Budget
 // 33_430 -> 33_900 (~0.42 kB headroom, back to the conventional band).
-const BUDGET_GZ = 33_900
+// map/set entry paths (#614): 33,660 -> 34,400 measured (+740). A `z.map`
+// entry became a path on every surface, which the schema walker, the value
+// walker, the diff (so an entry carries its own `dirty` baseline), the
+// container proxies and the write gate all had to learn, and a `z.set`
+// member stopped being one, which took the reserved member segment and its
+// coercion lookup. All of it sits in the shared core a minimal useForm
+// pulls in; none of it is adapter-specific (the v3 issue-path rewrite is
+// not in this scenario, which measures zod-v4). The budget had ~0.23 kB
+// left before this. Budget 33_900 -> 34_850 (~0.44 kB headroom, the
+// conventional band).
+const BUDGET_GZ = 34_850
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

@@ -276,6 +276,17 @@ export function getRecordValueType(schema: z.ZodTypeAny): z.ZodTypeAny | undefin
   return def?.valueType as z.ZodTypeAny | undefined
 }
 
+/**
+ * Key / value schemas of a `z.map(K, V)`. Both majors store a map's
+ * halves under the same `_def` slots a record uses, so these read
+ * exactly what the record accessors read. They keep their own names
+ * because the two kinds answer different questions: a record's keys
+ * are strings by construction, a map's are whatever `K` declares, and
+ * only a key `K` admits that a path segment can spell is addressable.
+ */
+export const getMapKeyType = getRecordKeyType
+export const getMapValueType = getRecordValueType
+
 export function getTupleItems(schema: z.ZodTypeAny): readonly z.ZodTypeAny[] {
   const def = readDef(schema)
   return (def?.items as readonly z.ZodTypeAny[] | undefined) ?? []
@@ -477,6 +488,19 @@ export function containsAsyncRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>
 }
 
 /**
+ * True iff the v3 schema tree holds a `z.map` or a `z.set` anywhere.
+ *
+ * Gates the issue-path rewrite in `normalize-issue-paths.ts`: v3 files
+ * a map entry's issue under the entry INDEX and a set member's under
+ * the member index, neither of which is a path Attaform addresses, so
+ * those issues have to be re-filed before they reach the error stores.
+ * A schema holding neither skips the rewrite entirely.
+ */
+export function containsMapOrSet(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
+  return walkForTarget(schema, 'map-or-set', seen ?? new WeakSet<object>())
+}
+
+/**
  * True iff the v3 schema tree holds at least one `ZodDiscriminatedUnion`
  * at any depth — the walk reaches unions inside arrays, tuples, records,
  * intersections, pipelines, and (cycle-capped) lazy schemas. Queried
@@ -504,7 +528,8 @@ export function containsAsyncTransform(schema: z.ZodTypeAny, seen?: WeakSet<obje
   return walkForTarget(schema, 'transform-or-preprocess', seen ?? new WeakSet<object>())
 }
 
-type SchemaWalkTarget = 'refinement' | 'transform-or-preprocess' | 'discriminated-union'
+type SchemaWalkTarget =
+  'refinement' | 'transform-or-preprocess' | 'discriminated-union' | 'map-or-set'
 
 function walkForTarget(
   schema: z.ZodTypeAny,
@@ -603,8 +628,20 @@ function walkForTarget(
     return false
   }
   if (isZodSchemaType(schema, 'ZodSet')) {
+    if (target === 'map-or-set') return true
     const elem = getSetValueType(schema)
     return elem !== undefined && walkForTarget(elem, target, visited)
+  }
+  if (isZodSchemaType(schema, 'ZodMap')) {
+    if (target === 'map-or-set') return true
+    // Both halves are real sub-schemas, so an async refine parked in a
+    // map's value type is reachable and has to be found here like any
+    // other. The branch was missing entirely before `map-or-set`
+    // needed one.
+    const keyType = getMapKeyType(schema)
+    if (keyType !== undefined && walkForTarget(keyType, target, visited)) return true
+    const valueType = getMapValueType(schema)
+    return valueType !== undefined && walkForTarget(valueType, target, visited)
   }
 
   // Leaves and unrecognised wrappers: nothing to descend into.

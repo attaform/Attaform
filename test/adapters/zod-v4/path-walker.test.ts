@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { getNestedZodSchemasAtPath } from '../../../src/runtime/adapters/zod-v4/path-walker'
+import { SET_MEMBER_SEGMENT } from '../../../src/runtime/core/paths'
 
 describe('getNestedZodSchemasAtPath', () => {
   it('returns the root schema for an empty path', () => {
@@ -77,33 +78,44 @@ describe('getNestedZodSchemasAtPath', () => {
     expect(byArray).toHaveLength(1)
   })
 
-  // Set-element queries: needed by schema-coerce so it can ask
-  // `getSlimPrimitiveTypesAtPath([...path, 0])` for a set's element
-  // type. Without these branches the walker would bail at `set` and
-  // return [], matching the empty-accept "permissive" path that
-  // skipped element coercion entirely.
-  it('walks z.set(z.number()) → element schema', () => {
+  // Set-member queries. A set's members are not addressable — a member
+  // IS its own key, so no address survives writing to one — and the
+  // walker says so for every ordinary segment. The one question a set
+  // answers is what a member looks like, which schema-coerce asks
+  // through the reserved `SET_MEMBER_SEGMENT`. A plain index used to
+  // serve that purpose, which made `tags.0` resolve for everyone: it
+  // showed up on `form.fields` holding nothing, and it cleared the
+  // write gate, where the numeric rebuild replaced the whole `Set`
+  // with an `Array` holding the one written member (#614).
+  it('walks z.set(z.number()) to its member schema under the reserved segment', () => {
     const schema = z.object({ tags: z.set(z.number()) })
-    const resolved = getNestedZodSchemasAtPath(schema, ['tags', 0], 64)
+    const resolved = getNestedZodSchemasAtPath(schema, ['tags', SET_MEMBER_SEGMENT], 64)
     expect(resolved).toHaveLength(1)
     expect(resolved[0]?.safeParse(42).success).toBe(true)
     expect(resolved[0]?.safeParse('42').success).toBe(false)
   })
 
-  it('walks z.set(z.boolean()) → element schema', () => {
+  it('walks z.set(z.boolean()) to its member schema under the reserved segment', () => {
     const schema = z.object({ flags: z.set(z.boolean()) })
-    const resolved = getNestedZodSchemasAtPath(schema, ['flags', 0], 64)
+    const resolved = getNestedZodSchemasAtPath(schema, ['flags', SET_MEMBER_SEGMENT], 64)
     expect(resolved).toHaveLength(1)
     expect(resolved[0]?.safeParse(true).success).toBe(true)
     expect(resolved[0]?.safeParse('true').success).toBe(false)
   })
 
-  it('walks nested z.set(z.object(...)) → object element', () => {
+  it('descends past a set member into its own shape', () => {
     const schema = z.object({
       tags: z.set(z.object({ label: z.string() })),
     })
-    const resolved = getNestedZodSchemasAtPath(schema, ['tags', 0, 'label'], 64)
+    const resolved = getNestedZodSchemasAtPath(schema, ['tags', SET_MEMBER_SEGMENT, 'label'], 64)
     expect(resolved).toHaveLength(1)
     expect(resolved[0]?.safeParse('x').success).toBe(true)
+  })
+
+  it('resolves no set member by index', () => {
+    const schema = z.object({ tags: z.set(z.number()) })
+    expect(getNestedZodSchemasAtPath(schema, ['tags', 0], 64)).toEqual([])
+    expect(getNestedZodSchemasAtPath(schema, ['tags', 1], 64)).toEqual([])
+    expect(getNestedZodSchemasAtPath(schema, ['tags', 0, 'label'], 64)).toEqual([])
   })
 })

@@ -92,6 +92,16 @@ function buildSchema(
       void path
       return new Set()
     },
+    entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined {
+      // The stub models object and array shapes only, never a map, and
+      // `mergeStructural` consults this nowhere — it is the write
+      // walkers that resolve a map's key spelling. Answer for the two
+      // shapes the stub does model and leave the rest undefined.
+      const at = this.getDefaultAtPath(path)
+      if (Array.isArray(at)) return 'number'
+      if (at !== null && typeof at === 'object') return 'string'
+      return undefined
+    },
   }
 }
 

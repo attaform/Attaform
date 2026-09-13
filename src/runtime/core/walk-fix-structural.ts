@@ -186,6 +186,18 @@ function fixNode<Schema>(
       }
       return value
     }
+    case 'map': {
+      // Entries are fixed in place on the live map, matching the
+      // record branch above: same one-value-type-for-every-entry
+      // shape, different container.
+      if (!(value instanceof Map)) return value
+      const valueType = intro.getMapValueType(schema)
+      if (valueType === undefined) return value
+      for (const [key, entry] of [...value]) {
+        value.set(key, fixNode(valueType, entry, ctx, lazyDepth))
+      }
+      return value
+    }
     case 'intersection': {
       const left = intro.getIntersectionLeft(schema)
       const right = intro.getIntersectionRight(schema)

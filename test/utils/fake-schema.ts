@@ -132,6 +132,21 @@ export function fakeSchema<F extends GenericForm>(
         !(current instanceof Date)
       )
     },
+    entryKeyKindAtPath(path) {
+      // Data-keyed, like `isFixedObjectAtPath` above: an array in the
+      // defaults shape spells its entries with numbers, any other plain
+      // container with strings. Nothing else is addressable. Tests that
+      // need map / set semantics override this on the returned object.
+      let at: unknown = defaults
+      for (const seg of path) {
+        if (at === null || typeof at !== 'object') return undefined
+        const key = typeof seg === 'number' ? String(seg) : seg
+        at = (at as Record<string, unknown>)[key]
+      }
+      if (Array.isArray(at)) return 'number'
+      if (at !== null && typeof at === 'object' && !(at instanceof Date)) return 'string'
+      return undefined
+    },
     getSchemasAtPath(path) {
       void path
       return []

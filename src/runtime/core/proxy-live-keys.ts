@@ -1,7 +1,7 @@
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { getAtPath } from './path-walker'
-import type { Segment } from './paths'
+import { mapSegmentKeys, type Segment } from './paths'
 
 /**
  * Live keys for the form data at a container path. Powers
@@ -12,8 +12,12 @@ import type { Segment } from './paths'
  * Reads happen inside the consumer's active effect, so Vue tracks
  * `state.form.value`: appending or removing items re-enumerates on the
  * next render. Returns array indices as numeric-looking strings
- * (`'0'`, `'1'`, …) for array values and the object keys directly for
- * records / objects; primitives and nullish values yield `[]`.
+ * (`'0'`, `'1'`, …) for array values, a map's own keys in the same
+ * spelling, and the object keys directly for records / objects;
+ * primitives, sets and nullish values yield `[]`.
+ *
+ * A `Set` holds nothing addressable — its members are their own keys,
+ * so none of them is a path (#614) — and reports no keys at all.
  */
 export function liveKeysAtPath<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -26,6 +30,12 @@ export function liveKeysAtPath<F extends GenericForm>(
     for (let i = 0; i < value.length; i += 1) keys[i] = String(i)
     return keys
   }
+  if (value instanceof Map) {
+    // `null` (a key no segment can spell) means the map has no
+    // addressable entries at all, so it enumerates none.
+    return mapSegmentKeys(value)?.map(String) ?? []
+  }
+  if (value instanceof Set) return []
   if (typeof value === 'object') return Object.keys(value as Record<string, unknown>)
   return []
 }
@@ -37,8 +47,9 @@ export function liveKeysAtPath<F extends GenericForm>(
  * `liveKeysAtPath` builds — an array bounds check or an `Object.hasOwn`,
  * not an allocate-and-scan. Semantics match `liveKeysAtPath`: an array
  * index is present iff it's a canonical in-bounds integer string
- * (`'0'`, `'1'`, …, no leading zeros), an object / record key iff the
- * live value owns it; primitives and nullish values hold nothing.
+ * (`'0'`, `'1'`, …, no leading zeros), a map entry iff the map holds
+ * that key under either spelling, an object / record key iff the live
+ * value owns it; primitives, sets and nullish values hold nothing.
  *
  * Reads happen inside the consumer's active effect, so Vue tracks
  * `state.form.value` and the gate re-evaluates on append / remove.
@@ -56,6 +67,16 @@ export function liveContainerHasKey<F extends GenericForm>(
     // `'1.5'`) so membership agrees with `liveKeysAtPath`'s `String(i)`.
     return Number.isInteger(index) && index >= 0 && index < value.length && String(index) === key
   }
+  if (value instanceof Map) {
+    // Both spellings, for the same reason the path walker resolves
+    // both: an integer-looking segment canonicalises to a number, so a
+    // map keyed by the string `'42'` and one keyed by the number `42`
+    // reach here as the same `key`.
+    if (value.has(key)) return true
+    const index = Number(key)
+    return Number.isInteger(index) && index >= 0 && String(index) === key && value.has(index)
+  }
+  if (value instanceof Set) return false
   return Object.hasOwn(value as Record<string, unknown>, key)
 }
 

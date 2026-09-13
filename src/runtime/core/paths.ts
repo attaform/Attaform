@@ -25,6 +25,45 @@ export type Path = readonly Segment[]
 /** Tests an integer-like string without leading zeros. `'0'` | `'1'` | `'42'` pass; `'01'`, `'-1'`, `'1.5'` do not. */
 const INTEGER_SEGMENT = /^(?:0|[1-9]\d*)$/
 
+/**
+ * The synthetic segment that asks a `z.set` what its members look
+ * like.
+ *
+ * A set's members are not addressable — a member IS its own key, so no
+ * address survives writing to one — but the coercion layer still has
+ * to know what a member's type is before it can coerce one. It asks by
+ * resolving this segment under the set's path.
+ *
+ * It lives in the reserved `__atta:` namespace (see
+ * `RESERVED_KEY_PREFIX`) so no consumer path can spell it, which is
+ * the whole point: a plain index used to serve this purpose, and
+ * `tags.0` therefore resolved in the schema, appeared on `form.fields`
+ * as a dead node, and cleared the write gate — where the numeric
+ * rebuild turned a `Set` of three into an `Array` of one (#614).
+ */
+export const SET_MEMBER_SEGMENT = '__atta:member'
+
+/**
+ * A map's keys as path segments, or `null` when any of them is a key
+ * no segment can spell (an object, a symbol).
+ *
+ * `null` means the map has NO addressable entries, not that one of
+ * them is missing: half-addressing a map would let `form.fields`
+ * enumerate the spellable entries while the diff, which cannot file a
+ * patch for the rest, treats the whole map as one value. The two
+ * answers have to agree, so an unspellable key makes the map whole.
+ * `entryKeyKindAtPath` reports `undefined` for the same map.
+ */
+export function mapSegmentKeys(value: ReadonlyMap<unknown, unknown>): Segment[] | null {
+  const keys: Segment[] = []
+  for (const key of value.keys()) {
+    if (typeof key === 'string') keys.push(key)
+    else if (typeof key === 'number' && Number.isInteger(key) && key >= 0) keys.push(key)
+    else return null
+  }
+  return keys
+}
+
 function normalizeSegment(raw: Segment): Segment {
   if (typeof raw === 'number') {
     if (!Number.isInteger(raw) || raw < 0) {

@@ -201,6 +201,17 @@ export function getRecordValueType(schema: z.ZodType): z.ZodType {
   return def?.valueType as z.ZodType
 }
 
+/**
+ * Key / value schemas of a `z.map(K, V)`. Both majors store a map's
+ * halves under the same `def` slots a record uses, so these read
+ * exactly what the record accessors read. They keep their own names
+ * because the two kinds answer different questions: a record's keys
+ * are strings by construction, a map's are whatever `K` declares, and
+ * only a key `K` admits that a path segment can spell is addressable.
+ */
+export const getMapKeyType = getRecordKeyType
+export const getMapValueType = getRecordValueType
+
 export function getTupleItems(schema: z.ZodType): readonly z.ZodType[] {
   const def = readDef(schema)
   return (def?.items as readonly z.ZodType[] | undefined) ?? []

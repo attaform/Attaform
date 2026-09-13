@@ -21,6 +21,7 @@ import {
 } from '../../core/abstract-schema-factory'
 import { mergeDeep } from '../../core/merge-deep'
 import { walkPathSegments } from '../../core/walk-path-segments'
+import { normalizeIssuePaths } from './normalize-issue-paths'
 import { fixStructuralDefaults } from '../../core/walk-fix-structural'
 import { deriveDefaultWalk } from '../../core/walk-derive-default'
 import {
@@ -57,6 +58,7 @@ import {
   getUnionOptions,
   unwrapBranded,
   unwrapEffectsSource,
+  containsMapOrSet,
   unwrapInner,
   unwrapLazy,
   unwrapPipeIn,
@@ -115,7 +117,7 @@ export function zodAdapter<
     createAbstractSchema<z.ZodTypeAny, Form, GetValueFormType>(
       zodSchema,
       V3_INTROSPECTOR,
-      buildV3Services<Form, GetValueFormType>(),
+      buildV3Services<Form, GetValueFormType>(options.maxRecursionDepth),
       formKey,
       options
     )
@@ -165,10 +167,32 @@ function syncSafe(schema: z.ZodTypeAny): z.ZodTypeAny {
   return wrapped
 }
 
-function buildV3Services<
-  Form extends GenericForm,
-  GetValueFormType extends GenericForm,
->(): AbstractSchemaServices<z.ZodTypeAny, Form, GetValueFormType> {
+function buildV3Services<Form extends GenericForm, GetValueFormType extends GenericForm>(
+  maxRecursionDepth: number
+): AbstractSchemaServices<z.ZodTypeAny, Form, GetValueFormType> {
+  // v3 files a map entry's issue at `[entryIndex, 'key' | 'value']` and
+  // a set member's at its index, neither of which is a path the runtime
+  // addresses — v4 files both where Attaform reads them. The rewrite
+  // below re-files them, and this flag keeps it free for the schemas
+  // that hold neither: one tree walk on a schema's first parse failure,
+  // then a lookup. Keyed by the schema NODE, not by the services
+  // instance: a path-scoped validation parses a sub-schema through this
+  // same instance, so one shared flag would answer for the root using
+  // whichever node happened to fail first.
+  const mapOrSetBySchema = new WeakMap<object, boolean>()
+  const refileIssues = (
+    schema: z.ZodTypeAny,
+    data: unknown,
+    issues: readonly z.ZodIssue[]
+  ): readonly z.ZodIssue[] => {
+    let hasMapOrSet = mapOrSetBySchema.get(schema)
+    if (hasMapOrSet === undefined) {
+      hasMapOrSet = containsMapOrSet(schema)
+      mapOrSetBySchema.set(schema, hasMapOrSet)
+    }
+    if (!hasMapOrSet) return issues
+    return normalizeIssuePaths(issues, schema, data, maxRecursionDepth, peelAllV3Wrappers)
+  }
   return {
     fingerprint: (schema) => lazyFingerprint(schema as z.ZodSchema),
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
@@ -199,13 +223,13 @@ function buildV3Services<
       const result = syncSafe(schema).safeParse(data)
       return result.success
         ? { success: true, data: result.data }
-        : { success: false, issues: result.error.issues }
+        : { success: false, issues: refileIssues(schema, data, result.error.issues) }
     },
     safeParseAsync: async (schema, data) => {
       const result = await schema.safeParseAsync(data)
       return result.success
         ? { success: true, data: result.data }
-        : { success: false, issues: result.error.issues }
+        : { success: false, issues: refileIssues(schema, data, result.error.issues) }
     },
     // v3 returns the full recursive AbstractSchema for sub-schemas (the
     // historical shape) — `getSchemasAtPath` consumers may probe any
@@ -215,7 +239,7 @@ function buildV3Services<
       createAbstractSchema<z.ZodTypeAny, unknown, GetValueFormType>(
         sub,
         V3_INTROSPECTOR,
-        buildV3Services<GenericForm, GetValueFormType>(),
+        buildV3Services<GenericForm, GetValueFormType>(maxRecursionDepth),
         formKey,
         { maxRecursionDepth }
       ),

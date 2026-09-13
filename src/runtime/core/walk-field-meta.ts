@@ -5,7 +5,7 @@ import {
   installFieldMetaPathMapBuilder,
   type FieldMetaStore,
 } from './field-meta-store'
-import { canonicalizePath, type Path, type PathKey } from './paths'
+import { canonicalizePath, SET_MEMBER_SEGMENT, type Path, type PathKey } from './paths'
 
 /**
  * Version-specific primitives the field-meta walk consumes. Both
@@ -181,13 +181,29 @@ function walkForMeta<Schema extends object>(
         return
       }
       case 'set': {
+        // A set's members share one type and are not addressable, so
+        // their meta is registered under the same reserved segment the
+        // schema walker answers for. A plain index here would file it
+        // at `tags.0`, a path nothing resolves (#614).
         const inner = intro.getSetValueType(schema)
         if (inner !== undefined)
-          walkForMeta(inner, [...path, 0], map, counters, lastPathPerSchema, inProgress, services)
+          walkForMeta(
+            inner,
+            [...path, SET_MEMBER_SEGMENT],
+            map,
+            counters,
+            lastPathPerSchema,
+            inProgress,
+            services
+          )
         return
       }
-      case 'record': {
-        const inner = intro.getRecordValueType(schema)
+      case 'record':
+      case 'map': {
+        // Both spell one entry per segment, and every entry shares the
+        // value type, so one wildcard registration covers the lot.
+        const inner =
+          kind === 'map' ? intro.getMapValueType(schema) : intro.getRecordValueType(schema)
         if (inner !== undefined)
           walkForMeta(inner, [...path, '*'], map, counters, lastPathPerSchema, inProgress, services)
         return

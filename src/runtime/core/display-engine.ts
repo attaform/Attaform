@@ -72,6 +72,41 @@ const IDLE: DisplayMachine = Object.freeze({ display: 'idle' })
 // quietly instead of busy-firing.
 const MAX_DELAY = 2_147_483_647
 
+// Liveness floor for a spinner. A `'pending'` machine with no usable
+// deadline would have nothing scheduled to re-evaluate it, leaving it
+// dependent on an external reactive edge that may never arrive; this is
+// the interval at which the engine re-checks one anyway.
+//
+// Long enough that a spinner which is already animating does not churn,
+// short enough that a missed edge is a blink rather than a stuck field.
+export const PENDING_LIVENESS_MS = 250
+
+/**
+ * Guarantee that a spinner can always leave its own state.
+ *
+ * The reducer is policy and the engine owns the clock, so liveness
+ * belongs here: whatever a reducer returns, a stored `'pending'`
+ * machine carries a finite deadline and therefore gets re-evaluated.
+ *
+ * This is a floor, not a schedule. Every `'pending'` the default
+ * reducer produces normally leaves via a reactive change (a validation
+ * settling) or via its own deadline (the min-visible hold), both of
+ * which arrive first. The floor only matters when neither does.
+ *
+ * It is structural rather than a patch on one branch because the
+ * failure mode is not specific to one: `getDisplayState` is a
+ * consumer-overridable extension point that this engine already treats
+ * as untrusted for NaN, Infinity, and fixed-or-past deadlines. A custom
+ * reducer returning `'pending'` with no `reviewAt` is the same hazard
+ * with none of those tells, and the library's own reducer does exactly
+ * that on its in-flight branch. Neither can strand a field now.
+ */
+function withLiveness(machine: DisplayMachine, now: number): DisplayMachine {
+  if (machine.display !== 'pending') return machine
+  if (machine.reviewAt !== undefined && Number.isFinite(machine.reviewAt)) return machine
+  return { ...machine, reviewAt: now + PENDING_LIVENESS_MS }
+}
+
 export function createDisplayEngine(ssr: boolean): DisplayEngine {
   const machines = new Map<PathKey, DisplayMachine>()
   const tick: Ref<number> = ref(0)
@@ -110,11 +145,35 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
     // Already aimed at this deadline — leave the live timer alone so a
     // flush that re-resolves many fields doesn't churn clear/set.
     if (timer !== null && timerTarget === target) return
-    // Forward-progress guard: never re-arm for the exact deadline we just
-    // fired. Legit timing always advances the deadline (show-delay → pending,
-    // pending → settled) or drops it, so this only blocks a misbehaving
-    // reducer that re-emits a fixed or past `reviewAt`.
-    if (target === lastFiredTarget) {
+    // Forward-progress guard: never re-arm for a deadline we just fired
+    // that has ALSO already passed. That pair is the busy-loop shape this
+    // guards against, where a misbehaving reducer pins `reviewAt` to a
+    // fixed or past instant and every fire immediately re-emits it.
+    //
+    // The `target <= now` half is load-bearing, not belt-and-braces. An
+    // earlier version refused on the deadline alone, on the premise that
+    // legitimate timing always advances a deadline or drops it. The
+    // min-visible hold breaks that premise: while a spinner is inside its
+    // window the reducer re-emits `pendingShownAt + minVisible`, which is
+    // by design the SAME instant on every pass. A timer that fired a
+    // fraction early (or landed on a `Date.now()` that had not yet ticked
+    // past the deadline) left the reducer re-emitting that deadline while
+    // `lastFiredTarget` already held it, so the guard cleared the timer
+    // and armed nothing. Nothing else was scheduled to re-evaluate that
+    // field, so it held `'pending'` permanently: `aria-busy="true"` over a
+    // field whose validation had finished and whose error was already
+    // committed to `errorCells`, invisible because `showErrors` reads
+    // `displayState === 'error'`.
+    //
+    // That is the `docs-demos-smoke > async-refinements` flake, and it
+    // reproduces at ~2-3% per mount in a tight loop. It needs the field to
+    // reach `'pending'` at all, which is why it only ever appeared on a
+    // demo whose simulated latency exceeds `FOCUS_OUT_GRACE`.
+    //
+    // Re-arming for a still-future deadline cannot spin: the delay below
+    // is positive, and once a fire lands at or past `target` the guard
+    // engages again.
+    if (target === lastFiredTarget && target <= now) {
       clearTimer()
       return
     }
@@ -137,11 +196,13 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
     // subscription is registered even if the reducer throws.
     void tick.value
     const prev = machines.get(key) ?? IDLE
-    const machine = reducer(prev, ctx)
+    const reduced = reducer(prev, ctx)
     // Server render: never persist, never schedule. `prev` is always IDLE
-    // here (nothing stored), nothing is validating, so `machine` is the
+    // here (nothing stored), nothing is validating, so `reduced` is the
     // plain verdict the client reproduces on hydration.
-    if (ssr) return machine
+    if (ssr) return reduced
+    // A spinner always gets a deadline, even when the reducer omitted one.
+    const machine = withLiveness(reduced, ctx.now)
     // Retain anything non-idle, plus an idle machine that still carries a
     // usable (finite) deadline. An idle machine whose only claim to be kept
     // is a non-finite `reviewAt` is junk — evict it.

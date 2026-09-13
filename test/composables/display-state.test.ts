@@ -801,11 +801,19 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
 
   it('releases a held spinner when a long validation settles with an UNCHANGED verdict', async () => {
     // Locks the continuity-branch release path: a validation longer than
-    // showDelay + minVisible holds `pending` with NO engine timer (it trusts
-    // the settle to be a reactive event), so the settle MUST re-run the display
-    // computed to release the spinner. Asserts the release happens on settle
-    // with no timer to advance — even when the verdict is unchanged (same
-    // error). (Note: this passes whether `fieldValidatingSince` is reactive or
+    // showDelay + minVisible holds `pending`, and the settle MUST re-run the
+    // display computed to release the spinner — promptly, on the reactive
+    // event, with no timer advanced, even when the verdict is unchanged
+    // (same error). That is the guarantee here and it is asserted below by
+    // advancing timers by 0.
+    //
+    // This branch used to hold `pending` with NO engine timer at all,
+    // trusting the settle to be a reactive event. That trust was the bug:
+    // when the edge was missed the field held `pending` forever. The engine
+    // now floors a deadline-less spinner with a review of its own, so a
+    // backstop timer is armed here. It is a backstop, not the release path,
+    // which is exactly what the zero-advance assertions below prove.
+    // (Note: this passes whether `fieldValidatingSince` is reactive or
     // plain, because the field computed also depends on the reactive validation
     // count; it guards the behaviour, not that specific mechanism.)
     const { form, resolve } = mountGatedRefine()
@@ -819,15 +827,16 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     await nextTick()
     await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay)
     expect(form.fields('email').displayState).toBe('pending')
-    // Past min-visible while STILL validating: the continuity branch drops the
-    // engine timer, so nothing is scheduled to release the spinner.
+    // Past min-visible while STILL validating: the continuity branch emits no
+    // deadline of its own, so the engine's liveness floor supplies one rather
+    // than leaving the spinner unscheduled.
     await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.minVisible)
     expect(form.fields('email').displayState).toBe('pending')
-    expect(vi.getTimerCount()).toBe(0)
+    expect(vi.getTimerCount()).toBe(1)
 
-    // Settle with the SAME verdict. With no engine timer pending, only the
-    // reactive `validatingSince` delete can re-run the computed — flush
-    // microtasks only, advance no timers.
+    // Settle with the SAME verdict. The reactive `validatingSince` delete is
+    // what re-runs the computed — flush microtasks only, advance no timers,
+    // so the backstop review cannot be what releases the spinner.
     resolve(false)
     await vi.advanceTimersByTimeAsync(0)
     expect(form.fields('email').validating).toBe(false)

@@ -5,15 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
+import { compressDemoLatency } from '../utils/demo-latency'
 
 // Every smoke case drives a real demo SFC with real timers (the
 // async-refinements demo alone simulates ~700ms of server latency).
-// Vitest's 5s default per-test budget is too tight for that under
-// full-suite load on a contended CI runner, where event-loop pressure
-// can push a real-timer resolution past a case's internal waitUntil
-// ceiling. Raise the file-wide budget so the waits settle on their own
-// terms; each gesture/assert still returns the moment state settles, so
-// this only lifts the ceiling, never the normal-case runtime.
+// `compressDemoLatency` scales those demo-scale delays down per test,
+// so the suite no longer pays ~8.6s of cosmetic waiting and no case
+// sits close enough to its wait budget for a contended runner to push
+// it over. The file-wide budget stays generous regardless: it is a
+// ceiling, not a target, and every gesture still returns the moment
+// state settles.
 vi.setConfig({ testTimeout: 15_000 })
 
 /**
@@ -821,9 +822,8 @@ const entries: SmokeEntry[] = [
       const rowTwo = buttons.find((b) => b.textContent?.includes("['members', 1]") === true)
       if (!rowTwo) throw new Error("interact: row-2 form.interact(['members', 1]) button not found")
       rowTwo.click()
-      await waitUntil(
-        () => (root.textContent?.includes('Enter a valid email') === true ? true : null),
-        2000
+      await waitUntil(() =>
+        root.textContent?.includes('Enter a valid email') === true ? true : null
       )
     },
     assert: async (root) => {
@@ -1062,9 +1062,12 @@ const entries: SmokeEntry[] = [
       username.dispatchEvent(new Event('focus', { bubbles: true }))
       await dispatchInput(username, 'ada')
       await dispatchBlur(username)
-      await waitUntil(
-        () => (root.querySelector('em')?.textContent?.includes('taken') === true ? true : null),
-        5000
+      // No explicit budget: `waitUntil`'s 1000ms default is ~37x the
+      // measured settle time now that the demo's simulated latency is
+      // compressed. A timeout here means the pipeline stopped, not
+      // that the runner was busy.
+      await waitUntil(() =>
+        root.querySelector('em')?.textContent?.includes('taken') === true ? true : null
       )
     },
     assert: async (root) => {
@@ -1386,8 +1389,13 @@ const deferred: { slug: string; reason: string }[] = [
 
 describe('docs-demos smoke', () => {
   let mounted: { app: App; root: HTMLElement } | undefined
+  let restoreLatency: (() => void) | undefined
 
   beforeEach(() => {
+    // The demos' simulated server latency is for a human reading the
+    // docs, not for this suite. Compress it so no case sits near its
+    // wait budget; see `test/utils/demo-latency.ts`.
+    restoreLatency = compressDemoLatency()
     // Each entry runs against clean storage so a demo that touches
     // Web Storage starts from a known state.
     sessionStorage.clear()
@@ -1406,6 +1414,8 @@ describe('docs-demos smoke', () => {
   })
 
   afterEach(() => {
+    restoreLatency?.()
+    restoreLatency = undefined
     mounted?.app.unmount()
     if (mounted?.root.parentNode) {
       mounted.root.parentNode.removeChild(mounted.root)

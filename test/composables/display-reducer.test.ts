@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, watchEffect } from 'vue'
 import { DEFAULT_TIMINGS, defaultDisplayState, makeDefaultDisplayState } from '../../src'
 import type { DisplayCtx, DisplayMachine, GetDisplayState, ValidationError } from '../../src'
-import { createDisplayEngine } from '../../src/runtime/core/display-engine'
+import { createDisplayEngine, PENDING_LIVENESS_MS } from '../../src/runtime/core/display-engine'
 import { FOCUS_OUT_GRACE } from '../../src/runtime/core/display-state'
 import type { PathKey } from '../../src/runtime/core/paths'
 
@@ -526,6 +526,63 @@ describe('createDisplayEngine', () => {
       expect(vi.getTimerCount()).toBe(0)
     })
 
+    it('re-arms a still-future deadline it already fired for', () => {
+      // Regression: the forward-progress guard used to refuse any deadline
+      // equal to the one just fired, on the premise that legitimate timing
+      // always advances a deadline. The min-visible hold breaks that
+      // premise by design: while a spinner is inside its window the reducer
+      // re-emits `pendingShownAt + minVisible`, the SAME instant on every
+      // pass. A timer that fired a fraction early left the reducer
+      // re-emitting that deadline while the guard still held it, so the
+      // engine cleared the timer and armed nothing. The field then held
+      // `'pending'` forever, showing `aria-busy="true"` over a validation
+      // that had already finished and committed its error.
+      //
+      // This is the `docs-demos-smoke > async-refinements` flake. It is
+      // spelled out against the engine rather than the demo because the
+      // demo only reaches it at ~2-3% per mount.
+      const engine = createDisplayEngine(false)
+      // A reducer that pins one fixed future deadline, which is what the
+      // min-visible hold looks like from the engine's side.
+      const DEADLINE = 1000
+      const pinned: GetDisplayState = () => ({ display: 'pending', reviewAt: DEADLINE })
+
+      engine.resolve(KEY, ctx({ now: 900 }), pinned)
+      expect(engine.hasTimer?.()).toBe(true)
+
+      // Fire it. The engine records DEADLINE as the last fired target.
+      vi.advanceTimersByTime(100)
+
+      // Re-resolve with `now` still short of the deadline, exactly as a
+      // fractionally-early timer leaves it. The deadline is still in the
+      // future, so a review must stay armed.
+      engine.resolve(KEY, ctx({ now: DEADLINE - 1 }), pinned)
+      expect(engine.hasTimer?.()).toBe(true)
+
+      engine.dispose()
+    })
+
+    it('still refuses a deadline it fired for that has now passed', () => {
+      // The counterweight. A reducer pinning a fixed or past `reviewAt` is
+      // the busy-loop the guard exists to stop, and relaxing it for future
+      // deadlines must not reopen that.
+      const engine = createDisplayEngine(false)
+      const DEADLINE = 1000
+      const pinned: GetDisplayState = () => ({ display: 'pending', reviewAt: DEADLINE })
+
+      engine.resolve(KEY, ctx({ now: 900 }), pinned)
+      vi.advanceTimersByTime(100)
+
+      // `now` is at the deadline: re-emitting it would spin.
+      engine.resolve(KEY, ctx({ now: DEADLINE }), pinned)
+      expect(engine.hasTimer?.()).toBe(false)
+      // And past it.
+      engine.resolve(KEY, ctx({ now: DEADLINE + 500 }), pinned)
+      expect(engine.hasTimer?.()).toBe(false)
+
+      engine.dispose()
+    })
+
     it('clear() drops machines and cancels the timer', () => {
       const engine = createDisplayEngine(false)
       engine.resolve(
@@ -578,19 +635,65 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('ignores a NaN reviewAt — never armed into setTimeout', () => {
+  it('never arms a NaN reviewAt, and still keeps the spinner reviewable', () => {
+    // A NaN delay coerces to 0 inside `setTimeout` and would busy-fire, so
+    // it must never reach it. Discarding the deadline is only half the
+    // answer though: a `'pending'` machine with nothing scheduled cannot
+    // leave its own state, which is the stranding the liveness floor
+    // exists to prevent. So the deadline is refused AND replaced.
     const engine = createDisplayEngine(false)
     const bad: GetDisplayState = () => ({ display: 'pending', reviewAt: NaN })
     engine.resolve(KEY, ctx({ field: gated(), validatingSince: 0, now: 0 }), bad)
+
+    expect(engine.hasTimer?.()).toBe(true)
+    // Not due yet: proof the NaN did not land as a zero delay.
+    vi.advanceTimersByTime(1)
+    expect(engine.hasTimer?.()).toBe(true)
+    // The floor is what fires.
+    vi.advanceTimersByTime(PENDING_LIVENESS_MS)
     expect(engine.hasTimer?.()).toBe(false)
-    expect(vi.getTimerCount()).toBe(0)
     engine.dispose()
   })
 
-  it('ignores an Infinity reviewAt', () => {
+  it('never arms an Infinity reviewAt, and still keeps the spinner reviewable', () => {
     const engine = createDisplayEngine(false)
     const bad: GetDisplayState = () => ({ display: 'pending', reviewAt: Infinity })
     engine.resolve(KEY, ctx({ field: gated(), validatingSince: 0, now: 0 }), bad)
+
+    expect(engine.hasTimer?.()).toBe(true)
+    // An Infinity deadline would clamp to a ~24-day timer, which is a
+    // stranded field by any other name. The floor replaces it.
+    vi.advanceTimersByTime(PENDING_LIVENESS_MS)
+    expect(engine.hasTimer?.()).toBe(false)
+    engine.dispose()
+  })
+
+  it('reviews a pending machine the reducer gave no deadline at all', () => {
+    // The structural guarantee, stated directly. `getDisplayState` is a
+    // consumer-overridable extension point, and the library's own reducer
+    // returns no `reviewAt` on its in-flight branch, so "the next
+    // re-evaluation comes from a reactive change" cannot be the only way
+    // out of a spinner.
+    const engine = createDisplayEngine(false)
+    const noDeadline: GetDisplayState = () => ({ display: 'pending' })
+    const machine = engine.resolve(
+      KEY,
+      ctx({ field: gated(), validatingSince: 0, now: 0 }),
+      noDeadline
+    )
+    expect(machine.reviewAt).toBe(PENDING_LIVENESS_MS)
+    expect(engine.hasTimer?.()).toBe(true)
+    engine.dispose()
+  })
+
+  it('leaves a settled verdict without a deadline alone', () => {
+    // The floor is for spinners only: an error or success verdict is
+    // terminal until something changes, and arming a timer for it would
+    // be a wakeup with nothing to do.
+    const engine = createDisplayEngine(false)
+    const settled: GetDisplayState = () => ({ display: 'error' })
+    const machine = engine.resolve(KEY, ctx({ field: gated() }), settled)
+    expect(machine.reviewAt).toBeUndefined()
     expect(engine.hasTimer?.()).toBe(false)
     engine.dispose()
   })

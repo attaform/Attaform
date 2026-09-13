@@ -34,7 +34,11 @@
   per mount on a field with an async refinement slower than the
   focus-out grace. The guard now refuses only a re-fired deadline that
   has also already passed, which is the busy-loop it was written for.
-  (#606)
+  Separately and structurally, the engine now floors any stored
+  `'pending'` machine that carries no deadline with a review of its
+  own, so neither the library's reducer nor a custom `getDisplayState`
+  can leave a spinner dependent on a reactive edge that may never
+  arrive. (#606)
 - **`z.instanceof(File)` and `z.custom<T>()` mount on the Zod v4
   adapter.** Both compile to kind `custom`, which v4 rejected at
   construction with `unsupported kind 'custom'`. Zod v3 compiles the

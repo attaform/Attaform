@@ -16,6 +16,8 @@ import {
   getFieldMetaForSchema,
   getFieldMetaListForSchema,
 } from '../../core/field-meta-store'
+import { __DEV__ } from '../../core/dev'
+import { AttaformError } from '../../core/errors'
 import { humanize } from '../../core/humanize'
 import { canonicalizePath, type Path } from '../../core/paths'
 import type { DeepPartial, GenericForm } from '../../types/types-core'
@@ -90,6 +92,39 @@ function unwrapStructuralWrappers(schema: z.ZodType): z.ZodType {
     current = inner
   }
   return current
+}
+
+/**
+ * The root of a form has to be able to hold keys, because a form IS a
+ * set of addressable fields. `z.object({ … })` is the fixed-shape
+ * case, `z.record(K, V)` the open dictionary, and
+ * `z.discriminatedUnion(disc, [...])` the variant form whose active
+ * branch lifts its keys into one surface. Everything else, a bare
+ * `z.string()` most obviously, has nothing to address.
+ *
+ * This is the one place the adapter refuses a schema, and it is not
+ * the enumeration the deleted kind audit was: it rejects on the
+ * absence of the single property the form engine requires, not on a
+ * list of kinds someone remembered to write down. Every kind stays
+ * welcome UNDER a key.
+ *
+ * `SupportedRootSchema` says the same thing in the type system, so a
+ * TypeScript consumer meets it at the call site. This is the runtime
+ * half, for JavaScript consumers and for a schema that reaches
+ * `useForm` through a generic that erased the constraint. Without it
+ * v4 accepted `z.string()` and built a form whose entire value was
+ * `''`, while v3 had rejected the same schema with a legible message
+ * since it shipped.
+ */
+function assertKeyedRoot(rootSchema: z.ZodType): void {
+  const kind = kindOf(peelAllWrappers(rootSchema))
+  if (kind === 'object' || kind === 'record' || kind === 'discriminated-union') return
+  throw new AttaformError(
+    __DEV__
+      ? `[attaform/zod] useForm schema root must be a ZodObject, ZodRecord, or ` +
+          `ZodDiscriminatedUnion (got '${kind}'). Wrap other shapes under a key.`
+      : `[attaform] AF15 attaform.dev/e/af15 '${kind}'`
+  )
 }
 
 /**
@@ -237,11 +272,12 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
  * downstream walk so a per-form override can lift the cap without
  * touching the app-level default.
  *
- * Throws if the schema isn't Zod v4 or contains kinds the adapter
- * cannot represent (`z.promise`, `z.templateLiteral`, `z.map`,
- * `z.symbol`, `z.function`).
- * Recursive `z.lazy(...)` is supported — the runtime walks bound their
- * descent via `maxRecursionDepth`.
+ * Throws if the schema isn't Zod v4, or if its root is not a shape
+ * that can hold keys. No kind is refused anywhere BELOW the root: a
+ * leaf the walkers have no case for is carried opaquely rather than
+ * rejected, so a schema a newer Zod can parse is one Attaform can
+ * mount. Recursive `z.lazy(...)` is supported — the runtime walks
+ * bound their descent via `maxRecursionDepth`.
  */
 export function zodV4Adapter<
   FormSchema extends SupportedRootSchema,
@@ -251,6 +287,7 @@ export function zodV4Adapter<
   rootSchema: FormSchema
 ): (formKey: FormKey, options: SchemaFactoryOptions) => AbstractSchema<Form, GetValueFormType> {
   assertZodVersion(rootSchema)
+  assertKeyedRoot(rootSchema)
 
   return (formKey: FormKey, options: SchemaFactoryOptions) =>
     createAbstractSchema<z.ZodType, Form, GetValueFormType>(

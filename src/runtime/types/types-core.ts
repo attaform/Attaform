@@ -146,6 +146,56 @@ export type JoinSegments<
   : Acc
 
 /**
+ * The advice half of a segment-array rejection, used when `S` never
+ * inferred a tuple at all.
+ *
+ * A caller who passes a plain `string` reaches this branch, because
+ * inference falls back to the constraint and `JoinSegments` of a
+ * non-tuple array is `''`. Naming a path would be a lie there, so the
+ * message names the remedies instead. This is the case behind #568: a
+ * row component received its path prefix as an untyped `string` prop,
+ * every concatenation widened to `string`, and the only signal was
+ * `segments: never`.
+ */
+type PlainStringAdvice =
+  'attaform: a plain string cannot be checked against the schema. Pass a literal path, type the dynamic prefix, or use the segment-array form.'
+
+/**
+ * Why a segment array was rejected, as a type the compiler prints.
+ *
+ * Every segment-array overload brands its parameter
+ * `S & (<joined path is valid> ? unknown : <this>)`. The brand used to
+ * be `never`, and `S & never` is `never`, so TypeScript reported the
+ * parameter as `never` and said nothing about what was wrong. A string
+ * literal intersects without collapsing, so the sentence survives into
+ * the diagnostic and the argument keeps its inferred tuple type:
+ *
+ * ```
+ * Argument of type '["boxes", 3, "nope"]' is not assignable to parameter
+ * of type 'readonly ["boxes", 3, "nope"] &
+ *   "attaform: 'boxes.3.nope' is not a path in this form's schema"'.
+ * ```
+ *
+ * Nothing can satisfy the brand, so a wrong path is still a compile
+ * error; only the message changes.
+ */
+export type SegmentPathRejection<Joined extends string> = [Joined] extends ['']
+  ? PlainStringAdvice
+  : `attaform: '${Joined}' is not a path in this form's schema`
+
+/**
+ * `SegmentPathRejection` for `register`, whose accepted set is
+ * `RegisterFlatPath` rather than `FlatPath`.
+ *
+ * The distinction is worth its own sentence: a container path is in the
+ * schema and still not registrable, so "not a path in this form's
+ * schema" would be false where it is most likely to be read.
+ */
+export type SegmentRegisterRejection<Joined extends string> = [Joined] extends ['']
+  ? PlainStringAdvice
+  : `attaform: '${Joined}' is not a registrable path. v-register binds a leaf input, so container paths are excluded.`
+
+/**
  * `true` when `T` is a union (multiple members), `false` when it's a
  * single type. Used to gate non-homomorphic mapped-type forms so
  * single-object types retain their homomorphic `[K in keyof T]`

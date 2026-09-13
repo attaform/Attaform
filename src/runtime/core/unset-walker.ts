@@ -1,6 +1,7 @@
 import type { AbstractSchema } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
+import { readConsumerProp } from './consumer-code'
 import { isPlainRecord } from './path-walker'
 import { safeAssign } from './safe-assign'
 import { isUnset } from './unset'
@@ -168,7 +169,15 @@ function walkCore(
     // flowing through both surfaces the same shape.
     const out: Record<string, unknown> = {}
     for (const key of keys) {
-      const orig = obj[key]
+      // Guarded because `obj` is a value the consumer handed over and
+      // the key may be an accessor: a getter on a literal built with
+      // `Object.defineProperty`, or a `computed` reached through a Vue
+      // reactive object, both of which read as plain records here. An
+      // accessor that throws would otherwise come out of `setValue` /
+      // `reset` / `useForm` and take the host component down. Reading
+      // as `undefined` leaves the key looking absent, which every
+      // branch below already handles.
+      const orig = readConsumerProp(obj, key)
       // Construction boundary only: an explicit consumer-supplied
       // `undefined` at a key means the consumer named the slot empty.
       // Preserve the signal in storage instead of filling from the
@@ -389,7 +398,7 @@ export function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: S
   if (prefix.length > 0) out.add(canonicalizePath(prefix).key)
   if (isPlainRecord(value)) {
     for (const k of Object.keys(value)) {
-      walkAuthoredFromConstraints((value as Record<string, unknown>)[k], [...prefix, k], out)
+      walkAuthoredFromConstraints(readConsumerProp(value, k), [...prefix, k], out)
     }
     return
   }

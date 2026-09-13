@@ -19,6 +19,8 @@
  * writes at those names shadow the inherited slot without any chain
  * mutation.
  */
+import { readConsumerProp } from './consumer-code'
+
 export function safeAssign<T>(target: Record<string, T>, key: string, value: T): void {
   if (key === '__proto__') {
     Object.defineProperty(target, key, {
@@ -74,6 +76,12 @@ export function isShadowedKey(key: string): boolean {
  *
  * Reads at any non-shadowed key fall through to `target[key]`, which on
  * a reactive proxy keeps Vue's per-key dependency tracking intact.
+ *
+ * Every read of the target routes through `readConsumerProp`, because
+ * the consumer accessor this function already contemplates can also
+ * THROW, and an escape here surfaces from `setValue` / `reset` in the
+ * host app. A throwing accessor reads as `undefined`, which every
+ * caller already handles as an absent slot.
  */
 export function safeOwnRead(target: Record<string, unknown>, key: string): unknown {
   if (isShadowedKey(key)) {
@@ -82,9 +90,9 @@ export function safeOwnRead(target: Record<string, unknown>, key: string): unkno
     // Own data property → its stored value. Own accessor (never minted
     // by the runtime's own writes, but a consumer could hand one in) →
     // resolve through the target so the getter still runs.
-    return 'value' in desc ? desc.value : target[key]
+    return 'value' in desc ? desc.value : readConsumerProp(target, key)
   }
-  return target[key]
+  return readConsumerProp(target, key)
 }
 
 /**

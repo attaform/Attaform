@@ -14,6 +14,7 @@ import type { FormStore } from './create-form-store'
 import { __DEV__ } from './dev'
 import { defaultDisplayState, isDefaultDisplayState } from './display-state'
 import { makeBlankRequiredError } from './error-codes'
+import { readConsumerProp } from './consumer-code'
 import { cellEntriesFor } from './errors'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
@@ -339,7 +340,12 @@ function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path
   }
   if (isPlainRecord(value)) {
     for (const k of Object.keys(value)) {
-      const child = value[k]
+      // Guarded because this walks stored consumer values and runs
+      // inside a `computed`. An accessor that throws here would escape
+      // on every READ of `meta.dirty` or any container field state, not
+      // just on the write that stored it, so the form would be
+      // permanently unrenderable rather than momentarily wrong.
+      const child = readConsumerProp(value, k)
       if (Array.isArray(child) || isPlainRecord(child)) {
         visitActiveLeafPaths(child, [...base, k], visit)
       } else {

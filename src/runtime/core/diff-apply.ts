@@ -1,3 +1,4 @@
+import { readConsumerProp } from './consumer-code'
 import { isPathPrefix, pathsEqual } from './paths'
 import type { Path, Segment } from './paths'
 import { safeAssign, safeOwnRead } from './safe-assign'
@@ -146,12 +147,16 @@ function walkNewDescendable(
   } else {
     const rec = newValue as Record<string, unknown>
     for (const k of Object.keys(rec)) {
-      diffAndApply(undefined, rec[k], appendSegment(prefix, k), visit)
+      diffAndApply(undefined, readConsumerProp(rec, k), appendSegment(prefix, k), visit)
     }
   }
 }
 
 /**
+ * Key reads here go through `readConsumerProp` throughout. Both sides of
+ * a diff are values the consumer wrote, and an accessor that throws on
+ * one of them would escape `setValue` / `reset` into the host app.
+ *
  * Mirror of `walkNewDescendable` for the removal direction: walk a
  * descendable `oldValue` whose new counterpart is `undefined`, emitting
  * an atomic `'removed'` patch for every leaf.
@@ -168,7 +173,7 @@ function walkOldDescendable(
   } else {
     const rec = oldValue as Record<string, unknown>
     for (const k of Object.keys(rec)) {
-      diffAndApply(rec[k], undefined, appendSegment(prefix, k), visit)
+      diffAndApply(readConsumerProp(rec, k), undefined, appendSegment(prefix, k), visit)
     }
   }
 }
@@ -204,11 +209,21 @@ function diffObjectsLockstep(
   const seen = new Set<string>()
   for (const k of Object.keys(oldRec)) {
     seen.add(k)
-    diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
+    diffAndApply(
+      readConsumerProp(oldRec, k),
+      readConsumerProp(newRec, k),
+      appendSegment(prefix, k),
+      visit
+    )
   }
   for (const k of Object.keys(newRec)) {
     if (seen.has(k)) continue
-    diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
+    diffAndApply(
+      readConsumerProp(oldRec, k),
+      readConsumerProp(newRec, k),
+      appendSegment(prefix, k),
+      visit
+    )
   }
 }
 

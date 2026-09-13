@@ -208,6 +208,31 @@ import { markRaw } from 'vue'
 form.setValue('session', markRaw(new Session(token)))
 ```
 
+### Code in your schema never takes the page down
+
+A schema is not inert data. `z.lazy(() => ...)`, `.default(() => ...)` and `.catch(() => ...)` hold functions you wrote, and Attaform calls them during its own work: deriving blank values at mount, resolving a recursive node, fingerprinting. If one of those throws, the throw lands in the middle of an Attaform walk.
+
+Attaform contains it. The field falls back to absent, exactly as if the schema had never described it, and development logs once per kind of failure with the original error attached. The rest of the form mounts and stays usable.
+
+```ts
+const schema = z.object({
+  // If this factory throws, `draft` reads as undefined and the console
+  // says why. `title` is unaffected and the form still mounts.
+  draft: z.string().default(() => JSON.parse(localStorage.getItem('draft') ?? '')),
+  title: z.string(),
+})
+```
+
+The same holds for the values you write. Attaform walks them, so a property that is an accessor gets read; one that throws is treated as an absent key rather than allowed to escape from `setValue`, `reset`, or a render.
+
+Callbacks you hand over deliberately already have somewhere to go, and keep going there: a throw from `onSubmit` or `onError` lands on `form.meta.submitError`, and a throw from a `register({ transforms })` function lands on `field.transformError`.
+
+Two throws are deliberately loud, because both are a mistake at the call site rather than a failure at runtime: a malformed path (`form.errors('a..b')`) and an invalid `useForm` configuration.
+
+::: warning One known gap on Zod v3
+A `.refine(async fn)` whose predicate **throws** (as opposed to returning `false`) logs one unhandled rejection when the form mounts. Zod v3 cannot tell an async refinement from a sync one without running it, and it discards the returned promise before reporting, so there is nothing for Attaform to catch. The failure still surfaces normally through validation, and nothing breaks. Returning `false` from an async refinement, the usual way to fail one, is unaffected.
+:::
+
 ## Schema-agnostic core
 
 Underneath the Zod entries, the core doesn't know about Zod at all. It consumes any object that implements `AbstractSchema`, a small contract covering identity, defaults, shape introspection, and validation. `attaform/abstract` exposes that core directly through `useAbstractForm`, which takes an `AbstractSchema` adapter instead of a Zod schema. The Zod adapters cover the bulk of real-world schemas; reach for [`AbstractSchema`](/docs/schemas/abstract-schema) and `attaform/abstract` when you're wiring Valibot, ArkType, Effect Schema, or a hand-rolled validator.

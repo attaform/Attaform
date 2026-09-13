@@ -44,6 +44,7 @@ import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
+import { readConsumerProp } from './consumer-code'
 import { groupErrorsByKey } from './errors'
 import { runFactoryAndApply } from './form-activation'
 import { mergeSparseHydration } from './merge-hydration'
@@ -1141,9 +1142,14 @@ function stripSymbolsDeep(value: unknown): unknown {
   const out: Record<string, unknown> = {}
   const src = value as Record<string, unknown>
   for (const k of stringKeys) {
-    const cleaned = stripSymbolsDeep(src[k])
+    // Same guard, same reason as `unset-walker`'s key loop: this walks
+    // a consumer value, and a throwing accessor on it must not escape
+    // into the host app. Read once and compare against that read, so a
+    // getter with side effects is not invoked twice per key either.
+    const original = readConsumerProp(src, k)
+    const cleaned = stripSymbolsDeep(original)
     out[k] = cleaned
-    if (cleaned !== src[k]) mutated = true
+    if (cleaned !== original) mutated = true
   }
   return mutated ? out : value
 }

@@ -1,4 +1,5 @@
 import type { Path, Segment } from './paths'
+import { spreadConsumerRecord } from './consumer-code'
 import { isShadowedKey, safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
 
 /**
@@ -343,7 +344,11 @@ function mergeStructuralImpl(
     // `__proto__` setter so a consumer carrying a literal `__proto__`
     // own property survives the spread without reassigning the result's
     // prototype chain.
-    const out: Record<string, unknown> = { ...consumer }
+    // Spread via the guarded helper: a consumer object can carry an
+    // accessor that throws, and `{ ...consumer }` invokes every getter.
+    // The helper spreads first and only falls back to a guarded copy if
+    // that throws, so the per-write happy path is unchanged.
+    const out: Record<string, unknown> = spreadConsumerRecord(consumer)
     const filledAny = fillMissingKeysFromDefault(schema, scratch, consumer, defaultValue, out)
     const recursedAny = recurseIntoConsumerKeys(schema, scratch, consumer, defaultValue, out)
     return filledAny || recursedAny ? out : consumer

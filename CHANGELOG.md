@@ -48,6 +48,38 @@
 
 ### Fixed
 
+- **Consumer code can no longer throw out of Attaform into the host
+  app.** A schema is not inert data: `z.lazy(() => ...)`,
+  `.default(() => ...)` and `.catch(() => ...)` hold consumer functions
+  that Attaform invokes during its own walks, and a throw from one
+  landed mid-walk and came out of `useForm(...)`, taking the host
+  component with it. Nine call sites invoked consumer schema functions
+  and exactly one was guarded; v3 guarded all three of its introspector
+  entry points while v4 guarded one. The catch now lives in the
+  introspector, where consumer code is actually invoked, so every
+  present and future caller is covered, and each containment reports
+  once per site in development rather than swallowing silently.
+
+  The same audit covered values: Attaform walks what you write, and an
+  accessor that throws (a getter on a literal, a `computed` reached
+  through a Vue `reactive()` object) escaped from `setValue`, `reset`,
+  `useForm` and, worst of all, from inside a `computed`, where it threw
+  on every READ of `meta.dirty` rather than once on the write. Seven
+  read sites are guarded, including the shared `safeOwnRead` helper,
+  whose docblock already contemplated a consumer-supplied accessor.
+  `test/core/consumer-throw-containment.test.ts` is the standing audit:
+  every extension point gets something that throws pushed through it.
+
+  One limit is documented rather than closed. On Zod v3 a
+  `.refine(async fn)` whose predicate THROWS leaks one unhandled
+  rejection at mount: v3 discovers an async refine by running it, and
+  drops the returned promise before throwing its own sync error, so
+  there is no reference for Attaform to attach a handler to. The same
+  failure is reported properly on the async validation path, and
+  closing it would mean pre-stripping every schema containing any
+  `.refine()`. Pinned by a test.
+
+
 - **The `useForm` schema root must be able to hold keys on Zod v4
   too.** A form is a set of addressable fields, so the root has to be
   a `z.object`, a `z.record`, or a `z.discriminatedUnion`. v3 has

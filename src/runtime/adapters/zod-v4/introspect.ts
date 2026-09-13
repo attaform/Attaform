@@ -9,6 +9,7 @@
  * `def`.
  */
 import type { z } from 'zod'
+import { callConsumerSchemaFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 
 /**
@@ -276,7 +277,7 @@ export function unwrapLazy(schema: z.ZodType): z.ZodType | undefined {
   const def = readDef(schema)
   const getter = def?.getter
   if (typeof getter !== 'function') return undefined
-  return getter() as z.ZodType
+  return callConsumerSchemaFn(() => getter() as z.ZodType | undefined, undefined, 'lazy-getter')
 }
 
 /** Getter function reference on a `z.lazy()` — used for recursion detection. */
@@ -307,11 +308,11 @@ export function getCatchDefault(schema: z.ZodType): unknown {
   const def = readDef(schema)
   const cv = def?.catchValue
   if (typeof cv !== 'function') return undefined
-  try {
-    return cv({ error: new Error('atta:default-values'), input: undefined })
-  } catch {
-    return undefined
-  }
+  return callConsumerSchemaFn(
+    () => cv({ error: new Error('atta:default-values'), input: undefined }),
+    undefined,
+    'catch-factory'
+  )
 }
 
 /** True iff the schema carries a callable `z.catch(...)` fallback. */
@@ -324,8 +325,12 @@ export function getDefaultValue(schema: z.ZodType): unknown {
   const def = readDef(schema)
   // In v4, defaultValue is stored as a getter that returns the value directly
   // (v3 stored a function that had to be called). We read the property via
-  // normal access so the getter fires.
-  return def?.defaultValue
+  // normal access so the getter fires — which means a consumer's
+  // `.default(() => ...)` factory runs right here, inside a walk that
+  // `useForm(...)` is waiting on. v3 has always guarded its equivalent;
+  // this side did not, so a throwing factory came out of `useForm` and
+  // took the host component with it.
+  return callConsumerSchemaFn(() => def?.defaultValue, undefined, 'default-factory')
 }
 
 /**

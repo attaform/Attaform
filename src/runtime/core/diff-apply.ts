@@ -1,3 +1,4 @@
+import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
 import { isPathPrefix, pathsEqual } from './paths'
 import type { Path, Segment } from './paths'
 import { safeAssign, safeOwnRead } from './safe-assign'
@@ -141,17 +142,21 @@ function walkNewDescendable(
 ): void {
   if (Array.isArray(newValue)) {
     for (let i = 0; i < newValue.length; i++) {
-      diffAndApply(undefined, newValue[i], appendSegment(prefix, i), visit)
+      diffAndApply(undefined, readConsumerIndex(newValue, i), appendSegment(prefix, i), visit)
     }
   } else {
     const rec = newValue as Record<string, unknown>
-    for (const k of Object.keys(rec)) {
-      diffAndApply(undefined, rec[k], appendSegment(prefix, k), visit)
+    for (const k of consumerKeys(rec)) {
+      diffAndApply(undefined, readConsumerProp(rec, k), appendSegment(prefix, k), visit)
     }
   }
 }
 
 /**
+ * Key reads here go through `readConsumerProp` throughout. Both sides of
+ * a diff are values the consumer wrote, and an accessor that throws on
+ * one of them would escape `setValue` / `reset` into the host app.
+ *
  * Mirror of `walkNewDescendable` for the removal direction: walk a
  * descendable `oldValue` whose new counterpart is `undefined`, emitting
  * an atomic `'removed'` patch for every leaf.
@@ -163,12 +168,12 @@ function walkOldDescendable(
 ): void {
   if (Array.isArray(oldValue)) {
     for (let i = 0; i < oldValue.length; i++) {
-      diffAndApply(oldValue[i], undefined, appendSegment(prefix, i), visit)
+      diffAndApply(readConsumerIndex(oldValue, i), undefined, appendSegment(prefix, i), visit)
     }
   } else {
     const rec = oldValue as Record<string, unknown>
-    for (const k of Object.keys(rec)) {
-      diffAndApply(rec[k], undefined, appendSegment(prefix, k), visit)
+    for (const k of consumerKeys(rec)) {
+      diffAndApply(readConsumerProp(rec, k), undefined, appendSegment(prefix, k), visit)
     }
   }
 }
@@ -186,7 +191,12 @@ function diffArraysLockstep(
 ): void {
   const max = Math.max(oldArr.length, newArr.length)
   for (let i = 0; i < max; i++) {
-    diffAndApply(oldArr[i], newArr[i], appendSegment(prefix, i), visit)
+    diffAndApply(
+      readConsumerIndex(oldArr, i),
+      readConsumerIndex(newArr, i),
+      appendSegment(prefix, i),
+      visit
+    )
   }
 }
 
@@ -202,13 +212,23 @@ function diffObjectsLockstep(
   visit: (patch: Patch) => void
 ): void {
   const seen = new Set<string>()
-  for (const k of Object.keys(oldRec)) {
+  for (const k of consumerKeys(oldRec)) {
     seen.add(k)
-    diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
+    diffAndApply(
+      readConsumerProp(oldRec, k),
+      readConsumerProp(newRec, k),
+      appendSegment(prefix, k),
+      visit
+    )
   }
-  for (const k of Object.keys(newRec)) {
+  for (const k of consumerKeys(newRec)) {
     if (seen.has(k)) continue
-    diffAndApply(oldRec[k], newRec[k], appendSegment(prefix, k), visit)
+    diffAndApply(
+      readConsumerProp(oldRec, k),
+      readConsumerProp(newRec, k),
+      appendSegment(prefix, k),
+      visit
+    )
   }
 }
 

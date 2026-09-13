@@ -14,6 +14,7 @@
  */
 import type { AbstractSchema, SlimPrimitiveKind } from '../types/types-api'
 import type { Path, Segment } from './paths'
+import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
 import { isPlainRecord } from './path-walker'
 import { __DEV__ } from './dev'
 
@@ -163,14 +164,16 @@ function walk(
 
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
-      if (!walk(schema, store, [...path, i], value[i])) return false
+      if (!walk(schema, store, [...path, i], readConsumerIndex(value, i))) return false
     }
     return true
   }
 
   if (isPlainRecord(value)) {
-    for (const key of Object.keys(value)) {
-      if (!walk(schema, store, [...path, key], (value as Record<string, unknown>)[key])) {
+    for (const key of consumerKeys(value)) {
+      // Guarded: `value` came from the consumer and the key may be an
+      // accessor that throws. An escape here comes out of `setValue`.
+      if (!walk(schema, store, [...path, key], readConsumerProp(value, key))) {
         return false
       }
     }

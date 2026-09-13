@@ -48,6 +48,51 @@
 
 ### Fixed
 
+- **Consumer code can no longer throw out of Attaform into the host
+  app.** A schema is not inert data: `z.lazy(() => ...)`,
+  `.default(() => ...)` and `.catch(() => ...)` hold consumer functions
+  that Attaform invokes during its own walks, and a throw from one
+  landed mid-walk and came out of `useForm(...)`, taking the host
+  component with it. Nine call sites invoked consumer schema functions
+  and exactly one was guarded; v3 guarded all three of its introspector
+  entry points while v4 guarded one. The catch now lives in the
+  introspector, where consumer code is actually invoked, so every
+  present and future caller is covered, and each containment reports
+  once per site in development rather than swallowing silently.
+
+  The same audit covered values: Attaform walks what you write, and an
+  accessor that throws (a getter on a literal, a `computed` reached
+  through a Vue `reactive()` object) escaped from `setValue`, `reset`,
+  `useForm` and, worst of all, from inside a `computed`, where it threw
+  on every READ of `meta.dirty` rather than once on the write. Seven
+  read sites are guarded, including the shared `safeOwnRead` helper,
+  whose docblock already contemplated a consumer-supplied accessor.
+  `test/core/consumer-throw-containment.test.ts` is the standing audit:
+  every extension point gets something that throws pushed through it.
+
+  On Zod v3, a `.refine(async fn)` whose predicate THROWS used to leak
+  an unhandled rejection at mount, on `reset()`, and on every
+  discriminated-union variant switch. v3 cannot mark an async refine
+  statically, so it discovers one by running it, then discards the
+  returned promise before throwing its own sync error, leaving nothing
+  for Attaform to catch. The fix makes it catchable: before any sync
+  parse, each `ZodEffects` is rebuilt with a refinement that calls the
+  original, attaches a no-op handler if the result is thenable, and
+  returns that same result. Zod still sees a Promise, still throws its
+  sync-detect error, and the strip recovery still runs. Pre-stripping
+  every schema containing any `.refine()` was the alternative, and it
+  would have dropped sync-refine seeding at mount for every form using
+  a refinement.
+
+  Enumerating a consumer value is guarded too, not just reading from
+  it. `Object.keys` invokes a Proxy's `ownKeys` and
+  `getOwnPropertyDescriptor` traps and `key in obj` invokes its `has`
+  trap, so an existence check or a key listing can throw before any
+  property has been touched — and Vue's `reactive()` returns a Proxy.
+  Array indices get the same treatment: an index can be an accessor,
+  and `slice()` reads every one.
+
+
 - **The `useForm` schema root must be able to hold keys on Zod v4
   too.** A form is a set of addressable fields, so the root has to be
   a `z.object`, a `z.record`, or a `z.discriminatedUnion`. v3 has

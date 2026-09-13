@@ -12,6 +12,7 @@
  * shape-based pattern matching on `_def`.
  */
 import type { z } from 'zod-v3'
+import { callConsumerSchemaFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 import { isZodSchemaType } from './helpers'
 
@@ -355,6 +356,20 @@ export function unwrapEffectsSource(schema: z.ZodTypeAny): z.ZodTypeAny | undefi
 }
 
 /**
+ * The raw `_def.effect` record of a `ZodEffects`.
+ *
+ * `getEffectsKind` answers what KIND of effect it is; this returns the
+ * record itself, for the one caller that needs to rebuild a node with a
+ * replacement effect rather than merely classify it.
+ */
+export function getEffect(schema: z.ZodTypeAny): Record<string, unknown> | undefined {
+  const def = readDef(schema)
+  // `readDef`'s type already models `effect` as an optional object, so
+  // `undefined` is the only non-record it can be.
+  return def?.effect as Record<string, unknown> | undefined
+}
+
+/**
  * Kind of effect carried by a `ZodEffects` — `'refinement'`,
  * `'transform'`, `'preprocess'`, or undefined when the def shape is
  * malformed. Used by the preprocess-or-coerce-leaf detector to scope
@@ -630,11 +645,7 @@ export function unwrapLazy(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
   const getter = def?.getter
   if (typeof getter !== 'function') return undefined
-  try {
-    return getter() as z.ZodTypeAny
-  } catch {
-    return undefined
-  }
+  return callConsumerSchemaFn(() => getter() as z.ZodTypeAny | undefined, undefined, 'lazy-getter')
 }
 
 /** Getter function reference on a `z.lazy()` — used for recursion detection. */
@@ -688,11 +699,7 @@ export function getDefaultValue(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
   const thunk = def?.defaultValue
   if (typeof thunk !== 'function') return undefined
-  try {
-    return thunk()
-  } catch {
-    return undefined
-  }
+  return callConsumerSchemaFn(() => thunk(), undefined, 'default-factory')
 }
 
 /**
@@ -712,11 +719,11 @@ export function getCatchDefault(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
   const cv = def?.catchValue
   if (typeof cv !== 'function') return undefined
-  try {
-    return cv({ error: null, input: undefined })
-  } catch {
-    return undefined
-  }
+  return callConsumerSchemaFn(
+    () => cv({ error: null, input: undefined }),
+    undefined,
+    'catch-factory'
+  )
 }
 
 /** True iff the schema carries a callable `_def.catchValue` (ZodCatch wrapper). */

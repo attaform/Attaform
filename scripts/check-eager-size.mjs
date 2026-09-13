@@ -432,7 +432,16 @@ export async function measureEager(define = PROD_DEFINE) {
 // shutdown() that awaited nothing, with zero callers anywhere. Deleted;
 // eviction now disposes directly. Budget 33_550 -> 33_430
 // (~0.43 kB headroom).
-const BUDGET_GZ = 33_430
+// values-snapshot (#567): 33,355 -> 33,469 measured (+114). `form.values()`
+// returns a detached snapshot instead of the live readonly proxy, memoised
+// through a computed so repeated calls stay at parity with the proxy return,
+// and released on every write so a cleared File is not pinned by the stale
+// copy. The eager cost is the memoising computed, the onFormChange release
+// subscription, and the guard that keeps a released box from ever being read;
+// all three sit in the shared core a minimal useForm pulls in. The budget had
+// ~0.07 kB left before this, which is why 114 B tripped it. Budget
+// 33_430 -> 33_900 (~0.42 kB headroom, back to the conventional band).
+const BUDGET_GZ = 33_900
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

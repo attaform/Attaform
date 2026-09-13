@@ -358,7 +358,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 51.3 KB.
-    limit: '51.75 KB',
+    //
+    // Raised 51.75 → 52.25 KB on the values-snapshot branch (#567). The
+    // memoised `form.values()` snapshot releases its previous copy on
+    // every write, so a cleared File is not pinned by a stale cache.
+    // The release subscription, plus the guard keeping a released box
+    // from ever being read, cost ~65 B of shared core, which every
+    // entry shipping the values surface carries. Measured at 51.82 KB.
+    limit: '52.25 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -589,7 +596,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 51.3 KB.
-    limit: '51.75 KB',
+    //
+    // Raised 51.75 → 52.25 KB on the values-snapshot branch (#567). The
+    // memoised `form.values()` snapshot releases its previous copy on
+    // every write, so a cleared File is not pinned by a stale cache.
+    // The release subscription, plus the guard keeping a released box
+    // from ever being read, cost ~65 B of shared core, which every
+    // entry shipping the values surface carries. Measured at 51.82 KB.
+    limit: '52.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1030,7 +1044,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 47.72 KB.
-    limit: '48.25 KB',
+    //
+    // Raised 48.25 → 48.5 KB on the values-snapshot branch (#567). This
+    // entry did not trip, but it was sitting at exactly 48.25 KB against a
+    // 48.25 KB cap, the same zero-headroom state that made the sibling
+    // abstract.mjs tripwire fail on 9 B. Re-baselined alongside it so the
+    // next change is not blocked by a budget with nowhere to go.
+    // Measured at 48.25 KB.
+    limit: '48.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1057,7 +1078,13 @@ export default [
     // Tightened 48 → 42 KB on the size-teardown P1a dual-dist branch: the
     // shipped prod flavor is pre-stripped of `__DEV__` code at package
     // build, so the raw-dist measurement drops by the dev mass this
-    // tripwire previously carried. Measured at 40.68 KB.    //
+    // tripwire previously carried. Measured at 40.68 KB.
+    //
+    // Raised 38.5 → 39 KB on the values-snapshot branch (#567): the
+    // memoising computed behind `form.values()` lands in the shared core
+    // this entry ships. The cap was sitting at exactly 38.5 KB against a
+    // 38.5 KB measurement, so it had no headroom left for a change of any
+    // size; 9 B tripped it. Re-baselined with room. Measured at 38.51 KB.    //
     // Tightened 42 -> 41.5 KB on the size-teardown P2 directive un-weld:
     // the app-level `app.directive('register', ...)` weld left
     // createAttaform, the store's DOM slice moved behind the lazily-armed
@@ -1082,7 +1109,7 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 38.02 KB.
-    limit: '38.5 KB',
+    limit: '39 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1306,7 +1333,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 37.67 KB.
-    limit: '38 KB',
+    //
+    // Raised 38 → 38.5 KB on the values-snapshot branch (#567). The
+    // memoised `form.values()` snapshot releases its previous copy on
+    // every write, so a cleared File is not pinned by a stale cache.
+    // The release subscription, plus the guard keeping a released box
+    // from ever being read, cost ~65 B of shared core, which every
+    // entry shipping the values surface carries. Measured at 38.06 KB.
+    limit: '38.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1371,7 +1405,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 33.36 KB.
-    limit: '33.75 KB',
+    //
+    // Raised 33.75 → 34.25 KB on the values-snapshot branch (#567). The
+    // memoised `form.values()` snapshot releases its previous copy on
+    // every write, so a cleared File is not pinned by a stale cache.
+    // The release subscription, plus the guard keeping a released box
+    // from ever being read, cost ~65 B of shared core, which every
+    // entry shipping the values surface carries. Measured at 33.82 KB.
+    limit: '34.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1456,7 +1497,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 34.26 KB.
-    limit: '34.75 KB',
+    //
+    // Raised 34.75 → 35.25 KB on the values-snapshot branch (#567). The
+    // memoised `form.values()` snapshot releases its previous copy on
+    // every write, so a cleared File is not pinned by a stale cache.
+    // The release subscription, plus the guard keeping a released box
+    // from ever being read, cost ~65 B of shared core, which every
+    // entry shipping the values surface carries. Measured at 34.82 KB.
+    limit: '35.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1581,7 +1629,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 37.67 KB.
-    limit: '38 KB',
+    //
+    // Raised 38 → 38.5 KB on the values-snapshot branch (#567). The
+    // memoised `form.values()` snapshot releases its previous copy on
+    // every write, so a cleared File is not pinned by a stale cache.
+    // The release subscription, plus the guard keeping a released box
+    // from ever being read, cost ~65 B of shared core, which every
+    // entry shipping the values surface carries. Measured at 38.06 KB.
+    limit: '38.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1656,7 +1711,14 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 25.34 KB.
-    limit: '25.75 KB',
+    //
+    // Raised 25.75 → 26.25 KB on the values-snapshot branch (#567). The
+    // memoised `form.values()` snapshot releases its previous copy on
+    // every write, so a cleared File is not pinned by a stale cache.
+    // The release subscription, plus the guard keeping a released box
+    // from ever being read, cost ~65 B of shared core, which every
+    // entry shipping the values surface carries. Measured at 25.81 KB.
+    limit: '26.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

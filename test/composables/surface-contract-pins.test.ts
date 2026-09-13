@@ -18,6 +18,7 @@
  *   key sets (the getter forests must stay enumerable)
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import { nextTick, watch } from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import type { App } from 'vue'
@@ -259,6 +260,98 @@ describe.each(adapters)('surface contract pins — $name', ({ mount }) => {
     expect(Object.keys(api.values)).toEqual(['email', 'address', 'items'])
     expect(JSON.parse(JSON.stringify(api.values))).toEqual(DEFAULTS)
     expect('email' in api.values).toBe(true)
+  })
+
+  /**
+   * `form.values()` is a SNAPSHOT and `form.values.x` is the reactive
+   * view. Before #567 the call form returned the live readonly proxy,
+   * so a captured result mutated underneath its holder, the obvious
+   * detach (`structuredClone`) threw on the proxy, and a `watch` over
+   * the call form never fired because the identity never changed.
+   * None of that was pinned, and the whole suite passed on the fix,
+   * which is why these four assertions exist.
+   */
+  it('values: the call form is a detached snapshot, not a live view', async () => {
+    const { api, app } = mount()
+    apps.push(app)
+
+    const captured = api.values()
+    api.setValue('email', 'changed@b.com')
+    await nextTick()
+
+    expect(captured.email).toBe('a@b.com')
+    expect(api.values().email).toBe('changed@b.com')
+    expect(Object.getPrototypeOf(captured)).toBe(Object.prototype)
+    expect(() => structuredClone(api.values())).not.toThrow()
+  })
+
+  it('values: the call form is memoised between writes', () => {
+    const { api, app } = mount()
+    apps.push(app)
+
+    // Identity-stable while the form is unchanged, so repeated reads
+    // cost one materialisation and props built from it do not churn.
+    expect(api.values()).toBe(api.values())
+
+    api.setValue('email', 'next@b.com')
+    expect(api.values()).not.toBe(api.values.email)
+    expect(api.values().email).toBe('next@b.com')
+  })
+
+  it('values: a watch over the call form fires on change', async () => {
+    const { api, app } = mount()
+    apps.push(app)
+
+    let fired = 0
+    const stop = watch(
+      () => api.values(),
+      () => {
+        fired++
+      }
+    )
+    api.setValue('email', 'one@b.com')
+    await nextTick()
+    api.setValue('address.city', 'LA')
+    await nextTick()
+    stop()
+
+    expect(fired).toBe(2)
+  })
+
+  it('values: a path call returns a detached subtree', async () => {
+    const { api, app } = mount()
+    apps.push(app)
+
+    const subtree = api.values('address') as { city: string }
+    api.setValue('address.city', 'Boston')
+    await nextTick()
+
+    expect(subtree.city).toBe('NYC')
+    expect((api.values('address') as { city: string }).city).toBe('Boston')
+  })
+
+  /**
+   * A container path resolves out of the memoised root rather than
+   * materialising per call. Copying the subtree on every call measured
+   * ~250x the live return it replaced, and returned a fresh object each
+   * time, so the same unchanged state compared unequal to itself. A
+   * leaf needs no copy and stays on the direct walk, which is why the
+   * two are pinned separately.
+   */
+  it('values: a container path is memoised, a leaf path is not copied', () => {
+    const { api, app } = mount()
+    apps.push(app)
+
+    expect(api.values('address')).toBe(api.values('address'))
+    expect(api.values(['items', 0])).toBe(api.values(['items', 0]))
+    expect(api.values('items')).toBe(api.values('items'))
+
+    // Leaves are values, so identity is the value itself.
+    expect(api.values('address.city')).toBe('NYC')
+    expect(api.values('items.0.sku')).toBe('A')
+
+    // A container snapshot is detached from the live surface.
+    expect(api.values('address')).not.toBe(api.values.address)
   })
 
   it('read surfaces reject writes without throwing (warn-and-noop)', () => {

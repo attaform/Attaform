@@ -43,6 +43,8 @@ import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
  * - Coercion: `toJSON` / `toString` / `valueOf` / `Symbol.toPrimitive`
  *   resolve to the surface's materialiser at every node, so
  *   `JSON.stringify` and template interpolation never see a proxy.
+ * - `form.values()` returns a detached snapshot, not the live proxy;
+ *   dot access stays the reactive view. See `buildValuesSurface`.
  * - Writes are warn-and-noop at every node (strict-mode callers must
  *   not throw; the readonly contract is the absence of mutation).
  * - Per-path node memoisation, keyed by canonical path + live shape,
@@ -68,6 +70,13 @@ import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
  * canonical segments as a dotted-string call.
  */
 const INTEGER_SEGMENT = /^(?:0|[1-9]\d*)$/
+
+/**
+ * Marks a snapshot box whose payload a write has dropped. Distinct from
+ * `undefined`, which is a legitimate materialised value for a form
+ * whose root is absent.
+ */
+const RELEASED: unique symbol = Symbol()
 
 /** Inert descent target for an invoke shim over a non-existent field. */
 const EMPTY_DESCENT: Readonly<Record<string, never>> = Object.freeze({})
@@ -778,25 +787,95 @@ function materializeFormValue(node: unknown): unknown {
 /**
  * Build the `form.values` surface: a thin callable over Vue's native
  * `readonly` proxy. Dot reads delegate to the readonly proxy (per-key
- * dependency tracking lands in the consumer's effect); the call form
- * walks a path via `getAtPath`; coercion serialises through
- * `materializeFormValue`; enumeration reflects the readonly proxy;
- * writes are warn-and-noop. The wrapping computed re-mints the inner
- * readonly proxy on whole-form swaps while the callable stays
- * identity-stable.
+ * dependency tracking lands in the consumer's effect); enumeration
+ * reflects the readonly proxy; writes are warn-and-noop. The wrapping
+ * computed re-mints the inner readonly proxy on whole-form swaps while
+ * the callable stays identity-stable.
+ *
+ * The two read shapes answer different questions, and the split is the
+ * documented contract:
+ *
+ * - `form.values.email` is the REACTIVE view. Per-key tracking, no
+ *   copying, the value is always the live one.
+ * - `form.values()` is a SNAPSHOT. It materialises a detached plain
+ *   object, so a captured result keeps the values it held at capture
+ *   time even as the form moves on.
+ *
+ * The call form used to return `inner.value`, the live readonly proxy,
+ * which made every documented use of it wrong in the same silent way:
+ * `api.save(form.values())` handed an async call an object that kept
+ * mutating underneath it, `structuredClone(form.values())` threw on the
+ * proxy, and `watch(() => form.values(), cb)` never fired once, because
+ * the identity never changed (#567). Nothing pinned the old behaviour
+ * and the whole suite passed on the change.
+ *
+ * Memoised through a computed rather than materialised per call. A deep
+ * walk of the form is ~1400x the cost of handing back the proxy, which
+ * is a real regression when the call sits in a render; behind a
+ * computed it is paid once per write instead of once per call, and not
+ * at all until someone reads. Repeated calls between writes measured at
+ * parity with the old proxy return.
+ *
+ * The copy is deep across the plain-data spine. Non-plain instances
+ * (Map, Set, File, Date) pass through `toRaw` by reference, matching
+ * what `toJSON` has always done: cloning a File would be both expensive
+ * and wrong, since identity is what an upload needs. Callers who want a
+ * fully detached copy can `structuredClone` the result, which the live
+ * proxy never allowed.
  */
-export function buildValuesSurface<F extends GenericForm>(form: Ref<F>): CallableSurface {
+export function buildValuesSurface<F extends GenericForm>(
+  form: Ref<F>,
+  onFormChange: (listener: () => void) => () => void
+): CallableSurface {
   const inner = computed(() => readonly(form.value))
-  const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(() =>
-    materializeFormValue(inner.value)
-  )
+
+  // The materialised copy lives in a box the computed hands back, so a
+  // write can drop the payload while the computed still holds the box.
+  // Vue keeps a computed's last value until something reads it again,
+  // which would leave the previous snapshot pinning whatever the form
+  // used to hold. That is invisible for the plain-data spine (it is a
+  // copy, and it is replaced) but not for the instances materialise
+  // shares by reference: a cleared 50 MB File stayed reachable through
+  // the stale copy until the next read or teardown, where the live
+  // proxy this replaced released it at once.
+  let held: { value: unknown } | null = null
+  const snapshot = computed(() => {
+    const box = { value: materializeFormValue(inner.value) as unknown }
+    held = box
+    return box
+  })
+  onFormChange(() => {
+    if (held === null) return
+    held.value = RELEASED
+    held = null
+  })
+
+  // Every write that releases also invalidates the computed, so a
+  // released box is not reachable through this read. The branch is the
+  // guard for that invariant rather than an expected path: degrade to a
+  // fresh materialisation, never serve an emptied box.
+  const readSnapshot = (): unknown => {
+    const box = snapshot.value
+    return box.value === RELEASED ? materializeFormValue(inner.value) : box.value
+  }
+
+  const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(() => readSnapshot())
   const target = (() => {}) as unknown as CallableSurface
 
   return new Proxy(target, {
     apply(_, __, args: unknown[]): unknown {
       const arg = args[0] as string | Path | undefined
-      if (arg === undefined) return inner.value
-      return getAtPath(inner.value, canonicalizePath(arg).segments)
+      if (arg === undefined) return readSnapshot()
+      const segments = canonicalizePath(arg).segments
+      // A leaf needs no copy, so it walks the live tree and skips
+      // building the root snapshot entirely. A container resolves out
+      // of the memoised snapshot instead of materialising per call:
+      // copying a subtree on every call measured ~250x the old live
+      // return on a 27-row form, and handed back a fresh object each
+      // time, so the same unchanged state compared unequal to itself.
+      const node = getAtPath(inner.value, segments)
+      if (node === null || typeof node !== 'object') return node
+      return getAtPath(readSnapshot(), segments)
     },
     get(_, key: string | symbol): unknown {
       if (typeof key === 'symbol') {

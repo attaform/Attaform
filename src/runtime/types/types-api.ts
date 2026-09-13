@@ -3563,6 +3563,27 @@ export type ErrorsProxyShape<T> = LeafWalker<T, 'errors', false>
  * form.values()                      // the whole form value (root)
  * ```
  *
+ * The two shapes answer different questions. Dot access is the
+ * REACTIVE view: per-key tracking, no copying, always the live value.
+ * The call form returns a SNAPSHOT: a detached plain object that keeps
+ * what it held at capture time, so it is the shape to hand an async
+ * call, a serialiser, or a diff.
+ *
+ * ```ts
+ * const before = form.values()   // detached; survives later writes
+ * await api.save(before)         // cannot mutate underneath the call
+ * form.values.email              // reactive read; use this in computed
+ * ```
+ *
+ * Prefer dot access inside a `computed`, `watchEffect`, or template:
+ * it tracks the one key you read, where the call form depends on the
+ * whole form and re-runs the consumer on any change.
+ *
+ * The copy is deep across plain objects and arrays. Non-plain
+ * instances (Map, Set, File, Date) are shared by reference, matching
+ * `JSON.stringify` behaviour; `structuredClone(form.values())` gives a
+ * fully detached copy when one is needed.
+ *
  * Single-bracket dotted access (`form.values['address.city']`) is
  * intentionally NOT supported — JS object semantics treat the dotted
  * string as a single key. Use chained dot/bracket or the callable

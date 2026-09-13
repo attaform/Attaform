@@ -903,7 +903,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // fresh one keyed to the new target. The callable proxy itself is
   // identity-stable — consumers caching `form.values` get a stable
   // reference whose underlying data tracks the live form value.
-  const valuesProxy = buildValuesSurface(state.form)
+  const valuesProxy = buildValuesSurface(state.form, state.onFormChange)
 
   // --- Pinia-style reactive per-field state proxy ---
   // Allocated once per buildFormApi call (one per consumer). Each Proxy

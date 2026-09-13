@@ -259,6 +259,17 @@ function computeFingerprint(
  * cases we emit the canonical representation. Without this the
  * fingerprint is non-idempotent for schemas like
  * `.default(() => new Date())`.
+ *
+ * Reference equality is deliberately stricter than it needs to be, and
+ * comparing the two reads STRUCTURALLY instead was tried and rejected.
+ * It does fingerprint v4's heap-allocated defaults properly (v4 rebuilds
+ * `.default(new Set(['x']))` on every access, so `Object.is` collapses
+ * it), but neither major stores a factory default distinguishably from a
+ * literal one: v3 wraps both in a thunk, v4 resolves both to a value. So
+ * `.default(() => new Date())` read twice inside the same millisecond
+ * compares equal, and the timestamp lands in the fingerprint — the same
+ * schema then disagrees with itself a second later. That trades a MISSED
+ * warning for a FLAKY one, which is the worse of the two.
  */
 function stableValueRepr(get: (s: z.ZodType) => unknown, schema: z.ZodType): string {
   const first = get(schema)

@@ -2,8 +2,9 @@
  * Canonical stringify for arbitrary values, shared by the v3 and v4
  * schema fingerprint walkers. Produces a stable string surface for
  * structural equality testing: object keys are sorted, arrays walk in
- * index order, and functions / symbols / cycles collapse to opaque
- * sentinels.
+ * index order, Map entries and Set members are serialised and sorted
+ * (both are unordered), and functions / symbols / cycles collapse to
+ * opaque sentinels.
  *
  * This is NOT JSON. The output is not meant to round-trip through
  * `JSON.parse`; it exists purely so two structurally-equal values
@@ -45,6 +46,23 @@ export function canonicalStringify(value: unknown, seen: WeakSet<object> = new W
     try {
       if (value instanceof Date) return `date:${value.getTime()}`
       if (value instanceof RegExp) return `regex:${String(value)}`
+      // Maps and Sets keep their contents off the own-property list, so
+      // the key walk below sees nothing and every Map, every Set, and
+      // `{}` collapse to the same string. That let two `z.set()` schemas
+      // declaring DIFFERENT defaults agree on a fingerprint, which is
+      // the one thing a fingerprint exists to notice. Sets are sorted
+      // because membership is unordered; Map entries are sorted by their
+      // serialised key for the same reason.
+      if (value instanceof Map) {
+        const entries = [...value]
+          .map(([k, v]) => `${canonicalStringify(k, seen)}=>${canonicalStringify(v, seen)}`)
+          .sort()
+        return `map:[${entries.join(',')}]`
+      }
+      if (value instanceof Set) {
+        const members = [...value].map((v) => canonicalStringify(v, seen)).sort()
+        return `set:[${members.join(',')}]`
+      }
       const entries = Object.entries(obj)
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([k, v]) => `${JSON.stringify(k)}:${canonicalStringify(v, seen)}`)

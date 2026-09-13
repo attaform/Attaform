@@ -32,6 +32,7 @@ import {
   buildValuesSurface,
 } from './callable-tree'
 import { buildFieldArrayApi } from './array-engine'
+import { createDynamicPathSweep } from './dynamic-path-sweep'
 import {
   aggregateErrorsAt,
   buildContainerFieldStateBase,
@@ -234,10 +235,17 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   const fieldStateAccessorOptions =
     options.getDisplayState !== undefined ? { getDisplayState: options.getDisplayState } : undefined
+  // One liveness sweep shared by every per-path cache this form builds.
+  // Created here because each surface registers its own eviction into
+  // it, and one registry means one subscription and one liveness walk
+  // per candidate rather than one set per cache. See
+  // `dynamic-path-sweep.ts`.
+  const pathSweep = createDynamicPathSweep(state)
   const getRootFieldStateAt = buildFieldStateAccessor(
     state,
     formInstanceId,
     getFormMetaBase,
+    pathSweep,
     fieldStateAccessorOptions
   )
   // Gated `displayState` at any path, reusing the same memoised
@@ -489,7 +497,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   //
   // Container paths are descend-only (no terminal). The "give me every
   // error" need is served by `form.meta.errors` (flat ValidationError[]).
-  const errorsProxy = buildErrorsSurface(state)
+  const errorsProxy = buildErrorsSurface(state, pathSweep)
 
   // `setErrors` / `clearErrors` own the `userErrors` store — the manual
   // error layer that merges with schema/validation errors on read. The
@@ -912,7 +920,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // every consumer of a path shares one computed and repeated access
   // (`form.fields.email` twice) returns the same object — useful for
   // downstream `===` checks and Vue's render diff.
-  const fieldStateProxy = buildFieldsSurface(state, getRootFieldStateAt)
+  const fieldStateProxy = buildFieldsSurface(state, getRootFieldStateAt, pathSweep)
 
   // Lazy-activation gate: every public method routes through `activate`
   // so the first reactive interaction kicks the captured factory. The

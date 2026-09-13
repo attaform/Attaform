@@ -20,6 +20,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
+import { createDynamicPathSweep } from '../../src/runtime/core/dynamic-path-sweep'
 import * as paths from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
 
@@ -36,7 +37,15 @@ function rowsAccessor(rowCount: number) {
   })
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
-  return { state, getFieldState: buildFieldStateAccessor(state, 'rows-instance', getFormMetaBase) }
+  return {
+    state,
+    getFieldState: buildFieldStateAccessor(
+      state,
+      'rows-instance',
+      getFormMetaBase,
+      createDynamicPathSweep(state)
+    ),
+  }
 }
 
 describe('container field-state aggregation — linear in array length', () => {
@@ -138,7 +147,12 @@ describe('container field-state aggregation — linear in array length', () => {
     })
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
-    const getFieldState = buildFieldStateAccessor(state, 'group-instance', getFormMetaBase)
+    const getFieldState = buildFieldStateAccessor(
+      state,
+      'group-instance',
+      getFormMetaBase,
+      createDynamicPathSweep(state)
+    )
 
     // Write the optional leaf (enters `originals`), mark it interacted, then
     // cycle it back to undefined (present-undefined, still in originals).

@@ -88,6 +88,26 @@
   the `form.meta.errors` summary while still blocking the submit. The v3
   adapter re-files both before they reach the error stores, and every
   read surface now reports the same value on both majors. (#614)
+- **`form.fields` and `form.errors` release the paths they no longer
+  have.** Both surfaces memoise per canonical path so repeated reads
+  stay cheap, and none of those caches was ever evicted: they grew with
+  the number of paths the form had ever resolved rather than the number
+  it currently has. Churning 500 keys of a `z.record` of objects through
+  every read surface left 2,506 cached entries behind a form whose
+  record was `{}` (view proxies 500, container proxies 1,004,
+  schema-presence memos 1,002, materialised error trees 500); it now
+  leaves 6, the live path set. They hold proxies, closures and path
+  strings rather than form data, which is what made this milder than the
+  field-state cache fixed alongside it, but it is the same unbounded
+  shape.
+
+  One shared registry sweeps all of them, replacing the per-cache sweep
+  that shipped for #612: one subscription, one cursor and one liveness
+  walk per candidate, which is the expensive half, with the evictions
+  riding along. Only a path the form no longer has is ever dropped, so
+  `form.fields.<path>` stays identity-stable for every path that still
+  exists. Measured at no write-path cost: the added time sits inside the
+  noise floor of an unchanged-code control in the same run. (#617)
 
 - **A churning form releases the paths it no longer has.** The per-path
   field-state cache behind `form.fields`, `form.register` and

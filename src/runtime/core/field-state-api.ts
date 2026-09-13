@@ -1,4 +1,4 @@
-import { computed, toRaw, type ComputedRef } from 'vue'
+import { computed, type ComputedRef } from 'vue'
 import type {
   DisplayCtx,
   DisplayMachine,
@@ -11,6 +11,7 @@ import type {
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import type { DynamicPathSweep } from './dynamic-path-sweep'
 import { __DEV__ } from './dev'
 import { defaultDisplayState, isDefaultDisplayState } from './display-state'
 import { makeBlankRequiredError } from './error-codes'
@@ -40,17 +41,6 @@ import {
  * WeakSet so the registry never pins a consumer predicate against GC.
  */
 const warnedDisplayStatePredicates = new WeakSet<GetDisplayState>()
-
-/**
- * How many cached dynamic paths one write checks for liveness. The
- * sweep resumes where it left off, so the whole set is covered every
- * `size / SWEEP_SLICE` writes at a cost per write that does not grow
- * with the form. Measured against a 27-row form holding 135 of them,
- * 8 puts the added write cost at the noise floor where 32 cost a
- * repeatable ~28%, and still sweeps that form end to end every 17
- * writes.
- */
-const SWEEP_SLICE = 8
 
 function isUnderStubAncestor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -132,32 +122,14 @@ export function buildFieldStateAccessor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   formInstanceId: string,
   getFormMetaBase: FormMetaBaseGetter,
+  sweep: DynamicPathSweep,
   options?: { readonly getDisplayState?: GetDisplayState }
 ) {
   // Per-path memoisation so `getFieldStateAt(p)` returns the same
   // `ComputedRef` reference on repeated reads with the same canonical
   // path.
   const cache = new Map<PathKey, ComputedRef<FieldState<unknown>>>()
-  // The subset of `cache` whose paths no schema shape bounds, tracked
-  // separately so the sweep walks only the candidates it could drop.
-  const dynamicKeys = new Set<PathKey>()
   const predicate = options?.getDisplayState
-
-  /**
-   * A path no schema shape bounds: it traverses an array index or a
-   * record key, so the set of such paths grows with what the form has
-   * held rather than with what it declares. A path through fixed object
-   * shapes alone is one of finitely many, and is never swept, which
-   * also keeps an absent optional field from being dropped and rebuilt
-   * on a loop.
-   */
-  const isDynamicPath = (segments: Path): boolean => {
-    for (let i = 0; i < segments.length; i++) {
-      if (typeof segments[i] === 'number') return true
-      if (!state.schema.isFixedObjectAtPath(segments.slice(0, i))) return true
-    }
-    return false
-  }
 
   // A cached entry holds its path's `value` and its `original`, so this
   // cache pins form data rather than bookkeeping alone. Nothing evicted
@@ -167,41 +139,16 @@ export function buildFieldStateAccessor<F extends GenericForm>(
   // at 200 of 200 removed keys still reachable and 12.5 MB pinned by a
   // form whose value was `{}` (#612).
   //
-  // Each write checks a bounded slice of the dynamic set for liveness
-  // and drops what the form no longer has, resuming where the last
-  // write stopped. A fixed slice rather than a whole pass keeps the cost
-  // per write flat as the form grows, which a per-write O(cache) walk
-  // would not: these computeds are deliberately per-leaf so one field's
-  // change does not wake another, and sweeping all of them on every
-  // keystroke would spend exactly what that buys. A Set iterator is live
-  // under mutation, so keys added mid-pass are picked up and deleted
-  // ones skipped.
-  //
-  // Evicting is invisible to consumers: `form.fields.<path>` hands back
-  // a view proxy from a separate cache, and that proxy re-resolves
-  // through this accessor on every trap hit rather than capturing a
-  // computed, so a dropped entry is rebuilt on the next read behind the
-  // same view identity. Vue invalidates a live computed through its own
-  // subscriptions, so an effect still holding one keeps it, and keeps it
-  // correct, whether or not this cache still lists it.
-  let sweepCursor: Iterator<PathKey> | null = null
-  state.onFormChange((next) => {
-    if (dynamicKeys.size === 0) return
-    const raw = toRaw(next)
-    for (let i = 0; i < SWEEP_SLICE; i++) {
-      sweepCursor ??= dynamicKeys.values()
-      const step = sweepCursor.next()
-      if (step.done === true) {
-        // One full pass done; the next write starts a fresh one.
-        sweepCursor = null
-        break
-      }
-      const segments = segmentsForPathKey(step.value)
-      if (segments !== null && hasAtPath(raw, segments)) continue
-      dynamicKeys.delete(step.value)
-      cache.delete(step.value)
-    }
-  })
+  // The shared sweep drops a path the form no longer has from here and
+  // from every sibling per-path cache in one pass. Evicting is invisible
+  // to consumers: `form.fields.<path>` hands back a view proxy from a
+  // separate cache, and that proxy re-resolves through this accessor on
+  // every trap hit rather than capturing a computed, so a dropped entry
+  // is rebuilt on the next read behind the same view identity. Vue
+  // invalidates a live computed through its own subscriptions, so an
+  // effect still holding one keeps it, and keeps it correct, whether or
+  // not this cache still lists it.
+  sweep.onEvict((key) => cache.delete(key))
 
   return function getFieldState(pathInput: string | Path): ComputedRef<FieldState<unknown>> {
     const { segments, key } = canonicalizePath(pathInput)
@@ -213,7 +160,7 @@ export function buildFieldStateAccessor<F extends GenericForm>(
         : buildContainerFieldState(state, segments, key, formInstanceId, getFormMetaBase, predicate)
     )
     cache.set(key, c)
-    if (isDynamicPath(segments)) dynamicKeys.add(key)
+    sweep.track(segments, key)
     return c
   }
 }

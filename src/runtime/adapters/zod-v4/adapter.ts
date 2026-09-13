@@ -239,7 +239,8 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
  * touching the app-level default.
  *
  * Throws if the schema isn't Zod v4 or contains kinds the adapter
- * cannot represent (`z.promise`, `z.custom`, `z.templateLiteral`).
+ * cannot represent (`z.promise`, `z.templateLiteral`, `z.map`,
+ * `z.symbol`, `z.function`).
  * Recursive `z.lazy(...)` is supported — the runtime walks bound their
  * descent via `maxRecursionDepth`.
  */

@@ -104,6 +104,23 @@ export type SharedZodKind =
   | 'template-literal'
 
 /**
+ * A kind that declares a value without describing its shape.
+ *
+ * Nothing descends into an opaque leaf, and nothing can be inferred
+ * about what a valid value looks like: the schema's own predicate is
+ * the only authority, and it runs at parse time. `custom` is the kind
+ * `z.instanceof(X)` and `z.custom<T>()` compile to on v4; on v3 those
+ * spellings peel through `ZodEffects` to `any` (#542).
+ *
+ * Three comparisons rather than a module-level `Set`: the membership
+ * test is the whole predicate, and the eager bundle is measured in
+ * bytes (see `.size-limit.js`).
+ */
+function isOpaqueKind(kind: SharedZodKind | string): boolean {
+  return kind === 'any' || kind === 'unknown' || kind === 'custom'
+}
+
+/**
  * Pure schema-shape accessors. The factory consults these to branch on
  * structural facts about a schema node. Every member is side-effect-
  * free and idempotent.
@@ -442,6 +459,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   // get re-walked per keystroke / per field-state get.
   const leafCache = new Map<PathKey, boolean>()
   const preprocessOrCoerceCache = new Map<PathKey, boolean>()
+  const opaqueLeafCache = new Map<PathKey, boolean>()
   const discriminatorCache = new Map<PathKey, UnionDiscriminatorContext | undefined>()
   // Memoised one-shot tree walks. `needsAsyncValidation` is queried at
   // construction by the store (drives the construction-time async seed);
@@ -675,6 +693,26 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       }
       preprocessOrCoerceCache.set(cacheKey, hit)
       return hit
+    },
+
+    isOpaqueLeafAtPath(path): boolean {
+      const cacheKey = canonicalizePath(path).key
+      const cached = opaqueLeafCache.get(cacheKey)
+      if (cached !== undefined) return cached
+      const resolved =
+        path.length === 0
+          ? [rootSchema]
+          : services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
+      // Every candidate must be opaque. A union with one opaque arm
+      // still has arms that describe a shape, and those arms' sub-paths
+      // are real — the gate has to keep checking them.
+      const opaque =
+        resolved.length > 0 &&
+        resolved.every((candidate) =>
+          isOpaqueKind(intro.kindOf(services.peelAllWrappers(candidate)))
+        )
+      opaqueLeafCache.set(cacheKey, opaque)
+      return opaque
     },
 
     isRequiredAtPath(path): boolean {

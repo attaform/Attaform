@@ -158,11 +158,14 @@ export function walkPathSegments<Schema>(
         right === undefined ? [] : walkPathSegments(right, segments, intro, maxDepth, lazyDepth)
       return [...leftResults, ...rightResults]
     }
-    // Leaves — can't descend further. The unsupported kinds (`map` /
-    // `symbol` / `function` / `promise`) are rejected at adapter
-    // construction by `assertSupportedKinds`; falling through to `[]`
-    // keeps the walker defensive in case construction is skipped
-    // (e.g. a downstream test instantiates a sub-schema directly).
+    // Leaves — can't descend further. Opaque leaves (`any` /
+    // `unknown` / `custom`) land here too and `[]` is the truthful
+    // answer: the schema declares no sub-paths under them, so none are
+    // fabricated. The unsupported kinds (`map` / `symbol` / `function`
+    // / `promise`) are rejected at adapter construction by
+    // `assertSupportedKinds`; falling through to `[]` keeps the walker
+    // defensive in case construction is skipped (e.g. a downstream
+    // test instantiates a sub-schema directly).
     default:
       return []
   }

@@ -62,6 +62,13 @@ export function fakeSchema<F extends GenericForm>(
       void path
       return false
     },
+    isOpaqueLeafAtPath(path) {
+      // fakeSchema models concrete data, not opaque kinds, so no path
+      // it describes is an opaque leaf. Tests that need the gate's
+      // opaque short-circuit override this on the returned object.
+      void path
+      return false
+    },
     getDefaultAtPath(path) {
       // fakeSchema is data-keyed, not schema-keyed — it can't distinguish
       // tuple from unbounded array. To keep the structural-completeness

@@ -2,6 +2,7 @@ import { computed, readonly, toRaw, type ComputedRef, type Ref } from 'vue'
 import type { ValidationError } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import type { DynamicPathSweep } from './dynamic-path-sweep'
 import { cellEntriesFor } from './errors'
 import { aggregateErrorsAt, type FieldState } from './field-state-api'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
@@ -176,19 +177,38 @@ type TreeSpec = {
   readonly call: (segs: Path) => unknown
   /** Surface name for the warn-and-noop messages. */
   readonly surface: string
+  /** Shared liveness sweep; this tree registers its caches into it. */
+  readonly sweep: DynamicPathSweep
 }
 
 function buildTree(spec: TreeSpec): CallableSurface {
   const containerCache = new Map<string, CallableSurface>()
   // Per-path "schema has a field here" memo for the fixed-object gate.
-  const existsCache = new Map<string, boolean>()
+  const existsCache = new Map<PathKey, boolean>()
+
+  // Both grow one entry per path the surface has ever resolved, so both
+  // are swept for paths the form no longer has (#617). The container
+  // cache keys by path AND live shape, so an eviction drops both
+  // variants; a key it never held is a no-op delete.
+  spec.sweep.onEvict((key) => {
+    containerCache.delete(`${key}+A`)
+    containerCache.delete(`${key}+O`)
+    existsCache.delete(key)
+  })
 
   function schemaHasPath(segs: readonly Segment[]): boolean {
-    const cacheKey = JSON.stringify(segs)
+    // `keyToSegment` normalises an integer-looking key to a number
+    // exactly as `normalizeSegment` does, so these segments are already
+    // canonical and the bare stringify IS the canonical `PathKey` the
+    // sweep evicts by. Spelling it that way rather than routing through
+    // `canonicalizePath` keeps the descend gate, which runs on every
+    // dot access, off a re-normalise it cannot need.
+    const cacheKey = JSON.stringify(segs) as PathKey
     const cached = existsCache.get(cacheKey)
     if (cached !== undefined) return cached
     const result = spec.schema.getSlimPrimitiveTypesAtPath(segs).size > 0
     existsCache.set(cacheKey, result)
+    spec.sweep.track(segs as Path, cacheKey)
     return result
   }
 
@@ -207,7 +227,8 @@ function buildTree(spec: TreeSpec): CallableSurface {
     // `held.length` / `Object.keys(held)` / descent track reality;
     // only host-level checks (`Array.isArray`, `typeof`) stay pinned.
     const isArrayLike = spec.isArrayAt(segments)
-    const cacheKey = `${JSON.stringify(segments)}+${isArrayLike ? 'A' : 'O'}`
+    const pathKey = JSON.stringify(segments) as PathKey
+    const cacheKey = `${pathKey}+${isArrayLike ? 'A' : 'O'}`
     const existing = containerCache.get(cacheKey)
     if (existing !== undefined) return existing
 
@@ -337,6 +358,7 @@ function buildTree(spec: TreeSpec): CallableSurface {
       },
     })
     containerCache.set(cacheKey, proxy)
+    spec.sweep.track(segments as Path, pathKey)
     return proxy
   }
 
@@ -357,20 +379,26 @@ function buildTree(spec: TreeSpec): CallableSurface {
  * computed.
  */
 export function buildErrorsSurface<F extends GenericForm>(
-  state: FormStore<F, GenericForm>
+  state: FormStore<F, GenericForm>,
+  sweep: DynamicPathSweep
 ): CallableSurface {
   // Lazily-allocated computed per materialised container path: the
   // sparse tree rebuilds when a store / the form value changes, not on
   // every stringify. Deps (error stores, form Ref, schema queries) are
   // read inside the computed, so tracking is unchanged.
-  const treeCache = new Map<string, ComputedRef<unknown>>()
+  const treeCache = new Map<PathKey, ComputedRef<unknown>>()
+  // Keyed per container path, so it is bounded by container count for a
+  // fixed schema but not for a record of objects, where every entry is
+  // its own container (#617).
+  sweep.onEvict((key) => treeCache.delete(key))
   const materialize = (segments: readonly Segment[]): unknown => {
-    const cacheKey = JSON.stringify(segments)
+    const cacheKey = JSON.stringify(segments) as PathKey
     let tree = treeCache.get(cacheKey)
     if (tree === undefined) {
       const frozen = [...segments]
       tree = computed(() => materializeErrors(state, frozen))
       treeCache.set(cacheKey, tree)
+      sweep.track(segments as Path, cacheKey)
     }
     return tree.value
   }
@@ -434,6 +462,7 @@ export function buildErrorsSurface<F extends GenericForm>(
     // never drift.
     call: (path) => aggregateErrorsAt(state, path),
     surface: 'form.errors',
+    sweep,
   })
 }
 
@@ -639,7 +668,8 @@ export const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<un
  */
 export function buildFieldsSurface<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
-  getFieldStateAt: (path: Path) => ComputedRef<FieldState<unknown>>
+  getFieldStateAt: (path: Path) => ComputedRef<FieldState<unknown>>,
+  sweep: DynamicPathSweep
 ): CallableSurface {
   const snapshotAt = (segments: readonly Segment[]): Record<string, unknown> => {
     const view = getFieldStateAt(segments as Path).value as unknown as Record<string, unknown>
@@ -651,9 +681,15 @@ export function buildFieldsSurface<F extends GenericForm>(
   // Per-path field-view cache: `form.fields.email` and
   // `form.fields('email')` resolve one identity-stable view per
   // canonical path.
-  const viewCache = new Map<string, CallableSurface>()
+  const viewCache = new Map<PathKey, CallableSurface>()
+  // Identity stability is the contract here, which is exactly why only
+  // a path the form no longer HAS may be dropped (#617). A dead path's
+  // view is unreachable through this surface, and a consumer still
+  // holding one keeps reading correctly: every trap re-resolves live
+  // state per hit rather than capturing anything.
+  sweep.onEvict((key) => viewCache.delete(key))
   function viewAt(segments: readonly Segment[]): CallableSurface {
-    const cacheKey = JSON.stringify(segments)
+    const cacheKey = JSON.stringify(segments) as PathKey
     const existing = viewCache.get(cacheKey)
     if (existing !== undefined) return existing
     const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(() =>
@@ -706,6 +742,7 @@ export function buildFieldsSurface<F extends GenericForm>(
       },
     })
     viewCache.set(cacheKey, proxy)
+    sweep.track(segments as Path, cacheKey)
     return proxy
   }
 
@@ -723,6 +760,7 @@ export function buildFieldsSurface<F extends GenericForm>(
     call: (path) =>
       state.schema.getSlimPrimitiveTypesAtPath(path).size > 0 ? viewAt(path) : undefined,
     surface: 'form.fields',
+    sweep,
   })
 }
 

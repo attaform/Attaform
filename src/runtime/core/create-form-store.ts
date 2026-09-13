@@ -44,7 +44,12 @@ import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
-import { readConsumerProp } from './consumer-code'
+import {
+  consumerKeys,
+  consumerSymbolKeys,
+  readConsumerIndex,
+  readConsumerProp,
+} from './consumer-code'
 import { groupErrorsByKey } from './errors'
 import { runFactoryAndApply } from './form-activation'
 import { mergeSparseHydration } from './merge-hydration'
@@ -1101,8 +1106,8 @@ function walkDuStubs(
   // takes the plain bracket-assign branch. A hostile payload carrying
   // `__proto__` can't reassign the container's prototype chain.
   const out: Record<string, unknown> = {}
-  for (const k of Object.keys(rec)) {
-    safeAssign(out, k, walkDuStubs(schema, rec[k], [...path, k], warned))
+  for (const k of consumerKeys(rec)) {
+    safeAssign(out, k, walkDuStubs(schema, readConsumerProp(rec, k), [...path, k], warned))
   }
   return out
 }
@@ -1125,9 +1130,12 @@ function stripSymbolsDeep(value: unknown): unknown {
     let mutated = false
     const out: unknown[] = new Array(value.length)
     for (let i = 0; i < value.length; i++) {
-      const cleaned = stripSymbolsDeep(value[i])
+      // Read once, guarded: an array index can be an accessor too, and
+      // reading twice would invoke it twice.
+      const original = readConsumerIndex(value, i)
+      const cleaned = stripSymbolsDeep(original)
       out[i] = cleaned
-      if (cleaned !== value[i]) mutated = true
+      if (cleaned !== original) mutated = true
     }
     return mutated ? out : value
   }
@@ -1136,8 +1144,11 @@ function stripSymbolsDeep(value: unknown): unknown {
   // them. Symbol-keyed properties on these are a consumer concern.
   const proto = Object.getPrototypeOf(value)
   if (proto !== Object.prototype && proto !== null) return value
-  const symKeys = Object.getOwnPropertySymbols(value)
-  const stringKeys = Object.keys(value)
+  // Enumeration itself is guarded: a Proxy's `ownKeys` trap runs here
+  // and can throw before any property has been touched, which no
+  // amount of per-key guarding would catch.
+  const symKeys = consumerSymbolKeys(value)
+  const stringKeys = consumerKeys(value)
   let mutated = symKeys.length > 0
   const out: Record<string, unknown> = {}
   const src = value as Record<string, unknown>

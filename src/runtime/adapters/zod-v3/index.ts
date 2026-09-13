@@ -62,7 +62,7 @@ import {
   unwrapPipeIn,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
-import { stripAsyncChecks } from './strip-async'
+import { stripAsyncChecks, wrapAsyncSafeRefinements } from './strip-async'
 import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
@@ -138,6 +138,33 @@ async function lazyFingerprint(schema: z.ZodSchema): Promise<string> {
   return fingerprintZodSchema(schema)
 }
 
+/**
+ * Cache of promise-safe schema variants, keyed by the node handed in.
+ *
+ * Every SYNCHRONOUS parse the adapter performs has to go through here.
+ * A sync parse of a schema holding an async refinement makes Zod v3 run
+ * that refinement, see a Promise, discard it, and throw its
+ * "Async refinement encountered" error; a predicate that rejects then
+ * surfaces in the host app as an unhandled rejection from a parse the
+ * consumer never asked for. `wrapAsyncSafeRefinements` attaches a
+ * handler to that promise before Zod can drop it, changing nothing
+ * else about the parse.
+ *
+ * Cached because the rebuild is a full tree walk and the sync paths
+ * (mount, `reset()`, a discriminated-union variant switch) re-parse the
+ * same nodes. A `WeakMap` keeps it keyed to schema lifetime, so a form
+ * that is torn down takes its entry with it.
+ */
+const syncSafeCache = new WeakMap<object, z.ZodTypeAny>()
+
+function syncSafe(schema: z.ZodTypeAny): z.ZodTypeAny {
+  const cached = syncSafeCache.get(schema)
+  if (cached !== undefined) return cached
+  const wrapped = wrapAsyncSafeRefinements(schema)
+  syncSafeCache.set(schema, wrapped)
+  return wrapped
+}
+
 function buildV3Services<
   Form extends GenericForm,
   GetValueFormType extends GenericForm,
@@ -169,7 +196,7 @@ function buildV3Services<
       resolveFieldMetaAtPathV3(schema as z.ZodSchema, path, maxRecursionDepth),
     issuesToValidationErrors: (issues) => zodIssuesToValidationErrors(issues as z.ZodIssue[]),
     safeParseSync: (schema, data) => {
-      const result = schema.safeParse(data)
+      const result = syncSafe(schema).safeParse(data)
       return result.success
         ? { success: true, data: result.data }
         : { success: false, issues: result.error.issues }
@@ -800,7 +827,10 @@ function runStrictGetDefaultsV3<Form>(
     }
 
     try {
-      const strictResult = rootSchema.safeParse(rawDefaultValues)
+      // Through `syncSafe`: this is the parse that discovers an async
+      // refinement by running it, so it is the one that would leak the
+      // predicate's rejection into the host app.
+      const strictResult = syncSafe(rootSchema).safeParse(rawDefaultValues)
       if (strictResult.success) {
         // Storage holds the pre-transform `z.input` view, so we return
         // the raw defaults (already filled by
@@ -834,7 +864,7 @@ function runStrictGetDefaultsV3<Form>(
         err instanceof Error && err.message.includes('Async refinement encountered')
       if (isAsyncDetect) {
         try {
-          const strippedResult = stripAsyncChecks(rootSchema).safeParse(rawDefaultValues)
+          const strippedResult = syncSafe(stripAsyncChecks(rootSchema)).safeParse(rawDefaultValues)
           if (strippedResult.success) {
             return {
               data: rawDefaultValues as Form,

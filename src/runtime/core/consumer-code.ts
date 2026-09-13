@@ -41,19 +41,6 @@ import { __DEV__ } from './dev'
 const reported: Set<string> | null = __DEV__ ? new Set<string>() : null
 
 /**
- * Human-readable remediation per site. Kept beside the site names so a
- * message says what to do, not just what happened.
- */
-const ADVICE: Readonly<Record<ConsumerCallSite, string>> = {
-  'default-factory':
-    "a `.default(() => ...)` factory threw. Attaform used `undefined` for that field's initial value.",
-  'catch-factory':
-    'a `.catch(() => ...)` fallback threw. Attaform used `undefined` for that value.',
-  'lazy-getter':
-    'a `z.lazy(() => ...)` factory threw. Attaform stopped descending at that node, so paths below it will not resolve.',
-}
-
-/**
  * The schema-embedded functions Attaform invokes. A closed set on
  * purpose: each one names a specific Zod construct with specific
  * remediation, and a new entry should arrive with its own advice line
@@ -61,11 +48,27 @@ const ADVICE: Readonly<Record<ConsumerCallSite, string>> = {
  */
 export type ConsumerCallSite = 'default-factory' | 'catch-factory' | 'lazy-getter'
 
+/**
+ * Report a contained throw, once per site.
+ *
+ * The `__DEV__` test leads so the whole body, remediation strings
+ * included, sits inside a branch the consumer's bundler folds away in
+ * production. Holding the advice in a module-level record instead
+ * would keep those strings in the production bundle, since a reference
+ * from a live function is enough to retain them.
+ */
 function report(site: ConsumerCallSite, err: unknown): void {
+  if (!__DEV__) return
   if (reported === null || reported.has(site)) return
   reported.add(site)
+  const advice =
+    site === 'default-factory'
+      ? "a `.default(() => ...)` factory threw. Attaform used `undefined` for that field's initial value."
+      : site === 'catch-factory'
+        ? 'a `.catch(() => ...)` fallback threw. Attaform used `undefined` for that value.'
+        : 'a `z.lazy(() => ...)` factory threw. Attaform stopped descending at that node, so paths below it will not resolve.'
   console.error(
-    `[attaform] ${ADVICE[site]} A function inside your schema must not throw; ` +
+    `[attaform] ${advice} A function inside your schema must not throw; ` +
       `wrap your own try/catch if the failure is recoverable. Original error:`,
     err
   )
@@ -126,28 +129,69 @@ export function readConsumerProp(obj: Record<string, unknown>, key: string): unk
 }
 
 /**
- * Copy a consumer record's own enumerable string keys into a fresh
- * plain object, tolerating accessors that throw.
+ * Own enumerable string keys of a consumer-supplied object, returning
+ * `[]` if enumerating them throws.
  *
- * `{ ...src }` invokes every getter, so one throwing accessor takes the
- * whole spread down. The fast path here IS the spread, and the guarded
- * key-by-key copy only runs after it has already failed. That keeps the
- * common case at spread speed, which matters because this sits on the
- * per-write merge path, and pays the slow copy only for the object that
- * actually misbehaved.
+ * `Object.keys` is not a safe read on an arbitrary value. It invokes
+ * the `ownKeys` and `getOwnPropertyDescriptor` traps, so a Proxy can
+ * throw before a single property has been touched, which no amount of
+ * per-key guarding would catch. Vue's `reactive()` returns a Proxy, so
+ * this is not a hypothetical shape to find in form state.
  *
- * Symbol keys are dropped, matching the spread's own treatment under
- * `stripSymbolsDeep`: form paths are string-keyed.
+ * `[]` reads as "an object with nothing in it", which every walker
+ * already handles.
  */
-export function spreadConsumerRecord(src: Record<string, unknown>): Record<string, unknown> {
+export function consumerKeys(obj: object): string[] {
   try {
-    return { ...src }
+    return Object.keys(obj)
   } catch {
-    const out: Record<string, unknown> = {}
-    for (const key of Object.keys(src)) {
-      const value = readConsumerProp(src, key)
-      if (value !== undefined) out[key] = value
-    }
-    return out
+    return []
+  }
+}
+
+/**
+ * Read index `i` off a consumer-supplied array, returning `undefined`
+ * if the read throws.
+ *
+ * The array counterpart of `readConsumerProp`. An array index can be an
+ * accessor just as an object key can (`Object.defineProperty(arr, '0',
+ * { get })`), and a Proxy wrapping an array traps element reads too.
+ */
+export function readConsumerIndex(arr: readonly unknown[], i: number): unknown {
+  try {
+    return arr[i]
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Own symbol keys of a consumer-supplied object, returning `[]` if
+ * enumerating them throws. Companion to `consumerKeys` for the one
+ * walker that has to know whether symbol-keyed properties are present.
+ */
+export function consumerSymbolKeys(obj: object): symbol[] {
+  try {
+    return Object.getOwnPropertySymbols(obj)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Own-or-inherited key existence on a consumer-supplied object,
+ * returning `false` if the check throws.
+ *
+ * `key in obj` invokes a Proxy's `has` trap and
+ * `Object.prototype.hasOwnProperty.call` invokes its
+ * `getOwnPropertyDescriptor` trap, so an existence check is no safer
+ * than a read. `false` reads as "no value at this path", which is the
+ * same answer every caller takes for a slot that is genuinely absent.
+ */
+export function consumerHas(obj: object, key: string | number): boolean {
+  try {
+    return key in obj
+  } catch {
+    return false
   }
 }

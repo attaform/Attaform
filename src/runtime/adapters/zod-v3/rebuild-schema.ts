@@ -206,3 +206,20 @@ export function rebuildDiscriminatedUnion(
   }
   return rebuildWithDef(original, { options, optionsMap })
 }
+
+/**
+ * Rebuild a `ZodEffects` around a processed source schema and a
+ * replacement effect.
+ *
+ * `ZodEffects` carries its source at `_def.schema`, NOT the
+ * `_def.innerType` every other wrapper uses, so `rebuildWrapperInner`
+ * does not serve it. `_def.effect` is the `{ type, refinement }` /
+ * `{ type, transform }` record `introspect.ts` reads.
+ */
+export function rebuildEffects<T extends z.ZodTypeAny>(
+  original: T,
+  source: z.ZodTypeAny,
+  effect: unknown
+): T {
+  return rebuildWithDef(original, { schema: source, effect })
+}

@@ -19,7 +19,7 @@
  * writes at those names shadow the inherited slot without any chain
  * mutation.
  */
-import { readConsumerProp } from './consumer-code'
+import { readConsumerIndex, readConsumerProp } from './consumer-code'
 
 export function safeAssign<T>(target: Record<string, T>, key: string, value: T): void {
   if (key === '__proto__') {
@@ -112,5 +112,68 @@ export function safeOwnRead(target: Record<string, unknown>, key: string): unkno
  * check.
  */
 export function safeOwnHas(target: object, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(target, key)
+  try {
+    return Object.prototype.hasOwnProperty.call(target, key)
+  } catch {
+    // `hasOwnProperty` invokes a Proxy's `getOwnPropertyDescriptor`
+    // trap, so an existence check on a consumer value is no safer than
+    // a read. `false` reads as "no own slot here", the same answer a
+    // genuinely absent key gives.
+    return false
+  }
+}
+
+/**
+ * Copy a consumer record's own enumerable string keys into a fresh
+ * plain object, tolerating accessors that throw.
+ *
+ * `{ ...src }` invokes every getter, so one throwing accessor takes the
+ * whole spread down. The fast path here IS the spread, and the guarded
+ * copy only runs after it has already failed. That keeps the common
+ * case at spread speed, which matters because this sits on the
+ * per-write merge path, and pays the slow copy only for the object that
+ * actually misbehaved.
+ *
+ * The fallback matches the spread it stands in for on both points that
+ * are easy to get wrong. Every key is assigned even when its value is
+ * `undefined`, because an explicit `undefined` at a key is a signal the
+ * runtime reads (the consumer named the slot empty) and dropping it
+ * would change the shape. And writes go through `safeAssign`, because
+ * the spread's `CreateDataProperty` semantics land a literal
+ * `__proto__` key as an own data property while a plain `out[key] = v`
+ * would invoke the inherited setter and reassign the prototype chain.
+ *
+ * Symbol keys are dropped, matching how form values are string-keyed
+ * everywhere else.
+ */
+export function spreadConsumerRecord(src: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return { ...src }
+  } catch {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(src)) {
+      safeAssign(out, key, readConsumerProp(src, key))
+    }
+    return out
+  }
+}
+
+/**
+ * Copy a consumer array's elements into a fresh array, tolerating
+ * indices that throw.
+ *
+ * The array counterpart of `spreadConsumerRecord`, and the same
+ * fast-path-first shape: `slice()` reads every index, so one accessor
+ * that throws takes the whole copy down, and the guarded per-index copy
+ * runs only after that has already happened. A throwing index reads as
+ * `undefined`, matching how a throwing key reads elsewhere.
+ */
+export function copyConsumerArray(src: readonly unknown[]): unknown[] {
+  try {
+    return src.slice()
+  } catch {
+    const out = new Array<unknown>(src.length)
+    for (let i = 0; i < src.length; i++) out[i] = readConsumerIndex(src, i)
+    return out
+  }
 }

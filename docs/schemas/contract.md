@@ -229,10 +229,6 @@ Callbacks you hand over deliberately already have somewhere to go, and keep goin
 
 Two throws are deliberately loud, because both are a mistake at the call site rather than a failure at runtime: a malformed path (`form.errors('a..b')`) and an invalid `useForm` configuration.
 
-::: warning One known gap on Zod v3
-A `.refine(async fn)` whose predicate **throws** (as opposed to returning `false`) logs one unhandled rejection when the form mounts. Zod v3 cannot tell an async refinement from a sync one without running it, and it discards the returned promise before reporting, so there is nothing for Attaform to catch. The failure still surfaces normally through validation, and nothing breaks. Returning `false` from an async refinement, the usual way to fail one, is unaffected.
-:::
-
 ## Schema-agnostic core
 
 Underneath the Zod entries, the core doesn't know about Zod at all. It consumes any object that implements `AbstractSchema`, a small contract covering identity, defaults, shape introspection, and validation. `attaform/abstract` exposes that core directly through `useAbstractForm`, which takes an `AbstractSchema` adapter instead of a Zod schema. The Zod adapters cover the bulk of real-world schemas; reach for [`AbstractSchema`](/docs/schemas/abstract-schema) and `attaform/abstract` when you're wiring Valibot, ArkType, Effect Schema, or a hand-rolled validator.

@@ -1,7 +1,7 @@
 import type { AbstractSchema } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import { canonicalizePath, type Path, type PathKey, type Segment } from './paths'
-import { readConsumerProp } from './consumer-code'
+import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
 import { isPlainRecord } from './path-walker'
 import { safeAssign } from './safe-assign'
 import { isUnset } from './unset'
@@ -135,15 +135,18 @@ function walkCore(
     const out = new Array(input.length)
     let mutated = false
     for (let i = 0; i < input.length; i++) {
-      const walked = walkCore(input[i], [...segments, i], schema, paths, synthesizeSchemaKeys)
+      // Read once and compare against that read: an index can be an
+      // accessor, and reading twice would invoke it twice.
+      const original = readConsumerIndex(input, i)
+      const walked = walkCore(original, [...segments, i], schema, paths, synthesizeSchemaKeys)
       out[i] = walked
-      if (walked !== input[i]) mutated = true
+      if (walked !== original) mutated = true
     }
     return mutated ? out : input
   }
   if (typeof input === 'object') {
     const obj = input as Record<string, unknown>
-    const inputKeys = Object.keys(obj)
+    const inputKeys = consumerKeys(obj)
     // setValue boundary: iterate only consumer-supplied keys.
     // Construction boundary: ALSO synthesize schema-only keys so
     // unspecified primitive leaves auto-mark even inside a
@@ -397,14 +400,14 @@ export function expandUnsetAt(
 export function walkAuthoredFromConstraints(value: unknown, prefix: Path, out: Set<PathKey>): void {
   if (prefix.length > 0) out.add(canonicalizePath(prefix).key)
   if (isPlainRecord(value)) {
-    for (const k of Object.keys(value)) {
+    for (const k of consumerKeys(value)) {
       walkAuthoredFromConstraints(readConsumerProp(value, k), [...prefix, k], out)
     }
     return
   }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
-      walkAuthoredFromConstraints(value[i], [...prefix, i], out)
+      walkAuthoredFromConstraints(readConsumerIndex(value, i), [...prefix, i], out)
     }
   }
 }

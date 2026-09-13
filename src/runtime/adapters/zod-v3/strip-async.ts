@@ -19,6 +19,7 @@ import {
   getTupleItems,
   getUnionOptions,
   unwrapBranded,
+  getEffect,
   unwrapEffectsSource,
   unwrapInner,
   unwrapLazy,
@@ -29,6 +30,7 @@ import {
   rebuildArray,
   rebuildDiscriminatedUnion,
   rebuildIntersection,
+  rebuildEffects,
   rebuildLazy,
   rebuildObject,
   rebuildRecord,
@@ -78,6 +80,62 @@ import {
  * surface (full sync + async refines via `safeParseAsync`).
  */
 export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
+  return walkEffects(schema, 'strip')
+}
+
+/**
+ * Rebuild the tree keeping every `ZodEffects` in place, but wrapping
+ * each refinement so a promise it returns gets a rejection handler
+ * attached before anyone can drop it.
+ *
+ * This exists because a sync parse of a schema holding an async
+ * refinement leaks an unhandled rejection, and the leak is Zod's to
+ * create but Attaform's to trigger. Zod v3 cannot mark an async
+ * refinement statically, so it finds one by RUNNING it:
+ * `executeRefinement` calls the predicate, sees a Promise come back,
+ * and throws "Async refinement encountered during synchronous parse".
+ * It discards that promise on the way out. When the consumer's
+ * predicate rejects — an `await` that fails, a thrown error — nothing
+ * is holding the promise, and the host app gets an unhandled rejection
+ * from a parse it never asked for.
+ *
+ * The wrapper changes nothing about the verdict. It calls the original
+ * refinement, attaches a no-op `catch` if the result is thenable, and
+ * returns that same result, so Zod still sees a Promise, still throws
+ * its sync-detect error, and the strip recovery still runs. A sync
+ * refinement passes through untouched.
+ *
+ * Attaching `catch` does not hide the failure from the consumer: it
+ * marks THIS promise handled, and any handler they attach to their own
+ * promise still fires. The same failure is reported properly through
+ * the async validation pass.
+ */
+export function wrapAsyncSafeRefinements(schema: z.ZodTypeAny): z.ZodTypeAny {
+  return walkEffects(schema, 'wrap')
+}
+
+/**
+ * What to do at a `ZodEffects` node.
+ *
+ * - `strip` drops the wrapper entirely. The recovery pass: by the time
+ *   it runs the sync parse has already thrown, and all we know is that
+ *   SOME refine is async, not which.
+ * - `wrap` keeps the wrapper and makes its refinement's promise
+ *   observable. The prevention pass, run before the parse that would
+ *   otherwise leak.
+ */
+type EffectsPolicy = 'strip' | 'wrap'
+
+/** A refinement's return value, when it happens to be thenable. */
+function isThenable(value: unknown): value is Promise<unknown> {
+  return (
+    value !== null &&
+    (typeof value === 'object' || typeof value === 'function') &&
+    typeof (value as { then?: unknown }).then === 'function'
+  )
+}
+
+function walkEffects(schema: z.ZodTypeAny, policy: EffectsPolicy): z.ZodTypeAny {
   const seen = new WeakSet<object>()
 
   function recurse(s: z.ZodTypeAny): z.ZodTypeAny {
@@ -86,12 +144,38 @@ export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
     if (seen.has(candidate)) return s
     seen.add(candidate)
 
-    // ZodEffects: drop the wrapper. The source schema returned by
-    // `unwrapEffectsSource` is the pre-refine / pre-transform shape;
-    // recurse into it so nested effects deeper in the tree also drop.
     if (isZodSchemaType(s, 'ZodEffects')) {
       const inner = unwrapEffectsSource(s)
-      return inner === undefined ? s : recurse(inner)
+      if (inner === undefined) return s
+      // Strip: drop the wrapper. The source schema returned by
+      // `unwrapEffectsSource` is the pre-refine / pre-transform shape;
+      // recurse into it so nested effects deeper in the tree also drop.
+      if (policy === 'strip') return recurse(inner)
+      // Wrap: keep the wrapper, recurse the source, and make the
+      // refinement's returned promise observable. Transforms and
+      // preprocess steps are left exactly as they are — they do not
+      // return a promise Zod then discards.
+      const effect = getEffect(s)
+      const rebuiltInner = recurse(inner)
+      const original = effect?.['refinement']
+      if (effect === undefined || typeof original !== 'function') {
+        return rebuildEffects(s, rebuiltInner, effect)
+      }
+      const refine = original as (value: unknown, ctx: unknown) => unknown
+      const safeEffect = {
+        ...effect,
+        refinement: (value: unknown, ctx: unknown): unknown => {
+          const result = refine(value, ctx)
+          if (isThenable(result)) {
+            // Marks THIS promise handled so Zod dropping it cannot
+            // surface as an unhandled rejection. The consumer's own
+            // handlers, and the async validation pass, are unaffected.
+            void result.catch(() => undefined)
+          }
+          return result
+        },
+      }
+      return rebuildEffects(s, rebuiltInner, safeEffect)
     }
 
     // Transparent wrappers: recurse the inner and rewrap.

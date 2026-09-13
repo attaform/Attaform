@@ -70,14 +70,27 @@
   `test/core/consumer-throw-containment.test.ts` is the standing audit:
   every extension point gets something that throws pushed through it.
 
-  One limit is documented rather than closed. On Zod v3 a
-  `.refine(async fn)` whose predicate THROWS leaks one unhandled
-  rejection at mount: v3 discovers an async refine by running it, and
-  drops the returned promise before throwing its own sync error, so
-  there is no reference for Attaform to attach a handler to. The same
-  failure is reported properly on the async validation path, and
-  closing it would mean pre-stripping every schema containing any
-  `.refine()`. Pinned by a test.
+  On Zod v3, a `.refine(async fn)` whose predicate THROWS used to leak
+  an unhandled rejection at mount, on `reset()`, and on every
+  discriminated-union variant switch. v3 cannot mark an async refine
+  statically, so it discovers one by running it, then discards the
+  returned promise before throwing its own sync error, leaving nothing
+  for Attaform to catch. The fix makes it catchable: before any sync
+  parse, each `ZodEffects` is rebuilt with a refinement that calls the
+  original, attaches a no-op handler if the result is thenable, and
+  returns that same result. Zod still sees a Promise, still throws its
+  sync-detect error, and the strip recovery still runs. Pre-stripping
+  every schema containing any `.refine()` was the alternative, and it
+  would have dropped sync-refine seeding at mount for every form using
+  a refinement.
+
+  Enumerating a consumer value is guarded too, not just reading from
+  it. `Object.keys` invokes a Proxy's `ownKeys` and
+  `getOwnPropertyDescriptor` traps and `key in obj` invokes its `has`
+  trap, so an existence check or a key listing can throw before any
+  property has been touched — and Vue's `reactive()` returns a Proxy.
+  Array indices get the same treatment: an index can be an accessor,
+  and `slice()` reads every one.
 
 
 - **The `useForm` schema root must be able to hold keys on Zod v4

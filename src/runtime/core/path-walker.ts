@@ -1,6 +1,13 @@
 import type { Path, Segment } from './paths'
-import { spreadConsumerRecord } from './consumer-code'
-import { isShadowedKey, safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
+import { consumerHas, consumerKeys, readConsumerIndex } from './consumer-code'
+import {
+  copyConsumerArray,
+  isShadowedKey,
+  safeAssign,
+  safeOwnHas,
+  safeOwnRead,
+  spreadConsumerRecord,
+} from './safe-assign'
 
 /**
  * The minimal slice of `AbstractSchema` the structural-completeness
@@ -131,14 +138,14 @@ export function hasAtPath(root: unknown, path: Path): boolean {
     // every append / remove just because a sibling changed the length. `in` is
     // also truer to this function's own contract: a never-assigned hole is
     // "missing", which the `< length` comparison wrongly reported as present.
-    return typeof last === 'number' && last in current
+    return typeof last === 'number' && consumerHas(current, last)
   }
   const key = typeof last === 'number' ? String(last) : last
   // Own-property existence for prototype-shadowed names — `key in
   // current` would report `true` for an inherited slot the consumer
   // never wrote (see descendStep / safeOwnHas).
   if (isShadowedKey(key)) return safeOwnHas(current as Record<string, unknown>, key)
-  return key in (current as Record<string, unknown>)
+  return consumerHas(current as Record<string, unknown>, key)
 }
 
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -218,7 +225,20 @@ const NO_IN_PLACE: InPlaceWriteResult = { applied: false }
  */
 export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): InPlaceWriteResult {
   if (path.length === 0) return NO_IN_PLACE
+  try {
+    return descendAndWrite(root, path, value)
+  } catch {
+    // Every read and the final write below touch a container the
+    // consumer supplied, so any of them can be an accessor or a Proxy
+    // trap that throws. `NO_IN_PLACE` is already the answer for "this
+    // write cannot be done in place", and the copy-on-write fallback it
+    // sends the caller to walks through the guarded readers. Bailing
+    // here is therefore a downgrade in speed, never in correctness.
+    return NO_IN_PLACE
+  }
+}
 
+function descendAndWrite(root: unknown, path: Path, value: unknown): InPlaceWriteResult {
   // Single validated descent: at each level the segment must address an
   // existing slot on a descendable container. A missing/non-descendable
   // node, an out-of-range index, an absent key, or a prototype-shadowed
@@ -381,7 +401,7 @@ function mergeStructuralArray(
   let cachedElementDefault: unknown
   let cachedElementDefaultRead = false
   let mutated = targetLen > consumer.length
-  const out: unknown[] = consumer.slice()
+  const out: unknown[] = copyConsumerArray(consumer)
   while (out.length < targetLen) out.push(undefined)
   for (let i = 0; i < targetLen; i++) {
     scratch.push(i)
@@ -395,7 +415,7 @@ function mergeStructuralArray(
       }
       elemDefault = cachedElementDefault
     }
-    const consumerElem = i < consumer.length ? consumer[i] : undefined
+    const consumerElem = i < consumer.length ? readConsumerIndex(consumer, i) : undefined
     const merged = mergeStructuralImpl(schema, scratch, consumerElem, elemDefault)
     scratch.pop()
     if (merged !== consumerElem) {
@@ -459,7 +479,7 @@ function recurseIntoConsumerKeys(
   out: Record<string, unknown>
 ): boolean {
   let mutated = false
-  for (const key of Object.keys(consumer)) {
+  for (const key of consumerKeys(consumer)) {
     const cVal = safeOwnRead(consumer, key)
     if (cVal === undefined) continue
     scratch.push(key)

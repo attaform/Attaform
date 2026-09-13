@@ -37,6 +37,7 @@ import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { makeMounter } from '../utils/form-harness'
+import { spreadConsumerRecord } from '../../src/runtime/core/safe-assign'
 
 /**
  * Stands in for any consumer function. Returns `never`, which is
@@ -137,6 +138,14 @@ const ADAPTERS = [
     nestedOnly: () => zV4.object({ nested: zV4.object({ b: zV4.string(), c: zV4.string() }) }),
     bag: () => zV4.object({ bag: zV4.record(zV4.string(), zV4.unknown()) }),
     list: () => zV4.object({ xs: zV4.array(zV4.object({ b: zV4.string() })) }),
+    openList: () => zV4.object({ xs: zV4.array(zV4.unknown()) }),
+    openVariant: () =>
+      zV4.object({
+        src: zV4.discriminatedUnion('k', [
+          zV4.object({ k: zV4.literal('a'), x: zV4.unknown() }),
+          zV4.object({ k: zV4.literal('b'), y: zV4.string() }),
+        ]),
+      }),
   },
   {
     name: 'zod v3',
@@ -155,6 +164,14 @@ const ADAPTERS = [
     nestedOnly: () => zV3.object({ nested: zV3.object({ b: zV3.string(), c: zV3.string() }) }),
     bag: () => zV3.object({ bag: zV3.record(zV3.string(), zV3.unknown()) }),
     list: () => zV3.object({ xs: zV3.array(zV3.object({ b: zV3.string() })) }),
+    openList: () => zV3.object({ xs: zV3.array(zV3.unknown()) }),
+    openVariant: () =>
+      zV3.object({
+        src: zV3.discriminatedUnion('k', [
+          zV3.object({ k: zV3.literal('a'), x: zV3.unknown() }),
+          zV3.object({ k: zV3.literal('b'), y: zV3.string() }),
+        ]),
+      }),
   },
 ] as const
 
@@ -316,6 +333,53 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     })
   })
 
+  it.each([
+    ['ownKeys', () => new Proxy({ a: 1 }, { ownKeys: BOOM })],
+    ['getOwnPropertyDescriptor', () => new Proxy({ a: 1 }, { getOwnPropertyDescriptor: BOOM })],
+    ['get', () => new Proxy({ a: 1 }, { get: BOOM })],
+  ])('a Proxy whose %s trap throws', async (_label, makeProxy) => {
+    // Enumeration is not a safe read. `Object.keys` invokes `ownKeys`
+    // and `getOwnPropertyDescriptor`, so a Proxy can throw before a
+    // single property has been touched, which no amount of per-key
+    // guarding would catch. Vue's `reactive()` returns a Proxy, so this
+    // is not a hypothetical shape to meet in form state.
+    await expectContained(async () => {
+      const { api } = makeMounter(useForm, adapter.nestedAndOpen(), {})()
+      muted(() => api.setValue('open', makeProxy()))
+      await drain()
+      void api.meta.dirty
+      await api.handleSubmit(() => {})()
+    })
+  })
+
+  it('an array whose index is a throwing accessor', async () => {
+    // An index can be an accessor just as a key can, and `slice()`
+    // reads every one of them.
+    await expectContained(async () => {
+      const { api } = makeMounter(useForm, adapter.openList(), { defaultValues: { xs: [] } })()
+      const arr: unknown[] = []
+      Object.defineProperty(arr, '0', { enumerable: true, configurable: true, get: BOOM })
+      Object.defineProperty(arr, 'length', { value: 1, writable: true })
+      muted(() => api.setValue('xs', arr))
+      await drain()
+      void api.meta.dirty
+    })
+  })
+
+  it('a throwing getter survives a discriminated-union variant switch', async () => {
+    await expectContained(async () => {
+      const { api } = makeMounter(useForm, adapter.openVariant(), {
+        defaultValues: { src: { k: 'a' } },
+      })()
+      muted(() => api.setValue('src.x', withThrowingGetter({ b: 1 })))
+      await drain()
+      muted(() => api.setValue('src.k', 'b'))
+      await drain()
+      muted(() => api.setValue('src.k', 'a'))
+      await drain()
+    })
+  })
+
   it('guarding the read does not stop ordinary keys being walked', async () => {
     // The counterweight. A guard that silently dropped every key would
     // pass every containment test above and break the library.
@@ -343,32 +407,31 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
 
 describe('an async .refine that throws', () => {
   /**
-   * Split out from the table above because the two majors differ, and
-   * one of them has a limit Attaform cannot close.
+   * Split out from the table above because closing this one needed a
+   * different mechanism, and because the reasoning is worth keeping.
    *
-   * On v4 it is fully contained. On v3 the strict construction pass
-   * runs a sync `safeParse` against the real schema so sync refines and
-   * container checks seed at mount. Zod v3 cannot mark an async refine
-   * statically (it wraps every predicate in a sync closure), so it
-   * discovers one by RUNNING it: `executeRefinement` calls the
-   * predicate, sees a Promise come back, and throws "Async refinement
-   * encountered during synchronous parse". Attaform catches that throw
-   * and retries against a stripped tree, which is the recovery the
-   * whole design turns on.
+   * Zod v3 cannot mark an async refinement statically — it wraps every
+   * predicate in a sync closure — so it discovers one by RUNNING it.
+   * `executeRefinement` calls the predicate, sees a Promise come back,
+   * throws "Async refinement encountered during synchronous parse", and
+   * discards that promise on the way out. A predicate that REJECTS
+   * therefore surfaced as an unhandled rejection in the host app, from
+   * a parse the consumer never asked for, at mount, on `reset()`, and
+   * on every discriminated-union variant switch.
    *
-   * The promise the predicate already returned is dropped by Zod before
-   * that throw, so when a consumer's async predicate REJECTS there is no
-   * reference for Attaform to attach a handler to. It surfaces as one
-   * unhandled rejection at mount.
+   * There was nothing for Attaform to catch, because the promise never
+   * reached Attaform. The fix is to make it reachable: before any sync
+   * parse, `wrapAsyncSafeRefinements` rebuilds each `ZodEffects` with a
+   * refinement that calls the original, attaches a no-op `catch` if the
+   * result is thenable, and returns that same result. Zod still sees a
+   * Promise, still throws its sync-detect error, and the strip recovery
+   * still runs; the promise just is not unowned any more.
    *
-   * Not silently lost, and not closable from here. The same failure is
-   * reported properly on the real async validation path, so the leak is
-   * a duplicate signal rather than the only one. Closing it would mean
-   * pre-stripping every schema containing any `.refine()`, since v3's
-   * `containsAsyncRefine` is conservative and cannot tell sync from
-   * async, which would drop sync-refine seeding at mount for every form
-   * that uses a refinement. That trade is not worth one console entry
-   * for a predicate the consumer should not have let throw.
+   * The alternative considered and rejected was pre-stripping every
+   * schema containing any `.refine()`, since v3's `containsAsyncRefine`
+   * is conservative. That would have dropped sync-refine seeding at
+   * mount for every form using a refinement, which the last two tests
+   * here exist to protect.
    */
   it('is contained on v4', async () => {
     await expectContained(async () => {
@@ -387,14 +450,25 @@ describe('an async .refine that throws', () => {
     })
   })
 
-  it('leaks exactly one rejection from Zod v3 at mount, and nothing else', async () => {
-    // Asserted rather than suppressed. The leak is a documented Zod v3
-    // limit, so the test states it as an observed fact: if Zod ever
-    // stops dropping that promise, or if Attaform starts leaking a
-    // SECOND one, this fails and someone reads the note above.
-    //
-    // The capture also keeps the run clean. `expectContained` cannot be
-    // used here for the obvious reason.
+  it.each([
+    [
+      'at mount',
+      async (_api: unknown) => {
+        await Promise.resolve()
+      },
+    ],
+    [
+      'on reset()',
+      async (api: { reset: () => unknown }) => {
+        muted(() => api.reset())
+        await drain()
+      },
+    ],
+  ] as const)('is contained on v3 %s', async (_label, act) => {
+    // Every one of these leaked before `wrapAsyncSafeRefinements`.
+    // A macrotask is required: Node emits `unhandledRejection` only
+    // after a full turn in which nothing attached a handler, so
+    // microtask pumping alone never sees one.
     const seen: unknown[] = []
     const capture = (e: unknown) => seen.push(e)
     process.off('unhandledRejection', onRejection)
@@ -406,40 +480,138 @@ describe('an async .refine that throws', () => {
           throw new Error('consumer boom')
         }),
       })
-      muted(() => makeMounter(useFormV3, schema, { strict: true })())
-      // A macrotask, not just microtasks: Node emits `unhandledRejection`
-      // only after a full turn in which nothing attached a handler, so
-      // `drain()`'s microtask pumping never sees it.
+      const { api } = muted(() => makeMounter(useFormV3, schema, { strict: true })())
+      await act(api)
       await new Promise((resolve) => setTimeout(resolve, 0))
     } finally {
       process.off('unhandledRejection', capture)
       process.on('unhandledRejection', onRejection)
     }
-    expect(seen).toHaveLength(1)
-    expect(String(seen[0])).toContain('consumer boom')
+    expect(seen).toEqual([])
   })
 
-  it('mounts, stays writable, and still refuses to submit', async () => {
-    // The containment that actually matters: whatever Zod drops on the
-    // floor, the form works and the failure reaches the channel a
-    // consumer reads. Uses a rejecting-by-returning-false predicate so
-    // this assertion is not entangled with the leak above.
-    const schema = zV3.object({
-      a: zV3.string().refine(async () => {
-        await Promise.resolve()
-        return false
-      }, 'nope'),
-    })
-    const { api } = muted(() => makeMounter(useFormV3, schema, { strict: true })())
-    muted(() => api.setValue('a', 'x'))
-    await drain()
-    expect(api.values.a).toBe('x')
+  it('is contained on v3 across a discriminated-union variant switch', async () => {
+    const seen: unknown[] = []
+    const capture = (e: unknown) => seen.push(e)
+    process.off('unhandledRejection', onRejection)
+    process.on('unhandledRejection', capture)
+    try {
+      const schema = zV3.object({
+        src: zV3.discriminatedUnion('k', [
+          zV3.object({
+            k: zV3.literal('a'),
+            x: zV3.string().refine(async () => {
+              await Promise.resolve()
+              throw new Error('consumer boom')
+            }),
+          }),
+          zV3.object({ k: zV3.literal('b'), y: zV3.string() }),
+        ]),
+      })
+      const { api } = muted(() =>
+        makeMounter(useFormV3, schema, {
+          strict: true,
+          validateOn: 'change',
+          defaultValues: { src: { k: 'a' } },
+        })()
+      )
+      await drain()
+      muted(() => api.setValue('src.k', 'b'))
+      await nextTick()
+      muted(() => api.setValue('src.k', 'a'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    } finally {
+      process.off('unhandledRejection', capture)
+      process.on('unhandledRejection', onRejection)
+    }
+    expect(seen).toEqual([])
+  })
 
+  it('still seeds a SYNC refine error at mount', async () => {
+    // The counterweight the whole mechanism was chosen to protect.
+    // Pre-stripping every schema with a refinement would have closed
+    // the leak and broken this.
+    const schema = zV3.object({ a: zV3.string().refine((v) => v.length > 3, 'too short') })
+    const { api } = makeMounter(useFormV3, schema, { strict: true, defaultValues: { a: 'x' } })()
+    await drain()
+    expect(api.errors('a')[0]?.message).toBe('too short')
+  })
+
+  it('still reports an async refine through validation', async () => {
+    // The other counterweight: wrapping must not swallow the verdict,
+    // only the orphaned promise.
+    const schema = zV3.object({
+      a: zV3.string().refine(async (v: string) => {
+        await Promise.resolve()
+        return v.length > 3
+      }, 'too short'),
+    })
+    const { api } = makeMounter(useFormV3, schema, { strict: true, defaultValues: { a: 'x' } })()
+    await drain()
     let submitted = false
     await api.handleSubmit(() => {
       submitted = true
     })()
-    // A failing validator is a failed validation, not a successful one.
     expect(submitted).toBe(false)
+    expect(api.errors('a')[0]?.message).toBe('too short')
+  })
+})
+
+describe('spreadConsumerRecord matches the spread it stands in for', () => {
+  /**
+   * The guarded fallback only runs for an object that already threw, so
+   * nothing else exercises it. These pin the two ways it could quietly
+   * diverge from `{ ...src }`, both of which it did before review.
+   */
+  const hostile = (extra: Record<string, unknown>) => {
+    const o: Record<string, unknown> = { ...extra }
+    Object.defineProperty(o, 'trap', { enumerable: true, get: BOOM })
+    return o
+  }
+
+  it('takes the spread fast path for a well-behaved object', () => {
+    const src = { a: 1, b: 2 }
+    expect(spreadConsumerRecord(src)).toEqual({ a: 1, b: 2 })
+  })
+
+  it('keeps a key whose value is explicitly undefined', () => {
+    // `{ ...{ a: undefined } }` keeps the key. The runtime reads an
+    // explicit `undefined` at a key as "the consumer named this slot
+    // empty", so dropping it would change the shape rather than just
+    // the value.
+    const out = spreadConsumerRecord(hostile({ a: undefined, b: 1 }))
+    expect('a' in out).toBe(true)
+    expect(out['a']).toBeUndefined()
+    expect(out['b']).toBe(1)
+  })
+
+  it('lands a literal __proto__ key as an own data property', () => {
+    // The spread uses `CreateDataProperty` and so bypasses the
+    // inherited `__proto__` setter. A plain `out[key] = value` in the
+    // fallback would reassign the prototype chain instead.
+    //
+    // Built with `defineProperty`, not a literal: `{ __proto__: x }` is
+    // special syntax that sets the prototype rather than creating an
+    // own key, so the literal form would not test anything.
+    const src = hostile({ ok: 1 })
+    Object.defineProperty(src, '__proto__', {
+      value: { polluted: true },
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
+
+    const out = spreadConsumerRecord(src)
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype)
+    expect(Object.hasOwn(out, '__proto__')).toBe(true)
+    const witness: Record<string, unknown> = {}
+    expect(witness['polluted']).toBeUndefined()
+    expect(out['ok']).toBe(1)
+  })
+
+  it('reads a throwing accessor as undefined rather than propagating', () => {
+    const out = spreadConsumerRecord(hostile({ ok: 1 }))
+    expect(out['ok']).toBe(1)
+    expect(out['trap']).toBeUndefined()
   })
 })

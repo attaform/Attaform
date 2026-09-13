@@ -1,5 +1,6 @@
 import { toRaw, type Ref } from 'vue'
 import type { ErrorCell, WriteMeta } from '../types/types-api'
+import { consumerKeys, readConsumerProp } from './consumer-code'
 import { NO_ERRORS } from './error-codes'
 import { diffAndApply } from './diff-apply'
 import { getAtPath, isPlainRecord } from './path-walker'
@@ -586,8 +587,13 @@ export function cloneVariantSnapshot(value: unknown): unknown {
   // reshape; the container carries `Object.prototype` so the
   // round-trip matches the rest of the value-write pipeline.
   // `safeAssign` lands a `__proto__` key as an own data property.
+  // Guarded reads: a variant snapshot holds whatever the consumer
+  // wrote, and an accessor that throws here would escape from a
+  // discriminated-union switch.
   const out: Record<string, unknown> = {}
-  for (const k of Object.keys(src)) safeAssign(out, k, cloneVariantSnapshot(src[k]))
+  for (const k of consumerKeys(src)) {
+    safeAssign(out, k, cloneVariantSnapshot(readConsumerProp(src, k)))
+  }
   return out
 }
 

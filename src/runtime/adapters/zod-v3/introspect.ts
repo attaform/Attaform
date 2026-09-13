@@ -356,6 +356,20 @@ export function unwrapEffectsSource(schema: z.ZodTypeAny): z.ZodTypeAny | undefi
 }
 
 /**
+ * The raw `_def.effect` record of a `ZodEffects`.
+ *
+ * `getEffectsKind` answers what KIND of effect it is; this returns the
+ * record itself, for the one caller that needs to rebuild a node with a
+ * replacement effect rather than merely classify it.
+ */
+export function getEffect(schema: z.ZodTypeAny): Record<string, unknown> | undefined {
+  const def = readDef(schema)
+  // `readDef`'s type already models `effect` as an optional object, so
+  // `undefined` is the only non-record it can be.
+  return def?.effect as Record<string, unknown> | undefined
+}
+
+/**
  * Kind of effect carried by a `ZodEffects` — `'refinement'`,
  * `'transform'`, `'preprocess'`, or undefined when the def shape is
  * malformed. Used by the preprocess-or-coerce-leaf detector to scope

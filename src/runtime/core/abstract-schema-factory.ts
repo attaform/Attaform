@@ -653,17 +653,26 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       const cacheKey = canonicalizePath(path).key
       const cached = leafCache.get(cacheKey)
       if (cached !== undefined) return cached
-      const prim = this.getSlimPrimitiveTypesAtPath(path)
+      // An opaque leaf declares a value without describing its shape,
+      // so it admits every kind INCLUDING the container ones and the
+      // slim-primitive test below reads it as a container. It has no
+      // sub-paths to descend into, which is what leafness answers, so
+      // it resolves ahead of that test. The root stays a container
+      // even when the adapter hands back an opaque root schema.
+      const opaque = path.length > 0 && this.isOpaqueLeafAtPath(path)
+      const prim = opaque ? undefined : this.getSlimPrimitiveTypesAtPath(path)
       // Empty set → path doesn't exist in schema → descend permissively
       // (treat as container so schema-named reserved keys at depth 2+
       // don't shadow). Any container kind in the set → descend.
       // Otherwise every kind is a primitive → leaf.
       const isLeaf =
-        prim.size > 0 &&
-        !prim.has('object') &&
-        !prim.has('array') &&
-        !prim.has('map') &&
-        !prim.has('set')
+        opaque ||
+        (prim !== undefined &&
+          prim.size > 0 &&
+          !prim.has('object') &&
+          !prim.has('array') &&
+          !prim.has('map') &&
+          !prim.has('set'))
       leafCache.set(cacheKey, isLeaf)
       return isLeaf
     },

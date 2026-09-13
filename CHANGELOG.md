@@ -48,6 +48,21 @@
 
 ### Fixed
 
+- **`form.values()` returns a snapshot, which is what it always
+  claimed to be.** It handed back the live readonly proxy, so a
+  captured result kept changing underneath whoever held it:
+  `await api.save(form.values())` could send something other than what
+  the user saw, `structuredClone(form.values())` threw on the proxy,
+  and `watch(() => form.values(), onChange)` never fired once, because
+  the identity never changed. The call form now materialises a
+  detached plain object, memoised per change so repeated calls between
+  writes stay as cheap as the proxy return was. Dot access
+  (`form.values.email`) is unchanged and remains the reactive read;
+  prefer it inside a `computed` or a template, where the call form
+  depends on the whole form. The copy is deep across plain objects and
+  arrays, and shares non-plain instances (`Map`, `File`, `Date`) by
+  reference the way `JSON.stringify` does. (#567)
+
 - **A rejected path now says why, instead of `never`.** Every
   path-addressed API accepts a segment array, and each one branded its
   parameter `S & (<path is valid> ? unknown : never)`. `S & never` is

@@ -20,6 +20,21 @@
 
 ### Fixed
 
+- **A field could hold its pending spinner forever.** The display
+  engine refused to re-arm its timer for any deadline equal to the one
+  it had just fired, on the premise that legitimate timing always
+  advances a deadline. The min-visible hold breaks that premise by
+  design: while a spinner is inside its window the reducer re-emits the
+  same instant on every pass. A timer that fired a fraction early left
+  the guard holding that deadline, so the engine cleared the timer and
+  armed nothing, and nothing else was scheduled to re-evaluate the
+  field. It then showed `aria-busy="true"` over a validation that had
+  already finished, with its error committed but invisible, because
+  `showErrors` reads `displayState === 'error'`. Reproduced at ~2-3%
+  per mount on a field with an async refinement slower than the
+  focus-out grace. The guard now refuses only a re-fired deadline that
+  has also already passed, which is the busy-loop it was written for.
+  (#606)
 - **`z.instanceof(File)` and `z.custom<T>()` mount on the Zod v4
   adapter.** Both compile to kind `custom`, which v4 rejected at
   construction with `unsupported kind 'custom'`. Zod v3 compiles the

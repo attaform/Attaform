@@ -71,6 +71,13 @@ import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
  */
 const INTEGER_SEGMENT = /^(?:0|[1-9]\d*)$/
 
+/**
+ * Marks a snapshot box whose payload a write has dropped. Distinct from
+ * `undefined`, which is a legitimate materialised value for a form
+ * whose root is absent.
+ */
+const RELEASED: unique symbol = Symbol()
+
 /** Inert descent target for an invoke shim over a non-existent field. */
 const EMPTY_DESCENT: Readonly<Record<string, never>> = Object.freeze({})
 
@@ -816,16 +823,49 @@ function materializeFormValue(node: unknown): unknown {
  * fully detached copy can `structuredClone` the result, which the live
  * proxy never allowed.
  */
-export function buildValuesSurface<F extends GenericForm>(form: Ref<F>): CallableSurface {
+export function buildValuesSurface<F extends GenericForm>(
+  form: Ref<F>,
+  onFormChange: (listener: () => void) => () => void
+): CallableSurface {
   const inner = computed(() => readonly(form.value))
-  const snapshot = computed(() => materializeFormValue(inner.value))
-  const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(() => snapshot.value)
+
+  // The materialised copy lives in a box the computed hands back, so a
+  // write can drop the payload while the computed still holds the box.
+  // Vue keeps a computed's last value until something reads it again,
+  // which would leave the previous snapshot pinning whatever the form
+  // used to hold. That is invisible for the plain-data spine (it is a
+  // copy, and it is replaced) but not for the instances materialise
+  // shares by reference: a cleared 50 MB File stayed reachable through
+  // the stale copy until the next read or teardown, where the live
+  // proxy this replaced released it at once.
+  let held: { value: unknown } | null = null
+  const snapshot = computed(() => {
+    const box = { value: materializeFormValue(inner.value) as unknown }
+    held = box
+    return box
+  })
+  onFormChange(() => {
+    if (held === null) return
+    held.value = RELEASED
+    held = null
+  })
+
+  // Every write that releases also invalidates the computed, so a
+  // released box is not reachable through this read. The branch is the
+  // guard for that invariant rather than an expected path: degrade to a
+  // fresh materialisation, never serve an emptied box.
+  const readSnapshot = (): unknown => {
+    const box = snapshot.value
+    return box.value === RELEASED ? materializeFormValue(inner.value) : box.value
+  }
+
+  const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(() => readSnapshot())
   const target = (() => {}) as unknown as CallableSurface
 
   return new Proxy(target, {
     apply(_, __, args: unknown[]): unknown {
       const arg = args[0] as string | Path | undefined
-      if (arg === undefined) return snapshot.value
+      if (arg === undefined) return readSnapshot()
       const segments = canonicalizePath(arg).segments
       // A leaf needs no copy, so it walks the live tree and skips
       // building the root snapshot entirely. A container resolves out
@@ -835,7 +875,7 @@ export function buildValuesSurface<F extends GenericForm>(form: Ref<F>): Callabl
       // time, so the same unchanged state compared unequal to itself.
       const node = getAtPath(inner.value, segments)
       if (node === null || typeof node !== 'object') return node
-      return getAtPath(snapshot.value, segments)
+      return getAtPath(readSnapshot(), segments)
     },
     get(_, key: string | symbol): unknown {
       if (typeof key === 'symbol') {

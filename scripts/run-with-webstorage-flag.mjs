@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Wrapper that conditionally appends `--no-experimental-webstorage`
- * to NODE_OPTIONS before execing the given command.
+ * and `--expose-gc` to NODE_OPTIONS before execing the given command.
  *
  * Why conditional: Node 25 ships native `localStorage` on by default
  * (see test/setup.ts for the jsdom-collision rationale). The flag
@@ -12,13 +12,21 @@
  * 22 (when --experimental-webstorage was introduced as opt-in) and
  * becomes load-bearing in Node 25 (when webstorage flips on by
  * default). Gating on >= 22 covers both states with a single check.
+ *
+ * `--expose-gc` rides the same gate. It is what lets a retention test
+ * force a collection and assert that a dropped value is actually
+ * reachable no more; without it such a test can only skip, which is
+ * indistinguishable from passing. Entered the NODE_OPTIONS allowlist
+ * alongside the webstorage flag, so the same >= 22 check covers it.
+ * Tests that use it still guard on `globalThis.gc` being present, so
+ * running vitest directly degrades to a skip rather than a failure.
  */
 import { spawnSync } from 'node:child_process'
 
 const nodeMajor = Number(process.versions.node.split('.')[0])
 const env = { ...process.env }
 if (nodeMajor >= 22) {
-  env.NODE_OPTIONS = [env.NODE_OPTIONS, '--no-experimental-webstorage']
+  env.NODE_OPTIONS = [env.NODE_OPTIONS, '--no-experimental-webstorage', '--expose-gc']
     .filter(Boolean)
     .join(' ')
 }

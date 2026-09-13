@@ -61,7 +61,9 @@
   prefer it inside a `computed` or a template, where the call form
   depends on the whole form. The copy is deep across plain objects and
   arrays, and shares non-plain instances (`Map`, `File`, `Date`) by
-  reference the way `JSON.stringify` does. (#567)
+  reference the way `JSON.stringify` does, and the memoised copy is
+  released on every write rather than held until the next read, so a
+  cleared upload is not kept alive by a stale snapshot. (#567)
 
 - **A rejected path now says why, instead of `never`.** Every
   path-addressed API accepts a segment array, and each one branded its

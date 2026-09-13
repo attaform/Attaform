@@ -42,7 +42,6 @@ const schemaV4 = zV4.object({
   color: zV4.string().optional(),
   count: zV4.number().optional(),
   rating: zV4.number(),
-  picks: zV4.array(zV4.string()).optional(),
 })
 const schemaV3 = zV3.object({
   pairs: zV3.record(zV3.string(), zV3.string()).default({}),
@@ -50,7 +49,6 @@ const schemaV3 = zV3.object({
   color: zV3.string().optional(),
   count: zV3.number().optional(),
   rating: zV3.number(),
-  picks: zV3.array(zV3.string()).optional(),
 })
 
 const adapters = [

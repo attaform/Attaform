@@ -42,7 +42,7 @@ The Zod-default form surface:
 
 On top of that surface, `attaform` re-exports the framework-agnostic toolkit (the plugin, the directive layer, the SSR bridge, the error classes, the path primitives) that every entry carries. It's listed in full under [The framework-agnostic toolkit](#the-framework-agnostic-toolkit).
 
-What `attaform` does NOT ship: the version-specific Zod internals (`zodAdapter`, `kindOf`, `ZodKind`, `assertZodVersion`, `UnsupportedSchemaError`). Those diverge between v3 and v4, so they live only on the pinned `attaform/zod-v3` and `attaform/zod-v4` subpaths.
+What `attaform` does NOT ship: the version-specific Zod internals (`zodAdapter`, `kindOf`, `ZodKind`, `assertZodVersion`). Those diverge between v3 and v4, so they live only on the pinned `attaform/zod-v3` and `attaform/zod-v4` subpaths.
 
 ## `attaform/zod`: the explicit Zod pin
 
@@ -70,7 +70,7 @@ The Zod v4 adapter, pinned explicitly. It's the same adapter `attaform` selects 
 import { useForm } from 'attaform/zod-v4'
 ```
 
-Ships the richer v4 introspection set on top of the shared form surface: `zodAdapter`, `kindOf`, `ZodKind`, `assertZodVersion`, `UnsupportedSchemaError`, and the `PathInput` / `PathOutput` type helpers.
+Ships the richer v4 introspection set on top of the shared form surface: `zodAdapter`, `kindOf`, `ZodKind`, `assertZodVersion`, and the `PathInput` / `PathOutput` type helpers.
 
 ## `attaform/abstract`: bring your own adapter
 

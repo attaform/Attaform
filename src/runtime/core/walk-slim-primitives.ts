@@ -25,9 +25,11 @@
  *    value to a kind. Multi-value literals (`z.literal(['a', 1])`)
  *    register both.
  *  - Object / record → object; array / tuple → array; set → set;
- *    map → map; symbol → symbol; function → function; promise →
- *    object; template-literal → string; file → file + null (the
+ *    map → map; template-literal → string; file → file + null (the
  *    directive's "no file selected" sentinel — v4 only).
+ *  - symbol → symbol, function → function, promise → object, each
+ *    plus 'undefined': their derived blank IS undefined, and the gate
+ *    has to admit what `form.clear(path)` writes.
  *  - Optional adds 'undefined' to the inner set; nullable adds 'null'.
  *  - Default / readonly / catch / branded peel transparently.
  *  - Pipe (v4) consults both `in` and `out`: if `in` is a transform,
@@ -86,8 +88,21 @@ const KIND_OBJECT: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['ob
 const KIND_ARRAY: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['array'])
 const KIND_SET: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['set'])
 const KIND_MAP: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['map'])
-const KIND_SYMBOL: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['symbol'])
-const KIND_FUNCTION: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['function'])
+// The three kinds whose derived blank is `undefined` carry 'undefined'
+// in their accept set, for the same reason `z.file()` carries 'null':
+// the gate has to admit the value `form.clear(path)` is about to write,
+// or clearing the field is a no-op with a "wrong type" warning. It does
+// not loosen schema enforcement — the blank-path channel and the
+// derived "No value supplied" error still gate submission.
+const KIND_SYMBOL: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['symbol', 'undefined'])
+const KIND_FUNCTION: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set([
+  'function',
+  'undefined',
+])
+const KIND_PROMISE: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set([
+  'object',
+  'undefined',
+])
 const KIND_FILE: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['file', 'null'])
 const EMPTY_KINDS: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set()
 
@@ -177,7 +192,7 @@ export function slimPrimitivesWalk<Schema>(
       // at a promise path. A plain object also passes the gate here
       // and then fails validation, the same split every refinement
       // takes (`z.string().email()` accepts `'x'` at the gate too).
-      return KIND_OBJECT
+      return KIND_PROMISE
     case 'template-literal':
       // Parses a string against a pattern; the pattern is a
       // refinement-level concern the gate deliberately ignores.

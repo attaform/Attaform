@@ -66,6 +66,35 @@ form.values.tags // ['design', 'ops']
 
 Deselecting an option removes it from the array; the array shape always reflects the current visual selection. No event-listener wiring on your side; the directive infers multi-mode from the `multiple` attribute and the schema's array leaf.
 
+## A path the form does not hold
+
+A `<select>` is the one control with no natural empty look. An `<input>` renders blank whether its path holds `''` or holds nothing at all, but a dropdown has to show a row. Attaform shows the row the author nominated as empty, the same way a text input shows `''` for a path that was never seeded.
+
+That matters most under a `z.record`, where the key set is a function of something else on the form and a key legitimately appears at render time:
+
+```ts
+const schema = z.object({
+  pairs: z.record(z.string(), z.string()).default({}),
+})
+
+const form = useForm({ schema, defaultValues: { pairs: { yes: '1' } } })
+```
+
+```vue
+<select v-register="form.register('pairs.no')">
+  <option value="">Not paired</option>
+  <option value="0">0</option>
+</select>
+```
+
+`pairs` has no `no` key, so the select shows `Not paired`. Nothing is written to get there: the key stays absent, a select that merely renders never invents a record entry, and `form.fields('pairs.no')?.blank` still reports that nobody supplied a value. A path marked blank through the [`unset` sentinel](/docs/writing-and-mutating/unset) shows the same option for the same reason.
+
+Give every select bound to an optional or late-arriving path an option carrying the empty value. Without one, the dropdown renders with nothing selected, which is the truthful paint: the form holds no value and no option stands for that. Falling back to the first option instead would record a choice nobody made.
+
+A value the option list does not carry reads the same way. A `country` of `'purple'` against `us` / `uk` / `ca` shows nothing selected rather than an arbitrary one, which is the signal that the model and the option list have drifted apart.
+
+`<select multiple>` needs no placeholder. A path the form does not hold picks no members, which is what an untouched multi-select looks like anyway.
+
 ## The `.number` modifier
 
 `<option value="...">` only stores strings. When the schema's array (or scalar) leaf is `z.number()` or `z.array(z.number())`, the `.number` modifier coerces every picked option's value to a number before the write:

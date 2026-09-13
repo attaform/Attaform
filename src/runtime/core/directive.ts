@@ -897,6 +897,26 @@ function setSelected(el: HTMLSelectElement, value: unknown) {
   const externalValue = value.innerRef.value
   const isMultiple = el.multiple
   const isArrayValue = isArray(externalValue)
+  // A path the form does not hold. Read off the raw model rather than
+  // `displayValue`, which the single-select branch below uses: a model
+  // of `[]` and one of `['']` both stringify to `''`, and the second
+  // is a list holding the empty member, not an absent one.
+  const isUnset = externalValue === null || externalValue === undefined
+
+  if (isMultiple && isUnset) {
+    // No value means no members picked. That is the multi-select's
+    // natural empty state and one the user can reach by deselecting
+    // everything, so it needs neither a warning nor a `-1`. It used to
+    // take the misuse branch below and tell the consumer to bind a
+    // list-typed schema — which they had: the path was simply unseeded,
+    // a record key that only appears once a sibling field names it
+    // (#569).
+    for (let i = 0, l = el.options.length; i < l; i++) {
+      const option = el.options[i]
+      if (option !== undefined) option.selected = false
+    }
+    return
+  }
 
   if (isMultiple && !isArrayValue && !isSet(externalValue)) {
     if (__DEV__) {
@@ -979,10 +999,30 @@ function setSelected(el: HTMLSelectElement, value: unknown) {
   // Non-multiple: find the first option matching the scalar model
   // and set selectedIndex; clear if nothing matches. Coerce the
   // raw option value to keep parity with the change handler.
+  //
+  // A field holding no value matches against `''`, not against the raw
+  // `undefined`. `displayValue` is the house's answer to "what does
+  // this field show" — it folds a blank mark and a null / absent model
+  // to `''` — and every other reader already goes through it:
+  // `vRegisterText` paints it into `el.value`, and the compile-time
+  // `:value` injection on this very `<select>` reads the same ref.
+  // Matching it here selects an authored `<option value="">`
+  // placeholder for an unseeded path, the way an `<input>` shows
+  // empty. Before, an unset path compared `undefined` against every
+  // option, matched none, and fell through to `selectedIndex = -1`: a
+  // state no user can reach by interacting, painted as an empty box,
+  // and one SSR contradicted — the server marks no option, so the
+  // browser parses the first one as selected, and hydration erased it
+  // (#569).
+  //
+  // The fall-through to `-1` stays for a model that HOLDS a value no
+  // option carries. Showing an arbitrary option there would lie about
+  // the form; blank is the truthful answer.
+  const target = value.displayValue.value === '' ? '' : externalValue
   for (let i = 0, l = el.options.length; i < l; i++) {
     const option = el.options[i]
     if (!option) continue
-    if (looseEqual(applyCoerce(getValue(option), value), externalValue)) {
+    if (looseEqual(applyCoerce(getValue(option), value), target)) {
       if (el.selectedIndex !== i) el.selectedIndex = i
       return
     }

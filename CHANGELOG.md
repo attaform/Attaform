@@ -57,6 +57,27 @@
 
 ### Fixed
 
+- **A `<select>` on a path the form does not hold shows the empty
+  option, not an empty box.** Binding a `<select>` to a path that is
+  absent from `defaultValues` left it with nothing selected, so an
+  authored `<option value="">Not paired</option>` sitting right there
+  went unpicked and the control painted blank. It bit hardest under a
+  `z.record` whose key set is a function of another field, where a key
+  legitimately appears at render time and seeding the whole key space
+  up front is exactly what choosing a record was meant to avoid. It
+  also disagreed with the server, which marks no option for an absent
+  model, so the browser paints the first one and hydration then erased
+  it. A field with no value displays as its empty value everywhere else
+  in the directive, and a select follows that rule now: the option
+  carrying the empty value is the one it selects, both in the browser
+  and in the SSR markup. Nothing is written to get there, so a select
+  that merely renders never invents a record entry and never spends the
+  `blank` signal. A select whose options carry no empty value still
+  shows none of them, and so does a model holding a value no option
+  carries, which is the truthful paint in both cases. A `<select
+  multiple>` on an absent path picks no members and no longer accuses
+  the consumer of binding a non-list schema. (#569)
+
 - **A `z.map` entry is a path; a `z.set` member is not.** The records
   docs teach a map entry as a bindable path
   (`` form.register(`scoresByUser.${userId}`) ``,

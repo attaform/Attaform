@@ -59,16 +59,30 @@ describe('DIR-F4 compile-time emitter ladders', () => {
     expect(code).not.toMatch(/innerRef\?\.value\s*===\s*\("2"\)/)
   })
 
-  it('select emits a coerced `String(...) === String(...)` for the scalar branch', () => {
+  it('select compares `displayValue` against a coerced `String(...)` for the scalar branch', () => {
     const code = compileSelect(
       `<select v-register="form.register('age')"><option value="2">2</option></select>`
     )
     // Multi-select (`findIndex(el => el === optionValue)`) uses strict
-    // `===`; the single-select branch coerces via String() on both sides.
-    // This is the literal shape we depend on for SSR parity with the
-    // runtime's `looseEqual` — pinning here makes any silent flattening
-    // of this expression visible to review.
-    expect(code).toMatch(/String\(.+?\?\.innerRef\?\.value\)\s*===\s*String\(\("2"\)\)/)
+    // `===`; the single-select branch coerces the option side via
+    // String() and reads the model side through `displayValue`. This is
+    // the literal shape we depend on for SSR parity with the runtime's
+    // `looseEqual` — pinning here makes any silent flattening of this
+    // expression visible to review.
+    //
+    // `displayValue` replaced `String(innerRef.value)` for #569. For
+    // every value a form holds the two are identical; they part on a
+    // path holding nothing, which `String(...)` rendered as the literal
+    // `'undefined'` (matching no option, so the server marked none and
+    // the browser fell to whichever option led the list) and which
+    // `displayValue` folds to `''` (landing on the author's
+    // `<option value="">` placeholder, the same one the runtime
+    // `setSelected` picks).
+    expect(code).toMatch(/\?\.displayValue\?\.value\s*===\s*String\(\("2"\)\)/)
+    // The model side no longer reaches `innerRef` for the comparison —
+    // only for the `typeof !== 'object'` guard that keeps an array model
+    // off a single-select.
+    expect(code).not.toMatch(/String\(.+?\?\.innerRef\?\.value\)\s*===/)
   })
 })
 

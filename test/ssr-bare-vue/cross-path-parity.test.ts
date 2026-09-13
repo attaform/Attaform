@@ -206,6 +206,22 @@ const FIXTURES: Fixture[] = [
     expected: { us: false, uk: true },
     asymmetry: { runtime: { us: false, uk: false } },
   },
+  {
+    // A path the form does not hold displays as its empty value, so the
+    // compiled transform marks the authored `<option value="">`
+    // placeholder — the same option the client directive selects, which
+    // is what keeps hydration from erasing the server's paint (#569).
+    // The runtime path's asymmetry is unchanged: it emits no
+    // option-level state either way.
+    label: 'select/unset',
+    variant: 'select',
+    optionValues: ['', 'uk'],
+    makeSchema: (z) => z.object({ country: z.string().optional() }),
+    path: 'country',
+    defaultValues: {},
+    expected: { '': true, uk: false },
+    asymmetry: { runtime: { '': false, uk: false } },
+  },
 
   // --- File: symmetric non-emitter. Browsers reject a value on file inputs,
   // so both paths emit none -- and the model string must never leak.

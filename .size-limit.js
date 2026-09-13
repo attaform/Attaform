@@ -789,7 +789,16 @@ export default [
     // without describing. Two of the three defects it ships with were
     // silent data loss (a container write no-oping, a class instance
     // rebuilt into `{}`). Measured at 47.3 KB.
-    limit: '47.5 KB',
+    //
+    // Raised 47.5 → 47.75 KB on the field-state-cache branch (#612). The
+    // ~133 B buys the per-write sweep that stops that cache pinning every
+    // dynamic path a form has ever read: a slice-at-a-time liveness check
+    // over the cached record keys and array indices, plus the fixed-object
+    // test that keeps schema-bounded paths out of it. It was an unbounded
+    // leak of form data, measured at 200 of 200 churned record keys still
+    // reachable and 12.5 MB held by a form whose value was `{}`.
+    // Measured at 47.59 KB.
+    limit: '47.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1051,7 +1060,16 @@ export default [
     // abstract.mjs tripwire fail on 9 B. Re-baselined alongside it so the
     // next change is not blocked by a budget with nowhere to go.
     // Measured at 48.25 KB.
-    limit: '48.5 KB',
+    //
+    // Raised 48.5 → 48.75 KB on the field-state-cache branch (#612). The
+    // ~123 B buys the per-write sweep that stops that cache pinning every
+    // dynamic path a form has ever read: a slice-at-a-time liveness check
+    // over the cached record keys and array indices, plus the fixed-object
+    // test that keeps schema-bounded paths out of it. It was an unbounded
+    // leak of form data, measured at 200 of 200 churned record keys still
+    // reachable and 12.5 MB held by a form whose value was `{}`.
+    // Measured at 48.47 KB.
+    limit: '48.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1547,7 +1565,16 @@ export default [
     // modules consolidated into array-engine.ts around one
     // remapForOp / permuteList / shared-key-walk core. Measured at 15.15 KB.
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 13.99 KB.
-    limit: '14.25 KB',
+    //
+    // Raised 14.25 → 14.5 KB on the field-state-cache branch (#612). The
+    // ~164 B buys the per-write sweep that stops that cache pinning every
+    // dynamic path a form has ever read: a slice-at-a-time liveness check
+    // over the cached record keys and array indices, plus the fixed-object
+    // test that keeps schema-bounded paths out of it. It was an unbounded
+    // leak of form data, measured at 200 of 200 churned record keys still
+    // reachable and 12.5 MB held by a form whose value was `{}`.
+    // Measured at 14.35 KB.
+    limit: '14.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

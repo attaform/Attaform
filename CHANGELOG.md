@@ -48,6 +48,24 @@
 
 ### Fixed
 
+- **A churning form releases the paths it no longer has.** The per-path
+  field-state cache behind `form.fields`, `form.register` and
+  `form.meta` was never evicted, and each entry holds its path's
+  `value` and its `original`, so it pinned form data rather than
+  bookkeeping alone. For a fixed-shape form the path set is finite and
+  that was fine. For a `z.record` whose keys churn, or an array whose
+  indices do, it was not: the cache grew with the number of paths ever
+  read rather than the number the form has, so a long-lived form that
+  edited a record across a session kept every value it had ever held.
+  Churning 200 record keys left 200 of 200 reachable after removal, and
+  12.5 MB pinned by a form whose value was `{}`. Each write now checks a
+  bounded slice of the cached dynamic paths and drops the ones the form
+  no longer has, resuming where the previous write stopped, so the cost
+  per write stays flat as the form grows. Paths a fixed object shape
+  bounds are never swept. Field-view identity is unchanged: the views
+  come from a separate cache and re-resolve on every read, so a dropped
+  entry is rebuilt behind the same view. (#612)
+
 - **An opaque leaf reads the same through both spellings.** For a
   `z.any()`, `z.unknown()`, `z.custom()`, or `z.instanceof(X)` field,
   `form.fields.<path>` and `form.errors.<path>` resolved a container

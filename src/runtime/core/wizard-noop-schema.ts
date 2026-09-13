@@ -60,6 +60,9 @@ export function buildNoopWizardSchema(
     isOpaqueLeafAtPath: () => false,
     arrayShapeAtPath: () => null,
     isFixedObjectAtPath: (path) => path.length === 0,
+    // The noop schema declares no shape at all, so nothing under it is
+    // addressable, root included.
+    entryKeyKindAtPath: () => undefined,
     getSchemasAtPath: () => [],
     validateAtPath: (): MaybePromise<ValidationResponse<Record<string, never>>> => success,
     getSlimPrimitiveTypesAtPath: () => new Set(EMPTY_SLIM_KINDS),

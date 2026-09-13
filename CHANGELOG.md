@@ -14,6 +14,15 @@
   (`z.symbol`, `z.function`, `z.promise`), and the schema contract
   lists every blank.
 
+- **`AbstractSchema` gains `entryKeyKindAtPath(path)`.** It reports how
+  the container at a path spells its own entry keys, which is what a
+  write creating an entry needs and what a `z.map` cannot answer from
+  the segment alone. The member is required, so a hand-rolled adapter
+  against `attaform/abstract` needs to add it; `'number'` for a
+  sequence, `'string'` for a keyed container and `undefined` elsewhere
+  matches what every built-in adapter reports. Both adapter-author docs
+  pages carry it. (#614)
+
 - **`AbstractSchema` gains `isOpaqueLeafAtPath(path)`.** It reports a
   path whose schema declares a value without describing its shape, and
   the write gate uses it to accept such a value whole instead of
@@ -47,6 +56,38 @@
   is no reason to drop the overload.
 
 ### Fixed
+
+- **A `z.map` entry is a path; a `z.set` member is not.** The records
+  docs teach a map entry as a bindable path
+  (`` form.register(`scoresByUser.${userId}`) ``,
+  `form.errors.scoresByUser['user-99']`), and none of it worked: the
+  schema walker had no `map` case at all, so `form.fields` and
+  `form.errors` read empty at an entry, `setValue` at one no-opped, and
+  `register` still handed back a truthy binding whose every write landed
+  nowhere. An entry now reads, writes, registers, validates, clears and
+  reports `dirty` exactly as a `z.record` entry does, and the key type
+  you declared decides how a path segment is spelled, so `scores.42`
+  files under the string `'42'` for `z.map(z.string(), V)` and the
+  number `42` for `z.map(z.number(), V)`.
+
+  A set went the other way. The schema walker consumed a segment at a
+  set to answer what a member looks like for the coercion layer, which
+  made `tags.0` look like a declared path to everything downstream: it
+  surfaced on `form.fields` holding nothing, and it cleared the write
+  gate, where the numeric rebuild replaced the whole `Set` with an
+  `Array` holding the one written member. `form.setValue('tags.0', 'x')`
+  against `Set(['red', 'blue'])` left `['x']`. A set member is its own
+  key, so no address survives writing to one: members are not paths now,
+  the write is refused, and a whole-set write is the supported spelling.
+
+  The two Zod majors also disagreed about where a container's errors
+  live. v4 files a bad map entry at `['scores', 'ann']` and a bad set
+  member at `['tags']`; v3 files them at `['scores', 0, 'value']` and
+  `['tags', 1]`, paths the runtime does not address, so on v3 they
+  vanished from `form.errors`, from the field's `firstError` and from
+  the `form.meta.errors` summary while still blocking the submit. The v3
+  adapter re-files both before they reach the error stores, and every
+  read surface now reports the same value on both majors. (#614)
 
 - **A churning form releases the paths it no longer has.** The per-path
   field-state cache behind `form.fields`, `form.register` and

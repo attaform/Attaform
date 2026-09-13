@@ -202,13 +202,44 @@ describe('diffAndApply', () => {
       expect(patches).toEqual([{ kind: 'changed', path: ['when'], oldValue: a, newValue: b }])
     })
 
-    it('Map instances are treated as leaves', () => {
-      const a = new Map([['x', 1]])
-      const b = new Map([['x', 2]])
+    // A map is the one container here that is NOT a leaf: its entries
+    // are real paths (#614), and the per-entry patches are what put a
+    // baseline in `originals`, without which a map entry reads
+    // `dirty: false` the moment after it is edited.
+    it('Map entries are descended, each at its own path', () => {
+      const a = new Map([
+        ['x', 1],
+        ['y', 2],
+      ])
+      const b = new Map([
+        ['x', 9],
+        ['y', 2],
+      ])
       const patches = collect({ data: a }, { data: b })
-      expect(patches).toHaveLength(1)
-      expect(patches[0]?.kind).toBe('changed')
-      expect(patches[0]?.path).toEqual(['data'])
+      expect(patches).toEqual([{ kind: 'changed', path: ['data', 'x'], oldValue: 1, newValue: 9 }])
+    })
+
+    it('Map entries added and dropped surface as leaf patches', () => {
+      const patches = collect({ data: new Map([['x', 1]]) }, { data: new Map([['y', 2]]) })
+      expect(patches).toEqual([
+        { kind: 'added', path: ['data', 'y'], newValue: 2 },
+        { kind: 'removed', path: ['data', 'x'], oldValue: 1 },
+      ])
+    })
+
+    it('a Map keyed by something no path segment can spell stays a leaf', () => {
+      const key = { id: 1 }
+      const a = new Map([[key, 1]])
+      const b = new Map([[key, 2]])
+      const patches = collect({ data: a }, { data: b })
+      expect(patches).toEqual([{ kind: 'changed', path: ['data'], oldValue: a, newValue: b }])
+    })
+
+    it('a Map replaced by a plain object is one shape change', () => {
+      const a = new Map([['x', 1]])
+      const b = { x: 1 }
+      const patches = collect({ data: a }, { data: b })
+      expect(patches).toEqual([{ kind: 'changed', path: ['data'], oldValue: a, newValue: b }])
     })
 
     it('Set instances are treated as leaves', () => {

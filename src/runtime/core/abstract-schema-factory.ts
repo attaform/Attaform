@@ -218,6 +218,15 @@ export interface SchemaIntrospector<Schema> {
   getRecordKeyType(schema: Schema): Schema | undefined
   /** Value schema of a `z.record(...)`. Undefined for non-records / malformed defs. */
   getRecordValueType(schema: Schema): Schema | undefined
+  /**
+   * Key schema of a `z.map(K, V)`. Undefined for non-maps. The walker
+   * consults it to decide whether a map's entries are addressable at
+   * all: a key a path segment cannot spell (an object, a symbol) has
+   * no path, so the map stays a whole value.
+   */
+  getMapKeyType(schema: Schema): Schema | undefined
+  /** Value schema of a `z.map(...)`. Undefined for non-maps. */
+  getMapValueType(schema: Schema): Schema | undefined
   /** Option array of a `z.union(...)`. Empty for non-unions. */
   getUnionOptions(schema: Schema): readonly Schema[]
   /** Left side of a `z.intersection(L, R)`. Undefined for non-intersections. */
@@ -461,6 +470,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   const preprocessOrCoerceCache = new Map<PathKey, boolean>()
   const opaqueLeafCache = new Map<PathKey, boolean>()
   const discriminatorCache = new Map<PathKey, UnionDiscriminatorContext | undefined>()
+  const entryKeyKindCache = new Map<PathKey, 'string' | 'number' | undefined>()
   // Memoised one-shot tree walks. `needsAsyncValidation` is queried at
   // construction by the store (drives the construction-time async seed);
   // `hasContainerOrRootRefine` is queried per keystroke (drives the
@@ -468,6 +478,32 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   let asyncValidationFlag: boolean | null = null
   let containerRefineFlag: boolean | null = null
   let discriminatedUnionFlag: boolean | null = null
+
+  /**
+   * The segment kind that can spell a key of the map `schema`, or
+   * `undefined` when no segment kind can.
+   *
+   * A path segment is a string or a non-negative integer, so only a
+   * map whose declared key type accepts one of those has addressable
+   * entries. The slim primitive set is the authority rather than the
+   * key schema's kind: it already collapses every wrapper, enum,
+   * literal and union spelling of "this key is a string" down to the
+   * kinds a key value can actually take, so the test stays closed over
+   * key types nobody here enumerated.
+   *
+   * A key type admitting BOTH (`z.union([z.string(), z.number()])`)
+   * has no single spelling, and a segment that reached it could mean
+   * either entry, so it is not addressable either.
+   */
+  function mapKeySegmentKind(schema: Schema): 'string' | 'number' | undefined {
+    const keyType = intro.getMapKeyType(schema)
+    if (keyType === undefined) return undefined
+    const kinds = services.slimPrimitivesOf(keyType, maxRecursionDepth)
+    const string = kinds.has('string')
+    const number = kinds.has('number')
+    if (string === number) return undefined
+    return string ? 'string' : 'number'
+  }
 
   function computeDiscriminator(path: Path): UnionDiscriminatorContext | undefined {
     const candidates =
@@ -615,6 +651,42 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       // in every variant. Peel wrappers first so `z.object().optional()`
       // still reads as an object.
       return resolved.every((s) => intro.kindOf(services.peelAllWrappers(s)) === 'object')
+    },
+
+    entryKeyKindAtPath(path) {
+      const cacheKey = canonicalizePath(path).key
+      if (entryKeyKindCache.has(cacheKey)) return entryKeyKindCache.get(cacheKey)
+      const resolved =
+        path.length === 0
+          ? [rootSchema]
+          : services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
+      let answer: 'string' | 'number' | undefined
+      // One candidate only. A union landing here means the same segment
+      // would address a different container in each arm, and the two
+      // could disagree about what spells a key; no single answer is
+      // true, so there isn't one.
+      const only = resolved.length === 1 ? resolved[0] : undefined
+      if (only !== undefined) {
+        switch (intro.kindOf(services.peelAllWrappers(only))) {
+          case 'array':
+          case 'tuple':
+            answer = 'number'
+            break
+          case 'object':
+          case 'record':
+            answer = 'string'
+            break
+          case 'map':
+            answer = mapKeySegmentKind(services.peelAllWrappers(only))
+            break
+          default:
+            // Leaf, set, union, opaque leaf, or a path the schema does
+            // not declare. None of them has an entry a segment can name.
+            answer = undefined
+        }
+      }
+      entryKeyKindCache.set(cacheKey, answer)
+      return answer
     },
 
     getSchemasAtPath(path) {

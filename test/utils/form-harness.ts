@@ -7,7 +7,7 @@
  * Parameterised on `useFormFn` so v3 and v4 callers can pass their
  * own typed import without the harness coupling to either zod major.
  */
-import { createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, type App, type VNode } from 'vue'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
@@ -161,9 +161,15 @@ type AnyUseForm = (opts: any) => any
 export function makeMounter<S>(
   useFormFn: AnyUseForm,
   schema: S,
-  options: Record<string, unknown> = {}
+  options: Record<string, unknown> = {},
+  // Renders the mounted component's tree. Defaults to an empty `div`
+  // for the many tests that only drive the form through its API; pass
+  // one to put real elements (and `v-register` bindings) on the page
+  // and query them off the returned `root`.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): () => { api: any; app: App } {
+  render?: (form: any) => VNode
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): () => { api: any; app: App; root: HTMLElement } {
   return function mount() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const captured: { api?: any } = {}
@@ -175,7 +181,7 @@ export function makeMounter<S>(
           strict: false,
           ...options,
         })
-        return () => h('div')
+        return () => (render === undefined ? h('div') : render(captured.api))
       },
     })
     const app = createApp(App).use(createAttaform())
@@ -183,6 +189,6 @@ export function makeMounter<S>(
     document.body.appendChild(root)
     app.mount(root)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return { api: captured.api as any, app }
+    return { api: captured.api as any, app, root }
   }
 }

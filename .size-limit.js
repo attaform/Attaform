@@ -365,7 +365,17 @@ export default [
     // The release subscription, plus the guard keeping a released box
     // from ever being read, cost ~65 B of shared core, which every
     // entry shipping the values surface carries. Measured at 51.82 KB.
-    limit: '52.25 KB',
+    //
+    // Raised 52.25 -> 53.5 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // This entry ships both adapters, so it carries the v3 issue-path
+    // rewrite too.
+    // Measured at 53.25 KB.
+    limit: '53.5 KB',
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -603,7 +613,17 @@ export default [
     // The release subscription, plus the guard keeping a released box
     // from ever being read, cost ~65 B of shared core, which every
     // entry shipping the values surface carries. Measured at 51.82 KB.
-    limit: '52.25 KB',
+    //
+    // Raised 52.25 -> 53.5 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // This entry ships both adapters, so it carries the v3 issue-path
+    // rewrite too.
+    // Measured at 53.25 KB.
+    limit: '53.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -798,7 +818,15 @@ export default [
     // leak of form data, measured at 200 of 200 churned record keys still
     // reachable and 12.5 MB held by a form whose value was `{}`.
     // Measured at 47.59 KB.
-    limit: '47.75 KB',
+    //
+    // Raised 47.75 -> 48.75 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // Measured at 48.43 KB.
+    limit: '48.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1069,7 +1097,19 @@ export default [
     // leak of form data, measured at 200 of 200 churned record keys still
     // reachable and 12.5 MB held by a form whose value was `{}`.
     // Measured at 48.47 KB.
-    limit: '48.75 KB',
+    //
+    // Raised 48.75 -> 50 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // v3 pays for the issue-path rewrite on top: it files a map entry's
+    // error under the entry INDEX and a set member's under the member
+    // index, neither of which is a path the runtime reads, so both are
+    // re-filed before they reach the error stores.
+    // Measured at 49.65 KB.
+    limit: '50 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1127,7 +1167,16 @@ export default [
     // FIELD_STATE_KEYS, pickDefined; invoke shims restored after the
     // playground sucrase finding — see plans/size-teardown/P8-surfaces.md).
     // P10 (sweep + lock, program close): re-baselined to the fresh actual; measured at 38.02 KB.
-    limit: '39 KB',
+    //
+    // Raised 39 -> 39.5 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // Adapter-free, so this entry measures the shared-core half alone.
+    // Measured at 39.2 KB.
+    limit: '39.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1358,7 +1407,17 @@ export default [
     // The release subscription, plus the guard keeping a released box
     // from ever being read, cost ~65 B of shared core, which every
     // entry shipping the values surface carries. Measured at 38.06 KB.
-    limit: '38.5 KB',
+    //
+    // Raised 38.5 -> 39.75 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // This entry ships both adapters, so it carries the v3 issue-path
+    // rewrite too.
+    // Measured at 39.48 KB.
+    limit: '39.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1430,7 +1489,15 @@ export default [
     // The release subscription, plus the guard keeping a released box
     // from ever being read, cost ~65 B of shared core, which every
     // entry shipping the values surface carries. Measured at 33.82 KB.
-    limit: '34.25 KB',
+    //
+    // Raised 34.25 -> 35 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // Measured at 34.72 KB.
+    limit: '35 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1522,7 +1589,19 @@ export default [
     // The release subscription, plus the guard keeping a released box
     // from ever being read, cost ~65 B of shared core, which every
     // entry shipping the values surface carries. Measured at 34.82 KB.
-    limit: '35.25 KB',
+    //
+    // Raised 35.25 -> 36.5 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // v3 pays for the issue-path rewrite on top: it files a map entry's
+    // error under the entry INDEX and a set member's under the member
+    // index, neither of which is a path the runtime reads, so both are
+    // re-filed before they reach the error stores.
+    // Measured at 36.11 KB.
+    limit: '36.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1574,7 +1653,16 @@ export default [
     // leak of form data, measured at 200 of 200 churned record keys still
     // reachable and 12.5 MB held by a form whose value was `{}`.
     // Measured at 14.35 KB.
-    limit: '14.5 KB',
+    //
+    // Raised 14.5 -> 14.75 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // This entry reaches only the slice of core `injectForm` pulls in.
+    // Measured at 14.55 KB.
+    limit: '14.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1663,7 +1751,17 @@ export default [
     // The release subscription, plus the guard keeping a released box
     // from ever being read, cost ~65 B of shared core, which every
     // entry shipping the values surface carries. Measured at 38.06 KB.
-    limit: '38.5 KB',
+    //
+    // Raised 38.5 -> 39.75 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup.
+    // This entry ships both adapters, so it carries the v3 issue-path
+    // rewrite too.
+    // Measured at 39.48 KB.
+    limit: '39.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1745,7 +1843,16 @@ export default [
     // The release subscription, plus the guard keeping a released box
     // from ever being read, cost ~65 B of shared core, which every
     // entry shipping the values surface carries. Measured at 25.81 KB.
-    limit: '26.25 KB',
+    //
+    // Raised 26.25 -> 26.75 KB on the map/set entry-paths branch (#614).
+    // A `z.map` entry is now a path on every surface, which the schema
+    // walker, the value walker, the diff (so an entry carries its own
+    // `dirty` baseline), the container proxies and the write gate all
+    // had to learn; a `z.set` member stopped being one, which took the
+    // reserved member segment plus its coercion lookup. Adapter-free,
+    // so this entry measures the shared-core half alone.
+    // Measured at 26.43 KB.
+    limit: '26.75 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

@@ -179,7 +179,17 @@ form.values.scoresByUser // Map<string, number>
 form.values.scoresByUser.get('user-42') // number | undefined
 ```
 
-The runtime treats `Map` as a leaf container; `form.values.scoresByUser` returns the live `Map`, and you call its methods directly. Use map (over record) when:
+`form.values.scoresByUser` returns the live `Map`, and you call its methods directly. Each entry is also a path in its own right, so `form.register`, `form.setValue`, `form.fields` and `form.errors` all address one the same way they address a record entry:
+
+```ts
+form.setValue('scoresByUser.user-42', 90)
+form.fields.scoresByUser['user-42'].dirty // true
+form.errors.scoresByUser['user-42'] // ValidationError[]
+```
+
+The key type you declared decides how a path segment is spelled. A path segment that looks like an integer arrives as a number, so under `z.map(z.string(), V)` the segment `'42'` files the entry under the string `'42'`, and under `z.map(z.number(), V)` it files it under the number `42`. Either way the same path reads it back. A map keyed by something a path cannot spell (an object, a symbol) has no addressable entries, and stays one whole value.
+
+Use map (over record) when:
 
 - You need `Map`-specific semantics: insertion order, key types beyond strings, or `.size` as an O(1) read.
 - The form persists to `'indexeddb'` and you want structured-clone fidelity. `JSON.stringify` flattens a `Map` to `{}`; structured clone preserves it.
@@ -222,6 +232,19 @@ form.errors.scoresByUser['user-99'] // (works for maps too)
 ```
 
 The aggregate `form.meta.errors` flattens every entry's errors into one list, in path order.
+
+## A note on `z.set`
+
+A set is the one container whose contents are not paths. A set member is its own key, so there is no address that survives writing to one: change the member and you have changed where it lives. `form.fields.tags[0]` resolves nothing, and a write to `tags.0` is refused rather than applied.
+
+Read a set through `form.values`, and write it whole:
+
+```ts
+form.values.tags // Set<string>
+form.setValue('tags', new Set([...form.values.tags, 'new-tag']))
+```
+
+A validation error on a member lands on the set itself, at `form.errors.tags`, on both Zod majors.
 
 ## When to pick which
 

@@ -36,6 +36,16 @@ export type SchemaForFill = {
    * contract.
    */
   getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<string>
+  /**
+   * How the container at `path` spells its own entry keys. The write
+   * walkers consult it at a `Map`, where a new entry has to be filed
+   * under a key of the declared type and the segment alone cannot say
+   * which: an integer-looking segment canonicalises to a number, so a
+   * map declared `z.map(z.string(), V)` would otherwise take a numeric
+   * key for `scores.42` and fail its own parse. See
+   * `AbstractSchema.entryKeyKindAtPath` for the full contract.
+   */
+  entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined
 }
 
 /**
@@ -58,6 +68,64 @@ export type SchemaForFill = {
 
 const NOT_FOUND: unique symbol = Symbol('NOT_FOUND')
 
+/**
+ * The key `map` files `segment` under.
+ *
+ * A path segment is a string or a non-negative integer, and
+ * `normalizeSegment` turns every integer-looking string into the
+ * number, so `scores.42` arrives here as `42` whether the consumer
+ * wrote the map's key as `'42'` or `42`. Resolving that back:
+ *
+ * 1. The spelling the map already holds wins, so reading and
+ *    overwriting an existing entry never depends on the schema.
+ * 2. For a key the map does not hold yet, `declared` decides — it is
+ *    the map's own key type, via `entryKeyKindAtPath`. A writer with
+ *    no schema in hand passes `undefined` and the segment stands.
+ *
+ * The reverse direction needs no case: a non-integer-looking segment
+ * is already a string, and a number-keyed map's segment is already a
+ * number.
+ */
+function mapKeyForSegment(
+  map: ReadonlyMap<unknown, unknown>,
+  segment: Segment,
+  declared?: 'string' | 'number'
+): unknown {
+  if (map.has(segment)) return segment
+  if (typeof segment !== 'number') return segment
+  const asString = String(segment)
+  if (map.has(asString)) return asString
+  return declared === 'string' ? asString : segment
+}
+
+/**
+ * Whether a write may rebuild the container at `root` to hold
+ * `segment`.
+ *
+ * Every write is copy-on-write from the root down, and the rebuild
+ * knows two shapes: an array for a numeric segment, a plain record for
+ * a string one (a `Map` is handled ahead of this, by its own branch).
+ * Starting from a fresh empty container is the right answer for a slot
+ * that is missing, null, or holds a scalar the write is replacing. It
+ * is the wrong answer for a slot already holding an object of some
+ * OTHER kind: the rebuild does not copy that object, it replaces it,
+ * and everything the original held is gone.
+ *
+ * `z.set` is how that was reachable. The schema walker consumes a
+ * segment at a set to answer what its members look like, so `tags.0`
+ * cleared the write gate, and the numeric rebuild turned a `Set` of
+ * three into an `Array` of one. `entryKeyKindAtPath` is the loud half
+ * of the rule now (a set has no addressable entry, so the gate refuses
+ * and dev-warns before reaching here); this is the quiet half, so a
+ * caller that arrives some other way leaves the tree alone instead of
+ * destroying it. Structural rather than a list of refused classes, so
+ * a container kind nobody here thought of is covered the same way.
+ */
+function isRebuildableContainer(root: unknown, segment: Segment): boolean {
+  if (root === null || root === undefined || typeof root !== 'object') return true
+  return typeof segment === 'number' ? Array.isArray(root) : isPlainRecord(root)
+}
+
 function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOUND {
   if (value === null || value === undefined) return NOT_FOUND
   if (typeof value !== 'object') return NOT_FOUND
@@ -74,6 +142,16 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
     // return NOT_FOUND exactly as the bounds comparison did.
     if (!(segment in value)) return NOT_FOUND
     return value[segment]
+  }
+  if (value instanceof Map) {
+    // A map's entries are real sub-paths: one segment addresses one
+    // entry, the same shape a record has (#614). `has` before `get`
+    // keeps "present and holding undefined" distinct from "absent",
+    // and on a reactive map both hit Vue's per-key traps, so a reader
+    // descending one entry does not subscribe to the map's size.
+    const key = mapKeyForSegment(value, segment)
+    if (!value.has(key)) return NOT_FOUND
+    return value.get(key)
   }
   const record = value as Record<string, unknown>
   const key = typeof segment === 'number' ? String(segment) : segment
@@ -140,6 +218,9 @@ export function hasAtPath(root: unknown, path: Path): boolean {
     // "missing", which the `< length` comparison wrongly reported as present.
     return typeof last === 'number' && consumerHas(current, last)
   }
+  if (current instanceof Map) {
+    return current.has(mapKeyForSegment(current, last))
+  }
   const key = typeof last === 'number' ? String(last) : last
   // Own-property existence for prototype-shadowed names — `key in
   // current` would report `true` for an inherited slot the consumer
@@ -164,6 +245,21 @@ function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: numb
 
   const head = path[offset] as Segment
   const nextOffset = offset + 1
+
+  if (root instanceof Map) {
+    // Copy-on-write the map itself, same as the array / record
+    // branches: the write target gets a fresh reference and every
+    // untouched entry carries over by reference. No schema in hand
+    // here, so a brand-new key takes the segment's own spelling; the
+    // schema-aware walker below resolves it against the declared key
+    // type instead.
+    const next = new Map(root)
+    const key = mapKeyForSegment(root, head)
+    next.set(key, setAtPathOffset(root.get(key), path, value, nextOffset))
+    return next
+  }
+
+  if (!isRebuildableContainer(root, head)) return root
 
   if (typeof head === 'number') {
     const arr = Array.isArray(root) ? [...root] : []
@@ -247,6 +343,17 @@ function descendAndWrite(root: unknown, path: Path, value: unknown): InPlaceWrit
   let node: unknown = root
   for (let i = 0; i < path.length; i++) {
     const seg = path[i] as Segment
+    // A `Map` is never edited in place, unlike the array element one
+    // step down. `materializeFormValue` shares a map with the consumer
+    // BY REFERENCE (as it does a `Set`, `File`, `Blob` and `Date` —
+    // some of them cannot be copied at all), where it deep-copies a
+    // plain object or an array. So an in-place map write would reach
+    // straight back into the `defaultValues` the consumer still holds,
+    // mutating their object and, because `originals` was seeded from
+    // that same map, making the entry read `dirty: false` right after
+    // being edited. Copy-on-write gives the map a fresh identity on
+    // the first write and leaves the consumer's original alone.
+    if (node instanceof Map) return NO_IN_PLACE
     if (Array.isArray(node)) {
       if (typeof seg !== 'number' || seg < 0 || seg >= node.length) return NO_IN_PLACE
     } else if (isPlainRecord(node)) {
@@ -349,6 +456,17 @@ function mergeStructuralImpl(
     return mergeStructuralArray(schema, scratch, consumer)
   }
 
+  // Map: recurse into each entry against the schema's value default at
+  // that entry's own path, so a partial entry written wholesale gets
+  // the same structural completion a record entry gets. The map's key
+  // set follows the consumer — filling absent keys from a default has
+  // no meaning when every key is data. Returns `consumer` by reference
+  // when nothing under it changed, so the common write allocates
+  // nothing.
+  if (consumer instanceof Map) {
+    return mergeStructuralMap(schema, scratch, consumer)
+  }
+
   // Plain object: fill missing keys from default, recurse on present
   // keys. Consumer-only keys pass through.
   if (isPlainRecord(consumer)) {
@@ -377,6 +495,41 @@ function mergeStructuralImpl(
   // Leaf-ish (primitives, Date, RegExp, Map, Set, class instances) —
   // consumer wins, no recursion.
   return consumer
+}
+
+/**
+ * Merge a consumer map against the schema, entry by entry. Every entry
+ * resolves to the same value schema, so the element default is queried
+ * once and reused across keys — the same shape `mergeStructuralArray`
+ * uses for an unbounded array. Returns the original `consumer` when no
+ * entry changed.
+ */
+function mergeStructuralMap(
+  schema: SchemaForFill,
+  scratch: Segment[],
+  consumer: ReadonlyMap<unknown, unknown>
+): unknown {
+  if (consumer.size === 0) return consumer
+  let entryDefault: unknown
+  let entryDefaultRead = false
+  let out: Map<unknown, unknown> | null = null
+  for (const [key, entry] of consumer) {
+    // Only a key a segment can spell has a sub-path to complete
+    // against. An object- or symbol-keyed entry is carried through
+    // untouched, exactly as the leaf branch carries any other value.
+    if (typeof key !== 'string' && typeof key !== 'number') continue
+    scratch.push(key)
+    if (!entryDefaultRead) {
+      entryDefault = schema.getDefaultAtPath(scratch)
+      entryDefaultRead = true
+    }
+    const merged = mergeStructuralImpl(schema, scratch, entry, entryDefault)
+    scratch.pop()
+    if (merged === entry) continue
+    out ??= new Map(consumer)
+    out.set(key, merged)
+  }
+  return out ?? consumer
 }
 
 /**
@@ -533,6 +686,28 @@ function setAtPathWithSchemaFillImpl(
 
   const head = fullPath[startIdx] as Segment
   const isLeafStep = startIdx === fullPath.length - 1
+
+  if (root instanceof Map) {
+    const next = new Map(root)
+    const key = mapKeyForSegment(root, head, schema.entryKeyKindAtPath(fullPath.slice(0, startIdx)))
+    if (isLeafStep) {
+      next.set(key, value)
+      return next
+    }
+    // Intermediate step: fill a missing / non-descendable entry from
+    // the schema before recursing, so the levels below start from a
+    // structurally complete node instead of building a fresh one that
+    // holds only the keys this path touches. Same semantic the array
+    // and object branches apply.
+    let childRoot = next.get(key)
+    if (childRoot === undefined || (childRoot !== null && typeof childRoot !== 'object')) {
+      childRoot = schema.getDefaultAtPath(fullPath.slice(0, startIdx + 1))
+    }
+    next.set(key, setAtPathWithSchemaFillImpl(childRoot, schema, fullPath, value, startIdx + 1))
+    return next
+  }
+
+  if (!isRebuildableContainer(root, head)) return root
 
   if (typeof head === 'number') {
     const arr = Array.isArray(root) ? [...root] : []

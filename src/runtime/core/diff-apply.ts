@@ -1,5 +1,5 @@
 import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
-import { isPathPrefix, pathsEqual } from './paths'
+import { isPathPrefix, mapSegmentKeys, pathsEqual } from './paths'
 import type { Path, Segment } from './paths'
 import { safeAssign, safeOwnRead } from './safe-assign'
 
@@ -25,13 +25,27 @@ export type Patch =
     }
 
 /**
- * True for plain objects (own prototype === Object.prototype or null) and
- * arrays. Deliberately rejects Map, Set, Date, class instances, functions —
- * those are treated as opaque leaf values.
+ * True for plain objects (own prototype === Object.prototype or null),
+ * arrays, and the maps whose every key a path segment can spell.
+ * Deliberately rejects Set, Date, class instances, functions — those
+ * are treated as opaque leaf values.
+ *
+ * A map is descendable because its entries are real paths (#614), and
+ * the diff is what puts them in `originals`: without a per-entry
+ * baseline, `form.fields.scores.ann.dirty` reads `false` the moment
+ * after it is edited, and the leaf walks built on `originals`
+ * (`form.list`, the container dirty rollup) never see the entry at
+ * all. A map holding a key no segment can spell — an object, a symbol
+ * — has no addressable entries, so it stays one atomic value, the same
+ * answer `entryKeyKindAtPath` gives for it.
+ *
+ * A `Set` stays a leaf for the reason its members are not paths: a
+ * member is its own key, so there is nothing under it to address.
  */
 function isDescendable(value: unknown): value is Record<string, unknown> | readonly unknown[] {
   if (value === null || typeof value !== 'object') return false
   if (Array.isArray(value)) return true
+  if (value instanceof Map) return mapSegmentKeys(value) !== null
   const proto = Object.getPrototypeOf(value) as object | null
   return proto === null || proto === Object.prototype
 }
@@ -84,6 +98,19 @@ export function diffAndApply(
   }
 
   if (oldIsDescendable && newIsDescendable) {
+    const oldIsMap = oldValue instanceof Map
+    const newIsMap = newValue instanceof Map
+    if (oldIsMap && newIsMap) {
+      diffMapsLockstep(oldValue, newValue, prefix, visit)
+      return
+    }
+    if (oldIsMap !== newIsMap) {
+      // A map replaced by a plain object (or the reverse) is a shape
+      // change at this node, not a per-entry edit.
+      visit({ kind: 'changed', path: prefix, oldValue, newValue })
+      return
+    }
+
     const oldIsArray = Array.isArray(oldValue)
     const newIsArray = Array.isArray(newValue)
 
@@ -144,6 +171,10 @@ function walkNewDescendable(
     for (let i = 0; i < newValue.length; i++) {
       diffAndApply(undefined, readConsumerIndex(newValue, i), appendSegment(prefix, i), visit)
     }
+  } else if (newValue instanceof Map) {
+    for (const [key, entry] of newValue) {
+      diffAndApply(undefined, entry, appendSegment(prefix, key as Segment), visit)
+    }
   } else {
     const rec = newValue as Record<string, unknown>
     for (const k of consumerKeys(rec)) {
@@ -170,11 +201,44 @@ function walkOldDescendable(
     for (let i = 0; i < oldValue.length; i++) {
       diffAndApply(readConsumerIndex(oldValue, i), undefined, appendSegment(prefix, i), visit)
     }
+  } else if (oldValue instanceof Map) {
+    for (const [key, entry] of oldValue) {
+      diffAndApply(entry, undefined, appendSegment(prefix, key as Segment), visit)
+    }
   } else {
     const rec = oldValue as Record<string, unknown>
     for (const k of consumerKeys(rec)) {
       diffAndApply(readConsumerProp(rec, k), undefined, appendSegment(prefix, k), visit)
     }
+  }
+}
+
+/**
+ * Diff two maps in lockstep over the union of their keys, recursing per
+ * entry. A key present on one side only reads as `undefined` on the
+ * other, so an added or dropped entry surfaces as an `'added'` /
+ * `'removed'` leaf patch, exactly as an object key does.
+ *
+ * A key spelled as the string `'42'` on one side and the number `42` on
+ * the other is the same path, and reconciling that here would make the
+ * two sides disagree about which spelling the entry has. Both maps come
+ * from the same schema, whose declared key type fixes the spelling
+ * (`entryKeyKindAtPath`), so the case does not arise from a write; a
+ * consumer who hand-builds one each way sees the entry replaced rather
+ * than edited, which is the truthful reading of two different keys.
+ */
+function diffMapsLockstep(
+  oldMap: ReadonlyMap<unknown, unknown>,
+  newMap: ReadonlyMap<unknown, unknown>,
+  prefix: Path,
+  visit: (patch: Patch) => void
+): void {
+  for (const [key, entry] of newMap) {
+    diffAndApply(oldMap.get(key), entry, appendSegment(prefix, key as Segment), visit)
+  }
+  for (const [key, entry] of oldMap) {
+    if (newMap.has(key)) continue
+    diffAndApply(entry, undefined, appendSegment(prefix, key as Segment), visit)
   }
 }
 
@@ -323,6 +387,13 @@ export function applyChangedKeys(
   patches: readonly Patch[]
 ): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false
+  // A map write is copy-on-write, so the new map is already a fresh
+  // object holding every carried-over entry by reference. Bailing here
+  // makes the caller reference-assign it wholesale, which is both the
+  // correct result and the one the in-place reconcile below could not
+  // produce: its object branch reads keys off `Object.keys`, which a
+  // map has none of.
+  if (target instanceof Map || source instanceof Map) return false
   const targetIsArray = Array.isArray(target)
   const sourceIsArray = Array.isArray(source)
   if (targetIsArray !== sourceIsArray) return false
@@ -436,9 +507,9 @@ export function applyChangedKeys(
 }
 
 /**
- * Stable structural snapshot of a value. Walks plain objects + arrays
- * recursively; non-recursable values (primitives, Date, RegExp, Map,
- * Set, functions, class instances) pass through unchanged.
+ * Stable structural snapshot of a value. Walks plain objects, arrays
+ * and maps recursively; non-recursable values (primitives, Date,
+ * RegExp, Set, functions, class instances) pass through unchanged.
  *
  * Used by setValue's callback path so the `prev` arg passed to a
  * consumer's `(prev) => next` lambda is a frozen-in-time snapshot —
@@ -449,6 +520,16 @@ export function applyChangedKeys(
  */
 export function structuralSnapshot<T>(value: T): T {
   if (!isDescendable(value)) return value
+  if (value instanceof Map) {
+    // Snapshot as a `Map`, not as the plain object the key walk below
+    // would produce. A map's entries are paths, so it is descendable
+    // for the diff's sake, and rebuilding it here as `{}` would hand a
+    // `setValue((prev) => ...)` callback a `prev` whose shape does not
+    // match what it reads back from `form.values`.
+    const out = new Map<unknown, unknown>()
+    for (const [k, v] of value) out.set(k, structuralSnapshot(v))
+    return out as unknown as T
+  }
   if (Array.isArray(value)) {
     const out = new Array(value.length)
     for (let i = 0; i < value.length; i++) {

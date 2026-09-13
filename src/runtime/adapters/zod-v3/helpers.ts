@@ -9,6 +9,7 @@ type ZodTypeMap = {
   >
   ZodArray: z.ZodArray<z.ZodTypeAny>
   ZodSet: z.ZodSet<z.ZodTypeAny>
+  ZodMap: z.ZodMap<z.ZodTypeAny, z.ZodTypeAny>
   ZodRecord: z.ZodRecord<z.ZodTypeAny, z.ZodTypeAny>
   ZodDefault: z.ZodDefault<z.ZodTypeAny>
   ZodOptional: z.ZodOptional<z.ZodTypeAny>

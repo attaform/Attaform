@@ -6,7 +6,7 @@
  * with their `SchemaIntrospector` instance. Wrapper / container kinds
  * (Optional / Nullable / Default / Readonly / Catch / Pipe / Pipeline /
  * Effects / Branded / Lazy / Intersection / Union / DiscriminatedUnion /
- * Object / Array / Set / Record / Tuple) all dispatch through the
+ * Object / Array / Set / Map / Record / Tuple) all dispatch through the
  * introspector accessors, so the walker stays agnostic to per-version
  * `def.*` shape.
  *
@@ -35,13 +35,18 @@
  *    return `[]` when path remains, so a caller that asked for
  *    `firstName.middle` against a string schema gets an empty
  *    resolution rather than a wrong schema.
- *  - Unsupported kinds (`map` / `symbol` / `function` / `promise`) are
- *    rejected at adapter construction by `assertSupportedKinds`; the
- *    walker's exhaustiveness on those kinds returns `[]` defensively
- *    so a downstream caller that instantiates a sub-schema directly
- *    isn't crashed.
+ *  - `map` descends into the declared VALUE type and consumes the
+ *    segment, the same shape `record` uses. The two differ only in
+ *    what spells a key, which `entryKeyKindAtPath` answers; here they
+ *    are both "one segment addresses one entry".
+ *  - Kinds with no sub-schema to descend into (`symbol` / `function` /
+ *    `promise`, and the opaque leaves) return `[]`, which is the
+ *    truthful answer: the schema declares no sub-paths there, so none
+ *    are fabricated. No kind is refused at adapter construction any
+ *    more (#607) — `[]` is the whole story.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
+import { SET_MEMBER_SEGMENT } from './paths'
 
 export function walkPathSegments<Schema>(
   schema: Schema,
@@ -66,14 +71,31 @@ export function walkPathSegments<Schema>(
       return inner === undefined ? [] : walkPathSegments(inner, rest, intro, maxDepth, lazyDepth)
     }
     case 'set': {
-      // Sets aren't position-indexed; the head segment is a synthetic
-      // indexer (`[...path, 0]`) used to query the element type. Descend
-      // into the value schema and consume the segment.
+      // A set's members are not addressable: a member IS its own key,
+      // so no address survives writing to one. The single question a
+      // set answers here is what a member looks like, asked by the
+      // coercion layer through the reserved `SET_MEMBER_SEGMENT`, and
+      // every other segment gets the truthful `[]`.
+      //
+      // A plain index used to be accepted for that question, which
+      // made `tags.0` resolve for everyone: it surfaced on
+      // `form.fields` as a node holding nothing, and it cleared the
+      // write gate, where the numeric rebuild replaced the whole `Set`
+      // with an `Array` holding the one written member (#614).
+      if (head !== SET_MEMBER_SEGMENT) return []
       const inner = intro.getSetValueType(schema)
       return inner === undefined ? [] : walkPathSegments(inner, rest, intro, maxDepth, lazyDepth)
     }
     case 'record': {
       const inner = intro.getRecordValueType(schema)
+      return inner === undefined ? [] : walkPathSegments(inner, rest, intro, maxDepth, lazyDepth)
+    }
+    case 'map': {
+      // One segment addresses one entry, exactly as `record` does. The
+      // segment's own spelling against the map's declared key type is
+      // `entryKeyKindAtPath`'s question, not this walker's: resolving
+      // the value schema is the same answer for every entry.
+      const inner = intro.getMapValueType(schema)
       return inner === undefined ? [] : walkPathSegments(inner, rest, intro, maxDepth, lazyDepth)
     }
     case 'tuple': {
@@ -161,11 +183,10 @@ export function walkPathSegments<Schema>(
     // Leaves — can't descend further. Opaque leaves (`any` /
     // `unknown` / `custom`) land here too and `[]` is the truthful
     // answer: the schema declares no sub-paths under them, so none are
-    // fabricated. The unsupported kinds (`map` / `symbol` / `function`
-    // / `promise`) are rejected at adapter construction by
-    // `assertSupportedKinds`; falling through to `[]` keeps the walker
-    // defensive in case construction is skipped (e.g. a downstream
-    // test instantiates a sub-schema directly).
+    // fabricated. `symbol` / `function` / `promise` hold a value
+    // without declaring anything inside it and land here for the same
+    // reason. No kind is refused at construction (#607), so this is
+    // the only branch they ever take.
     default:
       return []
   }

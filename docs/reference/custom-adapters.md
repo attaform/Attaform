@@ -209,6 +209,18 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       return kinds !== undefined && kinds.has('object')
     },
 
+    entryKeyKindAtPath(path) {
+      // How the container here spells its own entry keys, for a write
+      // that has to create one: `'number'` for a sequence, `'string'`
+      // for a keyed container. `undefined` for a leaf, for a path you
+      // don't declare, and for any container whose entries a path
+      // segment cannot name.
+      const kinds = walkSchemaToSlimPrimitives(schema, path)
+      if (kinds === undefined) return undefined
+      if (kinds.has('array')) return 'number'
+      return kinds.has('object') ? 'string' : undefined
+    },
+
     isPreprocessOrCoerceLeaf() {
       // True where a schema-side input normalizer (a coercing or
       // preprocessing node) should accept raw writes verbatim. Return

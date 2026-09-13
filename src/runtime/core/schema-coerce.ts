@@ -27,7 +27,7 @@ import type {
   CoercionResult,
   SlimPrimitiveKind,
 } from '../types/types-api'
-import type { Path } from './paths'
+import { SET_MEMBER_SEGMENT, type Path } from './paths'
 import { slimKindOf } from './slim-primitive-gate'
 import { __DEV__ } from './dev'
 
@@ -147,6 +147,29 @@ function indexRules(rules: CoercionRegistry): CoercionIndex {
 }
 
 /**
+ * Slim primitive set of one MEMBER of the container at `segments`, or
+ * `undefined` when `segments` holds no member-bearing container.
+ *
+ * An array's members live at real sub-paths, so index 0 answers for
+ * all of them. A set's do not: its members are their own keys, so
+ * `tags.0` is not a path and asking for one used to hand this layer a
+ * resolution the rest of the runtime then treated as a real field
+ * (#614). `SET_MEMBER_SEGMENT` asks the same question in a spelling no
+ * consumer path can collide with.
+ */
+function memberSlimTypes(
+  schema: AbstractSchema<unknown, unknown>,
+  segments: Path,
+  accepted: ReadonlySet<SlimPrimitiveKind>
+): ReadonlySet<SlimPrimitiveKind> | undefined {
+  if (accepted.has('array')) return schema.getSlimPrimitiveTypesAtPath([...segments, 0])
+  if (accepted.has('set')) {
+    return schema.getSlimPrimitiveTypesAtPath([...segments, SET_MEMBER_SEGMENT])
+  }
+  return undefined
+}
+
+/**
  * Build the per-register coerce closure. The closure captures the
  * resolved `accepted` set + the index, so the per-event hot path
  * doesn't re-walk the schema on every keystroke. Returns `IDENTITY`
@@ -160,10 +183,7 @@ export function buildCoerceFn(
   if (index === EMPTY_INDEX) return IDENTITY
   if (index.size === 0) return IDENTITY
   const accepted = schema.getSlimPrimitiveTypesAtPath(segments)
-  const elementAccepted =
-    accepted.has('array') || accepted.has('set')
-      ? schema.getSlimPrimitiveTypesAtPath([...segments, 0])
-      : undefined
+  const elementAccepted = memberSlimTypes(schema, segments, accepted)
   return (value) => coerceValue(value, accepted, elementAccepted, index)
 }
 
@@ -190,8 +210,8 @@ export function buildElementCoerceFn(
   if (index === EMPTY_INDEX) return undefined
   if (index.size === 0) return undefined
   const accepted = schema.getSlimPrimitiveTypesAtPath(segments)
-  if (!accepted.has('array') && !accepted.has('set')) return undefined
-  const elementAccepted = schema.getSlimPrimitiveTypesAtPath([...segments, 0])
+  const elementAccepted = memberSlimTypes(schema, segments, accepted)
+  if (elementAccepted === undefined) return undefined
   return (value) => coerceScalar(value, elementAccepted, index)
 }
 

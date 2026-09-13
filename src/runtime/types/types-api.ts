@@ -463,6 +463,30 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * `false`.
    */
   isFixedObjectAtPath(path: Path): boolean
+
+  /**
+   * How the container at `path` spells the keys of its own entries:
+   * `'number'` for an array or a tuple, `'string'` for an object or a
+   * record, and for a `z.map` the kind its declared key type accepts.
+   * `undefined` for anything else, a leaf and an undeclared path
+   * included.
+   *
+   * The write walkers consult it at a `Map`, where a new entry has to
+   * be filed under a key of the declared type and the path segment
+   * alone cannot say which: an integer-looking segment canonicalises
+   * to a number, so `scores.42` against a `z.map(z.string(), V)` would
+   * otherwise take the number `42` as its key and fail the map's own
+   * parse. An entry the map already holds needs no ruling — its
+   * existing key wins.
+   *
+   * A map whose key type is neither string-ish nor number-ish, or
+   * which admits both, reports `undefined`: no segment can spell such
+   * a key, so the map stays a whole value with no addressable entries.
+   *
+   * Adapters MAY cache per path; the runtime calls this on the write
+   * path.
+   */
+  entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined
   /**
    * Return every sub-schema that could resolve at the given structured
    * path. Multiple results are only expected for discriminated / union

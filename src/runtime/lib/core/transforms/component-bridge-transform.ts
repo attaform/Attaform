@@ -22,42 +22,38 @@ import {
   type SummarizedProp,
 } from './_shared-props'
 
+/**
+ * Build one `<option>`'s `:selected` expression.
+ *
+ * Every term resolves in the option's OWN binding scope: the register
+ * and `multiple` expressions come from the enclosing `<select>`, which
+ * encloses each option, and the value expression is the option's own.
+ * Nothing from a sibling option is referenced, which is the property
+ * that makes this safe under `v-for`.
+ *
+ * That property was previously violated. Each option also carried an
+ * "a preceding option already matched, so I am false" guard built by
+ * concatenating every earlier sibling's match expression into this
+ * one. Two `<option v-for>` siblings under a single `<select>` then
+ * emitted the FIRST loop's alias inside the SECOND loop's render
+ * callback, where it does not exist, and the component died at render
+ * with `ReferenceError: a is not defined` (#566). An option inside a
+ * `v-for` cannot be referenced from a sibling loop at all, so no
+ * repair of that expression was possible: the guard had to go.
+ *
+ * Removing it costs nothing, because it never fired. It compared the
+ * register HANDLE against an option value (`(register) === ('apple')`)
+ * rather than the model behind it, so it was false for every input a
+ * consumer could supply. The only shape it aimed at is two options
+ * sharing one value on a single-select, where the two are already
+ * indistinguishable to the user, the browser resolves the duplicate on
+ * parse, and the directive re-syncs from the model at mount.
+ */
 function generateEqualityExpression(
   selectValue: SummarizedProp['value'],
   optionValue: SummarizedProp['value'],
-  previousOptionExpressions: CompoundExpressionNode['children'][]
+  multipleExpression: CompoundExpressionNode['children']
 ): CompoundExpressionNode['children'] {
-  const multipleExpression = previousOptionExpressions?.[0] // this should always exist
-  if (multipleExpression === undefined) {
-    // this should NEVER happen
-    throw new Error(
-      'Programming error: `multiple` expression for `select` node not generated while transforming AST'
-    )
-  }
-
-  const optExpressions = previousOptionExpressions.slice(1)
-
-  // for `multiple`="false", we ONLY execute latest expression if all past expressions were falsy
-  const noMultipleOptExpressions = optExpressions.reduce<CompoundExpressionNode['children']>(
-    (acc, curr, index) => {
-      if (index === 0) {
-        acc.push('(')
-      }
-
-      acc.push(...curr) // all expressions from last operation were grouped into an array
-      if (index < optExpressions.length - 1) {
-        acc.push(' || ')
-      }
-
-      if (index === optExpressions.length - 1) {
-        acc.push(')')
-      }
-
-      return acc
-    },
-    []
-  )
-
   const selectValueArr = Array.isArray(selectValue) ? selectValue : [selectValue]
   const optionValueArr = Array.isArray(optionValue) ? optionValue : [optionValue]
 
@@ -67,8 +63,6 @@ function generateEqualityExpression(
     return expression
   }
 
-  // capture the current expression for the next round
-  previousOptionExpressions.push(['(', ...selectValueArr, ') === (', ...optionValueArr, ')'])
   // Single-select branch String-coerces both sides to mirror the
   // runtime directive's `looseEqual`-style match — a typed-numeric
   // model (`z.number()`) matches `<option value="1">` at SSR time.
@@ -78,24 +72,6 @@ function generateEqualityExpression(
   // false-positive against a single-element option.
   // The multi-select branch keeps `innerRef.value` because Array
   // / Set models need findIndex / membership iteration.
-  if (!noMultipleOptExpressions.length) {
-    return [
-      '(',
-      ...getImplicitTrueMultipleExpression(multipleExpression),
-      `) ? ((`,
-      ...selectValueArr,
-      `)?.innerRef?.value?.findIndex?.(el => el === (`,
-      ...optionValueArr,
-      `)) > -1) : (typeof (`,
-      ...selectValueArr,
-      `)?.innerRef?.value !== 'object' && String((`,
-      ...selectValueArr,
-      `)?.innerRef?.value) === String((`,
-      ...optionValueArr,
-      `)))`,
-    ]
-  }
-
   return [
     '(',
     ...getImplicitTrueMultipleExpression(multipleExpression),
@@ -103,15 +79,13 @@ function generateEqualityExpression(
     ...selectValueArr,
     `)?.innerRef?.value?.findIndex?.(el => el === (`,
     ...optionValueArr,
-    `)) > -1) : ((`,
-    ...noMultipleOptExpressions, // if true, we already found the relevant option
-    `) ? false : (typeof (`,
+    `)) > -1) : (typeof (`,
     ...selectValueArr,
     `)?.innerRef?.value !== 'object' && String((`,
     ...selectValueArr,
     `)?.innerRef?.value) === String((`,
     ...optionValueArr,
-    `))))`,
+    `)))`,
   ]
 }
 
@@ -292,7 +266,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
 
     function traverseSelectNode(
       _node: RootNode | TemplateChildNode,
-      previousOptionExpressions: CompoundExpressionNode['children'][]
+      multipleExpression: CompoundExpressionNode['children']
     ): void {
       const isOption = _node.type === NodeTypes.ELEMENT && _node.tag === 'option'
       if (!isOption) {
@@ -306,7 +280,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
         for (const child of _node.children) {
           if (typeof child === 'symbol' || typeof child === 'string') continue
           if (child.type === NodeTypes.SIMPLE_EXPRESSION) continue
-          traverseSelectNode(child, previousOptionExpressions)
+          traverseSelectNode(child, multipleExpression)
         }
         return
       }
@@ -354,7 +328,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
           generateEqualityExpression(
             registerSummarizedProp?.value ?? 'undefined',
             optionValueSummarizedProp?.value ?? 'undefined',
-            previousOptionExpressions
+            multipleExpression
           )
         ),
         name: 'bind',
@@ -365,10 +339,10 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       props.push(newProp)
     }
 
-    const multipleExpression = extractMultipleFromSelectSummarizedProps(selectSummarizedProps)
+    const rawMultipleExpression = extractMultipleFromSelectSummarizedProps(selectSummarizedProps)
 
-    const previousOptionExpressions: CompoundExpressionNode['children'][] =
-      typeof multipleExpression === 'string' ? [[multipleExpression]] : [multipleExpression]
+    const multipleExpression: CompoundExpressionNode['children'] =
+      typeof rawMultipleExpression === 'string' ? [rawMultipleExpression] : rawMultipleExpression
 
     // <option> children of a v-register host derive their SSR :selected from
     // the host's single register. For a native <select> they're inline; for a
@@ -382,7 +356,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     // that don't project options. Run before the value-channel decision below
     // so hasSlottedOptions is settled when we choose :value vs v-model.
     for (const child of node.children) {
-      traverseSelectNode(child, previousOptionExpressions) // start searching for options in dfs manner
+      traverseSelectNode(child, multipleExpression) // start searching for options in dfs manner
     }
 
     // Multi-select hydration trap. Setting `select.value = X` on a
@@ -412,7 +386,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     // expression we can't evaluate at compile time — skips. The
     // dynamic case is rare; trading SSR `value=` on the select for
     // hydration correctness is the right call.
-    const isStaticallyNonMultiple = multipleExpression === 'false'
+    const isStaticallyNonMultiple = rawMultipleExpression === 'false'
 
     // Value-channel split (the corrected gate). A "select-like" host keeps the
     // legacy :value bind: a native <select>, or a component / custom-element
